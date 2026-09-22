@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LendingDesk.Api/LendingDesk.Api.csproj" />
+    <Project Path="src/LendingDesk.Data/LendingDesk.Data.csproj" />
+    <Project Path="src/LendingDesk.Domain/LendingDesk.Domain.csproj" />
+    <Project Path="src/LendingDesk.Worker/LendingDesk.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LendingDesk.IntegrationTests/LendingDesk.IntegrationTests.csproj" />
+    <Project Path="tests/LendingDesk.UnitTests/LendingDesk.UnitTests.csproj" />
+  </Folder>
+</Solution>
