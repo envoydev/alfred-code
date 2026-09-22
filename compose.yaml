@@ -1,0 +1,20 @@
+# Local database for running the API and the worker. Tests start their own container.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lending
+      POSTGRES_PASSWORD: lending
+      POSTGRES_DB: lending
+    ports:
+      - "${LENDING_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lending -d lending"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
