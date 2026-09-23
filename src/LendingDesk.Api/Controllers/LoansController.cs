@@ -2,6 +2,8 @@ using LendingDesk.Api.Auth;
 using LendingDesk.Api.Contracts;
 using LendingDesk.Api.Errors;
 using LendingDesk.Data;
+using LendingDesk.Data.Outbox;
+using LendingDesk.Domain.Events;
 using LendingDesk.Domain.Loans;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -73,8 +75,16 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
             DueDate = due,
             CreatedAt = clock.GetUtcNow(),
         };
-        db.Loans.Add(loan);
-        await db.SaveChangesAsync(cancellationToken);
+        // The loan needs its id before the event can name it, so both saves share one transaction.
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
+        {
+            db.Loans.Add(loan);
+            await db.SaveChangesAsync(cancellationToken);
+            db.Enqueue(EventTypes.LoanCreated, new LoanCreated(loan.Id, member.Id, item.Id, start, due), loan.CreatedAt);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+
         return CreatedAtAction(nameof(Get), new { id = loan.Id }, await Get(loan.Id, cancellationToken));
     }
 
@@ -83,7 +93,9 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
     public async Task<LoanDto> Return(int id, CancellationToken cancellationToken)
     {
         var loan = await db.Loans.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Loan", id);
-        loan.Return(clock.GetUtcNow());
+        var returnedAt = clock.GetUtcNow();
+        loan.Return(returnedAt);
+        db.Enqueue(EventTypes.LoanReturned, new LoanReturned(loan.Id, loan.MemberId, returnedAt), returnedAt);
         await db.SaveChangesAsync(cancellationToken);
         return await Get(id, cancellationToken);
     }

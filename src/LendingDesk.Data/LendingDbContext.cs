@@ -1,3 +1,4 @@
+using LendingDesk.Data.Outbox;
 using LendingDesk.Domain.Items;
 using LendingDesk.Domain.Loans;
 using LendingDesk.Domain.Members;
@@ -12,6 +13,8 @@ public sealed class LendingDbContext(DbContextOptions<LendingDbContext> options)
     public DbSet<Item> Items => Set<Item>();
 
     public DbSet<Loan> Loans => Set<Loan>();
+
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
