@@ -1,0 +1,179 @@
+'use strict';
+// One measured session: `claude -p` in the cell's clone, with the shared session's flags, the cell's
+// own account dir and home, and a wall-clock limit the driver enforces itself (print mode has none).
+// Before it starts, the clone's state is recorded as a tree, so the diff is exactly what the session
+// changed - never what the arm's setup left behind. After it ends, the transcript and its subagents
+// are copied out of the cell's account dir, and any auth value is redacted from every file written
+// to results: a model that runs `env` would otherwise put the key into the transcript.
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { spawn, execFileSync } = require('node:child_process');
+const lock = require('./lock.js');
+const { sessionEnv } = require('./env.js');
+
+const WIN = process.platform === 'win32';
+const MIN_SECRET = 8;
+
+function sessionArgv({ prompt, session, sessionId })
+{
+    return [
+        '-p', '--output-format', 'stream-json', '--verbose',
+        '--model', session.model, '--effort', session.effort, '--permission-mode', session.permissionMode,
+        '--settings', session.settingsFile, '--session-id', sessionId, prompt,
+    ];
+}
+
+// The harness's own git, blind to the host's global config: ignore rules come from the clone alone.
+function git(repo, args, { index, home } = {})
+{
+    const env = { PATH: process.env.PATH, HOME: home || os.tmpdir(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull };
+    if (index) env.GIT_INDEX_FILE = index;
+    if (WIN) Object.assign(env, { SystemRoot: process.env.SystemRoot });
+    return execFileSync('git', ['-C', repo, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 }).toString();
+}
+
+// Every file the clone holds, ignored ones aside, as one tree - through a throwaway index, so the
+// clone's own index and status are exactly what the session will see.
+function snapshot(cell, name)
+{
+    const index = path.join(cell.work, `.bench-index-${name}`);
+    fs.rmSync(index, { force: true });
+    try
+    {
+        git(cell.repo, ['add', '-A'], { index, home: cell.home });
+        return git(cell.repo, ['write-tree'], { index, home: cell.home }).trim();
+    }
+    finally { fs.rmSync(index, { force: true }); }
+}
+
+function findTranscript(config, sessionId)
+{
+    const projects = path.join(config, 'projects');
+    let dirs;
+    try { dirs = fs.readdirSync(projects); }
+    catch { return null; }
+    for (const d of dirs)
+    {
+        const file = path.join(projects, d, `${sessionId}.jsonl`);
+        if (fs.existsSync(file)) return file;
+    }
+    return null;
+}
+
+function countJsonl(dir)
+{
+    let n = 0;
+    try
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            if (e.isDirectory()) n += countJsonl(path.join(dir, e.name));
+            else if (e.name.endsWith('.jsonl')) n += 1;
+        }
+    }
+    catch { /* none */ }
+    return n;
+}
+
+function redact(dir, secrets)
+{
+    if (!secrets.length) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+    {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== '.lock') redact(p, secrets); continue; }
+        if (!e.isFile()) continue;
+        let text = fs.readFileSync(p, 'utf8');
+        let changed = false;
+        for (const { name, value } of secrets)
+        {
+            if (!text.includes(value)) continue;
+            text = text.split(value).join(`<redacted:${name}>`);
+            changed = true;
+        }
+        if (changed) fs.writeFileSync(p, text);
+    }
+}
+
+function kill(child, signal)
+{
+    try
+    {
+        if (WIN) child.kill(signal);
+        else process.kill(-child.pid, signal);
+    }
+    catch { /* already gone */ }
+}
+
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, claude = ['claude'], base = process.env, graceSec })
+{
+    fs.mkdirSync(cell.results, { recursive: true });
+    const got = lock.acquire(cell.results);
+    if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);
+    try
+    {
+        if (startRef) git(cell.repo, ['checkout', '--quiet', startRef], { home: cell.home });
+        const baseTree = snapshot(cell, 'base');
+        const sessionId = crypto.randomUUID();
+        const argv = sessionArgv({ prompt, session, sessionId });
+        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: true });
+
+        const out = fs.openSync(cell.stdout, 'w');
+        const err = fs.openSync(cell.stderr, 'w');
+        const started = Date.now();
+        let timedOut = false;
+        const result = await new Promise((resolve) =>
+        {
+            // detached: the session leads its own process group, so a stop reaches every build and
+            // test it started, not only the CLI.
+            const child = spawn(claude[0], [...claude.slice(1), ...argv], { cwd: cell.repo, env, stdio: ['ignore', out, err], detached: !WIN });
+            const grace = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
+            let killer = null;
+            const limit = setTimeout(() =>
+            {
+                timedOut = true;
+                kill(child, 'SIGTERM');
+                killer = setTimeout(() => kill(child, 'SIGKILL'), grace);
+            }, timeLimitMin * 60 * 1000);
+            child.on('error', (e) => { clearTimeout(limit); clearTimeout(killer); resolve({ code: null, signal: null, error: e.code || e.message }); });
+            child.on('exit', (code, signal) => { clearTimeout(limit); clearTimeout(killer); resolve({ code, signal, error: null }); });
+        });
+        fs.closeSync(out);
+        fs.closeSync(err);
+        const ended = Date.now();
+
+        const transcript = findTranscript(cell.config, sessionId);
+        if (transcript)
+        {
+            fs.copyFileSync(transcript, cell.transcript);
+            const subs = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents');
+            if (fs.existsSync(subs)) fs.cpSync(subs, cell.subagents, { recursive: true });
+        }
+        const endTree = snapshot(cell, 'end');
+        fs.writeFileSync(cell.diff, git(cell.repo, ['diff', '--binary', '--no-color', '--no-ext-diff', baseTree, endTree], { home: cell.home }));
+
+        const secrets = session.auth.map((name) => ({ name, value: base[name] })).filter((s) => typeof s.value === 'string' && s.value.length >= MIN_SECRET);
+        redact(cell.results, secrets);
+
+        let outcome = 'ok';
+        if (timedOut) outcome = 'timeout';
+        else if (result.error || result.code !== 0) outcome = 'error';
+        const record = {
+            run: cell.run, arm: cell.arm, task: cell.task, rep: cell.rep, sessionId, outcome,
+            exitCode: result.code, signal: result.signal, spawnError: result.error,
+            startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
+            model: session.model, effort: session.effort, startRef: startRef || null, baseTree, endTree,
+            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents),
+        };
+        // Written last and whole: a session.json that parses is what marks the cell done.
+        const tmp = `${cell.session}.tmp`;
+        fs.writeFileSync(tmp, `${JSON.stringify(record, null, 2)}\n`);
+        fs.renameSync(tmp, cell.session);
+        return record;
+    }
+    finally { lock.release(cell.results); }
+}
+
+module.exports = { sessionArgv, run, snapshot, redact };
