@@ -111,14 +111,16 @@ function rewrite(dir, pairs, skip)
     }
 }
 
-function copyInto(paths, cell)
+// `parts` narrows the copy - the grader needs the clone alone - but the rewrite always maps all three,
+// so a copied file names exactly what it named in the session's cell.
+function copyInto(paths, cell, { parts = ['config', 'home', 'repo'] } = {})
 {
     if (fs.existsSync(cell.work) && fs.readdirSync(cell.work).length) throw new Error(`${cell.work} is not empty - reset the cell first`);
-    for (const d of ['config', 'home', 'repo']) fs.cpSync(paths[d], cell[d], { recursive: true, verbatimSymlinks: true });
+    for (const d of parts) fs.cpSync(paths[d], cell[d], { recursive: true, verbatimSymlinks: true });
     const pairs = ['config', 'home', 'repo'].map((d) => [paths[d], cell[d]]);
     // The plugin cache is the plugins' own code, installed from a marketplace: it names no account path.
     const skip = [path.join(cell.config, 'plugins', 'cache')];
-    for (const d of ['config', 'home', 'repo']) rewrite(cell[d], pairs, skip);
+    for (const d of parts) rewrite(cell[d], pairs, skip);
 }
 
 module.exports = { build, copyInto, READY };

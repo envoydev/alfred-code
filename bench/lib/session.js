@@ -212,4 +212,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, onboardSync, snapshot, redact, findTranscript };
+module.exports = { sessionArgv, run, onboardSync, snapshot, redact, findTranscript, git };

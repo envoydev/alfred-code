@@ -2,54 +2,23 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const { drive, selectTasks } = require('./drive.js');
 
-const FAKE = [process.execPath, path.join(__dirname, 'test', 'fake-claude.js')];
+const { makeWorld } = require('./test/world.js');
 const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
 
 function world(t)
 {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-drive-'));
-    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-    const bench = path.join(dir, 'bench');
-    const arms = path.join(bench, 'arms');
-    const tasks = path.join(bench, 'tasks');
-    fs.mkdirSync(arms, { recursive: true });
-    fs.writeFileSync(path.join(arms, 'common.json'), JSON.stringify({
-        model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: 'harness.settings.json',
-        env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }, graceSec: 1, auth: ['ANTHROPIC_API_KEY'], scrub: [],
-    }));
-    fs.writeFileSync(path.join(arms, 'harness.settings.json'), '{}');
-    for (const name of ['a1', 'a2']) fs.writeFileSync(path.join(arms, `${name}.json`), JSON.stringify({ name, pin: { kind: 'cli', value: 'claude' }, setup: [], env: { FAKE_EDIT: `${name}.txt` }, onboarding: name === 'a2' ? ['/init'] : [] }));
-    for (const [id, group] of [['t1', 'api'], ['t2', 'web']])
-    {
-        fs.mkdirSync(path.join(tasks, id), { recursive: true });
-        fs.writeFileSync(path.join(tasks, id, 'prompt.md'), `Do ${id}.\n`);
-        fs.writeFileSync(path.join(tasks, id, 'meta.json'), JSON.stringify({ id, group, tags: [], timeLimitMin: 1, startRef: 'bench-fixture-v1' }));
-    }
-    const src = path.join(dir, 'fixture');
-    fs.mkdirSync(src);
-    const git = (...a) => execFileSync('git', ['-C', src, ...a], { stdio: 'pipe' }).toString().trim();
-    git('init', '-q');
-    fs.writeFileSync(path.join(src, 'app.txt'), 'app\n');
-    git('add', '.');
-    git('-c', 'user.name=b', '-c', 'user.email=b@example.invalid', 'commit', '-q', '-m', 'fixture');
-    git('tag', 'bench-fixture-v1');
-    const prices = path.join(dir, 'model-prices.json');
-    fs.writeFileSync(prices, '{"models":{}}\n');
-    const lines = [];
-    const opts = {
-        benchDir: bench, armsDir: arms, tasksDir: tasks, pricesFile: prices, preregFile: path.join(bench, 'PREREGISTRATION.md'),
-        fixtureSource: src, lock: { tag: 'bench-fixture-v1', commit: git('rev-parse', 'HEAD') }, root: dir, claude: FAKE,
-        base: { PATH: process.env.PATH, ANTHROPIC_API_KEY: 'drive-test-auth-value' }, log: (l) => lines.push(l),
-        arms: ['a1', 'a2'], tasks: 'all', reps: 2, parallel: 2, seed: 7, run: 'r-test', mode: 'plain',
-    };
-    return { dir, bench, opts, lines, prices };
+    const w = makeWorld(t, {
+        arms: { a1: { env: { FAKE_EDIT: 'a1.txt' } }, a2: { env: { FAKE_EDIT: 'a2.txt' }, onboarding: ['/init'] } },
+        tasks: { t1: { group: 'api' }, t2: { group: 'web' } },
+    });
+    w.opts.reps = 2;
+    return w;
 }
 
 const sessions = (bench) =>
@@ -81,7 +50,7 @@ test('a 2 arms x 2 tasks x 2 reps run completes, records itself, and reports cou
     assert.ok(w.lines.some((l) => /8\/8/.test(l)));
     const onboarding = path.join(w.bench, 'results', 'r-test', 'onboarding', 'a2', '1.jsonl');
     assert.ok(fs.existsSync(onboarding), 'the onboarding transcript is kept with the run');
-    assert.ok(!fs.readFileSync(onboarding, 'utf8').includes('drive-test-auth-value'));
+    assert.ok(!fs.readFileSync(onboarding, 'utf8').includes('world-test-auth-value-0123456789'));
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'onboarding', 'a1')), 'an arm with no onboarding has none');
 });
 
