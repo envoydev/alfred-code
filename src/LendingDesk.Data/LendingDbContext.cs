@@ -1,4 +1,5 @@
 using LendingDesk.Domain.Items;
+using LendingDesk.Domain.Loans;
 using LendingDesk.Domain.Members;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,8 @@ public sealed class LendingDbContext(DbContextOptions<LendingDbContext> options)
     public DbSet<Member> Members => Set<Member>();
 
     public DbSet<Item> Items => Set<Item>();
+
+    public DbSet<Loan> Loans => Set<Loan>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

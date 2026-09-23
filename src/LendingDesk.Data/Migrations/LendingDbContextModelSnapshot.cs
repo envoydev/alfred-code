@@ -65,6 +65,44 @@ namespace LendingDesk.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LendingDesk.Domain.Loans.Loan", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("ReturnedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemId");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("Loans", t =>
+                        {
+                            t.HasCheckConstraint("CK_Loans_Dates", "\"DueDate\" >= \"StartDate\"");
+                        });
+                });
+
             modelBuilder.Entity("LendingDesk.Domain.Members.Member", b =>
                 {
                     b.Property<int>("Id")
@@ -92,6 +130,25 @@ namespace LendingDesk.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Members");
+                });
+
+            modelBuilder.Entity("LendingDesk.Domain.Loans.Loan", b =>
+                {
+                    b.HasOne("LendingDesk.Domain.Items.Item", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LendingDesk.Domain.Members.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Item");
+
+                    b.Navigation("Member");
                 });
 #pragma warning restore 612, 618
         }
