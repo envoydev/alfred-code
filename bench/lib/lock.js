@@ -59,6 +59,18 @@ function acquire(dir, { pid = process.pid } = {})
     return { ok: true, reclaimed: current == null ? 'unreadable' : current };
 }
 
+// What a second acquire would meet: a live holder, or a lock still being created. A resume reads
+// this to leave a working cell alone.
+function held(dir)
+{
+    let stat;
+    try { stat = fs.statSync(lockDir(dir)); }
+    catch { return false; }
+    const current = holder(dir);
+    if (current != null) return alive(current);
+    return Date.now() - stat.mtimeMs < MID_CREATE_MS;
+}
+
 function release(dir, { pid = process.pid } = {})
 {
     if (holder(dir) !== pid) return false;
@@ -66,4 +78,4 @@ function release(dir, { pid = process.pid } = {})
     return true;
 }
 
-module.exports = { acquire, release, holder, alive };
+module.exports = { acquire, release, holder, alive, held };

@@ -64,3 +64,16 @@ test('lock: release removes only its own lock', () =>
     assert.ok(!fs.existsSync(path.join(dir, '.lock')));
     assert.strictEqual(release(dir), false, 'releasing an absent lock is a no-op');
 });
+
+test('lock: held says what a second acquire would meet - a live holder, or a lock still being created', () =>
+{
+    const { held } = require('./lock.js');
+    const dir = tmp();
+    assert.strictEqual(held(dir), false);
+    fs.mkdirSync(path.join(dir, '.lock'));
+    assert.strictEqual(held(dir), true, 'no pid yet, young: mid-create');
+    fs.writeFileSync(path.join(dir, '.lock', 'pid'), `${deadPid()}\n`);
+    assert.strictEqual(held(dir), false);
+    fs.writeFileSync(path.join(dir, '.lock', 'pid'), `${process.pid}\n`);
+    assert.strictEqual(held(dir), true);
+});
