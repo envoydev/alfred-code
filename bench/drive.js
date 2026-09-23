@@ -41,7 +41,22 @@ function readTask(dir, id)
     if (!(typeof meta.timeLimitMin === 'number' && meta.timeLimitMin > 0)) throw new Error(`task ${id}: timeLimitMin is not a positive number`);
     if (typeof meta.startRef !== 'string' || !meta.startRef) throw new Error(`task ${id}: no startRef`);
     const prompt = fs.readFileSync(path.join(dir, id, 'prompt.md'), 'utf8');
-    return { id, group: meta.group || null, tags: meta.tags || [], timeLimitMin: meta.timeLimitMin, startRef: meta.startRef, prompt, promptSha256: sha256(prompt) };
+    // The start state beyond the ref (session.prepare): each step's patch is part of the task's
+    // identity, so a resume refuses a changed one the way it refuses a changed prompt.
+    const setup = meta.setup || [];
+    if (!Array.isArray(setup)) throw new Error(`task ${id}: setup is not a list`);
+    const setupHash = crypto.createHash('sha256');
+    setup.forEach((step, i) =>
+    {
+        if (!step || typeof step.patch !== 'string' || !step.patch) throw new Error(`task ${id}: setup step ${i + 1} names no patch`);
+        const file = path.join(dir, id, step.patch);
+        if (path.relative(path.join(dir, id), file).startsWith('..') || !fs.existsSync(file)) throw new Error(`task ${id}: setup patch ${step.patch} is not in the task`);
+        setupHash.update(JSON.stringify(step)).update(fs.readFileSync(file));
+    });
+    return {
+        id, group: meta.group || null, tags: meta.tags || [], timeLimitMin: meta.timeLimitMin, startRef: meta.startRef, setup,
+        prompt, promptSha256: sha256(prompt), setupSha256: setup.length ? setupHash.digest('hex') : null,
+    };
 }
 
 function selectTasks(dir, spec)
@@ -133,7 +148,8 @@ function configure(o, runP, version)
     const tasks = selectTasks(o.tasksDir, record.tasks.map((t) => t.id).join(','));
     for (const t of tasks)
     {
-        if (t.promptSha256 !== record.tasks.find((r) => r.id === t.id).promptSha256) throw new Error(`task ${t.id} changed since ${o.run} started`);
+        const was = record.tasks.find((r) => r.id === t.id);
+        if (t.promptSha256 !== was.promptSha256 || (t.setupSha256 || null) !== (was.setupSha256 || null)) throw new Error(`task ${t.id} changed since ${o.run} started`);
     }
     return { record, loaded, tasks };
 }
@@ -193,7 +209,7 @@ async function drive(opts)
                 {
                     cellsLib.reset(cell);
                     template.copyInto(templates[cell.arm], cell);
-                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, claude: o.claude, base: o.base });
+                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base });
                     counts[rec.outcome] += 1;
                 }
                 catch (err)

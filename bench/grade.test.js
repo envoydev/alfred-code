@@ -51,6 +51,39 @@ test('a session that did the work passes, one that did not fails, and the suite 
     assert.ok(!fs.existsSync(path.join(w.bench, 'work', 'r-test')), 'grading leaves no work dir');
 });
 
+test('a task with a setup step is graded on the same start state the session had', async (t) =>
+{
+    const w = makeWorld(t, {
+        arms: { good: { env: { FAKE_EDIT: 'made.txt' } } },
+        tasks: { t1: {
+            setup: [{ patch: 'wip.patch' }],
+            files: { 'wip.patch': 'diff --git a/wip.txt b/wip.txt\nnew file mode 100644\n--- /dev/null\n+++ b/wip.txt\n@@ -0,0 +1 @@\n+unsaved work\n' },
+            grade: { hidden: [['node', '-e', "process.exit(require('fs').existsSync('made.txt') && require('fs').existsSync('wip.txt') ? 0 : 1)"]], suite: [['node', '-e', '0']], timeoutMin: 1 },
+        } },
+    });
+    await drive(w.opts);
+    gradeRun({ benchDir: w.bench, run: 'r-test', armsDir: w.opts.armsDir, tasksDir: w.opts.tasksDir, base: w.opts.base, log: () => {} });
+    const g = JSON.parse(fs.readFileSync(path.join(w.runDir, 'good', 't1', 'r1', 'grade.json'), 'utf8'));
+    assert.deepStrictEqual([g.baseMatches, g.infra, g.hiddenPass, g.suiteGreen], [true, null, true, true]);
+});
+
+test('a setup patch that no longer applies at grading is infrastructure, and the other cells still grade', async (t) =>
+{
+    const w = makeWorld(t, {
+        arms: { good: { env: { FAKE_EDIT: 'made.txt' } } },
+        tasks: {
+            t1: { setup: [{ patch: 'wip.patch' }], files: { 'wip.patch': 'diff --git a/wip.txt b/wip.txt\nnew file mode 100644\n--- /dev/null\n+++ b/wip.txt\n@@ -0,0 +1 @@\n+one\n' }, grade: { hidden: [['node', '-e', '0']], suite: [['node', '-e', '0']], timeoutMin: 1 } },
+            t2: { grade: { hidden: [['node', '-e', '0']], suite: [['node', '-e', '0']], timeoutMin: 1 } },
+        },
+    });
+    await drive(w.opts);
+    fs.writeFileSync(path.join(w.opts.tasksDir, 't1', 'wip.patch'), 'diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-never\n+now\n');
+    gradeRun({ benchDir: w.bench, run: 'r-test', armsDir: w.opts.armsDir, tasksDir: w.opts.tasksDir, base: w.opts.base, log: () => {} });
+    const read = (task) => JSON.parse(fs.readFileSync(path.join(w.runDir, 'good', task, 'r1', 'grade.json'), 'utf8'));
+    assert.match(read('t1').infra, /task t1: setup patch wip\.patch does not apply/);
+    assert.deepStrictEqual([read('t2').infra, read('t2').hiddenPass], [null, true]);
+});
+
 test('a patch that does not apply is a fail, never infrastructure', async (t) =>
 {
     const w = await gradedWorld(t);

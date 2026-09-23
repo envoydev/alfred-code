@@ -32,7 +32,10 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
         const td = path.join(tasksDir, id);
         fs.mkdirSync(td, { recursive: true });
         fs.writeFileSync(path.join(td, 'prompt.md'), spec.prompt || `Do ${id}.\n`);
-        fs.writeFileSync(path.join(td, 'meta.json'), JSON.stringify({ id, group: spec.group || 'api', tags: spec.tags || [], timeLimitMin: spec.timeLimitMin || 1, startRef: 'bench-fixture-v1' }));
+        const meta = { id, group: spec.group || 'api', tags: spec.tags || [], timeLimitMin: spec.timeLimitMin || 1, startRef: 'bench-fixture-v1' };
+        if (spec.setup) meta.setup = spec.setup;
+        fs.writeFileSync(path.join(td, 'meta.json'), JSON.stringify(meta));
+        for (const [rel, body] of Object.entries(spec.files || {})) fs.writeFileSync(path.join(td, rel), body);
         if (spec.grade)
         {
             fs.mkdirSync(path.join(td, 'hidden'), { recursive: true });

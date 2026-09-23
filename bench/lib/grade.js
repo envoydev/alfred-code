@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const template = require('./template.js');
-const { snapshot, git } = require('./session.js');
+const { snapshot, prepare } = require('./session.js');
 const { sessionEnv } = require('./env.js');
 
 // Pre-registered: over 50 failing tests AND a connection error in the same log.
@@ -67,7 +67,12 @@ function gradeCell({ cell, tasksDir, templatePaths, session, base = process.env 
         template.copyInto(templatePaths, cell, { parts: ['repo'] });
         fs.mkdirSync(cell.home, { recursive: true });
         fs.mkdirSync(cell.config, { recursive: true });
-        if (record.startRef) git(cell.repo, ['checkout', '--quiet', record.startRef], { home: cell.home });
+        try { prepare({ cell, startRef: record.startRef, setup: record.setup || [], taskDir: path.join(tasksDir, cell.task), task: cell.task }); }
+        catch (e)
+        {
+            out.infra = e.message;
+            return done();
+        }
         out.baseMatches = snapshot(cell, 'grade-base') === record.baseTree;
         if (!out.baseMatches)
         {
@@ -108,4 +113,4 @@ function gradeCell({ cell, tasksDir, templatePaths, session, base = process.env 
     finally { fs.rmSync(cell.work, { recursive: true, force: true }); }
 }
 
-module.exports = { gradeCell, detectInfra, failedCount, INFRA_MIN_FAILED };
+module.exports = { gradeCell, copyHidden, detectInfra, failedCount, INFRA_MIN_FAILED };

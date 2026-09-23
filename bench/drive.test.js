@@ -125,6 +125,25 @@ test('tasks select by id list, all, or group', (t) =>
     assert.throws(() => selectTasks(w.opts.tasksDir, 'group:none'), /no task in group 'none'/);
 });
 
+test('a setup step must name a patch the task carries, and a changed patch refuses a resume', async (t) =>
+{
+    const bad = makeWorld(t, { arms: { a1: {} }, tasks: { t1: { setup: [{ patch: 'missing.patch' }] } } });
+    assert.throws(() => selectTasks(bad.opts.tasksDir, 'all'), /task t1: setup patch missing\.patch is not in the task/);
+    const odd = makeWorld(t, { arms: { a1: {} }, tasks: { t1: { setup: [{ commitOn: 'x' }] } } });
+    assert.throws(() => selectTasks(odd.opts.tasksDir, 'all'), /task t1: setup step 1 names no patch/);
+
+    const w = makeWorld(t, {
+        arms: { a1: { env: { FAKE_EDIT: 'a1.txt' } } },
+        tasks: { t1: { setup: [{ patch: 'wip.patch' }], files: { 'wip.patch': 'diff --git a/wip.txt b/wip.txt\nnew file mode 100644\n--- /dev/null\n+++ b/wip.txt\n@@ -0,0 +1 @@\n+one\n' } } },
+    });
+    const [task] = selectTasks(w.opts.tasksDir, 'all');
+    assert.deepStrictEqual(task.setup, [{ patch: 'wip.patch' }]);
+    assert.match(task.setupSha256, /^[0-9a-f]{64}$/);
+    await drive(w.opts);
+    fs.appendFileSync(path.join(w.opts.tasksDir, 't1', 'wip.patch'), ' ');
+    await assert.rejects(drive({ ...w.opts, resume: true }), /task t1 changed since r-test started/);
+});
+
 test('the command line: every flag parsed, a resume needs its run, an unknown flag is named', () =>
 {
     const { parseArgs } = require('./drive.js');

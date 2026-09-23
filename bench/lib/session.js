@@ -27,9 +27,9 @@ function sessionArgv({ prompt, session, sessionId })
 }
 
 // The harness's own git, blind to the host's global config: ignore rules come from the clone alone.
-function git(repo, args, { index, home } = {})
+function git(repo, args, { index, home, extraEnv } = {})
 {
-    const env = { PATH: process.env.PATH, HOME: home || os.tmpdir(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull };
+    const env = { PATH: process.env.PATH, HOME: home || os.tmpdir(), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull, ...extraEnv };
     if (index) env.GIT_INDEX_FILE = index;
     if (WIN) Object.assign(env, { SystemRoot: process.env.SystemRoot });
     return execFileSync('git', ['-C', repo, ...args], { env, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 }).toString();
@@ -47,6 +47,31 @@ function snapshot(cell, name)
         return git(cell.repo, ['write-tree'], { index, home: cell.home }).trim();
     }
     finally { fs.rmSync(index, { force: true }); }
+}
+
+// A committed setup step carries a fixed identity and date, so every rebuild of the start state -
+// the session's and the grader's - lands on the same commit.
+const SETUP_IDENTITY = {
+    GIT_AUTHOR_NAME: 'Lending Desk', GIT_AUTHOR_EMAIL: 'dev@lendingdesk.invalid', GIT_AUTHOR_DATE: '2026-09-01T09:00:00Z',
+    GIT_COMMITTER_NAME: 'Lending Desk', GIT_COMMITTER_EMAIL: 'dev@lendingdesk.invalid', GIT_COMMITTER_DATE: '2026-09-01T09:00:00Z',
+};
+
+// The task's start state: its ref, then each setup patch in order - left uncommitted, or committed on
+// a new branch (`commitOn`). The session and the grader both build it here and nowhere else.
+function prepare({ cell, startRef, setup = [], taskDir, task })
+{
+    if (startRef) git(cell.repo, ['checkout', '--quiet', startRef], { home: cell.home });
+    for (const step of setup)
+    {
+        if (step.commitOn) git(cell.repo, ['checkout', '--quiet', '-b', step.commitOn], { home: cell.home });
+        try { git(cell.repo, ['apply', '--whitespace=nowarn', path.join(taskDir, step.patch)], { home: cell.home }); }
+        catch (e) { throw new Error(`task ${task}: setup patch ${step.patch} does not apply: ${String(e.stderr || e.message).trim()}`); }
+        if (step.commitOn)
+        {
+            git(cell.repo, ['add', '-A'], { home: cell.home });
+            git(cell.repo, ['commit', '--quiet', '--no-verify', '-m', step.message || step.patch], { home: cell.home, extraEnv: SETUP_IDENTITY });
+        }
+    }
 }
 
 function findTranscript(config, sessionId)
@@ -108,14 +133,14 @@ function kill(child, signal)
     catch { /* already gone */ }
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, claude = ['claude'], base = process.env, graceSec })
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec })
 {
     fs.mkdirSync(cell.results, { recursive: true });
     const got = lock.acquire(cell.results);
     if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);
     try
     {
-        if (startRef) git(cell.repo, ['checkout', '--quiet', startRef], { home: cell.home });
+        prepare({ cell, startRef, setup, taskDir, task: cell.task });
         const baseTree = snapshot(cell, 'base');
         const sessionId = crypto.randomUUID();
         const argv = sessionArgv({ prompt, session, sessionId });
@@ -164,7 +189,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, claude 
             run: cell.run, arm: cell.arm, task: cell.task, rep: cell.rep, sessionId, outcome,
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
-            model: session.model, effort: session.effort, startRef: startRef || null, baseTree, endTree,
+            model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree,
             transcript: Boolean(transcript), subagents: countJsonl(cell.subagents),
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
@@ -212,4 +237,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, onboardSync, snapshot, redact, findTranscript, git };
+module.exports = { sessionArgv, run, prepare, onboardSync, snapshot, redact, findTranscript, git };

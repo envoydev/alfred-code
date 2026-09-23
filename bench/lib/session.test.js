@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { sessionArgv, run } = require('./session.js');
+const { sessionArgv, run, prepare } = require('./session.js');
 const { cellPaths } = require('./cells.js');
 
 const FAKE = [process.execPath, path.join(__dirname, '..', 'test', 'fake-claude.js')];
@@ -128,6 +128,66 @@ test('a start ref is checked out before the baseline is taken', async (t) =>
     const out = await go(cell, { name: 'solo', env: {} }, { startRef: first });
     assert.ok(!fs.existsSync(path.join(cell.repo, 'later.txt')));
     assert.strictEqual(out.outcome, 'ok');
+});
+
+// A task start state beyond a ref: patches from the task dir, left uncommitted or committed on a new
+// branch with a fixed author and date, so the session and the grader rebuild the same tree.
+function taskDirWith(t, patches)
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-task-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    for (const [name, body] of Object.entries(patches)) fs.writeFileSync(path.join(dir, name), body);
+    return dir;
+}
+const ADD_WIP = 'diff --git a/wip.txt b/wip.txt\nnew file mode 100644\n--- /dev/null\n+++ b/wip.txt\n@@ -0,0 +1 @@\n+unsaved work\n';
+const EDIT_APP = 'diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-one\n+decided\n';
+const status = (cell) => execFileSync('git', ['-C', cell.repo, 'status', '--porcelain'], { stdio: 'pipe' }).toString();
+const headOf = (cell, ref = 'HEAD') => execFileSync('git', ['-C', cell.repo, 'rev-parse', ref], { stdio: 'pipe' }).toString().trim();
+
+test('an uncommitted setup patch leaves the clone dirty with exactly that change', (t) =>
+{
+    const { cell, first } = cellFor(t);
+    const taskDir = taskDirWith(t, { 'wip.patch': ADD_WIP });
+    prepare({ cell, startRef: first, setup: [{ patch: 'wip.patch' }], taskDir, task: 't1' });
+    assert.strictEqual(fs.readFileSync(path.join(cell.repo, 'wip.txt'), 'utf8'), 'unsaved work\n');
+    assert.match(status(cell), /^\?\? wip\.txt$/m);
+    assert.strictEqual(headOf(cell), first);
+});
+
+test('a commitOn setup step commits on a new branch, and the commit is the same on every rebuild', (t) =>
+{
+    const one = cellFor(t);
+    const two = cellFor(t);
+    const taskDir = taskDirWith(t, { 'decide.patch': EDIT_APP });
+    const setup = [{ patch: 'decide.patch', commitOn: 'feature/decided', message: 'Decide the thing' }];
+    prepare({ cell: one.cell, startRef: one.first, setup, taskDir, task: 't1' });
+    prepare({ cell: two.cell, startRef: two.first, setup, taskDir, task: 't1' });
+    assert.strictEqual(status(one.cell), '');
+    assert.strictEqual(execFileSync('git', ['-C', one.cell.repo, 'branch', '--show-current'], { stdio: 'pipe' }).toString().trim(), 'feature/decided');
+    assert.strictEqual(fs.readFileSync(path.join(one.cell.repo, 'app.txt'), 'utf8'), 'decided\n');
+    // The two parents differ in their own commit time, so compare everything the setup step decides.
+    const shape = (cell) => execFileSync('git', ['-C', cell.repo, 'show', '-s', '--format=%an|%ae|%aI|%cI|%s|%T'], { stdio: 'pipe' }).toString().trim();
+    assert.strictEqual(shape(one.cell), shape(two.cell));
+    assert.match(shape(one.cell), /^Lending Desk\|dev@lendingdesk\.invalid\|2026-09-01T09:00:00Z\|2026-09-01T09:00:00Z\|Decide the thing\|/);
+});
+
+test('a setup patch that does not apply names the task and the patch', (t) =>
+{
+    const { cell, first } = cellFor(t);
+    const taskDir = taskDirWith(t, { 'bad.patch': EDIT_APP.replace('-one', '-never') });
+    assert.throws(() => prepare({ cell, startRef: first, setup: [{ patch: 'bad.patch' }], taskDir, task: 't9' }), /task t9: setup patch bad\.patch does not apply/);
+});
+
+test('a session runs its setup after the start ref and records it', async (t) =>
+{
+    const { cell, first } = cellFor(t);
+    const taskDir = taskDirWith(t, { 'wip.patch': ADD_WIP });
+    const out = await go(cell, { name: 'solo', env: { FAKE_EDIT: 'made.txt' } }, { startRef: first, setup: [{ patch: 'wip.patch' }], taskDir });
+    assert.strictEqual(out.outcome, 'ok');
+    assert.deepStrictEqual(out.setup, [{ patch: 'wip.patch' }]);
+    const diff = fs.readFileSync(cell.diff, 'utf8');
+    assert.match(diff, /made\.txt/);
+    assert.doesNotMatch(diff, /wip\.txt/, 'the setup is part of the baseline, never of the arm\'s diff');
 });
 
 test('a cell another live worker holds is refused', async (t) =>
