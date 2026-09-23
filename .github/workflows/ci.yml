@@ -22,6 +22,14 @@ jobs:
       # Integration tests start their own PostgreSQL container; the runner's Docker serves it.
       - run: dotnet test --no-build -c Release
 
+  api-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - run: docker build -f src/LendingDesk.Api/Dockerfile -t lendingdesk-api .
+
   web:
     runs-on: ubuntu-latest
     defaults:
