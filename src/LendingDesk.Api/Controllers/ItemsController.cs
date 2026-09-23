@@ -16,6 +16,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
     [HttpGet]
     public Task<PagedResult<ItemDto>> List([FromQuery] ItemQuery query, CancellationToken cancellationToken)
     {
+        var today = clock.Today();
         var items = db.Items.AsNoTracking();
         if (!query.IncludeRetired)
         {
@@ -35,13 +36,20 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
         return items
             .OrderBy(i => i.Name)
             .ThenBy(i => i.Id)
-            .Select(i => new ItemDto(i.Id, i.Name, i.Category, i.Sku, i.TotalStock, i.TotalStock, i.IsRetired))
+            .Select(i => new ItemDto(
+                i.Id,
+                i.Name,
+                i.Category,
+                i.Sku,
+                i.TotalStock,
+                i.TotalStock - db.Loans.Count(l => l.ItemId == i.Id && l.ReturnedAt == null && l.StartDate <= today),
+                i.IsRetired))
             .ToPageAsync(query, cancellationToken);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ItemDto> Get(int id, CancellationToken cancellationToken) =>
-        ToDto(await Find(id, cancellationToken));
+        await ToDto(await Find(id, cancellationToken), cancellationToken);
 
     [HttpPost]
     [Authorize(Policy = Policies.Staff)]
@@ -57,7 +65,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
         };
         db.Items.Add(item);
         await db.SaveChangesAsync(cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id = item.Id }, ToDto(item));
+        return CreatedAtAction(nameof(Get), new { id = item.Id }, await ToDto(item, cancellationToken));
     }
 
     [HttpPut("{id:int}")]
@@ -70,7 +78,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
         item.Sku = request.Sku;
         item.TotalStock = request.TotalStock;
         await db.SaveChangesAsync(cancellationToken);
-        return ToDto(item);
+        return await ToDto(item, cancellationToken);
     }
 
     [HttpDelete("{id:int}")]
@@ -83,8 +91,12 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
         return NoContent();
     }
 
-    private static ItemDto ToDto(Item item) =>
-        new(item.Id, item.Name, item.Category, item.Sku, item.TotalStock, item.TotalStock, item.IsRetired);
+    private async Task<ItemDto> ToDto(Item item, CancellationToken cancellationToken)
+    {
+        var today = clock.Today();
+        var lentOut = await db.Loans.CountAsync(l => l.ItemId == item.Id && l.ReturnedAt == null && l.StartDate <= today, cancellationToken);
+        return new ItemDto(item.Id, item.Name, item.Category, item.Sku, item.TotalStock, item.TotalStock - lentOut, item.IsRetired);
+    }
 
     private async Task<Item> Find(int id, CancellationToken cancellationToken) =>
         await db.Items.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Item", id);
