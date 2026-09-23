@@ -12,10 +12,12 @@
 //   FAKE_LEAK=1               put the auth value into the transcript, stdout and the edit - a model running `env`
 //   FAKE_SLEEP_MS=<n>         wait before finishing; FAKE_IGNORE_TERM=1 survives SIGTERM
 //   FAKE_EXIT=<n>             the exit status
+//   --version                 prints a fake version, as the driver asks the real CLI
 const fs = require('node:fs');
 const path = require('node:path');
 
 const argv = process.argv.slice(2);
+if (argv[0] === '--version') { process.stdout.write('0.0.0-fake (Claude Code)\n'); process.exit(0); }
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const env = process.env;
 const sid = flag('--session-id');

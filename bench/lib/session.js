@@ -9,12 +9,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawn, execFileSync } = require('node:child_process');
+const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const lock = require('./lock.js');
 const { sessionEnv } = require('./env.js');
 
 const WIN = process.platform === 'win32';
 const MIN_SECRET = 8;
+const ONBOARD_TIMEOUT_MS = 60 * 60 * 1000;
 
 function sessionArgv({ prompt, session, sessionId })
 {
@@ -154,8 +155,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, claude 
         const endTree = snapshot(cell, 'end');
         fs.writeFileSync(cell.diff, git(cell.repo, ['diff', '--binary', '--no-color', '--no-ext-diff', baseTree, endTree], { home: cell.home }));
 
-        const secrets = session.auth.map((name) => ({ name, value: base[name] })).filter((s) => typeof s.value === 'string' && s.value.length >= MIN_SECRET);
-        redact(cell.results, secrets);
+        redact(cell.results, authSecrets(session, base));
 
         let outcome = 'ok';
         if (timedOut) outcome = 'timeout';
@@ -176,4 +176,40 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, claude 
     finally { lock.release(cell.results); }
 }
 
-module.exports = { sessionArgv, run, snapshot, redact };
+const authSecrets = (session, base) => session.auth.map((name) => ({ name, value: base[name] })).filter((s) => typeof s.value === 'string' && s.value.length >= MIN_SECRET);
+
+// An arm's onboarding prompt, run once into its template with the same flags as every measured
+// session. Its transcript is kept beside the template (`onboarding/<n>.jsonl`, redacted), because
+// onboarding is a cost the arm pays and the report shows in its own column.
+function onboardSync({ prompt, where, session, claude = ['claude'], base = process.env })
+{
+    const sessionId = crypto.randomUUID();
+    const dir = path.join(where.dir, 'onboarding');
+    fs.mkdirSync(dir, { recursive: true });
+    const out = fs.openSync(path.join(dir, `${where.index}.stdout.jsonl`), 'w');
+    const err = fs.openSync(path.join(dir, `${where.index}.stderr.log`), 'w');
+    let r;
+    try
+    {
+        r = spawnSync(claude[0], [...claude.slice(1), ...sessionArgv({ prompt, session, sessionId })], { cwd: where.cwd, env: where.env, stdio: ['ignore', out, err], timeout: ONBOARD_TIMEOUT_MS, killSignal: 'SIGKILL' });
+    }
+    finally
+    {
+        fs.closeSync(out);
+        fs.closeSync(err);
+    }
+    const transcript = findTranscript(where.config, sessionId);
+    if (transcript)
+    {
+        fs.copyFileSync(transcript, path.join(dir, `${where.index}.jsonl`));
+        const subs = path.join(transcript.replace(/\.jsonl$/, ''), 'subagents');
+        if (fs.existsSync(subs)) fs.cpSync(subs, path.join(dir, `${where.index}`, 'subagents'), { recursive: true });
+    }
+    redact(dir, authSecrets(session, base));
+    if (r.error) throw new Error(`session ${r.error.code === 'ETIMEDOUT' ? 'timed out' : `failed: ${r.error.code || r.error.message}`}`);
+    if (r.status !== 0) throw new Error(`session exited ${r.status === null ? r.signal : r.status}`);
+    if (!transcript) throw new Error('session left no transcript');
+    return { sessionId };
+}
+
+module.exports = { sessionArgv, run, onboardSync, snapshot, redact, findTranscript };
