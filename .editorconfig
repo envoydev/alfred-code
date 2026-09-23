@@ -391,3 +391,7 @@ dotnet_naming_style.s_camelcase.capitalization = camel_case
 # Test names read as sentences.
 [tests/**.cs]
 dotnet_diagnostic.CA1707.severity = none
+
+# EF Core migrations are generated.
+[src/LendingDesk.Data/Migrations/**.cs]
+generated_code = true

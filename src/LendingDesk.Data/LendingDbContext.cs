@@ -2,6 +2,7 @@ using LendingDesk.Data.Outbox;
 using LendingDesk.Domain.Items;
 using LendingDesk.Domain.Loans;
 using LendingDesk.Domain.Members;
+using LendingDesk.Domain.Notices;
 using Microsoft.EntityFrameworkCore;
 
 namespace LendingDesk.Data;
@@ -15,6 +16,8 @@ public sealed class LendingDbContext(DbContextOptions<LendingDbContext> options)
     public DbSet<Loan> Loans => Set<Loan>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public DbSet<Notice> Notices => Set<Notice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

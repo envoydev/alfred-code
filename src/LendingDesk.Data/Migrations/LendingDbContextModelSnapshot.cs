@@ -185,6 +185,33 @@ namespace LendingDesk.Data.Migrations
                     b.ToTable("Members");
                 });
 
+            modelBuilder.Entity("LendingDesk.Domain.Notices.Notice", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("LoanId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("Notices");
+                });
+
             modelBuilder.Entity("LendingDesk.Domain.Loans.Loan", b =>
                 {
                     b.HasOne("LendingDesk.Domain.Items.Item", "Item")
@@ -202,6 +229,17 @@ namespace LendingDesk.Data.Migrations
                     b.Navigation("Item");
 
                     b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("LendingDesk.Domain.Notices.Notice", b =>
+                {
+                    b.HasOne("LendingDesk.Domain.Loans.Loan", "Loan")
+                        .WithMany()
+                        .HasForeignKey("LoanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Loan");
                 });
 #pragma warning restore 612, 618
         }
