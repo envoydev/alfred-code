@@ -1,0 +1,30 @@
+<h1>Overdue loans</h1>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Item</th>
+      <th scope="col">Member</th>
+      <th scope="col">Due</th>
+      <th scope="col">Days overdue</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (row of rows(); track row.loanId) {
+      <tr>
+        <td>{{ row.itemName }}</td>
+        <td>{{ row.memberName }}</td>
+        <td>{{ row.dueDate }}</td>
+        <td>{{ row.daysOverdue }}</td>
+      </tr>
+    } @empty {
+      <tr>
+        <td colspan="4" class="muted">{{ loading() ? 'Loading...' : 'Nothing is overdue.' }}</td>
+      </tr>
+    }
+  </tbody>
+</table>
