@@ -84,3 +84,8 @@ docs/usefull/
 # directory - the number worth keeping is the with / without delta, which goes in the eval
 # README, not the artifact.
 setup-plugin/evals/results/
+
+# bench/: the harness and the fixture lock are tracked; a run's cell workspaces and raw results are
+# machine-local, large, and quote the transcripts - publishing any of it is the user's call.
+bench/results/
+bench/work/

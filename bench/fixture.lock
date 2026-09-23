@@ -1,0 +1,4 @@
+# The fixture every benchmark cell clones. Written by 'verify.js --write-lock' at the freeze;
+# a cell whose clone resolves to any other commit is refused.
+tag: bench-fixture-v1
+commit: 502e7115083e1e136d5e39ea5fde4257d846e4f2
