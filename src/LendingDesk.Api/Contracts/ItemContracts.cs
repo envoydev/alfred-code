@@ -1,8 +1,17 @@
 using System.ComponentModel.DataAnnotations;
+using LendingDesk.Domain.Items;
 
 namespace LendingDesk.Api.Contracts;
 
-public sealed record ItemDto(int Id, string Name, string Category, string Sku, int TotalStock, int Available, bool IsRetired);
+public sealed record ItemDto(
+    int Id,
+    string Name,
+    string Category,
+    string Sku,
+    int TotalStock,
+    int Available,
+    ItemCondition Condition,
+    bool IsRetired);
 
 public sealed class ItemQuery : PageQuery
 {
@@ -31,4 +40,7 @@ public sealed class ItemRequest
 
     [Range(0, 10_000)]
     public int TotalStock { get; init; }
+
+    [EnumDataType(typeof(ItemCondition))]
+    public ItemCondition Condition { get; init; } = ItemCondition.Good;
 }

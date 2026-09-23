@@ -16,6 +16,11 @@ public static class LendingPolicy
             throw new DomainException("item_retired", $"Item {item.Id} is retired and cannot be lent.");
         }
 
+        if (item.Condition == ItemCondition.Damaged)
+        {
+            throw new DomainException("item_damaged", $"Item {item.Id} is damaged and cannot be lent until it is repaired.");
+        }
+
         if (startDate < today)
         {
             throw new DomainException("start_in_past", "A loan cannot start in the past.");

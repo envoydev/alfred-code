@@ -1,5 +1,12 @@
 namespace LendingDesk.Domain.Items;
 
+public enum ItemCondition
+{
+    Good,
+    Worn,
+    Damaged,
+}
+
 public sealed class Item
 {
     public int Id { get; set; }
@@ -11,6 +18,8 @@ public sealed class Item
     public required string Sku { get; set; }
 
     public int TotalStock { get; set; }
+
+    public ItemCondition Condition { get; set; } = ItemCondition.Good;
 
     public bool IsRetired { get; set; }
 

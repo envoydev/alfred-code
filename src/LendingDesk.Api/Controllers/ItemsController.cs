@@ -43,6 +43,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
                 i.Sku,
                 i.TotalStock,
                 i.TotalStock - db.Loans.Count(l => l.ItemId == i.Id && l.ReturnedAt == null && l.StartDate <= today),
+                i.Condition,
                 i.IsRetired))
             .ToPageAsync(query, cancellationToken);
     }
@@ -61,6 +62,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
             Category = request.Category.Trim(),
             Sku = request.Sku,
             TotalStock = request.TotalStock,
+            Condition = request.Condition,
             CreatedAt = clock.GetUtcNow(),
         };
         db.Items.Add(item);
@@ -77,6 +79,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
         item.Category = request.Category.Trim();
         item.Sku = request.Sku;
         item.TotalStock = request.TotalStock;
+        item.Condition = request.Condition;
         await db.SaveChangesAsync(cancellationToken);
         return await ToDto(item, cancellationToken);
     }
@@ -95,7 +98,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
     {
         var today = clock.Today();
         var lentOut = await db.Loans.CountAsync(l => l.ItemId == item.Id && l.ReturnedAt == null && l.StartDate <= today, cancellationToken);
-        return new ItemDto(item.Id, item.Name, item.Category, item.Sku, item.TotalStock, item.TotalStock - lentOut, item.IsRetired);
+        return new ItemDto(item.Id, item.Name, item.Category, item.Sku, item.TotalStock, item.TotalStock - lentOut, item.Condition, item.IsRetired);
     }
 
     private async Task<Item> Find(int id, CancellationToken cancellationToken) =>
