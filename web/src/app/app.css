@@ -1,0 +1,38 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--ink);
+  color: #fff;
+}
+
+.brand {
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  flex: 1;
+}
+
+nav a {
+  color: #cbd5e1;
+  text-decoration: none;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+nav a.active {
+  color: #fff;
+  border-bottom-color: var(--accent);
+}
+
+.page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}

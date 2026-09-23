@@ -1,0 +1,12 @@
+<label>
+  User
+  <input type="text" name="user" [value]="session.user()" (input)="setUser($event)" />
+</label>
+<label>
+  Role
+  <select name="role" (change)="setRole($event)">
+    @for (role of roles; track role) {
+      <option [value]="role" [selected]="role === session.role()">{{ role }}</option>
+    }
+  </select>
+</label>
