@@ -63,7 +63,7 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
         var copiesOut = await db.Loans.CountAsync(
             l => l.ItemId == item.Id && l.ReturnedAt == null && l.StartDate <= due && start <= l.DueDate,
             cancellationToken);
-        LendingPolicy.EnsureCanLend(item, start, due, clock.Today(), copiesOut);
+        LendingPolicy.EnsureCanLend(member, item, start, due, clock.Today(), copiesOut);
 
         var loan = new Loan
         {

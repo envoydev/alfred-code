@@ -3,9 +3,14 @@ using LendingDesk.Domain.Members;
 
 namespace LendingDesk.Api.Contracts;
 
-public sealed record MemberDto(int Id, string Name, string Email, DateTimeOffset CreatedAt)
+public sealed record MemberDto(int Id, string Name, string Email, MemberStatus Status, DateTimeOffset CreatedAt)
 {
-    public static MemberDto From(Member member) => new(member.Id, member.Name, member.Email, member.CreatedAt);
+    public static MemberDto From(Member member) => new(member.Id, member.Name, member.Email, member.Status, member.CreatedAt);
+}
+
+public sealed class MemberQuery : PageQuery
+{
+    public MemberStatus? Status { get; init; }
 }
 
 public sealed class MemberRequest

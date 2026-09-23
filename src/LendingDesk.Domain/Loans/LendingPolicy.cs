@@ -1,4 +1,5 @@
 using LendingDesk.Domain.Items;
+using LendingDesk.Domain.Members;
 
 namespace LendingDesk.Domain.Loans;
 
@@ -6,11 +7,17 @@ public static class LendingPolicy
 {
     public const int MaxLoanDays = 28;
 
-    /// <summary>Throws when a new loan of <paramref name="item"/> breaks a lending rule.</summary>
+    /// <summary>Throws when lending <paramref name="item"/> to <paramref name="member"/> breaks a lending rule.</summary>
     /// <param name="copiesOut">How many copies of the item are already lent out over the requested period.</param>
-    public static void EnsureCanLend(Item item, DateOnly startDate, DateOnly dueDate, DateOnly today, int copiesOut)
+    public static void EnsureCanLend(Member member, Item item, DateOnly startDate, DateOnly dueDate, DateOnly today, int copiesOut)
     {
+        ArgumentNullException.ThrowIfNull(member);
         ArgumentNullException.ThrowIfNull(item);
+        if (member.Status == MemberStatus.Suspended)
+        {
+            throw new DomainException("member_suspended", $"Member {member.Id} is suspended and cannot borrow.");
+        }
+
         if (item.IsRetired)
         {
             throw new DomainException("item_retired", $"Item {item.Id} is retired and cannot be lent.");

@@ -14,13 +14,20 @@ namespace LendingDesk.Api.Controllers;
 public sealed class MembersController(LendingDbContext db, TimeProvider clock) : ControllerBase
 {
     [HttpGet]
-    public Task<PagedResult<MemberDto>> List([FromQuery] PageQuery page, CancellationToken cancellationToken) =>
-        db.Members
-            .AsNoTracking()
+    public Task<PagedResult<MemberDto>> List([FromQuery] MemberQuery query, CancellationToken cancellationToken)
+    {
+        var members = db.Members.AsNoTracking();
+        if (query.Status is { } status)
+        {
+            members = members.Where(m => m.Status == status);
+        }
+
+        return members
             .OrderBy(m => m.Name)
             .ThenBy(m => m.Id)
-            .Select(m => new MemberDto(m.Id, m.Name, m.Email, m.CreatedAt))
-            .ToPageAsync(page, cancellationToken);
+            .Select(m => new MemberDto(m.Id, m.Name, m.Email, m.Status, m.CreatedAt))
+            .ToPageAsync(query, cancellationToken);
+    }
 
     [HttpGet("{id:int}")]
     public async Task<MemberDto> Get(int id, CancellationToken cancellationToken) =>
@@ -48,6 +55,16 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
         var member = await Find(id, cancellationToken);
         member.Name = request.Name.Trim();
         member.Email = request.Email.Trim().ToLowerInvariant();
+        await db.SaveChangesAsync(cancellationToken);
+        return MemberDto.From(member);
+    }
+
+    [HttpPost("{id:int}/suspend")]
+    [Authorize(Policy = Policies.Admin)]
+    public async Task<MemberDto> Suspend(int id, CancellationToken cancellationToken)
+    {
+        var member = await Find(id, cancellationToken);
+        member.Suspend();
         await db.SaveChangesAsync(cancellationToken);
         return MemberDto.From(member);
     }

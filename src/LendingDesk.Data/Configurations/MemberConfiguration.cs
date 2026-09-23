@@ -10,6 +10,7 @@ internal sealed class MemberConfiguration : IEntityTypeConfiguration<Member>
     {
         builder.Property(m => m.Name).HasMaxLength(200);
         builder.Property(m => m.Email).HasMaxLength(320);
+        builder.Property(m => m.Status).HasConversion<string>().HasMaxLength(16).HasDefaultValue(MemberStatus.Active).HasSentinel(MemberStatus.Active);
         builder.HasIndex(m => m.Email).IsUnique();
     }
 }

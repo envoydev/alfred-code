@@ -131,6 +131,13 @@ namespace LendingDesk.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Active");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
