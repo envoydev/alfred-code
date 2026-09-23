@@ -10,10 +10,36 @@ const { spawnSync } = require('node:child_process');
 const template = require('./template.js');
 const { snapshot, prepare } = require('./session.js');
 const { sessionEnv } = require('./env.js');
+const { removeTree } = require('./remove-tree.js');
 
 // Pre-registered: over 50 failing tests AND a connection error in the same log.
 const INFRA_MIN_FAILED = 50;
 const CONNECTION = /connection refused|ECONNREFUSED|could not connect|Npgsql\.NpgsqlException|failed to connect|Cannot connect to the Docker daemon|DockerUnavailableException|Docker is either not running/i;
+
+// npm tripping over its own node_modules removal (macOS, under load) says nothing about the tree, so
+// the command runs once more, after a pause - an immediate retry races the same holder. The retry stays
+// in the log and on the command's record, and one that trips AGAIN is `transient`: the harness's
+// failure, which the caller records as infrastructure, never as the arm's. A command that timed out is
+// not retried: its limit holds once, whatever its output said.
+const TRANSIENT = /npm (?:error|ERR!) code (?:ENOTEMPTY|EBUSY)\b/;
+function runCommand(argv, { cwd, env, timeout, retryDelayMs = 2000 })
+{
+    const once = () => spawnSync(argv[0], argv.slice(1), { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 * 1024 });
+    let r = once();
+    let out = `${r.stdout || ''}${r.stderr || ''}`;
+    let body = out;
+    let retried = false;
+    if (r.status !== 0 && !r.error && TRANSIENT.test(out))
+    {
+        retried = true;
+        if (retryDelayMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retryDelayMs);
+        r = once();
+        out = `${r.stdout || ''}${r.stderr || ''}`;
+        body += `\n[retried after a transient package-manager error]\n${out}`;
+    }
+    const transient = r.status !== 0 && !r.error && TRANSIENT.test(out);
+    return { status: r.status, timedOut: Boolean(r.error && r.error.code === 'ETIMEDOUT'), body, retried, transient };
+}
 
 function failedCount(text)
 {
@@ -56,7 +82,7 @@ function gradeCell({ cell, tasksDir, templatePaths, session, base = process.env 
     const note = (text) => fs.appendFileSync(log, text);
     const done = () => { out.gradedAt = new Date().toISOString(); writeJson(path.join(cell.results, 'grade.json'), out); return out; };
 
-    fs.rmSync(cell.work, { recursive: true, force: true });
+    removeTree(cell.work);
     try
     {
         if (!templatePaths || !fs.existsSync(path.join(templatePaths.dir, template.READY)))
@@ -96,21 +122,20 @@ function gradeCell({ cell, tasksDir, templatePaths, session, base = process.env 
         const runAll = (kind, list) => (list || []).every((argv) =>
         {
             const started = Date.now();
-            const r = spawnSync(argv[0], argv.slice(1), { cwd: cell.repo, env, stdio: ['ignore', 'pipe', 'pipe'], timeout, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 * 1024 });
-            const timedOut = Boolean(r.error && r.error.code === 'ETIMEDOUT');
-            const body = `${r.stdout || ''}${r.stderr || ''}`;
+            const { status, timedOut, body, retried, transient } = runCommand(argv, { cwd: cell.repo, env, timeout });
             text += body;
             note(`\n$ [${kind}] ${argv.join(' ')}\n${body}`);
-            out.commands.push({ kind, argv, exit: r.status, ms: Date.now() - started, timedOut });
+            out.commands.push({ kind, argv, exit: status, ms: Date.now() - started, timedOut, retried, transient });
             if (timedOut) out.infra = out.infra || `grader timeout: ${argv.join(' ')}`;
-            return r.status === 0;
+            if (transient) out.infra = out.infra || `package-manager error persisted after a retry: ${argv.join(' ')}`;
+            return status === 0;
         });
         out.hiddenPass = runAll('hidden', spec.hidden);
         out.suiteGreen = runAll('suite', spec.suite);
         out.infra = out.infra || detectInfra(text);
         return done();
     }
-    finally { fs.rmSync(cell.work, { recursive: true, force: true }); }
+    finally { removeTree(cell.work); }
 }
 
-module.exports = { gradeCell, copyHidden, detectInfra, failedCount, INFRA_MIN_FAILED };
+module.exports = { gradeCell, copyHidden, detectInfra, failedCount, runCommand, INFRA_MIN_FAILED };

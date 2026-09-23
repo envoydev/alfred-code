@@ -1,0 +1,361 @@
+diff --git a/src/LendingDesk.Api/Controllers/ItemsController.cs b/src/LendingDesk.Api/Controllers/ItemsController.cs
+index ffa6367..4ab1920 100644
+--- a/src/LendingDesk.Api/Controllers/ItemsController.cs
++++ b/src/LendingDesk.Api/Controllers/ItemsController.cs
+@@ -11,7 +11,7 @@ namespace LendingDesk.Api.Controllers;
+ 
+ [ApiController]
+ [Route("api/items")]
+-public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : ControllerBase
++public sealed partial class ItemsController(LendingDbContext db, TimeProvider clock, ILogger<ItemsController> logger) : ControllerBase
+ {
+     [HttpGet]
+     public Task<PagedResult<ItemDto>> List([FromQuery] ItemQuery query, CancellationToken cancellationToken)
+@@ -91,6 +91,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
+         var item = await Find(id, cancellationToken);
+         item.Retire();
+         await db.SaveChangesAsync(cancellationToken);
++        LogRetired(logger, item.Id, User.Identity?.Name);
+         return NoContent();
+     }
+ 
+@@ -103,4 +104,7 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
+ 
+     private async Task<Item> Find(int id, CancellationToken cancellationToken) =>
+         await db.Items.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Item", id);
++
++    [LoggerMessage(Level = LogLevel.Information, Message = "Item {ItemId} retired by {User}")]
++    private static partial void LogRetired(ILogger logger, int itemId, string? user);
+ }
+diff --git a/src/LendingDesk.Api/Controllers/MembersController.cs b/src/LendingDesk.Api/Controllers/MembersController.cs
+index 128fcae..37df599 100644
+--- a/src/LendingDesk.Api/Controllers/MembersController.cs
++++ b/src/LendingDesk.Api/Controllers/MembersController.cs
+@@ -11,7 +11,7 @@ namespace LendingDesk.Api.Controllers;
+ 
+ [ApiController]
+ [Route("api/members")]
+-public sealed class MembersController(LendingDbContext db, TimeProvider clock) : ControllerBase
++public sealed partial class MembersController(LendingDbContext db, TimeProvider clock, ILogger<MembersController> logger) : ControllerBase
+ {
+     [HttpGet]
+     public Task<PagedResult<MemberDto>> List([FromQuery] MemberQuery query, CancellationToken cancellationToken)
+@@ -66,9 +66,29 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+         var member = await Find(id, cancellationToken);
+         member.Suspend();
+         await db.SaveChangesAsync(cancellationToken);
++        LogSuspended(logger, member.Id, User.Identity?.Name);
++        return MemberDto.From(member);
++    }
++
++    [HttpPost("{id:int}/reinstate")]
++    [Authorize(Policy = Policies.Admin)]
++    public async Task<MemberDto> Reinstate(int id, CancellationToken cancellationToken)
++    {
++        var member = await Find(id, cancellationToken);
++        var today = clock.Today();
++        var hasOverdueLoans = await db.Loans.AnyAsync(l => l.MemberId == member.Id && l.ReturnedAt == null && l.DueDate < today, cancellationToken);
++        member.Reinstate(hasOverdueLoans);
++        await db.SaveChangesAsync(cancellationToken);
++        LogReinstated(logger, member.Id, User.Identity?.Name);
+         return MemberDto.From(member);
+     }
+ 
+     private async Task<Member> Find(int id, CancellationToken cancellationToken) =>
+         await db.Members.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Member", id);
++
++    [LoggerMessage(Level = LogLevel.Information, Message = "Member {MemberId} suspended by {User}")]
++    private static partial void LogSuspended(ILogger logger, int memberId, string? user);
++
++    [LoggerMessage(Level = LogLevel.Information, Message = "Member {MemberId} reinstated by {User}")]
++    private static partial void LogReinstated(ILogger logger, int memberId, string? user);
+ }
+diff --git a/src/LendingDesk.Domain/Members/Member.cs b/src/LendingDesk.Domain/Members/Member.cs
+index 26f717e..0bc5d0f 100644
+--- a/src/LendingDesk.Domain/Members/Member.cs
++++ b/src/LendingDesk.Domain/Members/Member.cs
+@@ -27,4 +27,21 @@ public sealed class Member
+ 
+         Status = MemberStatus.Suspended;
+     }
++
++    /// <summary>Puts a suspended member back to active.</summary>
++    /// <param name="hasOverdueLoans">Whether the member still holds a loan that is not returned and past its due date.</param>
++    public void Reinstate(bool hasOverdueLoans)
++    {
++        if (Status != MemberStatus.Suspended)
++        {
++            throw new DomainException("member_not_suspended", $"Member {Id} is not suspended.");
++        }
++
++        if (hasOverdueLoans)
++        {
++            throw new DomainException("member_has_overdue_loans", $"Member {Id} still has overdue loans and cannot be reinstated.");
++        }
++
++        Status = MemberStatus.Active;
++    }
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/Infrastructure/LendingApiFactory.cs b/tests/LendingDesk.IntegrationTests/Infrastructure/LendingApiFactory.cs
+index bd2a27f..1bc731e 100644
+--- a/tests/LendingDesk.IntegrationTests/Infrastructure/LendingApiFactory.cs
++++ b/tests/LendingDesk.IntegrationTests/Infrastructure/LendingApiFactory.cs
+@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.DependencyInjection.Extensions;
++using Microsoft.Extensions.Logging;
+ 
+ namespace LendingDesk.IntegrationTests.Infrastructure;
+ 
+@@ -19,6 +20,8 @@ public sealed class LendingApiFactory(string connectionString) : WebApplicationF
+ 
+     public TestClock Clock { get; } = new();
+ 
++    public LogCapture Logs { get; } = new();
++
+     public static async Task<LendingApiFactory> StartAsync(PostgresFixture postgres)
+     {
+         var factory = new LendingApiFactory(await postgres.CreateDatabaseAsync());
+@@ -45,6 +48,7 @@ public sealed class LendingApiFactory(string connectionString) : WebApplicationF
+     {
+         builder.UseEnvironment("Testing");
+         builder.UseSetting("ConnectionStrings:Lending", connectionString);
++        builder.ConfigureLogging(logging => logging.AddProvider(Logs));
+         builder.ConfigureServices(services =>
+         {
+             services.RemoveAll<TimeProvider>();
+diff --git a/tests/LendingDesk.IntegrationTests/Infrastructure/LogCapture.cs b/tests/LendingDesk.IntegrationTests/Infrastructure/LogCapture.cs
+new file mode 100644
+index 0000000..c4cabdb
+--- /dev/null
++++ b/tests/LendingDesk.IntegrationTests/Infrastructure/LogCapture.cs
+@@ -0,0 +1,33 @@
++using System.Collections.Concurrent;
++using Microsoft.Extensions.Logging;
++
++namespace LendingDesk.IntegrationTests.Infrastructure;
++
++public sealed record LogEntry(string Category, LogLevel Level, string Message);
++
++/// <summary>Keeps every log entry the API writes, so tests can assert on the audit trail.</summary>
++public sealed class LogCapture : ILoggerProvider
++{
++    private readonly ConcurrentQueue<LogEntry> _entries = new();
++
++    /// <summary>The entries logged under <typeparamref name="TCategory"/>'s category, oldest first.</summary>
++    public IReadOnlyList<LogEntry> From<TCategory>() =>
++        [.. _entries.Where(e => e.Category == typeof(TCategory).FullName)];
++
++    public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, _entries);
++
++    public void Dispose()
++    {
++    }
++
++    private sealed class CapturingLogger(string category, ConcurrentQueue<LogEntry> entries) : ILogger
++    {
++        public IDisposable? BeginScope<TState>(TState state)
++            where TState : notnull => null;
++
++        public bool IsEnabled(LogLevel logLevel) => logLevel != LogLevel.None;
++
++        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
++            entries.Enqueue(new LogEntry(category, logLevel, formatter(state, exception)));
++    }
++}
+\ No newline at end of file
+diff --git a/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs b/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
+index 0c469d2..56e9a66 100644
+--- a/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
+@@ -1,7 +1,9 @@
+ using System.Net;
+ using LendingDesk.Api.Contracts;
++using LendingDesk.Api.Controllers;
+ using LendingDesk.Domain.Items;
+ using LendingDesk.IntegrationTests.Infrastructure;
++using Microsoft.Extensions.Logging;
+ 
+ namespace LendingDesk.IntegrationTests;
+ 
+@@ -84,4 +86,19 @@ public sealed class ItemsApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.DoesNotContain(active.Items, i => i.Id == item.Id);
+         Assert.Contains(all.Items, i => i.Id == item.Id && i.IsRetired);
+     }
++
++    [Fact]
++    public async Task Retiring_an_item_is_audited_and_a_rejected_retire_is_not()
++    {
++        var item = await CreateItemAsync("Slide projector", "PRJ-2");
++        var admin = _api.ClientAs("admin", user: "alice");
++
++        await _api.ClientAs("staff", user: "bob").DeleteAsync($"/api/items/{item.Id}");
++        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/items/{item.Id}")).StatusCode);
++        Assert.Equal(HttpStatusCode.Conflict, (await admin.DeleteAsync($"/api/items/{item.Id}")).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await admin.DeleteAsync("/api/items/999999")).StatusCode);
++
++        var audit = _api.Logs.From<ItemsController>().Select(e => (e.Level, e.Message));
++        Assert.Equal([(LogLevel.Information, $"Item {item.Id} retired by alice")], audit);
++    }
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+index 8d451f2..32a6dff 100644
+--- a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+@@ -1,7 +1,9 @@
+ using System.Net;
+ using LendingDesk.Api.Contracts;
++using LendingDesk.Api.Controllers;
+ using LendingDesk.Domain.Members;
+ using LendingDesk.IntegrationTests.Infrastructure;
++using Microsoft.Extensions.Logging;
+ 
+ namespace LendingDesk.IntegrationTests;
+ 
+@@ -21,6 +23,18 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         return await response.ReadAsync<MemberDto>();
+     }
+ 
++    private async Task<int> LendAsync(int memberId, int days)
++    {
++        var staff = _api.ClientAs("staff");
++        var item = await (await staff.PostJsonAsync("/api/items", new { name = "Theodolite", category = "Survey", sku = $"THD-{memberId}", totalStock = 1 })).ReadAsync<ItemDto>();
++        var response = await staff.PostJsonAsync("/api/loans", new { itemId = item.Id, memberId, startDate = _api.Clock.Today, dueDate = _api.Clock.Today.AddDays(days) });
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return (await response.ReadAsync<LoanDto>()).Id;
++    }
++
++    private List<(LogLevel Level, string Message)> AuditTrail() =>
++        [.. _api.Logs.From<MembersController>().Select(e => (e.Level, e.Message))];
++
+     [Fact]
+     public async Task Staff_create_a_member_and_read_it_back()
+     {
+@@ -101,6 +115,93 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(1, page.TotalCount);
+     }
+ 
++    [Fact]
++    public async Task Admins_reinstate_a_suspended_member_and_both_actions_are_audited()
++    {
++        var member = await CreateMemberAsync("Mary Jackson", "mary@example.com");
++        var admin = _api.ClientAs("admin", user: "alice");
++        await admin.PostAsync($"/api/members/{member.Id}/suspend", null);
++
++        Assert.Equal(HttpStatusCode.Forbidden, (await _api.ClientAs("staff").PostAsync($"/api/members/{member.Id}/reinstate", null)).StatusCode);
++        var response = await admin.PostAsync($"/api/members/{member.Id}/reinstate", null);
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        var reinstated = await response.ReadAsync<MemberDto>();
++        Assert.Equal(member with { Status = MemberStatus.Active }, reinstated);
++        Assert.Equal(reinstated, await (await admin.GetAsync($"/api/members/{member.Id}")).ReadAsync<MemberDto>());
++        Assert.Equal(
++            [(LogLevel.Information, $"Member {member.Id} suspended by alice"), (LogLevel.Information, $"Member {member.Id} reinstated by alice")],
++            AuditTrail());
++    }
++
++    [Fact]
++    public async Task Reinstating_an_unknown_member_is_not_found()
++    {
++        var response = await _api.ClientAs("admin", user: "alice").PostAsync("/api/members/999999/reinstate", null);
++
++        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal("not_found", problem.Code);
++        Assert.Equal("Member 999999 was not found.", problem.Detail);
++        Assert.False(string.IsNullOrEmpty(problem.TraceId));
++        Assert.Empty(AuditTrail());
++    }
++
++    [Fact]
++    public async Task Only_a_suspended_member_can_be_reinstated_and_rejected_actions_are_not_audited()
++    {
++        var member = await CreateMemberAsync("Christine Darden", "christine@example.com");
++        var admin = _api.ClientAs("admin", user: "alice");
++
++        var notSuspended = await admin.PostAsync($"/api/members/{member.Id}/reinstate", null);
++        await admin.PostAsync($"/api/members/{member.Id}/suspend", null);
++        var suspendedTwice = await admin.PostAsync($"/api/members/{member.Id}/suspend", null);
++        var unknown = await admin.PostAsync("/api/members/999999/suspend", null);
++
++        Assert.Equal(HttpStatusCode.Conflict, notSuspended.StatusCode);
++        Assert.Equal("member_not_suspended", (await notSuspended.ReadAsync<Problem>()).Code);
++        Assert.Equal(HttpStatusCode.Conflict, suspendedTwice.StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
++        Assert.Equal([(LogLevel.Information, $"Member {member.Id} suspended by alice")], AuditTrail());
++    }
++
++    [Fact]
++    public async Task A_member_with_an_overdue_loan_stays_suspended_until_it_is_returned()
++    {
++        var member = await CreateMemberAsync("Annie Easley", "annie@example.com");
++        var loanId = await LendAsync(member.Id, days: 3);
++        _api.Clock.Now = _api.Clock.Now.AddDays(4);
++        var admin = _api.ClientAs("admin", user: "alice");
++        await admin.PostAsync($"/api/members/{member.Id}/suspend", null);
++
++        var refused = await admin.PostAsync($"/api/members/{member.Id}/reinstate", null);
++
++        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
++        Assert.Equal("member_has_overdue_loans", (await refused.ReadAsync<Problem>()).Code);
++        Assert.Equal(MemberStatus.Suspended, (await (await admin.GetAsync($"/api/members/{member.Id}")).ReadAsync<MemberDto>()).Status);
++        Assert.Equal([(LogLevel.Information, $"Member {member.Id} suspended by alice")], AuditTrail());
++
++        await _api.ClientAs("staff").PostAsync($"/api/loans/{loanId}/return", null);
++        var reinstated = await admin.PostAsync($"/api/members/{member.Id}/reinstate", null);
++
++        Assert.Equal(MemberStatus.Active, (await reinstated.ReadAsync<MemberDto>()).Status);
++    }
++
++    [Fact]
++    public async Task A_loan_due_today_is_not_overdue_and_does_not_block_reinstating()
++    {
++        var member = await CreateMemberAsync("Evelyn Boyd", "evelyn@example.com");
++        await LendAsync(member.Id, days: 3);
++        _api.Clock.Now = _api.Clock.Now.AddDays(3);
++        var admin = _api.ClientAs("admin", user: "alice");
++        await admin.PostAsync($"/api/members/{member.Id}/suspend", null);
++
++        var response = await admin.PostAsync($"/api/members/{member.Id}/reinstate", null);
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal(MemberStatus.Active, (await response.ReadAsync<MemberDto>()).Status);
++    }
++
+     [Fact]
+     public async Task The_list_is_paged_in_name_order()
+     {
+diff --git a/tests/LendingDesk.UnitTests/MemberAndItemTests.cs b/tests/LendingDesk.UnitTests/MemberAndItemTests.cs
+index e22acbf..44247ad 100644
+--- a/tests/LendingDesk.UnitTests/MemberAndItemTests.cs
++++ b/tests/LendingDesk.UnitTests/MemberAndItemTests.cs
+@@ -16,6 +16,28 @@ public class MemberAndItemTests
+         Assert.Equal("member_suspended", Assert.Throws<DomainException>(member.Suspend).Code);
+     }
+ 
++    [Fact]
++    public void Only_a_suspended_member_without_overdue_loans_is_reinstated()
++    {
++        var member = new Member { Name = "Grace Hopper", Email = "grace@example.com" };
++        Assert.Equal("member_not_suspended", Assert.Throws<DomainException>(() => member.Reinstate(hasOverdueLoans: false)).Code);
++
++        member.Suspend();
++        Assert.Equal("member_has_overdue_loans", Assert.Throws<DomainException>(() => member.Reinstate(hasOverdueLoans: true)).Code);
++        Assert.Equal(MemberStatus.Suspended, member.Status);
++
++        member.Reinstate(hasOverdueLoans: false);
++        Assert.Equal(MemberStatus.Active, member.Status);
++    }
++
++    [Fact]
++    public void Not_being_suspended_is_reported_before_overdue_loans()
++    {
++        var member = new Member { Name = "Grace Hopper", Email = "grace@example.com" };
++
++        Assert.Equal("member_not_suspended", Assert.Throws<DomainException>(() => member.Reinstate(hasOverdueLoans: true)).Code);
++    }
++
+     [Fact]
+     public void An_item_is_good_until_told_otherwise_and_cannot_be_retired_twice()
+     {

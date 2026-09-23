@@ -1,0 +1,207 @@
+diff --git a/src/LendingDesk.Api/Clock.cs b/src/LendingDesk.Api/Clock.cs
+index 417871e..ea6c351 100644
+--- a/src/LendingDesk.Api/Clock.cs
++++ b/src/LendingDesk.Api/Clock.cs
+@@ -3,5 +3,7 @@ namespace LendingDesk.Api;
+ internal static class Clock
+ {
+     /// <summary>Loans are dated in UTC calendar days.</summary>
+-    public static DateOnly Today(this TimeProvider clock) => DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
++    public static DateOnly Today(this TimeProvider clock) => clock.GetUtcNow().UtcDay();
++
++    public static DateOnly UtcDay(this DateTimeOffset at) => DateOnly.FromDateTime(at.UtcDateTime);
+ }
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..17e8cc6 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -95,7 +95,10 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         var loan = await db.Loans.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Loan", id);
+         var returnedAt = clock.GetUtcNow();
+         loan.Return(returnedAt);
+-        db.Enqueue(EventTypes.LoanReturned, new LoanReturned(loan.Id, loan.MemberId, returnedAt), returnedAt);
++        db.Enqueue(
++            EventTypes.LoanReturnedV2,
++            new LoanReturnedV2(loan.Id, loan.MemberId, returnedAt, loan.DueDate, loan.DaysLateOn(returnedAt.UtcDay())),
++            returnedAt);
+         await db.SaveChangesAsync(cancellationToken);
+         return await Get(id, cancellationToken);
+     }
+diff --git a/src/LendingDesk.Domain/Events/LoanEvents.cs b/src/LendingDesk.Domain/Events/LoanEvents.cs
+index 46e3764..8e2ce04 100644
+--- a/src/LendingDesk.Domain/Events/LoanEvents.cs
++++ b/src/LendingDesk.Domain/Events/LoanEvents.cs
+@@ -7,9 +7,16 @@ namespace LendingDesk.Domain.Events;
+ public static class EventTypes
+ {
+     public const string LoanCreated = "loan.created.v1";
++
++    /// <summary>Superseded by <see cref="LoanReturnedV2"/>; still handled for messages already in the outbox.</summary>
+     public const string LoanReturned = "loan.returned.v1";
++
++    public const string LoanReturnedV2 = "loan.returned.v2";
+ }
+ 
+ public sealed record LoanCreated(int LoanId, int MemberId, int ItemId, DateOnly StartDate, DateOnly DueDate);
+ 
+ public sealed record LoanReturned(int LoanId, int MemberId, DateTimeOffset ReturnedAt);
++
++/// <param name="DaysLate">Days after <paramref name="DueDate"/> the item came back, by the UTC calendar day of <paramref name="ReturnedAt"/>; 0 when on time.</param>
++public sealed record LoanReturnedV2(int LoanId, int MemberId, DateTimeOffset ReturnedAt, DateOnly DueDate, int DaysLate);
+diff --git a/src/LendingDesk.Domain/Loans/Loan.cs b/src/LendingDesk.Domain/Loans/Loan.cs
+index 256e84e..6d5db02 100644
+--- a/src/LendingDesk.Domain/Loans/Loan.cs
++++ b/src/LendingDesk.Domain/Loans/Loan.cs
+@@ -35,6 +35,9 @@ public sealed class Loan
+         : DueDate < today ? LoanState.Overdue
+         : LoanState.Active;
+ 
++    /// <summary>How many days after the due date an item returned on <paramref name="returnedOn"/> came back; 0 when on time.</summary>
++    public int DaysLateOn(DateOnly returnedOn) => Math.Max(0, returnedOn.DayNumber - DueDate.DayNumber);
++
+     public void Return(DateTimeOffset at)
+     {
+         if (ReturnedAt is not null)
+diff --git a/src/LendingDesk.Domain/Notices/Notice.cs b/src/LendingDesk.Domain/Notices/Notice.cs
+index 4e96fe3..b30be81 100644
+--- a/src/LendingDesk.Domain/Notices/Notice.cs
++++ b/src/LendingDesk.Domain/Notices/Notice.cs
+@@ -8,6 +8,7 @@ public enum NoticeKind
+     DueSoon,
+     Overdue,
+     ReturnReceipt,
++    LateReturn,
+ }
+ 
+ /// <summary>A message sent to a member about one of their loans. Each kind is sent at most once per loan.</summary>
+diff --git a/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs b/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
+index 6510882..5f78ea7 100644
+--- a/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
++++ b/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
+@@ -60,9 +60,14 @@ public sealed partial class OutboxProcessor(LendingDbContext db, NoticeSender no
+     {
+         EventTypes.LoanCreated => notices.SendAsync(Read<LoanCreated>(message).LoanId, NoticeKind.Confirmation, cancellationToken),
+         EventTypes.LoanReturned => notices.SendAsync(Read<LoanReturned>(message).LoanId, NoticeKind.ReturnReceipt, cancellationToken),
++        EventTypes.LoanReturnedV2 => SendReturnNoticeAsync(Read<LoanReturnedV2>(message), cancellationToken),
+         _ => throw new InvalidOperationException($"No handler for outbox message type '{message.Type}'."),
+     };
+ 
++    /// <summary>A late return gets a late-return notice instead of the receipt.</summary>
++    private Task<bool> SendReturnNoticeAsync(LoanReturnedV2 returned, CancellationToken cancellationToken) =>
++        notices.SendAsync(returned.LoanId, returned.DaysLate > 0 ? NoticeKind.LateReturn : NoticeKind.ReturnReceipt, cancellationToken);
++
+     private static T Read<T>(OutboxMessage message) =>
+         JsonSerializer.Deserialize<T>(message.Payload, OutboxExtensions.PayloadOptions)
+         ?? throw new JsonException($"Outbox message {message.Id} has an empty payload.");
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..aa476b6 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -1,3 +1,4 @@
++using System.Globalization;
+ using System.Net;
+ using System.Text.Json;
+ using LendingDesk.Api.Contracts;
+@@ -111,7 +112,35 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(_api.Clock.Now, returned.ReturnedAt);
+         Assert.Equal("loan_already_returned", (await again.ReadAsync<Problem>()).Code);
+         Assert.Equal(1, (await (await _staff.GetAsync($"/api/items/{itemId}")).ReadAsync<ItemDto>()).Available);
+-        Assert.Equal(1, await _api.WithDbAsync(db => db.OutboxMessages.CountAsync(o => o.Type == EventTypes.LoanReturned)));
++        Assert.Equal(
++            [EventTypes.LoanReturnedV2],
++            await _api.WithDbAsync(db => db.OutboxMessages.Where(o => o.Type != EventTypes.LoanCreated).Select(o => o.Type).ToListAsync()));
++    }
++
++    [Theory]
++    [InlineData(-1, "09:00:00", 0)]
++    [InlineData(0, "23:59:59", 0)]
++    [InlineData(1, "00:00:00", 1)]
++    [InlineData(3, "10:30:00", 3)]
++    public async Task A_return_publishes_loan_returned_v2_with_the_due_date_and_the_days_late(int daysAfterDue, string utcTime, int daysLate)
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++        var returnedAt = new DateTimeOffset(loan.DueDate.AddDays(daysAfterDue).ToDateTime(TimeOnly.Parse(utcTime, CultureInfo.InvariantCulture)), TimeSpan.Zero);
++        _api.Clock.Now = returnedAt;
++
++        await _staff.PostAsync($"/api/loans/{loan.Id}/return", null);
++
++        var message = Assert.Single(await _api.WithDbAsync(db => db.OutboxMessages.Where(o => o.Type != EventTypes.LoanCreated).ToListAsync()));
++        Assert.Equal(EventTypes.LoanReturnedV2, message.Type);
++        Assert.Equal(returnedAt, message.OccurredAt);
++        var payload = JsonSerializer.Deserialize<LoanReturnedV2>(message.Payload, OutboxExtensions.PayloadOptions)!;
++        Assert.Equal(new LoanReturnedV2(loan.Id, memberId, returnedAt, loan.DueDate, daysLate), payload);
++        using var json = JsonDocument.Parse(message.Payload);
++        Assert.Equal(
++            ["daysLate", "dueDate", "loanId", "memberId", "returnedAt"],
++            json.RootElement.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
++        Assert.Equal(loan.DueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), json.RootElement.GetProperty("dueDate").GetString());
+     }
+ 
+     [Fact]
+diff --git a/tests/LendingDesk.IntegrationTests/WorkerTests.cs b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+index e98c3a0..c6fb55e 100644
+--- a/tests/LendingDesk.IntegrationTests/WorkerTests.cs
++++ b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+@@ -104,6 +104,39 @@ public sealed class WorkerTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal([NoticeKind.Confirmation], await NoticesForAsync(loan.Id));
+     }
+ 
++    [Theory]
++    [InlineData(0, NoticeKind.ReturnReceipt)]
++    [InlineData(1, NoticeKind.LateReturn)]
++    [InlineData(12, NoticeKind.LateReturn)]
++    public async Task A_v2_return_sends_the_receipt_on_time_and_the_late_return_notice_when_late_once_each(int daysLate, NoticeKind expected)
++    {
++        var loan = await SeedLoanAsync(dueInDays: -daysLate, returned: true);
++        var returned = new LoanReturnedV2(loan.Id, loan.MemberId, _clock.Now, loan.DueDate, daysLate);
++        await EnqueueAsync(EventTypes.LoanReturnedV2, returned);
++        await EnqueueAsync(EventTypes.LoanReturnedV2, returned);
++
++        await using (var db = NewDb())
++        {
++            Assert.Equal(2, await Processor(db).ProcessPendingAsync(CancellationToken.None));
++        }
++
++        Assert.Equal([expected], await NoticesForAsync(loan.Id));
++    }
++
++    [Fact]
++    public async Task A_v1_return_written_before_v2_still_sends_the_receipt_even_when_late()
++    {
++        var loan = await SeedLoanAsync(dueInDays: -2, returned: true);
++        await EnqueueAsync(EventTypes.LoanReturned, new LoanReturned(loan.Id, loan.MemberId, _clock.Now));
++
++        await using (var db = NewDb())
++        {
++            Assert.Equal(1, await Processor(db).ProcessPendingAsync(CancellationToken.None));
++        }
++
++        Assert.Equal([NoticeKind.ReturnReceipt], await NoticesForAsync(loan.Id));
++    }
++
+     [Fact]
+     public async Task An_unknown_message_is_retried_then_set_aside_with_its_error()
+     {
+diff --git a/tests/LendingDesk.UnitTests/LoanTests.cs b/tests/LendingDesk.UnitTests/LoanTests.cs
+index 433171b..a69d982 100644
+--- a/tests/LendingDesk.UnitTests/LoanTests.cs
++++ b/tests/LendingDesk.UnitTests/LoanTests.cs
+@@ -23,6 +23,17 @@ public class LoanTests
+         Assert.Equal(LoanState.Returned, loan.StateOn(new DateOnly(2026, 3, 20)));
+     }
+ 
++    [Theory]
++    [InlineData(-3, 0)]
++    [InlineData(0, 0)]
++    [InlineData(1, 1)]
++    [InlineData(4, 4)]
++    public void Counts_the_days_late_from_the_day_after_the_due_date(int returnedDaysAfterDue, int daysLate)
++    {
++        var due = new DateOnly(2026, 3, 10);
++        Assert.Equal(daysLate, LoanDue(due).DaysLateOn(due.AddDays(returnedDaysAfterDue)));
++    }
++
+     [Fact]
+     public void Cannot_be_returned_twice()
+     {

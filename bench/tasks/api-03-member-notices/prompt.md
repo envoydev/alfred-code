@@ -1,0 +1,8 @@
+When a member tells the desk they never got a reminder, staff have no way to check what we actually sent them. Please add `GET /api/members/{memberId}/notices`, listing the notices that were sent about that member's loans - all of them, including notices about loans that have since been returned.
+
+- Each entry has `id`, `loanId`, `itemName`, `kind` and `sentAt`. `kind` is written as the kind's name (`Confirmation`, `DueSoon`, `Overdue`, `ReturnReceipt`), the way the API writes other enum values.
+- Newest first: ordered by `sentAt` descending, and notices with the same `sentAt` by `id` descending, so the order is the same on every call and paging through never skips or repeats an entry.
+- An optional `kind` query parameter narrows the list to that one kind. A value that isn't a notice kind is rejected the same way an unknown `status` is rejected on `GET /api/loans`.
+- It is paged like the other list endpoints - the same `page` and `pageSize` query parameters and the same response shape (`items`, `page`, `pageSize`, `totalCount`) - but with its own limits: `pageSize` defaults to 10 and can be at most 50, and `page` starts at 1. An out-of-range `page` or `pageSize` gets the same 400 validation error the other list endpoints give (compare `GET /api/members?pageSize=500`), naming the parameter the same way they do. A page past the end is a 200 with an empty `items` list. `totalCount` is the number of notices matching the filter across all pages.
+- An unknown member id gets the same 404 as `GET /api/members/{memberId}/loans`.
+- Staff and admins only: a caller with the member role gets the same 403 the overdue report gives them, whichever member they ask about.

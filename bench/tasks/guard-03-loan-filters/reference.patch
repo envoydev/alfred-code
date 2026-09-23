@@ -1,0 +1,215 @@
+diff --git a/src/LendingDesk.Api/Contracts/LoanContracts.cs b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+index e37327e..f206c18 100644
+--- a/src/LendingDesk.Api/Contracts/LoanContracts.cs
++++ b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+@@ -19,7 +19,20 @@ public sealed class LoanQuery : PageQuery
+     [Range(1, int.MaxValue)]
+     public int? MemberId { get; init; }
+ 
++    [Range(1, int.MaxValue)]
++    public int? ItemId { get; init; }
++
+     public LoanState? Status { get; init; }
++
++    /// <summary>Only loans due on or after this day.</summary>
++    public DateOnly? DueFrom { get; init; }
++
++    /// <summary>Only loans due on or before this day.</summary>
++    public DateOnly? DueTo { get; init; }
++
++    /// <summary>Only loans whose item name or member name contains this text, ignoring case.</summary>
++    [StringLength(100)]
++    public string? Search { get; init; }
+ }
+ 
+ public sealed class LoanRequest
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 5bb5860..8dbac06 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -25,6 +25,27 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+             loans = loans.Where(l => l.MemberId == memberId);
+         }
+ 
++        if (query.ItemId is { } itemId)
++        {
++            loans = loans.Where(l => l.ItemId == itemId);
++        }
++
++        if (query.DueFrom is { } dueFrom)
++        {
++            loans = loans.Where(l => l.DueDate >= dueFrom);
++        }
++
++        if (query.DueTo is { } dueTo)
++        {
++            loans = loans.Where(l => l.DueDate <= dueTo);
++        }
++
++        if (!string.IsNullOrWhiteSpace(query.Search))
++        {
++            var pattern = $"%{query.Search}%";
++            loans = loans.Where(l => EF.Functions.ILike(l.Item.Name, pattern) || EF.Functions.ILike(l.Member.Name, pattern));
++        }
++
+         loans = query.Status switch
+         {
+             LoanState.Returned => loans.Where(l => l.ReturnedAt != null),
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..863b49f 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -1,3 +1,4 @@
++using System.Globalization;
+ using System.Net;
+ using System.Text.Json;
+ using LendingDesk.Api.Contracts;
+@@ -23,11 +24,11 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+ 
+     public async Task DisposeAsync() => await _api.DisposeAsync();
+ 
+-    private async Task<(int MemberId, int ItemId)> SeedAsync(int stock = 1)
++    private async Task<(int MemberId, int ItemId)> SeedAsync(int stock = 1, string? memberName = null, string? itemName = null)
+     {
+         var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+-        var member = await (await _staff.PostJsonAsync("/api/members", new { name = $"Member {suffix}", email = $"m{suffix}@example.com" })).ReadAsync<MemberDto>();
+-        var item = await (await _staff.PostJsonAsync("/api/items", new { name = $"Item {suffix}", category = "Tools", sku = $"SKU-{suffix}", totalStock = stock })).ReadAsync<ItemDto>();
++        var member = await (await _staff.PostJsonAsync("/api/members", new { name = memberName ?? $"Member {suffix}", email = $"m{suffix}@example.com" })).ReadAsync<MemberDto>();
++        var item = await (await _staff.PostJsonAsync("/api/items", new { name = itemName ?? $"Item {suffix}", category = "Tools", sku = $"SKU-{suffix}", totalStock = stock })).ReadAsync<ItemDto>();
+         return (member.Id, item.Id);
+     }
+ 
+@@ -40,6 +41,22 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+             dueDate = _api.Clock.Today.AddDays(startInDays + days),
+         });
+ 
++    private async Task<int> LendIdAsync(int memberId, int itemId, int days)
++    {
++        var response = await LendAsync(memberId, itemId, days: days);
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return (await response.ReadAsync<LoanDto>()).Id;
++    }
++
++    private async Task<PagedResult<LoanDto>> ListAsync(string queryString)
++    {
++        var response = await _staff.GetAsync($"/api/loans?{queryString}");
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        return await response.ReadAsync<PagedResult<LoanDto>>();
++    }
++
++    private string Day(int inDays) => _api.Clock.Today.AddDays(inDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
++
+     [Fact]
+     public async Task Lending_an_item_takes_a_copy_and_publishes_loan_created()
+     {
+@@ -138,6 +155,110 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+     }
+ 
++    [Fact]
++    public async Task The_list_filters_by_item()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 2);
++        var (_, otherItemId) = await SeedAsync();
++        var dueLater = await LendIdAsync(memberId, itemId, days: 5);
++        await LendIdAsync(memberId, otherItemId, days: 2);
++        var dueSooner = await LendIdAsync(memberId, itemId, days: 3);
++
++        var page = await ListAsync($"itemId={itemId}");
++
++        Assert.Equal([dueSooner, dueLater], page.Items.Select(l => l.Id));
++        Assert.Equal(2, page.TotalCount);
++    }
++
++    [Fact]
++    public async Task The_list_filters_by_due_date_from_either_end_or_both_inclusively()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 3);
++        var dueIn3 = await LendIdAsync(memberId, itemId, days: 3);
++        var dueIn5 = await LendIdAsync(memberId, itemId, days: 5);
++        var dueIn7 = await LendIdAsync(memberId, itemId, days: 7);
++
++        Assert.Equal([dueIn5, dueIn7], (await ListAsync($"dueFrom={Day(5)}")).Items.Select(l => l.Id));
++        Assert.Equal([dueIn3, dueIn5], (await ListAsync($"dueTo={Day(5)}")).Items.Select(l => l.Id));
++        Assert.Equal([dueIn5], (await ListAsync($"dueFrom={Day(4)}&dueTo={Day(6)}")).Items.Select(l => l.Id));
++        Assert.Equal([dueIn5], (await ListAsync($"dueFrom={Day(5)}&dueTo={Day(5)}")).Items.Select(l => l.Id));
++    }
++
++    [Fact]
++    public async Task A_due_range_that_ends_before_it_starts_is_simply_empty()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        await LendIdAsync(memberId, itemId, days: 5);
++
++        var page = await ListAsync($"dueFrom={Day(6)}&dueTo={Day(4)}");
++
++        Assert.Empty(page.Items);
++        Assert.Equal(0, page.TotalCount);
++    }
++
++    [Fact]
++    public async Task The_list_searches_item_and_member_names_ignoring_case()
++    {
++        var (ada, drill) = await SeedAsync(memberName: "Ada Lovelace", itemName: "Drill press");
++        var (grace, laser) = await SeedAsync(memberName: "Grace Hopper", itemName: "Laser level");
++        var adasLoan = await LendIdAsync(ada, drill, days: 3);
++        var gracesLoan = await LendIdAsync(grace, laser, days: 4);
++
++        Assert.Equal([adasLoan], (await ListAsync("search=DRILL")).Items.Select(l => l.Id));
++        Assert.Equal([gracesLoan], (await ListAsync("search=hopper")).Items.Select(l => l.Id));
++        Assert.Equal([adasLoan, gracesLoan], (await ListAsync("search=LA")).Items.Select(l => l.Id));
++        Assert.Empty((await ListAsync("search=babbage")).Items);
++    }
++
++    [Fact]
++    public async Task All_filters_apply_together_and_keep_the_order_and_paging()
++    {
++        var (ada, drill) = await SeedAsync(stock: 5, memberName: "Ada Lovelace", itemName: "Drill press");
++        var (grace, laser) = await SeedAsync(memberName: "Grace Hopper", itemName: "Laser level");
++        var dueIn6 = await LendIdAsync(ada, drill, days: 6);
++        var dueIn2 = await LendIdAsync(ada, drill, days: 2);
++        var returned = await LendIdAsync(ada, drill, days: 7);
++        await LendIdAsync(ada, drill, days: 9);
++        await LendIdAsync(ada, laser, days: 4);
++        await LendIdAsync(grace, drill, days: 5);
++        await _staff.PostAsync($"/api/loans/{returned}/return", null);
++        var filters = $"memberId={ada}&itemId={drill}&status=Active&dueFrom={Day(1)}&dueTo={Day(8)}&search=PRESS";
++
++        var all = await ListAsync(filters);
++        var secondPage = await ListAsync($"{filters}&page=2&pageSize=1");
++
++        Assert.Equal([dueIn2, dueIn6], all.Items.Select(l => l.Id));
++        Assert.Equal(2, all.TotalCount);
++        Assert.Equal([dueIn6], secondPage.Items.Select(l => l.Id));
++        Assert.Equal((2, 1, 2), (secondPage.Page, secondPage.PageSize, secondPage.TotalCount));
++    }
++
++    [Theory]
++    [InlineData("itemId", "0", "ItemId")]
++    [InlineData("itemId", "-4", "ItemId")]
++    [InlineData("dueFrom", "2026-02-30", "DueFrom")]
++    [InlineData("dueTo", "soon", "DueTo")]
++    public async Task An_invalid_filter_returns_the_validation_envelope(string name, string value, string field)
++    {
++        var response = await _staff.GetAsync($"/api/loans?{name}={value}");
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Contains(field, problem.Errors!.Keys);
++    }
++
++    [Fact]
++    public async Task The_search_text_is_at_most_100_characters()
++    {
++        var longest = await _staff.GetAsync($"/api/loans?search={new string('x', 100)}");
++        var tooLong = await _staff.GetAsync($"/api/loans?search={new string('x', 101)}");
++
++        Assert.Equal(HttpStatusCode.OK, longest.StatusCode);
++        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
++        Assert.Contains("Search", (await tooLong.ReadAsync<Problem>()).Errors!.Keys);
++    }
++
+     [Fact]
+     public async Task A_member_s_loans_are_listed_newest_first()
+     {

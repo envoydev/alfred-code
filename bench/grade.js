@@ -13,6 +13,7 @@ const armsLib = require('./lib/arms.js');
 const cellsLib = require('./lib/cells.js');
 const lock = require('./lib/lock.js');
 const { gradeCell } = require('./lib/grade.js');
+const { removeTree } = require('./lib/remove-tree.js');
 
 const BENCH_DIR = __dirname;
 
@@ -44,7 +45,7 @@ function gradeRun({ benchDir = BENCH_DIR, run, armsDir = path.join(BENCH_DIR, 'a
             if (g.infra) { counts.infra += 1; queue.push(id); }
             log(`graded ${counts.graded} - infrastructure ${counts.infra}`);
         }
-        fs.rmSync(path.join(benchDir, 'work', run), { recursive: true, force: true });
+        removeTree(path.join(benchDir, 'work', run));
         fs.writeFileSync(path.join(runP.dir, 'regrade.json'), `${JSON.stringify({ cells: queue, updatedAt: new Date().toISOString() }, null, 2)}\n`);
         return { ...counts, queue };
     }

@@ -1,0 +1,144 @@
+diff --git a/src/LendingDesk.Worker/Notices/NoticeSender.cs b/src/LendingDesk.Worker/Notices/NoticeSender.cs
+index 78d493b..4dc6703 100644
+--- a/src/LendingDesk.Worker/Notices/NoticeSender.cs
++++ b/src/LendingDesk.Worker/Notices/NoticeSender.cs
+@@ -10,6 +10,7 @@ namespace LendingDesk.Worker.Notices;
+ public sealed partial class NoticeSender(LendingDbContext db, TimeProvider clock, ILogger<NoticeSender> logger)
+ {
+     /// <returns><c>false</c> when this kind of notice was already sent for the loan.</returns>
++    /// <exception cref="InvalidOperationException">The loan no longer exists; nothing is sent.</exception>
+     public async Task<bool> SendAsync(int loanId, NoticeKind kind, CancellationToken cancellationToken)
+     {
+         if (await db.Notices.AnyAsync(n => n.LoanId == loanId && n.Kind == kind, cancellationToken))
+@@ -17,6 +18,11 @@ public sealed partial class NoticeSender(LendingDbContext db, TimeProvider clock
+             return false;
+         }
+ 
++        if (!await db.Loans.AnyAsync(l => l.Id == loanId, cancellationToken))
++        {
++            throw new InvalidOperationException($"Loan {loanId} no longer exists, so no {kind} notice was sent.");
++        }
++
+         db.Notices.Add(new Notice { LoanId = loanId, Kind = kind, SentAt = clock.GetUtcNow() });
+         await db.SaveChangesAsync(cancellationToken);
+         LogSent(logger, kind, loanId);
+diff --git a/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs b/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
+index 6510882..6f63346 100644
+--- a/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
++++ b/src/LendingDesk.Worker/Outbox/OutboxProcessor.cs
+@@ -37,6 +37,7 @@ public sealed partial class OutboxProcessor(LendingDbContext db, NoticeSender no
+             }
+             catch (Exception ex) when (ex is JsonException or InvalidOperationException or DbUpdateException)
+             {
++                DiscardHandlerChanges();
+                 message.Attempts++;
+                 message.LastError = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+                 if (message.Attempts >= MaxAttempts)
+@@ -56,6 +57,18 @@ public sealed partial class OutboxProcessor(LendingDbContext db, NoticeSender no
+         return handled;
+     }
+ 
++    /// <summary>
++    /// Drops whatever a failed handler left pending (a notice that could not be saved, say), so that
++    /// saving this message's attempt - and every message after it - does not retry the failed write.
++    /// </summary>
++    private void DiscardHandlerChanges()
++    {
++        foreach (var entry in db.ChangeTracker.Entries().Where(e => e.Entity is not OutboxMessage).ToList())
++        {
++            entry.State = EntityState.Detached;
++        }
++    }
++
+     private Task<bool> HandleAsync(OutboxMessage message, CancellationToken cancellationToken) => message.Type switch
+     {
+         EventTypes.LoanCreated => notices.SendAsync(Read<LoanCreated>(message).LoanId, NoticeKind.Confirmation, cancellationToken),
+diff --git a/tests/LendingDesk.IntegrationTests/WorkerTests.cs b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+index e98c3a0..faefa16 100644
+--- a/tests/LendingDesk.IntegrationTests/WorkerTests.cs
++++ b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+@@ -1,3 +1,4 @@
++using System.Globalization;
+ using LendingDesk.Data;
+ using LendingDesk.Data.Outbox;
+ using LendingDesk.Domain.Events;
+@@ -122,6 +123,79 @@ public sealed class WorkerTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Contains("loan.renamed.v9", message.LastError, StringComparison.Ordinal);
+     }
+ 
++    [Fact]
++    public async Task A_message_for_a_deleted_loan_fails_on_its_own_and_is_set_aside_without_a_notice()
++    {
++        var deleted = await SeedLoanAsync(dueInDays: 7);
++        var kept = await SeedLoanAsync(dueInDays: 7);
++        await EnqueueAsync(EventTypes.LoanCreated, new LoanCreated(deleted.Id, deleted.MemberId, deleted.ItemId, deleted.StartDate, deleted.DueDate));
++        await EnqueueAsync(EventTypes.LoanCreated, new LoanCreated(kept.Id, kept.MemberId, kept.ItemId, kept.StartDate, kept.DueDate));
++        await EnqueueAsync(EventTypes.LoanReturned, new LoanReturned(kept.Id, kept.MemberId, _clock.Now));
++        await using (var db = NewDb())
++        {
++            await db.Loans.Where(l => l.Id == deleted.Id).ExecuteDeleteAsync();
++        }
++
++        await using (var db = NewDb())
++        {
++            Assert.Equal(2, await Processor(db).ProcessPendingAsync(CancellationToken.None));
++        }
++
++        Assert.Equal([NoticeKind.Confirmation, NoticeKind.ReturnReceipt], await NoticesForAsync(kept.Id));
++        await using (var db = NewDb())
++        {
++            var failed = await db.OutboxMessages.OrderBy(m => m.Id).FirstAsync();
++            Assert.Equal(1, failed.Attempts);
++            Assert.Null(failed.ProcessedAt);
++            Assert.Contains($"Loan {deleted.Id}", failed.LastError, StringComparison.Ordinal);
++        }
++
++        for (var attempt = 2; attempt <= OutboxProcessor.MaxAttempts; attempt++)
++        {
++            await using var db = NewDb();
++            Assert.Equal(0, await Processor(db).ProcessPendingAsync(CancellationToken.None));
++        }
++
++        await using var check = NewDb();
++        var setAside = await check.OutboxMessages.OrderBy(m => m.Id).FirstAsync();
++        Assert.Equal(OutboxProcessor.MaxAttempts, setAside.Attempts);
++        Assert.NotNull(setAside.ProcessedAt);
++        Assert.Empty(await NoticesForAsync(deleted.Id));
++    }
++
++    [Fact]
++    public async Task A_notice_the_database_refuses_is_counted_and_does_not_hold_up_the_next_message()
++    {
++        var refused = await SeedLoanAsync(dueInDays: 7);
++        var kept = await SeedLoanAsync(dueInDays: 7);
++        await EnqueueAsync(EventTypes.LoanCreated, new LoanCreated(refused.Id, refused.MemberId, refused.ItemId, refused.StartDate, refused.DueDate));
++        await EnqueueAsync(EventTypes.LoanCreated, new LoanCreated(kept.Id, kept.MemberId, kept.ItemId, kept.StartDate, kept.DueDate));
++        await using (var db = NewDb())
++        {
++            // The loan exists, but the notice insert still fails at the database, as it does when a
++            // loan is deleted between the check and the insert.
++            var refusedId = refused.Id.ToString(CultureInfo.InvariantCulture);
++            var sql = """
++                CREATE FUNCTION refuse_notice() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'notice refused'; END $$;
++                CREATE TRIGGER refuse_notice BEFORE INSERT ON "Notices" FOR EACH ROW WHEN (NEW."LoanId" = LOAN_ID) EXECUTE FUNCTION refuse_notice();
++                """.Replace("LOAN_ID", refusedId, StringComparison.Ordinal);
++            await db.Database.ExecuteSqlRawAsync(sql);
++        }
++
++        await using (var db = NewDb())
++        {
++            Assert.Equal(1, await Processor(db).ProcessPendingAsync(CancellationToken.None));
++        }
++
++        Assert.Equal([NoticeKind.Confirmation], await NoticesForAsync(kept.Id));
++        Assert.Empty(await NoticesForAsync(refused.Id));
++        await using var check = NewDb();
++        var failed = await check.OutboxMessages.OrderBy(m => m.Id).FirstAsync();
++        Assert.Equal(1, failed.Attempts);
++        Assert.Null(failed.ProcessedAt);
++        Assert.False(string.IsNullOrEmpty(failed.LastError));
++    }
++
+     [Fact]
+     public async Task Reminders_go_to_loans_due_tomorrow_and_overdue_loans_once_each()
+     {

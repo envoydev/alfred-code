@@ -1,0 +1,10 @@
+{
+  "id": "guard-03-loan-filters",
+  "group": "guard",
+  "tags": [],
+  "timeLimitMin": 30,
+  "startRef": "bench-fixture-v1",
+  "setup": [
+    { "patch": "wip.patch" }
+  ]
+}

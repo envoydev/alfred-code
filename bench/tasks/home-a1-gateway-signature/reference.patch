@@ -1,0 +1,276 @@
+diff --git a/README.md b/README.md
+index ed00374..97ab9d0 100644
+--- a/README.md
++++ b/README.md
+@@ -41,6 +41,11 @@ docker build -f src/LendingDesk.Api/Dockerfile -t lendingdesk-api .
+ docker run -p 8080:8080 -e ConnectionStrings__Lending='Host=...;Database=lending;Username=...;Password=...' lendingdesk-api
+ ```
+ 
++Behind the company gateway, set `Auth:GatewayKey` (`-e Auth__GatewayKey=...`, never in a committed file).
++The API then believes `X-Demo-User` and `X-Demo-Role` only when `X-Demo-Signature` carries the hex
++HMAC-SHA256 of the user, a line feed and the role, keyed with that value; anything else is treated as not
++signed in. Left empty, as in local development and the tests, the headers are trusted without a signature.
++
+ The image does not run migrations outside Development; apply them first:
+ 
+ ```bash
+diff --git a/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationHandler.cs b/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationHandler.cs
+index 4072dac..fab3431 100644
+--- a/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationHandler.cs
++++ b/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationHandler.cs
+@@ -8,16 +8,19 @@ namespace LendingDesk.Api.Auth;
+ /// <summary>
+ /// Demo sign-in: the caller names itself in <c>X-Demo-User</c> and its role in <c>X-Demo-Role</c>.
+ /// There is no identity provider behind it - it exists so the roles and policies can be exercised.
++/// Behind the gateway, <see cref="DemoHeaderAuthenticationOptions.GatewayKey"/> is set and the headers
++/// count only when <c>X-Demo-Signature</c> proves the gateway sent them.
+ /// </summary>
+ internal sealed class DemoHeaderAuthenticationHandler(
+-    IOptionsMonitor<AuthenticationSchemeOptions> options,
++    IOptionsMonitor<DemoHeaderAuthenticationOptions> options,
+     ILoggerFactory logger,
+     UrlEncoder encoder)
+-    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
++    : AuthenticationHandler<DemoHeaderAuthenticationOptions>(options, logger, encoder)
+ {
+     public const string SchemeName = "DemoHeader";
+     public const string UserHeader = "X-Demo-User";
+     public const string RoleHeader = "X-Demo-Role";
++    public const string SignatureHeader = "X-Demo-Signature";
+ 
+     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+     {
+@@ -28,6 +31,12 @@ internal sealed class DemoHeaderAuthenticationHandler(
+             return Task.FromResult(AuthenticateResult.NoResult());
+         }
+ 
++        if (!string.IsNullOrEmpty(Options.GatewayKey)
++            && !GatewaySignature.Matches(Options.GatewayKey, user, role, Request.Headers[SignatureHeader].ToString()))
++        {
++            return Task.FromResult(AuthenticateResult.Fail("The identity headers are not signed by the gateway."));
++        }
++
+         if (!Roles.All.Contains(role))
+         {
+             return Task.FromResult(AuthenticateResult.Fail($"Unknown role '{role}'."));
+diff --git a/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationOptions.cs b/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationOptions.cs
+new file mode 100644
+index 0000000..ed2630a
+--- /dev/null
++++ b/src/LendingDesk.Api/Auth/DemoHeaderAuthenticationOptions.cs
+@@ -0,0 +1,14 @@
++using Microsoft.AspNetCore.Authentication;
++
++namespace LendingDesk.Api.Auth;
++
++internal sealed class DemoHeaderAuthenticationOptions : AuthenticationSchemeOptions
++{
++    public const string GatewayKeySetting = "Auth:GatewayKey";
++
++    /// <summary>
++    /// The key the gateway signs the identity headers with. When set, unsigned or badly signed identity
++    /// headers are ignored; when absent or empty, the headers are trusted as they are.
++    /// </summary>
++    public string? GatewayKey { get; set; }
++}
+diff --git a/src/LendingDesk.Api/Auth/GatewaySignature.cs b/src/LendingDesk.Api/Auth/GatewaySignature.cs
+new file mode 100644
+index 0000000..980dede
+--- /dev/null
++++ b/src/LendingDesk.Api/Auth/GatewaySignature.cs
+@@ -0,0 +1,23 @@
++using System.Buffers;
++using System.Security.Cryptography;
++using System.Text;
++
++namespace LendingDesk.Api.Auth;
++
++/// <summary>The gateway's signature over the identity headers: hex HMAC-SHA256 of <c>user + "\n" + role</c>.</summary>
++internal static class GatewaySignature
++{
++    public static bool Matches(string key, string user, string role, string signature)
++    {
++        Span<byte> provided = stackalloc byte[HMACSHA256.HashSizeInBytes];
++        if (signature.Length != provided.Length * 2
++            || Convert.FromHexString(signature, provided, out _, out _) != OperationStatus.Done)
++        {
++            return false;
++        }
++
++        Span<byte> expected = stackalloc byte[HMACSHA256.HashSizeInBytes];
++        HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes($"{user}\n{role}"), expected);
++        return CryptographicOperations.FixedTimeEquals(expected, provided);
++    }
++}
+diff --git a/src/LendingDesk.Api/Program.cs b/src/LendingDesk.Api/Program.cs
+index bedc8ac..eec1bad 100644
+--- a/src/LendingDesk.Api/Program.cs
++++ b/src/LendingDesk.Api/Program.cs
+@@ -2,7 +2,6 @@ using System.Text.Json.Serialization;
+ using LendingDesk.Api.Auth;
+ using LendingDesk.Api.Errors;
+ using LendingDesk.Data;
+-using Microsoft.AspNetCore.Authentication;
+ using Microsoft.AspNetCore.Authorization;
+ using Microsoft.EntityFrameworkCore;
+ 
+@@ -14,7 +13,10 @@ builder.Services.AddSingleton(TimeProvider.System);
+ 
+ builder.Services
+     .AddAuthentication(DemoHeaderAuthenticationHandler.SchemeName)
+-    .AddScheme<AuthenticationSchemeOptions, DemoHeaderAuthenticationHandler>(DemoHeaderAuthenticationHandler.SchemeName, null);
++    .AddScheme<DemoHeaderAuthenticationOptions, DemoHeaderAuthenticationHandler>(DemoHeaderAuthenticationHandler.SchemeName, null);
++builder.Services
++    .AddOptions<DemoHeaderAuthenticationOptions>(DemoHeaderAuthenticationHandler.SchemeName)
++    .Configure<IConfiguration>((options, configuration) => options.GatewayKey = configuration[DemoHeaderAuthenticationOptions.GatewayKeySetting]);
+ builder.Services.AddAuthorizationBuilder()
+     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+     .AddPolicy(Policies.Staff, policy => policy.RequireRole(Roles.Staff, Roles.Admin))
+diff --git a/src/LendingDesk.Api/appsettings.json b/src/LendingDesk.Api/appsettings.json
+index 10f68b8..ebb05c7 100644
+--- a/src/LendingDesk.Api/appsettings.json
++++ b/src/LendingDesk.Api/appsettings.json
+@@ -5,5 +5,8 @@
+       "Microsoft.AspNetCore": "Warning"
+     }
+   },
+-  "AllowedHosts": "*"
++  "AllowedHosts": "*",
++  "Auth": {
++    "GatewayKey": ""
++  }
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/GatewaySignatureTests.cs b/tests/LendingDesk.IntegrationTests/GatewaySignatureTests.cs
+new file mode 100644
+index 0000000..88c1f66
+--- /dev/null
++++ b/tests/LendingDesk.IntegrationTests/GatewaySignatureTests.cs
+@@ -0,0 +1,128 @@
++using System.Net;
++using System.Security.Cryptography;
++using System.Text;
++using LendingDesk.IntegrationTests.Infrastructure;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Mvc.Testing;
++
++namespace LendingDesk.IntegrationTests;
++
++[Collection(DatabaseGroup.Name)]
++public sealed class GatewaySignatureTests(PostgresFixture postgres) : IAsyncLifetime
++{
++    private static readonly string GatewayKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
++
++    private LendingApiFactory _api = null!;
++    private WebApplicationFactory<Program> _gateway = null!;
++
++    public async Task InitializeAsync()
++    {
++        _api = await LendingApiFactory.StartAsync(postgres);
++        _gateway = WithGatewayKey(GatewayKey);
++    }
++
++    public async Task DisposeAsync()
++    {
++        await _gateway.DisposeAsync();
++        await _api.DisposeAsync();
++    }
++
++    private WebApplicationFactory<Program> WithGatewayKey(string key) =>
++        _api.WithWebHostBuilder(builder => builder.UseSetting("Auth:GatewayKey", key));
++
++    private static string Sign(string user, string role, string key) =>
++        Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(key), Encoding.UTF8.GetBytes($"{user}\n{role}")));
++
++    private static HttpClient Client(WebApplicationFactory<Program> factory, string role, string? signature, string user = "tester")
++    {
++        var client = factory.CreateClient();
++        client.DefaultRequestHeaders.Add("X-Demo-User", user);
++        client.DefaultRequestHeaders.Add("X-Demo-Role", role);
++        if (signature is not null)
++        {
++            client.DefaultRequestHeaders.Add("X-Demo-Signature", signature);
++        }
++
++        return client;
++    }
++
++    private static Task<HttpResponseMessage> CreateMemberAsync(HttpClient client) =>
++        client.PostJsonAsync("/api/members", new { name = "Gateway Member", email = $"{Guid.NewGuid():N}@example.com" });
++
++    [Theory]
++    [InlineData(false)]
++    [InlineData(true)]
++    public async Task A_correctly_signed_request_goes_through_in_either_hex_case(bool upperCase)
++    {
++        var signature = Sign("Ada Lovelace", "staff", GatewayKey);
++        var client = Client(_gateway, "staff", upperCase ? signature.ToUpperInvariant() : signature, user: "Ada Lovelace");
++
++        Assert.Equal(HttpStatusCode.Created, (await CreateMemberAsync(client)).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/members")).StatusCode);
++    }
++
++    [Fact]
++    public async Task A_signed_member_is_still_refused_staff_work()
++    {
++        var response = await CreateMemberAsync(Client(_gateway, "member", Sign("tester", "member", GatewayKey)));
++
++        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
++        Assert.Equal("forbidden", (await response.ReadAsync<Problem>()).Code);
++    }
++
++    [Theory]
++    [InlineData("missing")]
++    [InlineData("empty")]
++    [InlineData("other key")]
++    [InlineData("other role")]
++    [InlineData("other user")]
++    [InlineData("no line feed")]
++    [InlineData("truncated")]
++    [InlineData("not hex")]
++    public async Task A_request_without_a_valid_signature_is_not_signed_in(string signatureCase)
++    {
++        var signature = signatureCase switch
++        {
++            "missing" => null,
++            "empty" => string.Empty,
++            "other key" => Sign("tester", "member", Convert.ToHexString(RandomNumberGenerator.GetBytes(32))),
++            "other role" => Sign("tester", "admin", GatewayKey),
++            "other user" => Sign("someone else", "member", GatewayKey),
++            "no line feed" => Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(GatewayKey), Encoding.UTF8.GetBytes("testermember"))),
++            "truncated" => Sign("tester", "member", GatewayKey)[..62],
++            "not hex" => new string('z', 64),
++            _ => throw new ArgumentOutOfRangeException(nameof(signatureCase)),
++        };
++        var anonymous = await _gateway.CreateClient().PostJsonAsync("/api/members", new { name = "Nobody", email = "nobody@example.com" });
++
++        var response = await CreateMemberAsync(Client(_gateway, "member", signature));
++
++        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
++        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
++        var expected = await anonymous.ReadAsync<Problem>();
++        var actual = await response.ReadAsync<Problem>();
++        Assert.Equal("unauthenticated", actual.Code);
++        Assert.Equal((expected.Status, expected.Title, expected.Detail, expected.Code), (actual.Status, actual.Title, actual.Detail, actual.Code));
++    }
++
++    [Fact]
++    public async Task A_signed_unknown_role_is_still_refused()
++    {
++        var response = await Client(_gateway, "owner", Sign("tester", "owner", GatewayKey)).GetAsync("/api/members");
++
++        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
++        Assert.Equal("unauthenticated", (await response.ReadAsync<Problem>()).Code);
++    }
++
++    [Fact]
++    public async Task Without_a_gateway_key_the_headers_are_trusted_and_a_signature_is_ignored()
++    {
++        await using var emptyKey = WithGatewayKey(string.Empty);
++
++        var noKey = await CreateMemberAsync(Client(_api, "staff", signature: "not-a-signature"));
++        var blankKey = await CreateMemberAsync(Client(emptyKey, "staff", signature: null));
++
++        Assert.Equal(HttpStatusCode.Created, noKey.StatusCode);
++        Assert.Equal(HttpStatusCode.Created, blankKey.StatusCode);
++    }
++}

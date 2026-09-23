@@ -12,6 +12,7 @@ const { templatePaths } = require('./cells.js');
 const { resolve } = require('./arms.js');
 const { sessionEnv } = require('./env.js');
 const fixture = require('../fixture/verify.js');
+const { removeTree } = require('./remove-tree.js');
 
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
@@ -48,7 +49,7 @@ function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, bas
 
     const repoRoot = root || path.dirname(benchDir);
     const logFile = `${paths.dir}.setup.log`;
-    fs.rmSync(paths.dir, { recursive: true, force: true });
+    removeTree(paths.dir);
     fs.rmSync(logFile, { force: true });
     try
     {
@@ -81,7 +82,7 @@ function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, bas
     }
     catch (err)
     {
-        fs.rmSync(paths.dir, { recursive: true, force: true });
+        removeTree(paths.dir);
         throw err;
     }
 }

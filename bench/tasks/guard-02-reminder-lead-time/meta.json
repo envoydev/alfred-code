@@ -1,0 +1,10 @@
+{
+  "id": "guard-02-reminder-lead-time",
+  "group": "guard",
+  "tags": [],
+  "timeLimitMin": 30,
+  "startRef": "bench-fixture-v1",
+  "setup": [
+    { "patch": "gateway-settings.patch", "commitOn": "work/reminder-lead-time", "message": "chore(worker): notify gateway sandbox settings for local runs" }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "home-b1-overdue-members",
+  "group": "api",
+  "tags": ["home-advantage"],
+  "timeLimitMin": 40,
+  "startRef": "bench-fixture-v1",
+  "setup": [
+    { "patch": "grace-period.patch", "commitOn": "feature/overdue-grace", "message": "feat(loans): overdue starts after a two-day grace period" }
+  ]
+}

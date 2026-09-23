@@ -1,0 +1,754 @@
+diff --git a/src/LendingDesk.Api/Contracts/LoanContracts.cs b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+index 7fc807c..94be241 100644
+--- a/src/LendingDesk.Api/Contracts/LoanContracts.cs
++++ b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+@@ -22,6 +22,23 @@ public sealed class LoanQuery : PageQuery
+     public LoanState? Status { get; init; }
+ }
+ 
++/// <summary>A page of the loan feed. <see cref="NextCursor"/> is <c>null</c> when no matching loan follows the page.</summary>
++public sealed record LoanFeed(IReadOnlyList<LoanDto> Items, string? NextCursor);
++
++public sealed class LoanFeedQuery
++{
++    [Range(1, int.MaxValue)]
++    public int? MemberId { get; init; }
++
++    public LoanState? Status { get; init; }
++
++    [Range(1, 100)]
++    public int Limit { get; init; } = 20;
++
++    /// <summary>Return the loans strictly after this position.</summary>
++    public LoanCursor? After { get; init; }
++}
++
+ public sealed class LoanRequest
+ {
+     [Range(1, int.MaxValue)]
+diff --git a/src/LendingDesk.Api/Contracts/LoanCursor.cs b/src/LendingDesk.Api/Contracts/LoanCursor.cs
+new file mode 100644
+index 0000000..ec4a600
+--- /dev/null
++++ b/src/LendingDesk.Api/Contracts/LoanCursor.cs
+@@ -0,0 +1,69 @@
++using System.Buffers;
++using System.Buffers.Text;
++using System.Diagnostics.CodeAnalysis;
++using System.Globalization;
++using System.Text;
++
++namespace LendingDesk.Api.Contracts;
++
++/// <summary>
++/// A position in the loan feed's order (due date, then id). On the wire it is <c>yyyy-MM-dd,id</c> in UTF-8,
++/// base64url-encoded without padding. Clients treat it as opaque; binding it from the query string rejects
++/// anything this API would not have issued, so a bad cursor is an ordinary invalid query parameter.
++/// </summary>
++public sealed record LoanCursor(DateOnly DueDate, int Id) : IParsable<LoanCursor>
++{
++    private const string DateFormat = "yyyy-MM-dd";
++
++    // "9999-12-31," plus the longest int is 21 bytes, 28 characters encoded.
++    private const int MaxEncodedLength = 32;
++
++    public string Encode() =>
++        Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{DueDate:yyyy-MM-dd},{Id}")));
++
++    public static LoanCursor Parse(string s, IFormatProvider? provider) =>
++        TryParse(s, provider, out var cursor) ? cursor : throw new FormatException("Not a loan cursor.");
++
++    public static bool TryParse([NotNullWhen(true)] string? s, IFormatProvider? provider, [MaybeNullWhen(false)] out LoanCursor result)
++    {
++        result = null;
++        if (s is null || s.Length > MaxEncodedLength)
++        {
++            return false;
++        }
++
++        // Padding is not part of the format, but a client that adds the standard padding is still understood.
++        var unpadded = s.TrimEnd('=');
++        var padding = s.Length - unpadded.Length;
++        if (padding != 0 && padding != (4 - (unpadded.Length % 4)) % 4)
++        {
++            return false;
++        }
++
++        Span<byte> bytes = stackalloc byte[Base64Url.GetMaxDecodedLength(MaxEncodedLength)];
++        if (Base64Url.DecodeFromChars(unpadded, bytes, out _, out var written) != OperationStatus.Done)
++        {
++            return false;
++        }
++
++        var text = Encoding.UTF8.GetString(bytes[..written]);
++        var comma = text.IndexOf(',', StringComparison.Ordinal);
++        if (comma < 0
++            || !DateOnly.TryParseExact(text.AsSpan(0, comma), DateFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dueDate)
++            || !int.TryParse(text.AsSpan(comma + 1), NumberStyles.None, CultureInfo.InvariantCulture, out var id)
++            || id < 1)
++        {
++            return false;
++        }
++
++        // Only the exact text and encoding this API issues: no leading zeros, stray characters or stray bits.
++        var cursor = new LoanCursor(dueDate, id);
++        if (cursor.Encode() != unpadded)
++        {
++            return false;
++        }
++
++        result = cursor;
++        return true;
++    }
++}
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..97beb4a 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -19,21 +19,38 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+     public Task<PagedResult<LoanDto>> List([FromQuery] LoanQuery query, CancellationToken cancellationToken)
+     {
+         var today = clock.Today();
+-        var loans = db.Loans.AsNoTracking();
+-        if (query.MemberId is { } memberId)
++        var loans = Filter(db.Loans.AsNoTracking(), query.MemberId, query.Status, today);
++        return Project(loans.OrderBy(l => l.DueDate).ThenBy(l => l.Id), today).ToPageAsync(query, cancellationToken);
++    }
++
++    /// <summary>
++    /// The same loans in the same order as <see cref="List"/>, for clients that walk all of them: no total count,
++    /// and each page seeks past its cursor on IX_Loans_DueDate_Id instead of skipping the pages before it.
++    /// </summary>
++    [HttpGet("feed")]
++    public async Task<LoanFeed> Feed([FromQuery] LoanFeedQuery query, CancellationToken cancellationToken)
++    {
++        var today = clock.Today();
++        var loans = Filter(db.Loans.AsNoTracking(), query.MemberId, query.Status, today);
++        if (query.After is { } after)
+         {
+-            loans = loans.Where(l => l.MemberId == memberId);
++            var (afterDueDate, afterId) = (after.DueDate, after.Id);
++            // A row comparison, ("DueDate", "Id") > (..), is what PostgreSQL can seek to on the index.
++            loans = loans.Where(l => EF.Functions.GreaterThan(ValueTuple.Create(l.DueDate, l.Id), ValueTuple.Create(afterDueDate, afterId)));
+         }
+ 
+-        loans = query.Status switch
++        // One row past the page says whether another page follows.
++        var page = await Project(loans.OrderBy(l => l.DueDate).ThenBy(l => l.Id), today)
++            .Take(query.Limit + 1)
++            .ToListAsync(cancellationToken);
++        if (page.Count <= query.Limit)
+         {
+-            LoanState.Returned => loans.Where(l => l.ReturnedAt != null),
+-            LoanState.Overdue => loans.Where(l => l.ReturnedAt == null && l.DueDate < today),
+-            LoanState.Active => loans.Where(l => l.ReturnedAt == null && l.DueDate >= today),
+-            _ => loans,
+-        };
++            return new LoanFeed(page, null);
++        }
+ 
+-        return Project(loans.OrderBy(l => l.DueDate).ThenBy(l => l.Id), today).ToPageAsync(query, cancellationToken);
++        page.RemoveAt(query.Limit);
++        var last = page[^1];
++        return new LoanFeed(page, new LoanCursor(last.DueDate, last.Id).Encode());
+     }
+ 
+     [HttpGet("{id:int}")]
+@@ -100,6 +117,22 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
++    private static IQueryable<Loan> Filter(IQueryable<Loan> loans, int? memberId, LoanState? status, DateOnly today)
++    {
++        if (memberId is { } id)
++        {
++            loans = loans.Where(l => l.MemberId == id);
++        }
++
++        return status switch
++        {
++            LoanState.Returned => loans.Where(l => l.ReturnedAt != null),
++            LoanState.Overdue => loans.Where(l => l.ReturnedAt == null && l.DueDate < today),
++            LoanState.Active => loans.Where(l => l.ReturnedAt == null && l.DueDate >= today),
++            _ => loans,
++        };
++    }
++
+     private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+         loans.Select(l => new LoanDto(
+             l.Id,
+diff --git a/src/LendingDesk.Data/Configurations/LoanConfiguration.cs b/src/LendingDesk.Data/Configurations/LoanConfiguration.cs
+index c7ccd7d..cfa1cd6 100644
+--- a/src/LendingDesk.Data/Configurations/LoanConfiguration.cs
++++ b/src/LendingDesk.Data/Configurations/LoanConfiguration.cs
+@@ -10,6 +10,9 @@ internal sealed class LoanConfiguration : IEntityTypeConfiguration<Loan>
+     {
+         builder.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+         builder.HasOne(l => l.Member).WithMany().HasForeignKey(l => l.MemberId).OnDelete(DeleteBehavior.Restrict);
++        // The loan list and feed order; the feed seeks to its cursor on it. Built concurrently so lending and
++        // returns are not blocked while it builds over the existing loans.
++        builder.HasIndex(l => new { l.DueDate, l.Id }, "IX_Loans_DueDate_Id").IsCreatedConcurrently();
+         builder.ToTable(t => t.HasCheckConstraint("CK_Loans_Dates", "\"DueDate\" >= \"StartDate\""));
+     }
+ }
+diff --git a/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.Designer.cs b/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.Designer.cs
+new file mode 100644
+index 0000000..24ce498
+--- /dev/null
++++ b/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.Designer.cs
+@@ -0,0 +1,253 @@
++﻿// <auto-generated />
++using System;
++using LendingDesk.Data;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
++
++#nullable disable
++
++namespace LendingDesk.Data.Migrations
++{
++    [DbContext(typeof(LendingDbContext))]
++    [Migration("20260923123517_AddLoansDueDateIdIndex")]
++    partial class AddLoansDueDateIdIndex
++    {
++        /// <inheritdoc />
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "10.0.12")
++                .HasAnnotation("Relational:MaxIdentifierLength", 63);
++
++            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
++
++            modelBuilder.Entity("LendingDesk.Data.Outbox.OutboxMessage", b =>
++                {
++                    b.Property<long>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("bigint");
++
++                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
++
++                    b.Property<int>("Attempts")
++                        .HasColumnType("integer");
++
++                    b.Property<string>("LastError")
++                        .HasMaxLength(2000)
++                        .HasColumnType("character varying(2000)");
++
++                    b.Property<DateTimeOffset>("OccurredAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<string>("Payload")
++                        .IsRequired()
++                        .HasColumnType("jsonb");
++
++                    b.Property<DateTimeOffset?>("ProcessedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<string>("Type")
++                        .IsRequired()
++                        .HasMaxLength(100)
++                        .HasColumnType("character varying(100)");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("Id")
++                        .HasDatabaseName("IX_OutboxMessages_Pending")
++                        .HasFilter("\"ProcessedAt\" IS NULL");
++
++                    b.ToTable("OutboxMessages");
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Items.Item", b =>
++                {
++                    b.Property<int>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("integer");
++
++                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
++
++                    b.Property<string>("Category")
++                        .IsRequired()
++                        .HasMaxLength(100)
++                        .HasColumnType("character varying(100)");
++
++                    b.Property<string>("Condition")
++                        .IsRequired()
++                        .ValueGeneratedOnAdd()
++                        .HasMaxLength(16)
++                        .HasColumnType("character varying(16)")
++                        .HasDefaultValue("Good");
++
++                    b.Property<DateTimeOffset>("CreatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<bool>("IsRetired")
++                        .HasColumnType("boolean");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(200)
++                        .HasColumnType("character varying(200)");
++
++                    b.Property<string>("Sku")
++                        .IsRequired()
++                        .HasMaxLength(64)
++                        .HasColumnType("character varying(64)");
++
++                    b.Property<int>("TotalStock")
++                        .HasColumnType("integer");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("Sku")
++                        .IsUnique();
++
++                    b.ToTable("Items", t =>
++                        {
++                            t.HasCheckConstraint("CK_Items_TotalStock", "\"TotalStock\" >= 0");
++                        });
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Loans.Loan", b =>
++                {
++                    b.Property<int>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("integer");
++
++                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
++
++                    b.Property<DateTimeOffset>("CreatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateOnly>("DueDate")
++                        .HasColumnType("date");
++
++                    b.Property<int>("ItemId")
++                        .HasColumnType("integer");
++
++                    b.Property<int>("MemberId")
++                        .HasColumnType("integer");
++
++                    b.Property<DateTimeOffset?>("ReturnedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<DateOnly>("StartDate")
++                        .HasColumnType("date");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("ItemId");
++
++                    b.HasIndex("MemberId");
++
++                    b.HasIndex(new[] { "DueDate", "Id" }, "IX_Loans_DueDate_Id")
++                        .HasAnnotation("Npgsql:CreatedConcurrently", true);
++
++                    b.ToTable("Loans", t =>
++                        {
++                            t.HasCheckConstraint("CK_Loans_Dates", "\"DueDate\" >= \"StartDate\"");
++                        });
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Members.Member", b =>
++                {
++                    b.Property<int>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("integer");
++
++                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
++
++                    b.Property<DateTimeOffset>("CreatedAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.Property<string>("Email")
++                        .IsRequired()
++                        .HasMaxLength(320)
++                        .HasColumnType("character varying(320)");
++
++                    b.Property<string>("Name")
++                        .IsRequired()
++                        .HasMaxLength(200)
++                        .HasColumnType("character varying(200)");
++
++                    b.Property<string>("Status")
++                        .IsRequired()
++                        .ValueGeneratedOnAdd()
++                        .HasMaxLength(16)
++                        .HasColumnType("character varying(16)")
++                        .HasDefaultValue("Active");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("Email")
++                        .IsUnique();
++
++                    b.ToTable("Members");
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Notices.Notice", b =>
++                {
++                    b.Property<long>("Id")
++                        .ValueGeneratedOnAdd()
++                        .HasColumnType("bigint");
++
++                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
++
++                    b.Property<string>("Kind")
++                        .IsRequired()
++                        .HasMaxLength(32)
++                        .HasColumnType("character varying(32)");
++
++                    b.Property<int>("LoanId")
++                        .HasColumnType("integer");
++
++                    b.Property<DateTimeOffset>("SentAt")
++                        .HasColumnType("timestamp with time zone");
++
++                    b.HasKey("Id");
++
++                    b.HasIndex("LoanId", "Kind")
++                        .IsUnique();
++
++                    b.ToTable("Notices");
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Loans.Loan", b =>
++                {
++                    b.HasOne("LendingDesk.Domain.Items.Item", "Item")
++                        .WithMany()
++                        .HasForeignKey("ItemId")
++                        .OnDelete(DeleteBehavior.Restrict)
++                        .IsRequired();
++
++                    b.HasOne("LendingDesk.Domain.Members.Member", "Member")
++                        .WithMany()
++                        .HasForeignKey("MemberId")
++                        .OnDelete(DeleteBehavior.Restrict)
++                        .IsRequired();
++
++                    b.Navigation("Item");
++
++                    b.Navigation("Member");
++                });
++
++            modelBuilder.Entity("LendingDesk.Domain.Notices.Notice", b =>
++                {
++                    b.HasOne("LendingDesk.Domain.Loans.Loan", "Loan")
++                        .WithMany()
++                        .HasForeignKey("LoanId")
++                        .OnDelete(DeleteBehavior.Cascade)
++                        .IsRequired();
++
++                    b.Navigation("Loan");
++                });
++#pragma warning restore 612, 618
++        }
++    }
++}
+diff --git a/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.cs b/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.cs
+new file mode 100644
+index 0000000..68fd979
+--- /dev/null
++++ b/src/LendingDesk.Data/Migrations/20260923123517_AddLoansDueDateIdIndex.cs
+@@ -0,0 +1,28 @@
++﻿using Microsoft.EntityFrameworkCore.Migrations;
++
++#nullable disable
++
++namespace LendingDesk.Data.Migrations
++{
++    /// <inheritdoc />
++    public partial class AddLoansDueDateIdIndex : Migration
++    {
++        /// <inheritdoc />
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.CreateIndex(
++                name: "IX_Loans_DueDate_Id",
++                table: "Loans",
++                columns: new[] { "DueDate", "Id" })
++                .Annotation("Npgsql:CreatedConcurrently", true);
++        }
++
++        /// <inheritdoc />
++        protected override void Down(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.DropIndex(
++                name: "IX_Loans_DueDate_Id",
++                table: "Loans");
++        }
++    }
++}
+diff --git a/src/LendingDesk.Data/Migrations/LendingDbContextModelSnapshot.cs b/src/LendingDesk.Data/Migrations/LendingDbContextModelSnapshot.cs
+index 24ff1ad..ad25699 100644
+--- a/src/LendingDesk.Data/Migrations/LendingDbContextModelSnapshot.cs
++++ b/src/LendingDesk.Data/Migrations/LendingDbContextModelSnapshot.cs
+@@ -143,6 +143,9 @@ namespace LendingDesk.Data.Migrations
+ 
+                     b.HasIndex("MemberId");
+ 
++                    b.HasIndex(new[] { "DueDate", "Id" }, "IX_Loans_DueDate_Id")
++                        .HasAnnotation("Npgsql:CreatedConcurrently", true);
++
+                     b.ToTable("Loans", t =>
+                         {
+                             t.HasCheckConstraint("CK_Loans_Dates", "\"DueDate\" >= \"StartDate\"");
+diff --git a/tests/LendingDesk.IntegrationTests/LoanFeedApiTests.cs b/tests/LendingDesk.IntegrationTests/LoanFeedApiTests.cs
+new file mode 100644
+index 0000000..ada219a
+--- /dev/null
++++ b/tests/LendingDesk.IntegrationTests/LoanFeedApiTests.cs
+@@ -0,0 +1,248 @@
++using System.Globalization;
++using System.Net;
++using System.Text;
++using System.Text.Json;
++using LendingDesk.Api.Contracts;
++using LendingDesk.Domain.Loans;
++using LendingDesk.IntegrationTests.Infrastructure;
++using Microsoft.EntityFrameworkCore;
++
++namespace LendingDesk.IntegrationTests;
++
++[Collection(DatabaseGroup.Name)]
++public sealed class LoanFeedApiTests(PostgresFixture postgres) : IAsyncLifetime
++{
++    private LendingApiFactory _api = null!;
++    private HttpClient _staff = null!;
++
++    public async Task InitializeAsync()
++    {
++        _api = await LendingApiFactory.StartAsync(postgres);
++        _staff = _api.ClientAs("staff");
++    }
++
++    public async Task DisposeAsync() => await _api.DisposeAsync();
++
++    /// <summary>The documented cursor format, spelled out independently of the API's own encoder.</summary>
++    private static string Cursor(string text) =>
++        Convert.ToBase64String(Encoding.UTF8.GetBytes(text)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
++
++    private static string Cursor(LoanDto loan) =>
++        Cursor(string.Create(CultureInfo.InvariantCulture, $"{loan.DueDate:yyyy-MM-dd},{loan.Id}"));
++
++    private async Task<(int MemberId, int ItemId)> SeedAsync()
++    {
++        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
++        var member = await (await _staff.PostJsonAsync("/api/members", new { name = $"Member {suffix}", email = $"m{suffix}@example.com" })).ReadAsync<MemberDto>();
++        var item = await (await _staff.PostJsonAsync("/api/items", new { name = $"Item {suffix}", category = "Tools", sku = $"SKU-{suffix}", totalStock = 50 })).ReadAsync<ItemDto>();
++        return (member.Id, item.Id);
++    }
++
++    /// <summary>Loans due the given number of days from today, written straight to the database.</summary>
++    private Task<List<int>> AddLoansAsync(int memberId, int itemId, params int[] dueInDays) =>
++        _api.WithDbAsync(async db =>
++        {
++            var loans = dueInDays.Select(days => new Loan
++            {
++                ItemId = itemId,
++                MemberId = memberId,
++                StartDate = _api.Clock.Today.AddDays(days - 7),
++                DueDate = _api.Clock.Today.AddDays(days),
++                CreatedAt = _api.Clock.Now,
++            }).ToList();
++            db.Loans.AddRange(loans);
++            await db.SaveChangesAsync();
++            return loans.Select(l => l.Id).ToList();
++        });
++
++    private async Task<LoanFeed> FeedAsync(string query)
++    {
++        var response = await _staff.GetAsync($"/api/loans/feed{query}");
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        return await response.ReadAsync<LoanFeed>();
++    }
++
++    private async Task<List<LoanDto>> ListAsync(string query) =>
++        [.. (await (await _staff.GetAsync($"/api/loans?pageSize=100{query}")).ReadAsync<PagedResult<LoanDto>>()).Items];
++
++    /// <summary>Follows the cursors to the end, returning every page.</summary>
++    private async Task<List<LoanFeed>> WalkAsync(string query)
++    {
++        var pages = new List<LoanFeed> { await FeedAsync($"?{query}") };
++        while (pages[^1].NextCursor is { } next)
++        {
++            pages.Add(await FeedAsync($"?{query}&after={next}"));
++        }
++
++        return pages;
++    }
++
++    [Fact]
++    public async Task Walking_the_feed_returns_every_loan_once_in_the_list_s_order()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        await AddLoansAsync(memberId, itemId, 3, 1, 3, 2, 1, -2);
++
++        var pages = await WalkAsync("limit=2");
++
++        Assert.Equal([2, 2, 2], pages.Select(p => p.Items.Count));
++        Assert.Equal(await ListAsync(string.Empty), pages.SelectMany(p => p.Items));
++        Assert.All(pages[..^1], p => Assert.Equal(Cursor(p.Items[^1]), p.NextCursor));
++        Assert.Null(pages[^1].NextCursor);
++    }
++
++    [Fact]
++    public async Task The_page_is_twenty_loans_unless_a_limit_is_given()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        await AddLoansAsync(memberId, itemId, [.. Enumerable.Range(1, 21)]);
++
++        var first = await FeedAsync(string.Empty);
++        var rest = await FeedAsync($"?after={first.NextCursor}");
++
++        Assert.Equal(20, first.Items.Count);
++        Assert.Equal([21], rest.Items.Select(l => l.DueDate.DayNumber - _api.Clock.Today.DayNumber));
++        Assert.Null(rest.NextCursor);
++        Assert.Equal(21, (await FeedAsync("?limit=100")).Items.Count);
++    }
++
++    [Fact]
++    public async Task An_empty_result_is_an_empty_page_without_a_cursor()
++    {
++        var response = await _api.ClientAs("member").GetAsync("/api/loans/feed?memberId=999999");
++
++        var body = await response.ReadAsync<JsonElement>();
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal(0, body.GetProperty("items").GetArrayLength());
++        Assert.Equal(JsonValueKind.Null, body.GetProperty("nextCursor").ValueKind);
++        Assert.False(body.TryGetProperty("totalCount", out _));
++    }
++
++    [Fact]
++    public async Task The_cursor_is_the_due_date_and_id_in_unpadded_base64url()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        await AddLoansAsync(memberId, itemId, 6, 7, 8, 9);
++
++        var first = await FeedAsync("?limit=1");
++        var afterDocumentedExample = await FeedAsync($"?after={Cursor("2026-03-17,42")}");
++
++        Assert.Equal("MjAyNi0wMy0xNyw0Mg", Cursor("2026-03-17,42"));
++        Assert.Equal(Cursor(first.Items[0]), first.NextCursor);
++        Assert.Equal(new DateOnly(2026, 3, 17), _api.Clock.Today.AddDays(7));
++        Assert.Equal([8, 9], afterDocumentedExample.Items.Select(l => l.DueDate.DayNumber - _api.Clock.Today.DayNumber));
++        Assert.Equal(afterDocumentedExample.Items, (await FeedAsync("?after=MjAyNi0wMy0xNyw0Mg%3D%3D")).Items);
++    }
++
++    [Fact]
++    public async Task A_cursor_is_a_position_so_returns_and_earlier_loans_do_not_move_the_next_page()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var ids = await AddLoansAsync(memberId, itemId, 1, 2, 3, 4);
++        var first = await FeedAsync("?status=Active&limit=2");
++
++        await _staff.PostAsync($"/api/loans/{first.Items[^1].Id}/return", null);
++        await AddLoansAsync(memberId, itemId, 0, 1);
++        var second = await FeedAsync($"?status=Active&limit=2&after={first.NextCursor}");
++
++        Assert.Equal(ids[..2], first.Items.Select(l => l.Id));
++        Assert.Equal(ids[2..], second.Items.Select(l => l.Id));
++        Assert.Null(second.NextCursor);
++    }
++
++    [Theory]
++    [InlineData("")]
++    [InlineData("&status=Active")]
++    [InlineData("&status=Overdue")]
++    [InlineData("&status=Returned")]
++    [InlineData("&status=Active&memberId={member}")]
++    [InlineData("&memberId={member}")]
++    public async Task Filters_mean_what_they_mean_on_the_list(string filter)
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var (otherId, _) = await SeedAsync();
++        var mine = await AddLoansAsync(memberId, itemId, 2, -3, 5, 1);
++        await AddLoansAsync(otherId, itemId, 2, -1, 4);
++        await _staff.PostAsync($"/api/loans/{mine[2]}/return", null);
++        var query = filter.Replace("{member}", memberId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
++
++        var pages = await WalkAsync($"limit=1{query}");
++
++        Assert.NotEmpty(pages[0].Items);
++        Assert.Equal(await ListAsync(query), pages.SelectMany(p => p.Items));
++    }
++
++    [Theory]
++    [InlineData("2026-03-17")]
++    [InlineData("2026-03-17,")]
++    [InlineData("2026-03-17,0")]
++    [InlineData("2026-03-17,-4")]
++    [InlineData("2026-03-17,4x")]
++    [InlineData("2026-03-17,4,5")]
++    [InlineData("2026-03-17,042")]
++    [InlineData("2026-03-17,99999999999")]
++    [InlineData("2026-02-30,4")]
++    [InlineData("2026-3-17,4")]
++    [InlineData("17.03.2026,4")]
++    [InlineData(" 2026-03-17,4")]
++    public async Task A_cursor_of_the_wrong_shape_is_a_bad_request(string text)
++    {
++        await AssertInvalidParameterAsync($"after={Cursor(text)}", "After");
++    }
++
++    [Theory]
++    [InlineData("not a cursor!")]
++    [InlineData("MjAyNi0wMy0xNyw0Mg=")]
++    [InlineData("MjAyNi0wMy0xNyw0Mg===")]
++    [InlineData("MjAyNi0wMy0xNyw0M")]
++    [InlineData("MjAyNi0wMy0xNyw0Mh")]
++    [InlineData("MjAyNi0wMy0xNyw0Mg+")]
++    public async Task A_cursor_that_is_not_base64url_is_a_bad_request(string raw)
++    {
++        await AssertInvalidParameterAsync($"after={Uri.EscapeDataString(raw)}", "After");
++    }
++
++    [Theory]
++    [InlineData("0")]
++    [InlineData("101")]
++    [InlineData("-1")]
++    [InlineData("many")]
++    public async Task A_limit_outside_one_to_a_hundred_is_a_bad_request(string limit)
++    {
++        await AssertInvalidParameterAsync($"limit={limit}", "Limit");
++    }
++
++    [Fact]
++    public async Task The_feed_needs_a_signed_in_caller_like_the_list()
++    {
++        var anonymous = _api.CreateClient();
++
++        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/loans")).StatusCode);
++        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/loans/feed")).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await _api.ClientAs("member").GetAsync("/api/loans/feed")).StatusCode);
++    }
++
++    [Fact]
++    public async Task The_feed_order_has_its_own_index()
++    {
++        var definition = await _api.WithDbAsync(db => db.Database
++            .SqlQuery<string>($"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE tablename = 'Loans' AND indexname = 'IX_Loans_DueDate_Id'")
++            .SingleAsync());
++
++        Assert.EndsWith("USING btree (\"DueDate\", \"Id\")", definition, StringComparison.Ordinal);
++    }
++
++    /// <summary>A bad feed parameter comes back exactly as a bad parameter on the existing list does.</summary>
++    private async Task AssertInvalidParameterAsync(string query, string parameter)
++    {
++        var listResponse = await _staff.GetAsync("/api/loans?pageSize=0");
++        var response = await _staff.GetAsync($"/api/loans/feed?{query}");
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        Assert.Equal(listResponse.Content.Headers.ContentType, response.Content.Headers.ContentType);
++        var expected = await listResponse.ReadAsync<Problem>();
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal((expected.Status, expected.Title, expected.Code), (problem.Status, problem.Title, problem.Code));
++        Assert.Equal([parameter], problem.Errors!.Keys);
++    }
++}

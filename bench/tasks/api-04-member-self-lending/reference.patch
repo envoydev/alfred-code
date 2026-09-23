@@ -1,0 +1,198 @@
+diff --git a/src/LendingDesk.Api/Auth/Roles.cs b/src/LendingDesk.Api/Auth/Roles.cs
+index 2874090..89e9430 100644
+--- a/src/LendingDesk.Api/Auth/Roles.cs
++++ b/src/LendingDesk.Api/Auth/Roles.cs
+@@ -11,9 +11,15 @@ public static class Roles
+ 
+ public static class Policies
+ {
+-    /// <summary>Front-desk work: lending, returning, editing the catalogue and member records.</summary>
++    /// <summary>Front-desk work: returning loans, editing the catalogue and member records.</summary>
+     public const string Staff = "staff";
+ 
++    /// <summary>
++    /// Creating a loan: staff and admins lend to any member, a member borrows only for themselves. The policy
++    /// admits the roles; which member a member-role caller may borrow for is checked against the request.
++    /// </summary>
++    public const string Lend = "lend";
++
+     /// <summary>Destructive or account-level actions.</summary>
+     public const string Admin = "admin";
+ }
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..d99e041 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -54,10 +54,17 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+     }
+ 
+     [HttpPost]
+-    [Authorize(Policy = Policies.Staff)]
++    [Authorize(Policy = Policies.Lend)]
+     public async Task<ActionResult<LoanDto>> Create(LoanRequest request, CancellationToken cancellationToken)
+     {
+-        var item = await db.Items.FindAsync([request.ItemId], cancellationToken) ?? throw new NotFoundException("Item", request.ItemId);
++        // A member borrows only for themselves. This comes before every other check, so a refused member
++        // learns nothing about the item, the other member or the lending rules from the answer.
++        if (User.IsInRole(Roles.Member) && !await IsCallerAsync(request.MemberId, cancellationToken))
++        {
++            return Forbid();
++        }
++
++        var item =await db.Items.FindAsync([request.ItemId], cancellationToken) ?? throw new NotFoundException("Item", request.ItemId);
+         var member = await db.Members.FindAsync([request.MemberId], cancellationToken) ?? throw new NotFoundException("Member", request.MemberId);
+         var start = request.StartDate!.Value;
+         var due = request.DueDate!.Value;
+@@ -100,6 +107,16 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
++    /// <summary>
++    /// Members sign in with their email address. The API stores emails lower-cased, so lower-casing the
++    /// sign-in name makes the match case-insensitive.
++    /// </summary>
++    private Task<bool> IsCallerAsync(int memberId, CancellationToken cancellationToken)
++    {
++        var email = User.Identity?.Name?.ToLowerInvariant();
++        return db.Members.AnyAsync(m => m.Id == memberId && m.Email == email, cancellationToken);
++    }
++
+     private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+         loans.Select(l => new LoanDto(
+             l.Id,
+diff --git a/src/LendingDesk.Api/Program.cs b/src/LendingDesk.Api/Program.cs
+index bedc8ac..7912d0c 100644
+--- a/src/LendingDesk.Api/Program.cs
++++ b/src/LendingDesk.Api/Program.cs
+@@ -18,6 +18,7 @@ builder.Services
+ builder.Services.AddAuthorizationBuilder()
+     .SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build())
+     .AddPolicy(Policies.Staff, policy => policy.RequireRole(Roles.Staff, Roles.Admin))
++    .AddPolicy(Policies.Lend, policy => policy.RequireRole(Roles.Member, Roles.Staff, Roles.Admin))
+     .AddPolicy(Policies.Admin, policy => policy.RequireRole(Roles.Admin));
+ 
+ builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemEnvelope.Customize);
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..663aa64 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -31,8 +31,8 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         return (member.Id, item.Id);
+     }
+ 
+-    private Task<HttpResponseMessage> LendAsync(int memberId, int itemId, int startInDays = 0, int days = 7) =>
+-        _staff.PostJsonAsync("/api/loans", new
++    private Task<HttpResponseMessage> LendAsync(int memberId, int itemId, int startInDays = 0, int days = 7, HttpClient? client = null) =>
++        (client ?? _staff).PostJsonAsync("/api/loans", new
+         {
+             itemId,
+             memberId,
+@@ -114,6 +114,108 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(1, await _api.WithDbAsync(db => db.OutboxMessages.CountAsync(o => o.Type == EventTypes.LoanReturned)));
+     }
+ 
++    private async Task<HttpClient> SignInAsMemberAsync(int memberId, Func<string, string>? spell = null)
++    {
++        var email = (await (await _staff.GetAsync($"/api/members/{memberId}")).ReadAsync<MemberDto>()).Email;
++        return _api.ClientAs("member", (spell ?? (e => e))(email));
++    }
++
++    private Task<int> SavedLoansAsync() =>
++        _api.WithDbAsync(async db => await db.Loans.CountAsync() + await db.OutboxMessages.CountAsync());
++
++    [Fact]
++    public async Task A_member_borrows_for_themselves_whatever_the_case_of_their_email()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 2);
++        var member = await SignInAsMemberAsync(memberId, email => email.ToUpperInvariant());
++
++        var response = await LendAsync(memberId, itemId, client: member);
++
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        var loan = await response.ReadAsync<LoanDto>();
++        Assert.Equal((memberId, itemId, LoanState.Active), (loan.MemberId, loan.ItemId, loan.Status));
++        Assert.Equal(1, await _api.WithDbAsync(db => db.OutboxMessages.CountAsync(o => o.Type == EventTypes.LoanCreated)));
++    }
++
++    [Fact]
++    public async Task A_member_cannot_borrow_for_anyone_else_whatever_else_is_wrong_with_the_loan()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var (otherId, _) = await SeedAsync();
++        var member = await SignInAsMemberAsync(memberId);
++        var stranger = _api.ClientAs("member", "nobody@example.com");
++        var forbiddenReturn = await (await member.PostAsync("/api/loans/1/return", null)).ReadAsync<Problem>();
++
++        var refused = new[]
++        {
++            await LendAsync(otherId, itemId, client: member),
++            await LendAsync(999999, itemId, client: member),
++            await LendAsync(otherId, 999999, client: member),
++            await LendAsync(otherId, itemId, startInDays: -1, client: member),
++            await LendAsync(otherId, itemId, days: 29, client: member),
++            await LendAsync(memberId, itemId, client: stranger),
++        };
++
++        foreach (var response in refused)
++        {
++            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
++            var problem = await response.ReadAsync<Problem>();
++            Assert.Equal(forbiddenReturn with { TraceId = problem.TraceId }, problem);
++        }
++
++        Assert.Equal(0, await SavedLoansAsync());
++    }
++
++    [Fact]
++    public async Task A_member_borrowing_for_themselves_meets_the_same_lending_rules()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var member = await SignInAsMemberAsync(memberId);
++        await LendAsync(memberId, itemId, startInDays: 0, days: 5);
++
++        var unknownItem = await LendAsync(memberId, 999999, client: member);
++        var unavailable = await LendAsync(memberId, itemId, startInDays: 3, client: member);
++        var inThePast = await LendAsync(memberId, itemId, startInDays: -1, client: member);
++        await _api.ClientAs("admin").PostAsync($"/api/members/{memberId}/suspend", null);
++        var suspended = await LendAsync(memberId, itemId, startInDays: 10, client: member);
++
++        Assert.Equal(HttpStatusCode.NotFound, unknownItem.StatusCode);
++        Assert.Equal("Item 999999 was not found.", (await unknownItem.ReadAsync<Problem>()).Detail);
++        Assert.Equal("item_unavailable", (await unavailable.ReadAsync<Problem>()).Code);
++        Assert.Equal("start_in_past", (await inThePast.ReadAsync<Problem>()).Code);
++        Assert.Equal(HttpStatusCode.Conflict, suspended.StatusCode);
++        Assert.Equal("member_suspended", (await suspended.ReadAsync<Problem>()).Code);
++        Assert.Equal(1, await _api.WithDbAsync(db => db.Loans.CountAsync()));
++    }
++
++    [Fact]
++    public async Task A_member_s_invalid_request_is_a_validation_error_even_for_someone_else()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var (otherId, _) = await SeedAsync();
++        var member = await SignInAsMemberAsync(memberId);
++
++        var response = await member.PostJsonAsync("/api/loans", new { itemId, memberId = otherId });
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Contains("StartDate", problem.Errors!.Keys);
++    }
++
++    [Fact]
++    public async Task Members_still_cannot_return_a_loan_even_their_own()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var member = await SignInAsMemberAsync(memberId);
++        var loan = await (await LendAsync(memberId, itemId, client: member)).ReadAsync<LoanDto>();
++
++        var response = await member.PostAsync($"/api/loans/{loan.Id}/return", null);
++
++        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
++        Assert.Null((await (await _staff.GetAsync($"/api/loans/{loan.Id}")).ReadAsync<LoanDto>()).ReturnedAt);
++    }
++
+     [Fact]
+     public async Task A_loan_past_its_due_date_is_overdue_in_the_list_and_the_report()
+     {

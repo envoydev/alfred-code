@@ -21,6 +21,7 @@ const lock = require('./lib/lock.js');
 const template = require('./lib/template.js');
 const session = require('./lib/session.js');
 const fixture = require('./fixture/verify.js');
+const { removeTree } = require('./lib/remove-tree.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -220,7 +221,7 @@ async function drive(opts)
                 finally
                 {
                     // The work dir holds the cell's raw account dir, auth values included: never kept.
-                    fs.rmSync(cell.work, { recursive: true, force: true });
+                    removeTree(cell.work);
                     finished += 1;
                     o.log(`${finished}/${parts.todo.length} - ok ${counts.ok}, timeout ${counts.timeout}, error ${counts.error}, harness failure ${counts.failed}`);
                 }
@@ -228,7 +229,7 @@ async function drive(opts)
         };
         await Promise.all(Array.from({ length: Math.min(o.parallel, parts.todo.length) }, worker));
         for (const f of failures) o.log(`harness failure: ${f}`);
-        if (!parts.live.length) fs.rmSync(path.join(o.benchDir, 'work', o.run), { recursive: true, force: true });
+        if (!parts.live.length) removeTree(path.join(o.benchDir, 'work', o.run));
 
         const ran = counts.ok + counts.timeout + counts.error;
         const latest = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));

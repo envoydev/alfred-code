@@ -1,0 +1,215 @@
+diff --git a/src/LendingDesk.Api/Contracts/MemberContracts.cs b/src/LendingDesk.Api/Contracts/MemberContracts.cs
+index 1498f18..abddcd4 100644
+--- a/src/LendingDesk.Api/Contracts/MemberContracts.cs
++++ b/src/LendingDesk.Api/Contracts/MemberContracts.cs
+@@ -3,14 +3,19 @@ using LendingDesk.Domain.Members;
+ 
+ namespace LendingDesk.Api.Contracts;
+ 
+-public sealed record MemberDto(int Id, string Name, string Email, MemberStatus Status, DateTimeOffset CreatedAt)
++/// <param name="OverdueLoans">How many of the member's loans are overdue today (grace period included).</param>
++public sealed record MemberDto(int Id, string Name, string Email, MemberStatus Status, DateTimeOffset CreatedAt, int OverdueLoans)
+ {
+-    public static MemberDto From(Member member) => new(member.Id, member.Name, member.Email, member.Status, member.CreatedAt);
++    public static MemberDto From(Member member, int overdueLoans) =>
++        new(member.Id, member.Name, member.Email, member.Status, member.CreatedAt, overdueLoans);
+ }
+ 
+ public sealed class MemberQuery : PageQuery
+ {
+     public MemberStatus? Status { get; init; }
++
++    /// <summary>Only members with at least one overdue loan.</summary>
++    public bool OverdueOnly { get; init; }
+ }
+ 
+ public sealed class MemberRequest
+diff --git a/src/LendingDesk.Api/Controllers/MembersController.cs b/src/LendingDesk.Api/Controllers/MembersController.cs
+index 128fcae..c45bb3f 100644
+--- a/src/LendingDesk.Api/Controllers/MembersController.cs
++++ b/src/LendingDesk.Api/Controllers/MembersController.cs
+@@ -2,6 +2,7 @@ using LendingDesk.Api.Auth;
+ using LendingDesk.Api.Contracts;
+ using LendingDesk.Api.Errors;
+ using LendingDesk.Data;
++using LendingDesk.Domain.Loans;
+ using LendingDesk.Domain.Members;
+ using Microsoft.AspNetCore.Authorization;
+ using Microsoft.AspNetCore.Mvc;
+@@ -16,22 +17,28 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+     [HttpGet]
+     public Task<PagedResult<MemberDto>> List([FromQuery] MemberQuery query, CancellationToken cancellationToken)
+     {
++        var overdueLoans = OverdueLoans();
+         var members = db.Members.AsNoTracking();
+         if (query.Status is { } status)
+         {
+             members = members.Where(m => m.Status == status);
+         }
+ 
++        if (query.OverdueOnly)
++        {
++            members = members.Where(m => overdueLoans.Any(l => l.MemberId == m.Id));
++        }
++
+         return members
+             .OrderBy(m => m.Name)
+             .ThenBy(m => m.Id)
+-            .Select(m => new MemberDto(m.Id, m.Name, m.Email, m.Status, m.CreatedAt))
++            .Select(m => new MemberDto(m.Id, m.Name, m.Email, m.Status, m.CreatedAt, overdueLoans.Count(l => l.MemberId == m.Id)))
+             .ToPageAsync(query, cancellationToken);
+     }
+ 
+     [HttpGet("{id:int}")]
+     public async Task<MemberDto> Get(int id, CancellationToken cancellationToken) =>
+-        MemberDto.From(await Find(id, cancellationToken));
++        await ToDto(await Find(id, cancellationToken), cancellationToken);
+ 
+     [HttpPost]
+     [Authorize(Policy = Policies.Staff)]
+@@ -45,7 +52,7 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+         };
+         db.Members.Add(member);
+         await db.SaveChangesAsync(cancellationToken);
+-        return CreatedAtAction(nameof(Get), new { id = member.Id }, MemberDto.From(member));
++        return CreatedAtAction(nameof(Get), new { id = member.Id }, await ToDto(member, cancellationToken));
+     }
+ 
+     [HttpPut("{id:int}")]
+@@ -56,7 +63,7 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+         member.Name = request.Name.Trim();
+         member.Email = request.Email.Trim().ToLowerInvariant();
+         await db.SaveChangesAsync(cancellationToken);
+-        return MemberDto.From(member);
++        return await ToDto(member, cancellationToken);
+     }
+ 
+     [HttpPost("{id:int}/suspend")]
+@@ -66,9 +73,19 @@ public sealed class MembersController(LendingDbContext db, TimeProvider clock) :
+         var member = await Find(id, cancellationToken);
+         member.Suspend();
+         await db.SaveChangesAsync(cancellationToken);
+-        return MemberDto.From(member);
++        return await ToDto(member, cancellationToken);
+     }
+ 
++    /// <summary>The loans that are overdue today, by the same rule as a loan's own status (decision 0001).</summary>
++    private IQueryable<Loan> OverdueLoans()
++    {
++        var overdueBefore = LendingPolicy.OverdueBefore(clock.Today());
++        return db.Loans.Where(l => l.ReturnedAt == null && l.DueDate < overdueBefore);
++    }
++
++    private async Task<MemberDto> ToDto(Member member, CancellationToken cancellationToken) =>
++        MemberDto.From(member, await OverdueLoans().CountAsync(l => l.MemberId == member.Id, cancellationToken));
++
+     private async Task<Member> Find(int id, CancellationToken cancellationToken) =>
+         await db.Members.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Member", id);
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+index 8d451f2..c7def0b 100644
+--- a/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/MembersApiTests.cs
+@@ -1,5 +1,6 @@
+ using System.Net;
+ using LendingDesk.Api.Contracts;
++using LendingDesk.Domain.Loans;
+ using LendingDesk.Domain.Members;
+ using LendingDesk.IntegrationTests.Infrastructure;
+ 
+@@ -21,6 +22,25 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         return await response.ReadAsync<MemberDto>();
+     }
+ 
++    private async Task<LoanDto> LendAsync(int memberId, int dueInDays)
++    {
++        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
++        var item = await (await _api.ClientAs("staff").PostJsonAsync("/api/items", new { name = $"Item {suffix}", category = "Tools", sku = $"SKU-{suffix}", totalStock = 1 })).ReadAsync<ItemDto>();
++        var response = await _api.ClientAs("staff").PostJsonAsync("/api/loans", new
++        {
++            itemId = item.Id,
++            memberId,
++            startDate = _api.Clock.Today,
++            dueDate = _api.Clock.Today.AddDays(dueInDays),
++        });
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return await response.ReadAsync<LoanDto>();
++    }
++
++    /// <summary>Moves the clock to the first day a loan due in <paramref name="dueInDays"/> days counts as overdue.</summary>
++    private void PassGracePeriodOfLoansDueIn(int dueInDays) =>
++        _api.Clock.Now = _api.Clock.Now.AddDays(dueInDays + LendingPolicy.OverdueGraceDays + 1);
++
+     [Fact]
+     public async Task Staff_create_a_member_and_read_it_back()
+     {
+@@ -29,6 +49,7 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal("Ada Lovelace", created.Name);
+         Assert.Equal("ada@example.com", created.Email);
+         Assert.Equal(MemberStatus.Active, created.Status);
++        Assert.Equal(0, created.OverdueLoans);
+         var fetched = await (await _api.ClientAs("member").GetAsync($"/api/members/{created.Id}")).ReadAsync<MemberDto>();
+         Assert.Equal(created, fetched);
+     }
+@@ -114,4 +135,61 @@ public sealed class MembersApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(3, page.TotalCount);
+         Assert.Equal(["Carol"], page.Items.Select(m => m.Name));
+     }
++
++    [Fact]
++    public async Task Every_member_response_counts_the_member_s_overdue_loans_once_the_grace_period_is_over()
++    {
++        var member = await CreateMemberAsync("Ada Lovelace", "ada@example.com");
++        await LendAsync(member.Id, dueInDays: 3);
++        await LendAsync(member.Id, dueInDays: 3);
++        await LendAsync(member.Id, dueInDays: 10);
++        var returned = await LendAsync(member.Id, dueInDays: 3);
++        await _api.ClientAs("staff").PostAsync($"/api/loans/{returned.Id}/return", null);
++
++        _api.Clock.Now = _api.Clock.Now.AddDays(3 + LendingPolicy.OverdueGraceDays);
++        var insideGrace = await (await _api.ClientAs("member").GetAsync($"/api/members/{member.Id}")).ReadAsync<MemberDto>();
++        _api.Clock.Now = _api.Clock.Now.AddDays(1);
++
++        var fetched = await (await _api.ClientAs("member").GetAsync($"/api/members/{member.Id}")).ReadAsync<MemberDto>();
++        var listed = await (await _api.ClientAs("staff").GetAsync("/api/members")).ReadAsync<PagedResult<MemberDto>>();
++        var updated = await (await _api.ClientAs("staff").PutJsonAsync($"/api/members/{member.Id}", new { name = "Ada King", email = "ada@example.com" })).ReadAsync<MemberDto>();
++        var suspended = await (await _api.ClientAs("admin").PostAsync($"/api/members/{member.Id}/suspend", null)).ReadAsync<MemberDto>();
++
++        Assert.Equal(0, insideGrace.OverdueLoans);
++        Assert.Equal(2, fetched.OverdueLoans);
++        Assert.Equal(2, Assert.Single(listed.Items).OverdueLoans);
++        Assert.Equal(2, updated.OverdueLoans);
++        Assert.Equal(2, suspended.OverdueLoans);
++    }
++
++    [Fact]
++    public async Task The_list_can_be_limited_to_members_with_overdue_loans()
++    {
++        var alice = await CreateMemberAsync("Alice", "alice@overdue.example.com");
++        var bob = await CreateMemberAsync("Bob", "bob@overdue.example.com");
++        var carol = await CreateMemberAsync("Carol", "carol@overdue.example.com");
++        var dave = await CreateMemberAsync("Dave", "dave@overdue.example.com");
++        await LendAsync(alice.Id, dueInDays: 2);
++        await LendAsync(bob.Id, dueInDays: 20);
++        await LendAsync(carol.Id, dueInDays: 2);
++        await LendAsync(dave.Id, dueInDays: 2);
++        await LendAsync(dave.Id, dueInDays: 1);
++        await _api.ClientAs("admin").PostAsync($"/api/members/{carol.Id}/suspend", null);
++        PassGracePeriodOfLoansDueIn(2);
++
++        var overdue = await (await _api.ClientAs("staff").GetAsync("/api/members?overdueOnly=true")).ReadAsync<PagedResult<MemberDto>>();
++        var overdueActive = await (await _api.ClientAs("staff").GetAsync("/api/members?overdueOnly=true&status=Active")).ReadAsync<PagedResult<MemberDto>>();
++        var secondPage = await (await _api.ClientAs("staff").GetAsync("/api/members?overdueOnly=true&page=2&pageSize=2")).ReadAsync<PagedResult<MemberDto>>();
++        var everyone = await (await _api.ClientAs("staff").GetAsync("/api/members?overdueOnly=false")).ReadAsync<PagedResult<MemberDto>>();
++
++        Assert.Equal(["Alice", "Carol", "Dave"], overdue.Items.Select(m => m.Name));
++        Assert.Equal([1, 1, 2], overdue.Items.Select(m => m.OverdueLoans));
++        Assert.Equal(3, overdue.TotalCount);
++        Assert.Equal(["Alice", "Dave"], overdueActive.Items.Select(m => m.Name));
++        Assert.Equal(2, overdueActive.TotalCount);
++        Assert.Equal(["Dave"], secondPage.Items.Select(m => m.Name));
++        Assert.Equal(3, secondPage.TotalCount);
++        Assert.Equal(["Alice", "Bob", "Carol", "Dave"], everyone.Items.Select(m => m.Name));
++        Assert.Equal(4, everyone.TotalCount);
++    }
+ }

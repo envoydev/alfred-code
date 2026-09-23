@@ -1,0 +1,225 @@
+diff --git a/src/LendingDesk.Api/Contracts/ItemContracts.cs b/src/LendingDesk.Api/Contracts/ItemContracts.cs
+index e98fdd9..55eabaf 100644
+--- a/src/LendingDesk.Api/Contracts/ItemContracts.cs
++++ b/src/LendingDesk.Api/Contracts/ItemContracts.cs
+@@ -24,6 +24,37 @@ public sealed class ItemQuery : PageQuery
+     public bool IncludeRetired { get; init; }
+ }
+ 
++public sealed record DayAvailabilityDto(DateOnly Date, int Available);
++
++public sealed class AvailabilityQuery : IValidatableObject
++{
++    /// <summary>The longest range one request may cover, counting both ends.</summary>
++    public const int MaxDays = 31;
++
++    [Required]
++    public DateOnly? From { get; init; }
++
++    [Required]
++    public DateOnly? To { get; init; }
++
++    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
++    {
++        if (From is not { } from || To is not { } to)
++        {
++            yield break;
++        }
++
++        if (to < from)
++        {
++            yield return new ValidationResult("The To date is before the From date.", [nameof(To)]);
++        }
++        else if (to.DayNumber - from.DayNumber + 1 > MaxDays)
++        {
++            yield return new ValidationResult($"The range can cover at most {MaxDays} days.", [nameof(To)]);
++        }
++    }
++}
++
+ public sealed class ItemRequest
+ {
+     [Required]
+diff --git a/src/LendingDesk.Api/Controllers/ItemsController.cs b/src/LendingDesk.Api/Controllers/ItemsController.cs
+index ffa6367..38249f3 100644
+--- a/src/LendingDesk.Api/Controllers/ItemsController.cs
++++ b/src/LendingDesk.Api/Controllers/ItemsController.cs
+@@ -2,6 +2,7 @@ using LendingDesk.Api.Auth;
+ using LendingDesk.Api.Contracts;
+ using LendingDesk.Api.Errors;
+ using LendingDesk.Data;
++using LendingDesk.Domain;
+ using LendingDesk.Domain.Items;
+ using Microsoft.AspNetCore.Authorization;
+ using Microsoft.AspNetCore.Mvc;
+@@ -52,6 +53,32 @@ public sealed class ItemsController(LendingDbContext db, TimeProvider clock) : C
+     public async Task<ItemDto> Get(int id, CancellationToken cancellationToken) =>
+         await ToDto(await Find(id, cancellationToken), cancellationToken);
+ 
++    /// <summary>How many copies are free on each day from <c>from</c> through <c>to</c>, both included.</summary>
++    [HttpGet("{id:int}/availability")]
++    public async Task<IReadOnlyList<DayAvailabilityDto>> Availability(int id, [FromQuery] AvailabilityQuery query, CancellationToken cancellationToken)
++    {
++        var item = await Find(id, cancellationToken);
++        if (item.IsRetired)
++        {
++            throw new DomainException("item_retired", $"Item {item.Id} is retired and has no availability.");
++        }
++
++        var from = query.From!.Value;
++        var to = query.To!.Value;
++        var loans = await db.Loans
++            .AsNoTracking()
++            .Where(l => l.ItemId == item.Id && l.ReturnedAt == null && l.StartDate <= to && from <= l.DueDate)
++            .Select(l => new { l.StartDate, l.DueDate })
++            .ToListAsync(cancellationToken);
++
++        return Enumerable.Range(0, to.DayNumber - from.DayNumber + 1)
++            .Select(offset => from.AddDays(offset))
++            .Select(day => new DayAvailabilityDto(
++                day,
++                Math.Max(0, item.TotalStock - loans.Count(l => l.StartDate <= day && day <= l.DueDate))))
++            .ToList();
++    }
++
+     [HttpPost]
+     [Authorize(Policy = Policies.Staff)]
+     public async Task<ActionResult<ItemDto>> Create(ItemRequest request, CancellationToken cancellationToken)
+diff --git a/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs b/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
+index 0c469d2..4df9119 100644
+--- a/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/ItemsApiTests.cs
+@@ -1,4 +1,6 @@
++using System.Globalization;
+ using System.Net;
++using System.Text.Json;
+ using LendingDesk.Api.Contracts;
+ using LendingDesk.Domain.Items;
+ using LendingDesk.IntegrationTests.Infrastructure;
+@@ -21,6 +23,34 @@ public sealed class ItemsApiTests(PostgresFixture postgres) : IAsyncLifetime
+         return await response.ReadAsync<ItemDto>();
+     }
+ 
++    private async Task<int> CreateMemberAsync()
++    {
++        var suffix = Guid.NewGuid().ToString("N")[..8];
++        var response = await _api.ClientAs("staff").PostJsonAsync("/api/members", new { name = $"Member {suffix}", email = $"m{suffix}@example.com" });
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return (await response.ReadAsync<MemberDto>()).Id;
++    }
++
++    private async Task<LoanDto> LendAsync(int itemId, int memberId, int startInDays, int dueInDays)
++    {
++        var response = await _api.ClientAs("staff").PostJsonAsync("/api/loans", new
++        {
++            itemId,
++            memberId,
++            startDate = _api.Clock.Today.AddDays(startInDays),
++            dueDate = _api.Clock.Today.AddDays(dueInDays),
++        });
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return await response.ReadAsync<LoanDto>();
++    }
++
++    private Task<HttpResponseMessage> AvailabilityAsync(int itemId, int fromInDays, int toInDays) =>
++        _api.ClientAs("member").GetAsync($"/api/items/{itemId}/availability?from={Day(fromInDays)}&to={Day(toInDays)}");
++
++    private string Day(int inDays) => _api.Clock.Today.AddDays(inDays).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
++
++    private DayAvailabilityDto Free(int inDays, int available) => new(_api.Clock.Today.AddDays(inDays), available);
++
+     [Fact]
+     public async Task A_new_item_is_good_and_fully_available()
+     {
+@@ -84,4 +114,91 @@ public sealed class ItemsApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.DoesNotContain(active.Items, i => i.Id == item.Id);
+         Assert.Contains(all.Items, i => i.Id == item.Id && i.IsRetired);
+     }
++
++    [Fact]
++    public async Task Availability_counts_the_unreturned_loans_covering_each_day()
++    {
++        var item = await CreateItemAsync("Projector", "PRJ-AV1", stock: 2);
++        var memberId = await CreateMemberAsync();
++        var returned = await LendAsync(item.Id, memberId, startInDays: 0, dueInDays: 5);
++        await LendAsync(item.Id, memberId, startInDays: 1, dueInDays: 3);
++        Assert.Equal(HttpStatusCode.OK, (await _api.ClientAs("staff").PostAsync($"/api/loans/{returned.Id}/return", null)).StatusCode);
++        await LendAsync(item.Id, memberId, startInDays: 3, dueInDays: 4);
++
++        var response = await AvailabilityAsync(item.Id, -1, 5);
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal(
++            [Free(-1, 2), Free(0, 2), Free(1, 1), Free(2, 1), Free(3, 0), Free(4, 1), Free(5, 2)],
++            await response.ReadAsync<List<DayAvailabilityDto>>());
++        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
++        Assert.Equal(Day(-1), json.RootElement[0].GetProperty("date").GetString());
++    }
++
++    [Fact]
++    public async Task Availability_never_drops_below_zero_and_is_reported_for_a_damaged_item()
++    {
++        var item = await CreateItemAsync("Tent", "TNT-AV1", stock: 2);
++        var memberId = await CreateMemberAsync();
++        await LendAsync(item.Id, memberId, startInDays: 0, dueInDays: 1);
++        await LendAsync(item.Id, memberId, startInDays: 1, dueInDays: 2);
++        await _api.ClientAs("staff").PutJsonAsync($"/api/items/{item.Id}", new { name = item.Name, category = item.Category, sku = item.Sku, totalStock = 1, condition = "Damaged" });
++
++        var days = await (await AvailabilityAsync(item.Id, 0, 3)).ReadAsync<List<DayAvailabilityDto>>();
++
++        Assert.Equal([Free(0, 0), Free(1, 0), Free(2, 0), Free(3, 1)], days);
++    }
++
++    [Theory]
++    [InlineData("2026-03-10", "2026-03-10", 1)]
++    [InlineData("2026-03-01", "2026-03-31", 31)]
++    public async Task Availability_covers_both_ends_of_the_range(string from, string to, int expectedDays)
++    {
++        var item = await CreateItemAsync("Tripod", "TRP-AV1", stock: 3);
++
++        var days = await (await _api.ClientAs("member").GetAsync($"/api/items/{item.Id}/availability?from={from}&to={to}")).ReadAsync<List<DayAvailabilityDto>>();
++
++        Assert.Equal(expectedDays, days.Count);
++        Assert.Equal(DateOnly.Parse(from, CultureInfo.InvariantCulture), days[0].Date);
++        Assert.Equal(DateOnly.Parse(to, CultureInfo.InvariantCulture), days[^1].Date);
++        Assert.All(days, d => Assert.Equal(3, d.Available));
++    }
++
++    [Theory]
++    [InlineData("to=2026-03-16", "From")]
++    [InlineData("from=2026-03-10", "To")]
++    [InlineData("from=2026-02-30&to=2026-03-16", "From")]
++    [InlineData("from=2026-03-10&to=next-week", "To")]
++    [InlineData("from=2026-03-10&to=2026-03-09", "To")]
++    [InlineData("from=2026-03-01&to=2026-04-01", "To")]
++    public async Task An_invalid_availability_range_is_rejected(string queryString, string field)
++    {
++        var item = await CreateItemAsync("Tripod", "TRP-AV2");
++
++        var response = await _api.ClientAs("member").GetAsync($"/api/items/{item.Id}/availability?{queryString}");
++
++        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Equal([field], problem.Errors!.Keys);
++    }
++
++    [Fact]
++    public async Task Availability_of_an_unknown_or_retired_item_is_refused()
++    {
++        var item = await CreateItemAsync("Old tripod", "TRP-AV3");
++        await _api.ClientAs("admin").DeleteAsync($"/api/items/{item.Id}");
++
++        var unknown = await AvailabilityAsync(999999, 0, 6);
++        var retired = await AvailabilityAsync(item.Id, 0, 6);
++        var anonymous = await _api.CreateClient().GetAsync($"/api/items/{item.Id}/availability?from={Day(0)}&to={Day(6)}");
++
++        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
++        var notFound = await unknown.ReadAsync<Problem>();
++        Assert.Equal("not_found", notFound.Code);
++        Assert.Equal("Item 999999 was not found.", notFound.Detail);
++        Assert.Equal(HttpStatusCode.Conflict, retired.StatusCode);
++        Assert.Equal("item_retired", (await retired.ReadAsync<Problem>()).Code);
++        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
++    }
+ }

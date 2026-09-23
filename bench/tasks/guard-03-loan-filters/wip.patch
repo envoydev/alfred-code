@@ -1,0 +1,158 @@
+diff --git a/src/LendingDesk.Api/Contracts/LoanContracts.cs b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+index 7fc807c..e37327e 100644
+--- a/src/LendingDesk.Api/Contracts/LoanContracts.cs
++++ b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+@@ -36,3 +36,9 @@ public sealed class LoanRequest
+     [Required]
+     public DateOnly? DueDate { get; init; }
+ }
++
++public sealed class RenewRequest
++{
++    [Required]
++    public DateOnly? DueDate { get; init; }
++}
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..5bb5860 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -100,6 +100,18 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
++    [HttpPost("{id:int}/renew")]
++    [Authorize(Policy = Policies.Staff)]
++    public async Task<LoanDto> Renew(int id, RenewRequest request, CancellationToken cancellationToken)
++    {
++        var loan = await db.Loans.FindAsync([id], cancellationToken) ?? throw new NotFoundException("Loan", id);
++        loan.Renew(request.DueDate!.Value, clock.Today());
++        // Still to do (LD-231): refuse the renewal when another loan holds the last copy in the extra
++        // days, and publish loan.renewed.v1 so the worker can send a new due-date notice.
++        await db.SaveChangesAsync(cancellationToken);
++        return await Get(id, cancellationToken);
++    }
++
+     private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+         loans.Select(l => new LoanDto(
+             l.Id,
+diff --git a/src/LendingDesk.Domain/Loans/LendingPolicy.cs b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+index 6abf4f7..51271c5 100644
+--- a/src/LendingDesk.Domain/Loans/LendingPolicy.cs
++++ b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+@@ -7,6 +7,9 @@ public static class LendingPolicy
+ {
+     public const int MaxLoanDays = 28;
+ 
++    /// <summary>How many days renewals may add on top of <see cref="MaxLoanDays"/>, in total.</summary>
++    public const int MaxRenewalDays = 14;
++
+     /// <summary>Throws when lending <paramref name="item"/> to <paramref name="member"/> breaks a lending rule.</summary>
+     /// <param name="copiesOut">How many copies of the item are already lent out over the requested period.</param>
+     public static void EnsureCanLend(Member member, Item item, DateOnly startDate, DateOnly dueDate, DateOnly today, int copiesOut)
+diff --git a/src/LendingDesk.Domain/Loans/Loan.cs b/src/LendingDesk.Domain/Loans/Loan.cs
+index 256e84e..d1ba411 100644
+--- a/src/LendingDesk.Domain/Loans/Loan.cs
++++ b/src/LendingDesk.Domain/Loans/Loan.cs
+@@ -44,4 +44,35 @@ public sealed class Loan
+ 
+         ReturnedAt = at;
+     }
++
++    /// <summary>
++    /// Moves the due date later. A renewal does not restart the loan: the limit still counts from the
++    /// original start date.
++    /// </summary>
++    public void Renew(DateOnly newDueDate, DateOnly today)
++    {
++        if (ReturnedAt is not null)
++        {
++            throw new DomainException("loan_already_returned", $"Loan {Id} was already returned.");
++        }
++
++        if (DueDate < today)
++        {
++            throw new DomainException("loan_overdue", $"Loan {Id} is overdue and cannot be renewed.");
++        }
++
++        if (newDueDate <= DueDate)
++        {
++            throw new DomainException("renewal_not_later", "A renewal has to move the due date later.");
++        }
++
++        if (newDueDate.DayNumber - StartDate.DayNumber > LendingPolicy.MaxLoanDays + LendingPolicy.MaxRenewalDays)
++        {
++            throw new DomainException(
++                "renewal_too_long",
++                $"A renewed loan can last at most {LendingPolicy.MaxLoanDays + LendingPolicy.MaxRenewalDays} days.");
++        }
++
++        DueDate = newDueDate;
++    }
+ }
+diff --git a/tests/LendingDesk.UnitTests/LoanRenewalTests.cs b/tests/LendingDesk.UnitTests/LoanRenewalTests.cs
+new file mode 100644
+index 0000000..0c9c395
+--- /dev/null
++++ b/tests/LendingDesk.UnitTests/LoanRenewalTests.cs
+@@ -0,0 +1,61 @@
++using LendingDesk.Domain;
++using LendingDesk.Domain.Loans;
++
++namespace LendingDesk.UnitTests;
++
++public class LoanRenewalTests
++{
++    private static readonly DateOnly Today = new(2026, 3, 10);
++
++    private static Loan LoanDue(DateOnly due) => new() { Id = 5, StartDate = Today.AddDays(-7), DueDate = due };
++
++    [Fact]
++    public void Moves_the_due_date_later()
++    {
++        var loan = LoanDue(Today.AddDays(3));
++
++        loan.Renew(Today.AddDays(10), Today);
++
++        Assert.Equal(Today.AddDays(10), loan.DueDate);
++    }
++
++    [Fact]
++    public void Can_be_renewed_on_its_due_date()
++    {
++        var loan = LoanDue(Today);
++
++        loan.Renew(Today.AddDays(7), Today);
++
++        Assert.Equal(Today.AddDays(7), loan.DueDate);
++    }
++
++    [Theory]
++    [InlineData(0, "renewal_not_later")]
++    [InlineData(-1, "renewal_not_later")]
++    [InlineData(36, "renewal_too_long")]
++    public void Refuses_a_due_date_that_is_not_later_or_too_far(int newDueInDays, string code)
++    {
++        var loan = LoanDue(Today.AddDays(3));
++
++        var error = Assert.Throws<DomainException>(() => loan.Renew(Today.AddDays(3 + newDueInDays), Today));
++
++        Assert.Equal(code, error.Code);
++    }
++
++    [Fact]
++    public void An_overdue_loan_cannot_be_renewed()
++    {
++        var loan = LoanDue(Today.AddDays(-1));
++
++        Assert.Equal("loan_overdue", Assert.Throws<DomainException>(() => loan.Renew(Today.AddDays(5), Today)).Code);
++    }
++
++    [Fact]
++    public void A_returned_loan_cannot_be_renewed()
++    {
++        var loan = LoanDue(Today.AddDays(3));
++        loan.Return(DateTimeOffset.UnixEpoch);
++
++        Assert.Equal("loan_already_returned", Assert.Throws<DomainException>(() => loan.Renew(Today.AddDays(5), Today)).Code);
++    }
++}

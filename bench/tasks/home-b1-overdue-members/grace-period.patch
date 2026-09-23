@@ -1,0 +1,203 @@
+diff --git a/README.md b/README.md
+index ed00374..c7a4a0a 100644
+--- a/README.md
++++ b/README.md
+@@ -13,6 +13,7 @@ worker sends due and overdue notices.
+ | `src/LendingDesk.Worker` | background worker that processes the outbox |
+ | `tests/` | unit and integration tests (integration tests start PostgreSQL in Docker) |
+ | `web/` | Angular front end |
++| `docs/decisions/` | design decisions, one numbered record each |
+ 
+ ## Run it
+ 
+diff --git a/docs/decisions/0001-overdue-grace-period.md b/docs/decisions/0001-overdue-grace-period.md
+new file mode 100644
+index 0000000..8e42b9c
+--- /dev/null
++++ b/docs/decisions/0001-overdue-grace-period.md
+@@ -0,0 +1,25 @@
++# 0001 - A loan becomes overdue after a two-day grace period
++
++Status: accepted, 2026-09-01
++
++## Context
++
++Members often bring items back a day or two after the due date, usually because the desk was
++closed. Today a loan counts as overdue the day after its due date, so the overdue report fills up
++with loans nobody needs to chase and the desk has stopped reading it.
++
++## Decision
++
++- A loan that has not been returned is **overdue only once it is more than two days past its due
++  date**. A loan due on the 10th is still active on the 11th and the 12th, and overdue from the 13th.
++  The number of days lives in `LendingPolicy.OverdueGraceDays`.
++- This is what 'overdue' means everywhere in the API: a loan's `status`, the `status=Overdue` and
++  `status=Active` filters on `GET /api/loans`, the overdue report, and anything added after this
++  change that looks at overdue loans.
++- How many days overdue a loan is still counts from its due date: on the 13th, the loan above is
++  3 days overdue.
++
++## Consequences
++
++- The worker's overdue notice still goes out the day after the due date for now. It moves to the
++  grace period in a separate change, once the notice text mentions the grace period.
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..bbe5a8f 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -19,6 +19,7 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+     public Task<PagedResult<LoanDto>> List([FromQuery] LoanQuery query, CancellationToken cancellationToken)
+     {
+         var today = clock.Today();
++        var overdueBefore = LendingPolicy.OverdueBefore(today);
+         var loans = db.Loans.AsNoTracking();
+         if (query.MemberId is { } memberId)
+         {
+@@ -28,8 +29,8 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         loans = query.Status switch
+         {
+             LoanState.Returned => loans.Where(l => l.ReturnedAt != null),
+-            LoanState.Overdue => loans.Where(l => l.ReturnedAt == null && l.DueDate < today),
+-            LoanState.Active => loans.Where(l => l.ReturnedAt == null && l.DueDate >= today),
++            LoanState.Overdue => loans.Where(l => l.ReturnedAt == null && l.DueDate < overdueBefore),
++            LoanState.Active => loans.Where(l => l.ReturnedAt == null && l.DueDate >= overdueBefore),
+             _ => loans,
+         };
+ 
+@@ -100,8 +101,10 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
+-    private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+-        loans.Select(l => new LoanDto(
++    private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today)
++    {
++        var overdueBefore = LendingPolicy.OverdueBefore(today);
++        return loans.Select(l => new LoanDto(
+             l.Id,
+             l.ItemId,
+             l.Item.Name,
+@@ -110,5 +113,6 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+             l.StartDate,
+             l.DueDate,
+             l.ReturnedAt,
+-            l.ReturnedAt != null ? LoanState.Returned : l.DueDate < today ? LoanState.Overdue : LoanState.Active));
++            l.ReturnedAt != null ? LoanState.Returned : l.DueDate < overdueBefore ? LoanState.Overdue : LoanState.Active));
++    }
+ }
+diff --git a/src/LendingDesk.Api/Controllers/ReportsController.cs b/src/LendingDesk.Api/Controllers/ReportsController.cs
+index aed94b6..ae9eb8d 100644
+--- a/src/LendingDesk.Api/Controllers/ReportsController.cs
++++ b/src/LendingDesk.Api/Controllers/ReportsController.cs
+@@ -1,6 +1,7 @@
+ using LendingDesk.Api.Auth;
+ using LendingDesk.Api.Contracts;
+ using LendingDesk.Data;
++using LendingDesk.Domain.Loans;
+ using Microsoft.AspNetCore.Authorization;
+ using Microsoft.AspNetCore.Mvc;
+ using Microsoft.EntityFrameworkCore;
+@@ -16,9 +17,10 @@ public sealed class ReportsController(LendingDbContext db, TimeProvider clock) :
+     public async Task<IReadOnlyList<OverdueRowDto>> Overdue(CancellationToken cancellationToken)
+     {
+         var today = clock.Today();
++        var overdueBefore = LendingPolicy.OverdueBefore(today);
+         var rows = await db.Loans
+             .AsNoTracking()
+-            .Where(l => l.ReturnedAt == null && l.DueDate < today)
++            .Where(l => l.ReturnedAt == null && l.DueDate < overdueBefore)
+             .OrderBy(l => l.DueDate)
+             .ThenBy(l => l.Id)
+             .Select(l => new { l.Id, ItemName = l.Item.Name, MemberName = l.Member.Name, l.DueDate })
+diff --git a/src/LendingDesk.Domain/Loans/LendingPolicy.cs b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+index 6abf4f7..34d67e2 100644
+--- a/src/LendingDesk.Domain/Loans/LendingPolicy.cs
++++ b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+@@ -7,6 +7,12 @@ public static class LendingPolicy
+ {
+     public const int MaxLoanDays = 28;
+ 
++    /// <summary>How many days past its due date a loan may run before it counts as overdue (decision 0001).</summary>
++    public const int OverdueGraceDays = 2;
++
++    /// <summary>A loan that is not returned is overdue on <paramref name="today"/> when its due date is before this day.</summary>
++    public static DateOnly OverdueBefore(DateOnly today) => today.AddDays(-OverdueGraceDays);
++
+     /// <summary>Throws when lending <paramref name="item"/> to <paramref name="member"/> breaks a lending rule.</summary>
+     /// <param name="copiesOut">How many copies of the item are already lent out over the requested period.</param>
+     public static void EnsureCanLend(Member member, Item item, DateOnly startDate, DateOnly dueDate, DateOnly today, int copiesOut)
+diff --git a/src/LendingDesk.Domain/Loans/Loan.cs b/src/LendingDesk.Domain/Loans/Loan.cs
+index 256e84e..39b29a4 100644
+--- a/src/LendingDesk.Domain/Loans/Loan.cs
++++ b/src/LendingDesk.Domain/Loans/Loan.cs
+@@ -32,7 +32,7 @@ public sealed class Loan
+ 
+     public LoanState StateOn(DateOnly today) =>
+         ReturnedAt is not null ? LoanState.Returned
+-        : DueDate < today ? LoanState.Overdue
++        : DueDate < LendingPolicy.OverdueBefore(today) ? LoanState.Overdue
+         : LoanState.Active;
+ 
+     public void Return(DateTimeOffset at)
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..1b41c27 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -115,19 +115,35 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+     }
+ 
+     [Fact]
+-    public async Task A_loan_past_its_due_date_is_overdue_in_the_list_and_the_report()
++    public async Task A_loan_past_its_grace_period_is_overdue_in_the_list_and_the_report()
+     {
+         var (memberId, itemId) = await SeedAsync();
+         var loan = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
+ 
+-        _api.Clock.Now = _api.Clock.Now.AddDays(5);
++        _api.Clock.Now = _api.Clock.Now.AddDays(3 + LendingPolicy.OverdueGraceDays + 1);
+ 
+         var overdue = await (await _staff.GetAsync("/api/loans?status=Overdue")).ReadAsync<PagedResult<LoanDto>>();
+         var report = await (await _staff.GetAsync("/api/reports/overdue")).ReadAsync<List<OverdueRowDto>>();
+         Assert.Equal([loan.Id], overdue.Items.Select(l => l.Id));
+         var row = Assert.Single(report);
+         Assert.Equal(loan.Id, row.LoanId);
+-        Assert.Equal(2, row.DaysOverdue);
++        Assert.Equal(LendingPolicy.OverdueGraceDays + 1, row.DaysOverdue);
++    }
++
++    [Fact]
++    public async Task A_loan_inside_its_grace_period_is_still_active()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++
++        _api.Clock.Now = _api.Clock.Now.AddDays(3 + LendingPolicy.OverdueGraceDays);
++
++        var fetched = await (await _staff.GetAsync($"/api/loans/{loan.Id}")).ReadAsync<LoanDto>();
++        var active = await (await _staff.GetAsync($"/api/loans?status=Active&memberId={memberId}")).ReadAsync<PagedResult<LoanDto>>();
++        var report = await (await _staff.GetAsync("/api/reports/overdue")).ReadAsync<List<OverdueRowDto>>();
++        Assert.Equal(LoanState.Active, fetched.Status);
++        Assert.Equal([loan.Id], active.Items.Select(l => l.Id));
++        Assert.DoesNotContain(report, r => r.LoanId == loan.Id);
+     }
+ 
+     [Fact]
+diff --git a/tests/LendingDesk.UnitTests/LoanTests.cs b/tests/LendingDesk.UnitTests/LoanTests.cs
+index 433171b..1ced457 100644
+--- a/tests/LendingDesk.UnitTests/LoanTests.cs
++++ b/tests/LendingDesk.UnitTests/LoanTests.cs
+@@ -8,11 +8,12 @@ public class LoanTests
+     private static Loan LoanDue(DateOnly due) => new() { Id = 3, StartDate = due.AddDays(-7), DueDate = due };
+ 
+     [Fact]
+-    public void Is_active_up_to_and_including_the_due_date()
++    public void Is_active_through_the_grace_period_after_the_due_date()
+     {
+         var due = new DateOnly(2026, 3, 10);
+         Assert.Equal(LoanState.Active, LoanDue(due).StateOn(due));
+-        Assert.Equal(LoanState.Overdue, LoanDue(due).StateOn(due.AddDays(1)));
++        Assert.Equal(LoanState.Active, LoanDue(due).StateOn(due.AddDays(LendingPolicy.OverdueGraceDays)));
++        Assert.Equal(LoanState.Overdue, LoanDue(due).StateOn(due.AddDays(LendingPolicy.OverdueGraceDays + 1)));
+     }
+ 
+     [Fact]

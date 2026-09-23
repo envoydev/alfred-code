@@ -1,0 +1,1 @@
+{ "id": "devops-01-worker-image", "group": "devops", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }

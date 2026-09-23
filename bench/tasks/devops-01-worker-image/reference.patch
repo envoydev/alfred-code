@@ -1,0 +1,80 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 8bbc165..740daa8 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -30,6 +30,14 @@ jobs:
+           persist-credentials: false
+       - run: docker build -f src/LendingDesk.Api/Dockerfile -t lendingdesk-api .
+ 
++  worker-image:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v7
++        with:
++          persist-credentials: false
++      - run: docker build -f src/LendingDesk.Worker/Dockerfile -t lendingdesk-worker .
++
+   web:
+     runs-on: ubuntu-latest
+     defaults:
+diff --git a/README.md b/README.md
+index ed00374..f00c235 100644
+--- a/README.md
++++ b/README.md
+@@ -31,17 +31,24 @@ cd web && npm ci && npm run lint && npm test -- --watch=false
+ 
+ Integration tests need Docker running.
+ 
+-## CI and the API image
++## CI and the container images
+ 
+-`.github/workflows/ci.yml` builds and tests the API, builds its container image, and lints, tests and
+-builds the web app on every push and pull request.
++`.github/workflows/ci.yml` builds and tests the API, builds the API and worker container images, and
++lints, tests and builds the web app on every push and pull request.
+ 
+ ```bash
+ docker build -f src/LendingDesk.Api/Dockerfile -t lendingdesk-api .
+ docker run -p 8080:8080 -e ConnectionStrings__Lending='Host=...;Database=lending;Username=...;Password=...' lendingdesk-api
+ ```
+ 
+-The image does not run migrations outside Development; apply them first:
++The worker image serves no HTTP, so it publishes no port; `Worker__PollSeconds` sets the poll interval:
++
++```bash
++docker build -f src/LendingDesk.Worker/Dockerfile -t lendingdesk-worker .
++docker run -e ConnectionStrings__Lending='Host=...;Database=lending;Username=...;Password=...' -e Worker__PollSeconds=10 lendingdesk-worker
++```
++
++The API image does not run migrations outside Development and the worker image never does; apply them first:
+ 
+ ```bash
+ dotnet tool restore
+diff --git a/src/LendingDesk.Worker/Dockerfile b/src/LendingDesk.Worker/Dockerfile
+new file mode 100644
+index 0000000..4655ef6
+--- /dev/null
++++ b/src/LendingDesk.Worker/Dockerfile
+@@ -0,0 +1,22 @@
++# Build from the repository root: docker build -f src/LendingDesk.Worker/Dockerfile -t lendingdesk-worker .
++FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
++WORKDIR /src
++COPY global.json Directory.Build.props .editorconfig ./
++COPY src/LendingDesk.Domain/LendingDesk.Domain.csproj src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/LendingDesk.Data.csproj src/LendingDesk.Data/
++COPY src/LendingDesk.Worker/LendingDesk.Worker.csproj src/LendingDesk.Worker/
++RUN dotnet restore src/LendingDesk.Worker/LendingDesk.Worker.csproj
++COPY src/LendingDesk.Domain/ src/LendingDesk.Domain/
++COPY src/LendingDesk.Data/ src/LendingDesk.Data/
++COPY src/LendingDesk.Worker/ src/LendingDesk.Worker/
++RUN dotnet publish src/LendingDesk.Worker/LendingDesk.Worker.csproj -c Release --no-restore -o /app
++
++# The worker serves no HTTP, so it runs on the plain runtime image and exposes no port.
++FROM mcr.microsoft.com/dotnet/runtime:10.0
++WORKDIR /app
++COPY --from=build /app .
++# The base image ships a non-root user it does not switch to by itself.
++USER $APP_UID
++# Supply the database as ConnectionStrings__Lending and the poll interval as Worker__PollSeconds.
++# The worker never runs migrations; apply them before pointing it at a database.
++ENTRYPOINT ["dotnet", "LendingDesk.Worker.dll"]

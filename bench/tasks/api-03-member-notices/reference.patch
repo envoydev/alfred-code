@@ -1,0 +1,300 @@
+diff --git a/src/LendingDesk.Api/Contracts/NoticeContracts.cs b/src/LendingDesk.Api/Contracts/NoticeContracts.cs
+new file mode 100644
+index 0000000..a5854fe
+--- /dev/null
++++ b/src/LendingDesk.Api/Contracts/NoticeContracts.cs
+@@ -0,0 +1,18 @@
++using System.ComponentModel.DataAnnotations;
++using LendingDesk.Domain.Notices;
++
++namespace LendingDesk.Api.Contracts;
++
++public sealed record NoticeDto(long Id, int LoanId, string ItemName, NoticeKind Kind, DateTimeOffset SentAt);
++
++/// <summary>Paged like the other lists, with its own limits: 10 notices a page by default, 50 at most.</summary>
++public sealed class NoticeQuery
++{
++    [Range(1, int.MaxValue)]
++    public int Page { get; init; } = 1;
++
++    [Range(1, 50)]
++    public int PageSize { get; init; } = 10;
++
++    public NoticeKind? Kind { get; init; }
++}
+diff --git a/src/LendingDesk.Api/Contracts/Paging.cs b/src/LendingDesk.Api/Contracts/Paging.cs
+index f99434b..c0659ae 100644
+--- a/src/LendingDesk.Api/Contracts/Paging.cs
++++ b/src/LendingDesk.Api/Contracts/Paging.cs
+@@ -16,13 +16,21 @@ public class PageQuery
+ 
+ internal static class PagingExtensions
+ {
+-    public static async Task<PagedResult<T>> ToPageAsync<T>(this IQueryable<T> query, PageQuery page, CancellationToken cancellationToken)
++    public static Task<PagedResult<T>> ToPageAsync<T>(this IQueryable<T> query, PageQuery page, CancellationToken cancellationToken) =>
++        query.ToPageAsync(page.Page, page.PageSize, cancellationToken);
++
++    public static async Task<PagedResult<T>> ToPageAsync<T>(this IQueryable<T> query, int page, int pageSize, CancellationToken cancellationToken)
+     {
+         var total = await query.CountAsync(cancellationToken);
+-        var items = await query
+-            .Skip((page.Page - 1) * page.PageSize)
+-            .Take(page.PageSize)
+-            .ToListAsync(cancellationToken);
+-        return new PagedResult<T>(items, page.Page, page.PageSize, total);
++
++        // A page far past the end would overflow the offset; it is empty like any other page past the end.
++        var skip = (long)(page - 1) * pageSize;
++        var items = skip > int.MaxValue
++            ? []
++            : await query
++                .Skip((int)skip)
++                .Take(pageSize)
++                .ToListAsync(cancellationToken);
++        return new PagedResult<T>(items, page, pageSize, total);
+     }
+ }
+diff --git a/src/LendingDesk.Api/Controllers/NoticesController.cs b/src/LendingDesk.Api/Controllers/NoticesController.cs
+new file mode 100644
+index 0000000..21e205a
+--- /dev/null
++++ b/src/LendingDesk.Api/Controllers/NoticesController.cs
+@@ -0,0 +1,37 @@
++using LendingDesk.Api.Auth;
++using LendingDesk.Api.Contracts;
++using LendingDesk.Api.Errors;
++using LendingDesk.Data;
++using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.Mvc;
++using Microsoft.EntityFrameworkCore;
++
++namespace LendingDesk.Api.Controllers;
++
++[ApiController]
++[Authorize(Policy = Policies.Staff)]
++public sealed class NoticesController(LendingDbContext db) : ControllerBase
++{
++    /// <summary>Every notice sent about the member's loans, returned loans included, newest first.</summary>
++    [HttpGet("/api/members/{memberId:int}/notices")]
++    public async Task<PagedResult<NoticeDto>> ForMember(int memberId, [FromQuery] NoticeQuery query, CancellationToken cancellationToken)
++    {
++        if (!await db.Members.AnyAsync(m => m.Id == memberId, cancellationToken))
++        {
++            throw new NotFoundException("Member", memberId);
++        }
++
++        var notices = db.Notices.AsNoTracking().Where(n => n.Loan.MemberId == memberId);
++        if (query.Kind is { } kind)
++        {
++            notices = notices.Where(n => n.Kind == kind);
++        }
++
++        // The id breaks ties between notices sent at the same instant, so pages never skip or repeat one.
++        return await notices
++            .OrderByDescending(n => n.SentAt)
++            .ThenByDescending(n => n.Id)
++            .Select(n => new NoticeDto(n.Id, n.LoanId, n.Loan.Item.Name, n.Kind, n.SentAt))
++            .ToPageAsync(query.Page, query.PageSize, cancellationToken);
++    }
++}
+diff --git a/tests/LendingDesk.IntegrationTests/NoticesApiTests.cs b/tests/LendingDesk.IntegrationTests/NoticesApiTests.cs
+new file mode 100644
+index 0000000..d2fc312
+--- /dev/null
++++ b/tests/LendingDesk.IntegrationTests/NoticesApiTests.cs
+@@ -0,0 +1,195 @@
++using System.Net;
++using System.Text.Json;
++using LendingDesk.Api.Contracts;
++using LendingDesk.Domain.Notices;
++using LendingDesk.IntegrationTests.Infrastructure;
++
++namespace LendingDesk.IntegrationTests;
++
++[Collection(DatabaseGroup.Name)]
++public sealed class NoticesApiTests(PostgresFixture postgres) : IAsyncLifetime
++{
++    private LendingApiFactory _api = null!;
++    private HttpClient _staff = null!;
++
++    public async Task InitializeAsync()
++    {
++        _api = await LendingApiFactory.StartAsync(postgres);
++        _staff = _api.ClientAs("staff");
++    }
++
++    public async Task DisposeAsync() => await _api.DisposeAsync();
++
++    private async Task<int> CreateMemberAsync()
++    {
++        var suffix = Guid.NewGuid().ToString("N")[..8];
++        return (await (await _staff.PostJsonAsync("/api/members", new { name = $"Member {suffix}", email = $"m{suffix}@example.com" })).ReadAsync<MemberDto>()).Id;
++    }
++
++    private async Task<LoanDto> LendAsync(int memberId, string itemName)
++    {
++        var sku = $"SKU-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
++        var item = await (await _staff.PostJsonAsync("/api/items", new { name = itemName, category = "Tools", sku, totalStock = 1 })).ReadAsync<ItemDto>();
++        var response = await _staff.PostJsonAsync("/api/loans", new { itemId = item.Id, memberId, startDate = _api.Clock.Today, dueDate = _api.Clock.Today.AddDays(7) });
++        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
++        return await response.ReadAsync<LoanDto>();
++    }
++
++    private Task<List<long>> SendAsync(params (int LoanId, NoticeKind Kind, int MinutesLater)[] notices) =>
++        _api.WithDbAsync(async db =>
++        {
++            var sent = notices.Select(n => new Notice { LoanId = n.LoanId, Kind = n.Kind, SentAt = _api.Clock.Now.AddMinutes(n.MinutesLater) }).ToList();
++            db.Notices.AddRange(sent);
++            await db.SaveChangesAsync();
++            return sent.Select(n => n.Id).ToList();
++        });
++
++    private async Task<PagedResult<NoticeDto>> ListAsync(string url)
++    {
++        var response = await _staff.GetAsync(url);
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        return await response.ReadAsync<PagedResult<NoticeDto>>();
++    }
++
++    private async Task<List<long>> SendTwelveAsync(int memberId)
++    {
++        var ids = new List<long>();
++        for (var i = 0; i < 3; i++)
++        {
++            var loan = await LendAsync(memberId, $"Item {i}");
++            ids.AddRange(await SendAsync(Enum.GetValues<NoticeKind>().Select(kind => (loan.Id, kind, i)).ToArray()));
++        }
++
++        return ids;
++    }
++
++    [Fact]
++    public async Task Staff_see_every_notice_about_a_member_s_loans_newest_first()
++    {
++        var memberId = await CreateMemberAsync();
++        var drill = await LendAsync(memberId, "Cordless drill");
++        var tripod = await LendAsync(memberId, "Tripod");
++        var other = await LendAsync(await CreateMemberAsync(), "Ladder");
++        await _staff.PostAsync($"/api/loans/{drill.Id}/return", null);
++        var ids = await SendAsync(
++            (drill.Id, NoticeKind.Confirmation, 0),
++            (tripod.Id, NoticeKind.Confirmation, 1),
++            (drill.Id, NoticeKind.ReturnReceipt, 2),
++            (tripod.Id, NoticeKind.DueSoon, 2),
++            (other.Id, NoticeKind.Confirmation, 3));
++
++        var page = await ListAsync($"/api/members/{memberId}/notices");
++
++        Assert.Equal(4, page.TotalCount);
++        Assert.Equal(1, page.Page);
++        Assert.Equal(10, page.PageSize);
++        Assert.Equal(
++            [
++                new NoticeDto(ids[3], tripod.Id, "Tripod", NoticeKind.DueSoon, _api.Clock.Now.AddMinutes(2)),
++                new NoticeDto(ids[2], drill.Id, "Cordless drill", NoticeKind.ReturnReceipt, _api.Clock.Now.AddMinutes(2)),
++                new NoticeDto(ids[1], tripod.Id, "Tripod", NoticeKind.Confirmation, _api.Clock.Now.AddMinutes(1)),
++                new NoticeDto(ids[0], drill.Id, "Cordless drill", NoticeKind.Confirmation, _api.Clock.Now),
++            ],
++            page.Items);
++
++        using var json = JsonDocument.Parse(await (await _api.ClientAs("admin").GetAsync($"/api/members/{memberId}/notices")).Content.ReadAsStringAsync());
++        var first = json.RootElement.GetProperty("items")[0];
++        Assert.Equal(["id", "loanId", "itemName", "kind", "sentAt"], first.EnumerateObject().Select(p => p.Name));
++        Assert.Equal("DueSoon", first.GetProperty("kind").GetString());
++    }
++
++    [Fact]
++    public async Task The_list_filters_by_kind_and_rejects_an_unknown_kind_like_the_loan_status()
++    {
++        var memberId = await CreateMemberAsync();
++        await SendTwelveAsync(memberId);
++
++        var dueSoon = await ListAsync($"/api/members/{memberId}/notices?kind=DueSoon");
++        var unknownKind = await _staff.GetAsync($"/api/members/{memberId}/notices?kind=Reminder");
++        var unknownStatus = await _staff.GetAsync("/api/loans?status=Reminder");
++
++        Assert.Equal(3, dueSoon.TotalCount);
++        Assert.All(dueSoon.Items, n => Assert.Equal(NoticeKind.DueSoon, n.Kind));
++        Assert.Equal(HttpStatusCode.BadRequest, unknownKind.StatusCode);
++        Assert.Equal(unknownStatus.StatusCode, unknownKind.StatusCode);
++        var problem = await unknownKind.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Equal(["Kind"], problem.Errors!.Keys);
++        Assert.Equal(["Status"], (await unknownStatus.ReadAsync<Problem>()).Errors!.Keys);
++    }
++
++    [Fact]
++    public async Task The_list_is_paged_ten_at_a_time_and_paging_never_skips_or_repeats()
++    {
++        var memberId = await CreateMemberAsync();
++        var sent = await SendTwelveAsync(memberId);
++
++        var first = await ListAsync($"/api/members/{memberId}/notices");
++        var second = await ListAsync($"/api/members/{memberId}/notices?page=2");
++        var pastTheEnd = await ListAsync($"/api/members/{memberId}/notices?page=3");
++        var farPastTheEnd = await ListAsync($"/api/members/{memberId}/notices?page={int.MaxValue}");
++        var largest = await ListAsync($"/api/members/{memberId}/notices?pageSize=50");
++
++        Assert.Equal((10, 12), (first.Items.Count, first.TotalCount));
++        Assert.Equal((2, 2, 10, 12), (second.Items.Count, second.Page, second.PageSize, second.TotalCount));
++        Assert.Equal((0, 12), (pastTheEnd.Items.Count, pastTheEnd.TotalCount));
++        Assert.Empty(farPastTheEnd.Items);
++        Assert.Equal(12, largest.Items.Count);
++
++        var paged = new List<long>();
++        for (var page = 1; page <= 3; page++)
++        {
++            paged.AddRange((await ListAsync($"/api/members/{memberId}/notices?page={page}&pageSize=5")).Items.Select(n => n.Id));
++        }
++
++        var expected = largest.Items.Select(n => n.Id).ToList();
++        Assert.Equal(expected, paged);
++        Assert.Equal(sent.OrderDescending(), expected);
++    }
++
++    [Theory]
++    [InlineData("pageSize=51", "PageSize")]
++    [InlineData("pageSize=0", "PageSize")]
++    [InlineData("page=0", "Page")]
++    public async Task An_out_of_range_page_is_rejected_like_the_other_lists(string paging, string field)
++    {
++        var memberId = await CreateMemberAsync();
++
++        var notices = await _staff.GetAsync($"/api/members/{memberId}/notices?{paging}");
++        var members = await _staff.GetAsync(field == "Page" ? "/api/members?page=0" : "/api/members?pageSize=500");
++
++        Assert.Equal(HttpStatusCode.BadRequest, notices.StatusCode);
++        var problem = await notices.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Equal([field], problem.Errors!.Keys);
++        Assert.Equal([field], (await members.ReadAsync<Problem>()).Errors!.Keys);
++    }
++
++    [Fact]
++    public async Task An_unknown_member_is_not_found_like_their_loans()
++    {
++        var notices = await _staff.GetAsync("/api/members/999999/notices");
++        var loans = await _staff.GetAsync("/api/members/999999/loans");
++
++        Assert.Equal(HttpStatusCode.NotFound, notices.StatusCode);
++        var problem = await notices.ReadAsync<Problem>();
++        Assert.Equal("not_found", problem.Code);
++        Assert.Equal((await loans.ReadAsync<Problem>()).Detail, problem.Detail);
++    }
++
++    [Fact]
++    public async Task Members_cannot_read_notices_whichever_member_they_ask_about()
++    {
++        var memberId = await CreateMemberAsync();
++        var member = _api.ClientAs("member");
++
++        var existing = await member.GetAsync($"/api/members/{memberId}/notices");
++        var unknown = await member.GetAsync("/api/members/999999/notices");
++        var report = await member.GetAsync("/api/reports/overdue");
++
++        Assert.Equal(HttpStatusCode.Forbidden, existing.StatusCode);
++        Assert.Equal(HttpStatusCode.Forbidden, unknown.StatusCode);
++        Assert.Equal("forbidden", (await existing.ReadAsync<Problem>()).Code);
++        Assert.Equal((await report.ReadAsync<Problem>()).Code, (await unknown.ReadAsync<Problem>()).Code);
++    }
++}

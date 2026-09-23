@@ -1,0 +1,859 @@
+diff --git a/web/src/app/members/member-detail/member-detail.html b/web/src/app/members/member-detail/member-detail.html
+index df01ec6..aab6513 100644
+--- a/web/src/app/members/member-detail/member-detail.html
++++ b/web/src/app/members/member-detail/member-detail.html
+@@ -1,16 +1,16 @@
+ <p><a routerLink="/members">&larr; Members</a></p>
+ 
+-@if (error(); as message) {
++@if (store.error(); as message) {
+   <p class="alert" role="alert">{{ message }}</p>
+ }
+ 
+-@if (member(); as m) {
++@if (store.member(); as m) {
+   <div class="toolbar">
+     <h1>{{ m.name }}</h1>
+     <span class="spacer"></span>
+     <a class="button" [routerLink]="['/members', m.id, 'edit']">Edit</a>
+     @if (m.status === 'Active') {
+-      <button type="button" class="danger" [disabled]="suspending()" (click)="suspend(m)">
++      <button type="button" class="danger" [disabled]="store.suspending()" (click)="suspend(m)">
+         Suspend
+       </button>
+     }
+@@ -26,7 +26,7 @@
+     <dt>Member since</dt>
+     <dd>{{ m.createdAt | date: 'mediumDate' }}</dd>
+   </dl>
+-} @else if (!error()) {
++} @else if (!store.error()) {
+   <p class="muted">Loading...</p>
+ }
+ 
+diff --git a/web/src/app/members/member-detail/member-detail.spec.ts b/web/src/app/members/member-detail/member-detail.spec.ts
+new file mode 100644
+index 0000000..b7e139b
+--- /dev/null
++++ b/web/src/app/members/member-detail/member-detail.spec.ts
+@@ -0,0 +1,131 @@
++import { HttpTestingController } from '@angular/common/http/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { provideRouter } from '@angular/router';
++
++import { aLoan, aMember, paged, provideApiTesting } from '../../testing/fixtures';
++import { MemberDetail } from './member-detail';
++
++describe('MemberDetail', () => {
++  let httpTesting: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideApiTesting()] });
++    httpTesting = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => httpTesting.verify());
++
++  function open(id: string): ComponentFixture<MemberDetail> {
++    const fixture = TestBed.createComponent(MemberDetail);
++    fixture.componentRef.setInput('id', id);
++    fixture.detectChanges();
++    return fixture;
++  }
++
++  function flushLoans(memberId: number): void {
++    httpTesting
++      .expectOne('/api/loans?page=1&pageSize=50&memberId=' + memberId)
++      .flush(paged([aLoan({ memberId })]));
++  }
++
++  function suspendButton(fixture: ComponentFixture<MemberDetail>): HTMLButtonElement | undefined {
++    return Array.from(
++      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.toolbar button'),
++    ).find((button) => button.textContent?.trim() === 'Suspend');
++  }
++
++  it('shows Loading until the member arrives, never the member viewed before', async () => {
++    const before = open('3');
++    httpTesting.expectOne('/api/members/3').flush(aMember({ id: 3, name: 'Grace Hopper' }));
++    flushLoans(3);
++    await before.whenStable();
++    expect((before.nativeElement as HTMLElement).querySelector('h1')?.textContent).toBe(
++      'Grace Hopper',
++    );
++    before.destroy();
++
++    const fixture = open('7');
++    const element = fixture.nativeElement as HTMLElement;
++    expect(element.querySelector('h1')).toBeNull();
++    expect(element.textContent).not.toContain('Grace Hopper');
++    expect(element.querySelector('p.muted')?.textContent?.trim()).toBe('Loading...');
++
++    httpTesting
++      .expectOne('/api/members/7')
++      .flush(aMember({ id: 7, name: 'Ada Lovelace', email: 'ada@example.com' }));
++    flushLoans(7);
++    await fixture.whenStable();
++
++    expect(element.querySelector('h1')?.textContent).toBe('Ada Lovelace');
++    const fields = element.querySelector('.fields')?.textContent ?? '';
++    expect(fields).toContain('ada@example.com');
++    expect(fields).toContain('Active');
++    expect(fields).toContain('2026');
++    expect(element.textContent).not.toContain('Loading...');
++  });
++
++  it('suspends an active member and then drops the button', async () => {
++    const fixture = open('7');
++    httpTesting.expectOne('/api/members/7').flush(aMember({ id: 7 }));
++    flushLoans(7);
++    await fixture.whenStable();
++
++    suspendButton(fixture)?.click();
++    await fixture.whenStable();
++    expect(suspendButton(fixture)?.disabled).toBe(true);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/members/7/suspend' })
++      .flush(aMember({ id: 7, status: 'Suspended' }));
++    await fixture.whenStable();
++
++    expect(suspendButton(fixture)).toBeUndefined();
++    expect(
++      (fixture.nativeElement as HTMLElement).querySelector('.fields .badge')?.textContent,
++    ).toBe('Suspended');
++  });
++
++  it('offers no Suspend for a suspended member', async () => {
++    const fixture = open('7');
++    httpTesting.expectOne('/api/members/7').flush(aMember({ id: 7, status: 'Suspended' }));
++    flushLoans(7);
++    await fixture.whenStable();
++
++    expect(suspendButton(fixture)).toBeUndefined();
++  });
++
++  it('shows a failed request in the alert', async () => {
++    const missing = open('99');
++    httpTesting
++      .expectOne('/api/members/99')
++      .flush(
++        { title: 'Not Found', status: 404, detail: 'Member 99 was not found.' },
++        { status: 404, statusText: 'Not Found' },
++      );
++    httpTesting.expectOne('/api/loans?page=1&pageSize=50&memberId=99').flush(paged([]));
++    await missing.whenStable();
++    const element = missing.nativeElement as HTMLElement;
++    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
++      'Member 99 was not found.',
++    );
++    expect(element.querySelector('h1')).toBeNull();
++    missing.destroy();
++
++    const fixture = open('7');
++    httpTesting.expectOne('/api/members/7').flush(aMember({ id: 7 }));
++    flushLoans(7);
++    await fixture.whenStable();
++    suspendButton(fixture)?.click();
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/members/7/suspend' })
++      .flush(
++        { title: 'Conflict', status: 409, detail: 'Member 7 has loans still out.' },
++        { status: 409, statusText: 'Conflict' },
++      );
++    await fixture.whenStable();
++
++    expect(
++      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
++    ).toContain('Member 7 has loans still out.');
++    expect(suspendButton(fixture)?.disabled).toBe(false);
++  });
++});
+diff --git a/web/src/app/members/member-detail/member-detail.ts b/web/src/app/members/member-detail/member-detail.ts
+index a731b90..3866e82 100644
+--- a/web/src/app/members/member-detail/member-detail.ts
++++ b/web/src/app/members/member-detail/member-detail.ts
+@@ -1,11 +1,10 @@
+ import { DatePipe } from '@angular/common';
+-import { Component, OnInit, inject, input, signal } from '@angular/core';
++import { Component, OnInit, inject, input } from '@angular/core';
+ import { RouterLink } from '@angular/router';
+ 
+ import { Loan, Member } from '../../core/models';
+-import { problemMessage } from '../../core/problem';
+ import { LoansStore } from '../../loans/loans-store';
+-import { MembersApi } from '../members-api';
++import { MembersStore } from '../members-store';
+ 
+ @Component({
+   selector: 'app-member-detail',
+@@ -14,38 +13,20 @@ import { MembersApi } from '../members-api';
+   styleUrl: './member-detail.css',
+ })
+ export class MemberDetail implements OnInit {
+-  private readonly api = inject(MembersApi);
++  protected readonly store = inject(MembersStore);
+   protected readonly loans = inject(LoansStore);
+ 
+   /** Bound from the `:id` route parameter. */
+   readonly id = input.required<string>();
+ 
+-  protected readonly member = signal<Member | null>(null);
+-  protected readonly error = signal<string | null>(null);
+-  protected readonly suspending = signal(false);
+-
+   ngOnInit(): void {
+     const id = Number(this.id());
+-    this.api.get(id).subscribe({
+-      next: (member) => this.member.set(member),
+-      error: (error: unknown) => this.error.set(problemMessage(error)),
+-    });
++    this.store.loadMember(id);
+     this.loans.load({ page: 1, pageSize: 50, memberId: id });
+   }
+ 
+   protected suspend(member: Member): void {
+-    this.suspending.set(true);
+-    this.error.set(null);
+-    this.api.suspend(member.id).subscribe({
+-      next: (updated) => {
+-        this.member.set(updated);
+-        this.suspending.set(false);
+-      },
+-      error: (error: unknown) => {
+-        this.error.set(problemMessage(error));
+-        this.suspending.set(false);
+-      },
+-    });
++    this.store.suspend(member.id);
+   }
+ 
+   protected returnLoan(loan: Loan): void {
+diff --git a/web/src/app/members/member-list/member-list.html b/web/src/app/members/member-list/member-list.html
+index 4dfc1af..f997f1c 100644
+--- a/web/src/app/members/member-list/member-list.html
++++ b/web/src/app/members/member-list/member-list.html
+@@ -4,9 +4,9 @@
+   <label>
+     Status
+     <select name="status" (change)="setStatus($event)">
+-      <option value="">All</option>
++      <option value="" [selected]="!store.filter().status">All</option>
+       @for (s of statuses; track s) {
+-        <option [value]="s">{{ s }}</option>
++        <option [value]="s" [selected]="store.filter().status === s">{{ s }}</option>
+       }
+     </select>
+   </label>
+@@ -14,7 +14,7 @@
+   <a class="button" routerLink="/members/new">New member</a>
+ </div>
+ 
+-@if (error(); as message) {
++@if (store.error(); as message) {
+   <p class="alert" role="alert">{{ message }}</p>
+ }
+ 
+@@ -28,7 +28,7 @@
+     </tr>
+   </thead>
+   <tbody>
+-    @for (member of members(); track member.id) {
++    @for (member of store.members(); track member.id) {
+       <tr>
+         <td>
+           <a [routerLink]="['/members', member.id]">{{ member.name }}</a>
+@@ -41,22 +41,29 @@
+       </tr>
+     } @empty {
+       <tr>
+-        <td colspan="4" class="muted">{{ loading() ? 'Loading...' : 'No members found.' }}</td>
++        <td colspan="4" class="muted">
++          {{ store.loading() ? 'Loading...' : 'No members found.' }}
++        </td>
+       </tr>
+     }
+   </tbody>
+ </table>
+ 
+ <div class="pager">
+-  <button type="button" class="secondary" [disabled]="page() <= 1" (click)="goTo(page() - 1)">
++  <button
++    type="button"
++    class="secondary"
++    [disabled]="store.filter().page <= 1"
++    (click)="goTo(store.filter().page - 1)"
++  >
+     Previous
+   </button>
+-  <span>Page {{ page() }} of {{ pageCount() }}</span>
++  <span>Page {{ store.filter().page }} of {{ store.pageCount() }}</span>
+   <button
+     type="button"
+     class="secondary"
+-    [disabled]="page() >= pageCount()"
+-    (click)="goTo(page() + 1)"
++    [disabled]="store.filter().page >= store.pageCount()"
++    (click)="goTo(store.filter().page + 1)"
+   >
+     Next
+   </button>
+diff --git a/web/src/app/members/member-list/member-list.spec.ts b/web/src/app/members/member-list/member-list.spec.ts
+index 5111950..a6fa3e5 100644
+--- a/web/src/app/members/member-list/member-list.spec.ts
++++ b/web/src/app/members/member-list/member-list.spec.ts
+@@ -1,33 +1,212 @@
+ import { HttpTestingController } from '@angular/common/http/testing';
+-import { TestBed } from '@angular/core/testing';
+-import { provideRouter } from '@angular/router';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { provideRouter, withComponentInputBinding } from '@angular/router';
++import { RouterTestingHarness } from '@angular/router/testing';
+ 
++import { Member } from '../../core/models';
+ import { aMember, paged, provideApiTesting } from '../../testing/fixtures';
++import { membersRoutes } from '../members.routes';
+ import { MemberList } from './member-list';
+ 
+ describe('MemberList', () => {
+-  it('renders one row per member and reloads when the status filter changes', async () => {
++  let httpTesting: HttpTestingController;
++
++  const suspended = [
++    aMember({ id: 2, name: 'Grace Hopper', status: 'Suspended' }),
++    aMember({ id: 3, name: 'Alan Turing', status: 'Suspended' }),
++  ];
++
++  beforeEach(() => {
+     TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideApiTesting()] });
+-    const httpTesting = TestBed.inject(HttpTestingController);
++    httpTesting = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => httpTesting.verify());
++
++  async function openList(url: string, members: Member[], totalCount = members.length) {
+     const fixture = TestBed.createComponent(MemberList);
+     fixture.detectChanges();
++    httpTesting.expectOne(url).flush(paged(members, totalCount));
++    await fixture.whenStable();
++    return fixture;
++  }
+ 
+-    httpTesting
+-      .expectOne('/api/members?page=1&pageSize=10')
+-      .flush(paged([aMember(), aMember({ id: 2, name: 'Grace Hopper', status: 'Suspended' })], 12));
++  function pager(fixture: ComponentFixture<MemberList>) {
++    const element = fixture.nativeElement as HTMLElement;
++    const [previous, next] = Array.from(
++      element.querySelectorAll<HTMLButtonElement>('.pager button'),
++    );
++    return { previous, next, text: element.querySelector('.pager span')?.textContent?.trim() };
++  }
++
++  function statusSelect(fixture: ComponentFixture<MemberList>): HTMLSelectElement {
++    return (fixture.nativeElement as HTMLElement).querySelector('select') as HTMLSelectElement;
++  }
++
++  async function chooseStatus(fixture: ComponentFixture<MemberList>, status: string) {
++    const select = statusSelect(fixture);
++    select.value = status;
++    select.dispatchEvent(new Event('change'));
+     await fixture.whenStable();
++  }
++
++  it('renders one row per member and reloads when the status filter changes', async () => {
++    const fixture = await openList(
++      '/api/members?page=1&pageSize=10',
++      [aMember(), aMember({ id: 2, name: 'Grace Hopper', status: 'Suspended' })],
++      12,
++    );
+     const element = fixture.nativeElement as HTMLElement;
+ 
+     const rows = element.querySelectorAll('tbody tr');
+     expect(rows).toHaveLength(2);
++    expect(rows[0].querySelector('a')?.getAttribute('href')).toBe('/members/1');
++    expect(rows[0].textContent).toContain('ada@example.com');
+     expect(rows[1].textContent).toContain('Grace Hopper');
+     expect(rows[1].textContent).toContain('Suspended');
+-    expect(element.querySelector('.pager span')?.textContent).toContain('Page 1 of 2');
++    expect(pager(fixture).text).toBe('Page 1 of 2');
+ 
+-    const select = element.querySelector('select') as HTMLSelectElement;
+-    select.value = 'Active';
+-    select.dispatchEvent(new Event('change'));
++    await chooseStatus(fixture, 'Active');
+     httpTesting.expectOne('/api/members?page=1&pageSize=10&status=Active').flush(paged([]));
++
++    await chooseStatus(fixture, '');
++    httpTesting.expectOne('/api/members?page=1&pageSize=10').flush(paged([]));
++  });
++
++  it('pages through the members keeping the status', async () => {
++    const fixture = await openList('/api/members?page=1&pageSize=10', suspended, 25);
++    expect(pager(fixture).previous.disabled).toBe(true);
++    expect(pager(fixture).next.disabled).toBe(false);
++
++    await chooseStatus(fixture, 'Suspended');
++    httpTesting
++      .expectOne('/api/members?page=1&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    await fixture.whenStable();
++
++    pager(fixture).next.click();
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    await fixture.whenStable();
++    expect(pager(fixture).text).toBe('Page 2 of 3');
++    expect(pager(fixture).previous.disabled).toBe(false);
++
++    pager(fixture).next.click();
++    httpTesting
++      .expectOne('/api/members?page=3&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    await fixture.whenStable();
++    expect(pager(fixture).text).toBe('Page 3 of 3');
++    expect(pager(fixture).next.disabled).toBe(true);
++
++    pager(fixture).previous.click();
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++  });
++
++  it('shows Loading while an empty table is fetched, then No members found', async () => {
++    const fixture = TestBed.createComponent(MemberList);
++    fixture.detectChanges();
++    const element = fixture.nativeElement as HTMLElement;
++    expect(element.querySelector('tbody')?.textContent?.trim()).toBe('Loading...');
++
++    httpTesting.expectOne('/api/members?page=1&pageSize=10').flush(paged([]));
++    await fixture.whenStable();
++    expect(element.querySelector('tbody')?.textContent?.trim()).toBe('No members found.');
++    expect(pager(fixture).text).toBe('Page 1 of 1');
++  });
++
++  it('shows a failed request in the alert', async () => {
++    const fixture = TestBed.createComponent(MemberList);
++    fixture.detectChanges();
++    httpTesting
++      .expectOne('/api/members?page=1&pageSize=10')
++      .flush(null, { status: 0, statusText: 'Unknown Error' });
++    await fixture.whenStable();
++
++    expect(
++      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
++    ).toContain('The server could not be reached.');
++  });
++
++  it('comes back to the page and status it was left on', async () => {
++    const first = await openList('/api/members?page=1&pageSize=10', suspended, 25);
++    await chooseStatus(first, 'Suspended');
++    httpTesting
++      .expectOne('/api/members?page=1&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    await first.whenStable();
++    pager(first).next.click();
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    first.destroy();
++
++    const fixture = TestBed.createComponent(MemberList);
++    fixture.detectChanges();
++    expect((fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr')).toHaveLength(2);
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(suspended, 25));
++    await fixture.whenStable();
++
++    expect(statusSelect(fixture).value).toBe('Suspended');
++    expect(pager(fixture).text).toBe('Page 2 of 3');
++  });
++});
++
++describe('MemberList across the member page', () => {
++  it('keeps its page and status when the member page links back to it', async () => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideRouter([{ path: 'members', children: membersRoutes }], withComponentInputBinding()),
++        ...provideApiTesting(),
++      ],
++    });
++    const httpTesting = TestBed.inject(HttpTestingController);
++    const harness = await RouterTestingHarness.create();
++    const members = [aMember({ id: 7, name: 'Grace Hopper', status: 'Suspended' })];
++
++    await harness.navigateByUrl('/members');
++    httpTesting.expectOne('/api/members?page=1&pageSize=10').flush(paged(members, 25));
++    await harness.fixture.whenStable();
++    const list = harness.routeNativeElement as HTMLElement;
++    const select = list.querySelector('select') as HTMLSelectElement;
++    select.value = 'Suspended';
++    select.dispatchEvent(new Event('change'));
++    httpTesting
++      .expectOne('/api/members?page=1&pageSize=10&status=Suspended')
++      .flush(paged(members, 25));
++    await harness.fixture.whenStable();
++    list.querySelector<HTMLButtonElement>('.pager button:last-of-type')?.click();
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(members, 25));
++    await harness.fixture.whenStable();
++
++    (harness.routeNativeElement as HTMLElement)
++      .querySelector<HTMLAnchorElement>('tbody a')
++      ?.click();
++    await harness.fixture.whenStable();
++    httpTesting.expectOne('/api/members/7').flush(members[0]);
++    httpTesting.expectOne((r) => r.url === '/api/loans').flush(paged([]));
++    await harness.fixture.whenStable();
++    expect((harness.routeNativeElement as HTMLElement).querySelector('h1')?.textContent).toBe(
++      'Grace Hopper',
++    );
++
++    (harness.routeNativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a')?.click();
++    await harness.fixture.whenStable();
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(members, 25));
++    await harness.fixture.whenStable();
++
++    const back = harness.routeNativeElement as HTMLElement;
++    expect((back.querySelector('select') as HTMLSelectElement).value).toBe('Suspended');
++    expect(back.querySelector('.pager span')?.textContent?.trim()).toBe('Page 2 of 3');
+     httpTesting.verify();
+   });
+ });
+diff --git a/web/src/app/members/member-list/member-list.ts b/web/src/app/members/member-list/member-list.ts
+index 9a00f37..5779df3 100644
+--- a/web/src/app/members/member-list/member-list.ts
++++ b/web/src/app/members/member-list/member-list.ts
+@@ -1,11 +1,9 @@
+ import { DatePipe } from '@angular/common';
+-import { Component, OnInit, computed, inject, signal } from '@angular/core';
++import { Component, OnInit, inject } from '@angular/core';
+ import { RouterLink } from '@angular/router';
+ 
+-import { pageCount } from '../../core/api';
+-import { Member, MemberStatus } from '../../core/models';
+-import { problemMessage } from '../../core/problem';
+-import { MembersApi } from '../members-api';
++import { MemberStatus } from '../../core/models';
++import { MembersStore } from '../members-store';
+ 
+ @Component({
+   selector: 'app-member-list',
+@@ -13,47 +11,20 @@ import { MembersApi } from '../members-api';
+   templateUrl: './member-list.html',
+ })
+ export class MemberList implements OnInit {
+-  private readonly api = inject(MembersApi);
+-
+-  protected readonly pageSize = 10;
++  protected readonly store = inject(MembersStore);
+   protected readonly statuses: MemberStatus[] = ['Active', 'Suspended'];
+ 
+-  protected readonly page = signal(1);
+-  protected readonly status = signal<MemberStatus | ''>('');
+-  protected readonly members = signal<Member[]>([]);
+-  protected readonly totalCount = signal(0);
+-  protected readonly loading = signal(false);
+-  protected readonly error = signal<string | null>(null);
+-  protected readonly pageCount = computed(() => pageCount(this.totalCount(), this.pageSize));
+-
+   ngOnInit(): void {
+-    this.load();
++    // The store keeps the filter, so coming back reloads the page and status left on.
++    this.store.load();
+   }
+ 
+   protected setStatus(event: Event): void {
+-    this.status.set((event.target as HTMLSelectElement).value as MemberStatus | '');
+-    this.page.set(1);
+-    this.load();
++    const status = (event.target as HTMLSelectElement).value as MemberStatus | '';
++    this.store.load({ ...this.store.filter(), page: 1, status });
+   }
+ 
+   protected goTo(page: number): void {
+-    this.page.set(page);
+-    this.load();
+-  }
+-
+-  private load(): void {
+-    this.loading.set(true);
+-    this.error.set(null);
+-    this.api.list({ page: this.page(), pageSize: this.pageSize, status: this.status() }).subscribe({
+-      next: (result) => {
+-        this.members.set(result.items);
+-        this.totalCount.set(result.totalCount);
+-        this.loading.set(false);
+-      },
+-      error: (error: unknown) => {
+-        this.error.set(problemMessage(error));
+-        this.loading.set(false);
+-      },
+-    });
++    this.store.load({ ...this.store.filter(), page });
+   }
+ }
+diff --git a/web/src/app/members/members-store.spec.ts b/web/src/app/members/members-store.spec.ts
+new file mode 100644
+index 0000000..d693de8
+--- /dev/null
++++ b/web/src/app/members/members-store.spec.ts
+@@ -0,0 +1,169 @@
++import { HttpTestingController } from '@angular/common/http/testing';
++import { TestBed } from '@angular/core/testing';
++
++import { aMember, paged, provideApiTesting } from '../testing/fixtures';
++import { MembersStore } from './members-store';
++
++describe('MembersStore', () => {
++  let store: MembersStore;
++  let httpTesting: HttpTestingController;
++
++  const members = [
++    aMember({ id: 1 }),
++    aMember({ id: 2, name: 'Grace Hopper', email: 'grace@example.com' }),
++    aMember({ id: 3, name: 'Alan Turing', email: 'alan@example.com', status: 'Suspended' }),
++  ];
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({ providers: provideApiTesting() });
++    store = TestBed.inject(MembersStore);
++    httpTesting = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => httpTesting.verify());
++
++  function loadPage(): void {
++    store.load({ page: 1, pageSize: 10 });
++    httpTesting.expectOne('/api/members?page=1&pageSize=10').flush(paged(members, 24));
++  }
++
++  function viewMember(id: number): void {
++    store.loadMember(id);
++    httpTesting.expectOne(`/api/members/${id}`).flush(members.find((m) => m.id === id) ?? null);
++  }
++
++  it('starts on page 1 of all members with nothing loaded', () => {
++    expect(store.filter()).toEqual({ page: 1, pageSize: 10 });
++    expect(store.members()).toEqual([]);
++    expect(store.totalCount()).toBe(0);
++    expect(store.pageCount()).toBe(1);
++    expect(store.loading()).toBe(false);
++    expect(store.member()).toBeNull();
++    expect(store.suspending()).toBe(false);
++    expect(store.error()).toBeNull();
++  });
++
++  it('loads a page and tracks the loading flag and filter', () => {
++    store.load({ page: 2, pageSize: 10, status: 'Suspended' });
++
++    expect(store.loading()).toBe(true);
++    expect(store.filter()).toEqual({ page: 2, pageSize: 10, status: 'Suspended' });
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Suspended')
++      .flush(paged(members, 24));
++
++    expect(store.loading()).toBe(false);
++    expect(store.members().map((m) => m.id)).toEqual([1, 2, 3]);
++    expect(store.totalCount()).toBe(24);
++    expect(store.pageCount()).toBe(3);
++  });
++
++  it('reloads the current filter and keeps the rows until the new page arrives', () => {
++    store.load({ page: 2, pageSize: 10, status: 'Active' });
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Active')
++      .flush(paged(members, 24));
++
++    store.load();
++    expect(store.loading()).toBe(true);
++    expect(store.members()).toHaveLength(3);
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10&status=Active')
++      .flush(paged([aMember({ id: 9 })], 11));
++
++    expect(store.members().map((m) => m.id)).toEqual([9]);
++    expect(store.pageCount()).toBe(2);
++  });
++
++  it('keeps the rows and total and shows the problem when a page fails to load', () => {
++    loadPage();
++
++    store.load({ ...store.filter(), page: 2 });
++    httpTesting
++      .expectOne('/api/members?page=2&pageSize=10')
++      .flush(null, { status: 500, statusText: 'Server Error' });
++
++    expect(store.loading()).toBe(false);
++    expect(store.error()).toBe('Something went wrong. Please try again.');
++    expect(store.members()).toHaveLength(3);
++    expect(store.totalCount()).toBe(24);
++
++    store.load();
++    expect(store.error()).toBeNull();
++    httpTesting.expectOne('/api/members?page=2&pageSize=10').flush(paged(members, 24));
++  });
++
++  it('loads a member, dropping the one viewed before', () => {
++    viewMember(1);
++    expect(store.member()?.name).toBe('Ada Lovelace');
++
++    store.loadMember(2);
++    expect(store.member()).toBeNull();
++    httpTesting.expectOne('/api/members/2').flush(members[1]);
++
++    expect(store.member()?.name).toBe('Grace Hopper');
++  });
++
++  it('shows the problem when a member cannot be loaded', () => {
++    store.loadMember(99);
++    httpTesting
++      .expectOne('/api/members/99')
++      .flush(
++        { title: 'Not Found', status: 404, detail: 'Member 99 was not found.' },
++        { status: 404, statusText: 'Not Found' },
++      );
++
++    expect(store.error()).toBe('Member 99 was not found.');
++    expect(store.member()).toBeNull();
++  });
++
++  it('suspends a member and replaces it where it is viewed and on the current page', () => {
++    loadPage();
++    viewMember(2);
++
++    store.suspend(2);
++    expect(store.suspending()).toBe(true);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/members/2/suspend' })
++      .flush({ ...members[1], status: 'Suspended' });
++
++    expect(store.suspending()).toBe(false);
++    expect(store.member()?.status).toBe('Suspended');
++    expect(store.members().map((m) => m.status)).toEqual(['Active', 'Suspended', 'Suspended']);
++  });
++
++  it('leaves the viewed member alone when another member is suspended', () => {
++    loadPage();
++    viewMember(1);
++
++    store.suspend(2);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/members/2/suspend' })
++      .flush({ ...members[1], status: 'Suspended' });
++
++    expect(store.member()).toEqual(members[0]);
++    expect(store.members()[1].status).toBe('Suspended');
++  });
++
++  it('keeps the member and rows and shows the problem when a suspend fails', () => {
++    loadPage();
++    viewMember(1);
++
++    store.suspend(1);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/members/1/suspend' })
++      .flush(
++        { title: 'Conflict', status: 409, detail: 'Member 1 has loans still out.' },
++        { status: 409, statusText: 'Conflict' },
++      );
++
++    expect(store.suspending()).toBe(false);
++    expect(store.error()).toBe('Member 1 has loans still out.');
++    expect(store.member()).toEqual(members[0]);
++    expect(store.members()).toEqual(members);
++
++    store.loadMember(1);
++    expect(store.error()).toBeNull();
++    httpTesting.expectOne('/api/members/1').flush(members[0]);
++  });
++});
+diff --git a/web/src/app/members/members-store.ts b/web/src/app/members/members-store.ts
+new file mode 100644
+index 0000000..77a4525
+--- /dev/null
++++ b/web/src/app/members/members-store.ts
+@@ -0,0 +1,78 @@
++import { Injectable, computed, inject, signal } from '@angular/core';
++
++import { pageCount } from '../core/api';
++import { Member } from '../core/models';
++import { problemMessage } from '../core/problem';
++import { MemberQuery, MembersApi } from './members-api';
++
++const DEFAULT_MEMBER_FILTER: MemberQuery = { page: 1, pageSize: 10 };
++
++/** The member list and the member being viewed. Lives with the app, so the list keeps its place. */
++@Injectable({ providedIn: 'root' })
++export class MembersStore {
++  private readonly api = inject(MembersApi);
++
++  private readonly _members = signal<Member[]>([]);
++  private readonly _totalCount = signal(0);
++  private readonly _filter = signal<MemberQuery>(DEFAULT_MEMBER_FILTER);
++  private readonly _loading = signal(false);
++  private readonly _member = signal<Member | null>(null);
++  private readonly _suspending = signal(false);
++  private readonly _error = signal<string | null>(null);
++
++  readonly members = this._members.asReadonly();
++  readonly totalCount = this._totalCount.asReadonly();
++  readonly filter = this._filter.asReadonly();
++  readonly loading = this._loading.asReadonly();
++  readonly member = this._member.asReadonly();
++  readonly suspending = this._suspending.asReadonly();
++  readonly error = this._error.asReadonly();
++
++  readonly pageCount = computed(() => pageCount(this._totalCount(), this._filter().pageSize));
++
++  /** Loads one page of members. The filter replaces the current one. */
++  load(filter: MemberQuery = this._filter()): void {
++    this._filter.set(filter);
++    this._loading.set(true);
++    this._error.set(null);
++    this.api.list(filter).subscribe({
++      next: (result) => {
++        this._members.set(result.items);
++        this._totalCount.set(result.totalCount);
++        this._loading.set(false);
++      },
++      error: (error: unknown) => {
++        this._error.set(problemMessage(error));
++        this._loading.set(false);
++      },
++    });
++  }
++
++  /** Loads one member to view, dropping the one viewed before. */
++  loadMember(id: number): void {
++    this._member.set(null);
++    this._error.set(null);
++    this.api.get(id).subscribe({
++      next: (member) => this._member.set(member),
++      error: (error: unknown) => this._error.set(problemMessage(error)),
++    });
++  }
++
++  suspend(id: number): void {
++    this._suspending.set(true);
++    this._error.set(null);
++    this.api.suspend(id).subscribe({
++      next: (suspended) => {
++        this._member.update((member) => (member?.id === id ? suspended : member));
++        this._members.update((members) =>
++          members.map((member) => (member.id === id ? suspended : member)),
++        );
++        this._suspending.set(false);
++      },
++      error: (error: unknown) => {
++        this._error.set(problemMessage(error));
++        this._suspending.set(false);
++      },
++    });
++  }
++}

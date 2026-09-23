@@ -10,12 +10,13 @@
 //   node bench/prove-tasks.js [--tasks all|<id,id>|group:<g>]
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync, execFileSync } = require('node:child_process');
+const { execFileSync } = require('node:child_process');
 const fixture = require('./fixture/verify.js');
 const { selectTasks } = require('./drive.js');
-const { prepare, git } = require('./lib/session.js');
-const { copyHidden, detectInfra } = require('./lib/grade.js');
+const { prepare, applySetupPatch } = require('./lib/session.js');
+const { copyHidden, detectInfra, runCommand } = require('./lib/grade.js');
 const { POSIX_ONLY } = require('./test/posix-only.js');
+const { removeTree } = require('./lib/remove-tree.js');
 
 const BENCH_DIR = __dirname;
 // What a session never gets, the proof does not need either: the commands run with the caller's
@@ -24,7 +25,7 @@ const DROP = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'SENTRY_SLUG', 'SENTR
 
 function cloneAt({ dest, task, taskDir, fixtureSource, lock })
 {
-    fs.rmSync(dest, { recursive: true, force: true });
+    removeTree(dest);
     fixture.verify({ source: fixtureSource, lock, dest });
     execFileSync('git', ['-C', dest, 'remote', 'remove', 'origin'], { stdio: 'pipe' });
     const cell = { repo: dest, home: path.join(path.dirname(dest), '.home') };
@@ -33,26 +34,27 @@ function cloneAt({ dest, task, taskDir, fixtureSource, lock })
     return cell;
 }
 
-function runAll(list, { cwd, env, timeoutMs, log })
+function runAll(list, { cwd, env, timeoutMs, log, record = [] })
 {
     let text = '';
-    let timedOut = false;
+    let infra = null;
     const pass = (list || []).every((argv) =>
     {
-        const r = spawnSync(argv[0], argv.slice(1), { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 * 1024 });
-        const body = `${r.stdout || ''}${r.stderr || ''}`;
-        text += body;
-        log(`$ ${argv.join(' ')}\n${body}`);
-        if (r.error && r.error.code === 'ETIMEDOUT') timedOut = true;
+        const r = runCommand(argv, { cwd, env, timeout: timeoutMs });
+        text += r.body;
+        log(`$ ${argv.join(' ')}\n${r.body}`);
+        record.push({ argv, exit: r.status, timedOut: r.timedOut, retried: r.retried, transient: r.transient });
+        if (r.timedOut) infra = infra || 'command timed out';
+        if (r.transient) infra = infra || `package-manager error persisted after a retry: ${argv.join(' ')}`;
         return r.status === 0;
     });
-    return { pass, infra: timedOut ? 'command timed out' : detectInfra(text) };
+    return { pass, infra: infra || detectInfra(text) };
 }
 
 function proveTask({ task, tasksDir, workDir, fixtureSource, lock, env, log })
 {
     const taskDir = path.join(tasksDir, task.id);
-    const out = { id: task.id, group: task.group, ok: false, startFails: null, referencePasses: null, suiteGreen: null, infra: null, problems: [] };
+    const out = { id: task.id, group: task.group, ok: false, startFails: null, referencePasses: null, suiteGreen: null, infra: null, problems: [], commands: [] };
     const spec = JSON.parse(fs.readFileSync(path.join(taskDir, 'hidden', 'grade.json'), 'utf8'));
     const timeoutMs = (spec.timeoutMin || 30) * 60 * 1000;
     const reference = path.join(taskDir, 'reference.patch');
@@ -64,19 +66,20 @@ function proveTask({ task, tasksDir, workDir, fixtureSource, lock, env, log })
 
     const start = cloneAt({ dest: path.join(workDir, task.id, 'start'), task, taskDir, fixtureSource, lock });
     copyHidden(path.join(taskDir, 'hidden'), start.repo);
-    const untouched = runAll(spec.hidden, { cwd: start.repo, env, timeoutMs, log });
+    const untouched = runAll(spec.hidden, { cwd: start.repo, env, timeoutMs, log, record: out.commands });
     out.startFails = !untouched.pass;
 
     const solved = cloneAt({ dest: path.join(workDir, task.id, 'solved'), task, taskDir, fixtureSource, lock });
-    try { git(solved.repo, ['apply', '--whitespace=nowarn', reference], { home: solved.home }); }
+    // Through the setup path, so a reference whose context names a planted value applies like the setup did.
+    try { applySetupPatch(solved, reference, task.id); }
     catch (e)
     {
         out.problems.push(`reference.patch does not apply: ${String(e.stderr || e.message).trim()}`);
         return out;
     }
     copyHidden(path.join(taskDir, 'hidden'), solved.repo);
-    const hidden = runAll(spec.hidden, { cwd: solved.repo, env, timeoutMs, log });
-    const suite = runAll(spec.suite, { cwd: solved.repo, env, timeoutMs, log });
+    const hidden = runAll(spec.hidden, { cwd: solved.repo, env, timeoutMs, log, record: out.commands });
+    const suite = runAll(spec.suite, { cwd: solved.repo, env, timeoutMs, log, record: out.commands });
     out.referencePasses = hidden.pass;
     out.suiteGreen = suite.pass;
     out.infra = untouched.infra || hidden.infra || suite.infra || null;
@@ -111,7 +114,7 @@ function proveTasks({ tasksDir = path.join(BENCH_DIR, 'tasks'), tasks = 'all', b
             log(`${r.ok ? 'proven' : 'NOT proven'}  ${r.id}${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`);
         }
     }
-    finally { fs.rmSync(workDir, { recursive: true, force: true }); }
+    finally { removeTree(workDir); }
 
     const yn = (v) => (v === null ? '-' : v ? 'yes' : 'no');
     const md = ['| task | fails at start | reference passes | suite green | proven | problems |', '|---|---|---|---|---|---|',

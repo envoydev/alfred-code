@@ -1,0 +1,57 @@
+{
+  "hidden": [
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false",
+      "--include",
+      "src/app/loans/loan-form/loan-form.hidden.spec.ts"
+    ]
+  ],
+  "suite": [
+    [
+      "dotnet",
+      "build",
+      "-c",
+      "Release"
+    ],
+    [
+      "dotnet",
+      "test",
+      "-c",
+      "Release",
+      "--no-build"
+    ],
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "run",
+      "lint",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false"
+    ]
+  ],
+  "timeoutMin": 20
+}

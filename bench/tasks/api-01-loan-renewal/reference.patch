@@ -1,0 +1,355 @@
+diff --git a/src/LendingDesk.Api/Contracts/LoanContracts.cs b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+index 7fc807c..6021494 100644
+--- a/src/LendingDesk.Api/Contracts/LoanContracts.cs
++++ b/src/LendingDesk.Api/Contracts/LoanContracts.cs
+@@ -36,3 +36,9 @@ public sealed class LoanRequest
+     [Required]
+     public DateOnly? DueDate { get; init; }
+ }
++
++public sealed class RenewalRequest
++{
++    [Required]
++    public DateOnly? DueDate { get; init; }
++}
+diff --git a/src/LendingDesk.Api/Controllers/LoansController.cs b/src/LendingDesk.Api/Controllers/LoansController.cs
+index 94dc322..94071c9 100644
+--- a/src/LendingDesk.Api/Controllers/LoansController.cs
++++ b/src/LendingDesk.Api/Controllers/LoansController.cs
+@@ -100,6 +100,29 @@ public sealed class LoansController(LendingDbContext db, TimeProvider clock) : C
+         return await Get(id, cancellationToken);
+     }
+ 
++    [HttpPost("{id:int}/renew")]
++    [Authorize(Policy = Policies.Staff)]
++    public async Task<LoanDto> Renew(int id, RenewalRequest request, CancellationToken cancellationToken)
++    {
++        var loan = await db.Loans
++            .Include(l => l.Item)
++            .Include(l => l.Member)
++            .SingleOrDefaultAsync(l => l.Id == id, cancellationToken)
++            ?? throw new NotFoundException("Loan", id);
++        var due = request.DueDate!.Value;
++
++        // The loan already holds its copy up to the current due date, so only the added days need a free one.
++        var addedFrom = loan.DueDate.AddDays(1);
++        var copiesOut = await db.Loans.CountAsync(
++            l => l.ItemId == loan.ItemId && l.Id != loan.Id && l.ReturnedAt == null && l.StartDate <= due && addedFrom <= l.DueDate,
++            cancellationToken);
++        LendingPolicy.EnsureCanRenew(loan, loan.Member, loan.Item, due, clock.Today(), copiesOut);
++
++        loan.DueDate = due;
++        await db.SaveChangesAsync(cancellationToken);
++        return await Get(id, cancellationToken);
++    }
++
+     private static IQueryable<LoanDto> Project(IQueryable<Loan> loans, DateOnly today) =>
+         loans.Select(l => new LoanDto(
+             l.Id,
+diff --git a/src/LendingDesk.Domain/Loans/LendingPolicy.cs b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+index 6abf4f7..53f6178 100644
+--- a/src/LendingDesk.Domain/Loans/LendingPolicy.cs
++++ b/src/LendingDesk.Domain/Loans/LendingPolicy.cs
+@@ -49,6 +49,51 @@ public static class LendingPolicy
+         }
+     }
+ 
++    /// <summary>Throws when moving <paramref name="loan"/>'s due date to <paramref name="newDueDate"/> breaks a renewal rule.</summary>
++    /// <remarks>
++    /// The rules are checked in a fixed order and the first broken one is reported. The item's condition and
++    /// retirement do not matter: the borrower already has the copy.
++    /// </remarks>
++    /// <param name="copiesOut">
++    /// How many of the item's other open loans overlap the added days, from the day after the current due date
++    /// through <paramref name="newDueDate"/>.
++    /// </param>
++    public static void EnsureCanRenew(Loan loan, Member member, Item item, DateOnly newDueDate, DateOnly today, int copiesOut)
++    {
++        ArgumentNullException.ThrowIfNull(loan);
++        ArgumentNullException.ThrowIfNull(member);
++        ArgumentNullException.ThrowIfNull(item);
++        if (loan.ReturnedAt is not null)
++        {
++            throw new DomainException("loan_already_returned", $"Loan {loan.Id} was already returned.");
++        }
++
++        if (loan.DueDate < today)
++        {
++            throw new DomainException("loan_overdue", $"Loan {loan.Id} is overdue and has to be returned, not renewed.");
++        }
++
++        if (member.Status == MemberStatus.Suspended)
++        {
++            throw new DomainException("member_suspended", $"Member {member.Id} is suspended and cannot renew.");
++        }
++
++        if (newDueDate <= loan.DueDate)
++        {
++            throw new DomainException("renewal_not_later", "The new due date is not later than the current due date.");
++        }
++
++        if (newDueDate.DayNumber - loan.StartDate.DayNumber > MaxLoanDays)
++        {
++            throw new DomainException("loan_too_long", $"A loan can last at most {MaxLoanDays} days.");
++        }
++
++        if (copiesOut >= item.TotalStock)
++        {
++            throw new DomainException("item_unavailable", $"No copy of item {item.Id} is free for the added days.");
++        }
++    }
++
+     public static bool Overlaps(DateOnly startA, DateOnly endA, DateOnly startB, DateOnly endB) =>
+         startA <= endB && startB <= endA;
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..7681b64 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -114,6 +114,151 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal(1, await _api.WithDbAsync(db => db.OutboxMessages.CountAsync(o => o.Type == EventTypes.LoanReturned)));
+     }
+ 
++    private Task<HttpResponseMessage> RenewAsync(int loanId, DateOnly dueDate, HttpClient? client = null) =>
++        (client ?? _staff).PostJsonAsync($"/api/loans/{loanId}/renew", new { dueDate });
++
++    private static async Task AssertRefusedAsync(HttpResponseMessage response, string code)
++    {
++        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
++        var problem = await response.ReadAsync<Problem>();
++        Assert.Equal(code, problem.Code);
++        Assert.Equal("Lending rule violated", problem.Title);
++        Assert.False(string.IsNullOrEmpty(problem.TraceId));
++    }
++
++    [Fact]
++    public async Task Staff_and_admins_renew_a_loan_to_a_later_due_date_without_a_notice()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId, days: 7)).ReadAsync<LoanDto>();
++
++        var byStaff = await RenewAsync(loan.Id, _api.Clock.Today.AddDays(14));
++        var byAdmin = await RenewAsync(loan.Id, _api.Clock.Today.AddDays(20), _api.ClientAs("admin"));
++
++        Assert.Equal(HttpStatusCode.OK, byStaff.StatusCode);
++        Assert.Equal(loan with { DueDate = _api.Clock.Today.AddDays(14) }, await byStaff.ReadAsync<LoanDto>());
++        Assert.Equal(HttpStatusCode.OK, byAdmin.StatusCode);
++        var renewed = await byAdmin.ReadAsync<LoanDto>();
++        Assert.Equal(_api.Clock.Today.AddDays(20), renewed.DueDate);
++        Assert.Equal(renewed, await (await _staff.GetAsync($"/api/loans/{loan.Id}")).ReadAsync<LoanDto>());
++        Assert.Equal([EventTypes.LoanCreated], await _api.WithDbAsync(db => db.OutboxMessages.Select(o => o.Type).ToListAsync()));
++    }
++
++    [Fact]
++    public async Task Members_cannot_renew()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId)).ReadAsync<LoanDto>();
++
++        var response = await RenewAsync(loan.Id, loan.DueDate.AddDays(3), _api.ClientAs("member"));
++
++        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
++        Assert.Equal("forbidden", (await response.ReadAsync<Problem>()).Code);
++    }
++
++    [Fact]
++    public async Task A_renewal_needs_a_due_date_and_an_existing_loan()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId)).ReadAsync<LoanDto>();
++
++        var missing = await _staff.PostJsonAsync($"/api/loans/{loan.Id}/renew", new { });
++        var unknown = await RenewAsync(999999, loan.DueDate.AddDays(3));
++
++        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
++        var problem = await missing.ReadAsync<Problem>();
++        Assert.Equal("validation_failed", problem.Code);
++        Assert.Contains("DueDate", problem.Errors!.Keys);
++        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
++        Assert.Equal("Loan 999999 was not found.", (await unknown.ReadAsync<Problem>()).Detail);
++    }
++
++    [Fact]
++    public async Task A_returned_loan_cannot_be_renewed_even_when_it_was_also_late()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++        _api.Clock.Now = _api.Clock.Now.AddDays(5);
++        await _staff.PostAsync($"/api/loans/{loan.Id}/return", null);
++
++        await AssertRefusedAsync(await RenewAsync(loan.Id, _api.Clock.Today.AddDays(3)), "loan_already_returned");
++    }
++
++    [Fact]
++    public async Task An_overdue_loan_cannot_be_renewed_but_one_due_today_can()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 2);
++        var overdue = await (await LendAsync(memberId, itemId, days: 2)).ReadAsync<LoanDto>();
++        var dueToday = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++        _api.Clock.Now = _api.Clock.Now.AddDays(3);
++
++        Assert.Equal(HttpStatusCode.OK, (await RenewAsync(dueToday.Id, _api.Clock.Today.AddDays(3))).StatusCode);
++        await AssertRefusedAsync(await RenewAsync(overdue.Id, _api.Clock.Today.AddDays(3)), "loan_overdue");
++
++        await _api.ClientAs("admin").PostAsync($"/api/members/{memberId}/suspend", null);
++        await AssertRefusedAsync(await RenewAsync(overdue.Id, _api.Clock.Today.AddDays(3)), "loan_overdue");
++    }
++
++    [Fact]
++    public async Task A_suspended_member_cannot_renew_even_to_an_earlier_date()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId)).ReadAsync<LoanDto>();
++        await _api.ClientAs("admin").PostAsync($"/api/members/{memberId}/suspend", null);
++
++        await AssertRefusedAsync(await RenewAsync(loan.Id, loan.DueDate.AddDays(-1)), "member_suspended");
++    }
++
++    [Fact]
++    public async Task The_new_due_date_must_be_later_and_within_the_longest_loan()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId, startInDays: 2, days: 7)).ReadAsync<LoanDto>();
++
++        await AssertRefusedAsync(await RenewAsync(loan.Id, loan.DueDate), "renewal_not_later");
++        await AssertRefusedAsync(await RenewAsync(loan.Id, loan.DueDate.AddDays(-2)), "renewal_not_later");
++        await AssertRefusedAsync(await RenewAsync(loan.Id, loan.StartDate.AddDays(29)), "loan_too_long");
++        Assert.Equal(loan, await (await _staff.GetAsync($"/api/loans/{loan.Id}")).ReadAsync<LoanDto>());
++
++        var longest = await RenewAsync(loan.Id, loan.StartDate.AddDays(28));
++        Assert.Equal(HttpStatusCode.OK, longest.StatusCode);
++        Assert.Equal(loan.StartDate.AddDays(28), (await longest.ReadAsync<LoanDto>()).DueDate);
++    }
++
++    [Fact]
++    public async Task A_renewal_needs_a_free_copy_for_the_added_days_only()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 2);
++        var renewing = await (await LendAsync(memberId, itemId, startInDays: 0, days: 7)).ReadAsync<LoanDto>();
++        await LendAsync(memberId, itemId, startInDays: 0, days: 7);
++        await LendAsync(memberId, itemId, startInDays: 8, days: 4);
++        var returned = await (await LendAsync(memberId, itemId, startInDays: 8, days: 4)).ReadAsync<LoanDto>();
++        await _staff.PostAsync($"/api/loans/{returned.Id}/return", null);
++
++        // Days 8-10 overlap one other open loan: a copy is free even though both copies are out on days 0-7.
++        var fits = await RenewAsync(renewing.Id, _api.Clock.Today.AddDays(10));
++        Assert.Equal(HttpStatusCode.OK, fits.StatusCode);
++
++        await LendAsync(memberId, itemId, startInDays: 13, days: 2);
++        await AssertRefusedAsync(await RenewAsync(renewing.Id, _api.Clock.Today.AddDays(13)), "item_unavailable");
++        await AssertRefusedAsync(await RenewAsync(renewing.Id, _api.Clock.Today.AddDays(29)), "loan_too_long");
++        Assert.Equal(_api.Clock.Today.AddDays(10), (await (await _staff.GetAsync($"/api/loans/{renewing.Id}")).ReadAsync<LoanDto>()).DueDate);
++    }
++
++    [Fact]
++    public async Task A_damaged_or_retired_item_can_still_be_renewed()
++    {
++        var (memberId, itemId) = await SeedAsync();
++        var loan = await (await LendAsync(memberId, itemId)).ReadAsync<LoanDto>();
++        var item = await (await _staff.GetAsync($"/api/items/{itemId}")).ReadAsync<ItemDto>();
++        await _staff.PutJsonAsync($"/api/items/{itemId}", new { name = item.Name, category = item.Category, sku = item.Sku, totalStock = item.TotalStock, condition = "Damaged" });
++        await _api.ClientAs("admin").DeleteAsync($"/api/items/{itemId}");
++
++        var response = await RenewAsync(loan.Id, loan.DueDate.AddDays(7));
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++    }
++
+     [Fact]
+     public async Task A_loan_past_its_due_date_is_overdue_in_the_list_and_the_report()
+     {
+diff --git a/tests/LendingDesk.UnitTests/LendingPolicyTests.cs b/tests/LendingDesk.UnitTests/LendingPolicyTests.cs
+index 6bd9595..6576386 100644
+--- a/tests/LendingDesk.UnitTests/LendingPolicyTests.cs
++++ b/tests/LendingDesk.UnitTests/LendingPolicyTests.cs
+@@ -79,6 +79,90 @@ public class LendingPolicyTests
+         Assert.Equal("item_unavailable", CodeOf(() => LendingPolicy.EnsureCanLend(ActiveMember(), Drill(stock: 2), Today, Today.AddDays(1), Today, copiesOut: 2)));
+     }
+ 
++    private static Loan LoanDue(DateOnly due) => new() { Id = 3, StartDate = due.AddDays(-7), DueDate = due };
++
++    [Fact]
++    public void Renews_when_every_rule_holds()
++    {
++        LendingPolicy.EnsureCanRenew(LoanDue(Today.AddDays(2)), ActiveMember(), Drill(stock: 2), Today.AddDays(9), Today, copiesOut: 1);
++    }
++
++    [Fact]
++    public void Refuses_to_renew_a_returned_loan_before_anything_else()
++    {
++        var loan = LoanDue(Today.AddDays(-3));
++        loan.Return(DateTimeOffset.UnixEpoch);
++        var member = ActiveMember();
++        member.Suspend();
++
++        Assert.Equal("loan_already_returned", CodeOf(() => LendingPolicy.EnsureCanRenew(loan, member, Drill(), Today.AddDays(-4), Today, copiesOut: 2)));
++    }
++
++    [Fact]
++    public void Refuses_to_renew_an_overdue_loan_but_renews_on_the_due_date()
++    {
++        var member = ActiveMember();
++        member.Suspend();
++
++        Assert.Equal("loan_overdue", CodeOf(() => LendingPolicy.EnsureCanRenew(LoanDue(Today.AddDays(-1)), member, Drill(), Today.AddDays(3), Today, 0)));
++        LendingPolicy.EnsureCanRenew(LoanDue(Today), ActiveMember(), Drill(), Today.AddDays(3), Today, 0);
++    }
++
++    [Fact]
++    public void Refuses_to_renew_for_a_suspended_member_before_checking_the_new_date()
++    {
++        var member = ActiveMember();
++        member.Suspend();
++
++        Assert.Equal("member_suspended", CodeOf(() => LendingPolicy.EnsureCanRenew(LoanDue(Today.AddDays(2)), member, Drill(), Today.AddDays(2), Today, 0)));
++    }
++
++    [Theory]
++    [InlineData(0)]
++    [InlineData(-1)]
++    public void Refuses_a_new_due_date_that_is_not_later(int daysAfterCurrentDue)
++    {
++        var loan = LoanDue(Today.AddDays(2));
++
++        Assert.Equal("renewal_not_later", CodeOf(() => LendingPolicy.EnsureCanRenew(loan, ActiveMember(), Drill(), loan.DueDate.AddDays(daysAfterCurrentDue), Today, 0)));
++    }
++
++    [Theory]
++    [InlineData(LendingPolicy.MaxLoanDays, false)]
++    [InlineData(LendingPolicy.MaxLoanDays + 1, true)]
++    public void Caps_a_renewed_loan_at_the_same_length_counted_from_its_start(int daysFromStart, bool refused)
++    {
++        var loan = LoanDue(Today.AddDays(2));
++        void Renew() => LendingPolicy.EnsureCanRenew(loan, ActiveMember(), Drill(), loan.StartDate.AddDays(daysFromStart), Today, 0);
++        if (refused)
++        {
++            Assert.Equal("loan_too_long", CodeOf(Renew));
++        }
++        else
++        {
++            Renew();
++        }
++    }
++
++    [Fact]
++    public void Refuses_to_renew_when_every_copy_is_out_for_the_added_days()
++    {
++        var loan = LoanDue(Today.AddDays(2));
++
++        Assert.Equal("item_unavailable", CodeOf(() => LendingPolicy.EnsureCanRenew(loan, ActiveMember(), Drill(stock: 2), Today.AddDays(9), Today, copiesOut: 2)));
++        Assert.Equal("loan_too_long", CodeOf(() => LendingPolicy.EnsureCanRenew(loan, ActiveMember(), Drill(stock: 2), loan.StartDate.AddDays(LendingPolicy.MaxLoanDays + 1), Today, copiesOut: 2)));
++    }
++
++    [Fact]
++    public void Renews_a_retired_or_damaged_item()
++    {
++        var item = Drill();
++        item.Retire();
++        item.Condition = ItemCondition.Damaged;
++
++        LendingPolicy.EnsureCanRenew(LoanDue(Today.AddDays(2)), ActiveMember(), item, Today.AddDays(9), Today, 0);
++    }
++
+     [Theory]
+     [InlineData(1, 5, 5, 9, true)]
+     [InlineData(1, 5, 6, 9, false)]

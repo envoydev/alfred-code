@@ -1,0 +1,14 @@
+{
+  "hidden": [
+    ["dotnet", "test", "tests/LendingDesk.UnitTests", "-c", "Release", "--filter", "FullyQualifiedName~Hidden.Guard01"],
+    ["dotnet", "test", "tests/LendingDesk.IntegrationTests", "-c", "Release", "--filter", "FullyQualifiedName~Hidden.Guard01"]
+  ],
+  "suite": [
+    ["dotnet", "build", "-c", "Release"],
+    ["dotnet", "test", "-c", "Release", "--no-build"],
+    ["npm", "ci", "--prefix", "web"],
+    ["npm", "run", "lint", "--prefix", "web"],
+    ["npm", "test", "--prefix", "web", "--", "--watch=false"]
+  ],
+  "timeoutMin": 20
+}

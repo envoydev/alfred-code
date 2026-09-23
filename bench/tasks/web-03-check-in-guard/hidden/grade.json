@@ -1,0 +1,63 @@
+{
+  "hidden": [
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false",
+      "--include",
+      "src/app/core/staff-guard.hidden.spec.ts",
+      "--include",
+      "src/app/loans/check-in/check-in.hidden.spec.ts",
+      "--include",
+      "src/app/loans/check-in/check-in-route.hidden.spec.ts",
+      "--include",
+      "src/app/loans/loan-list/loan-list.hidden.spec.ts"
+    ]
+  ],
+  "suite": [
+    [
+      "dotnet",
+      "build",
+      "-c",
+      "Release"
+    ],
+    [
+      "dotnet",
+      "test",
+      "-c",
+      "Release",
+      "--no-build"
+    ],
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "run",
+      "lint",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false"
+    ]
+  ],
+  "timeoutMin": 20
+}

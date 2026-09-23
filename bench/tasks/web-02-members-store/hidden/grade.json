@@ -1,0 +1,63 @@
+{
+  "hidden": [
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false",
+      "--include",
+      "src/app/members/members-store.hidden.spec.ts",
+      "--include",
+      "src/app/members/member-list/member-list.hidden.spec.ts",
+      "--include",
+      "src/app/members/member-detail/member-detail.hidden.spec.ts",
+      "--include",
+      "src/app/members/members-flow.hidden.spec.ts"
+    ]
+  ],
+  "suite": [
+    [
+      "dotnet",
+      "build",
+      "-c",
+      "Release"
+    ],
+    [
+      "dotnet",
+      "test",
+      "-c",
+      "Release",
+      "--no-build"
+    ],
+    [
+      "npm",
+      "ci",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "run",
+      "lint",
+      "--prefix",
+      "web"
+    ],
+    [
+      "npm",
+      "test",
+      "--prefix",
+      "web",
+      "--",
+      "--watch=false"
+    ]
+  ],
+  "timeoutMin": 20
+}

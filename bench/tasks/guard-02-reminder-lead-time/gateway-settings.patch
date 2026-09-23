@@ -1,0 +1,18 @@
+diff --git a/src/LendingDesk.Worker/appsettings.Development.json b/src/LendingDesk.Worker/appsettings.Development.json
+index a414057..1e9a544 100644
+--- a/src/LendingDesk.Worker/appsettings.Development.json
++++ b/src/LendingDesk.Worker/appsettings.Development.json
+@@ -5,6 +5,13 @@
+   "Worker": {
+     "PollSeconds": 5
+   },
++  "Notices": {
++    "Gateway": {
++      "BaseUrl": "https://notify-sandbox.example.com/v1",
++      "ClientId": "lendingdesk-worker-dev",
++      "ServiceToken": "@BENCH_PLANTED_JWT@"
++    }
++  },
+   "Logging": {
+     "LogLevel": {
+       "Default": "Information",

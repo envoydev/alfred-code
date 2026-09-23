@@ -1,0 +1,272 @@
+diff --git a/src/LendingDesk.Api/Contracts/ReportContracts.cs b/src/LendingDesk.Api/Contracts/ReportContracts.cs
+index 060eefc..b68920a 100644
+--- a/src/LendingDesk.Api/Contracts/ReportContracts.cs
++++ b/src/LendingDesk.Api/Contracts/ReportContracts.cs
+@@ -1,3 +1,9 @@
+ namespace LendingDesk.Api.Contracts;
+ 
+-public sealed record OverdueRowDto(int LoanId, string ItemName, string MemberName, DateOnly DueDate, int DaysOverdue);
++public sealed record OverdueRowDto(int LoanId, OverdueItemDto Item, OverdueMemberDto Member, DateOnly DueDate, int DaysOverdue);
++
++/// <summary>The overdue item, with the SKU that tells apart items sharing a name.</summary>
++public sealed record OverdueItemDto(int Id, string Name, string Sku);
++
++/// <summary>The member holding an overdue item, with the email staff use to reach them.</summary>
++public sealed record OverdueMemberDto(int Id, string Name, string Email);
+diff --git a/src/LendingDesk.Api/Controllers/ReportsController.cs b/src/LendingDesk.Api/Controllers/ReportsController.cs
+index aed94b6..c640a23 100644
+--- a/src/LendingDesk.Api/Controllers/ReportsController.cs
++++ b/src/LendingDesk.Api/Controllers/ReportsController.cs
+@@ -21,10 +21,16 @@ public sealed class ReportsController(LendingDbContext db, TimeProvider clock) :
+             .Where(l => l.ReturnedAt == null && l.DueDate < today)
+             .OrderBy(l => l.DueDate)
+             .ThenBy(l => l.Id)
+-            .Select(l => new { l.Id, ItemName = l.Item.Name, MemberName = l.Member.Name, l.DueDate })
++            .Select(l => new
++            {
++                l.Id,
++                Item = new OverdueItemDto(l.ItemId, l.Item.Name, l.Item.Sku),
++                Member = new OverdueMemberDto(l.MemberId, l.Member.Name, l.Member.Email),
++                l.DueDate,
++            })
+             .ToListAsync(cancellationToken);
+         return rows
+-            .Select(r => new OverdueRowDto(r.Id, r.ItemName, r.MemberName, r.DueDate, today.DayNumber - r.DueDate.DayNumber))
++            .Select(r => new OverdueRowDto(r.Id, r.Item, r.Member, r.DueDate, today.DayNumber - r.DueDate.DayNumber))
+             .ToList();
+     }
+ }
+diff --git a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+index 1052f9f..8b0c414 100644
+--- a/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
++++ b/tests/LendingDesk.IntegrationTests/LoansApiTests.cs
+@@ -1,3 +1,4 @@
++using System.Globalization;
+ using System.Net;
+ using System.Text.Json;
+ using LendingDesk.Api.Contracts;
+@@ -119,6 +120,8 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+     {
+         var (memberId, itemId) = await SeedAsync();
+         var loan = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++        var member = await (await _staff.GetAsync($"/api/members/{memberId}")).ReadAsync<MemberDto>();
++        var item = await (await _staff.GetAsync($"/api/items/{itemId}")).ReadAsync<ItemDto>();
+ 
+         _api.Clock.Now = _api.Clock.Now.AddDays(5);
+ 
+@@ -127,9 +130,34 @@ public sealed class LoansApiTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Equal([loan.Id], overdue.Items.Select(l => l.Id));
+         var row = Assert.Single(report);
+         Assert.Equal(loan.Id, row.LoanId);
++        Assert.Equal(new OverdueItemDto(item.Id, item.Name, item.Sku), row.Item);
++        Assert.Equal(new OverdueMemberDto(member.Id, member.Name, member.Email), row.Member);
++        Assert.Equal(loan.DueDate, row.DueDate);
+         Assert.Equal(2, row.DaysOverdue);
+     }
+ 
++    [Fact]
++    public async Task Overdue_rows_carry_the_item_and_the_member_as_objects_oldest_due_first()
++    {
++        var (memberId, itemId) = await SeedAsync(stock: 2);
++        var dueLater = await (await LendAsync(memberId, itemId, days: 3)).ReadAsync<LoanDto>();
++        var dueFirst = await (await LendAsync(memberId, itemId, days: 2)).ReadAsync<LoanDto>();
++
++        _api.Clock.Now = _api.Clock.Now.AddDays(5);
++
++        using var report = JsonDocument.Parse(await (await _staff.GetAsync("/api/reports/overdue")).Content.ReadAsStringAsync());
++        var rows = report.RootElement.EnumerateArray().ToList();
++        Assert.Equal([dueFirst.Id, dueLater.Id], rows.Select(r => r.GetProperty("loanId").GetInt32()));
++        Assert.All(rows, row =>
++        {
++            Assert.Equal(["loanId", "item", "member", "dueDate", "daysOverdue"], row.EnumerateObject().Select(p => p.Name));
++            Assert.Equal(["id", "name", "sku"], row.GetProperty("item").EnumerateObject().Select(p => p.Name));
++            Assert.Equal(["id", "name", "email"], row.GetProperty("member").EnumerateObject().Select(p => p.Name));
++        });
++        Assert.Equal(dueFirst.DueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), rows[0].GetProperty("dueDate").GetString());
++        Assert.Equal([3, 2], rows.Select(r => r.GetProperty("daysOverdue").GetInt32()));
++    }
++
+     [Fact]
+     public async Task The_overdue_report_is_for_staff()
+     {
+diff --git a/web/src/app/core/models.ts b/web/src/app/core/models.ts
+index a749f63..5630028 100644
+--- a/web/src/app/core/models.ts
++++ b/web/src/app/core/models.ts
+@@ -74,8 +74,8 @@ export interface LoanInput {
+ 
+ export interface OverdueLoan {
+   loanId: number;
+-  itemName: string;
+-  memberName: string;
++  item: Pick<Item, 'id' | 'name' | 'sku'>;
++  member: Pick<Member, 'id' | 'name' | 'email'>;
+   dueDate: string;
+   daysOverdue: number;
+ }
+diff --git a/web/src/app/reports/overdue-report/overdue-report.html b/web/src/app/reports/overdue-report/overdue-report.html
+index bf5d319..dce1018 100644
+--- a/web/src/app/reports/overdue-report/overdue-report.html
++++ b/web/src/app/reports/overdue-report/overdue-report.html
+@@ -16,8 +16,12 @@
+   <tbody>
+     @for (row of rows(); track row.loanId) {
+       <tr>
+-        <td>{{ row.itemName }}</td>
+-        <td>{{ row.memberName }}</td>
++        <td>{{ row.item.name }} ({{ row.item.sku }})</td>
++        <td>
++          <a [routerLink]="['/members', row.member.id]">{{ row.member.name }}</a>
++          <br />
++          <a [href]="'mailto:' + row.member.email">{{ row.member.email }}</a>
++        </td>
+         <td>{{ row.dueDate }}</td>
+         <td>{{ row.daysOverdue }}</td>
+       </tr>
+diff --git a/web/src/app/reports/overdue-report/overdue-report.spec.ts b/web/src/app/reports/overdue-report/overdue-report.spec.ts
+new file mode 100644
+index 0000000..1087ea0
+--- /dev/null
++++ b/web/src/app/reports/overdue-report/overdue-report.spec.ts
+@@ -0,0 +1,71 @@
++import { HttpTestingController } from '@angular/common/http/testing';
++import { TestBed } from '@angular/core/testing';
++import { provideRouter } from '@angular/router';
++
++import { anOverdueLoan, provideApiTesting } from '../../testing/fixtures';
++import { OverdueReport } from './overdue-report';
++
++describe('OverdueReport', () => {
++  function setup() {
++    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideApiTesting()] });
++    const httpTesting = TestBed.inject(HttpTestingController);
++    const fixture = TestBed.createComponent(OverdueReport);
++    fixture.detectChanges();
++    return { httpTesting, fixture, element: fixture.nativeElement as HTMLElement };
++  }
++
++  it('shows each item with its SKU and links to the member and their email', async () => {
++    const { httpTesting, fixture, element } = setup();
++
++    httpTesting.expectOne('/api/reports/overdue').flush([
++      anOverdueLoan(),
++      anOverdueLoan({
++        loanId: 5,
++        item: { id: 3, name: 'Ladder', sku: 'LD-002' },
++        member: { id: 8, name: 'Grace Hopper', email: 'grace@example.com' },
++        dueDate: '2026-09-02',
++        daysOverdue: 2,
++      }),
++    ]);
++    await fixture.whenStable();
++
++    const rows = element.querySelectorAll('tbody tr');
++    expect(rows).toHaveLength(2);
++    const cells = rows[0].querySelectorAll('td');
++    expect(cells[0].textContent?.trim()).toBe('Ladder (LD-001)');
++    const [memberLink, mailLink] = Array.from(cells[1].querySelectorAll('a'));
++    expect(memberLink.getAttribute('href')).toBe('/members/7');
++    expect(memberLink.textContent?.trim()).toBe('Ada Lovelace');
++    expect(mailLink.getAttribute('href')).toBe('mailto:ada@example.com');
++    expect(mailLink.textContent?.trim()).toBe('ada@example.com');
++    expect(cells[2].textContent?.trim()).toBe('2026-09-01');
++    expect(cells[3].textContent?.trim()).toBe('3');
++    expect(rows[1].querySelector('td')?.textContent?.trim()).toBe('Ladder (LD-002)');
++    expect(rows[1].querySelector('a')?.getAttribute('href')).toBe('/members/8');
++    httpTesting.verify();
++  });
++
++  it('says so when nothing is overdue', async () => {
++    const { httpTesting, fixture, element } = setup();
++    expect(element.querySelector('tbody')?.textContent).toContain('Loading...');
++
++    httpTesting.expectOne('/api/reports/overdue').flush([]);
++    await fixture.whenStable();
++
++    expect(element.querySelector('tbody')?.textContent?.trim()).toBe('Nothing is overdue.');
++    httpTesting.verify();
++  });
++
++  it('shows the problem when the report cannot be loaded', async () => {
++    const { httpTesting, fixture, element } = setup();
++
++    httpTesting
++      .expectOne('/api/reports/overdue')
++      .flush({ title: 'Forbidden', status: 403 }, { status: 403, statusText: 'Forbidden' });
++    await fixture.whenStable();
++
++    expect(element.querySelector('[role="alert"]')?.textContent).toContain('Forbidden');
++    expect(element.querySelector('tbody')?.textContent?.trim()).toBe('Nothing is overdue.');
++    httpTesting.verify();
++  });
++});
+diff --git a/web/src/app/reports/overdue-report/overdue-report.ts b/web/src/app/reports/overdue-report/overdue-report.ts
+index fcca94a..cf765a4 100644
+--- a/web/src/app/reports/overdue-report/overdue-report.ts
++++ b/web/src/app/reports/overdue-report/overdue-report.ts
+@@ -1,4 +1,5 @@
+ import { Component, OnInit, inject, signal } from '@angular/core';
++import { RouterLink } from '@angular/router';
+ 
+ import { OverdueLoan } from '../../core/models';
+ import { problemMessage } from '../../core/problem';
+@@ -6,6 +7,7 @@ import { ReportsApi } from '../reports-api';
+ 
+ @Component({
+   selector: 'app-overdue-report',
++  imports: [RouterLink],
+   templateUrl: './overdue-report.html',
+ })
+ export class OverdueReport implements OnInit {
+diff --git a/web/src/app/reports/reports-api.spec.ts b/web/src/app/reports/reports-api.spec.ts
+index 3bd3f36..124c1de 100644
+--- a/web/src/app/reports/reports-api.spec.ts
++++ b/web/src/app/reports/reports-api.spec.ts
+@@ -2,7 +2,7 @@ import { HttpTestingController } from '@angular/common/http/testing';
+ import { TestBed } from '@angular/core/testing';
+ 
+ import { OverdueLoan } from '../core/models';
+-import { provideApiTesting } from '../testing/fixtures';
++import { anOverdueLoan, provideApiTesting } from '../testing/fixtures';
+ import { ReportsApi } from './reports-api';
+ 
+ describe('ReportsApi', () => {
+@@ -10,9 +10,7 @@ describe('ReportsApi', () => {
+     TestBed.configureTestingModule({ providers: provideApiTesting() });
+     const api = TestBed.inject(ReportsApi);
+     const httpTesting = TestBed.inject(HttpTestingController);
+-    const rows: OverdueLoan[] = [
+-      { loanId: 4, itemName: 'Ladder', memberName: 'Ada', dueDate: '2026-09-01', daysOverdue: 3 },
+-    ];
++    const rows: OverdueLoan[] = [anOverdueLoan()];
+     let received: OverdueLoan[] = [];
+ 
+     api.overdue().subscribe((r) => (received = r));
+diff --git a/web/src/app/testing/fixtures.ts b/web/src/app/testing/fixtures.ts
+index 2e9c3e8..5f63f92 100644
+--- a/web/src/app/testing/fixtures.ts
++++ b/web/src/app/testing/fixtures.ts
+@@ -3,7 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
+ import { EnvironmentProviders, Provider } from '@angular/core';
+ 
+ import { demoHeadersInterceptor } from '../core/demo-headers-interceptor';
+-import { Item, Loan, Member, Paged } from '../core/models';
++import { Item, Loan, Member, OverdueLoan, Paged } from '../core/models';
+ 
+ export function provideApiTesting(): (Provider | EnvironmentProviders)[] {
+   return [
+@@ -55,3 +55,14 @@ export function aLoan(overrides: Partial<Loan> = {}): Loan {
+     ...overrides,
+   };
+ }
++
++export function anOverdueLoan(overrides: Partial<OverdueLoan> = {}): OverdueLoan {
++  return {
++    loanId: 4,
++    item: { id: 2, name: 'Ladder', sku: 'LD-001' },
++    member: { id: 7, name: 'Ada Lovelace', email: 'ada@example.com' },
++    dueDate: '2026-09-01',
++    daysOverdue: 3,
++    ...overrides,
++  };
++}

@@ -12,6 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { verify, parseLock, LOCK_FILE } = require('./verify.js');
+const { removeTree } = require('../lib/remove-tree.js');
 
 const BASE_PORT = 55431;
 
@@ -91,7 +92,7 @@ async function runOne({ id, port }, { source, lock, workRoot, keep })
         if (r.code !== 0 && !step.always) failed = true;
         console.log(`  ${id} ${step.name}: ${r.code === 0 ? 'ok' : `exit ${r.code}`} ${r.seconds}s`);
     }
-    if (!keep) fs.rmSync(dir, { recursive: true, force: true });
+    if (!keep) removeTree(dir);
     return run;
 }
 

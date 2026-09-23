@@ -1,0 +1,176 @@
+diff --git a/README.md b/README.md
+index ed00374..d54b94e 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,13 @@ cd web && npm ci && npm run lint && npm test -- --watch=false
+ 
+ Integration tests need Docker running.
+ 
++## Worker settings
++
++The worker sends each unreturned loan one due-soon notice once its due date is between tomorrow and
++`Notices:DueSoonDays` days from today (a whole number of days). The default is 1, the day before;
++the worker's `appsettings.Development.json` sets 2 so reminders are easier to see locally. Override it
++per environment like any other setting, e.g. `Notices__DueSoonDays=3`.
++
+ ## CI and the API image
+ 
+ `.github/workflows/ci.yml` builds and tests the API, builds its container image, and lints, tests and
+diff --git a/src/LendingDesk.Worker/Notices/NoticeOptions.cs b/src/LendingDesk.Worker/Notices/NoticeOptions.cs
+new file mode 100644
+index 0000000..e051b3f
+--- /dev/null
++++ b/src/LendingDesk.Worker/Notices/NoticeOptions.cs
+@@ -0,0 +1,12 @@
++namespace LendingDesk.Worker.Notices;
++
++public sealed class NoticeOptions
++{
++    public const string Section = "Notices";
++
++    /// <summary>
++    /// How many days ahead a due-soon notice goes out: a loan gets it once its due date is between tomorrow and
++    /// this many days from today. 1 means the day before.
++    /// </summary>
++    public int DueSoonDays { get; set; } = 1;
++}
+\ No newline at end of file
+diff --git a/src/LendingDesk.Worker/Program.cs b/src/LendingDesk.Worker/Program.cs
+index 610ce4b..6f86e3d 100644
+--- a/src/LendingDesk.Worker/Program.cs
++++ b/src/LendingDesk.Worker/Program.cs
+@@ -11,6 +11,7 @@ builder.Services.AddDbContext<LendingDbContext>(options =>
+     options.UseNpgsql(builder.Configuration.GetConnectionString("Lending")));
+ builder.Services.AddSingleton(TimeProvider.System);
+ builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection(WorkerOptions.Section));
++builder.Services.Configure<NoticeOptions>(builder.Configuration.GetSection(NoticeOptions.Section));
+ builder.Services.AddScoped<NoticeSender>();
+ builder.Services.AddScoped<OutboxProcessor>();
+ builder.Services.AddScoped<ReminderScanner>();
+diff --git a/src/LendingDesk.Worker/Reminders/ReminderScanner.cs b/src/LendingDesk.Worker/Reminders/ReminderScanner.cs
+index 7e9609d..dfd6a61 100644
+--- a/src/LendingDesk.Worker/Reminders/ReminderScanner.cs
++++ b/src/LendingDesk.Worker/Reminders/ReminderScanner.cs
+@@ -2,20 +2,25 @@ using LendingDesk.Data;
+ using LendingDesk.Domain.Notices;
+ using LendingDesk.Worker.Notices;
+ using Microsoft.EntityFrameworkCore;
++using Microsoft.Extensions.Options;
+ 
+ namespace LendingDesk.Worker.Reminders;
+ 
+-/// <summary>Finds loans due tomorrow and loans past due, and sends each its notice once.</summary>
+-public sealed class ReminderScanner(LendingDbContext db, NoticeSender notices, TimeProvider clock)
++/// <summary>
++/// Finds loans coming due within <see cref="NoticeOptions.DueSoonDays"/> and loans past due, and sends each its
++/// notice once.
++/// </summary>
++public sealed class ReminderScanner(LendingDbContext db, NoticeSender notices, IOptions<NoticeOptions> options, TimeProvider clock)
+ {
+     /// <returns>How many notices were sent.</returns>
+     public async Task<int> ScanAsync(CancellationToken cancellationToken)
+     {
+         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+         var tomorrow = today.AddDays(1);
++        var lastDueSoon = today.AddDays(options.Value.DueSoonDays);
+ 
+         var dueSoon = await db.Loans
+-            .Where(l => l.ReturnedAt == null && l.DueDate == tomorrow)
++            .Where(l => l.ReturnedAt == null && l.DueDate >= tomorrow && l.DueDate <= lastDueSoon)
+             .Where(l => !db.Notices.Any(n => n.LoanId == l.Id && n.Kind == NoticeKind.DueSoon))
+             .Select(l => l.Id)
+             .ToListAsync(cancellationToken);
+diff --git a/src/LendingDesk.Worker/appsettings.Development.json b/src/LendingDesk.Worker/appsettings.Development.json
+index 1e9a544..40e1ef8 100644
+--- a/src/LendingDesk.Worker/appsettings.Development.json
++++ b/src/LendingDesk.Worker/appsettings.Development.json
+@@ -6,6 +6,7 @@
+     "PollSeconds": 5
+   },
+   "Notices": {
++    "DueSoonDays": 2,
+     "Gateway": {
+       "BaseUrl": "https://notify-sandbox.example.com/v1",
+       "ClientId": "lendingdesk-worker-dev",
+diff --git a/src/LendingDesk.Worker/appsettings.json b/src/LendingDesk.Worker/appsettings.json
+index b2dcdb6..8650297 100644
+--- a/src/LendingDesk.Worker/appsettings.json
++++ b/src/LendingDesk.Worker/appsettings.json
+@@ -1,4 +1,7 @@
+ {
++  "Notices": {
++    "DueSoonDays": 1
++  },
+   "Logging": {
+     "LogLevel": {
+       "Default": "Information",
+diff --git a/tests/LendingDesk.IntegrationTests/WorkerTests.cs b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+index e98c3a0..5efa15c 100644
+--- a/tests/LendingDesk.IntegrationTests/WorkerTests.cs
++++ b/tests/LendingDesk.IntegrationTests/WorkerTests.cs
+@@ -11,6 +11,7 @@ using LendingDesk.Worker.Outbox;
+ using LendingDesk.Worker.Reminders;
+ using Microsoft.EntityFrameworkCore;
+ using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
+ 
+ namespace LendingDesk.IntegrationTests;
+ 
+@@ -35,10 +36,10 @@ public sealed class WorkerTests(PostgresFixture postgres) : IAsyncLifetime
+     private OutboxProcessor Processor(LendingDbContext db) =>
+         new(db, new NoticeSender(db, _clock, NullLogger<NoticeSender>.Instance), _clock, NullLogger<OutboxProcessor>.Instance);
+ 
+-    private ReminderScanner Scanner(LendingDbContext db) =>
+-        new(db, new NoticeSender(db, _clock, NullLogger<NoticeSender>.Instance), _clock);
++    private ReminderScanner Scanner(LendingDbContext db, int dueSoonDays = 1) =>
++        new(db, new NoticeSender(db, _clock, NullLogger<NoticeSender>.Instance), Options.Create(new NoticeOptions { DueSoonDays = dueSoonDays }), _clock);
+ 
+-    private async Task<Loan> SeedLoanAsync(int dueInDays, bool returned = false)
++    private async Task<Loan> SeedLoanAsync(int dueInDays, bool returned = false, int? startInDays = null)
+     {
+         await using var db = NewDb();
+         var suffix = Guid.NewGuid().ToString("N")[..8];
+@@ -46,7 +47,7 @@ public sealed class WorkerTests(PostgresFixture postgres) : IAsyncLifetime
+         {
+             Member = new Member { Name = $"Member {suffix}", Email = $"{suffix}@example.com", CreatedAt = _clock.Now },
+             Item = new Item { Name = $"Item {suffix}", Category = "Tools", Sku = $"SKU-{suffix}".ToUpperInvariant(), TotalStock = 1, CreatedAt = _clock.Now },
+-            StartDate = _clock.Today.AddDays(Math.Min(dueInDays, 0) - 1),
++            StartDate = _clock.Today.AddDays(startInDays ?? Math.Min(dueInDays, 0) - 1),
+             DueDate = _clock.Today.AddDays(dueInDays),
+             ReturnedAt = returned ? _clock.Now : null,
+             CreatedAt = _clock.Now,
+@@ -145,4 +146,34 @@ public sealed class WorkerTests(PostgresFixture postgres) : IAsyncLifetime
+         Assert.Empty(await NoticesForAsync(dueLater.Id));
+         Assert.Empty(await NoticesForAsync(returnedLate.Id));
+     }
++
++    [Fact]
++    public async Task A_longer_lead_time_reminds_every_loan_due_from_tomorrow_to_the_last_day_once()
++    {
++        var dueToday = await SeedLoanAsync(dueInDays: 0);
++        var dueTomorrow = await SeedLoanAsync(dueInDays: 1);
++        var dueOnLastDay = await SeedLoanAsync(dueInDays: 3, startInDays: 1);
++        var dueAfterLastDay = await SeedLoanAsync(dueInDays: 4);
++        var returned = await SeedLoanAsync(dueInDays: 2, returned: true);
++        var overdue = await SeedLoanAsync(dueInDays: -1);
++
++        await using (var db = NewDb())
++        {
++            Assert.Equal(3, await Scanner(db, dueSoonDays: 3).ScanAsync(CancellationToken.None));
++        }
++
++        // A day later the loan due today is overdue and the next loan comes into range; nobody gets a second due-soon notice.
++        _clock.Now = _clock.Now.AddDays(1);
++        await using (var db = NewDb())
++        {
++            Assert.Equal(2, await Scanner(db, dueSoonDays: 3).ScanAsync(CancellationToken.None));
++        }
++
++        Assert.Equal([NoticeKind.Overdue], await NoticesForAsync(dueToday.Id));
++        Assert.Equal([NoticeKind.DueSoon], await NoticesForAsync(dueTomorrow.Id));
++        Assert.Equal([NoticeKind.DueSoon], await NoticesForAsync(dueOnLastDay.Id));
++        Assert.Equal([NoticeKind.DueSoon], await NoticesForAsync(dueAfterLastDay.Id));
++        Assert.Empty(await NoticesForAsync(returned.Id));
++        Assert.Equal([NoticeKind.Overdue], await NoticesForAsync(overdue.Id));
++    }
+ }

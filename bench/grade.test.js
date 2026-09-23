@@ -146,3 +146,61 @@ test('grading refuses while the run is still being driven', async (t) =>
     fs.writeFileSync(path.join(w.runDir, '.lock', 'pid'), `${process.ppid}\n`);
     assert.throws(() => w.grade(), /r-test is held by pid/);
 });
+
+// npm tripping over its own node_modules removal (ENOTEMPTY / EBUSY, macOS under load) says nothing
+// about the tree: the command runs once more. Anything else fails on the first try.
+const os = require('node:os');
+const { runCommand } = require('./lib/grade.js');
+function flaky(t, { failures, message })
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-flaky-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const count = path.join(dir, 'count');
+    const script = `const fs=require('fs');const n=fs.existsSync(${JSON.stringify(count)})?Number(fs.readFileSync(${JSON.stringify(count)},'utf8')):0;`
+        + `fs.writeFileSync(${JSON.stringify(count)},String(n+1));if(n<${failures}){console.error(${JSON.stringify(message)});process.exit(1)}console.log('ok')`;
+    return { argv: [process.execPath, '-e', script], runs: () => Number(fs.readFileSync(count, 'utf8')), dir };
+}
+
+test('a transient npm directory error is retried once, and the retry is on record', (t) =>
+{
+    const f = flaky(t, { failures: 1, message: 'npm error code ENOTEMPTY\nnpm error syscall rmdir' });
+    const r = runCommand(f.argv, { cwd: f.dir, env: process.env, timeout: 60000 });
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.retried, true);
+    assert.strictEqual(f.runs(), 2);
+    assert.match(r.body, /retried after a transient package-manager error/);
+});
+
+test('an ordinary failure is not retried', (t) =>
+{
+    const f = flaky(t, { failures: 1, message: 'Failed!  - Failed: 2, Passed: 1' });
+    const r = runCommand(f.argv, { cwd: f.dir, env: process.env, timeout: 60000 });
+    assert.strictEqual(r.status, 1);
+    assert.strictEqual(r.retried, false);
+    assert.strictEqual(f.runs(), 1);
+});
+
+test('a transient error that comes back is retried only once, and marked - it is the harness, not the arm', (t) =>
+{
+    const f = flaky(t, { failures: 5, message: 'npm ERR! code EBUSY' });
+    const r = runCommand(f.argv, { cwd: f.dir, env: process.env, timeout: 60000, retryDelayMs: 0 });
+    assert.strictEqual(r.status, 1);
+    assert.strictEqual(f.runs(), 2);
+    assert.strictEqual(r.transient, true);
+    const cleared = runCommand(flaky(t, { failures: 1, message: 'npm error code ENOTEMPTY' }).argv, { cwd: f.dir, env: process.env, timeout: 60000, retryDelayMs: 0 });
+    assert.strictEqual(cleared.transient, false, 'a retry that passed leaves nothing to mark');
+    const real = runCommand(flaky(t, { failures: 1, message: 'Failed!  - Failed: 2, Passed: 1' }).argv, { cwd: f.dir, env: process.env, timeout: 60000 });
+    assert.strictEqual(real.transient, false);
+});
+
+test('a command that TIMED OUT is not retried, whatever its output said - the limit holds once', (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-slow-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const count = path.join(dir, 'count');
+    const script = `require('fs').appendFileSync(${JSON.stringify(count)}, 'x');console.error('npm error code ENOTEMPTY');setTimeout(()=>{}, 5000)`;
+    const r = runCommand([process.execPath, '-e', script], { cwd: dir, env: process.env, timeout: 500, retryDelayMs: 0 });
+    assert.strictEqual(r.timedOut, true);
+    assert.strictEqual(r.retried, false);
+    assert.strictEqual(fs.readFileSync(count, 'utf8'), 'x');
+});

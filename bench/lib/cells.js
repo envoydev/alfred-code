@@ -7,6 +7,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const lock = require('./lock.js');
+const { removeTree } = require('./remove-tree.js');
 
 const BENCH_DIR = path.join(__dirname, '..');
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -63,8 +64,8 @@ function reset(cell)
 {
     const now = state(cell);
     if (now !== 'todo') throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is ${now} - never wiped`);
-    fs.rmSync(cell.work, { recursive: true, force: true });
-    fs.rmSync(cell.results, { recursive: true, force: true });
+    removeTree(cell.work);
+    removeTree(cell.results);
 }
 
 function partition(cells)

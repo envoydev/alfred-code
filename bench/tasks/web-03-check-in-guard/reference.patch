@@ -1,0 +1,608 @@
+diff --git a/web/src/app/core/session.ts b/web/src/app/core/session.ts
+index eddc93d..6f5eef4 100644
+--- a/web/src/app/core/session.ts
++++ b/web/src/app/core/session.ts
+@@ -4,6 +4,11 @@ export type Role = 'member' | 'staff' | 'admin';
+ 
+ export const ROLES: readonly Role[] = ['member', 'staff', 'admin'];
+ 
++/** Staff and admins do the front-desk work; members only borrow. */
++export function isStaffRole(role: Role): boolean {
++  return role === 'staff' || role === 'admin';
++}
++
+ /** Who the desk is acting as. Sent with every API request by the demo headers interceptor. */
+ @Injectable({ providedIn: 'root' })
+ export class Session {
+diff --git a/web/src/app/core/staff-guard.spec.ts b/web/src/app/core/staff-guard.spec.ts
+new file mode 100644
+index 0000000..aa80b49
+--- /dev/null
++++ b/web/src/app/core/staff-guard.spec.ts
+@@ -0,0 +1,76 @@
++import { Component } from '@angular/core';
++import { TestBed } from '@angular/core/testing';
++import {
++  ActivatedRouteSnapshot,
++  Router,
++  RouterStateSnapshot,
++  UrlTree,
++  provideRouter,
++} from '@angular/router';
++import { RouterTestingHarness } from '@angular/router/testing';
++
++import { Session } from './session';
++import { staffGuard } from './staff-guard';
++
++@Component({ template: '<h1>Loans</h1>' })
++class LoansPage {}
++
++@Component({ template: '<h1>Staff page</h1>' })
++class StaffPage {}
++
++describe('staffGuard', () => {
++  beforeEach(() => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideRouter([
++          { path: 'loans', component: LoansPage },
++          { path: 'staff', canActivate: [staffGuard], component: StaffPage },
++        ]),
++      ],
++    });
++  });
++
++  function runGuard() {
++    return TestBed.runInInjectionContext(() =>
++      staffGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot),
++    );
++  }
++
++  it('lets staff and admins through', () => {
++    const session = TestBed.inject(Session);
++
++    session.role.set('staff');
++    expect(runGuard()).toBe(true);
++    session.role.set('admin');
++    expect(runGuard()).toBe(true);
++  });
++
++  it('sends a member to the loans list without navigating by itself', () => {
++    const router = TestBed.inject(Router);
++    const navigate = vi.spyOn(router, 'navigate');
++    const navigateByUrl = vi.spyOn(router, 'navigateByUrl');
++    TestBed.inject(Session).role.set('member');
++
++    const result = runGuard();
++
++    expect(result).toBeInstanceOf(UrlTree);
++    expect(router.serializeUrl(result as UrlTree)).toBe('/loans');
++    expect(navigate).not.toHaveBeenCalled();
++    expect(navigateByUrl).not.toHaveBeenCalled();
++  });
++
++  it('reads the role picked at the moment of the navigation', async () => {
++    const harness = await RouterTestingHarness.create();
++    const router = TestBed.inject(Router);
++    const session = TestBed.inject(Session);
++
++    session.role.set('member');
++    await harness.navigateByUrl('/staff');
++    expect(router.url).toBe('/loans');
++
++    session.role.set('admin');
++    await harness.navigateByUrl('/staff');
++    expect(router.url).toBe('/staff');
++    expect(harness.routeNativeElement?.textContent).toBe('Staff page');
++  });
++});
+diff --git a/web/src/app/core/staff-guard.ts b/web/src/app/core/staff-guard.ts
+new file mode 100644
+index 0000000..36840d8
+--- /dev/null
++++ b/web/src/app/core/staff-guard.ts
+@@ -0,0 +1,8 @@
++import { inject } from '@angular/core';
++import { CanActivateFn, Router } from '@angular/router';
++
++import { Session, isStaffRole } from './session';
++
++/** Lets staff and admins through; a member is sent to the loans list instead. */
++export const staffGuard: CanActivateFn = () =>
++  isStaffRole(inject(Session).role()) || inject(Router).createUrlTree(['/loans']);
+diff --git a/web/src/app/loans/check-in/check-in.html b/web/src/app/loans/check-in/check-in.html
+new file mode 100644
+index 0000000..c19ea89
+--- /dev/null
++++ b/web/src/app/loans/check-in/check-in.html
+@@ -0,0 +1,50 @@
++<h1>Check in</h1>
++
++<form class="toolbar" [formGroup]="form" (ngSubmit)="find()">
++  <label>
++    Loan number
++    <input type="number" min="1" step="1" formControlName="number" />
++  </label>
++  <button type="submit" [disabled]="!canFind()">Find loan</button>
++</form>
++
++@if (error(); as message) {
++  <p class="alert" role="alert">{{ message }}</p>
++}
++
++@if (loan(); as l) {
++  <table>
++    <thead>
++      <tr>
++        <th scope="col">Loan</th>
++        <th scope="col">Item</th>
++        <th scope="col">Member</th>
++        <th scope="col">Due</th>
++        <th scope="col">Status</th>
++        <th scope="col"><span class="muted">Actions</span></th>
++      </tr>
++    </thead>
++    <tbody>
++      <tr>
++        <td>{{ l.id }}</td>
++        <td>{{ l.itemName }}</td>
++        <td>{{ l.memberName }}</td>
++        <td>{{ l.dueDate }}</td>
++        <td>
++          <span class="badge" [class]="l.status">{{ l.status }}</span>
++        </td>
++        <td>
++          @if (l.status !== 'Returned') {
++            <button type="button" [disabled]="returning()" (click)="checkIn(l)">Check in</button>
++          }
++        </td>
++      </tr>
++    </tbody>
++  </table>
++
++  @if (checkedIn()) {
++    <p role="status">Loan {{ l.id }} checked in.</p>
++  } @else if (l.status === 'Returned') {
++    <p class="muted">This loan has already been returned.</p>
++  }
++}
+diff --git a/web/src/app/loans/check-in/check-in.spec.ts b/web/src/app/loans/check-in/check-in.spec.ts
+new file mode 100644
+index 0000000..edc191a
+--- /dev/null
++++ b/web/src/app/loans/check-in/check-in.spec.ts
+@@ -0,0 +1,218 @@
++import { HttpTestingController } from '@angular/common/http/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
++import { Title } from '@angular/platform-browser';
++import { Router, provideRouter } from '@angular/router';
++import { RouterTestingHarness } from '@angular/router/testing';
++
++import { Session } from '../../core/session';
++import { aLoan, paged, provideApiTesting } from '../../testing/fixtures';
++import { loansRoutes } from '../loans.routes';
++import { CheckIn } from './check-in';
++
++describe('CheckIn', () => {
++  let httpTesting: HttpTestingController;
++
++  beforeEach(() => {
++    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideApiTesting()] });
++    httpTesting = TestBed.inject(HttpTestingController);
++  });
++
++  afterEach(() => httpTesting.verify());
++
++  async function open(): Promise<ComponentFixture<CheckIn>> {
++    const fixture = TestBed.createComponent(CheckIn);
++    await fixture.whenStable();
++    return fixture;
++  }
++
++  function button(fixture: ComponentFixture<CheckIn>, text: string) {
++    return Array.from(
++      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button'),
++    ).find((b) => b.textContent?.trim() === text);
++  }
++
++  function text(fixture: ComponentFixture<CheckIn>, selector: string) {
++    return (fixture.nativeElement as HTMLElement).querySelector(selector)?.textContent?.trim();
++  }
++
++  async function typeNumber(fixture: ComponentFixture<CheckIn>, value: string) {
++    const input = (fixture.nativeElement as HTMLElement).querySelector(
++      'input[type="number"]',
++    ) as HTMLInputElement;
++    input.value = value;
++    input.dispatchEvent(new Event('input'));
++    await fixture.whenStable();
++  }
++
++  async function findLoan(fixture: ComponentFixture<CheckIn>, value: string) {
++    await typeNumber(fixture, value);
++    button(fixture, 'Find loan')?.click();
++    await fixture.whenStable();
++  }
++
++  it('labels the number field and enables Find loan only for a whole number of 1 or more', async () => {
++    const fixture = await open();
++    const label = (fixture.nativeElement as HTMLElement).querySelector('label');
++    expect(label?.textContent?.trim()).toBe('Loan number');
++    expect(label?.querySelector('input[type="number"]')).not.toBeNull();
++    expect(button(fixture, 'Find loan')?.disabled).toBe(true);
++
++    for (const invalid of ['0', '-2', '1.5', '']) {
++      await typeNumber(fixture, invalid);
++      expect(button(fixture, 'Find loan')?.disabled).toBe(true);
++    }
++    await typeNumber(fixture, '1');
++    expect(button(fixture, 'Find loan')?.disabled).toBe(false);
++
++    fixture.componentInstance.form.setValue({ number: 2.5 });
++    await fixture.whenStable();
++    expect(button(fixture, 'Find loan')?.disabled).toBe(true);
++  });
++
++  it('finds an active loan and checks it in', async () => {
++    const fixture = await open();
++
++    await findLoan(fixture, '5');
++    httpTesting
++      .expectOne({ method: 'GET', url: '/api/loans/5' })
++      .flush(
++        aLoan({ id: 5, itemName: 'Ladder', memberName: 'Grace Hopper', dueDate: '2026-09-15' }),
++      );
++    await fixture.whenStable();
++
++    const row = text(fixture, 'tbody tr') ?? '';
++    expect(row).toContain('Ladder');
++    expect(row).toContain('Grace Hopper');
++    expect(row).toContain('2026-09-15');
++    expect(text(fixture, '.badge')).toBe('Active');
++    expect(text(fixture, '[role="status"]')).toBeUndefined();
++
++    button(fixture, 'Check in')?.click();
++    await fixture.whenStable();
++    expect(button(fixture, 'Check in')?.disabled).toBe(true);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/loans/5/return' })
++      .flush(aLoan({ id: 5, status: 'Returned', returnedAt: '2026-09-20T08:00:00Z' }));
++    await fixture.whenStable();
++
++    expect(text(fixture, '.badge')).toBe('Returned');
++    expect(button(fixture, 'Check in')).toBeUndefined();
++    expect(text(fixture, '[role="status"]')).toBe('Loan 5 checked in.');
++    expect(fixture.nativeElement.textContent).not.toContain('This loan has already been returned.');
++  });
++
++  it('offers Check in for an overdue loan', async () => {
++    const fixture = await open();
++
++    await findLoan(fixture, '8');
++    httpTesting.expectOne('/api/loans/8').flush(aLoan({ id: 8, status: 'Overdue' }));
++    await fixture.whenStable();
++
++    expect(button(fixture, 'Check in')?.disabled).toBe(false);
++  });
++
++  it('says when the loan found is already returned', async () => {
++    const fixture = await open();
++
++    await findLoan(fixture, '4');
++    httpTesting
++      .expectOne('/api/loans/4')
++      .flush(aLoan({ id: 4, status: 'Returned', returnedAt: '2026-09-10T12:00:00Z' }));
++    await fixture.whenStable();
++
++    expect(button(fixture, 'Check in')).toBeUndefined();
++    expect(fixture.nativeElement.textContent).toContain('This loan has already been returned.');
++    expect(text(fixture, '[role="status"]')).toBeUndefined();
++  });
++
++  it('shows a failed request in the alert', async () => {
++    const fixture = await open();
++
++    await findLoan(fixture, '999');
++    httpTesting
++      .expectOne('/api/loans/999')
++      .flush(
++        { title: 'Not Found', status: 404, detail: 'Loan 999 was not found.' },
++        { status: 404, statusText: 'Not Found' },
++      );
++    await fixture.whenStable();
++    expect(text(fixture, '[role="alert"]')).toBe('Loan 999 was not found.');
++    expect(fixture.nativeElement.querySelector('table')).toBeNull();
++
++    await findLoan(fixture, '5');
++    httpTesting.expectOne('/api/loans/5').flush(aLoan({ id: 5 }));
++    await fixture.whenStable();
++    button(fixture, 'Check in')?.click();
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/loans/5/return' })
++      .flush(
++        { title: 'Conflict', status: 409, detail: 'Loan 5 was already returned.' },
++        { status: 409, statusText: 'Conflict' },
++      );
++    await fixture.whenStable();
++    expect(text(fixture, '[role="alert"]')).toBe('Loan 5 was already returned.');
++    expect(button(fixture, 'Check in')?.disabled).toBe(false);
++    expect(text(fixture, '[role="status"]')).toBeUndefined();
++
++    await findLoan(fixture, '6');
++    httpTesting.expectOne('/api/loans/6').flush(null, { status: 0, statusText: 'Unknown Error' });
++    await fixture.whenStable();
++    expect(text(fixture, '[role="alert"]')).toBe('The server could not be reached.');
++  });
++
++  it('clears the previous loan, confirmation and error on each new find', async () => {
++    const fixture = await open();
++    await findLoan(fixture, '5');
++    httpTesting.expectOne('/api/loans/5').flush(aLoan({ id: 5 }));
++    await fixture.whenStable();
++    button(fixture, 'Check in')?.click();
++    httpTesting
++      .expectOne('/api/loans/5/return')
++      .flush(aLoan({ id: 5, status: 'Returned', returnedAt: '2026-09-20T08:00:00Z' }));
++    await fixture.whenStable();
++    expect(text(fixture, '[role="status"]')).toBe('Loan 5 checked in.');
++
++    await findLoan(fixture, '6');
++    expect(fixture.nativeElement.querySelector('table')).toBeNull();
++    expect(text(fixture, '[role="status"]')).toBeUndefined();
++    httpTesting
++      .expectOne('/api/loans/6')
++      .flush(
++        { title: 'Not Found', status: 404, detail: 'Loan 6 was not found.' },
++        { status: 404, statusText: 'Not Found' },
++      );
++    await fixture.whenStable();
++    expect(text(fixture, '[role="alert"]')).toBe('Loan 6 was not found.');
++
++    await findLoan(fixture, '7');
++    expect(text(fixture, '[role="alert"]')).toBeUndefined();
++    httpTesting.expectOne('/api/loans/7').flush(aLoan({ id: 7 }));
++  });
++});
++
++describe('The Check in route', () => {
++  it('opens for staff and admins and sends a member to the loans list', async () => {
++    TestBed.configureTestingModule({
++      providers: [
++        provideRouter([{ path: 'loans', children: loansRoutes }]),
++        ...provideApiTesting(),
++      ],
++    });
++    const httpTesting = TestBed.inject(HttpTestingController);
++    const router = TestBed.inject(Router);
++    const session = TestBed.inject(Session);
++    const harness = await RouterTestingHarness.create();
++
++    session.role.set('member');
++    await harness.navigateByUrl('/loans/check-in');
++    expect(router.url).toBe('/loans');
++    httpTesting.expectOne('/api/loans?page=1&pageSize=10').flush(paged([]));
++
++    session.role.set('staff');
++    await harness.navigateByUrl('/loans/check-in');
++    expect(router.url).toBe('/loans/check-in');
++    expect(TestBed.inject(Title).getTitle()).toBe('Check in');
++    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('Check in');
++    httpTesting.verify();
++  });
++});
+diff --git a/web/src/app/loans/check-in/check-in.ts b/web/src/app/loans/check-in/check-in.ts
+new file mode 100644
+index 0000000..b8557f3
+--- /dev/null
++++ b/web/src/app/loans/check-in/check-in.ts
+@@ -0,0 +1,70 @@
++import { Component, computed, inject, signal } from '@angular/core';
++import { toSignal } from '@angular/core/rxjs-interop';
++import {
++  AbstractControl,
++  NonNullableFormBuilder,
++  ReactiveFormsModule,
++  ValidationErrors,
++  Validators,
++} from '@angular/forms';
++
++import { Loan } from '../../core/models';
++import { problemMessage } from '../../core/problem';
++import { LoansApi } from '../loans-api';
++
++function wholeNumber(control: AbstractControl): ValidationErrors | null {
++  return Number.isInteger(control.value) ? null : { wholeNumber: true };
++}
++
++/** Finds a loan by its number and checks the item back in. */
++@Component({
++  selector: 'app-check-in',
++  imports: [ReactiveFormsModule],
++  templateUrl: './check-in.html',
++})
++export class CheckIn {
++  private readonly api = inject(LoansApi);
++
++  readonly form = inject(NonNullableFormBuilder).group({
++    number: [null as number | null, [Validators.required, Validators.min(1), wholeNumber]],
++  });
++
++  // A signal over the form, so the Find button follows a programmatic change as well as typing.
++  private readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
++  protected readonly canFind = computed(() => this.status() === 'VALID');
++
++  protected readonly loan = signal<Loan | null>(null);
++  protected readonly returning = signal(false);
++  protected readonly checkedIn = signal(false);
++  protected readonly error = signal<string | null>(null);
++
++  protected find(): void {
++    const number = this.form.controls.number.value;
++    if (this.form.invalid || number === null) {
++      return;
++    }
++    this.loan.set(null);
++    this.checkedIn.set(false);
++    this.error.set(null);
++    this.api.get(number).subscribe({
++      next: (loan) => this.loan.set(loan),
++      error: (error: unknown) => this.error.set(problemMessage(error)),
++    });
++  }
++
++  protected checkIn(loan: Loan): void {
++    this.returning.set(true);
++    this.error.set(null);
++    this.api.returnLoan(loan.id).subscribe({
++      next: (returned) => {
++        this.loan.set(returned);
++        this.checkedIn.set(true);
++        this.returning.set(false);
++      },
++      error: (error: unknown) => {
++        this.error.set(problemMessage(error));
++        this.returning.set(false);
++      },
++    });
++  }
++}
+diff --git a/web/src/app/loans/loan-list/loan-list.html b/web/src/app/loans/loan-list/loan-list.html
+index 9447e7b..477d8e3 100644
+--- a/web/src/app/loans/loan-list/loan-list.html
++++ b/web/src/app/loans/loan-list/loan-list.html
+@@ -16,6 +16,9 @@
+   </p>
+   <span class="spacer"></span>
+   <a class="button" routerLink="/loans/new">New loan</a>
++  @if (isStaff()) {
++    <a class="button" routerLink="/loans/check-in">Check in</a>
++  }
+ </div>
+ 
+ @if (store.error(); as message) {
+diff --git a/web/src/app/loans/loan-list/loan-list.spec.ts b/web/src/app/loans/loan-list/loan-list.spec.ts
+index 002f322..e9af888 100644
+--- a/web/src/app/loans/loan-list/loan-list.spec.ts
++++ b/web/src/app/loans/loan-list/loan-list.spec.ts
+@@ -2,6 +2,7 @@ import { HttpTestingController } from '@angular/common/http/testing';
+ import { TestBed } from '@angular/core/testing';
+ import { provideRouter } from '@angular/router';
+ 
++import { Session } from '../../core/session';
+ import { aLoan, paged, provideApiTesting } from '../../testing/fixtures';
+ import { LoanList } from './loan-list';
+ 
+@@ -38,4 +39,31 @@ describe('LoanList', () => {
+     expect(element.querySelectorAll('tbody button')).toHaveLength(1);
+     httpTesting.verify();
+   });
++
++  it('links to Check in only while the role is staff or admin', async () => {
++    TestBed.configureTestingModule({ providers: [provideRouter([]), ...provideApiTesting()] });
++    const httpTesting = TestBed.inject(HttpTestingController);
++    const session = TestBed.inject(Session);
++    const fixture = TestBed.createComponent(LoanList);
++    fixture.detectChanges();
++    httpTesting.expectOne('/api/loans?page=1&pageSize=10').flush(paged([]));
++    await fixture.whenStable();
++    const element = fixture.nativeElement as HTMLElement;
++    const checkInLink = () =>
++      Array.from(element.querySelectorAll('.toolbar a')).find(
++        (a) => a.textContent?.trim() === 'Check in',
++      );
++
++    expect(checkInLink()?.getAttribute('href')).toBe('/loans/check-in');
++
++    session.role.set('member');
++    await fixture.whenStable();
++    expect(checkInLink()).toBeUndefined();
++    expect(element.querySelector('.toolbar a')?.textContent?.trim()).toBe('New loan');
++
++    session.role.set('admin');
++    await fixture.whenStable();
++    expect(checkInLink()?.getAttribute('href')).toBe('/loans/check-in');
++    httpTesting.verify();
++  });
+ });
+diff --git a/web/src/app/loans/loan-list/loan-list.ts b/web/src/app/loans/loan-list/loan-list.ts
+index 833a169..b554d8e 100644
+--- a/web/src/app/loans/loan-list/loan-list.ts
++++ b/web/src/app/loans/loan-list/loan-list.ts
+@@ -1,7 +1,8 @@
+-import { Component, OnInit, inject } from '@angular/core';
++import { Component, OnInit, computed, inject } from '@angular/core';
+ import { RouterLink } from '@angular/router';
+ 
+ import { Loan, LoanStatus } from '../../core/models';
++import { Session, isStaffRole } from '../../core/session';
+ import { DEFAULT_LOAN_FILTER, LoansStore } from '../loans-store';
+ 
+ @Component({
+@@ -11,6 +12,8 @@ import { DEFAULT_LOAN_FILTER, LoansStore } from '../loans-store';
+ })
+ export class LoanList implements OnInit {
+   protected readonly store = inject(LoansStore);
++  private readonly session = inject(Session);
++  protected readonly isStaff = computed(() => isStaffRole(this.session.role()));
+   protected readonly statuses: LoanStatus[] = ['Active', 'Overdue', 'Returned'];
+ 
+   ngOnInit(): void {
+diff --git a/web/src/app/loans/loans-api.spec.ts b/web/src/app/loans/loans-api.spec.ts
+index 73f9f3d..1051944 100644
+--- a/web/src/app/loans/loans-api.spec.ts
++++ b/web/src/app/loans/loans-api.spec.ts
+@@ -27,6 +27,16 @@ describe('LoansApi', () => {
+     req.flush(paged([aLoan()]));
+   });
+ 
++  it('gets one loan by its number', () => {
++    let status = '';
++    api.get(12).subscribe((loan) => (status = loan.status));
++
++    httpTesting
++      .expectOne({ method: 'GET', url: '/api/loans/12' })
++      .flush(aLoan({ id: 12, status: 'Overdue' }));
++    expect(status).toBe('Overdue');
++  });
++
+   it('creates a loan and returns one by id', () => {
+     const body = { itemId: 2, memberId: 3, startDate: '2026-09-01', dueDate: '2026-09-10' };
+     api.create(body).subscribe();
+diff --git a/web/src/app/loans/loans-api.ts b/web/src/app/loans/loans-api.ts
+index c2c9fed..1beccdb 100644
+--- a/web/src/app/loans/loans-api.ts
++++ b/web/src/app/loans/loans-api.ts
+@@ -21,6 +21,10 @@ export class LoansApi {
+     return this.http.get<Paged<Loan>>(this.url, { params: queryParams({ ...query }) });
+   }
+ 
++  get(id: number): Observable<Loan> {
++    return this.http.get<Loan>(`${this.url}/${id}`);
++  }
++
+   create(loan: LoanInput): Observable<Loan> {
+     return this.http.post<Loan>(this.url, loan);
+   }
+diff --git a/web/src/app/loans/loans.routes.ts b/web/src/app/loans/loans.routes.ts
+index 396950f..049beaf 100644
+--- a/web/src/app/loans/loans.routes.ts
++++ b/web/src/app/loans/loans.routes.ts
+@@ -1,5 +1,7 @@
+ import { Routes } from '@angular/router';
+ 
++import { staffGuard } from '../core/staff-guard';
++
+ export const loansRoutes: Routes = [
+   {
+     path: '',
+@@ -11,4 +13,10 @@ export const loansRoutes: Routes = [
+     title: 'New loan',
+     loadComponent: () => import('./loan-form/loan-form').then((m) => m.LoanForm),
+   },
++  {
++    path: 'check-in',
++    title: 'Check in',
++    canActivate: [staffGuard],
++    loadComponent: () => import('./check-in/check-in').then((m) => m.CheckIn),
++  },
+ ];

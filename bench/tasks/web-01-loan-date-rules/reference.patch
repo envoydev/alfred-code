@@ -1,0 +1,296 @@
+diff --git a/web/src/app/loans/loan-form/loan-form.html b/web/src/app/loans/loan-form/loan-form.html
+index 77836a5..ac1e1d9 100644
+--- a/web/src/app/loans/loan-form/loan-form.html
++++ b/web/src/app/loans/loan-form/loan-form.html
+@@ -46,11 +46,15 @@
+     <input type="date" formControlName="dueDate" />
+     @if (form.controls.dueDate.touched && form.controls.dueDate.invalid) {
+       <span class="field-error">Due date is required.</span>
++    } @else if (dateRule() === 'dueBeforeStart') {
++      <span class="field-error">The due date cannot be before the start date.</span>
++    } @else if (dateRule() === 'loanTooLong') {
++      <span class="field-error">A loan can last at most {{ maxLoanDays }} days.</span>
+     }
+   </label>
+ 
+   <div class="actions">
+-    <button type="submit" [disabled]="saving()">Create loan</button>
++    <button type="submit" [disabled]="!canSave()">Create loan</button>
+     <a routerLink="/loans">Cancel</a>
+   </div>
+ </form>
+diff --git a/web/src/app/loans/loan-form/loan-form.spec.ts b/web/src/app/loans/loan-form/loan-form.spec.ts
+index 81f8b07..785c038 100644
+--- a/web/src/app/loans/loan-form/loan-form.spec.ts
++++ b/web/src/app/loans/loan-form/loan-form.spec.ts
+@@ -1,5 +1,5 @@
+ import { HttpTestingController } from '@angular/common/http/testing';
+-import { TestBed } from '@angular/core/testing';
++import { ComponentFixture, TestBed } from '@angular/core/testing';
+ import { Router, provideRouter } from '@angular/router';
+ 
+ import { aLoan, aMember, anItem, paged, provideApiTesting } from '../../testing/fixtures';
+@@ -36,23 +36,166 @@ describe('LoanForm', () => {
+     expect(form.valid).toBe(true);
+   });
+ 
+-  it('accepts any pair of dates and sends them as entered', async () => {
++  function dueDateErrors(fixture: ComponentFixture<LoanForm>): string[] {
++    const dueDate = (fixture.nativeElement as HTMLElement).querySelector(
++      'input[formControlName="dueDate"]',
++    );
++    const label = dueDate?.closest('label') as HTMLElement;
++    return Array.from(label.querySelectorAll('.field-error')).map(
++      (error) => error.textContent?.trim() ?? '',
++    );
++  }
++
++  function createButton(fixture: ComponentFixture<LoanForm>): HTMLButtonElement {
++    return (fixture.nativeElement as HTMLElement).querySelector(
++      'button[type="submit"]',
++    ) as HTMLButtonElement;
++  }
++
++  /** Types both dates the way a user does: no blur, so neither field is touched. */
++  async function typeDates(
++    fixture: ComponentFixture<LoanForm>,
++    startDate: string,
++    dueDate: string,
++  ) {
++    const element = fixture.nativeElement as HTMLElement;
++    for (const [name, value] of [
++      ['startDate', startDate],
++      ['dueDate', dueDate],
++    ]) {
++      const input = element.querySelector(`input[formControlName="${name}"]`) as HTMLInputElement;
++      input.value = value;
++      input.dispatchEvent(new Event('input'));
++    }
++    await fixture.whenStable();
++  }
++
++  function submit(fixture: ComponentFixture<LoanForm>): void {
++    (fixture.nativeElement as HTMLElement)
++      .querySelector('form')
++      ?.dispatchEvent(new Event('submit'));
++  }
++
++  it('shows a broken date rule under the due date as soon as both dates are filled in', async () => {
++    const fixture = await createForm();
++    const form = fixture.componentInstance.form;
++
++    await typeDates(fixture, '2026-10-01', '2026-09-30');
++    expect(dueDateErrors(fixture)).toEqual(['The due date cannot be before the start date.']);
++    expect(form.controls.dueDate.touched).toBe(false);
++    expect(form.hasError('dueBeforeStart')).toBe(true);
++
++    await typeDates(fixture, '2026-10-01', '2026-10-01');
++    expect(dueDateErrors(fixture)).toEqual([]);
++
++    await typeDates(fixture, '2026-10-01', '2026-10-29');
++    expect(dueDateErrors(fixture)).toEqual([]);
++
++    await typeDates(fixture, '2026-10-01', '2026-10-30');
++    expect(dueDateErrors(fixture)).toEqual(['A loan can last at most 28 days.']);
++    expect(form.hasError('loanTooLong')).toBe(true);
++
++    await typeDates(fixture, '2026-10-20', '2026-10-30');
++    expect(dueDateErrors(fixture)).toEqual([]);
++
++    await typeDates(fixture, '2026-11-01', '2026-10-30');
++    expect(dueDateErrors(fixture)).toEqual(['The due date cannot be before the start date.']);
++  });
++
++  it('follows dates set in code, not only typed ones', async () => {
+     const fixture = await createForm();
+-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+     const form = fixture.componentInstance.form;
+ 
+-    form.setValue({ itemId: 2, memberId: 3, startDate: '2026-09-20', dueDate: '2026-09-01' });
++    form.setValue({ itemId: 2, memberId: 3, startDate: '2026-10-01', dueDate: '2026-09-01' });
++    await fixture.whenStable();
++    expect(dueDateErrors(fixture)).toEqual(['The due date cannot be before the start date.']);
++
++    form.controls.dueDate.setValue('2026-12-01');
++    await fixture.whenStable();
++    expect(dueDateErrors(fixture)).toEqual(['A loan can last at most 28 days.']);
++
++    form.controls.startDate.setValue('2026-11-15');
++    await fixture.whenStable();
++    expect(dueDateErrors(fixture)).toEqual([]);
+     expect(form.valid).toBe(true);
++  });
++
++  it('shows only the required message on an empty, touched due date', async () => {
++    const fixture = await createForm();
++    const form = fixture.componentInstance.form;
++
++    await typeDates(fixture, '2026-10-01', '');
++    expect(dueDateErrors(fixture)).toEqual([]);
+ 
+     (fixture.nativeElement as HTMLElement)
+-      .querySelector('form')
+-      ?.dispatchEvent(new Event('submit'));
++      .querySelector('input[formControlName="dueDate"]')
++      ?.dispatchEvent(new Event('blur'));
++    await fixture.whenStable();
++    expect(form.controls.dueDate.touched).toBe(true);
++    expect(dueDateErrors(fixture)).toEqual(['Due date is required.']);
++
++    await typeDates(fixture, '2026-10-01', '2026-11-30');
++    expect(dueDateErrors(fixture)).toEqual(['A loan can last at most 28 days.']);
++  });
++
++  it('enables Create loan only while the loan can be sent', async () => {
++    const fixture = await createForm();
++    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
++    const form = fixture.componentInstance.form;
++    const button = createButton(fixture);
++    expect(button.disabled).toBe(true);
++
++    form.setValue({ itemId: 2, memberId: 3, startDate: '2026-10-01', dueDate: '' });
++    await fixture.whenStable();
++    expect(button.disabled).toBe(true);
++
++    await typeDates(fixture, '2026-10-01', '2026-10-30');
++    expect(button.disabled).toBe(true);
++
++    await typeDates(fixture, '2026-10-01', '2026-10-29');
++    expect(button.disabled).toBe(false);
++
++    submit(fixture);
++    await fixture.whenStable();
++    expect(button.disabled).toBe(true);
++    httpTesting
++      .expectOne({ method: 'POST', url: '/api/loans' })
++      .flush(
++        { title: 'Conflict', status: 409, detail: 'No copy of item 2 is free for those dates.' },
++        { status: 409, statusText: 'Conflict' },
++      );
++    await fixture.whenStable();
++    expect(button.disabled).toBe(false);
++  });
++
++  it('sends nothing while a date rule is broken', async () => {
++    const fixture = await createForm();
++    const form = fixture.componentInstance.form;
++
++    form.setValue({ itemId: 2, memberId: 3, startDate: '2026-10-01', dueDate: '2026-10-30' });
++    expect(form.valid).toBe(false);
++    submit(fixture);
++    await fixture.whenStable();
++
++    httpTesting.expectNone({ method: 'POST', url: '/api/loans' });
++    expect(dueDateErrors(fixture)).toEqual(['A loan can last at most 28 days.']);
++  });
++
++  it('sends a valid loan with the dates as entered and goes back to the list', async () => {
++    const fixture = await createForm();
++    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
++    const form = fixture.componentInstance.form;
++
++    form.setValue({ itemId: 2, memberId: 3, startDate: '2026-10-01', dueDate: '2026-10-29' });
++    expect(form.valid).toBe(true);
++
++    submit(fixture);
+     const req = httpTesting.expectOne({ method: 'POST', url: '/api/loans' });
+     expect(req.request.body).toEqual({
+       itemId: 2,
+       memberId: 3,
+-      startDate: '2026-09-20',
+-      dueDate: '2026-09-01',
++      startDate: '2026-10-01',
++      dueDate: '2026-10-29',
+     });
+     req.flush(aLoan(), { status: 201, statusText: 'Created' });
+     expect(navigate).toHaveBeenCalledWith(['/loans']);
+diff --git a/web/src/app/loans/loan-form/loan-form.ts b/web/src/app/loans/loan-form/loan-form.ts
+index af79342..2268abd 100644
+--- a/web/src/app/loans/loan-form/loan-form.ts
++++ b/web/src/app/loans/loan-form/loan-form.ts
+@@ -1,5 +1,12 @@
+-import { Component, OnInit, inject, signal } from '@angular/core';
+-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
++import { Component, OnInit, computed, inject, signal } from '@angular/core';
++import { toSignal } from '@angular/core/rxjs-interop';
++import {
++  AbstractControl,
++  NonNullableFormBuilder,
++  ReactiveFormsModule,
++  ValidationErrors,
++  Validators,
++} from '@angular/forms';
+ import { Router, RouterLink } from '@angular/router';
+ 
+ import { Item, LoanInput, Member } from '../../core/models';
+@@ -15,6 +22,36 @@ function today(): string {
+   return `${now.getFullYear()}-${month}-${day}`;
+ }
+ 
++/** The longest loan the API accepts, in days (LendingPolicy.MaxLoanDays on the server). */
++const MAX_LOAN_DAYS = 28;
++
++const DAY_MS = 24 * 60 * 60 * 1000;
++
++type LoanDateRule = 'dueBeforeStart' | 'loanTooLong';
++
++/** The rule a pair of `yyyy-mm-dd` dates breaks, or null when they pass or one is missing. */
++function brokenLoanDateRule(startDate: string, dueDate: string): LoanDateRule | null {
++  // Date-only ISO strings parse as UTC midnight, so the difference is a whole number of days.
++  const start = Date.parse(startDate);
++  const due = Date.parse(dueDate);
++  if (Number.isNaN(start) || Number.isNaN(due)) {
++    return null;
++  }
++  const days = Math.round((due - start) / DAY_MS);
++  if (days < 0) {
++    return 'dueBeforeStart';
++  }
++  return days > MAX_LOAN_DAYS ? 'loanTooLong' : null;
++}
++
++function loanDates(group: AbstractControl): ValidationErrors | null {
++  const rule = brokenLoanDateRule(
++    group.get('startDate')?.value ?? '',
++    group.get('dueDate')?.value ?? '',
++  );
++  return rule ? { [rule]: true } : null;
++}
++
+ @Component({
+   selector: 'app-loan-form',
+   imports: [ReactiveFormsModule, RouterLink],
+@@ -31,12 +68,27 @@ export class LoanForm implements OnInit {
+   protected readonly saving = signal(false);
+   protected readonly error = signal<string | null>(null);
+ 
+-  readonly form = inject(NonNullableFormBuilder).group({
+-    itemId: [null as number | null, Validators.required],
+-    memberId: [null as number | null, Validators.required],
+-    startDate: [today(), Validators.required],
+-    dueDate: ['', Validators.required],
+-  });
++  readonly form = inject(NonNullableFormBuilder).group(
++    {
++      itemId: [null as number | null, Validators.required],
++      memberId: [null as number | null, Validators.required],
++      startDate: [today(), Validators.required],
++      dueDate: ['', Validators.required],
++    },
++    { validators: loanDates },
++  );
++
++  protected readonly maxLoanDays = MAX_LOAN_DAYS;
++
++  // Signals over the form, so the view follows a programmatic change as well as typing.
++  private readonly value = toSignal(this.form.valueChanges, { initialValue: this.form.value });
++  private readonly status = toSignal(this.form.statusChanges, { initialValue: this.form.status });
++
++  /** The date rule the two dates break, as soon as both are filled in. */
++  protected readonly dateRule = computed(() =>
++    brokenLoanDateRule(this.value().startDate ?? '', this.value().dueDate ?? ''),
++  );
++  protected readonly canSave = computed(() => this.status() === 'VALID' && !this.saving());
+ 
+   ngOnInit(): void {
+     this.itemsApi.list({ page: 1, pageSize: 100 }).subscribe({
