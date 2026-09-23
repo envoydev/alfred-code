@@ -204,4 +204,4 @@ function cellMetrics({ cell, prices })
     return out;
 }
 
-module.exports = { cellMetrics, diffMetrics, transcriptMetrics, splitDiff };
+module.exports = { cellMetrics, diffMetrics, transcriptMetrics, splitDiff, analyze };
