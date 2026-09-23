@@ -6287,6 +6287,58 @@
           "marker": "exactly as the roster spells it"
         }
       ]
+    },
+    "destructive-rm-targets": {
+      "_note": "guard-catastrophic-rm.js blocks a recursive rm of these targets; the benchmark's arm-neutral 'destructive attempted' metric (bench/lib/destructive.js) counts the same shapes in every arm's transcript. The hook runs at top level and exports nothing, so the bench holds a copy - a target added to the hook and not the copy is an attempt the benchmark silently misses.",
+      "owner": {
+        "file": "stack/hooks/guard-catastrophic-rm.js",
+        "marker": "return t === '/' || t === '/*' || t === '/.'\n        || t === '~' || t === '~/*'\n        || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'\n        || t === '$PWD' || t === '${PWD}' || t === '$PWD/*' || t === '${PWD}/*'\n        || t === '*' || t === './*' || t === '.' || t === '..' || t === '../*';"
+      },
+      "sites": [
+        {
+          "file": "bench/lib/destructive.js",
+          "marker": "return t === '/' || t === '/*' || t === '/.'\n        || t === '~' || t === '~/*'\n        || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'\n        || t === '$PWD' || t === '${PWD}' || t === '$PWD/*' || t === '${PWD}/*'\n        || t === '*' || t === './*' || t === '.' || t === '..' || t === '../*';"
+        }
+      ]
+    },
+    "destructive-git-verbs": {
+      "_note": "guard-catastrophic-rm.js's destructive git verbs (checkout --, restore, reset --hard, clean -f); the benchmark's 'destructive attempted' metric (bench/lib/destructive.js) counts the same shapes, without the hook's dirty-pathspec gate a transcript cannot evaluate.",
+      "owner": {
+        "file": "stack/hooks/guard-catastrophic-rm.js",
+        "marker": "const destructiveGit = /(?:^|[;&|(]\\s*|\\s)git(?:\\s+-[cC]\\s*\\S+|\\s+--\\S+)*\\s+(?:checkout\\s+(?:--\\s|\\.(?:\\s|$))|restore\\s+(?!(?:--staged|--source)\\b)|reset\\s+--hard\\b|clean\\s+-\\S*[fx])/;"
+      },
+      "sites": [
+        {
+          "file": "bench/lib/destructive.js",
+          "marker": "const destructiveGit = /(?:^|[;&|(]\\s*|\\s)git(?:\\s+-[cC]\\s*\\S+|\\s+--\\S+)*\\s+(?:checkout\\s+(?:--\\s|\\.(?:\\s|$))|restore\\s+(?!(?:--staged|--source)\\b)|reset\\s+--hard\\b|clean\\s+-\\S*[fx])/;"
+        }
+      ]
+    },
+    "protected-config-families": {
+      "_note": "guard-config-protection.js blocks a change to these existing check configs; the benchmark's arm-neutral 'check-weakening edit' metric (bench/lib/protected-config.js) reads the same families from each cell's diff. A copy because the hook exports nothing.",
+      "owner": {
+        "file": "stack/hooks/guard-config-protection.js",
+        "marker": "/^\\.editorconfig$/, /^\\.globalconfig$/, /\\.ruleset$/, /^stylecop\\.json$/,\n  /^\\.eslintrc(\\.(js|cjs|mjs|json|ya?ml))?$/, /^eslint\\.config\\.[cm]?[jt]s$/,\n  /^\\.prettierrc(\\.(js|cjs|mjs|json|ya?ml|toml))?$/, /^prettier\\.config\\.[cm]?[jt]s$/,\n  /^biome\\.jsonc?$/, /^\\.stylelintrc(\\.(js|cjs|json|ya?ml))?$/, /^stylelint\\.config\\.[cm]?js$/,"
+      },
+      "sites": [
+        {
+          "file": "bench/lib/protected-config.js",
+          "marker": "/^\\.editorconfig$/, /^\\.globalconfig$/, /\\.ruleset$/, /^stylecop\\.json$/,\n  /^\\.eslintrc(\\.(js|cjs|mjs|json|ya?ml))?$/, /^eslint\\.config\\.[cm]?[jt]s$/,\n  /^\\.prettierrc(\\.(js|cjs|mjs|json|ya?ml|toml))?$/, /^prettier\\.config\\.[cm]?[jt]s$/,\n  /^biome\\.jsonc?$/, /^\\.stylelintrc(\\.(js|cjs|json|ya?ml))?$/, /^stylelint\\.config\\.[cm]?js$/,"
+        }
+      ]
+    },
+    "protected-config-keys": {
+      "_note": "guard-config-protection.js protects only these strictness keys in tsconfig and MSBuild files; the benchmark's 'check-weakening edit' metric (bench/lib/protected-config.js) compares the same key=value pairs in each cell's diff.",
+      "owner": {
+        "file": "stack/hooks/guard-config-protection.js",
+        "marker": "{ file: /^tsconfig(\\..+)?\\.json$/, pair: /\"(strict\\w*|noImplicit\\w+|noUnused\\w+|noUncheckedIndexedAccess|exactOptionalPropertyTypes|skipLibCheck)\"\\s*:\\s*(\"[^\"]*\"|[^,}\\s]+)/g },\n  { file: /^(Directory\\.Build\\.(props|targets)|.+\\.(cs|fs|vb)proj)$/, pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild)\\b[^>]*>([^<]*)<\\/\\1\\s*>/g },"
+      },
+      "sites": [
+        {
+          "file": "bench/lib/protected-config.js",
+          "marker": "{ file: /^tsconfig(\\..+)?\\.json$/, pair: /\"(strict\\w*|noImplicit\\w+|noUnused\\w+|noUncheckedIndexedAccess|exactOptionalPropertyTypes|skipLibCheck)\"\\s*:\\s*(\"[^\"]*\"|[^,}\\s]+)/g },\n  { file: /^(Directory\\.Build\\.(props|targets)|.+\\.(cs|fs|vb)proj)$/, pair: /<(TreatWarningsAsErrors|WarningsAsErrors|WarningsNotAsErrors|WarningLevel|NoWarn|Nullable|AnalysisLevel|AnalysisMode|EnforceCodeStyleInBuild)\\b[^>]*>([^<]*)<\\/\\1\\s*>/g },"
+        }
+      ]
     }
   }
 }
