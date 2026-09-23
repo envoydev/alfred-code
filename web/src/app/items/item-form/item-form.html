@@ -1,0 +1,53 @@
+<h1>{{ isEdit() ? 'Edit item' : 'New item' }}</h1>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<form class="form" [formGroup]="form" (ngSubmit)="save()">
+  <label>
+    Name
+    <input type="text" formControlName="name" />
+    @if (form.controls.name.touched && form.controls.name.invalid) {
+      <span class="field-error">Name is required.</span>
+    }
+  </label>
+
+  <label>
+    Category
+    <input type="text" formControlName="category" />
+    @if (form.controls.category.touched && form.controls.category.invalid) {
+      <span class="field-error">Category is required.</span>
+    }
+  </label>
+
+  <label>
+    SKU
+    <input type="text" formControlName="sku" />
+    @if (form.controls.sku.touched && form.controls.sku.invalid) {
+      <span class="field-error">SKU is required.</span>
+    }
+  </label>
+
+  <label>
+    Total stock
+    <input type="number" formControlName="totalStock" min="0" />
+    @if (form.controls.totalStock.touched && form.controls.totalStock.invalid) {
+      <span class="field-error">Enter a stock count of zero or more.</span>
+    }
+  </label>
+
+  <label>
+    Condition
+    <select formControlName="condition">
+      @for (condition of conditions; track condition) {
+        <option [value]="condition">{{ condition }}</option>
+      }
+    </select>
+  </label>
+
+  <div class="actions">
+    <button type="submit" [disabled]="saving()">Save</button>
+    <a routerLink="/items">Cancel</a>
+  </div>
+</form>
