@@ -14,8 +14,11 @@ changed since the run started.
 | `arms/common.json` | the ONE session every arm runs: model, effort, permission mode, settings layer, env |
 | `arms/<arm>.json` | an arm: its pin, setup commands, onboarding prompts and its own env - never a session field |
 | `arms/harness.settings.json` | the sandbox layer every session runs inside |
-| `tasks/<id>/` | `prompt.md`, `meta.json` and `hidden/` (the acceptance tests and `grade.json`, never in a session's clone) |
+| `arms/ecc-vocabulary.txt` | ECC's skill, agent and command names at the commit `arms/ecc.json` pins, for the prompt lint |
+| `tasks/<id>/` | `prompt.md`, `meta.json`, `hidden/` (the acceptance tests and `grade.json`, never in a session's clone), `reference.patch` (a correct solution, for the proof only) and any setup patches `meta.setup` names |
 | `drive.js`, `grade.js`, `aggregate.js` | run, grade, report |
+| `lint-prompts.js` | refuses a prompt naming either stack's machinery; part of `npm test` |
+| `prove-tasks.js` | the free solvability proof: hidden tests fail at the start, pass on the reference, suite green |
 | `lib/` | the pieces, each with its own `*.test.js` |
 | `test/` | the fake `claude` and the throwaway world the tests run on |
 
@@ -44,6 +47,16 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   group, `guard` and `home-advantage` apart, the verdict in the rule's own words, and the three worst
   tasks per arm.
 - The Opus reference column is its own run: `--model claude-opus-5-5 --effort high --arms bare`.
+
+A task's start state is its `startRef` plus `meta.setup`: patches applied in order, each left
+uncommitted (`{ "patch" }`) or committed on a new branch with a fixed author and date
+(`{ "patch", "commitOn", "message" }`). The session and the grader build it through the same
+function, so the grader's baseline check covers it, and a changed patch refuses a resume.
+
+```
+node bench/lint-prompts.js
+node bench/prove-tasks.js [--tasks all|<id,id>|group:<g>]
+```
 
 ## What stays out of git
 
