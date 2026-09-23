@@ -1,6 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const { POSIX_ONLY } = require('./test/posix-only.js');
+if (POSIX_ONLY)
+{
+    test('harness process tests', { skip: POSIX_ONLY }, () => {});
+    return;
+}
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -96,6 +102,13 @@ test('a run is never restarted over itself, and a resume refuses an arm changed 
     await assert.rejects(drive({ ...w.opts, resume: true }), /arm a1 changed since r-test started/);
 });
 
+test('Windows is refused before anything is built', async (t) =>
+{
+    const w = world(t);
+    await assert.rejects(drive({ ...w.opts, platform: 'win32' }), /macOS and Linux only/);
+    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
+});
+
 test('flow mode is refused until its approver exists', async (t) =>
 {
     const w = world(t);
@@ -121,4 +134,13 @@ test('the command line: every flag parsed, a resume needs its run, an unknown fl
     assert.throws(() => parseArgs(['--resume']), /--resume needs --run/);
     assert.throws(() => parseArgs(['--rep', '3']), /unknown argument --rep/);
     assert.throws(() => parseArgs(['--reps']), /--reps needs a value/);
+});
+
+test('a price table with no models is refused before anything is built', async (t) =>
+{
+    const w = world(t);
+    const bad = path.join(w.dir, 'bad-prices.json');
+    fs.writeFileSync(bad, '{"models":{}}');
+    await assert.rejects(drive({ ...w.opts, pricesFile: bad }), /price table .* lists no models/);
+    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'run.json')));
 });

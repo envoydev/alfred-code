@@ -101,6 +101,11 @@ function configure(o, runP, version)
         const seed = o.seed !== undefined ? o.seed : crypto.randomInt(0, 2 ** 31);
         if (!Number.isInteger(seed)) throw new Error(`--seed '${o.seed}' is not an integer`);
         const prices = fs.readFileSync(o.pricesFile);
+        let table = null;
+        try { table = JSON.parse(prices); }
+        catch { /* named below */ }
+        // The analyzer prices a run from this snapshot; a table it cannot read would price every cell at nothing.
+        if (!table || !Array.isArray(table.models) || !table.models.length) throw new Error(`the price table ${o.pricesFile} lists no models - the run's cost could not be measured`);
         fs.writeFileSync(runP.prices, prices);
         const theLock = o.lock || fixture.parseLock(fs.readFileSync(fixture.LOCK_FILE, 'utf8'));
         const record = {
@@ -135,7 +140,8 @@ function configure(o, runP, version)
 
 async function drive(opts)
 {
-    const o = { ...DEFAULTS, parallel: 1, mode: 'plain', claude: ['claude'], base: process.env, log: (l) => console.log(l), ...opts };
+    const o = { ...DEFAULTS, parallel: 1, mode: 'plain', claude: ['claude'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
+    if (o.platform === 'win32') throw new Error('the harness runs on macOS and Linux only - its host protection is Claude Code\'s sandbox, which Windows does not have (D4, D12)');
     if (o.mode !== 'plain') throw new Error(`flow mode is not built yet - its scripted approver is carried to B4 (D11); run --mode plain`);
     if (!Number.isInteger(o.parallel) || o.parallel < 1) throw new Error(`--parallel '${o.parallel}' is not a count from 1`);
     const runP = cellsLib.runPaths({ benchDir: o.benchDir, run: o.run });

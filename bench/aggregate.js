@@ -87,7 +87,8 @@ function summarize(cells, arm)
 }
 
 const pct = (k, n) => (n ? `${Math.round((k / n) * 100)}% (${k}/${n})` : 'no cells');
-const usd = (x) => (x === null || x === undefined ? '-' : `$${x.toFixed(2)}`);
+// Under a cent keeps four places: a real but small cost never reads as nothing.
+const usd = (x) => (x === null || x === undefined ? '-' : `$${x > 0 && x < 0.01 ? x.toFixed(4) : x.toFixed(2)}`);
 const num = (x, d = 0) => (x === null || x === undefined ? '-' : x.toFixed(d));
 
 function table(cells, arms, { onboarding = null, taskCount = 0 } = {})
@@ -146,12 +147,13 @@ function aggregate({ benchDir = BENCH_DIR, run, preregFile = path.join(BENCH_DIR
     const infra = cells.filter((c) => c.infra);
 
     const lines = [`# Benchmark report: ${run}`, ''];
-    lines.push(`Run ${run}: mode ${record.mode}, ${record.model} at effort ${record.effort}, Claude Code ${record.cliVersion}, fixture ${record.fixture.tag}@${record.fixture.commit.slice(0, 8)}, seed ${record.seed}, ${record.reps} reps. Pre-registration sha256 ${record.prereg.sha256.slice(0, 12)}, unchanged since the run started.`, '');
+    lines.push(`Run ${run}: mode ${record.mode}, ${record.model} at effort ${record.effort}, Claude Code ${record.cliVersion}, fixture ${record.fixture.tag}@${record.fixture.commit.slice(0, 8)}, seed ${record.seed}, reps ${record.reps}. Pre-registration sha256 ${record.prereg.sha256.slice(0, 12)}, unchanged since the run started.`, '');
     lines.push('## Verdict', '');
     if (arms.includes('ours') && arms.includes('bare'))
     {
         const h = decide.headline({ ours: summarize(head, 'ours'), bare: summarize(head, 'bare'), ecc: arms.includes('ecc') ? summarize(head, 'ecc') : null });
-        lines.push(h.lead, '', ...h.rest.map((s) => `${s}`), '');
+        lines.push(h.lead, '');
+        if (h.rest.length) lines.push(...h.rest, '');
     }
     else lines.push('The decision rule needs ours and bare - not applied.', '');
     for (const g of groups) lines.push(...sentences(head.filter((c) => c.task.group === g), arms, `${g}: `));
@@ -176,7 +178,7 @@ function aggregate({ benchDir = BENCH_DIR, run, preregFile = path.join(BENCH_DIR
     const report = `${lines.join('\n')}\n`;
     fs.writeFileSync(path.join(main.runP.dir, 'report.md'), report);
     fs.writeFileSync(path.join(main.runP.dir, 'metrics.json'), `${JSON.stringify(cells.map((c) => ({ id: c.id, pass: c.pass, infra: c.infra, ...c.m })), null, 2)}\n`);
-    return { report };
+    return { report, onboarding: main.onboarding };
 }
 
 if (require.main === module)

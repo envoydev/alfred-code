@@ -120,3 +120,17 @@ test('a cell: the analyzer\'s cost, turns, tool calls and peak context, the wall
     const bare = cellMetrics({ cell, prices: PRICES });
     assert.deepStrictEqual([bare.costUsd, bare.turns, bare.netLines], [null, null, 2], 'no transcript: no invented numbers, the diff still read');
 });
+
+test('a price table the analyzer cannot read leaves the cost empty and says why, never $0', (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-metrics-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const cell = { results: dir, transcript: path.join(dir, 'transcript.jsonl'), subagents: path.join(dir, 'subagents'), diff: path.join(dir, 'diff.patch'), session: path.join(dir, 'session.json') };
+    fs.writeFileSync(cell.transcript, jsonl([say('d', 'Done.', '2026-09-23T10:00:40Z')]));
+    fs.writeFileSync(cell.session, JSON.stringify({ outcome: 'ok', wallMs: 1 }));
+    const bad = path.join(dir, 'prices.json');
+    fs.writeFileSync(bad, '{"models":{}}');
+    const m = cellMetrics({ cell, prices: bad });
+    assert.strictEqual(m.costUsd, null);
+    assert.match(m.costError, /no models array/);
+});

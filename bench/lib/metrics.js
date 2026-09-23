@@ -175,7 +175,7 @@ function analyze(transcript, prices)
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-analyze-'));
     try
     {
-        const out = execFileSync(process.execPath, [ANALYZER, transcript, '--json', '--prices', prices], { env: { PATH: process.env.PATH, HOME: empty, CLAUDE_CONFIG_DIR: empty }, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
+        const out = execFileSync(process.execPath, [ANALYZER, transcript, '--json', '--prices', prices], { env: { PATH: process.env.PATH, HOME: empty, CLAUDE_CONFIG_DIR: empty, ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 256 * 1024 * 1024 });
         return JSON.parse(out.toString());
     }
     finally { fs.rmSync(empty, { recursive: true, force: true }); }
@@ -186,12 +186,14 @@ const sumCalls = (tc) => Object.values(tc || {}).reduce((n, v) => n + ((v && v.c
 function cellMetrics({ cell, prices })
 {
     const session = JSON.parse(fs.readFileSync(cell.session, 'utf8'));
-    const out = { outcome: session.outcome, wallMs: session.wallMs, costUsd: null, unpriced: [], turns: null, toolCalls: null, peakCtx: null };
+    const out = { outcome: session.outcome, wallMs: session.wallMs, costUsd: null, costError: null, unpriced: [], turns: null, toolCalls: null, peakCtx: null };
     const main = fs.existsSync(cell.transcript) ? readRows(cell.transcript) : null;
     if (main)
     {
         const j = analyze(cell.transcript, prices);
-        out.costUsd = j.cost ? j.cost.usd : null;
+        // A table the analyzer cannot read prices nothing: say so, never report $0.
+        out.costError = (j.cost && j.cost.error) || null;
+        out.costUsd = j.cost && !j.cost.error ? j.cost.usd : null;
         out.unpriced = Object.keys((j.cost && j.cost.unpriced) || {});
         out.turns = j.main.total.msgs;
         out.toolCalls = sumCalls(j.main.toolCalls) + (Array.isArray(j.agents) ? j.agents.reduce((n, a) => n + sumCalls(a.stats && a.stats.toolCalls), 0) : 0);

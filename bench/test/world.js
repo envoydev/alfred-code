@@ -9,7 +9,8 @@ const { execFileSync } = require('node:child_process');
 const FAKE = [process.execPath, path.join(__dirname, 'fake-claude.js')];
 const AUTH = 'world-test-auth-value-0123456789';
 
-function makeWorld(t, { arms, tasks, run = 'r-test' })
+// `fixture: { source, lock }` uses a given fixture (the real tag) instead of a throwaway repo.
+function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-world-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -43,20 +44,26 @@ function makeWorld(t, { arms, tasks, run = 'r-test' })
             }
         }
     }
-    const src = path.join(dir, 'fixture');
-    fs.mkdirSync(src);
-    const git = (...a) => execFileSync('git', ['-C', src, ...a], { stdio: 'pipe' }).toString().trim();
-    git('init', '-q');
-    fs.writeFileSync(path.join(src, 'app.txt'), 'app\n');
-    git('add', '.');
-    git('-c', 'user.name=b', '-c', 'user.email=b@example.invalid', 'commit', '-q', '-m', 'fixture');
-    git('tag', 'bench-fixture-v1');
-    const prices = path.join(dir, 'model-prices.json');
-    fs.writeFileSync(prices, '{"models":{}}\n');
+    let src = fixture && fixture.source;
+    let lock = fixture && fixture.lock;
+    if (!fixture)
+    {
+        src = path.join(dir, 'fixture');
+        fs.mkdirSync(src);
+        const git = (...a) => execFileSync('git', ['-C', src, ...a], { stdio: 'pipe' }).toString().trim();
+        git('init', '-q');
+        fs.writeFileSync(path.join(src, 'app.txt'), 'app\n');
+        git('add', '.');
+        git('-c', 'user.name=b', '-c', 'user.email=b@example.invalid', 'commit', '-q', '-m', 'fixture');
+        git('tag', 'bench-fixture-v1');
+        lock = { tag: 'bench-fixture-v1', commit: git('rev-parse', 'HEAD') };
+    }
+    // The real, dated price table: a stub would price every cell at nothing.
+    const prices = path.join(__dirname, '..', '..', 'meta', 'model-prices.json');
     const lines = [];
     const opts = {
         benchDir: bench, armsDir, tasksDir, pricesFile: prices, preregFile: path.join(bench, 'PREREGISTRATION.md'),
-        fixtureSource: src, lock: { tag: 'bench-fixture-v1', commit: git('rev-parse', 'HEAD') }, root: dir, claude: FAKE,
+        fixtureSource: src, lock, root: dir, claude: FAKE,
         base: { PATH: process.env.PATH, ANTHROPIC_API_KEY: AUTH }, log: (l) => lines.push(l),
         arms: Object.keys(arms), tasks: 'all', reps: 1, parallel: 2, seed: 7, run, mode: 'plain',
     };

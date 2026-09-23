@@ -1,6 +1,12 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const { POSIX_ONLY } = require('./test/posix-only.js');
+if (POSIX_ONLY)
+{
+    test('harness process tests', { skip: POSIX_ONLY }, () => {});
+    return;
+}
 const fs = require('node:fs');
 const path = require('node:path');
 const { drive } = require('./drive.js');

@@ -515,6 +515,9 @@ change (see the invariants below).
   `scripts/claude-md-check.js` - a project's CLAUDE.md files against the tree they describe, read-only
   and no model call. `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
+- `bench/` - the head-to-head benchmark harness (`drive.js`, `grade.js`, `aggregate.js`, the arms and the
+  fixture lock), repo tooling that is never installed and bumps no version; `bench/results/` and
+  `bench/work/` stay out of git. `bench/README.md` is its runbook, B4's checks included.
 
 ## The stack's delivery surfaces
 
