@@ -1,0 +1,30 @@
+<h1>{{ isEdit() ? 'Edit member' : 'New member' }}</h1>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<form class="form" [formGroup]="form" (ngSubmit)="save()">
+  <label>
+    Name
+    <input type="text" formControlName="name" autocomplete="name" />
+    @if (form.controls.name.touched && form.controls.name.invalid) {
+      <span class="field-error">Name is required.</span>
+    }
+  </label>
+
+  <label>
+    Email
+    <input type="email" formControlName="email" autocomplete="email" />
+    @if (form.controls.email.touched && form.controls.email.hasError('required')) {
+      <span class="field-error">Email is required.</span>
+    } @else if (form.controls.email.touched && form.controls.email.hasError('email')) {
+      <span class="field-error">Enter a valid email address.</span>
+    }
+  </label>
+
+  <div class="actions">
+    <button type="submit" [disabled]="saving()">Save</button>
+    <a [routerLink]="isEdit() ? ['/members', id()] : ['/members']">Cancel</a>
+  </div>
+</form>

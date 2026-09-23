@@ -1,0 +1,76 @@
+<p><a routerLink="/members">&larr; Members</a></p>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+@if (member(); as m) {
+  <div class="toolbar">
+    <h1>{{ m.name }}</h1>
+    <span class="spacer"></span>
+    <a class="button" [routerLink]="['/members', m.id, 'edit']">Edit</a>
+    @if (m.status === 'Active') {
+      <button type="button" class="danger" [disabled]="suspending()" (click)="suspend(m)">
+        Suspend
+      </button>
+    }
+  </div>
+
+  <dl class="fields">
+    <dt>Email</dt>
+    <dd>{{ m.email }}</dd>
+    <dt>Status</dt>
+    <dd>
+      <span class="badge" [class]="m.status">{{ m.status }}</span>
+    </dd>
+    <dt>Member since</dt>
+    <dd>{{ m.createdAt | date: 'mediumDate' }}</dd>
+  </dl>
+} @else if (!error()) {
+  <p class="muted">Loading...</p>
+}
+
+<h2>Loans</h2>
+<p class="muted">
+  {{ loans.openCount() }} out, {{ loans.overdueCount() }} overdue, {{ loans.returnedCount() }}
+  returned
+</p>
+
+@if (loans.error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Item</th>
+      <th scope="col">Start</th>
+      <th scope="col">Due</th>
+      <th scope="col">Status</th>
+      <th scope="col"><span class="muted">Actions</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (loan of loans.loans(); track loan.id) {
+      <tr>
+        <td>{{ loan.itemName }}</td>
+        <td>{{ loan.startDate }}</td>
+        <td>{{ loan.dueDate }}</td>
+        <td>
+          <span class="badge" [class]="loan.status">{{ loan.status }}</span>
+        </td>
+        <td>
+          @if (loan.status !== 'Returned') {
+            <button type="button" class="secondary" (click)="returnLoan(loan)">Return</button>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td colspan="5" class="muted">
+          {{ loans.loading() ? 'Loading...' : 'This member has no loans.' }}
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>

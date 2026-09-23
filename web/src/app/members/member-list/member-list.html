@@ -1,0 +1,63 @@
+<h1>Members</h1>
+
+<div class="toolbar">
+  <label>
+    Status
+    <select name="status" (change)="setStatus($event)">
+      <option value="">All</option>
+      @for (s of statuses; track s) {
+        <option [value]="s">{{ s }}</option>
+      }
+    </select>
+  </label>
+  <span class="spacer"></span>
+  <a class="button" routerLink="/members/new">New member</a>
+</div>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Email</th>
+      <th scope="col">Status</th>
+      <th scope="col">Joined</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (member of members(); track member.id) {
+      <tr>
+        <td>
+          <a [routerLink]="['/members', member.id]">{{ member.name }}</a>
+        </td>
+        <td>{{ member.email }}</td>
+        <td>
+          <span class="badge" [class]="member.status">{{ member.status }}</span>
+        </td>
+        <td>{{ member.createdAt | date: 'mediumDate' }}</td>
+      </tr>
+    } @empty {
+      <tr>
+        <td colspan="4" class="muted">{{ loading() ? 'Loading...' : 'No members found.' }}</td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<div class="pager">
+  <button type="button" class="secondary" [disabled]="page() <= 1" (click)="goTo(page() - 1)">
+    Previous
+  </button>
+  <span>Page {{ page() }} of {{ pageCount() }}</span>
+  <button
+    type="button"
+    class="secondary"
+    [disabled]="page() >= pageCount()"
+    (click)="goTo(page() + 1)"
+  >
+    Next
+  </button>
+</div>
