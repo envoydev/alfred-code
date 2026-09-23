@@ -30,3 +30,20 @@ cd web && npm ci && npm run lint && npm test -- --watch=false
 ```
 
 Integration tests need Docker running.
+
+## CI and the API image
+
+`.github/workflows/ci.yml` builds and tests the API, builds its container image, and lints, tests and
+builds the web app on every push and pull request.
+
+```bash
+docker build -f src/LendingDesk.Api/Dockerfile -t lendingdesk-api .
+docker run -p 8080:8080 -e ConnectionStrings__Lending='Host=...;Database=lending;Username=...;Password=...' lendingdesk-api
+```
+
+The image does not run migrations outside Development; apply them first:
+
+```bash
+dotnet tool restore
+dotnet ef database update --project src/LendingDesk.Data --connection '<the same connection string>'
+```
