@@ -1,0 +1,80 @@
+<h1>Loans</h1>
+
+<div class="toolbar">
+  <label>
+    Status
+    <select name="status" (change)="setStatus($event)">
+      <option value="" [selected]="!store.filter().status">All</option>
+      @for (s of statuses; track s) {
+        <option [value]="s" [selected]="store.filter().status === s">{{ s }}</option>
+      }
+    </select>
+  </label>
+  <p class="muted summary">
+    On this page: {{ store.activeCount() }} active, {{ store.overdueCount() }} overdue,
+    {{ store.returnedCount() }} returned
+  </p>
+  <span class="spacer"></span>
+  <a class="button" routerLink="/loans/new">New loan</a>
+</div>
+
+@if (store.error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Item</th>
+      <th scope="col">Member</th>
+      <th scope="col">Start</th>
+      <th scope="col">Due</th>
+      <th scope="col">Status</th>
+      <th scope="col"><span class="muted">Actions</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (loan of store.loans(); track loan.id) {
+      <tr>
+        <td>{{ loan.itemName }}</td>
+        <td>
+          <a [routerLink]="['/members', loan.memberId]">{{ loan.memberName }}</a>
+        </td>
+        <td>{{ loan.startDate }}</td>
+        <td>{{ loan.dueDate }}</td>
+        <td>
+          <span class="badge" [class]="loan.status">{{ loan.status }}</span>
+        </td>
+        <td>
+          @if (loan.status !== 'Returned') {
+            <button type="button" class="secondary" (click)="returnLoan(loan)">Return</button>
+          }
+        </td>
+      </tr>
+    } @empty {
+      <tr>
+        <td colspan="6" class="muted">{{ store.loading() ? 'Loading...' : 'No loans found.' }}</td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<div class="pager">
+  <button
+    type="button"
+    class="secondary"
+    [disabled]="store.filter().page <= 1"
+    (click)="goTo(store.filter().page - 1)"
+  >
+    Previous
+  </button>
+  <span>Page {{ store.filter().page }} of {{ store.pageCount() }}</span>
+  <button
+    type="button"
+    class="secondary"
+    [disabled]="store.filter().page >= store.pageCount()"
+    (click)="goTo(store.filter().page + 1)"
+  >
+    Next
+  </button>
+</div>

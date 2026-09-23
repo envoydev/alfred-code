@@ -1,0 +1,56 @@
+<h1>New loan</h1>
+
+@if (error(); as message) {
+  <p class="alert" role="alert">{{ message }}</p>
+}
+
+<form class="form" [formGroup]="form" (ngSubmit)="save()">
+  <label>
+    Item
+    <select formControlName="itemId">
+      <option [ngValue]="null" disabled>Choose an item</option>
+      @for (item of items(); track item.id) {
+        <option [ngValue]="item.id">
+          {{ item.name }} ({{ item.sku }}) - {{ item.available }} available
+        </option>
+      }
+    </select>
+    @if (form.controls.itemId.touched && form.controls.itemId.invalid) {
+      <span class="field-error">Choose an item.</span>
+    }
+  </label>
+
+  <label>
+    Member
+    <select formControlName="memberId">
+      <option [ngValue]="null" disabled>Choose a member</option>
+      @for (member of members(); track member.id) {
+        <option [ngValue]="member.id">{{ member.name }}</option>
+      }
+    </select>
+    @if (form.controls.memberId.touched && form.controls.memberId.invalid) {
+      <span class="field-error">Choose a member.</span>
+    }
+  </label>
+
+  <label>
+    Start date
+    <input type="date" formControlName="startDate" />
+    @if (form.controls.startDate.touched && form.controls.startDate.invalid) {
+      <span class="field-error">Start date is required.</span>
+    }
+  </label>
+
+  <label>
+    Due date
+    <input type="date" formControlName="dueDate" />
+    @if (form.controls.dueDate.touched && form.controls.dueDate.invalid) {
+      <span class="field-error">Due date is required.</span>
+    }
+  </label>
+
+  <div class="actions">
+    <button type="submit" [disabled]="saving()">Create loan</button>
+    <a routerLink="/loans">Cancel</a>
+  </div>
+</form>
