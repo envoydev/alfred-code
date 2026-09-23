@@ -1,0 +1,8 @@
+{
+  "_note": "Claude Code alone after /init. Nothing to pin but the CLI, whose version enters every arm's hash through the session.",
+  "name": "bare",
+  "pin": { "kind": "cli", "value": "claude" },
+  "setup": [],
+  "onboarding": ["/init"],
+  "env": {}
+}

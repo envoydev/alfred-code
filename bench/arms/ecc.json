@@ -1,0 +1,18 @@
+{
+  "_note": "ECC's README route: its marketplace and plugin, the rule packs a plugin cannot ship copied under the arm's own rules/ecc/, hook profile standard through the plugin-config variables its hooks read (scripts/lib/hook-flags.js), then the onboarding its docs recommend for a new repo. Pinned to the commit the comparison report read (plugin 2.2.2); re-pin to the newest release on the run date before B5. B4 checks the hooks and rules loaded.",
+  "name": "ecc",
+  "pin": { "kind": "commit", "value": "934195f" },
+  "setup": [
+    ["git", "clone", "--quiet", "https://github.com/affaan-m/ECC.git", "{src}"],
+    ["git", "-C", "{src}", "checkout", "--quiet", "{pin}"],
+    ["claude", "plugin", "marketplace", "add", "{src}"],
+    ["claude", "plugin", "install", "ecc@ecc", "--scope", "user"],
+    ["mkdir", "-p", "{config}/rules/ecc"],
+    ["cp", "-R", "{src}/rules/common", "{src}/rules/csharp", "{src}/rules/angular", "{src}/rules/typescript", "{config}/rules/ecc/"]
+  ],
+  "onboarding": ["/ecc:codebase-onboarding"],
+  "env": {
+    "CLAUDE_PLUGIN_OPTION_HOOKS_ENABLED": "true",
+    "CLAUDE_PLUGIN_OPTION_HOOK_PROFILE": "standard"
+  }
+}

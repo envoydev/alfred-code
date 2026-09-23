@@ -1,0 +1,13 @@
+{
+  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section.",
+  "model": "claude-sonnet-5",
+  "effort": "medium",
+  "permissionMode": "acceptEdits",
+  "settings": "harness.settings.json",
+  "env": {
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
+  },
+  "graceSec": 10,
+  "auth": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"],
+  "scrub": ["SENTRY_SLUG", "SENTRY_ACCESS_TOKEN", "CONTEXT7_API_KEY", "CLAUDE_PROJECT_DIR", "CLAUDE_STACK_DOCS_PATH"]
+}
