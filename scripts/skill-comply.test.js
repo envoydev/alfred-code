@@ -222,6 +222,62 @@ test('csharp: a plugin-namespaced skill name matches; an edit before the load an
     assert.deepStrictEqual(failing(sc.grade(expectOf('csharp'), csharpRun({ testing: false }))), ['testing-before-test-edit']);
 });
 
+// --- the root-cause loop ----------------------------------------------------------------------------
+// R72's owed A/B: a run that reaches a FAILURE and a fix before any stop, so 'one hypothesis per
+// change' and 'verification quoted before done' are graded on what the run did, not on a gate.
+
+const RC_ROOT = '/work/project/src/money.js';
+const RC_SYMPTOM = '/work/project/src/cart.js';
+function rootCauseRun({ repro = true, hypothesis = true, target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false } = {})
+{
+    const rows = [user('npm test is failing on the cart total - fix it.')];
+    if (repro) rows.push(tool('Bash', { command: 'npm test' }));
+    rows.push(tool('Read', { file_path: RC_SYMPTOM }), tool('Read', { file_path: RC_ROOT }));
+    if (hypothesis) rows.push(say('The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.'));
+    rows.push(tool('Edit', { file_path: target, old_string: 'parseFloat(price)', new_string: "parseFloat(String(price).replace(/,/g, ''))" }));
+    if (twoChanges) rows.push(tool('Edit', { file_path: target, old_string: 'Math.round(', new_string: 'Math.trunc(' }));
+    if (weaken) rows.push(tool('Edit', { file_path: '/work/project/test/cart.test.js', old_string: "test('a thousand-priced", new_string: "test.skip('a thousand-priced" }));
+    if (rerun) rows.push(tool('Bash', { command: 'node --test test/cart.test.js' }));
+    rows.push(say(quoted ? 'Fixed in toCents, where the comma was dropped. `npm test`: ℹ tests 3, ℹ pass 3, ℹ fail 0.' : 'Fixed in toCents - the tests are green now.'));
+    return jsonl(rows);
+}
+
+test('root-cause: a run that reproduces, states its hypothesis, fixes at the root and quotes the green run follows every step', () =>
+{
+    const r = sc.grade(expectOf('project-root-cause'), rootCauseRun());
+    assert.deepStrictEqual(failing(r), []);
+    assert.strictEqual(r.graded, 6);
+});
+
+test('root-cause: each skipped part of the loop fails its own step', () =>
+{
+    const exp = expectOf('project-root-cause');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: false }))), ['reproduce-first']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ hypothesis: false }))), ['one-hypothesis-per-change']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ twoChanges: true }))), ['one-hypothesis-per-change']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ target: RC_SYMPTOM }))), ['fix-at-root']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ weaken: true }))), ['no-weakened-test']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ quoted: false }))), ['verification-quoted']);
+    // no run after the only change: that change was never checked, and the close verified nothing
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rerun: false }))), ['one-hypothesis-per-change', 'verified-after-last-change']);
+});
+
+test('x_each: every call needs its own preceding and following event, and a call never made fails', () =>
+{
+    const exp = {
+        skill: 't', prompts: {}, matchers: {},
+        steps: [{ id: 's', graders: [{ type: 'x_each', tool: 'Edit', preceded_by: { tool: '@text', text_match: 'because' }, followed_by: 'Bash' }] }],
+    };
+    const run = (...rows) => sc.grade(exp, jsonl(rows)).steps[0];
+    const edit = () => tool('Edit', { file_path: 'a.js' });
+    assert.strictEqual(run(say('x because y'), edit(), tool('Bash', { command: 't' }), say('z because w'), edit(), tool('Bash', { command: 't' })).verdict, 'PASS');
+    const second = run(say('x because y'), edit(), tool('Bash', { command: 't' }), edit(), tool('Bash', { command: 't' }));
+    assert.strictEqual(second.verdict, 'FAIL');
+    assert.match(second.results[0].explanation, /@3 has no @text \/because\/ since the one before/);
+    assert.match(run(say('x because y'), edit(), edit(), tool('Bash', { command: 't' })).results[0].explanation, /@1 has no Bash before the next/);
+    assert.match(run(tool('Bash', { command: 't' })).results[0].explanation, /Edit never called/);
+});
+
 // --- the transcript reader ------------------------------------------------------------------------
 
 test('the reader counts a streamed tool_use once, skips sidechain lines, and counts unreadable lines', () =>
@@ -287,7 +343,7 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'project-commit-checkpoint', 'project-solve-task']);
+    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'project-commit-checkpoint', 'project-root-cause', 'project-solve-task']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -303,6 +359,7 @@ test('check: a quote the skill no longer says, a broken regex and an unknown gra
         exp.steps[2].graders[0].type = 'vibes';
         exp.run.selection.skills.push('no-such-skill');
         exp.run.stacks = ['cobol'];
+        exp.steps[3].graders.push({ type: 'x_each', tool: 'Edit' });
         const file = path.join(dir, 'expect.json');
         fs.writeFileSync(file, JSON.stringify(exp));
         const problems = sc.checkExpectation(sc.loadExpectation(file));
@@ -313,6 +370,7 @@ test('check: a quote the skill no longer says, a broken regex and an unknown gra
         assert.match(text, /selection skills 'no-such-skill' is not in this release/);
         assert.match(text, /scaffold\.sh is missing/);
         assert.match(text, /run\.stacks 'cobol' is not a stack/);
+        assert.match(text, /x_each needs preceded_by or followed_by/);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -339,8 +397,8 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.ok(!fs.existsSync(out), 'a dry run writes nothing');
         const lines = r.out.split('\n');
         const billed = lines.filter((l, i) => lines[i - 1] === '# billed: one nested model session');
-        assert.strictEqual(billed.length, 9);
-        assert.match(r.out, /3 skill\(s\) x 3 level\(s\) = 9 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
+        assert.strictEqual(billed.length, 12);
+        assert.match(r.out, /4 skill\(s\) x 3 level\(s\) = 12 billed nested session\(s\), each capped at --max-budget-usd 1\.5/);
         assert.match(lines.slice(3).find((l) => !l.startsWith('#') && l !== 'set -e'), /clean-export\.js/, 'the source is exported first when none is handed in');
         for (const b of billed)
         {
@@ -351,7 +409,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         }
         assert.ok(billed.some((b) => b.includes(BARE('serena', 'list_memories'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
-        assert.strictEqual(installs.length, 9);
+        assert.strictEqual(installs.length, 12);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
@@ -370,6 +428,21 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         assert.strictEqual(cli(['replay', '--dry-run', '--level', 'loud']).code, 2);
         assert.strictEqual(cli(['replay', '--dry-run', '--source', dir]).code, 1);
         assert.strictEqual(cli(['replay', '--dry-run', '--max-budget-usd', '0']).code, 2);
+
+        // An A/B arm: --source names ANOTHER release, and the project gets what an init walk of THAT
+        // release installs - its own recommendations, never this tree's (R72: the before arm carries no
+        // project-root-cause, the after arm does).
+        const other = path.join(dir, 'other');
+        fs.mkdirSync(path.join(other, 'scripts', 'install'), { recursive: true });
+        fs.mkdirSync(path.join(other, 'meta'));
+        fs.writeFileSync(path.join(other, 'scripts', 'install', 'alfred-code.js'), '');
+        fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['baseline-interaction'] }, stacks: {} }));
+        const arm = cli(['replay', '--dry-run', '--skill', 'project-root-cause', '--level', 'plain', '--source', other, '--out', out]);
+        assert.strictEqual(arm.code, 0, arm.err);
+        const armSel = JSON.parse(arm.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
+        assert.ok(armSel.skills.includes('from-the-source'), `the source's own always set: ${armSel.skills}`);
+        assert.ok(!armSel.skills.includes('project-root-cause'), 'never this tree\'s recommendations');
+        assert.ok(armSel.skills.includes('javascript'), 'the fixture\'s own selection still rides along');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

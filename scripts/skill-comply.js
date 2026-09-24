@@ -42,6 +42,9 @@
 //             unless `after_optional`).
 //   x_quotes_user  the first `match` call's text holds `capture` (group 1), and that group is a
 //             verbatim substring of a user turn - the receipt quotes the user, not a paraphrase.
+//   x_each    EVERY `tool` call has a `preceded_by` event since the call before it (or the start) and
+//             a `followed_by` event before the call after it (or the end); either may be left out,
+//             not both, and a `tool` never called fails - one hypothesis, one change, one re-run.
 //
 //   node scripts/skill-comply.js check [<skill>...]
 //   node scripts/skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level <l>] [--json]
@@ -64,7 +67,7 @@ const LEVELS = ['explicit', 'plain', 'adverse'];
 const TEXT = '@text';
 const EVAL_TYPES = new Set(['tool_used', 'tool_order', 'regex']);
 const SKIP_TYPES = { llm: 'needs a model judge - out of scope offline', baseline: 'needs a model judge - out of scope offline', file_exists: 'needs the run\'s created-files list, which a transcript does not carry' };
-const X_TYPES = new Set(['x_between', 'x_quotes_user']);
+const X_TYPES = new Set(['x_between', 'x_quotes_user', 'x_each']);
 const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
 const COPY_ROUTE = ['ALFRED_CODE_SKILLS_VIA_PLUGIN=false', 'ALFRED_CODE_HOOKS_VIA_PLUGIN=false', 'ALFRED_CODE_MCPS_VIA_PLUGIN=false'];
 
@@ -253,6 +256,23 @@ function runGrader(g, run, refs)
                 ? pass(true, `${label(g.tool, refs)}@${hit} lies ${window}`)
                 : pass(false, `no ${label(g.tool, refs)} ${window} (called at ${at.length ? at.map((i) => `@${i}`).join(', ') : 'nowhere'})`);
         }
+        case 'x_each':
+        {
+            const at = ev.map((e, i) => (matches(e, g.tool, refs) ? i : -1)).filter((i) => i !== -1);
+            if (!at.length) return pass(false, `${label(g.tool, refs)} never called`);
+            const has = (m, lo, hi) => ev.some((e, i) => i > lo && i < hi && matches(e, m, refs));
+            const bad = [];
+            at.forEach((p, k) =>
+            {
+                const lo = k === 0 ? -1 : at[k - 1];
+                const hi = k === at.length - 1 ? ev.length : at[k + 1];
+                if (g.preceded_by !== undefined && !has(g.preceded_by, lo, p)) bad.push(`@${p} has no ${label(g.preceded_by, refs)} since the one before`);
+                if (g.followed_by !== undefined && !has(g.followed_by, p, hi)) bad.push(`@${p} has no ${label(g.followed_by, refs)} before the next`);
+            });
+            return bad.length
+                ? pass(false, bad.join('; '))
+                : pass(true, `each of ${at.length} ${label(g.tool, refs)} call(s) has its own ${[g.preceded_by, g.followed_by].filter((m) => m !== undefined).map((m) => label(m, refs)).join(' and ')}`);
+        }
         case 'x_quotes_user':
         {
             const m = inlineMatcher(g);
@@ -437,6 +457,13 @@ function checkExpectation(exp)
                 if (g.after !== undefined) checkMatcher(g.after, refs, `${gw}.after`, problems);
                 if (g.before !== undefined) checkMatcher(g.before, refs, `${gw}.before`, problems);
             }
+            if (g.type === 'x_each')
+            {
+                checkMatcher(g.tool, refs, `${gw}.tool`, problems);
+                if (g.preceded_by === undefined && g.followed_by === undefined) problems.push(`${gw}: x_each needs preceded_by or followed_by`);
+                if (g.preceded_by !== undefined) checkMatcher(g.preceded_by, refs, `${gw}.preceded_by`, problems);
+                if (g.followed_by !== undefined) checkMatcher(g.followed_by, refs, `${gw}.followed_by`, problems);
+            }
             if (g.type === 'x_quotes_user') compiles(g.capture || '', 'm', gw, problems);
             if (g.type === 'regex')
             {
@@ -460,10 +487,12 @@ function stackEnvKeys()
 
 // What an init walk would install for the fixture: the locked always-on set, the fixture's stack
 // seeds, and whatever the flow names beyond them. Grading a skill in a project WITHOUT its baseline
-// rules and servers would grade a stack no user runs.
-function replaySelection(e)
+// rules and servers would grade a stack no user runs. The seeds are the INSTALLED release's own
+// (`root` - a handed --source), so an A/B arm on another release gets that release's walk, never
+// this tree's.
+function replaySelection(e, root = ROOT)
 {
-    const recs = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8'));
+    const recs = JSON.parse(fs.readFileSync(path.join(root, 'meta', 'recommendations.json'), 'utf8'));
     const parts = [recs.always || {}, ...list(e.run.stacks).map((s) => (recs.stacks || {})[s] || {}), e.run.selection || {}];
     const out = {};
     for (const p of parts)
@@ -493,7 +522,7 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
         const selJson = path.join(sdir, 'selection.json');
         const selTxt = path.join(sdir, 'selection.txt');
         add(`mkdir -p ${q(sdir)}`, 'prep', `--- ${skill}`);
-        add(`printf '%s\\n' ${q(JSON.stringify(replaySelection(e)))} > ${q(selJson)}`);
+        add(`printf '%s\\n' ${q(JSON.stringify(replaySelection(e, source ? src : ROOT)))} > ${q(selJson)}`);
         add(`node ${q(path.join(src, 'scripts', 'stack-select.js'))} --selection ${q(selJson)} --emit ${q(selTxt)}`);
         // The copy route registers MCP servers bare, so the allowed list names them that way.
         const tools = e.run.allowed_tools.map(canonical).join(',');

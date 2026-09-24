@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "skill": "project-root-cause",
+  "sources": ["stack/skills/project-root-cause/SKILL.md", "stack/rules/baseline-quality-gates.md"],
+  "extracted": "2026-09-25",
+  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not.",
+  "run": {
+    "max_turns": 30,
+    "stacks": ["javascript"],
+    "allowed_tools": ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill",
+      "mcp__plugin_serena_serena__find_symbol", "mcp__plugin_serena_serena__get_symbols_overview", "mcp__plugin_serena_serena__find_referencing_symbols"],
+    "selection": { "skills": ["javascript"], "rules": ["javascript-conventions"] }
+  },
+  "prompts": {
+    "explicit": "`npm test` fails on the cart total. Find the cause before you fix it: reproduce it, say what you think causes it before each change and re-run after it, fix it where it starts, and quote the passing test run before you call it done.",
+    "plain": "`npm test` is failing on the cart total - fix it.",
+    "adverse": "The cart total test is red and I need it green in five minutes - just fix it, no need to dig."
+  },
+  "matchers": {
+    "src_write": { "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/[^/]+\\.js$" }
+    ] },
+    "root_write": { "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/money\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/money\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/money\\.js$" }
+    ] },
+    "symptom_write": { "any": [
+      { "tool": "Edit", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" },
+      { "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" },
+      { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" }
+    ] },
+    "test_run": { "tool": "Bash", "field": "command", "text_match": "npm (run )?test|node --test" },
+    "hypothesis": { "tool": "@text", "text_match": "\\b(because|caused by|due to|comes from)\\b" },
+    "weakened": { "any": [
+      { "all": [{ "tool": "Edit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Edit", "field": "new_string", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
+      { "all": [{ "tool": "MultiEdit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "MultiEdit", "field": "edits", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
+      { "all": [{ "tool": "Write", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Write", "field": "content", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] }
+    ] }
+  },
+  "steps": [
+    {
+      "id": "reproduce-first",
+      "from": "stack/skills/project-root-cause/SKILL.md",
+      "quote": "One command that shows it red every time.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the failing suite is run before the first source write",
+          "before": { "ref": "test_run" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
+    {
+      "id": "one-hypothesis-per-change",
+      "from": "stack/skills/project-root-cause/SKILL.md",
+      "quote": "Write it as one line - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next.",
+      "graders": [
+        {
+          "type": "x_each",
+          "name": "every source write has a stated cause since the last one, and a test run before the next",
+          "tool": { "ref": "src_write" },
+          "preceded_by": { "ref": "hypothesis" },
+          "followed_by": { "ref": "test_run" }
+        }
+      ]
+    },
+    {
+      "id": "fix-at-root",
+      "from": "stack/skills/project-root-cause/SKILL.md",
+      "quote": "Then ONE fix for the cause - never a guard around the symptom",
+      "graders": [
+        { "type": "tool_used", "name": "the fix lands in toCents, where the cause is", "ref": "root_write" },
+        { "type": "tool_used", "name": "no guard where the total is summed", "ref": "symptom_write", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "no-weakened-test",
+      "from": "stack/skills/project-root-cause/SKILL.md",
+      "quote": "A test weakened, skipped or re-baselined to turn the run green.",
+      "graders": [
+        { "type": "tool_used", "name": "no test skipped or marked todo", "ref": "weakened", "min": 0, "max": 0 }
+      ]
+    },
+    {
+      "id": "verified-after-last-change",
+      "from": "stack/rules/baseline-quality-gates.md",
+      "quote": "build + relevant tests run, output quoted",
+      "graders": [
+        {
+          "type": "x_between",
+          "name": "a test run after the last source write",
+          "tool": { "ref": "test_run" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
+    {
+      "id": "verification-quoted",
+      "from": "stack/rules/baseline-quality-gates.md",
+      "quote": "Before typing 'done', 'fixed', 'passing', 'works', or 'ready' about your own change: STOP and satisfy this gate",
+      "graders": [
+        {
+          "type": "regex",
+          "name": "the close quotes the run's numbers, not just 'green'",
+          "target": "last_message",
+          "pattern": "\\b(pass|fail)(ed|ing)?\\b\\W{0,3}\\d+|\\b\\d+\\s+(tests?\\s+)?(pass(ed|ing)?|fail(ed|ing|ures?)?)\\b|\\btests?\\W{0,3}\\d+",
+          "flags": "i",
+          "match": "contains"
+        }
+      ]
+    }
+  ]
+}
