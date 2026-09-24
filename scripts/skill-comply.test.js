@@ -20,6 +20,7 @@ let seq = 0;
 const tool = (name, input) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'tool_use', id: `t${seq}`, name, input }] } });
 const say = (text) => ({ type: 'assistant', message: { id: `m${++seq}`, role: 'assistant', content: [{ type: 'text', text }] } });
 const user = (text) => ({ type: 'user', message: { role: 'user', content: text } });
+const exited = (row, code = 1, out = '') => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: `Exit code ${code}\n${out}` }] } });
 const denied = (row) => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: row.message.content[0].id, is_error: true, content: 'blocked' }] } });
 const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
 
@@ -236,7 +237,13 @@ function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 2
     const rows = [user('npm test is failing on the cart total - fix it.')];
     const reject = (file) => { const e = tool('Edit', { file_path: file, old_string: 'parseFloat(price )', new_string: 'x' }); rows.push(e, denied(e)); };
     if (rejected === 'early') reject(RC_ROOT);
-    if (repro) rows.push(tool('Bash', { command: 'npm test' }));
+    if (repro)
+    {
+        const run = tool('Bash', { command: 'npm test' });
+        rows.push(run);
+        if (repro === 'red') rows.push(exited(run, 1, '✖ a thousand-priced item totals in cents\nℹ tests 3\nℹ pass 2\nℹ fail 1'));
+        if (repro === 'denied') rows.push(denied(run));
+    }
     rows.push(tool('Read', { file_path: RC_SYMPTOM }), tool('Read', { file_path: RC_ROOT }));
     if (hypothesis) rows.push(say(cause));
     if (rejected === 'retry') reject(target);
@@ -245,7 +252,12 @@ function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 2
     if (twoChanges) rows.push(tool('Edit', { file_path: target, old_string: 'Math.round(', new_string: 'Math.trunc(' }));
     if (weaken) rows.push(tool('Edit', { file_path: '/work/project/test/cart.test.js', old_string: "test('a thousand-priced", new_string: "test.skip('a thousand-priced" }));
     if (rebaseline) rows.push(tool('Edit', { file_path: '/work/project/test/cart.test.js', old_string: '}]), 130000);', new_string: '}]), 200);' }));
-    if (rerun) rows.push(tool('Bash', { command: 'node --test test/cart.test.js' }));
+    if (rerun)
+    {
+        const run = tool('Bash', { command: 'node --test test/cart.test.js' });
+        rows.push(run);
+        if (rerun === 'denied') rows.push(denied(run));
+    }
     rows.push(say(quoted ? 'Fixed in toCents, where the comma was dropped. `npm test`: ℹ tests 3, ℹ pass 3, ℹ fail 0.' : 'Fixed in toCents - the tests are green now.'));
     return jsonl(rows);
 }
@@ -277,6 +289,27 @@ test('root-cause: a write that errored changed nothing - its retry is the same c
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'retry' }))), []);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'early' }))), [], 'a rejected write before the repro is no source write yet');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'symptom' }))), [], 'a rejected guard in cart.js is no symptom fix');
+});
+
+test('root-cause: a test run that was denied never ran; one that ran and exited red is the repro', () =>
+{
+    const exp = expectOf('project-root-cause');
+    // a hook or permission deny: nothing was reproduced, nothing was re-checked
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: 'denied', rerun: true }))), ['reproduce-first']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rerun: 'denied' }))), ['one-hypothesis-per-change', 'verified-after-last-change']);
+    // the ordinary red repro - Claude Code marks a non-zero exit is_error, and it still ran
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: 'red' }))), []);
+});
+
+test('the reader: a shell command that exited non-zero ran; a deny, a block or a tool error did not', () =>
+{
+    const bash = tool('Bash', { command: 'npm test' });
+    const edit = tool('Edit', { file_path: 'a.js' });
+    const deniedBash = tool('Bash', { command: 'npm test' });
+    const ps = tool('PowerShell', { command: 'npm test' });
+    const run = sc.parseTranscript(jsonl([bash, exited(bash, 1), edit, exited(edit, 1), deniedBash, denied(deniedBash), ps, exited(ps, 2)]));
+    assert.deepStrictEqual(run.events.map((e) => [e.tool, e.isError, e.failed]),
+        [['Bash', true, false], ['Edit', true, true], ['Bash', true, true], ['PowerShell', true, false]]);
 });
 
 test('root-cause: the cause stated in the shapes a run really uses counts; narration does not', () =>
@@ -312,6 +345,17 @@ test('compare: a step failing on both arms is INCONCLUSIVE, never not-worse; the
     assert.strictEqual(outcome(better, 'reproduce-first'), 'better');
     assert.strictEqual(better.verdict, 'HOLDS');
 
+    const judged = { skill: 'j', prompts: {}, matchers: {}, steps: [
+        { id: 'judged', graders: [{ type: 'llm', rubric: 'did it reason well' }] },
+        { id: 'said', graders: [{ type: 'regex', pattern: 'pass' }] },
+    ] };
+    const jg = sc.grade(judged, rootCauseRun());
+    const unmeasured = sc.compareArms({ 'j/plain': jg }, { 'j/plain': jg });
+    assert.strictEqual(outcome(unmeasured, 'judged'), 'NOT GRADED', 'an llm-only step measured nothing offline');
+    assert.strictEqual(outcome(unmeasured, 'said'), 'same');
+    assert.strictEqual(unmeasured.notGraded, 1);
+    assert.strictEqual(unmeasured.verdict, 'NOT PROVEN');
+
     const missing = sc.compareArms({ [key]: g({}) }, { [key]: null });
     assert.ok(missing.rows.every((r) => r.outcome === 'NOT RUN'));
     assert.strictEqual(missing.verdict, 'NOT PROVEN');
@@ -334,7 +378,7 @@ test('compare CLI: grades both arms\' transcripts with this tree\'s expectation 
         const r = cli([...args, '--level', 'plain']);
         assert.strictEqual(r.code, 1, r.out + r.err);
         assert.match(r.out, /project-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
-        assert.match(r.out, /^ship rule: NOT PROVEN - 0 worse, 1 inconclusive, 0 not run$/m);
+        assert.match(r.out, /^ship rule: NOT PROVEN - 0 worse, 1 inconclusive, 0 not run, 0 not graded$/m);
         const all = cli(args);
         assert.match(all.out, /project-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
         put('after', 'plain', rootCauseRun());
@@ -342,6 +386,18 @@ test('compare CLI: grades both arms\' transcripts with this tree\'s expectation 
         assert.strictEqual(ok.code, 0, ok.out + ok.err);
         assert.match(ok.out, /^ship rule: HOLDS/m);
         assert.strictEqual(cli(['compare', path.join(dir, 'before')]).code, 2);
+
+        // csharp carries an llm-only step: identical, compliant arms still prove nothing about it
+        for (const arm of ['before', 'after'])
+        {
+            const d = path.join(dir, arm, 'csharp', 'plain');
+            fs.mkdirSync(d, { recursive: true });
+            fs.writeFileSync(path.join(d, 'transcript.jsonl'), csharpRun());
+        }
+        const cs = cli(['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'csharp', '--level', 'plain']);
+        assert.strictEqual(cs.code, 1, cs.out + cs.err);
+        assert.match(cs.out, /-> NOT GRADED/);
+        assert.match(cs.out, /^ship rule: NOT PROVEN - 0 worse, 0 inconclusive, 0 not run, 1 not graded$/m);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -364,7 +420,7 @@ test('x_each: every call needs its own preceding and following event, and a call
     const failed = edit();
     assert.strictEqual(run(say('x because y'), failed, denied(failed), edit(), tool('Bash', { command: 't' })).verdict, 'PASS');
     const red = tool('Bash', { command: 't' });
-    assert.strictEqual(run(say('x because y'), edit(), red, denied(red)).verdict, 'PASS');
+    assert.strictEqual(run(say('x because y'), edit(), red, exited(red)).verdict, 'PASS');
 });
 
 test('a matcher marked succeeded skips a call that errored or was denied; an unmarked one still counts it', () =>

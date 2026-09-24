@@ -123,7 +123,11 @@ test('the root-cause loop keeps the step numbers its seats cite', () => {
     assert.match(body, /runs steps 1-5, the one fix of step 6 without its failing test, and step 7/, 'the resolver scope line');
     const agent = (n) => fs.readFileSync(path.join(root, 'stack', 'agents', `${n}.md`), 'utf8');
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver'])
+    {
         assert.match(agent(seat), /`project-root-cause`[^\n]*its steps 1-5 plus the one fix of step 6/, `${seat} cites steps 1-5 and step 6`);
+        // step 7 is the whole stop: a fix that left the failure red counts, not only one that moved it
+        assert.match(agent(seat), /Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere/, `${seat} carries the widened step 7`);
+    }
     for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
         assert.match(agent(seat), /`project-root-cause`[^\n]*steps 1-5/, `${seat} cites steps 1-5`);
 });

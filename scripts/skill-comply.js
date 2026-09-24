@@ -34,8 +34,10 @@
 //             | {all: [...]} | {ref: '<name in the file's matchers>'}. `text_match` runs over the
 //             input's RAW string values (or one `field`), with the m flag; a string or a list, all
 //             must match. No `tool` matches any event. `succeeded: true` (beside any of them) skips
-//             a call whose result came back an error - a rejected Edit, a hook deny changed nothing;
-//             left out, such a call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
+//             a call that FAILED - a rejected Edit, a hook or permission deny, a blocked or invalid
+//             call changed nothing and ran nothing. A shell command that ran and exited non-zero did
+//             not fail: Claude Code marks it is_error ('Exit code 1'), but a red test run is a run.
+//             Left out, a failed call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
 //             plugin route's `mcp__plugin_<n>_<n>__<tool>` and the registration route's bare one.
 //   @text     each assistant text block is an event named `@text` in the same ordered trace, so a
 //             line the skill says must come first ('Size: ...') is ordered like a tool call.
@@ -47,8 +49,8 @@
 //   x_each    EVERY `tool` call has a `preceded_by` event since the call before it (or the start) and
 //             a `followed_by` event before the call after it (or the end); either may be left out,
 //             not both, and a `tool` never called fails - one hypothesis, one change, one re-run.
-//             A `tool` call that errored is no call of the set (its retry is the same change); a
-//             `preceded_by` / `followed_by` event counts either way, since a red test run is a run.
+//             A `tool` call that failed is no call of the set (its retry is the same change); a
+//             `preceded_by` / `followed_by` event skips failed calls only where its matcher says so.
 //
 //   node scripts/skill-comply.js check [<skill>...]
 //   node scripts/skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level <l>] [--json]
@@ -60,7 +62,9 @@
 // COMPARE grades both arms' transcripts (<out>/<skill>/<level>/transcript.jsonl) with THIS tree's
 // expectation files and applies the A/B ship rule per step: after no worse than before. A step that
 // fails on BOTH arms is INCONCLUSIVE, never 'not worse' - a grader blind to what the run did passes
-// every comparison by default. The rule HOLDS only with no step worse, inconclusive or not run.
+// every comparison by default, and a step graded by nothing offline (only llm / baseline /
+// file_exists graders, SKIP) is NOT GRADED - it measured nothing. The rule HOLDS only with no step
+// worse, inconclusive, not run or not graded.
 //
 // The replay installs on the full COPY route, from a clean export: the copied skills are this
 // working tree's text byte for byte, where the plugin route would resolve the released marketplace.
@@ -79,6 +83,10 @@ const EVAL_TYPES = new Set(['tool_used', 'tool_order', 'regex']);
 const SKIP_TYPES = { llm: 'needs a model judge - out of scope offline', baseline: 'needs a model judge - out of scope offline', file_exists: 'needs the run\'s created-files list, which a transcript does not carry' };
 const X_TYPES = new Set(['x_between', 'x_quotes_user', 'x_each']);
 const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+// A shell tool's non-zero exit comes back is_error with this head - the command RAN.
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+const EXIT_STATUS = /^Exit code \d+/;
+
 const COPY_ROUTE = ['ALFRED_CODE_SKILLS_VIA_PLUGIN=false', 'ALFRED_CODE_HOOKS_VIA_PLUGIN=false', 'ALFRED_CODE_MCPS_VIA_PLUGIN=false'];
 
 // --- the transcript -------------------------------------------------------------------------------
@@ -112,7 +120,7 @@ function parseTranscript(text)
                 {
                     if (c.id && byId.has(c.id)) continue;
                     const input = c.input && typeof c.input === 'object' ? c.input : {};
-                    const ev = { tool: String(c.name || ''), input, inputText: jsonText(input), isError: false };
+                    const ev = { tool: String(c.name || ''), input, inputText: jsonText(input), isError: false, failed: false };
                     events.push(ev);
                     if (c.id) byId.set(c.id, ev);
                 }
@@ -121,7 +129,7 @@ function parseTranscript(text)
                     const key = `${m.id || ''}|${c.text}`;
                     if (seenText.has(key)) continue;
                     seenText.add(key);
-                    events.push({ tool: TEXT, input: { text: c.text }, inputText: jsonText({ text: c.text }), isError: false });
+                    events.push({ tool: TEXT, input: { text: c.text }, inputText: jsonText({ text: c.text }), isError: false, failed: false });
                     lastMessage = c.text;
                 }
             }
@@ -135,7 +143,13 @@ function parseTranscript(text)
             else if (Array.isArray(m.content)) for (const c of m.content)
             {
                 if (c && c.type === 'text' && typeof c.text === 'string') users.push(c.text);
-                else if (c && c.type === 'tool_result' && byId.has(c.tool_use_id)) byId.get(c.tool_use_id).isError = c.is_error === true;
+                else if (c && c.type === 'tool_result' && byId.has(c.tool_use_id))
+                {
+                    const ev = byId.get(c.tool_use_id);
+                    ev.isError = c.is_error === true;
+                    const body = typeof c.content === 'string' ? c.content : strings(c.content).join('\n');
+                    ev.failed = ev.isError && !(SHELL_TOOLS.has(canonical(ev.tool)) && EXIT_STATUS.test(body));
+                }
             }
         }
         else if (o.type === 'result' && typeof o.result === 'string') result = o.result;
@@ -179,7 +193,7 @@ function resolve(m, refs)
 function matches(ev, raw, refs)
 {
     const m = resolve(raw, refs);
-    if (m.succeeded === true && ev.isError) return false;
+    if (m.succeeded === true && ev.failed) return false;
     if (Array.isArray(m.any)) return m.any.some((x) => matches(ev, x, refs));
     if (Array.isArray(m.all)) return m.all.every((x) => matches(ev, x, refs));
     if (m.tool !== undefined && canonical(ev.tool) !== canonical(m.tool)) return false;
@@ -269,7 +283,7 @@ function runGrader(g, run, refs)
         }
         case 'x_each':
         {
-            const at = ev.map((e, i) => (!e.isError && matches(e, g.tool, refs) ? i : -1)).filter((i) => i !== -1);
+            const at = ev.map((e, i) => (!e.failed && matches(e, g.tool, refs) ? i : -1)).filter((i) => i !== -1);
             if (!at.length) return pass(false, `${label(g.tool, refs)} never called`);
             const has = (m, lo, hi) => ev.some((e, i) => i > lo && i < hi && matches(e, m, refs));
             const bad = [];
@@ -358,7 +372,7 @@ function compareArms(before, after, stepIds = {})
             const va = a ? a.steps.find((s) => s.id === step)?.verdict ?? '-' : '-';
             let outcome;
             if (!b || !a || vb === '-' || va === '-') outcome = 'NOT RUN';
-            else if (vb === 'SKIP' || va === 'SKIP') outcome = 'skip';
+            else if (vb === 'SKIP' || va === 'SKIP') outcome = 'NOT GRADED';
             else if (vb === 'PASS' && va === 'FAIL') outcome = 'WORSE';
             else if (vb === 'FAIL' && va === 'PASS') outcome = 'better';
             else if (vb === 'FAIL') outcome = 'INCONCLUSIVE';
@@ -370,14 +384,15 @@ function compareArms(before, after, stepIds = {})
     const worse = count('WORSE');
     const inconclusive = count('INCONCLUSIVE');
     const notRun = count('NOT RUN');
-    const verdict = worse ? 'NOT MET' : inconclusive || notRun || !rows.length ? 'NOT PROVEN' : 'HOLDS';
-    return { rows, worse, inconclusive, notRun, verdict };
+    const notGraded = count('NOT GRADED');
+    const verdict = worse ? 'NOT MET' : inconclusive || notRun || notGraded || !rows.length ? 'NOT PROVEN' : 'HOLDS';
+    return { rows, worse, inconclusive, notRun, notGraded, verdict };
 }
 
 function formatCompare(c)
 {
     const out = c.rows.map((r) => `  ${r.skill} ${r.level} ${r.step}: before ${r.before}, after ${r.after} -> ${r.outcome}`);
-    out.push(`ship rule: ${c.verdict} - ${c.worse} worse, ${c.inconclusive} inconclusive, ${c.notRun} not run`);
+    out.push(`ship rule: ${c.verdict} - ${c.worse} worse, ${c.inconclusive} inconclusive, ${c.notRun} not run, ${c.notGraded} not graded`);
     return out.join('\n');
 }
 

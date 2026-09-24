@@ -4663,7 +4663,7 @@
       ]
     },
     "resolver-root-cause-method": {
-      "_note": "The four build/test resolvers drive localization with the house root-cause loop (project-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and questions the design after 3 fixes that each surface a new failure. The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
+      "_note": "The four build/test resolvers drive localization with the house root-cause loop (project-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and runs its step 7 - questions the design after 3 fixes that each leave the failure red or surface a new one (pinned as resolver-root-cause-stop). The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
         "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
@@ -4680,6 +4680,27 @@
         {
           "file": "stack/agents/angular-test-resolver.md",
           "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
+        }
+      ]
+    },
+    "resolver-root-cause-stop": {
+      "_note": "The resolvers' step 7 stop, widened with the skill's (R72 fix round, R84): 3 fixes that each leave the failure red OR surface a new one elsewhere question the design, before the 5-cycle cap each resolver keeps. Byte-identical across the four, so a drift from the skill's step 7 goes red here.",
+      "owner": {
+        "file": "stack/agents/dotnet-build-error-resolver.md",
+        "marker": "Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere, question the design rather than force a 4th"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/ng-build-error-resolver.md",
+          "marker": "Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere, question the design rather than force a 4th"
+        },
+        {
+          "file": "stack/agents/dotnet-test-failure-resolver.md",
+          "marker": "Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere, question the design rather than force a 4th"
+        },
+        {
+          "file": "stack/agents/angular-test-resolver.md",
+          "marker": "Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere, question the design rather than force a 4th"
         }
       ]
     },
