@@ -94,6 +94,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let args;
     try { args = parseArgs(argv, env); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
+    for (const notice of args.notices) log(notice);
 
     const home = env.HOME || env.USERPROFILE || '';
     const configDir = env.CLAUDE_CONFIG_DIR
@@ -173,6 +174,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             hooks: manifest.hooks, plugins: manifest.plugins, mcps: manifest.mcps,
         };
         const routes = plugins.pluginRoutes(env);
+        // The playwright engines the last install PICKED - the stamp's word, never the listing's flag: a
+        // picked engine installs switched off (R29), and a project-scope flag can read a stale false (S22).
+        // Plugin route only; on the copy route the registrations in .mcp.json are the record.
+        const stampEngines = routes.mcps ? (stampLayer.readPlaywright(stampFile) || []) : [];
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -206,7 +211,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
-                stampPicked: lastPicked,
+                stampPicked: lastPicked, stampEngines,
                 always, marketplace: market, log,
             });
             if (!back.installed)
@@ -273,7 +278,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
             ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
-            : mcp.resolvePins({ npmLatest: npmLatest(rt), pypiLatest: pypiLatest(rt), log });
+            : mcp.resolvePins({ pins: readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json')).pins, log });
 
         const level = memory.resolveLevel({
             flag: args.memoryLevel,
@@ -284,8 +289,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
             browsers: args.playwrightBrowsers,
-            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines])],
-            enabled: args.playwrightEnabled,
+            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines, ...stampEngines])],
         });
         lists.mcps = pw.mcps;
 
@@ -379,7 +383,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
-            picked: stampPickLists(lists, stampPicks, carriedPicks),
+            picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
         });
 
@@ -520,6 +524,16 @@ function installPlugins(ctx)
     const readListing = () => plugins.parsePluginList(readRaw(), ctx.projectRoot, { byMarketplace: true });
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
+    // The picked playwright engines install SWITCHED OFF (R29): each one this run installs is disabled
+    // at the same scope, and update never touches their flag - the user enables one from /plugin when
+    // a session needs a browser. Only on a listing the run could READ: blind, every engine reads as
+    // absent, and the disable after a no-op install would switch off one the user had enabled.
+    const engineSpecs = ctx.routes.mcps ? pwEngines(ctx).map((e) => `playwright-${e}@${ctx.market}`) : [];
+    const switchedOff = listingRead(raw) ? engineSpecs : [];
+    if (engineSpecs.length && !switchedOff.length)
+        ctx.log('  !! the plugin listing could not be read - the playwright engines keep whatever on/off state they have (/plugin switches them)');
+    else if (engineSpecs.length)
+        ctx.log(`playwright: ${pwEngines(ctx).join(',')} picked - a new one installs switched off, enable one from /plugin when a session needs a browser`);
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -554,7 +568,7 @@ function installPlugins(ctx)
         const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, switchedOff, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         for (const row of ctx.dropEntries || [])
@@ -569,8 +583,16 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, switchedOff, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
+}
+
+// `claude plugin list --json` answered with a listing - an array, or `{installed: [...]}` - rather than
+// nothing or garbage, which parsePluginList reads as an empty listing either way.
+function listingRead(raw)
+{
+    try { const data = JSON.parse(raw); return Array.isArray(data) || Boolean(data && Array.isArray(data.installed)); }
+    catch { return false; }
 }
 
 function installMcps(ctx)
@@ -837,13 +859,6 @@ function runSelectionPlugins(ctx)
     fs.rmSync(path.dirname(file), { recursive: true, force: true });
     return { entries: ctx.rt.lines(entries.stdout), copy: ctx.rt.lines(copyList.stdout) };
 }
-
-const npmLatest = (rt) => (pkg) => rt.capture('npm', ['view', pkg, 'version'], { env: { ...process.env, npm_config_fetch_timeout: '15000' } }).trim();
-const pypiLatest = (rt) => (pkg) =>
-{
-    const body = rt.capture('curl', ['-fsSL', '--max-time', '15', `https://pypi.org/pypi/${pkg}/json`]);
-    try { return JSON.parse(body).info.version; } catch { return ''; }
-};
 
 const npxInstall = (ctx, engine) => ctx.rt.capture('npx', ['-y', '-p', `@playwright/mcp${ctx.pins.PW_PIN}`, 'playwright', 'install', engine], { cwd: ctx.projectRoot, env: ctx.env }) !== '';
 

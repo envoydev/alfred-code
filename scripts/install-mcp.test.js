@@ -256,7 +256,9 @@ test('playwright: the one manifest row becomes one entry per kept engine, each w
 test('playwright: with no flag the kept set is what is REGISTERED, else chrome', () =>
 {
     assert.deepStrictEqual(mcp.playwrightKept({ registered: ['webkit', 'chrome'] }), ['chrome', 'webkit']);
-    assert.deepStrictEqual(mcp.playwrightKept({ registered: [], enabled: 'msedge' }), ['msedge']);
+    // The caller unions the stamp's picked engines into `registered` - a picked engine installed
+    // switched off is still kept.
+    assert.deepStrictEqual(mcp.playwrightKept({ registered: ['msedge'] }), ['msedge']);
     assert.deepStrictEqual(mcp.playwrightKept({}), ['chrome']);
     // An explicit set always wins over what is on the machine.
     assert.deepStrictEqual(mcp.playwrightKept({ browsers: ['firefox'], registered: ['chrome'] }), ['firefox']);
@@ -272,31 +274,38 @@ test('playwright: a selection without playwright is left exactly as it is', () =
 
 // --- the runtime pins -----------------------------------------------------
 
-test('pins: every lookup that fails falls through to UNPINNED, never to an abort', () =>
+test('pins: the RELEASE pins from meta/mcp-pins.json - a package with no usable row installs unpinned, never aborts', () =>
 {
-    // Offline, or without npm / curl / python3, an install must still happen - it just installs the
-    // latest at launch instead of a frozen version.
+    // R35: the seed asks no registry. The versions are the ones the release committed, the same the
+    // generated plugin entries launch, so both routes and the browser download run one server version.
     const logs = [];
     const pins = mcp.resolvePins({
-        npmLatest: (pkg) => (pkg === '@playwright/mcp' ? '0.0.80\n' : ''),
-        pypiLatest: () => { throw new Error('offline'); },
+        pins: { playwright: { version: '0.0.80', spelling: '@<v>' }, serena: { version: null }, memory: { version: '1 2' } },
         log: (m) => logs.push(m),
     });
     assert.strictEqual(pins.PW_PIN, '@0.0.80');
-    assert.strictEqual(pins.SERENA_PIN, '');
-    assert.strictEqual(pins.MEMORY_PIN, '');
-    assert.ok(logs.some((m) => /could not resolve serena latest - installing unpinned/.test(m)), logs.join(' | '));
+    assert.strictEqual(pins.SERENA_PIN, '', 'a null version ships unpinned, as the generator does');
+    assert.strictEqual(pins.MEMORY_PIN, '', 'a version no package manager can read is no pin');
+    assert.ok(logs.some((m) => /pinned playwright@0\.0\.80 \(the release pin\)/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /no release pin for serena in this source - installing unpinned/.test(m)), logs.join(' | '));
+    for (const garbage of [undefined, null, 'x', []])
+        assert.strictEqual(mcp.resolvePins({ pins: garbage }).PW_PIN, '', `pins=${JSON.stringify(garbage)}`);
 });
 
-test('pins: the memory pin is spelled ==<ver>, the others @<ver>', () =>
+test('pins: each is spelled as its row says - memory ==<ver> inside the extras brackets, the others @<ver>', () =>
 {
     // It sits INSIDE the extras brackets - `mcp-memory-service[sqlite]==<ver>` - where an @ would
     // not parse.
-    const pins = mcp.resolvePins({ npmLatest: () => '1.2.3', pypiLatest: () => '4.5.6' });
-    assert.strictEqual(pins.MEMORY_PIN, '==4.5.6');
-    assert.strictEqual(pins.SERENA_PIN, '@4.5.6');
-    assert.strictEqual(pins.PW_PIN, '@1.2.3');
+    const pins = mcp.resolvePins({ pins: JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins });
+    const rel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
+    assert.strictEqual(pins.MEMORY_PIN, `==${rel.memory.version}`);
+    assert.strictEqual(pins.SERENA_PIN, `@${rel.serena.version}`);
+    assert.strictEqual(pins.PW_PIN, `@${rel.playwright.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
+    // No registry function is taken any more: one handed in is never called.
+    let asked = 0;
+    mcp.resolvePins({ pins: rel, npmLatest: () => { asked += 1; return '9.9.9'; }, pypiLatest: () => { asked += 1; return '9.9.9'; } });
+    assert.strictEqual(asked, 0, 'the seed still asked a registry for a version');
 });
 
 // 2.0.0 cut the local npx transport (R32): the manifest ships context7 as the hosted remote row, which

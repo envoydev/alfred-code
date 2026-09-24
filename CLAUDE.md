@@ -359,12 +359,11 @@ mirrored there in the same sitting.
   signal, or the user's pick. Catalog of 4 names, 7 plugins:
   - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
-    webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded via the
-    server's bundled playwright). One plugin per engine, not one plugin declaring four servers: a project
-    that kept a single browser would otherwise load four copies of playwright's tool schemas in every
-    session, which the registration route never did. `--playwright-browsers <csv>` / `--playwright-enabled`
-    (init/configure ask both); absent = read back, a legacy `playwright` server migrates. The four
-    playwright agents grant all four.
+    webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
+    release pin). One plugin per engine, not one declaring four: one kept browser would otherwise load four
+    copies of its tool schemas every session. `--playwright-browsers <csv>` (init/configure ask it); each
+    installs SWITCHED OFF, `/plugin` turns one on, and update reads the stamp's `playwright-browsers:`,
+    never the listing flag. A legacy `playwright` server migrates. The four playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`).

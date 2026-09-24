@@ -6,8 +6,8 @@ disable-model-invocation: true
 # Update Alfred Code - refresh everything, prune what upstream removed
 
 You are refreshing an existing install to the newest release, unchanged in shape: the same
-items, new content - including the MOVING parts: the installer re-resolves every pinned MCP
-runtime to its newest published version and re-registers it, and runs `claude plugin update` on
+items, new content - including the MOVING parts: the installer takes every MCP runtime at the
+release's own pin (`meta/mcp-pins.json`, never a registry lookup) and re-registers it, and runs `claude plugin update` on
 each installed stack plugin after refreshing the marketplaces, so an update leaves no MCP or
 plugin behind on an old version - plus removing the artifacts the STACK removed upstream, which a plain
 refresh leaves orphaned forever. The deterministic work lives in scripts, not in this chat:
@@ -259,9 +259,9 @@ each one as `x -> y`, `installed this run` (claude-hud on an install that lacked
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. Playwright keeps its browsers the same
-way: every `playwright-<browser>` server is read back and re-registered (a legacy single `playwright` server
+way: every browser the stamp's `playwright-browsers:` picked is updated in place (a legacy single `playwright` server
 migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
-for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone.
+at the release's pin, and the user's `/plugin` on/off toggle is left alone - a disabled browser the stamp does not name stays parked.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,

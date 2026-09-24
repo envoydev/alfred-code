@@ -1,8 +1,8 @@
 // scripts/seed-sandbox.js - one throwaway project per case, for the tests that run the Node seed END TO
 // END against a recording `claude`: every CLI call is logged, `plugin list --json` answers from a
 // fixture, and the tools other layers reach for (uvx for the notes import, npx for the browser
-// download, npm and curl for the pin lookups) answer 'no' - so no run reaches registry.npmjs.org or
-// pypi.org unless a case hands in its own stub. The unit tests prove what each layer does with what it
+// download, npm and curl - which the seed no longer calls since its pins are the release's) answer
+// 'no' - so no run reaches registry.npmjs.org or pypi.org unless a case hands in its own stub. The unit tests prove what each layer does with what it
 // is handed; these prove the seed hands it. A shell-script stub cannot be spawned without a shell on
 // Windows, so callers pass POSIX_ONLY as the test options.
 'use strict';

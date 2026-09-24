@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, stampPath, stampFiles } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, stampPath, stampFiles } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -51,6 +51,7 @@ function write(p, opts = {})
         picked: opts.picked,
         library: opts.library,
         hooksRoute: opts.hooksRoute,
+        playwright: opts.playwright,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -203,6 +204,26 @@ test('install-stamp: hooks-route records the route the hooks took, and a stamp w
     }
     assert.strictEqual(readHooksRoute(path.join(p.base, 'absent.stamp')), null);
     assert.doesNotMatch(write(project()).text, /^hooks-route:/m, 'no route given records none - never a guess');
+});
+
+// R29: the picked playwright engines install SWITCHED OFF, so a disabled engine row says nothing about
+// whether it was picked - the stamp line is the record, never the listing's enabled flag (S22).
+test('install-stamp: playwright-browsers records the picked engines and reads back; a stamp without the line reads as null', () =>
+{
+    const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'] });
+    assert.match(text, /^playwright-browsers: chrome,firefox$/m);
+    assert.deepStrictEqual(readPlaywright(dest), ['chrome', 'firefox']);
+    const none = write(project());
+    assert.match(none.text, /^playwright-browsers: $/m, 'no engine picked is an empty line - the record says none');
+    assert.deepStrictEqual(readPlaywright(none.dest), [], 'recorded empty is an answer');
+    const p = project();
+    const file = path.join(p.base, 'old.stamp');
+    fs.writeFileSync(file, 'sha: abc\nshipped-hooks: a,b\n');
+    assert.strictEqual(readPlaywright(file), null, 'an older stamp never recorded the picks');
+    assert.strictEqual(readPlaywright(path.join(p.base, 'absent.stamp')), null);
+    // Only the four engines, in the one canonical order, whatever a hand edit left there.
+    fs.writeFileSync(file, 'playwright-browsers: webkit, safari,CHROME,webkit\n');
+    assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
 });
 
 test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as null - never as an empty pick', () =>

@@ -298,13 +298,12 @@ read the same ROUTE-decided way as the rest: a `playwright-<browser>@<key>` entr
 listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
 `playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
 run - and ask in
-the same turn TWO questions: which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
+the same turn which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
 `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are
-Playwright's own builds, downloaded by the installer) and which ONE stays enabled. Pass both at step 12 as
-`--playwright-browsers <csv> --playwright-enabled <browser>`; a dropped browser's server is removed by the
-run. Keeping everything as it is passes nothing. Which server is ON is the user's: the installer writes no
-toggle, and its next-steps card prints the `/mcp disable playwright-<x>` lines to run once - switching
-later is `/mcp enable` / `disable`, no configure run needed.
+Playwright's own builds, downloaded by the installer). Pass it at step 12 as `--playwright-browsers <csv>`;
+a dropped browser's server is removed by the run. Keeping everything as it is passes nothing. Which browser
+is ON is the user's: a newly kept one installs switched off, an installed one keeps its state, and the
+next-steps card says to switch one on from the `/plugin` toggle when a session needs it - no configure run.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
@@ -430,7 +429,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--playwright-browsers <csv>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

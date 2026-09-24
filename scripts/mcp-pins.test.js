@@ -1,8 +1,10 @@
 'use strict';
-// NO MCP SERVER FLOATS. Every npm / PyPI server the stack ships launches a version someone committed
-// (the plugin route, from meta/mcp-pins.json) or the install resolved (the copy route). Two servers
-// the 2.0.0 cut removed ran `@latest` on both routes until 1.1.0, so two installs a week apart ran
-// different server code from one stack release; playwright, the npm server left, is the witness.
+// NO MCP SERVER FLOATS. Every npm / PyPI server the stack ships launches the version the release
+// committed in meta/mcp-pins.json - on the plugin route through the generated entries, on the copy
+// route and for the browser download through the seed, which asks no registry (R35). Two servers the
+// 2.0.0 cut removed ran `@latest` on both routes until 1.1.0, and until 2.0.0 the seed resolved the
+// registry's latest at install - either way two installs a week apart ran different server code from
+// one stack release; playwright, the npm server left, is the witness.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -46,35 +48,38 @@ test('the release pins cover every package server, and the generator spells a pi
     assert.deepStrictEqual(args({ playwright: { version: null } }), ['-y', '@playwright/mcp']);
 });
 
-test('the seed resolves the pin at install, and a failed lookup falls through to unpinned', () =>
+test('the seed takes each pin from the release, never from a registry', () =>
 {
-    const found = mcp.resolvePins({ npmLatest: (pkg) => ({ '@playwright/mcp': '0.0.90' })[pkg] || '', pypiLatest: () => '' });
-    assert.strictEqual(found.PW_PIN, '@0.0.90');
-    const logs = [];
-    const offline = mcp.resolvePins({ npmLatest: () => { throw new Error('offline'); }, pypiLatest: () => '', log: (m) => logs.push(m) });
-    assert.strictEqual(offline.PW_PIN, '');
-    assert.ok(logs.some((m) => m.includes('could not resolve playwright latest')), logs.join(' | '));
+    const release = JSON.parse(read('meta/mcp-pins.json')).pins;
+    const found = mcp.resolvePins({ pins: release });
+    assert.strictEqual(found.PW_PIN, `@${release.playwright.version}`);
+    assert.ok(!/npmLatest|pypiLatest|npm', \['view'|pypi\.org/.test(read('scripts/install/alfred-code.js')), 'the seed still carries a registry lookup');
 });
 
-// End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as a
-// version, or as nothing - a literal `@PW_PIN@` is a package name npx cannot find.
+// End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as the
+// release's version - a literal `@PW_PIN@` is a package name npx cannot find. The registry answers a
+// NEWER version and records every call, so a lookup that still happened shows twice.
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 const SELECTION = 'skill markdown-style\nmcp playwright\n';
-const NPM = 'case "$2" in @playwright/mcp) echo 0.0.90 ;; *) exit 1 ;; esac';
+const RECORD = (tool) => `printf '${tool} %s\\n' "$*" >> "$HOME/registry.log"; echo 9.9.9`;
+const REGISTRY = { npm: RECORD('npm'), curl: RECORD('curl') };
+const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.playwright.version}`;
 const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers;
 const launch = (repo) => ((servers(repo)['playwright-chrome'] || {}).args || []).slice(0, 2);
+const asked = (repo) => { try { return fs.readFileSync(path.join(path.dirname(repo), 'registry.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 
-test('seed install on the MCP copy route writes the server at the resolved pin', POSIX_ONLY, () =>
+test('seed install on the MCP copy route writes the server at the release pin and asks no registry', POSIX_ONLY, () =>
 {
-    const { result } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: { npm: NPM, curl: 'exit 1' }, inspect: launch });
-    assert.deepStrictEqual(result, ['-y', '@playwright/mcp@0.0.90']);
+    const { result } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, inspect: (repo) => ({ launch: launch(repo), asked: asked(repo) }) });
+    assert.deepStrictEqual(result.launch, ['-y', PW]);
+    assert.deepStrictEqual(result.asked, [], 'the seed asked a registry for a version');
 });
 
-test('seed install offline: the server is written unpinned, never with a placeholder or @latest', POSIX_ONLY, () =>
+test('seed install with the registry unreachable writes the same release pin, never a placeholder or @latest', POSIX_ONLY, () =>
 {
     const { result, out } = seedRun('install', SELECTION, { env: COPY_ROUTE, tools: { npm: 'exit 1', curl: 'exit 1' }, inspect: launch });
-    assert.deepStrictEqual(result, ['-y', '@playwright/mcp']);
-    assert.match(out, /could not resolve playwright latest - installing unpinned/);
+    assert.deepStrictEqual(result, ['-y', PW]);
+    assert.doesNotMatch(out, /could not resolve|installing unpinned/);
 });
 
 test('seed update over an install still on @latest rewrites the row to the pin', POSIX_ONLY, () =>
@@ -85,7 +90,7 @@ test('seed update over an install still on @latest rewrites the row to the pin',
     } };
     const prepare = (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');
     const inspect = (repo) => ({ pw: launch(repo), mine: servers(repo)['my-browser'] });
-    const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: { npm: NPM, curl: 'exit 1' }, prepare, inspect });
-    assert.deepStrictEqual(result.pw, ['-y', '@playwright/mcp@0.0.90']);
+    const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
+    assert.deepStrictEqual(result.pw, ['-y', PW]);
     assert.deepStrictEqual(result.mine, old.mcpServers['my-browser'], "the user's own server was touched");
 });

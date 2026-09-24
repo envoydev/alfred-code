@@ -488,6 +488,75 @@ test('update: a third-party marketplace is registered before an absent plugin fr
     assert.ok(add >= 0 && inst > add, run.calls.join(' | '));
 });
 
+// --- the playwright engines install SWITCHED OFF (R29) ------------------------------------------
+// The CLI has no disabled install, so the shape is install, then disable at the SAME scope. After
+// that the user owns the flag: update moves the engine in place and never enables or disables it,
+// because the listing's project-scope flag can read a stale false (S22) - an enable keyed on it would
+// turn every engine on.
+
+const PW = ['playwright-chrome@envoydev', 'playwright-firefox@envoydev'];
+
+test('install: a picked engine this run installs is disabled at the same scope; one already installed keeps its state', () =>
+{
+    const run = cli();
+    const before = [{ name: 'playwright-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true }];
+    P.installPlugins({ plugins: ['alfred-code@envoydev', ...PW], scope: 'project', before, switchedOff: PW, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin (install|disable|enable|update) playwright-/), [
+        'plugin install playwright-chrome@envoydev --scope project -y',
+        'plugin disable playwright-chrome@envoydev --scope project',
+        'plugin install playwright-firefox@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope project -y',
+    ]);
+    assert.deepStrictEqual(run.matching(/^plugin disable alfred-code/), [], 'only a switched-off spec is disabled');
+});
+
+test('install: a failed engine install runs no disable, and a failed disable is noted with its hand command', () =>
+{
+    const failed = cli(['install playwright-chrome']);
+    const notes = [];
+    P.installPlugins({ plugins: PW, scope: 'user', switchedOff: PW, cli: failed, note: (m) => notes.push(m) });
+    assert.deepStrictEqual(failed.matching(/^plugin disable /), ['plugin disable playwright-firefox@envoydev --scope user']);
+    const stuck = cli(['disable playwright-firefox']);
+    P.installPlugins({ plugins: PW, scope: 'project', switchedOff: PW, cli: stuck, note: (m) => notes.push(m) });
+    assert.ok(notes.some((m) => /plugin disable failed: playwright-firefox@envoydev.*claude plugin disable playwright-firefox@envoydev --scope project/.test(m)), notes.join(' | '));
+});
+
+test('update: a picked engine is updated in place - never enabled, never disabled; an absent one is installed switched off', () =>
+{
+    const run = cli();
+    const before = [
+        { name: 'playwright-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
+        { name: 'playwright-firefox', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
+    ];
+    const specs = [...PW, 'playwright-webkit@envoydev'];
+    const report = P.updatePlugins({ plugins: specs, scope: 'project', before, after: before, switchedOff: specs, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin (install|disable|enable|update) playwright-/), [
+        'plugin update playwright-chrome@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope project -y',
+        'plugin install playwright-webkit@envoydev --scope project -y',
+        'plugin disable playwright-webkit@envoydev --scope project',
+        'plugin update playwright-webkit@envoydev --scope project -y',
+    ]);
+    assert.ok(!report.some((l) => /DISABLED|claude plugin enable/.test(l)), `a switched-off engine was reported as something to enable: ${report.join(' | ')}`);
+    // A parked spec that is NOT switched off is still enabled, as before.
+    const other = cli();
+    P.updatePlugins({ plugins: ['playwright-firefox@envoydev'], scope: 'project', before, after: before, cli: other });
+    assert.deepStrictEqual(other.matching(/^plugin enable /), ['plugin enable playwright-firefox@envoydev --scope project']);
+});
+
+test('update: an engine installed at ANOTHER scope is updated at that scope, and an absent one is disabled where it went', () =>
+{
+    const run = cli();
+    const before = [{ name: 'playwright-chrome', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: false }];
+    P.updatePlugins({ plugins: PW, scope: 'project', before, after: before, switchedOff: PW, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin (install|disable|enable|update) playwright-/), [
+        'plugin update playwright-chrome@envoydev --scope user -y',
+        'plugin install playwright-firefox@envoydev --scope project -y',
+        'plugin disable playwright-firefox@envoydev --scope project',
+        'plugin update playwright-firefox@envoydev --scope project -y',
+    ]);
+});
+
 // --- the seed, end to end, against a recording CLI --------------------------------------------------
 // The cases above prove what each function does with what it is HANDED; these prove the seed hands
 // it. Measured on the 1.0.0 release check: the seed called installPlugins with no marketplaces, so a
@@ -1222,4 +1291,51 @@ test('seed plan: --print-plan over a 1.x project with cut plugins prints no remo
     assert.ok(out.includes(`plan migrate: claude plugin uninstall sentry@${key} --scope project -y`), out);
     assert.ok(!/plugin pruned|add it back:|plugin removed/.test(out), out.split('\n').filter((l) => /plugin pruned|add it back:|plugin removed/.test(l)).join('\n'));
     assert.match(out, new RegExp(`^plan note: angular-cli@${key} is installed at user scope, not this run's - kept`, 'm'));
+});
+
+// --- R29 end to end: the picked engines install switched off, and update never flips them ----------
+const PW_SELECTION = 'skill markdown-style\nrule markdown-docs\nmcp playwright\n';
+const stampOf = (repo) => { try { return fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'); } catch { return ''; } };
+const pwMoves = (calls) => calls.filter((c) => /^plugin (install|disable|enable|update|uninstall) playwright-/.test(c));
+const ROW = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
+
+test('seed install: the picked engines are installed then disabled at the same scope, and the stamp names them', POSIX_ONLY, () =>
+{
+    const { calls, out, result } = seedRun('install', PW_SELECTION, { args: ['--playwright-browsers', 'firefox,chrome'], inspect: stampOf });
+    assert.deepStrictEqual(pwMoves(calls), [
+        'plugin install playwright-chrome@envoydev --scope project -y',
+        'plugin disable playwright-chrome@envoydev --scope project',
+        'plugin install playwright-firefox@envoydev --scope project -y',
+        'plugin disable playwright-firefox@envoydev --scope project',
+    ]);
+    assert.match(result, /^playwright-browsers: chrome,firefox$/m);
+    assert.match(out, /playwright: chrome,firefox picked - a new one installs switched off, enable one from \/plugin when a session needs a browser/);
+});
+
+test('seed update --installed-only: the stamp\'s engines are updated in place whatever their flag, and an unpicked disabled one stays parked', POSIX_ONLY, () =>
+{
+    const plugins = JSON.stringify([
+        ROW('alfred-code@envoydev'), ROW('serena@envoydev'), ROW('context7@envoydev'), ROW('memory@envoydev'),
+        ROW('playwright-chrome@envoydev'), ROW('playwright-firefox@envoydev', { enabled: false }),
+        ROW('playwright-webkit@envoydev', { enabled: false }),
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), '# rule\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\nplaywright-browsers: chrome,firefox\n');
+    };
+    const { calls, result } = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'], prepare, inspect: stampOf });
+    assert.deepStrictEqual(pwMoves(calls), [
+        'plugin update playwright-chrome@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope project -y',
+    ], 'an engine flag was flipped, a picked engine was skipped, or the parked one was touched');
+    assert.match(result, /^playwright-browsers: chrome,firefox$/m);
+});
+
+test('seed install on a listing it cannot read: the engines are installed but never disabled - an enabled one would be switched off', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome'] });
+    assert.deepStrictEqual(pwMoves(calls), ['plugin install playwright-chrome@envoydev --scope project -y']);
+    assert.match(out, /the plugin listing could not be read - the playwright engines keep whatever on\/off state they have/);
 });

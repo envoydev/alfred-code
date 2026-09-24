@@ -247,32 +247,31 @@ function verifyUser({ expects = [], scope, getShape, reregister, log = () => {},
     return { repaired };
 }
 
-// The runtime versions this run pins to. Every lookup is BOUNDED and every failure falls through
-// to UNPINNED rather than aborting: offline, or without npm / curl / python3, an install must still
-// happen - it just installs the latest at launch instead of a frozen version.
+// The runtime versions this run pins to: the RELEASE's, from the snapshot's meta/mcp-pins.json (R35) -
+// the versions the generated plugin entries launch, so the copy route, the plugin route and the
+// browser download all run one server version. The seed asks NO registry: a lookup at install time
+// had two installs a week apart run different server code from one release, and it left the
+// download at the registry's latest while the plugin launched the pin. A package with no usable row
+// installs unpinned, the generator's own fallback.
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
-// which have no extras suffix to sit next to.
-function resolvePins({ npmLatest, pypiLatest, log = () => {} })
+// which have no extras suffix to sit next to - each row names its own spelling.
+const PIN_ROWS = { playwright: ['PW_PIN', '@<v>'], serena: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'] };
+
+function resolvePins({ pins, log = () => {} })
 {
-    const ask = (fn, pkg) => { try { return String(fn(pkg) || '').trim(); } catch { return ''; } };
-    const found = {
-        playwright: ask(npmLatest, '@playwright/mcp'),
-        serena: ask(pypiLatest, 'serena-agent'),
-        memory: ask(pypiLatest, 'mcp-memory-service'),
-    };
-    for (const [name, version] of Object.entries(found))
+    const rows = pins && typeof pins === 'object' && !Array.isArray(pins) ? pins : {};
+    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {} };
+    for (const [name, [token, spelling]] of Object.entries(PIN_ROWS))
     {
-        if (version) log(`  pinned ${name}@${version}`);
-        else log(`  !! could not resolve ${name} latest - installing unpinned (re-run when online to pin it)`);
+        const row = rows[name] && typeof rows[name] === 'object' ? rows[name] : {};
+        const version = typeof row.version === 'string' && /^[0-9][0-9A-Za-z.+-]*$/.test(row.version) ? row.version : '';
+        out.versions[name] = version;
+        out[token] = version ? String(row.spelling || spelling).replace('<v>', version) : '';
+        if (version) log(`  pinned ${name}@${version} (the release pin)`);
+        else log(`  !! no release pin for ${name} in this source - installing unpinned`);
     }
-    return {
-        PW_PIN: found.playwright ? `@${found.playwright}` : '',
-        SERENA_PIN: found.serena ? `@${found.serena}` : '',
-        MEMORY_PIN: found.memory ? `==${found.memory}` : '',
-        MEMORY_BACKEND: 'sqlite_vec',
-        versions: found,
-    };
+    return out;
 }
 
 // ONE server drives ONE browser, fixed at launch (`--browser`; the server has no tool to switch it
@@ -291,21 +290,21 @@ function pwArgsFor(args, engine)
     return out.join(' ');
 }
 
-// The kept set: the flag, else what is already registered (plus an explicitly enabled engine),
+// The kept set: the flag, else what is already there (registered, listed, or picked in the stamp),
 // else chrome. A legacy `playwright` server counts as its own --browser engine.
-function playwrightKept({ browsers = [], registered = [], enabled = '' })
+function playwrightKept({ browsers = [], registered = [] })
 {
     if (browsers.length) return [...browsers];
-    const have = new Set([...registered, ...(enabled ? [enabled] : [])]);
+    const have = new Set(registered);
     const kept = PW_ENGINES.filter((e) => have.has(e));
     return kept.length ? kept : ['chrome'];
 }
 
-function expandPlaywright({ mcps = [], browsers = [], registered = [], enabled = '' })
+function expandPlaywright({ mcps = [], browsers = [], registered = [] })
 {
     const has = mcps.some((e) => String(e).split('|')[0] === 'playwright');
     if (!has) return { mcps: [...mcps], browsers: [] };
-    const kept = playwrightKept({ browsers, registered, enabled });
+    const kept = playwrightKept({ browsers, registered });
     const out = [];
     for (const entry of mcps)
     {

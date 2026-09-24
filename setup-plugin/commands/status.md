@@ -150,7 +150,7 @@ plugin route the `target` column is the plugin, not a registration:
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
 `target` is the command or URL, middle-truncated to keep the row one line. Playwright has one server per
-kept browser (`playwright-<browser>`); which of them is switched on is the user's `/mcp` toggle, not
+kept browser (`playwright-<browser>`), each installed switched off; which of them is on is the user's `/plugin` toggle, not
 something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
 

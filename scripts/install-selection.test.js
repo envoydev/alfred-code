@@ -221,12 +221,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, marketplace } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, stampEngines, marketplace } = {})
 {
     const claudeDir = target({ rules: ['baseline-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks, lastHooksRoute, always: {}, stampPicked, marketplace,
+        stampHooks, lastHooksRoute, always: {}, stampPicked, stampEngines, marketplace,
     });
 }
 
@@ -286,6 +286,41 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
     ] });
     assert.strictEqual(r.answered.hooks, true, 'the core carrying the hooks is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
     assert.deepStrictEqual(r.engines, ['webkit']);
+});
+
+// R29: the picked engines install SWITCHED OFF, so a disabled engine row is their normal state. The
+// stamp's `playwright-browsers:` says what was picked - the listing flag never does (S22) - and only an
+// engine it does not name is the user's parked off-state.
+test('read-back: an engine the stamp picked stays picked while disabled; one it does not name stays parked', () =>
+{
+    const listing = [
+        row('alfred-code@envoydev'),
+        row('playwright-chrome@envoydev', { enabled: false }), row('playwright-firefox@envoydev', { enabled: false }),
+        row('playwright-webkit@envoydev', { enabled: false }),
+    ];
+    const r = readBackCase({ listing, stampEngines: ['chrome', 'firefox'] });
+    assert.deepStrictEqual(r.engines, ['chrome', 'firefox']);
+    assert.ok(r.lines.includes('mcp playwright') && r.closeFrom.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
+    assert.deepStrictEqual(r.parked.filter((n) => n.startsWith('playwright-')), ['playwright-webkit'], 'a picked engine read as parked');
+    // One the user enabled joins the picked ones, as an enabled engine always did.
+    const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('playwright-msedge@envoydev'), row('playwright-firefox@envoydev', { enabled: false })], stampEngines: ['firefox'] });
+    assert.deepStrictEqual(mixed.engines, ['msedge', 'firefox']);
+    // Nothing recorded (an older stamp, no stamp): the listing alone speaks, as before.
+    for (const stampEngines of [undefined, null, []])
+    {
+        const old = readBackCase({ listing, stampEngines });
+        assert.deepStrictEqual(old.engines, [], JSON.stringify(stampEngines));
+        assert.ok(!old.lines.includes('mcp playwright'));
+        assert.deepStrictEqual(old.parked.filter((n) => n.startsWith('playwright-')), ['playwright-chrome', 'playwright-firefox', 'playwright-webkit']);
+    }
+    // A listing this run could not read is no reason to lose the picks: the stamp still names them.
+    const blind = readBackCase({ listing: [], stampEngines: ['webkit'] });
+    assert.deepStrictEqual(blind.engines, ['webkit']);
+    assert.ok(blind.lines.includes('mcp playwright'));
+    // On the MCP copy route a registration is the record, never the stamp.
+    const copy = readBackCase({ listing, stampEngines: ['chrome'], routes: { ...ALL, mcps: false } });
+    assert.deepStrictEqual(copy.engines, []);
+    assert.ok(!copy.lines.includes('mcp playwright'));
 });
 
 test('read-back: the core reads as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
@@ -539,6 +574,22 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
     assert.deepStrictEqual(inv.left_out, ['agent security-auditor']);
     assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp', 'claude-stack-devops'], 'a parked stack entry is the same third state');
     assert.deepStrictEqual(inv.answered, { hooks: true, agents: false });
+});
+
+test('planInventory: a picked engine installed switched off is no DISABLED plugin - an unpicked disabled one still is', () =>
+{
+    // validate turns every plugins_disabled name into a DISABLED row whose accept is `claude plugin
+    // enable` - for a picked engine that would undo the switched-off install (R29).
+    const inv = sel.planInventory({
+        lists: { mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'] },
+        listing: [
+            row('playwright-chrome@envoydev', { enabled: false }), row('playwright-firefox@envoydev'),
+            row('playwright-webkit@envoydev', { enabled: false }), row('serena@claude-plugins-official', { enabled: false }),
+        ],
+        answered: { hooks: true, agents: true },
+    });
+    assert.deepStrictEqual(inv.mcps, ['playwright', 'serena']);
+    assert.deepStrictEqual(inv.plugins_disabled, ['playwright-webkit', 'serena'], 'only the engines are exempt, and only the picked ones');
 });
 
 // T4: a --drop that takes a stack entry out of the plugin set must DISABLE that entry, or the

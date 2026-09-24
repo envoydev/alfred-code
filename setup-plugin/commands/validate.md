@@ -461,15 +461,15 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--playwright-browsers <csv>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
   and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` (or the 1.x
   `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
   Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
-  `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
-  (the installer reads its `playwright-<browser>` servers back and keeps them). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
+  `firefox`, `webkit`) and pass them - each installs switched off, `/plugin` turns one on; an installed
+  playwright passes nothing (the installer reads its picked browsers back from the stamp and keeps them). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
   (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed

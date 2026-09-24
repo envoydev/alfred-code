@@ -237,11 +237,21 @@ function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces,
     return market;
 }
 
+// A plugin that installs SWITCHED OFF - a picked playwright engine (R29), which the user enables from
+// /plugin when a session needs a browser. The CLI has no disabled install, so the install is followed
+// by a disable at the SAME scope; a disable that fails leaves the engine on and says how to finish.
+function switchOff(spec, scope, { cli, log, note })
+{
+    if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true })) log(`plugin disabled [${scope}]: ${spec} (installed switched off - /plugin enables it)`);
+    else note(`plugin disable failed: ${spec} - it stays enabled; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
+}
+
 // INSTALL: register the marketplaces, refresh them, then install each plugin at its scope - and
 // update one the listing already carries, which `install` leaves where it was. A failure is noted
 // and the run continues - fail-soft, like every other layer. `fresh` names what this run installed
-// already (the 1.x migration): nothing is left to do for it.
-function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh = [], refreshed = new Set(), cli, log = () => {}, note = () => {} })
+// already (the 1.x migration): nothing is left to do for it. A `switchedOff` spec this run installs
+// is disabled right after; one already installed keeps whatever state the user gave it.
+function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh = [], refreshed = new Set(), switchedOff = [], cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -265,6 +275,7 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
         if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'])) { note(`plugin ${spec} failed`); continue; }
         if (fieldOf(before, spec, 'version'))
             cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
+        else if (switchedOff.includes(spec)) switchOff(spec, pscope, { cli, log, note });
     }
 }
 
@@ -391,8 +402,9 @@ function extraMarketplaces(rows, set)
 // its marketplace is registered first, exactly as the install pass does. `fresh` names what this run
 // installed already (the 1.x migration): it is not touched again, and it is ENABLED - its install
 // said so, while the listing's own flag can read a fresh project-scope install as disabled
-// (docs/rebrand-evidence.md S22).
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), cli, log = () => {} })
+// (docs/rebrand-evidence.md S22). A `switchedOff` spec (a picked playwright engine, R29) is updated in
+// place and its flag is never touched - an absent one is installed and disabled, as on install.
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), switchedOff = [], cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
@@ -400,14 +412,16 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
     {
         if (fresh.includes(spec)) continue;
         const pscope = scopeFor(spec, scope, before);
+        const off = switchedOff.includes(spec);
         if (!fieldOf(before, spec, 'version'))
         {
             log(`plugin install [${pscope}]: ${spec}`);
-            cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
+            if (cli(['plugin', 'install', spec, '--scope', pscope, '-y']) && off) switchOff(spec, pscope, { cli, log, note });
         }
         // The core is locked on (brand.js alwaysOn): its flag is no reason to act. A user-disabled
-        // claude-hud stays off (USER_OFF_WINS).
-        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
+        // claude-hud stays off (USER_OFF_WINS). Nor is a switched-off engine's - the user enables it
+        // from /plugin, and the stale false of S22 would enable them all.
+        else if (!off && fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
             cli(['plugin', 'enable', spec, '--scope', pscope]);
@@ -426,7 +440,7 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
         let line;
         if (fresh.includes(spec)) line = `  plugin ${name}: ${is ? `${is} (installed this run)` : 'installed this run'}`;
         else if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
-        else if (fieldOf(now, spec, 'enabled') === false && !alwaysOn(name)) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
+        else if (!switchedOff.includes(spec) && fieldOf(now, spec, 'enabled') === false && !alwaysOn(name)) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
         else if (!was) line = `  plugin ${name}: ${is} (installed this run)`;
         else if (was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
         else line = `  plugin ${name}: ${is} (already newest)`;

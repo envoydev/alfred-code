@@ -33,6 +33,8 @@ const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
 // docs.js / memory.js / history.js / fresh-session.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session)$/;
 const PW_ENGINE = /^playwright-(chrome|msedge|firefox|webkit)$/;
+const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
 const nameOfMcp = (entry) => String(entry).split('|')[0];
@@ -187,7 +189,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, log = () => {} })
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
@@ -208,7 +210,12 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    const parked = ours.filter((r) => !rowOn(r)).map((r) => currentName(r.name));
+    // The playwright engines the last install PICKED (the stamp's `playwright-browsers:`) install
+    // switched off (R29), so a disabled row of one is its normal state, never the user's parked
+    // off-state - and the listing's flag is no evidence either way (S22). Plugin route only: on the
+    // copy route a registration is the record.
+    const pickedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : [];
+    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(r.name))).map((r) => currentName(r.name));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
     const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
@@ -281,7 +288,13 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         }
     }
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
-    const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
+    const listedEngines = routes.mcps ? names.map(engineOf).filter(Boolean) : [];
+    const engines = PW_ORDER.filter((e) => listedEngines.includes(e) || pickedEngines.includes(e));
+    if (pickedEngines.length && !lines.includes('mcp playwright'))
+    {
+        lines.push('mcp playwright');
+        log(`installed-only: keeping mcp playwright - the last install picked ${pickedEngines.join(',')} (installed switched off)`);
+    }
     // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
     // is the whole answer already - a hook it does not name is on, a new release's included - and
     // adopting against an older stamp would switch back on the very hooks the user named there.
@@ -392,6 +405,7 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
 {
     const uniq = (xs) => [...new Set(xs)];
     const rowOf = new Map(listing.map((r) => [r.name, r]));
+    const pickedMcps = new Set((lists.mcps || []).map(nameOfMcp));
     const picked = uniq([...(lists.plugins || []).map(nameOfPlugin), ...pluginCatalog.filter((n) => rowOf.has(n) && rowOf.get(n).enabled)]);
     return {
         skills: uniq((lists.skills || []).map(nameOfSkill)),
@@ -400,7 +414,8 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
         mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name)).map((r) => r.name),
+        // A picked engine installs switched off (R29): disabled is its normal state, not a parked one.
+        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name) && !(engineOf(r.name) && pickedMcps.has(r.name))).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
         answered,

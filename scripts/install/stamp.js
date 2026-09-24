@@ -25,6 +25,11 @@
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
 // across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
 //
+// `playwright-browsers` is the playwright engines this run PICKED. A picked engine installs switched
+// off and the user enables one from /plugin (R29), so a disabled engine row is its normal state - and
+// the listing's project-scope flag can read a stale false anyway (S22). This line, never the flag, is
+// what the next `--installed-only` reads as picked; a disabled engine it does not name stays parked.
+//
 // `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
 // CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
 // or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
@@ -67,7 +72,7 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, library = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], library = {} } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -88,6 +93,7 @@ function renderStamp(fields)
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
         `picked-agents: ${(picked.agents || []).join(',')}`,
+        `playwright-browsers: ${(playwright || []).join(',')}`,
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -112,7 +118,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, library,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, library,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
 
@@ -140,7 +146,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope,
             hooks: shippedHooks(hooksCatalog), hooksRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, library,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, library,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -202,4 +208,17 @@ function readHooksRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readVersion };
+// The playwright engines the last install picked, in the one canonical order - [] when it recorded
+// none, null when the stamp has no such line (no stamp, or one older than R29): nothing recorded.
+const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+function readPlaywright(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const m = /^playwright-browsers:(.*)$/m.exec(text);
+    if (!m) return null;
+    const named = m[1].split(',').map((s) => s.trim().toLowerCase());
+    return PW_ORDER.filter((e) => named.includes(e));
+}
+
+module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readVersion };
