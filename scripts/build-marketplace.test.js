@@ -326,3 +326,19 @@ test('the core entry wires the library-stamp line at session start, startup only
     assert.strictEqual(start[0].hooks[0].timeout, 10);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'library-stamp.js')));
 });
+
+// Review I3: the README's trust surface counts what executes from the package - it said one hook
+// while the core ran nineteen, and named per-stack skill entries 1.3.0 retired.
+test('the README trust surface counts every hook the core entry runs', () =>
+{
+    const files = new Set(Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks)
+        .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
+    const own = [...files].filter((f) => f.startsWith('setup-plugin/')).length;
+    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+        'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two'];
+    const row = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').split('\n').find((l) => l.startsWith('| **Starts** |'));
+    const m = /(\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
+    assert.ok(m, `the Starts row names the core's hooks: ${row}`);
+    assert.deepStrictEqual(m.slice(1).map((w) => WORDS.indexOf(w)), [files.size, own, files.size - own]);
+    assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
+});
