@@ -24,7 +24,8 @@ function scrubLegacyEnv(env)
 }
 
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
-// sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment.
+// sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment -
+// one object for every step, or an array with one PER STEP (a route flip between two runs).
 // `source: null` runs with no --source, so the seed resolves its own snapshot (the plugin cache under the
 // sandbox account, which `prepare(repo, work)` can lay out). `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), replacing the default 'no', for a case
 // that needs a registry lookup to answer one fixed way. `action` may be a list - the runs share one sandbox, in order, and
@@ -55,7 +56,12 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     // of them may reach the run, or land in the sandbox.
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
     scrubLegacyEnv(env);
-    for (const [k, v] of Object.entries(extra)) { if (v === undefined) delete env[k]; else env[k] = v; }
+    const envAt = (i) =>
+    {
+        const out = { ...env };
+        for (const [k, v] of Object.entries((Array.isArray(extra) ? extra[i] : extra) || {})) { if (v === undefined) delete out[k]; else out[k] = v; }
+        return out;
+    };
     try
     {
         prepare(repo, work);
@@ -68,7 +74,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         {
             const src = sourceAt(i);
             outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
-                { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+                { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
             steps.push(each(repo, steps.length));
         }
         const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];

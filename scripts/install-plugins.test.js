@@ -887,7 +887,79 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
     const none = run([]);
     assert.deepStrictEqual(none.onDisk, [], 'the None holds: nothing is copied back');
     assert.deepStrictEqual(none.off, [...shipped].sort(), 'and the core keeps every hook quiet');
+    const noneOwn = run(['my-hook']);
+    assert.deepStrictEqual(noneOwn.onDisk, [], 'the None holds beside the user\'s own hook file too');
+    assert.deepStrictEqual(noneOwn.off, [...shipped].sort());
     const flip = run([], kept);
     assert.deepStrictEqual(flip.onDisk, shipped.filter((h) => !kept.includes(h)).map((h) => `${h}.js`).sort(), 'a flip copies the hooks the plugin route ran');
     assert.deepStrictEqual(flip.off, [...kept].sort(), 'and keeps the ones it had named off');
+});
+
+// Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js) are no catalog hook,
+// so a plugin-route stint that pruned only the catalog left them behind - and the next copy-route run
+// read that leftover prelude as the copy route's own None, switching every hook off. The plugin route
+// removes them with the hooks, so copy -> plugin -> copy comes back with the plugin route's answer.
+test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a None', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
+    const MODULES = ['hook-prelude.js', 'fresh-session.js'];
+    const read = (repo) => ({
+        files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
+        off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
+    });
+    const trip = (selection, prepare) => seedRun(['install', 'update', 'update'], selection, {
+        plugins: listing, env: [copies, {}, copies], args: [[], ['--installed-only'], ['--installed-only']], each: read, prepare });
+    // The user's own hook file beside the stack's is read back as a `hook` line too - no evidence of
+    // what the STACK kept, so it must not turn the flip into 'every stack hook was dropped'.
+    const ownHook = (repo) => { fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'my-hook.js'), '// mine\n'); };
+    const hooksIn = (step) => step.files.filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort();
+
+    const kept = ['guard-protected-force-push', 'guard-secret-value'];
+    const two = trip(`skill markdown-style\n${kept.map((h) => `hook ${h}`).join('\n')}\n`);
+    assert.ok(MODULES.every((m) => two.steps[0].files.includes(m)), 'the copy route copies its modules');
+    assert.deepStrictEqual(two.steps[1].files.filter((f) => MODULES.includes(f) || shipped.includes(f.replace(/\.js$/, ''))), [],
+        'the plugin route leaves no copied hook and no copy-route module behind');
+    assert.deepStrictEqual(hooksIn(two.steps[2]), kept.map((h) => `${h}.js`), 'back on the copies: the two hooks the plugin route ran');
+    assert.deepStrictEqual(two.steps[2].off, shipped.filter((h) => !kept.includes(h)).sort(), 'and the rest stay named off');
+
+    const all = trip('skill markdown-style\n');
+    assert.deepStrictEqual(hooksIn(all.steps[2]), shipped.map((h) => `${h}.js`).sort(), 'every hook the plugin route ran is copied back');
+    assert.deepStrictEqual(all.steps[2].off, [], 'and none is named off');
+
+    for (const [selection, want] of [[`skill markdown-style\n${kept.map((h) => `hook ${h}`).join('\n')}\n`, kept], ['skill markdown-style\n', shipped]])
+    {
+        const mine = trip(selection, ownHook);
+        assert.deepStrictEqual(hooksIn(mine.steps[2]), want.map((h) => `${h}.js`).sort(), 'the user\'s own hook file changes nothing');
+        assert.deepStrictEqual(mine.steps[2].off, shipped.filter((h) => !want.includes(h)).sort());
+        assert.ok(mine.steps.every((step) => step.files.includes('my-hook.js')), 'and is never touched');
+    }
+});
+
+// The three engines stay COPIED on the plugin route - 22 shared bodies run `node .claude/hooks/docs.js` -
+// so nothing they load may be a file that route removes.
+test('seed: on the plugin route the copied engines still run, with no copy-route module beside them', POSIX_ONLY, () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const { result } = seedRun('install', 'skill markdown-style\n', { plugins: listing, inspect: (repo) =>
+    {
+        const work = path.dirname(repo);
+        const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct') };
+        for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY', 'CLAUDE_PROJECT_DIR', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_STACK_UV_PYTHON', 'CLAUDE_STACK_MEMORY_DB', 'MCP_MEMORY_SQLITE_PATH']) delete env[k]; // legacy-name
+        const runs = [['docs.js', 'status'], ['memory.js', 'level', repo], ['history.js', 'rulings']].map(([file, ...argv]) =>
+        {
+            const r = spawnSync(process.execPath, [path.join(repo, '.claude', 'hooks', file), ...argv], { cwd: repo, env, encoding: 'utf8' });
+            return { file, status: r.status, stderr: r.stderr };
+        });
+        return { files: fs.readdirSync(path.join(repo, '.claude', 'hooks')).sort(), runs };
+    } });
+    assert.deepStrictEqual(result.files, ['docs.js', 'history.js', 'memory.js', 'model-windows.json'], 'only the engines and the window table');
+    for (const run of result.runs)
+    {
+        assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
+        assert.ok(!/Cannot find module/.test(run.stderr), `${run.file}: ${run.stderr}`);
+    }
 });

@@ -74,6 +74,10 @@ const RETIRED_DENY = [
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+// What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
+// from its own root - so the copy route ships them and the plugin route removes them. A leftover
+// prelude is also the copy route's None signal (`selection.readBack`), so it must not outlive the route.
+const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'baseline-docs-root';
@@ -616,13 +620,13 @@ function installHooksAndRules(ctx)
     // release retired goes on either route, file and wiring together.
     const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
     pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream');
-    if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks, 'hook', 'now carried by a plugin');
+    if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks.concat(HOOK_MODULES), 'hook', 'now carried by a plugin');
     pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');
 
     // Only the three ENGINES and the window table are copied; the hooks themselves ride their plugin.
     const hookFiles = ctx.routes.hooks
         ? HOOK_ENGINES
-        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, 'hook-prelude.js', 'fresh-session.js');
+        : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES);
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,
@@ -650,7 +654,9 @@ function installHooksAndRules(ctx)
     // seats denied. It runs whenever the run holds a selection: one a walk answered, or the one
     // --installed-only read back from this very state (`selection.readBack`), which writes it back
     // as it was - and only for the surfaces the read found evidence of (`writable`). No selection
-    // at all (a bare install) writes no off-state.
+    // at all (a bare install) writes no off-state, with one exception: on the hooks copy route with
+    // the core on, ALFRED_CODE_HOOKS_OFF is the complement of what the run wires and is written EVERY
+    // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
     const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {

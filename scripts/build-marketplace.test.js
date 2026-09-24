@@ -327,18 +327,24 @@ test('the core entry wires the library-stamp line at session start, startup only
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'library-stamp.js')));
 });
 
-// Review I3: the README's trust surface counts what executes from the package - it said one hook
-// while the core ran nineteen, and named per-stack skill entries 1.3.0 retired.
-test('the README trust surface counts every hook the core entry runs', () =>
+// Review I3 / N3: the README's trust surface counts what the package holds - it said one hook while
+// the core ran nineteen, and one skill while it carried twenty-three. Every count comes from
+// `coreEntry()` (the references from their folder), so the row cannot drift from the entry again.
+test('the README trust surface counts what the core entry carries', () =>
 {
-    const files = new Set(Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks)
+    const core = coreEntry();
+    const files = new Set(Object.values(core.hooks).flat().flatMap((g) => g.hooks)
         .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
     const own = [...files].filter((f) => f.startsWith('setup-plugin/')).length;
-    const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
-        'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty', 'twenty-one', 'twenty-two'];
+    const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+        'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+    const word = (n) => (n < 20 ? UNITS[n] : ['twenty', 'thirty', 'forty'][Math.floor(n / 10) - 2] + (n % 10 ? `-${UNITS[n % 10]}` : ''));
+    const scripted = core.skills.filter((s) => fs.existsSync(path.join(__dirname, '..', s, 'scripts'))).map((s) => path.basename(s));
+    const references = fs.readdirSync(path.join(__dirname, '..', 'setup-plugin', 'references')).length;
     const row = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').split('\n').find((l) => l.startsWith('| **Starts** |'));
-    const m = /(\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
-    assert.ok(m, `the Starts row names the core's hooks: ${row}`);
-    assert.deepStrictEqual(m.slice(1).map((w) => WORDS.indexOf(w)), [files.size, own, files.size - own]);
+    const m = /which is (\S+) command bodies, (\S+) skills \(only `([^`]+)` ships a script\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
+    assert.ok(m, `the Starts row names what the core carries: ${row}`);
+    assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
+        word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
 });

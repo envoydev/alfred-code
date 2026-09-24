@@ -259,15 +259,19 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
 
     // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
     // back. Two installs leave none there, told apart by the copy route's own prelude: beside a stamp
-    // that shipped hooks, the user kept NONE; without it the plugin route made this install, and the
-    // flip carries its ALFRED_CODE_HOOKS_OFF across, read the way that route reads it. Neither: every
-    // hook, as a selection that predates the hooks layer always meant.
-    if (!routes.hooks && !lines.some((l) => l.startsWith('hook ')))
+    // that shipped hooks, the user kept NONE; without it (the plugin route removes it - HOOK_MODULES)
+    // that route made this install, and the flip carries its ALFRED_CODE_HOOKS_OFF across, read the
+    // way that route reads it. Neither: every hook, as a selection that predates the hooks layer
+    // always meant. Only a STACK hook is evidence: the user's own file there reads back as a `hook`
+    // line too, and taken as a pick it had adoptHooks count every stack hook as dropped - so beside
+    // one, 'every hook' is spelled out.
+    const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
+    if (!routes.hooks && !lines.some((l) => l.startsWith('hook ') && shipped.includes(l.slice(5))))
     {
         const keptNone = stampHooks.length > 0 && fs.existsSync(path.join(claudeDir, 'hooks', 'hook-prelude.js'));
         const off = String(envOf(env, 'HOOKS_OFF') || '');
-        const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
-        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
+        const own = lines.some((l) => l.startsWith('hook '));
+        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : own ? shipped : null;
         if (on)
         {
             lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));
