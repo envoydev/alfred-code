@@ -180,31 +180,29 @@ function applyToMarketplace(mkt, entries, { retired = [] } = {})
 }
 
 // ---------------------------------------------------------------------------------------------
-// The hooks plugin entry. The wiring table has ONE home - the `HOOKS=(...)` array in
-// scripts/os/claude-stack.sh, where each row is `file::matcher::args` and a matcher starting with
-// `@` names its own event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Parsing that
-// array rather than retyping it is what keeps the plugin wiring and the settings.json wiring from
-// drifting while both routes exist, and the lint fails when the generated entry goes stale.
+// The hooks plugin entry. The wiring table has ONE home - the `hooks` list in
+// meta/stack-manifest.json (hand-edited since Phase 7b deleted the twins that used to generate it),
+// where each row renders to `file::matcher::args` and a matcher starting with `@` names its own
+// event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Reading that list rather than
+// retyping it is what keeps the plugin wiring and the settings.json wiring from drifting - both the
+// seed (scripts/install/manifest.js) and this generator read the same file - and the lint fails
+// when the generated entry goes stale.
 //
 // The hooks are declared INLINE in the marketplace entry, not through a `hooks/hooks.json` at the
 // shared root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry
 // over it, and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its
 // own hooks, fired once, for all six event types the stack uses.
-const INSTALLER_SH = path.join(REPO, 'scripts/os/claude-stack.sh');
+const { loadManifest } = require('./install/manifest.js');
 
-function parseHookWirings(file)
+function parseHookWirings(sourceDir)
 {
-    const src = fs.readFileSync(file || INSTALLER_SH, 'utf8');
-    const start = src.indexOf('\nHOOKS=(');
-    if (start < 0) throw new Error('build-marketplace: no HOOKS=( array in the installer - the wiring table moved');
-    const end = src.indexOf('\n)', start);
-    if (end < 0) throw new Error('build-marketplace: the HOOKS=( array is not closed');
+    const { catalogs } = loadManifest(sourceDir || REPO);
+    const rows = catalogs.hooks;
+    if (!rows.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
     const out = [];
-    for (const line of src.slice(start, end).split('\n'))
+    for (const line of rows)
     {
-        const m = line.match(/^\s*"([^"]+)"/);
-        if (!m) continue;
-        const [file_, rawMatcher, rawArgs] = m[1].split('::');
+        const [file_, rawMatcher, rawArgs] = line.split('::');
         const wiring = { file: file_ };
         if (rawMatcher && rawMatcher.startsWith('@'))
         {
@@ -221,7 +219,7 @@ function parseHookWirings(file)
         if (args) wiring.args = args.split(/\s+/);
         out.push(wiring);
     }
-    if (!out.length) throw new Error('build-marketplace: the HOOKS=( array parsed to nothing');
+    if (!out.length) throw new Error('build-marketplace: the manifest hooks[] parsed to nothing');
     return out;
 }
 

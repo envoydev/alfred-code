@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Repo lint: keep the registration surfaces and all cross-skill references in
-// sync. The installer is split into two manifests: claude-stack.{sh,ps1}.
-// SKILLS and MCPS must be identical across both twins - and they are ALSO shared
-// with the Cursor stack (the separate cursor-stack repo, whose installers clone
-// this repo for skills); that cross-repo parity is held by discipline (a baseline
-// change is a two-repo commit), each repo linting its own twins.
+// sync. The installer's six lists - skills, agents, rules, hooks, plugins, MCPs - live in ONE
+// hand-edited file, meta/stack-manifest.json (Phase 7b, R33, deleted the frozen shell and
+// PowerShell installers that used to carry them). SKILLS and MCPS are ALSO shared with the Cursor
+// stack (the separate cursor-stack repo, whose installers clone this repo for skills); that
+// cross-repo parity is held by discipline (a baseline change is a two-repo commit).
 // Catches the failure modes that actually happen:
 //   1. a skill directory exists but is missing from a manifest or the HTML
 //      inventory (it would silently never install);
@@ -55,10 +55,10 @@ const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------
 // A Windows checkout has CRLF line endings (git's autocrlf converts on the way out), and JS treats
 // `\r` as a LINE TERMINATOR: `.` does not match it. So a pattern ending `(#.*)?$` fails on every
-// commented line, and the installer parity check reported the ENTIRE MCP block missing from the
-// .ps1 twin - eight false findings, on a repo where the twins were in perfect sync. Text read here
-// is never sensitive to which bytes end a line, so normalize every utf8 read and let every regex
-// below stay written for `\n`.
+// commented line - measured, when the installers were still text (the frozen `.ps1` twin, deleted
+// Phase 7b): eight false findings on a repo where the source was in perfect sync. Text read here is
+// never sensitive to which bytes end a line, so normalize every utf8 read and let every regex below
+// stay written for `\n`.
 const _readFileSync = fs.readFileSync;
 fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     ? String(_readFileSync(p, o)).replace(/\r\n/g, '\n')
@@ -71,8 +71,7 @@ const yaml = require('js-yaml');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
-const CLAUDE_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
-const CLAUDE_PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
+const MANIFEST_JSON = path.join(ROOT, 'meta', 'stack-manifest.json');
 const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = README;   // merged into the root README at the repo flatten
 const STACK_HTML = path.join(ROOT, 'docs', 'alfred-code.html');
@@ -175,68 +174,31 @@ function warn(message)
     warnings.push(message);
 }
 
-// Parse "repo|skill" entries from the SKILLS block of an installer manifest
-// (MCP entries share the same "a|b" line format, so scope to the block).
-// Commented entries are still inventory (resolvable references), not installs.
-function parseManifest(file, quote, blockStart)
+// The manifest reader. Until Phase 7b these four shapes (skill map, file list, flat set, hooks list)
+// were parsed out of the sh/ps1 text blocks - now they read meta/stack-manifest.json directly, the
+// one hand-edited home for the six lists. Each reader keeps the exact OUTPUT shape its old
+// text-parsing twin gave the checks below (Map/Set of active vs commented), so a row's `active:
+// false` still means 'shipped but not seeded' - a real state, not an absence.
+function readStackManifest(file)
 {
-    const active = new Map();    // skill -> repo
+    return JSON.parse(fs.readFileSync(file || MANIFEST_JSON, 'utf8'));
+}
+
+// SKILLS rows -> {active: Map(name -> repo), commented: Map(name -> repo)}.
+function manifestSkillMap(rows)
+{
+    const active = new Map();
     const commented = new Map();
-    const entry = new RegExp(`^\\s*(#?)\\s*${quote}([^|${quote}]+)\\|([^${quote}]+)${quote}`);
-    let inBlock = false;
-    for (const line of fs.readFileSync(file, 'utf8').split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const m = line.match(entry);
-        if (m)
-        {
-            (m[1] === '#' ? commented : active).set(m[3], m[2]);
-        }
-    }
-
+    for (const row of rows || [])
+        (row.active === false ? commented : active).set(row.name, row.repo);
     return { active, commented };
 }
 
-// Count/collect the active (uncommented) quoted entries of a simple string-array
-// block (AGENTS / HOOKS / RULES) - one quoted token per line, block ends at ')'.
-// For HOOK/RULE entries that carry a '::'/'|' tail, the leading token is taken.
-// Returns the ordered list of active entry names; commented lines are skipped.
-function parseStringArray(file, quote, blockStart)
+// AGENTS / RULES / HOOKS rows -> the ordered list of active `file` names (a hook wired on two
+// matchers is two rows, one file - callers that want unique files de-dupe with a Set).
+function manifestFileList(rows)
 {
-    const names = [];
-    const quoted = new RegExp(`^\\s*(#?)\\s*${quote}([^${quote}]+)${quote}`);
-    let inBlock = false;
-    for (const line of fs.readFileSync(file, 'utf8').split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const m = line.match(quoted);
-        if (m && m[1] !== '#')
-        {
-            names.push(m[2].split(/::|\|/)[0]);
-        }
-    }
-
-    return names;
+    return (rows || []).filter((r) => r.active !== false).map((r) => r.file);
 }
 
 function localSkillDirs()
@@ -246,56 +208,14 @@ function localSkillDirs()
         .map(e => e.name);
 }
 
-// Parse a flat installer block (PLUGINS / MCPS) of quoted entries. The entry's
-// name is the part before `sep` ('@' for plugins, '|' for MCPs). Bare variable
-// lines (e.g. "$MEMORY_ENTRY" / $MemoryEntry) are resolved by locating the
-// variable's assignment elsewhere in the file. Returns empty sets if the block
-// is absent.
-function parseFlatBlock(file, quote, blockStart, sep)
+// PLUGINS / MCPS rows -> {active: Set(name), commented: Set(name)}. `idOf` picks the row's own name
+// field: a plugin's `id` is `name@marketplace` (split on `@`), an MCP row's `name` is already bare.
+function manifestFlatSet(rows, idOf)
 {
-    const text = fs.readFileSync(file, 'utf8');
     const active = new Set();
     const commented = new Set();
-    const quoted = new RegExp(`^\\s*(#?)\\s*${quote}([^${quote}]+)${quote}`);
-    const variable = /^\s*(#?)\s*"?\$([A-Za-z_][A-Za-z0-9_]*)"?\s*(#.*)?$/;
-    let inBlock = false;
-    for (const line of text.split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const resolveVar = varName =>
-            text.match(new RegExp(`^\\$?${varName}\\s*=\\s*${quote}([a-z0-9-]+)\\${sep}`, 'm'))?.[1] ?? null;
-
-        let name = null;
-        let isCommented = false;
-        const q = line.match(quoted);
-        const v = line.match(variable);
-        if (q)
-        {
-            name = q[2].startsWith('$') ? resolveVar(q[2].slice(1)) : q[2].split(sep)[0];
-            isCommented = q[1] === '#';
-        }
-        else if (v)
-        {
-            name = resolveVar(v[2]);
-            isCommented = v[1] === '#';
-        }
-
-        if (name)
-        {
-            (isCommented ? commented : active).add(name);
-        }
-    }
-
+    for (const row of rows || [])
+        (row.active === false ? commented : active).add(idOf(row));
     return { active, commented };
 }
 
@@ -1301,15 +1221,12 @@ function main()
 {
     const dirs = localSkillDirs();
 
-    // SKILLS are shared across both manifests (and, cross-repo, with the
-    // cursor-stack twins). Parse each; claude-stack.sh is the reference for the
-    // dir/README/HTML checks, and a parity check proves the ps1 matches it.
-    const skills = {
-        'claude-stack.sh':  parseManifest(CLAUDE_SH, '"', 'SKILLS=('),
-        'claude-stack.ps1': parseManifest(CLAUDE_PS1, "'", '$Skills = @('),
-    };
-    const primary = skills['claude-stack.sh'];   // canonical SKILLS view (both are identical)
-    // The frozen twins' SKILLS rows name this repo's own skills by its 1.x slug.
+    // SKILLS are cross-repo shared with the cursor-stack twins too (a separate repo, its own
+    // parity held by discipline). The one Node-side source is meta/stack-manifest.json.
+    const raw = readStackManifest();
+    const primary = manifestSkillMap(raw.skills);   // canonical SKILLS view
+    // The manifest's SKILLS rows still name this repo's own skills by its 1.x slug - the value is
+    // data carried over from the frozen twins verbatim (zero-diff, Phase 7b), not a live reference.
     const TWIN_HOUSE_REPO = 'envoydev/claude-stack'; // legacy-name
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
@@ -1385,48 +1302,10 @@ function main()
         }
     }
 
-    // 4. Both manifests agree on the active SKILLS set.
-    assertSameSet('skill', Object.fromEntries(
-        Object.entries(skills).map(([label, m]) => [label, new Set(m.active.keys())])));
-
-    // 4b. The manifests must list the active SKILLS in the SAME ORDER, not
-    //     just the same set - the installers were aligned so a diff/review of one
-    //     against another stays line-for-line. parseManifest's Map preserves
-    //     insertion order, so the active keys ARE the install order. Compare each
-    //     against claude-stack.sh and report the first divergence per manifest.
-    const refOrder = [...primary.active.keys()];
-    for (const [label, m] of Object.entries(skills))
-    {
-        if (label === 'claude-stack.sh')
-        {
-            continue;
-        }
-
-        const order = [...m.active.keys()];
-        const n = Math.min(refOrder.length, order.length);
-        for (let i = 0; i < n; i++)
-        {
-            if (order[i] !== refOrder[i])
-            {
-                flag(`${label} SKILLS order diverges from claude-stack.sh at position ${i + 1}: '${order[i]}' vs '${refOrder[i]}'`);
-                break;
-            }
-        }
-    }
-
-    // 5. The ps1 'every skill (N)' inventory count matches active + commented entries.
-    for (const [label, file, parsed] of [['claude-stack.ps1', CLAUDE_PS1, skills['claude-stack.ps1']]])
-    {
-        const counted = fs.readFileSync(file, 'utf8').match(/every skill \((\d+)\)/);
-        if (counted)
-        {
-            const inventory = parsed.active.size + parsed.commented.size;
-            if (Number(counted[1]) !== inventory)
-            {
-                flag(`${label} says 'every skill (${counted[1]})' but lists ${inventory} entries`);
-            }
-        }
-    }
+    // 4/4b/5 retired: those checked the two frozen twins agreed with each other (same active set,
+    // same order) and that the ps1 twin's own inventory comment matched its count. Phase 7b (R33)
+    // deleted both twins - meta/stack-manifest.json is the only copy of the SKILLS list left, so
+    // there is nothing left to diverge from.
 
     // 6. Every backticked hyphenated token in skill files resolves to a known
     //    skill (any manifest entry, active or commented, or a local dir) or the
@@ -1438,11 +1317,8 @@ function main()
     //    capitalized token is only flagged when it case-insensitively COLLIDES
     //    with a known skill but the exact casing is wrong (a real reference typo).
     const known = new Set(dirs);
-    for (const m of Object.values(skills))
-    {
-        for (const k of m.active.keys()) known.add(k);
-        for (const k of m.commented.keys()) known.add(k);
-    }
+    for (const k of primary.active.keys()) known.add(k);
+    for (const k of primary.commented.keys()) known.add(k);
     const knownLower = new Map([...known].map(k => [k.toLowerCase(), k]));
     const matchedNonSkill = new Set();   // for check 11 (dead-allowlist reverse check)
     for (const dir of dirs)
@@ -1494,16 +1370,11 @@ function main()
     }
 
 
-    // 8-10. The agent scripts are the source of truth for EVERYTHING in use:
-    // skills, plugins, and MCPs (claude-stack.sh == claude-stack.ps1 for all
-    // three blocks). The stack HTML must agree with claude-stack.sh.
+    // 8-10. The agent scripts are the source of truth for EVERYTHING in use: skills, plugins, and
+    // MCPs. The stack HTML must agree with meta/stack-manifest.json.
     const html = parseStackHtml();
-    const pluginsClaudeSh = parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
-    const pluginsClaudePs1 = parseFlatBlock(CLAUDE_PS1, "'", '$Plugins = @(', '@');
-    const mcps = {
-        'claude-stack.sh':  parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|'),
-        'claude-stack.ps1': parseFlatBlock(CLAUDE_PS1, "'", '$Mcps = @(', '|'),
-    };
+    const pluginsManifest = manifestFlatSet(raw.plugins, (r) => r.id.split('@')[0]);
+    const mcpsManifest = manifestFlatSet(raw.mcps, (r) => r.name);
 
     // 18. Backticked skill names in the base template + claude rules must
     //     resolve too, or a renamed skill rots silently there (the gap check 6
@@ -1515,10 +1386,9 @@ function main()
     //     and only flag a token that matches NONE of them. The same case-collision
     //     rule as check 6: a capitalized token is a finding only when it
     //     case-insensitively collides with a known skill (a casing typo).
-    const mcpsRef = mcps['claude-stack.sh'];   // shared set; canonical view
     const resolvable = new Set(known);   // all skills (dirs + every manifest selector)
-    for (const s of [...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]) resolvable.add(s);
-    for (const s of [...mcpsRef.active, ...mcpsRef.commented]) resolvable.add(s);
+    for (const s of [...pluginsManifest.active, ...pluginsManifest.commented]) resolvable.add(s);
+    for (const s of [...mcpsManifest.active, ...mcpsManifest.commented]) resolvable.add(s);
     if (fs.existsSync(AGENTS_DIR))
     {
         for (const f of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md'))) resolvable.add(f.replace(/\.md$/, ''));
@@ -1595,10 +1465,9 @@ function main()
         }
     }
 
-    // 9. Plugins: claude-stack.sh == claude-stack.ps1; every active plugin
-    //    appears in the HTML (and vice versa).
-    assertSameSet('plugin', { 'claude-stack.sh': pluginsClaudeSh.active, 'claude-stack.ps1': pluginsClaudePs1.active });
-    for (const name of pluginsClaudeSh.active)
+    // 9. Plugins: every active plugin appears in the HTML (and vice versa). Twin-vs-twin parity
+    //    retired with the twins (Phase 7b, R33) - one manifest, nothing left to compare it against.
+    for (const name of pluginsManifest.active)
     {
         if (!html.plugins.has(name))
         {
@@ -1608,17 +1477,14 @@ function main()
 
     for (const name of html.plugins)
     {
-        if (!pluginsClaudeSh.active.has(name) && !pluginsClaudeSh.commented.has(name))
+        if (!pluginsManifest.active.has(name) && !pluginsManifest.commented.has(name))
         {
             flag(`HTML references plugin '${name}' which is not in the installer PLUGINS block (active or commented)`);
         }
     }
 
-    // 10. MCPs: both twins agree, and the HTML MCP rows equal the manifest set exactly.
-    assertSameSet('MCP', Object.fromEntries(
-        Object.entries(mcps).map(([label, m]) => [label, m.active])));
-    const mcpsPrimary = mcps['claude-stack.sh'];
-    for (const name of mcpsPrimary.active)
+    // 10. MCPs: the HTML MCP rows equal the manifest set exactly.
+    for (const name of mcpsManifest.active)
     {
         if (!html.mcps.has(name))
         {
@@ -1628,7 +1494,7 @@ function main()
 
     for (const name of html.mcps)
     {
-        if (!mcpsPrimary.active.has(name) && !mcpsPrimary.commented.has(name))
+        if (!mcpsManifest.active.has(name) && !mcpsManifest.commented.has(name))
         {
             flag(`HTML lists MCP '${name}' which is not in the installer MCPS block (active or commented)`);
         }
@@ -1654,19 +1520,19 @@ function main()
     //     inline '(67)'. Hook / agent / rule counts come from the installer
     //     array sizes; the Rules count is validated against CLAUDE_RULES.
     const skillCount = primary.active.size;
-    const pluginCount = pluginsClaudeSh.active.size;
-    const mcpCount = mcpsPrimary.active.size;
+    const pluginCount = pluginsManifest.active.size;
+    const mcpCount = mcpsManifest.active.size;
     // Count unique hook FILES, not matcher entries - one hook wired on two tools
     // (guard-read-whole-file on Read + Bash) is still one hook.
-    const claudeHookCount = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0])).size;
-    const claudeAgentCount = parseStringArray(CLAUDE_SH, '"', 'AGENTS=(').length;
-    const claudeRuleCount = parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=(').length;
+    const claudeHookCount = new Set(manifestFileList(raw.hooks)).size;
+    const claudeAgentCount = manifestFileList(raw.agents).length;
+    const claudeRuleCount = manifestFileList(raw.rules).length;
 
     // 12b. Stack hooks in alfred-code.html: the 'Stack hooks' section rows and the
-    //      c-hooks count must match the installer HOOKS=() array (names stripped of
+    //      c-hooks count must match the manifest's `hooks` list (names stripped of
     //      their .js, both directions; count tied to the array size - same rigor as
     //      the README hook count above).
-    const installerHooks = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0].replace(/\.js$/, '')));
+    const installerHooks = new Set(manifestFileList(raw.hooks).map((f) => f.replace(/\.js$/, '')));
     for (const name of installerHooks)
     {
         if (!html.hooks.has(name))
@@ -1723,28 +1589,21 @@ function main()
         }
     }
 
-    // 12b. The on-disk agents/*.md set must equal the agents the installers
-    //      fetch (the AGENTS manifest array - both claude shells agree). A drift
-    //      means a committed subagent never installs, or the installer fetches an
-    //      agent that no longer exists in-repo.
-    const agentManifestSh = new Set(parseStringArray(CLAUDE_SH, '"', 'AGENTS=('));
-    const agentManifestPs1 = new Set(parseStringArray(CLAUDE_PS1, "'", '$Agents = @('));
-    assertSameSet('agent', { 'claude-stack.sh': agentManifestSh, 'claude-stack.ps1': agentManifestPs1 });
+    // 12b. The on-disk agents/*.md set must equal the agents the manifest carries. A drift means a
+    //      committed subagent never installs, or the seed fetches an agent that no longer exists.
+    const agentManifest = new Set(manifestFileList(raw.agents));
     const agentDiskSet = fs.existsSync(AGENTS_DIR)
         ? new Set(fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')))
         : new Set();
-    assertSameSet('agent file', { 'agents/': agentDiskSet, 'claude-stack.sh AGENTS': agentManifestSh });
+    assertSameSet('agent file', { 'agents/': agentDiskSet, 'stack-manifest.json agents': agentManifest });
 
-    // 12d. Same parity for the CLAUDE rules: the on-disk rules/*.md set must equal the
-    //      CLAUDE_RULES manifest array in BOTH claude shells (both shells agree first, then the
-    //      on-disk set equals them). A drift means a committed rule never installs, or the
-    //      installer fetches a rule that no longer exists in-repo.
-    const ruleManifestSh = new Set(parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=('));
-    const ruleManifestPs1 = new Set(parseStringArray(CLAUDE_PS1, "'", '$ClaudeRules = @('));
-    assertSameSet('rule', { 'claude-stack.sh': ruleManifestSh, 'claude-stack.ps1': ruleManifestPs1 });
+    // 12d. Same parity for the CLAUDE rules: the on-disk rules/*.md set must equal the manifest's
+    //      `rules` list. A drift means a committed rule never installs, or the seed fetches a rule
+    //      that no longer exists.
+    const ruleManifest = new Set(manifestFileList(raw.rules));
     assertSameSet('rule file', {
         'rules/': new Set(fs.existsSync(CLAUDE_RULES_DIR) ? fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')) : []),
-        'claude-stack.sh CLAUDE_RULES': ruleManifestSh,
+        'stack-manifest.json rules': ruleManifest,
     });
 
     // 13. The Claude subagents reference house skills by backticked name (e.g.
@@ -2022,8 +1881,8 @@ function main()
     {
         const rosters = {
             skills: new Set(dirs),
-            mcps: new Set([...mcpsPrimary.active, ...mcpsPrimary.commented]),
-            plugins: new Set([...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]),
+            mcps: new Set([...mcpsManifest.active, ...mcpsManifest.commented]),
+            plugins: new Set([...pluginsManifest.active, ...pluginsManifest.commented]),
         };
         for (const finding of lintEvidenceCatalog(evidenceCatalog, rosters))
         {
@@ -2057,7 +1916,7 @@ function main()
                     else if (/\.(md|js|sh|ps1)$/.test(e.name)) capFiles.push({ path: r, text: fs.readFileSync(full, 'utf8') });
                 }
             };
-            for (const d of ['stack/rules', 'stack/hooks', 'scripts/os', 'setup-plugin']) walk(path.join(ROOT, d), d);
+            for (const d of ['stack/rules', 'stack/hooks', 'scripts/install', 'setup-plugin']) walk(path.join(ROOT, d), d);
             for (const finding of lintCapabilityClaims(capFiles)) flag(finding);
         }
         catch (err)
@@ -2210,14 +2069,14 @@ function main()
         flag(`meta/shared-rules.json is unreadable: ${err.message}`);
     }
 
-    // 27. The environment catalog (meta/environment.json) against what the installers actually
-    //     seed - both directions, both twins - plus the rename targets migrations.json names.
-    //     (25 and 26 are the optional-cite checks CLAUDE.md names by number - do not renumber those.)
+    // 27. The environment catalog (meta/environment.json) against what the Node seed actually
+    //     seeds - scripts/install/settings.js, the one place that writes an ALFRED_CODE_ key into
+    //     settings.json - plus the rename targets migrations.json names. (25 and 26 are the
+    //     optional-cite checks CLAUDE.md names by number - do not renumber those.)
     try
     {
         const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
-        const shSrc = fs.readFileSync(CLAUDE_SH, 'utf8');
-        const ps1Src = fs.readFileSync(CLAUDE_PS1, 'utf8');
+        const seedSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'settings.js'), 'utf8');
         let migrationsCatalog = null;
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
@@ -2226,7 +2085,7 @@ function main()
         {
             commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
         }
-        for (const finding of lintEnvironmentCatalog(envCatalog, shSrc, ps1Src, migrationsCatalog, commandSrc))
+        for (const finding of lintEnvironmentCatalog(envCatalog, seedSrc, migrationsCatalog, commandSrc))
         {
             flag(finding);
         }
@@ -2263,7 +2122,7 @@ function main()
         const optional = optionalSkills(recs, graph, skillDirs);
         const optionalSeats = optionalAgents(recs, graph, agentNames);
         const closures = seedClosures(recs, graph);
-        const pluginNames = new Set([...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]);
+        const pluginNames = new Set([...pluginsManifest.active, ...pluginsManifest.commented]);
         // each scanned file with the artifact that OWNS it, so check 26 can ask which stacks
         // ship it: a skill's references belong to the skill, an agent/rule to itself.
         const scanned = [];
@@ -2411,7 +2270,7 @@ function main()
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
     for (const finding of lintAgentPreloads()) flag(finding);
-    // 51. Both twins' CORE_DEP_PLUGINS mirror the core entry's cross-marketplace dependencies.
+    // 51. The seed's CORE_DEP_PLUGINS mirrors the manifest's parked cross-marketplace dependencies.
     for (const finding of lintCoreDependencies()) flag(finding);
     // 52. Nothing the marketplace ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
     for (const finding of lintNoPluginBin()) flag(finding);
@@ -2438,7 +2297,7 @@ function main()
     }
 
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
-        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; both manifests + HTML in sync; `
+        + `${pluginsManifest.active.size} plugins, ${mcpsManifest.active.size} MCPs; manifest + HTML in sync; `
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
         + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
@@ -2540,30 +2399,31 @@ function isTracked(base, rel)
 
 // 51. The core declares no dependencies (a missing one disables it at load), so the installer puts
 // its cross-marketplace companion beside it on every run - the seed from CORE_DEP_PLUGINS in
-// install/plugins.js, each twin from its own copy. The three lists have to agree: a name added to the
-// seed and not the twins is a shell-route install without superpowers, and a name left in a twin
-// installs a plugin nothing needs.
-function lintCoreDependencies(shFile, ps1File, seedList)
+// install/plugins.js. Until Phase 7b this also had to agree with each twin's own copy of that list;
+// the twins are gone, so the remaining agreement is with the manifest: a core dependency is a plugin
+// row PARKED (`active: false`) rather than picked - the seed's list and the manifest's parked rows
+// have to name the same plugins, or a companion the seed installs is invisible to the catalog (a
+// stamp / `--installed-only` derivation would not know it shipped), or the manifest parks a plugin
+// the seed never installs (a row parked for no reason a fresh install can act on).
+function lintCoreDependencies(manifestFile, seedList)
 {
     const out = [];
-    const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
-    const ps1 = fs.readFileSync(ps1File || CLAUDE_PS1, 'utf8');
-    const listOf = (text, re) =>
-    {
-        const m = text.match(re);
-        if (!m) return null;
-        return [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1].split('@')[0]).sort();
-    };
-    const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
-    const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
-    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the shell route would silently lose the core plugin\'s companions.');
-    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the shell route would silently lose the core plugin\'s companions.');
-    if (!shNames || !psNames) return out;
-    if (shNames.join(',') !== psNames.join(','))
-        out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
-    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map(n => n.split('@')[0]).sort();
-    if (want.join(',') !== shNames.join(','))
-        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] in the twins but [${want.join(', ')}] in the seed - update both twins.`);
+    let rows;
+    try { rows = readStackManifest(manifestFile).plugins; }
+    catch (err) { return [`meta/stack-manifest.json plugins[] could not be read: ${err.message}`]; }
+    if (!Array.isArray(rows) || !rows.length) return ['meta/stack-manifest.json has no plugins[] - the core would silently lose its cross-marketplace companion.'];
+
+    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map((n) => n.split('@')[0]).sort();
+    if (!want.length) out.push('install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.');
+
+    const parked = rows.filter((r) => r.active === false).map((r) => r.id.split('@')[0]).sort();
+    if (want.join(',') !== parked.join(','))
+        out.push(`CORE_DEP_PLUGINS is [${want.join(', ')}] in the seed but the manifest parks [${parked.join(', ') || 'nothing'}] as active:false - keep them in sync.`);
+
+    for (const name of want)
+        if (!rows.some((r) => r.id.split('@')[0] === name))
+            out.push(`CORE_DEP_PLUGINS names '${name}', which has no row in meta/stack-manifest.json plugins - the seed depends on a plugin the manifest never lists.`);
+
     return out;
 }
 
@@ -2639,9 +2499,9 @@ function lintMcpEntries()
     }
 
     // Every catalog server has a plugin, and every plugin serves a catalog server. The catalog is
-    // the installer's MCPS block, which stays the one home for the NAMES even after the
+    // meta/stack-manifest.json's `mcps` list, which stays the one home for the NAMES even after the
     // registrations move - 28 call sites read a name out of it.
-    const catalog = parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|');
+    const catalog = manifestFlatSet(readStackManifest().mcps, (r) => r.name);
     const carried = new Set();
     for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
     // playwright expands into one plugin per engine and context7 into remote + local; both map back
@@ -2904,11 +2764,13 @@ function lintMarketplaceSchema()
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
-// for the settings.json `env` block - and the installers are what actually seed it. A key in the
-// catalog that no installer seeds is a promise the walk cannot keep; a key an installer seeds that
-// the catalog omits is invisible to setup, configure and validate. Both directions fail here, per
-// twin, so the drift cannot ship.
-function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
+// for the settings.json `env` block - and the Node seed (scripts/install/settings.js) is what
+// actually seeds it. Unlike the frozen twins, settings.js seeds most rows GENERICALLY, looping over
+// this very catalog (applyEnv's absent-only pass) - so there is nothing to compare there, that
+// direction is true by construction. The four rows it names LITERALLY - the two `written: true` keys
+// it sets outside that loop, and the two DECISIONS (docs versioning, hooks-off) it special-cases by
+// name - are the ones a rename can desync, so those are checked against the seed's own source text.
+function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 {
     const out = [];
     // The three guided commands must READ the catalog, not a list typed into their prose - that is
@@ -2927,9 +2789,9 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
     }
 
-    // The frozen twins seed each key under its 1.x name, and migrations.json keeps its history's
-    // words: both are read here under the catalog's own name, via the SAME prefix mapping
-    // applyEnv runs at install time (meta/migrations.json is the one source, not a hard-coded regex).
+    // migrations.json keeps its history's words under the 1.x prefix; read here under the catalog's
+    // own name, via the SAME prefix mapping applyEnv runs at install time (meta/migrations.json is
+    // the one source, not a hard-coded regex).
     const { prefixRenames } = require('./install/env-migrations.js').envMigrations(migrations);
     const current = (key) =>
     {
@@ -2937,8 +2799,7 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
             if (key.startsWith(from)) return to + key.slice(from.length);
         return key;
     };
-    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => current(m[1])));
-    const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => current(m[1])));
+    const namedInSeed = new Set([...seedSrc.matchAll(/ALFRED_CODE_[A-Z0-9_]+/g)].map((m) => current(m[0])));
     const keys = new Set();
     for (const row of rows)
     {
@@ -2947,16 +2808,15 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         keys.add(row.key);
         if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
         if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
-        if (!seededSh.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.sh - the catalog promises a key no install writes`); }
-        if (!seededPs1.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.ps1 - the twins must seed the same set`); }
+        if (row.written && !namedInSeed.has(row.key)) { out.push(`environment.json ${row.key} is marked written, but scripts/install/settings.js never names it literally - the Node seed would never set it`); }
     }
-    for (const key of seededSh)
+    // The two DECISIONS are special-cased by literal key name, never fed through the generic loop -
+    // both a catalog row and a mention in the seed's own source are required, or the special case
+    // silently stops applying on one side.
+    for (const key of ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HOOKS_OFF'])
     {
-        if (!keys.has(key)) { out.push(`claude-stack.sh seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
-    }
-    for (const key of seededPs1)
-    {
-        if (!keys.has(key)) { out.push(`claude-stack.ps1 seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
+        if (!keys.has(key)) { out.push(`scripts/install/settings.js special-cases ${key}, which environment.json does not list`); }
+        if (!namedInSeed.has(key)) { out.push(`${key} is a catalog row, but scripts/install/settings.js does not name it - the special case moved or was removed`); }
     }
     // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
     // questions; a row with `asked_with` rides along with another row's question. Past four, the
@@ -2993,10 +2853,11 @@ module.exports = {
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,
-    paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
-    parseManifest,
-    parseStringArray,
-    parseFlatBlock,
+    paths: { ROOT, SKILLS_DIR, MANIFEST_JSON, AGENTS_DIR, CLAUDE_RULES_DIR },
+    readStackManifest,
+    manifestSkillMap,
+    manifestFileList,
+    manifestFlatSet,
     localSkillDirs,
     lintEvidenceCatalog,
     lintPluginSettings,

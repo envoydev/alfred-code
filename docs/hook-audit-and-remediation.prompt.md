@@ -9,7 +9,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 ## Parameters
 
 - `HOOKS_ROOT`: the folder holding the hook files (default: `./stack/hooks`).
-- `WIRING`: where the stack writes the hook entries into a project's `settings.json` (default: the `HOOKS=(` manifest and the settings writer in `./scripts/os/claude-stack.sh` and its `.ps1` twin; a stack without installers: the `hooks` block of the project's `.claude/settings.json` or a plugin's `hooks/hooks.json`).
+- `WIRING`: where the stack writes the hook entries into a project's `settings.json` (default: the `hooks` list in `./meta/stack-manifest.json` and the settings writer in `./scripts/install/settings.js`; a stack without installers: the `hooks` block of the project's `.claude/settings.json` or a plugin's `hooks/hooks.json`).
 - `DEPLOYED`: one or more installed projects' `.claude/settings.json` to compare against `WIRING` (optional).
 - `PLUGIN_HOOKS`: the `hooks/hooks.json` of every plugin the stack installs, read from the install cache (`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, or the registry's `installPath`); default: every plugin in the installers' `PLUGINS=(` block.
 - `ROOT_LAYERS`: the house rules, skills and agents the hooks are read against (default: `./stack/rules`, `./stack/skills`, `./stack/agents`).

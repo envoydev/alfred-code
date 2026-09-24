@@ -31,20 +31,12 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installers rename the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, both installer seeds) must state the same value.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
         "marker": "the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
       },
       "sites": [
-        {
-          "file": "scripts/os/claude-stack.sh",
-          "marker": "env[\"CLAUDE_STACK_DOCS_PATH\"] = \".claude/docs\""
-        },
-        {
-          "file": "scripts/os/claude-stack.ps1",
-          "marker": "Add-Member -NotePropertyName CLAUDE_STACK_DOCS_PATH -NotePropertyValue '.claude/docs'"
-        },
         {
           "file": "scripts/stamp-docs-root.js",
           "marker": "const DEFAULT_ROOT = '.claude/docs';"
@@ -1594,7 +1586,7 @@
       ]
     },
     "one-snapshot-download": {
-      "_note": "The release-archive-first, -b-main-clone-fallback source download (URL + pin). Canonical in the plugin source protocol; the usage-analyzer skill fetches the analyzer the same way, and both installer twins carry the same URL.",
+      "_note": "The release-archive-first, -b-main-clone-fallback source download (URL + pin). Canonical in the plugin source protocol; the usage-analyzer skill fetches the analyzer the same way. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry the same URL as a third and fourth site.",
       "owner": {
         "file": "setup-plugin/references/source-protocol.md",
         "marker": "releases/latest/download/alfred-code.tar.gz"
@@ -1603,14 +1595,6 @@
         {
           "file": "stack/skills/project-stack-usage-analyzer/SKILL.md",
           "marker": "releases/latest/download/alfred-code.tar.gz"
-        },
-        {
-          "file": "scripts/os/claude-stack.sh",
-          "marker": "releases/latest/download/claude-stack"
-        },
-        {
-          "file": "scripts/os/claude-stack.ps1",
-          "marker": "releases/latest/download/claude-stack"
         }
       ]
     },
@@ -3268,20 +3252,12 @@
       ]
     },
     "env-pass-order": {
-      "_note": "The settings.json env pass runs RENAMES first, carrying the user's value to the new key and dropping the old one, THEN the absent-only seeds - seeding first would write a key's default over a value the user had set under the old name. A NEW variable needs no migration entry (the seeds cover it); a RENAMED or RETIRED one needs its pair in both installer twins and in migrations.json. The pass deletes only a key this stack RETIRED - the value is dead, never carried anywhere - and a key that still means something outside this stack is dropped only while it holds the value the installer itself seeded, which is why the update command reports the whole pass instead of asking for prune consent.",
+      "_note": "The settings.json env pass runs RENAMES first, carrying the user's value to the new key and dropping the old one, THEN the absent-only seeds - seeding first would write a key's default over a value the user had set under the old name. A NEW variable needs no migration entry (the seeds cover it); a RENAMED or RETIRED one needs its pair in the installer and in migrations.json. The pass deletes only a key this stack RETIRED - the value is dead, never carried anywhere - and a key that still means something outside this stack is dropped only while it holds the value the installer itself seeded, which is why the update command reports the whole pass instead of asking for prune consent. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this order as their own two sites.",
       "owner": {
         "file": "meta/migrations.json",
         "marker": "rename_settings_env` ({from, to}) moves the user's VALUE to the new key"
       },
       "sites": [
-        {
-          "file": "scripts/os/claude-stack.sh",
-          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
-        },
-        {
-          "file": "scripts/os/claude-stack.ps1",
-          "marker": "BEFORE the absent-only seeds below - seeding first would write the default over a value the"
-        },
         {
           "file": "setup-plugin/commands/update.md",
           "marker": "renames, then removals, then the absent-only seeds"
@@ -4682,7 +4658,7 @@
       ]
     },
     "post-install-capture-order": {
-      "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run architecture -> code-style -> related-context (only where the project has siblings) -> agent-capabilities LAST, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in four homes because each one reaches a different reader at a different moment - the reference the guided walks open, the seeded CLAUDE.md the adopter fills in, and the two installers' own next-steps log - so a reorder must move all four.",
+      "_note": "The post-install capture ORDER and its manual-only property: the four deliberate captures run architecture -> code-style -> related-context (only where the project has siblings) -> agent-capabilities LAST, so the generated inventory reflects the final install, and the user types them because they carry disable-model-invocation. It lives in two homes because each one reaches a different reader at a different moment - the reference the guided walks open, and the seeded CLAUDE.md the adopter fills in. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to print this same order in their own next-steps log as a third and fourth home; the Node seed never carried this text (the walk's own report covers it).",
       "owner": {
         "file": "setup-plugin/references/post-install.md",
         "marker": "`/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final inventory"
@@ -4691,14 +4667,6 @@
         {
           "file": "stack/CLAUDE.template.md",
           "marker": "/project-agent-capabilities LAST, so its generated inventory reflects the final install"
-        },
-        {
-          "file": "scripts/os/claude-stack.sh",
-          "marker": "run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md"
-        },
-        {
-          "file": "scripts/os/claude-stack.ps1",
-          "marker": "run /project-agent-capabilities LAST - it inventories the installed skills/agents/MCPs and generates baseline-project-agent-capabilities.md"
         }
       ]
     },

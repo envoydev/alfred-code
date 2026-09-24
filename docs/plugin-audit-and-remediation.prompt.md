@@ -9,7 +9,7 @@ You operate autonomously. Do not ask for confirmation between phases. Stop only 
 ## Parameters
 
 - `STACK_ROOT`: the stack repository (default: `.`).
-- `PLUGIN_MANIFESTS`: where the stack declares the plugins it installs (default: the `PLUGINS=(` block in `./scripts/os/claude-stack.sh` and its `.ps1` twin; a stack with no installer declares them in a project `.claude/settings.json` `enabledPlugins`).
+- `PLUGIN_MANIFESTS`: where the stack declares the plugins it installs (default: the `plugins` list in `./meta/stack-manifest.json`, read by the Node seed `scripts/install/alfred-code.js`; a stack with no installer declares them in a project `.claude/settings.json` `enabledPlugins`).
 - `OWN_PLUGIN_ROOT`: the plugin the stack ships (default: `./setup-plugin`; empty when it ships none).
 - `MARKETPLACE`: the stack's own marketplace file (default: `./.claude-plugin/marketplace.json`).
 - `CATALOGS`: the guided-install catalogs (default: `./meta/` - `recommendations.json` seeds, `plugin-settings.json`, `stack-graph.json`).

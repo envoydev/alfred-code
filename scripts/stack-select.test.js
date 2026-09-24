@@ -538,8 +538,9 @@ test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
         // aspnet-solution-designer's frontmatter pulls dotnet-web-backend - the emitted file must list it
         assert.ok(emitted.split('\n').includes('skill dotnet-web-backend'));
 
-        const sh = path.join(__dirname, 'os', 'claude-stack.sh');
-        const plan = execFileSync('bash', [sh, 'install', '--scope', 'project', '--selection', selFile, '--print-plan'], { encoding: 'utf8' });
+        const seed = path.join(__dirname, 'install', 'alfred-code.js');
+        const root = path.join(__dirname, '..');
+        const plan = execFileSync('node', [seed, 'install', '--scope', 'project', '--selection', selFile, '--source', root, '--print-plan'], { encoding: 'utf8' });
         const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
         assert.ok(planSkills.includes('dotnet-web-backend'), 'installer plan reflects the closed selection');
     }

@@ -114,7 +114,7 @@ test('the 1.x entry path is a shim - --help prints the same usage and exits the 
 // the shell route under either spelling of the setting, before it touches anything.
 test('the shell seed is refused under either setting name, with one line and exit 1', () =>
 {
-    const want = 'the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+    const want = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-d1-'));
     try
     {
@@ -130,7 +130,7 @@ test('the shell seed is refused under either setting name, with one line and exi
         }
         assert.deepStrictEqual(fs.readdirSync(dir), [], 'the refusal wrote nothing');
         const node = spawnSync(process.execPath, [SEED, 'bogus'], { cwd: dir, encoding: 'utf8', env: { ...scrubbed(), ALFRED_CODE_SEED: 'node' } });
-        assert.doesNotMatch(node.stderr, /shell seed was retired/, 'any other value is the Node seed');
+        assert.doesNotMatch(node.stderr, /shell installers were removed/, 'any other value is the Node seed');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

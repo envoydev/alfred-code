@@ -11,10 +11,8 @@ const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------
 // A Windows checkout has CRLF line endings (git's autocrlf converts on the way out), and JS treats
 // `\r` as a LINE TERMINATOR: `.` does not match it. So a pattern ending `(#.*)?$` fails on every
-// commented line, and the installer parity check reported the ENTIRE MCP block missing from the
-// .ps1 twin - eight false findings, on a repo where the twins were in perfect sync. Text read here
-// is never sensitive to which bytes end a line, so normalize every utf8 read and let every regex
-// below stay written for `\n`.
+// commented line. Text read here is never sensitive to which bytes end a line, so normalize every
+// utf8 read and let every regex below stay written for `\n`.
 const _readFileSync = fs.readFileSync;
 fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     ? String(_readFileSync(p, o)).replace(/\r\n/g, '\n')
@@ -24,7 +22,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const lint = require('./lint-skills.js');
 
-const { ROOT, SKILLS_DIR, AGENTS_DIR, CLAUDE_RULES_DIR, CLAUDE_SH } = lint.paths;
+const { ROOT, SKILLS_DIR, AGENTS_DIR, CLAUDE_RULES_DIR, MANIFEST_JSON } = lint.paths;
 const GRAPH_FILE = path.join(ROOT, 'meta', 'stack-graph.json');
 
 function frontmatterBlock(text)
@@ -74,11 +72,12 @@ function catalogs()
     const agents = new Set(fs.existsSync(AGENTS_DIR)
         ? fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''))
         : []);
-    const mcpBlock = lint.parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|');
-    const pluginBlock = lint.parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
+    const raw = lint.readStackManifest();
+    const mcpBlock = lint.manifestFlatSet(raw.mcps, (r) => r.name);
+    const pluginBlock = lint.manifestFlatSet(raw.plugins, (r) => r.id.split('@')[0]);
     const mcps = new Set([...mcpBlock.active, ...mcpBlock.commented]);
     const plugins = new Set([...pluginBlock.active, ...pluginBlock.commented]);
-    return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog() };
+    return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog(raw) };
 }
 
 // The plugins every install carries beside the core from another marketplace. They are in the
@@ -91,20 +90,12 @@ function dependencyPlugins()
     return CORE_DEP_PLUGINS.map((spec) => spec.split('@')[0]).sort();
 }
 
-// The hook catalog: the HOOKS=( ... ) block in the sh installer - entries are
-// "filename.js::matcher::args" - as basenames sans .js. Hooks are leaf picks in
-// the selection (nothing pulls them, they pull nothing), so they only need to
-// exist in the catalog for the guided walk's hooks layer and the unknown check.
-function hookCatalog()
+// The hook catalog: meta/stack-manifest.json's `hooks` list, as basenames sans .js. Hooks are leaf
+// picks in the selection (nothing pulls them, they pull nothing), so they only need to exist in the
+// catalog for the guided walk's hooks layer and the unknown check.
+function hookCatalog(raw)
 {
-    const m = fs.readFileSync(CLAUDE_SH, 'utf8').match(/^HOOKS=\(\n([\s\S]*?)^\)/m);
-    const hooks = [];
-    for (const line of (m ? m[1] : '').split('\n'))
-    {
-        const e = line.match(/^\s*"([^:"]+)\.js::/);
-        if (e) hooks.push(e[1]);
-    }
-
+    const hooks = lint.manifestFileList((raw || lint.readStackManifest()).hooks).map((f) => f.replace(/\.js$/, ''));
     // dedupe: one hook wired on two tools (two matcher entries) is still one catalog hook
     return [...new Set(hooks)].sort();
 }

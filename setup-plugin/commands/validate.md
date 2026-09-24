@@ -460,7 +460,7 @@ profile), output to `$TMP/select.out` - then:
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
   and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` (or the 1.x
-  `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+  `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
   Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
   (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the

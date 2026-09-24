@@ -29,7 +29,7 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 
 // ---------------------------------------------------------------------------
 // The wiring. This is the SAME table the installers write into settings.json -
-// keep it in step with scripts/os/claude-stack.sh's HOOKS list, which is the
+// keep it in step with meta/stack-manifest.json's `hooks` list, which is the
 // source of truth. `deny` marks a route whose verdict is exit 2; the rest are
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------

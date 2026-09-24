@@ -10,6 +10,11 @@
   TRANSIENT: a `uvx serena` upgrade re-extracts the package and wipes this - re-run after upgrades.
   After running, RESTART the serena MCP (reload your editor) or the change won't take effect.
 
+  STANDALONE, run by hand: the frozen `scripts/os/claude-stack.ps1` used to delegate to this file
+  during install/update (Phase 7b, R33, 2.0.0 deleted that caller along with the rest of the twin);
+  `scripts/install/` never gained an equivalent auto-apply, so nothing invokes this script anymore -
+  run it yourself after a serena install or upgrade on Windows.
+
   Usage (on the Windows machine):
     pwsh ./fix-serena-ts-windows.ps1
     # or: powershell -ExecutionPolicy Bypass -File .\fix-serena-ts-windows.ps1

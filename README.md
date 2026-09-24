@@ -103,38 +103,31 @@ commands check prerequisites before anything runs, and `/alfred-code` alone rout
 
 The **action** (`install` | `update`) is the one required argument.
 
-Inside a checkout or a plugin-cache copy of this repo the installer is one `node` command on every
-OS - `node scripts/install/alfred-code.js install [flags]` - and that is what the
-`/alfred-code:*` commands run. The two scripts below are the STANDALONE route: one file to
-download, no checkout needed, and the route `ALFRED_CODE_SEED=shell` keeps for a release. Download
-the installer into the project's `.claude/` and keep it there - the copy is the per-project manifest
-you trim and re-run.
-
-macOS / Linux (`claude-stack.sh`):
+The installer is one `node` command on every OS - `node scripts/install/alfred-code.js install
+[flags]` - and that is what the `/alfred-code:*` commands run. It is not a single downloadable
+file (it needs its sibling modules under `scripts/install/`), so the STANDALONE route - no checkout
+kept around long-term - downloads the release archive once, runs the seed out of it, and points
+`--source` back at the extraction so a later `update` can reuse the same copy instead of
+re-downloading:
 
 ```bash
 cd /path/to/your/project
-mkdir -p .claude && curl -fsSL https://raw.githubusercontent.com/envoydev/alfred-code/main/scripts/os/claude-stack.sh -o .claude/claude-stack.sh
+mkdir -p .claude/alfred-code-src
+curl -fsSL https://github.com/envoydev/alfred-code/releases/latest/download/alfred-code.tar.gz \
+  | tar -xz -C .claude/alfred-code-src
 
-bash .claude/claude-stack.sh install                 # first time
-bash .claude/claude-stack.sh update --installed-only # later refreshes - only what is already installed, from disk
-bash .claude/claude-stack.sh install --skills-only   # just the skills, nothing else
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src                 # first time
+node .claude/alfred-code-src/scripts/install/alfred-code.js update --source .claude/alfred-code-src --installed-only # later refreshes - only what is already installed, from disk
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --skills-only   # just the skills, nothing else
 
 # Named flags (any order): --space, --scope, --context7, --sentry-slug, --sentry-auth, --docs-versioning, --memory-level, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
-bash .claude/claude-stack.sh install --space work --scope global --context7 local
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope global --context7 local
 ```
 
-Windows (`claude-stack.ps1`):
-
-```powershell
-Set-Location C:\path\to\your\project
-New-Item -ItemType Directory -Force .claude | Out-Null
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/envoydev/alfred-code/main/scripts/os/claude-stack.ps1 -OutFile .claude/claude-stack.ps1
-
-pwsh .claude/claude-stack.ps1 install                # first time
-pwsh .claude/claude-stack.ps1 update -InstalledOnly  # later refreshes - only what is already installed, from disk
-pwsh .claude/claude-stack.ps1 install -Space work -Scope global -Context7 local
-```
+The same command runs verbatim on Windows under `node.exe`, PowerShell or cmd - one program, no
+platform branch. `ALFRED_CODE_SEED=shell` (a Phase 7 flag from before 2.0.0) is retired: the frozen
+shell and PowerShell twins it used to select are gone, and setting it now refuses with a clear
+message instead of installing.
 
 Hard prerequisites: **node ≥ 22.12**, the **claude** CLI (it owns the plugin cache the install
 reads from), and **git** (the installers use it to find the repo root, and it is the download

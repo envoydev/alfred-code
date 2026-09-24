@@ -245,10 +245,10 @@ test('the always MCP baseline is stack-neutral - a browser or native driver is s
 
 test('every shipped plugin is reachable from a seed closure - validate cannot flag what nothing seeds', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    const sh = fs.readFileSync(path.join(ROOT, 'scripts', 'os', 'claude-stack.sh'), 'utf8');
-    const block = sh.match(/^PLUGINS=\(\n([\s\S]*?)^\)/m);
-    assert.ok(block, 'the installer PLUGINS manifest is readable');
-    const shipped = [...block[1].matchAll(/^\s*"([A-Za-z0-9_.-]+)@/gm)].map(m => m[1]).sort();
+    // active:false rows are the core's own dependencies (superpowers) - never a pick, so never part
+    // of the selectable catalog a seed closure has to reach.
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
+    const shipped = manifest.plugins.filter((r) => r.active !== false).map((r) => r.id.split('@')[0]).sort();
     assert.ok(shipped.length >= 5, 'the manifest lists the shipped plugins');
 
     // findStackMissing sources are the always baseline plus each DETECTED stack, both run through
@@ -335,7 +335,7 @@ test('every command that runs the installer runs the SEED, and names the shell s
 // D1: from 2.0.0 the shell seed is refused. The frozen twin hardcodes the 1.x names a 2.0.0
 // registration cannot resolve, so a body that still RUNS it on `seed=shell` installs a broken
 // release. Every body names the refusal line the seed itself prints, and runs no twin.
-const D1 = 'the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
 test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
     for (const file of ['commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'references/source-protocol.md'])
     {
@@ -468,8 +468,8 @@ test('the walk and status REPORT the derivation - they never restate what the in
 });
 
 // Phase 8 T3: update asks from the derivation's new-item verdicts and takes a yes as --add; its
-// pruning path never rebuilds the selection from a disk inventory on the Node seed, which on the
-// plugin routes holds only the extras and would switch every carried seat off.
+// pruning path never rebuilds the selection from a disk inventory, which on the plugin routes
+// holds only the extras and would switch every carried seat off.
 test('update: new items come from the preflight\'s new: lines and a yes becomes --add', () =>
 {
     const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
@@ -478,7 +478,8 @@ test('update: new items come from the preflight\'s new: lines and a yes becomes 
     assert.ok(!/FYI `added` items/.test(body), 'the FYI-only adoption is gone');
     const step4 = body.slice(body.indexOf('## 4. Pruning path'), body.indexOf('## 5. Prune'));
     assert.match(step4, /run the installer exactly as in step 3 - its `--add` already carries every `renamed`/);
-    assert.match(step4, /Never rebuild the\nselection from a disk inventory on the Node seed/);
+    assert.match(step4, /Never rebuild the\nselection from a disk inventory/);
+    assert.ok(!/run the twin as in step 3/.test(step4), 'the dead shell-route reconstruction sentence survived');
 });
 
 // Phase 8 T4: configure and validate read the install through the installer's own read-back and

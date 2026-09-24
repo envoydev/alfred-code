@@ -4,9 +4,10 @@ const assert = require('node:assert');
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
     const lint = require('./lint-skills.js');
-    assert.strictEqual(typeof lint.parseFlatBlock, 'function');
-    assert.strictEqual(typeof lint.parseManifest, 'function');
-    assert.strictEqual(typeof lint.parseStringArray, 'function');
+    assert.strictEqual(typeof lint.manifestFlatSet, 'function');
+    assert.strictEqual(typeof lint.manifestSkillMap, 'function');
+    assert.strictEqual(typeof lint.manifestFileList, 'function');
+    assert.strictEqual(typeof lint.readStackManifest, 'function');
     assert.strictEqual(typeof lint.localSkillDirs, 'function');
     assert.strictEqual(typeof lint.lintEvidenceCatalog, 'function');
     assert.ok(lint.NON_SKILL_TOKENS instanceof Set);
@@ -649,36 +650,41 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
 
-// Check 51. Every route installs the core's cross-marketplace companion itself, so the seed and both
-// twins carry that list, and the three must agree. A name added to the seed and not to the twins is a
-// shell-route install without superpowers; a name left in a twin installs a plugin nothing needs.
-test('check 51: the twins\' CORE_DEP_PLUGINS is clean today, and drift in either direction is a finding', () => {
+// Check 51. Every route installs the core's cross-marketplace companion itself, so the seed
+// (install/plugins.js CORE_DEP_PLUGINS) and the manifest's PARKED (active: false) plugin rows must
+// agree - a name added to the seed and not parked in the manifest is a companion the catalog never
+// promised; a row parked for no reason the seed acts on installs nothing extra but misleads the walk.
+test('check 51: the manifest\'s parked plugins are clean today, and drift in either direction is a finding', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const path = require('node:path');
     const { lintCoreDependencies, paths } = require('./lint-skills.js');
-    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the seed');
+    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped manifest already agrees with the seed');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coredep-'));
-    const sh = path.join(tmp, 'sh');
-    const ps1 = path.join(tmp, 'ps1');
-    const write = (shList, psList) => {
-        fs.writeFileSync(sh, `CORE_DEP_PLUGINS=(${shList.map(n => `"${n}@m"`).join(' ')})\n`);
-        fs.writeFileSync(ps1, `$CoreDepPlugins = @(${psList.map(n => `'${n}@m'`).join(', ')})\n`);
-    };
+    const manifestFile = path.join(tmp, 'stack-manifest.json');
+    const write = (plugins) => fs.writeFileSync(manifestFile, JSON.stringify({ plugins }));
     const seed = ['superpowers@m'];
 
-    write(['superpowers'], ['superpowers']);
-    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, seed), [], 'a matching trio is clean');
+    write([{ id: 'superpowers@m', active: false }, { id: 'other@n' }]);
+    assert.deepStrictEqual(lintCoreDependencies(manifestFile, seed), [], 'a matching pair is clean');
 
-    write(['superpowers'], ['superpowers', 'other']);
-    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /differs across the twins/, 'the twins must agree with each other');
+    write([{ id: 'superpowers@m' }, { id: 'other@n' }]);   // superpowers no longer parked
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /manifest parks \[nothing\]/, 'an un-parked companion is a finding');
 
-    write(['superpowers'], ['superpowers']);
-    assert.match(lintCoreDependencies(sh, ps1, ['superpowers@m', 'other@m'])[0], /in the seed - update both twins/, 'a companion the seed added is a finding');
+    write([{ id: 'superpowers@m', active: false }, { id: 'other@n', active: false }]);
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /manifest parks \[other, superpowers\]/, 'an extra parked row the seed never names is a finding');
 
-    fs.writeFileSync(sh, '# no block here\n');
-    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
+    write([{ id: 'other@n', active: false }]);   // the seed names a plugin the manifest never lists
+    assert.match(lintCoreDependencies(manifestFile, seed).find((f) => /has no row/.test(f)), /CORE_DEP_PLUGINS names 'superpowers'.*has no row/);
+
+    fs.writeFileSync(manifestFile, 'not json');
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /could not be read/, 'unreadable JSON is a finding, not a crash');
+
+    write([{ id: 'other@n' }]);
+    assert.deepStrictEqual(lintCoreDependencies(manifestFile, []),
+        ['install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.']);
+
     fs.rmSync(tmp, { recursive: true, force: true });
     assert.ok(paths, 'paths stays exported');
 });

@@ -136,7 +136,7 @@ clustering computes instead of being re-read.
 collected transcripts, dedupes it, replays it through the shipped guards exactly as the harness
 spawns them, and reports fire count and rate per route. `scripts/corpus-replay.test.js` covers the
 harness itself over a synthetic corpus - CI-safe, no session data - including the check that its
-route table still matches what `scripts/os/claude-stack.sh` wires, so a new matcher cannot be added
+route table still matches what `meta/stack-manifest.json` wires, so a new matcher cannot be added
 and silently never measured.
 
 Four design points worth keeping:

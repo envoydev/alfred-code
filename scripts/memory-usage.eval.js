@@ -15,7 +15,7 @@
 // project's OWN throwaway .memory-mcp/memory.db - never ~/.memory-mcp) and .claude/settings.json (the
 // SessionStart wiring) by hand, and copies only the agent(s) a scenario needs into .claude/agents/.
 // That is behind ONE function so a later run can swap it for a real
-// `scripts/os/claude-stack.sh --source <worktree>` install without touching anything else.
+// `scripts/install/alfred-code.js --source <worktree>` install without touching anything else.
 //
 // --setup self|install|update (default self): 'install' is a FRESH real install from this worktree
 // (buildProjectInstall - no notes to import, never exercises an update). 'update' (buildProjectUpdate)
@@ -150,7 +150,7 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   const mcpConfigPath = path.join(projectDir, '.mcp.json');
   fs.writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers: { memory: memoryRegistration(dbPath) } }, null, 2));
 
-  // Exact shape claude-stack.sh writes (scripts/os/claude-stack.sh ~line 1986): the quoted
+  // Exact shape the Node seed writes (scripts/install/settings.js): the quoted
   // $CLAUDE_PROJECT_DIR placeholder, no matcher (fires on every SessionStart source), timeout 10.
   const settings = {
     hooks: {
@@ -164,14 +164,14 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   return { projectDir, dbPath, mcpConfigPath };
 }
 
-const INSTALLER_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
+const INSTALLER_SEED = path.join(ROOT, 'scripts', 'install', 'alfred-code.js');
 
 // Builds a temp project with the REAL installer from this worktree (--source), confirming
 // buildProjectSelf's hand-built approximation once Task 6 has landed. Selection is deliberately
 // narrow - just what the five scenarios need - not a full 79-skill install: `hook docs-session` is
 // selected (not just `hook memory-session`) because memory-session.js's related-projects lookup
-// requires docs.js, which ONLY ships alongside a SELECTED docs-session.js (claude-stack.sh ~line
-// 1784: memory-session.js's own companion copy is memory.js, not docs.js) - this also means the real
+// requires docs.js, which ONLY ships alongside a SELECTED docs-session.js (scripts/install/copy.js:
+// memory-session.js's own companion copy is memory.js, not docs.js) - this also means the real
 // install additionally WIRES docs-session.js as a live hook, which buildProjectSelf deliberately does
 // not (see diffSetups() for the full comparison). `--scope project` + `--memory-level project` keep
 // everything inside this one throwaway directory; no CLAUDE_CONFIG_DIR override, so `claude mcp add`
@@ -184,7 +184,7 @@ function buildProjectInstall(projectDir, { agents = [] } = {}) {
   const selectionLines = ['rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
   fs.writeFileSync(selectionPath, `${selectionLines.join('\n')}\n`);
 
-  execFileSync('bash', [INSTALLER_SH, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
+  execFileSync(process.execPath, [INSTALLER_SEED, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
     cwd: projectDir, stdio: 'pipe', timeout: 180000,
   });
 
@@ -298,10 +298,10 @@ const PRE_FEATURE_COMMIT = 'bb5c684';
 // gitignored files), the same shape a real release archive or shallow-clone snapshot has. Piped
 // through node buffers rather than a shell pipeline so destDir never needs shell-quoting.
 //
-// ALSO writes RELEASE-SOURCE (sha/ref/version/source lines, the exact shape
-// _stack_marketplace_promote() synthesizes) - without it, claude-stack.sh's stack_src() has no git
-// checkout (no .git, deliberately) and no RELEASE-SOURCE to read STACK_SHA from, so write_stamp()
-// takes its 'no source revision resolved' fail-soft branch and writes NO claude-stack.stamp at all
+// ALSO writes RELEASE-SOURCE (sha/ref/version/source lines, the exact shape a real release archive
+// carries) - without it, the Node seed's source.js has no git checkout (no .git, deliberately) and no
+// RELEASE-SOURCE to read the source revision from, so its stamp writer takes its 'no source revision
+// resolved' fail-soft branch and writes NO stamp file at all
 // (confirmed live: a first attempt at this without the file produced no stamp). A `git archive`
 // snapshot with no RELEASE-SOURCE is not actually release-shaped - a real release archive always
 // carries one (.github/workflows/release.yml) - so this was a gap in what 'release-shaped' claimed.
@@ -442,7 +442,9 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   fs.writeFileSync(preSelectionPath, `${preSelectionLines.join('\n')}\n`);
   // spawnSync (not execFileSync): the log is captured regardless of exit code, not only on a throw -
   // needed so a LATER assert failure (the install itself having exited 0) can still dump what it saw.
-  const preInstallRes = spawnSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {
+  // PRE_FEATURE_COMMIT predates Phase 7b (R33): that archive genuinely still carries the frozen shell
+  // twin, so this call targets it on purpose - it is not a live reference to a file this repo ships.
+  const preInstallRes = spawnSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {   // legacy-name
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
   const preInstallLog = `$ install --selection ${preSelectionPath} --source ${preSrc}\nexit=${preInstallRes.status}\n--- stdout ---\n${preInstallRes.stdout || ''}\n--- stderr ---\n${preInstallRes.stderr || ''}\n`;
@@ -477,7 +479,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // docs-session / the memory MCP are all NEW categories this pre-feature project never had, so this
   // depends on the installer treating them as locked/always-add rather than 'not currently installed,
   // so not wanted' - the fix the controller flagged as landing separately. Do not run this until told to.
-  const updateRes = spawnSync('bash', [path.join(relSrc, 'scripts', 'os', 'claude-stack.sh'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
+  const updateRes = spawnSync(process.execPath, [path.join(relSrc, 'scripts', 'install', 'alfred-code.js'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
   const updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;

@@ -18,13 +18,8 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
 const PINNED = { 'chrome-devtools': 'chrome-devtools-mcp', 'appium-mcp': 'appium-mcp' };
 
-test('no shipped MCP launch line runs a package on @latest - twins, manifest or generated plugin entries', () =>
+test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
-    for (const rel of ['scripts/os/claude-stack.sh', 'scripts/os/claude-stack.ps1'])
-    {
-        const rows = read(rel).split('\n').filter((l) => !/^\s*#/.test(l) && /-y\s+[\w@/.-]+@latest/.test(l));
-        assert.deepStrictEqual(rows, [], `${rel} still launches a floating package`);
-    }
     const manifest = JSON.parse(read('meta/stack-manifest.json'));
     const floatingRows = manifest.mcps.filter((r) => FLOATING.test(r.args)).map((r) => r.name);
     assert.deepStrictEqual(floatingRows, [], 'meta/stack-manifest.json still launches a floating package');
@@ -67,23 +62,6 @@ test('the seed resolves both pins at install, and a failed lookup falls through 
     assert.strictEqual(offline.AP_PIN, '');
     for (const name of Object.keys(PINNED))
         assert.ok(logs.some((m) => m.includes(`could not resolve ${name} latest`)), `no unpinned line for ${name}: ${logs.join(' | ')}`);
-});
-
-test('both twins resolve a pin for chrome-devtools-mcp and appium-mcp', () =>
-{
-    const sh = read('scripts/os/claude-stack.sh');
-    const ps = read('scripts/os/claude-stack.ps1');
-    // .test, not assert.match: a miss would print the whole twin.
-    for (const [src, re] of [
-        [sh, /MCP_CHROME_DEVTOOLS_VER="\$\(_npm_latest chrome-devtools-mcp\)"/],
-        [sh, /MCP_APPIUM_VER="\$\(_npm_latest appium-mcp\)"/],
-        [sh, /chrome-devtools-mcp\$\{CD_PIN\}/],
-        [sh, /appium-mcp\$\{AP_PIN\}/],
-        [ps, /\$McpChromeDevtoolsVer\s*=\s*Get-NpmLatest\s+'chrome-devtools-mcp'/],
-        [ps, /\$McpAppiumVer\s*=\s*Get-NpmLatest\s+'appium-mcp'/],
-        [ps, /chrome-devtools-mcp'\s*\+\s*\$CdPin/],
-        [ps, /appium-mcp'\s*\+\s*\$ApPin/],
-    ]) assert.ok(re.test(src), `${src === sh ? 'claude-stack.sh' : 'claude-stack.ps1'} has no ${re}`);
 });
 
 // End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as a

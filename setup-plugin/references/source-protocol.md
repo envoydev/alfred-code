@@ -166,11 +166,12 @@ $Show = { param($v) if ($v) { $v } else { '?' } }
 Write-Output "RESOLVED TMP=$TMP $(& $Show $Ver) seed=$Seed running=$(& $Show $Was) key=$(& $Show $Key)"
 ```
 
-Both installer twins resolve this same plugin cache from `stack_src` / `Get-StackSrc`, in the same
-order and with the same validity test, so a script install and a guided walk always land the same
-revision. Neither WRITES a cache any more, so there is nothing to switch off and nothing that can
-fail to be written. Hand the resolved copy to the installer with `--source "$TMP/repo"` all the same
-(see below) - that is what keeps the run at one copy and pins the revision the earlier steps read.
+The Node seed resolves this same plugin cache from its own `resolveSource` (`scripts/install/source.js`),
+in the same order and with the same validity test as the snippet above, so a script install and a
+guided walk always land the same revision. Neither WRITES a cache any more, so there is nothing to
+switch off and nothing that can fail to be written. Hand the resolved copy to the installer with
+`--source "$TMP/repo"` all the same (see below) - that is what keeps the run at one copy and pins
+the revision the earlier steps read.
 
 **`$TMP` lives in a MARKER FILE KEYED BY THE PROJECT, and every run artifact is addressed through
 it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call is gone by the next -
@@ -347,7 +348,7 @@ roughly 882k tokens between them. So:
 program now and not two. A resolve line reporting `seed=shell` - `ALFRED_CODE_SEED=shell`, or a
 1.x `CLAUDE_STACK_SEED=shell`, in the environment this session started in - is refused: the frozen <!-- legacy-name -->
 twins name the 1.x marketplace and entries a 2.0.0 registration cannot resolve, so print
-`the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop, the <!-- legacy-name -->
+`the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop, the <!-- legacy-name -->
 same line the seed itself prints and exits 1 on. Never hand the Node seed a PowerShell spelling: a
 `-Scope` is an unknown flag, and it refuses before the run writes anything.
 

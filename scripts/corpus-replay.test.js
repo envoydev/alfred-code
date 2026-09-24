@@ -88,15 +88,17 @@ test('corpus-replay: nothing is written outside the scratch dir', () => {
 test('corpus-replay: the ROUTES table matches what the installer actually wires', () => {
   // The harness only replays routes it knows about. If a release wires a new matcher and this table
   // is not updated, the new gate is simply never measured - and 'not measured' would read as silence,
-  // not as a gap. Pin the two together against the installer, which is the wiring's source of truth.
-  const sh = fs.readFileSync(path.join(__dirname, 'os', 'claude-stack.sh'), 'utf8');
+  // not as a gap. Pin the two together against meta/stack-manifest.json's `hooks` list, the wiring's
+  // one Node home (Phase 7b, R33, deleted the frozen shell/PowerShell twins that used to carry it).
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
   const wired = new Set();
-  for (const m of sh.matchAll(/^\s*"(guard-[a-z-]+\.js)::([^:]*)::/gm)) {
-    const [, hook, spec] = m;
+  for (const row of manifest.hooks) {
+    if (row.active === false || !/^guard-[a-z-]+\.js$/.test(row.file)) continue;
+    const spec = row.matcher || '';
     // `@Event` / `@Event:matcher` is a lifecycle wiring; a bare matcher list is PreToolUse.
     const event = spec.startsWith('@') ? spec.slice(1).split(':')[0] : 'PreToolUse';
     if (event === 'SessionStart') continue; // replayed by 1c's config matrix, not by liveness
-    for (const tool of (event === 'PreToolUse' ? spec.split('|') : [null])) wired.add(`${hook}::${event}${tool ? ':' + tool : ''}`);
+    for (const tool of (event === 'PreToolUse' ? spec.split('|') : [null])) wired.add(`${row.file}::${event}${tool ? ':' + tool : ''}`);
   }
   const known = new Set();
   for (const r of require('./corpus-replay.js').ROUTES) {

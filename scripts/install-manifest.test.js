@@ -1,47 +1,18 @@
 'use strict';
-// THE MANIFEST LOADER - Phase 7, T4b.
+// THE MANIFEST LOADER - Phase 7, T4b; twin comparison removed in Phase 7b (R33).
 //
-// One assertion carries this file: what the loader renders is character-for-character what the sh
-// twin declares. The JSON is generated from that twin and the ps1 is checked against it, so this
-// closes the loop - the Node seed reads the same six lists the shipping installer does, in the same
-// spellings, and a drift in either direction is a red test rather than a silent difference.
+// Until Phase 7b, one assertion here proved the loader rendered character-for-character what the sh
+// twin declared. The twins are deleted now (`scripts/stack-manifest.test.js` covers that), so
+// `meta/stack-manifest.json` is the only copy of the six lists left - there is nothing left to drift
+// FROM. What remains here is the loader's own contract: the rendered spellings every later layer of
+// the install depends on, active-vs-parked filtering, and the retired-block defaults.
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
 const { loadManifest } = require('./install/manifest.js');
-const { readBlock, normalize } = require('./build-manifest.js');
 
 const ROOT = path.join(__dirname, '..');
-const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
-
-test('manifest: every list renders back to the sh twin\'s own entries', () =>
-{
-    const m = loadManifest(ROOT);
-    // Only the rows the twin SEEDS: a commented row is `active: false` in the JSON and parked here.
-    const fromTwin = (opener) => readBlock(SH, opener, '"').filter((e) => e.active !== false).map((e) => e.value);
-    for (const [key, opener] of [['skills', 'SKILLS=('], ['agents', 'AGENTS=('], ['rules', 'CLAUDE_RULES=('], ['hooks', 'HOOKS=('], ['plugins', 'PLUGINS=(']])
-        assert.deepStrictEqual(m[key], fromTwin(opener), `${key} drifted from the twin`);
-
-    // The MCP args are the ONE deliberate rewrite: JSON has no `$` expansion, so an install-time
-    // shell variable travels as the `@PLACEHOLDER@` token the argv resolver already understands.
-    // Compared through the same normaliser that wrote them. Two rows the twin writes as a shell
-    // VARIABLE reference (the memory and context7 entries, both assembled above the block) are
-    // compared by NAME, which is the one thing both spellings agree on.
-    const twinMcps = fromTwin('MCPS=(');
-    assert.strictEqual(m.mcps.length, twinMcps.length, 'the twin and the JSON ship a different number of servers');
-    twinMcps.forEach((value, i) =>
-    {
-        if (/^\$[A-Za-z_]/.test(value))
-        {
-            const name = m.mcps[i].split('|')[0];
-            assert.match(value.toUpperCase(), new RegExp(`\\$${name.toUpperCase().replace(/-/g, '_')}_ENTRY`),
-                `the variable row ${value} does not name ${name}`);
-            return;
-        }
-        assert.strictEqual(m.mcps[i], normalize(value, 'mcps'), `mcp row ${i} drifted from the twin`);
-    });
-});
 
 test('manifest: an active:false row is SHIPPED but not seeded', () =>
 {

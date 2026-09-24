@@ -3,7 +3,7 @@
 // selection into a dependency-complete install set (computeClosure), and check
 // a curated prerequisite map against a detected environment (evaluatePrereqs).
 // Reads the committed meta/stack-graph.json (Component A); emits an installer
-// selection file for claude-stack.sh --selection (Component B).
+// selection file for the Node seed's --selection (Component B).
 'use strict';
 const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------

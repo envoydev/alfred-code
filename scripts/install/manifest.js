@@ -1,12 +1,13 @@
 'use strict';
 // THE MANIFEST - the six lists, read from meta/stack-manifest.json.
 //
-// The JSON is generated FROM the sh twin and refuses to build when the ps1 disagrees (T0), so it is
-// the same data all three carry. This loader renders it back into the exact entry SPELLINGS the
-// shell uses - `repo|name`, `file.js::matcher::event`, `name|args`, `plugin@marketplace` - for one
-// reason: every layer of this seed parses those spellings, and so does the twin it replaces, so a
-// behaviour is read off one shape rather than two. `scripts/install-manifest.test.js` pins the
-// rendering against what `build-manifest.js` parses out of the twin.
+// Until Phase 7b the JSON was generated FROM the sh twin, refusing to build when the ps1 disagreed
+// (T0); the twins are deleted now (R33), so the JSON is hand-edited directly and this is its only
+// reader. This loader renders it into the entry SPELLINGS the shell twins used to write - `repo|name`,
+// `file.js::matcher::event`, `name|args`, `plugin@marketplace` - because every layer of this seed
+// still parses those spellings, and `scripts/build-marketplace.js`'s hook-wiring generator reads the
+// rendered `hooks` catalog the same way. `scripts/install-manifest.test.js` pins the loader's own
+// contract; `scripts/stack-manifest.test.js` pins the manifest's shape.
 //
 // A row carrying `active: false` is SHIPPED BUT NOT SEEDED - a real state, not an absence. It stays
 // in the catalog (a stamp and an `--installed-only` derivation both need to know the release ships

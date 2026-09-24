@@ -51,15 +51,16 @@ Action (one is REQUIRED, positional):
 
 Named flags (any order, each optional): ${FLAG_LIST}
 
-Every flag means exactly what it means on scripts/os/claude-stack.sh - this is a rewrite, not a
-redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.`;
+What each flag does is documented where it is set: the guided /alfred-code:init, :update,
+:configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
+the repo's CLAUDE.md covers the install surface end to end.`;
 
 // The fresh-install spelling. A 1.x install keeps its own marketplace key, so every stack spec of a
 // run is spelled with the key it resolved (`ctx.market`), never with this constant.
 const HOOKS_PLUGIN = `${BRAND.hooks}@${BRAND.marketplace}`;
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins hardcode the 1.x names, which a 2.0.0 registration cannot resolve.
-const SHELL_SEED_RETIRED = 'the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a

@@ -217,7 +217,7 @@ the install writes.
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--github-cli] [--memory-level global|scoped|project]`
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
 

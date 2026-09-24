@@ -9,18 +9,25 @@
 // downloading. The archive and clone routes remain for the two paths with no plugin cache to read:
 // the copy route (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
 //
-// These tests drive the REAL installers against a local HTTP fixture that speaks the release
-// endpoints and COUNTS asset hits, which is what proves a run downloaded nothing.
+// The plugin-cache/archive/clone resolution ORDER and its fallbacks are unit-tested directly against
+// scripts/install/source.js in install-source.test.js (resolveSource / fetchArchive / cloneMain, each
+// called with a fixture repoUrl - no subprocess, no HTTP fixture server). Phase 7b (R33) deleted the
+// frozen shell and PowerShell twins, which is what the tests below used to drive as a REAL installer
+// subprocess against a local HTTP fixture that speaks the release endpoints and counts asset hits;
+// the Node seed's own CLI entry (scripts/install/alfred-code.js) has no equivalent env-var override
+// for the release host, so that subprocess-level proof has no like-for-like replacement here - a
+// follow-up that wants one would need to add a test-only override to the seed's own arg parsing.
+// What remains below are the guided walks' own bash/PowerShell SNIPPETS
+// (setup-plugin/references/source-protocol.md), never the twins - they read the same plugin cache
+// directly, with no installer subprocess in the loop, so they are unaffected by the twins' removal.
 const test = require('node:test');
 const assert = require('node:assert');
-const { execFileSync, spawnSync, spawn } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
-const PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
 const hasPwsh = spawnSync('pwsh', ['-v'], { encoding: 'utf8' }).status === 0;
 const skipNoPwsh = hasPwsh ? false : 'pwsh not installed - ps1 behavioral test skipped';
 
@@ -34,91 +41,12 @@ const RELEASE_SOURCE = path.join(FIXTURE, 'RELEASE-SOURCE');
 fs.writeFileSync(RELEASE_SOURCE, `sha: ${FAKE_SHA}\nref: main\nversion: ${VERSION}\nbuilt: 2026-09-09T00:00:00Z\n`);
 const ARCHIVE = path.join(FIXTURE, 'alfred-code.tar.gz');
 execFileSync('git', ['-C', ROOT, 'archive', '--format=tar.gz', `--add-file=${RELEASE_SOURCE}`, '-o', ARCHIVE, 'HEAD'], { stdio: 'ignore' });
-const ZIP = path.join(FIXTURE, 'alfred-code.zip');
-execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', `--add-file=${RELEASE_SOURCE}`, '-o', ZIP, 'HEAD'], { stdio: 'ignore' });
 test.after(() => fs.rmSync(FIXTURE, { recursive: true, force: true }));
-
-// A GitHub-shaped release host: /releases/latest 302s to the tag (that redirect IS the version
-// probe), /releases/latest/download/<asset> serves the archive. It runs in its OWN PROCESS and
-// records each request in a log file: the installers are driven with execFileSync, which blocks
-// this process's event loop, so an in-process server could never answer them. `tag: 'none'` makes
-// the probe unanswerable - the fork / offline / file:// shape the cache has to degrade through.
-const SERVER_JS = path.join(FIXTURE, 'release-host.js');
-fs.writeFileSync(SERVER_JS, `
-const http = require('node:http'), fs = require('node:fs');
-const [archive, zip, logFile, portFile, tag] = process.argv.slice(2);
-const hit = kind => fs.appendFileSync(logFile, kind + '\\n');
-http.createServer((req, res) => {
-    const url = req.url.split('?')[0];
-    if (url === '/releases/latest') {
-        hit('probe');
-        if (tag === 'none') { res.writeHead(404); res.end(); return; }
-        res.writeHead(302, { location: '/releases/tag/' + tag }); res.end(); return;
-    }
-    if (url.startsWith('/releases/tag/')) { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html></html>'); return; }
-    if (url === '/releases/latest/download/claude-stack.tar.gz' || url === '/releases/latest/download/claude-stack.zip') { // legacy-name - only the frozen twins download here
-        hit('asset');
-        const body = fs.readFileSync(url.endsWith('.zip') ? zip : archive);
-        res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': body.length });
-        if (req.method === 'HEAD') { res.end(); return; }
-        res.end(body); return;
-    }
-    res.writeHead(404); res.end();
-}).listen(0, '127.0.0.1', function () { fs.writeFileSync(portFile, String(this.address().port)); });
-`);
-
-// a synchronous sleep that does not need a `sleep` binary (Windows runners have none)
-function sleepSync(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
-
-let hostSeq = 0;
-function startHost({ tag = `v${VERSION}` } = {}) {
-    const id = `h${++hostSeq}`;
-    const logFile = path.join(FIXTURE, `${id}.log`);
-    const portFile = path.join(FIXTURE, `${id}.port`);
-    fs.writeFileSync(logFile, '');
-    const child = spawn(process.execPath, [SERVER_JS, ARCHIVE, ZIP, logFile, portFile, tag ?? 'none'], { stdio: 'ignore' });
-    const deadline = Date.now() + 10000;
-    while (!fs.existsSync(portFile) && Date.now() < deadline) sleepSync(20);
-    assert.ok(fs.existsSync(portFile), 'the release host came up');
-    const count = kind => fs.readFileSync(logFile, 'utf8').split('\n').filter(l => l === kind).length;
-    return {
-        url: `http://127.0.0.1:${fs.readFileSync(portFile, 'utf8').trim()}`,
-        get assets() { return count('asset'); },
-        get probes() { return count('probe'); },
-        close: () => child.kill(),
-    };
-}
 
 function work() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-'));
     fs.writeFileSync(path.join(dir, 'sel.txt'), 'skill csharp\n');
     return dir;
-}
-
-// One install run of the sh twin, HOME isolated so the cache lands in this run's own account dir.
-// The COPY route on purpose: this file proves which SOURCE a run resolved (archive, cache, clone,
-// offline), and it reads that through a skill landing in .claude/skills. On the default plugin
-// route a stack skill is carried by a plugin instead of copied, so the same assertion would say
-// nothing about the source. The delivery route has its own proofs (mcp-verify.test.js, the matrix).
-function runSh(home, host, env = {}) {
-    return execFileSync('bash', [SH, 'install', '--scope', 'project', '--selection', path.join(home, 'sel.txt'), '--skills-only'], {
-        cwd: home,
-        encoding: 'utf8',
-        env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '',
-            CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', ...env }, // legacy-name - the twin's own switches
-    });
-}
-
-function cacheEntries(home) {
-    const root = path.join(home, '.claude', 'cache', 'stack-source');
-    if (!fs.existsSync(root)) return [];
-    return fs.readdirSync(root)
-        .flatMap(slug => fs.readdirSync(path.join(root, slug)).map(v => path.join(root, slug, v)))
-        .filter(p => fs.statSync(p).isDirectory());
-}
-
-function installedSkill(home) {
-    return fs.existsSync(path.join(home, '.claude', 'skills', 'csharp', 'SKILL.md'));
 }
 
 // A plugin cache entry the way `claude plugin install` leaves it: the whole repo under
@@ -137,115 +65,11 @@ function plantPluginCache(home, { version = VERSION, marketplace = 'envoydev', p
     return dir;
 }
 
-// The frozen twins read the 1.x layout, cache/<marketplace>/claude-stack/<version>.
-const TWIN_CACHE = { marketplace: 'claude-stack', plugin: 'claude-stack' }; // legacy-name
-
-test('the plugin cache is the source, and nothing is downloaded', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantPluginCache(home, TWIN_CACHE);
-        const out = runSh(home, host);
-        assert.match(out, /source: plugin cache/, 'the run did not read the cache Claude Code left');
-        assert.strictEqual(host.assets, 0, 'an archive was fetched although the cache was there');
-        assert.strictEqual(host.probes, 0, 'the version probe is gone - the cache needs no release lookup');
-        assert.ok(installedSkill(home), 'and it installed from it');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-test('the newest version directory wins when the cache holds several', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantPluginCache(home, { ...TWIN_CACHE, version: '0.9.0' });
-        plantPluginCache(home, { ...TWIN_CACHE, version: '0.10.0' });   // newer by VERSION order, older by string order
-        const out = runSh(home, host);
-        assert.match(out, /source: plugin cache .*0\.10\.0/, `the older entry was taken:\n${out}`);
-        assert.strictEqual(host.assets, 0);
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-test('a half-written cache entry is rejected and the archive is taken instead', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantPluginCache(home, { ...TWIN_CACHE, truncated: true });
-        const out = runSh(home, host);
-        assert.doesNotMatch(out, /source: plugin cache/, 'a broken entry was installed from');
-        assert.match(out, /releases\/latest\/download/, 'the archive is the fallback');
-        assert.strictEqual(host.assets, 1);
-        assert.ok(installedSkill(home));
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-test('no cache at all still installs, from the archive', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/);
-        assert.strictEqual(host.assets, 1, 'exactly one download');
-        assert.ok(installedSkill(home));
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-// The stack keeps no cache of its own any more: a run must leave nothing behind under the old
-// location, or a later release would read a snapshot nothing maintains.
-test('no run writes the retired stack-source cache', () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        runSh(home, host);
-        assert.deepStrictEqual(cacheEntries(home), [], 'the retired cache layout was written again');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-test('an unanswerable version probe is no longer a factor - the archive still installs', () => {
-    const host = startHost({ tag: 'none' });
-    const home = work();
-    try
-    {
-        const out = runSh(home, host);
-        assert.match(out, /releases\/latest\/download/);
-        assert.ok(installedSkill(home), 'a fork with no tag still installs');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
-test('the ps1 twin reads the same plugin cache', { skip: skipNoPwsh }, () => {
-    const host = startHost();
-    const home = work();
-    try
-    {
-        plantPluginCache(home, TWIN_CACHE);
-        const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project',
-            '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
-            cwd: home,
-            encoding: 'utf8',
-            env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '',
-                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' }, // legacy-name - the twin's own switches
-        });
-        assert.match(out, /source: plugin cache/, 'ps1: the cache was not read');
-        assert.strictEqual(host.assets, 0, 'ps1: an archive was fetched anyway');
-    }
-    finally { host.close(); fs.rmSync(home, { recursive: true, force: true }); }
-});
-
 // The guided walks do not run the installer's resolver - each command body pastes its own snippet
 // from setup-plugin/references/source-protocol.md, one per platform. Three copies of one rule is
 // exactly where they drift, and a drifted walk silently pays a download the installer would not.
-// So run the protocol's OWN snippets against a planted cache and assert they land where the twins
-// land: the newest valid entry, the half-written one rejected, nothing fetched.
+// So run the protocol's OWN snippets against a planted cache and assert they land on: the newest
+// valid entry, the half-written one rejected, nothing fetched.
 function protocolSnippet(lang, index) {
     const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
     const blocks = [...md.matchAll(/```(bash|powershell)\n([\s\S]*?)```/g)].filter(m => m[1] === lang);
@@ -253,7 +77,7 @@ function protocolSnippet(lang, index) {
     return blocks[index][2];
 }
 
-// The same three entries both snippets and both twins have to agree on.
+// The same three entries both snippets (bash and PowerShell) have to agree on.
 function plantThree(home) {
     plantPluginCache(home, { version: '0.9.0' });
     plantPluginCache(home, { version: '0.10.0' });                   // newest VALID - the expected answer
@@ -344,7 +168,7 @@ test("the protocol's PowerShell snippet updates the core FIRST and takes the ent
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
-test("the protocol's bash snippet resolves the same entry as the sh twin", () => {
+test("the protocol's bash snippet resolves the newest valid cache entry", () => {
     const home = work();
     const script = path.join(home, 'resolve.sh');
     let tmp = '';
@@ -359,7 +183,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
         const m = out.match(/RESOLVED TMP=(\S+) (\S+)/);
         assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
         tmp = nativePath(m[1]);
-        assert.strictEqual(m[2], '0.10.0', 'it read a different version than the twins take');
+        assert.strictEqual(m[2], '0.10.0', 'it read the wrong entry - not the newest valid one');
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
         assert.ok(!fs.existsSync(path.join(tmp, 'alfred-code.tar.gz')), 'it downloaded the archive over a usable cache');
         assert.strictEqual(
@@ -387,7 +211,7 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
             cwd: home, encoding: 'utf8',
             env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') },
         });
-        assert.match(out, /PS-VER=0\.10\.0/, `the ps twin read a different version:\n${out}`);
+        assert.match(out, /PS-VER=0\.10\.0/, `the ps snippet read a different version:\n${out}`);
         // compared as real paths: on Windows os.tmpdir() may be the 8.3 short name of the folder the snippet spells long
         assert.strictEqual(fs.realpathSync.native(out.match(/PS-SRC=(.+)/)[1].trim()), fs.realpathSync.native(want),
             'it took a different cache entry than the sh snippet');
