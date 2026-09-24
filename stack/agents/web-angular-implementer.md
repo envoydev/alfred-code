@@ -1,7 +1,7 @@
 ---
 name: web-angular-implementer
 description: "Use to build ONE task from a web-angular-solution-designer plan: writes the standalone components, services and signal state the task names (OnPush, signal inputs, RxJS teardown) plus TestBed harness tests, strictly to the contract. Several run in parallel. Not without a task + contract, and not to redesign or verify."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*, mcp__plugin_context7-local_context7-local__*
+tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*
 model: sonnet
 effort: medium
 color: green

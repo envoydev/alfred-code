@@ -139,7 +139,7 @@ function resolveStackPlugins({ routes, selection, runSelection, log = () => {} }
 }
 
 // The SELECTION lines `selection-plugins.js` reads, built from what each route actually needs.
-function selectionLines({ routes, skills = [], agents = [], mcps = [], context7Mode })
+function selectionLines({ routes, skills = [], agents = [], mcps = [] })
 {
     const lines = [];
     if (routes.skills)
@@ -150,9 +150,6 @@ function selectionLines({ routes, skills = [], agents = [], mcps = [], context7M
     if (routes.mcps)
     {
         for (const m of mcps) lines.push(`mcp ${typeof m === 'string' ? m.split('|')[0] : m.name}`);
-        // The local context7 transport is its OWN entry beside the hosted one: two servers in one
-        // plugin both load, so local mode ADDS a plugin rather than swapping a server.
-        if (context7Mode === 'local') lines.push('mcp context7-local');
     }
     return lines;
 }
@@ -258,41 +255,61 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
     }
 }
 
-// UPDATE: uninstall the retired names this machine actually carries, at the scope the listing
-// reports. A name that is not installed here is not an error, it is nothing to do.
-//
-// A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's record: parked, it is
-// the user's off-state for its items, which have no other home once it is gone; at another scope it
-// is every other project's install too. Either way it stays, and the run says how to remove it.
-function prunedRetired({ listing, retired = [], carriers = [], scope, cli, log = () => {} })
+// A retired name's FULL spec: the stack's own plugin under the key the core is listed under (a 1.x
+// install keeps its old one), unless its row in meta/retired-plugins.json names another marketplace -
+// a third-party pick the stack dropped. Never the bare name: the official catalog ships a `sentry` too.
+function retiredSpec(name, market, retiredRows = [])
 {
+    if (String(name).includes('@')) return String(name);
+    const row = retiredRows.find((r) => r && r.name === name);
+    return `${name}@${(row && row.marketplace) || market}`;
+}
+
+// UPDATE: uninstall the retired plugins this project carries AT THIS RUN'S SCOPE, each by its full
+// spec. A name that is not installed here is not an error, it is nothing to do. `rows` holds every
+// scope (`parsePluginList` everyScope); a bare `listing` is read the same way.
+//
+// A row at ANOTHER scope is every other project's install too: it stays, and the run names the
+// command that removes it. A CARRIER - a per-stack entry retired in 1.3.0 - is also the migration's
+// record: parked, it is the user's off-state for its items, which have no other home once it is gone,
+// so it stays at this scope as well. After each uninstall the row's add-back line is printed: the
+// retirement takes the plugin, never the user's way back to the server.
+function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers = [], market = BRAND.marketplace, scope, cli, log = () => {} })
+{
+    const all = rows || listing || [];
     const gone = [];
-    const kept = (name) =>
+    const addBack = (name) => (retiredRows.find((r) => r && r.name === name) || {}).addBack;
+    let left = [];
+    for (const name of [...new Set(retired)])
     {
-        if (!carriers.includes(name)) return false;
-        const at = fieldOf(listing, name, 'scope') || scope;
-        if (fieldOf(listing, name, 'enabled') === false)
-            log(`  ${name} is parked here - kept, so its skills and seats stay off; remove it by hand once they may come back: claude plugin uninstall ${name} --scope ${at}`);
-        else if (at !== scope)
-            log(`  ${name} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope copies its picks and removes it: claude plugin uninstall ${name} --scope ${at}`);
-        else return false;
-        return true;
-    };
-    let left = retired.filter((name) => fieldOf(listing, name, 'version') && !kept(name));
+        const spec = retiredSpec(name, market, retiredRows);
+        const [bare, mp] = spec.split('@');
+        const carrier = carriers.includes(bare);
+        for (const r of all.filter((x) => x.name === bare && x.marketplace === mp && x.version))
+        {
+            const at = r.scope || scope;
+            if (carrier && r.enabled === false)
+                log(`  ${spec} is parked here - kept, so its skills and seats stay off; remove it by hand once they may come back: claude plugin uninstall ${spec} --scope ${at}`);
+            else if (at !== scope)
+                log(`  ${spec} is installed at ${at} scope, not this run's - kept for the projects that use it; the update run at that scope ${carrier ? 'copies its picks and removes it' : 'removes it'}: claude plugin uninstall ${spec} --scope ${at}`);
+            else if (!left.some((x) => x.spec === spec)) left.push({ spec, name: bare });
+        }
+    }
     // A per-stack leaf declares its shared entries as dependencies and the CLI refuses to remove a
     // dependency first, so a refusal is retried once everything else in the pass has gone.
     for (let pass = 0; pass < 2 && left.length; pass++)
     {
         const next = [];
-        for (const name of left)
+        for (const item of left)
         {
-            const pscope = fieldOf(listing, name, 'scope') || scope;
-            if (cli(['plugin', 'uninstall', name, '--scope', pscope, '-y'], { quiet: true }))
+            if (cli(['plugin', 'uninstall', item.spec, '--scope', scope, '-y'], { quiet: true }))
             {
-                log(`  plugin pruned (retired upstream) [${pscope}]: ${name}`);
-                gone.push(name);
+                log(`  plugin pruned (retired upstream) [${scope}]: ${item.spec}`);
+                const back = addBack(item.name);
+                if (back) log(`    add it back: ${back.split('<scope>').join(scope)}`);
+                gone.push(item.name);
             }
-            else next.push(name);
+            else next.push(item);
         }
         left = next;
     }
@@ -309,8 +326,8 @@ function prunedRetired({ listing, retired = [], carriers = [], scope, cli, log =
 // and is named. The new core already here beside a 1.x id at this scope is a move an earlier run did
 // not finish (an uninstall refused, or cut short): the install is skipped and the removals retried,
 // in the same order. `ran` says the retired pass ran here. `rows` keeps every scope
-// (`parsePluginList` everyScope), `listing` is what `prunedRetired` reads.
-function migrateLegacy({ rows = [], listing = rows, scope, retired = [], carriers = [], cli, log = () => {}, note = () => {} })
+// (`parsePluginList` everyScope), which is what `prunedRetired` reads too - under the old core's key.
+function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carriers = [], cli, log = () => {}, note = () => {} })
 {
     const out = { fresh: [], gone: [], removed: [], failed: null, ran: false };
     const named = (name, key) => rows.filter((r) => r.name === name && (!key || r.marketplace === key));
@@ -337,7 +354,7 @@ function migrateLegacy({ rows = [], listing = rows, scope, retired = [], carrier
     }
     else log(`plugin [${scope}]: ${spec} is installed beside a 1.x id - the removals an earlier move left are retried`);
     out.ran = true;
-    out.gone = prunedRetired({ listing, retired, carriers, scope, cli, log });
+    out.gone = prunedRetired({ rows, retired, retiredRows, carriers, market: key, scope, cli, log });
     for (const name of [LEGACY.hooks, LEGACY.core])
         for (const r of named(name, key))
         {

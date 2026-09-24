@@ -247,6 +247,8 @@ change (see the invariants below).
     RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend the list when any of the six is
     renamed or removed (a stamp compare only names what left after the stamped commit), then hand-edit
     `meta/stack-manifest.json`'s `retired` block to match: it is read directly, never generated.
+    A retired PLUGIN also gets a `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update
+    uninstalls it only by its full stack spec, keeps a row at another scope, prints the add-back.
     The one exception: an entry that CARRIED picks (the per-stack entries retired in 1.3.0)
     is named only in `meta/retired-entries.json` and pruned by the Node seed alone, because only it
     copies the picks first. On the plugin routes the seed also prunes every shipped skill, agent and hook COPY a
@@ -314,7 +316,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Surface | Delivery |
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
-| MCP | the 12 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
+| MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched against the manifest's own parked rows, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/alfred-code:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the core, which carries the stack hooks too; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is read back while enabled, then uninstalled by update (`meta/retired-entries.json`) |
 | Hooks | the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
@@ -339,7 +341,7 @@ mirrored there in the same sitting.
   all LOAD TOGETHER, which is why a second server in one entry is never an option - it would put a
   second set of tool schemas in every session of every project that enabled it. The entries are
   GENERATED (`scripts/build-marketplace.js --mcp-entries`, from `meta/mcp-pins.json`), and
-  `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for the DROPPABLE five -
+  `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for the droppable playwright -
   on which the installer re-spells the copied skills, agents, rules and hooks back to the bare names,
   because those are what a registration writes. That re-spelling needs the FILES, so the switch
   belongs with `ALFRED_CODE_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported, never half-fixed.
@@ -354,7 +356,7 @@ mirrored there in the same sitting.
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
-  signal, or the user's pick. Catalog of 8 names, 12 plugins:
+  signal, or the user's pick. Catalog of 4 names, 7 plugins:
   - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded via the
@@ -363,34 +365,9 @@ mirrored there in the same sitting.
     session, which the registration route never did. `--playwright-browsers <csv>` / `--playwright-enabled`
     (init/configure ask both); absent = read back, a legacy `playwright` server migrates. The four
     playwright agents grant all four.
-  - `angular-cli` - framework-specific.
-  - `chrome-devtools`, `appium-mcp` - addable only, seeded by no stack (both fail at launch without
-    native deps; appium arrives pre-selected on an `appium` / `@wdio/` / `webdriverio` dependency).
-  - `sentry` - hosted remote MCP registered as the CONSTANT `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}`
-    with header `Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`. Both placeholders stay LITERAL
-    and expand from the ACCOUNT settings.json `env` (`~/.claude/settings.json` or the space's) - a
-    project `.claude/settings.json` does not reach `.mcp.json` expansion (Cursor: `${env:VAR}` + OS env).
-    `SENTRY_SLUG` = org or `org/project` (`--sentry-slug`); the token is added by hand or exported in the
-    installer's shell, never through the chat; installers write handed keys (slug, token,
-    `CONTEXT7_API_KEY`) to the account file, secrets logged by length. `Sentry-Bearer` is the API-token
-    scheme - plain `Bearer` rejects it as `invalid_token`. `--sentry-auth oauth` registers no header (the
-    browser consent flow); never mix the modes. Never use `${SENTRY_SLUG:-}` (the trailing slash 404s).
-    `update` keeps the auth mode and migrates old plain-`Bearer` registrations. `SENTRY_AUTH_TOKEN` is a
-    different credential (sentry-cli uploads). On the PLUGIN route the header is built by
-    `stack/mcp/sentry-headers.js` (`headersHelper`, a STRING command run through a shell, so both of
-    its paths are quoted - a space would split them), and Claude Code runs a helper a
-    plugin supplies WITHOUT the credential variables from the environment - every name carrying TOKEN,
-    SECRET, PASSWORD, KEY or AUTH is removed
-    (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'). Both keys it reads are
-    such names, so a shell export reaches it on no plugin install: the ACCOUNT settings.json `env`
-    block is the source that answers, which is where the installers write the token. `CLAUDE_CONFIG_DIR`
-    survives the scrub, so a `--space` install still finds its own account file.
-  - plus `serena`, `context7` and `memory`. context7 ships TWO plugins - `context7` (the hosted
-    remote, locked, so it can never be dropped) and `context7-local` (the npx
-    transport, added by `--context7 local`). Two entries rather than two servers in one, for the same
-    load-together reason; in local mode both are installed and the run prints the `/mcp disable
-    context7` line. The 24 agents that grant context7 grant BOTH spellings, because a `tools:` list
-    that omits the one this install uses fails silently.
+  - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
+    the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
+    `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`).
 - **`memory` is required like serena and context7**, chosen per install by LEVEL rather than by
   a droppable pick: `global` (`~/.memory-mcp/memory.db`, every Claude account and Cursor on the
   machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,

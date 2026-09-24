@@ -2986,7 +2986,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (playwright, chrome-devtools, appium-mcp - the baseline comments out the ones a project does not need) is simply absent from a seat tools list when the project never registered it: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat granted one restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
+      "_note": "An optional MCP (playwright - the one droppable server since 2.0.0 cut chrome-devtools and appium-mcp) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -4543,27 +4543,6 @@
         }
       ]
     },
-    "sentry-env-account-file-only": {
-      "_note": "The sentry slug and token live in the ACCOUNT settings.json env - a project-level .claude/settings.json env does not reach .mcp.json expansion (measured). Every command with a sentry plan states it.",
-      "owner": {
-        "file": "setup-plugin/commands/init.md",
-        "marker": "its env does not reach `.mcp.json`"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/configure.md",
-          "marker": "its env does not reach `.mcp.json`"
-        },
-        {
-          "file": "setup-plugin/commands/update.md",
-          "marker": "its env does not reach `.mcp.json`"
-        },
-        {
-          "file": "setup-plugin/commands/validate.md",
-          "marker": "its env does not reach `.mcp.json`"
-        }
-      ]
-    },
     "skill-model-pin-turn-scoped": {
       "_note": "A skill-level `model` pin applies only for the rest of the TURN in which the skill activates and is never saved to settings - so a deliberate capture that must run on one model says so and lets the user set it, rather than trusting the frontmatter to hold across the walk. The earlier reading of this - 'the pin is not reliably honored' - was wrong about the mechanism and is retired; the pin works, its SCOPE is the turn. As of 2026-09-12 NO shipped skill carries a `model` or `effort` pin at all: a turn-scoped pin cannot hold across a multi-turn capture, so the four capture skills ask the user to set the session model instead, and the pins live only on agents, where they cover the whole subagent run.",
       "owner": {
@@ -5321,7 +5300,7 @@
       ]
     },
     "env-legacy-fallback": {
-      "_note": "2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the three MCP launchers (memory-launch.js, sentry-headers.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is six edits, not one.",
+      "_note": "2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the two MCP launchers (memory-launch.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is five edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
@@ -5341,10 +5320,6 @@
         },
         {
           "file": "stack/mcp/memory-launch.js",
-          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
-        },
-        {
-          "file": "stack/mcp/sentry-headers.js",
           "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
         },
         {

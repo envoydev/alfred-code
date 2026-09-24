@@ -41,9 +41,8 @@ function parseSelectionText(raw)
 // From Phase 6 every catalog server is carried by a plugin holding exactly ONE server, named
 // exactly like the plugin - which is what makes each tool `mcp__plugin_<n>_<n>__<tool>` for a
 // single `<n>`, and what keeps a project from loading a server it did not pick (all of a plugin's
-// servers load together). So the mapping is the IDENTITY, and the two expanded families are
-// expanded BEFORE they reach here: the caller passes `playwright-chrome`, not `playwright`, and
-// `context7-local` beside `context7` when the install chose the local transport.
+// servers load together). So the mapping is the IDENTITY, and the one expanded family is expanded
+// BEFORE it reaches here: the caller passes `playwright-chrome`, not `playwright`.
 function mcpPlugin(server)
 {
     return String(server);

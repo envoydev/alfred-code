@@ -97,4 +97,13 @@ function readRetiredEntries(repo = REPO)
     catch { return []; }
 }
 
-module.exports = { placement, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, CORE, LIBRARY };
+// The plugins a release took out of the stack, each with the marketplace it came from when that is
+// not the stack's own and the line that adds its server back (meta/retired-plugins.json). Unreadable
+// reads as nothing retiring.
+function readRetiredPlugins(repo = REPO)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(repo, 'meta/retired-plugins.json'), 'utf8')).plugins || []; }
+    catch { return []; }
+}
+
+module.exports = { placement, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, readRetiredPlugins, CORE, LIBRARY };

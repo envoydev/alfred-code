@@ -130,12 +130,11 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     };
 }
 
-// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it - and the two MCP
-// families that fan one catalog row out into several plugins.
+// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it - and the one MCP
+// family that fans a catalog row out into several plugins.
 const HOOKS_HOME = BRAND.core;
 const catalogServer = (name) => String(name)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
-    .replace(/^context7-local$/, 'context7');
+    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the

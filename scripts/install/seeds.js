@@ -46,14 +46,13 @@ function seedAccountEnv({ configDir, key, value, log = () => {}, note = () => {}
     return true;
 }
 
-// Every key the stack knows that THIS RUN was handed - the slug from the flag or the launch
-// environment, the two credentials from the launch environment. A value never goes through a chat.
-function seedAccountKeys({ configDir, sentrySlug, env = {}, log, note })
+// Every key the stack knows that THIS RUN was handed, from the launch environment - since 2.0.0 cut
+// the sentry server, only context7's key. A value never goes through a chat. The SENTRY_* keys an
+// older run wrote are the user's credentials: never read here, never removed.
+function seedAccountKeys({ configDir, env = {}, log, note })
 {
     const written = [];
     const values = {
-        SENTRY_SLUG: sentrySlug || env.SENTRY_SLUG || '',
-        SENTRY_ACCESS_TOKEN: env.SENTRY_ACCESS_TOKEN || '',
         CONTEXT7_API_KEY: env.CONTEXT7_API_KEY || '',
     };
     for (const [key, value] of Object.entries(values))

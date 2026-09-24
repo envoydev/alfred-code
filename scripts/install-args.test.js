@@ -44,9 +44,6 @@ test('install-args: both spellings of every valued flag mean the same thing', ()
     for (const [flag, value, key] of [
         ['--space', 'work', 'space'],
         ['--scope', 'global', 'scope'],
-        ['--context7', 'local', 'context7'],
-        ['--sentry-slug', 'acme/api', 'sentrySlug'],
-        ['--sentry-auth', 'oauth', 'sentryAuth'],
         ['--docs-versioning', 'local', 'docsVersioning'],
         ['--memory-level', 'scoped', 'memoryLevel'],
         ['--selection', '/tmp/sel.txt', 'selection'],
@@ -62,7 +59,7 @@ test('install-args: both spellings of every valued flag mean the same thing', ()
 
 test('install-args: a valued flag given LAST with no value is refused, not read as empty', () =>
 {
-    for (const flag of ['--space', '--scope', '--context7', '--sentry-slug', '--sentry-auth',
+    for (const flag of ['--space', '--scope',
         '--docs-versioning', '--memory-level', '--selection', '--source'])
         fails(['install', flag], new RegExp(`${flag}.*needs a value`));
 });
@@ -86,8 +83,6 @@ test('install-args: an unknown argument is refused and the message NAMES the fla
 test('install-args: the enums are lower-cased, so PowerShell casing works on both seeds', () =>
 {
     assert.strictEqual(ok(['install', '--scope', 'Global']).scope, 'global');
-    assert.strictEqual(ok(['install', '--context7', 'Remote']).context7, 'remote');
-    assert.strictEqual(ok(['install', '--sentry-auth', 'OAuth']).sentryAuth, 'oauth');
     assert.strictEqual(ok(['install', '--docs-versioning', 'Git']).docsVersioning, 'git');
     assert.strictEqual(ok(['install', '--memory-level', 'Scoped']).memoryLevel, 'scoped');
 });
@@ -105,19 +100,15 @@ test('install-args: --space is baked into a PATH, so its characters are checked'
 test('install-args: every enum refuses a value outside its set', () =>
 {
     fails(['install', '--scope', 'repo'], /--scope must be 'project' or 'global'/);
-    fails(['install', '--context7', 'hosted'], /--context7 must be 'local' or 'remote'/);
-    fails(['install', '--sentry-auth', 'bearer'], /--sentry-auth must be 'token' or 'oauth'/);
     fails(['install', '--docs-versioning', 'svn'], /--docs-versioning must be 'git' or 'local'/);
     fails(['install', '--memory-level', 'account'], /--memory-level must be/);
 });
 
-test('install-args: the defaults are project scope, remote context7, and nothing else decided', () =>
+test('install-args: the defaults are project scope, and nothing else decided', () =>
 {
     const p = ok(['install']);
     assert.strictEqual(p.scope, 'project');
-    assert.strictEqual(p.context7, 'remote');
     // '' means 'not given' - a later rule decides, and that is NOT the same as a default
-    assert.strictEqual(p.sentryAuth, '');
     assert.strictEqual(p.docsVersioning, '');
     assert.strictEqual(p.memoryLevel, '');
     assert.deepStrictEqual(p.playwrightBrowsers, []);
@@ -127,8 +118,6 @@ test('install-args: the flag beats the environment, and the environment beats th
 {
     assert.strictEqual(ok(['install'], { SCOPE: 'global' }).scope, 'global');
     assert.strictEqual(ok(['install', '--scope', 'project'], { SCOPE: 'global' }).scope, 'project');
-    assert.strictEqual(ok(['install'], { SENTRY_SLUG: 'from-env' }).sentrySlug, 'from-env');
-    assert.strictEqual(ok(['install', '--sentry-slug', 'from-flag'], { SENTRY_SLUG: 'from-env' }).sentrySlug, 'from-flag');
 });
 
 test('install-args: --memory-level project cannot ride a global install', () =>
@@ -267,13 +256,21 @@ test('install-entry: an install whose picks need no server stays without one - t
     assert.deepStrictEqual(planOverSkillOnly('markdown-style'), []);
 });
 
-test('install-args: context7Given says whether the TRANSPORT was chosen, so an update can read it back', () =>
+// 2.0.0 cut the sentry and context7-local servers (R26, R32): their flags are refused in one line
+// naming the release, in either spelling and with any value - a command body still passing one fails
+// loudly before anything is written, instead of reading as a choice nothing honours.
+test('install-args: --context7, --sentry-slug and --sentry-auth are refused - removed in 2.0.0', () =>
 {
-    // The default is 'remote'; an --installed-only run that found the local entry enabled keeps it
-    // local unless this run named a transport itself.
-    assert.strictEqual(ok(['update']).context7Given, false);
-    assert.strictEqual(ok(['update', '--context7', 'remote']).context7Given, true);
-    assert.strictEqual(parseArgs(['update'], { CONTEXT7_MODE: 'remote' }).context7Given, true);
+    for (const [flag, value] of [['--context7', 'local'], ['--context7', 'remote'], ['--sentry-slug', 'acme/api'], ['--sentry-auth', 'oauth']])
+    {
+        fails(['install', flag, value], new RegExp(`^${flag} was removed in 2\\.0\\.0`));
+        fails(['update', `${flag}=${value}`], new RegExp(`^${flag} was removed in 2\\.0\\.0`));
+        fails(['update', flag], new RegExp(`^${flag} was removed in 2\\.0\\.0`));
+        assert.throws(() => parseArgs(['install', flag, value], {}), (err) => !err.message.includes('\n'), `${flag}: one line`);
+    }
+    // The environment spellings are no flags: nothing reads them, and nothing refuses them.
+    const p = ok(['install'], { SENTRY_SLUG: 'from-env', CONTEXT7_MODE: 'local' });
+    for (const key of ['context7', 'context7Given', 'sentrySlug', 'sentryAuth']) assert.ok(!(key in p), `${key} is still parsed`);
 });
 
 test('args: --add is repeatable, takes <category> <name>, and belongs to --installed-only', () =>

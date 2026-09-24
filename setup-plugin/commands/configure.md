@@ -267,8 +267,9 @@ old behaviour - dropping a hook removes its file and its wiring (step 12 shows t
 Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`,
 `memory` via `baseline-memory` once that rule is kept or added - required like the other two once it is present);
 the rest of the installed servers are direct picks - droppable, and preserved across runs
-(`raw.json` carries them). Addable from `catalog.mcps`; note next to `sentry` that it needs `SENTRY_SLUG` and
-(token mode) `SENTRY_ACCESS_TOKEN` in the ACCOUNT settings.json env.
+(`raw.json` carries them). Addable from `catalog.mcps` - `playwright` is the one droppable server left. A server
+2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`) is offered nowhere: the run
+uninstalls the stack's own copy and prints the `claude mcp add` line that brings it back as the user's own.
 
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
 `baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
@@ -292,16 +293,6 @@ stores nothing) - and runs neither itself. Pass the answer to the installer as
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
 
-Whenever sentry is PRESENT after this round - kept or added - read the account `settings.json` (`~/.claude/settings.json`, or the
-space's) and run the sentry environment plan for whatever is missing: ask the slug (`<org>` or
-`<org>/<project>`; required) and pass it as `--sentry-slug` at step 12 (the installer seeds the env),
-and tell the user to add `SENTRY_ACCESS_TOKEN` to that same file themselves - a personal/org API token,
-by hand or exported in the shell the installer runs in (the run writes it there), never pasted into the
-chat, never a project-level `.claude/settings.json` (its env does not reach `.mcp.json` - measured) -
-or to pick `--sentry-auth oauth` instead. Both values already present: say so in one
-line and ask nothing. An existing registration needs no auth flag: `update` reads it back and keeps
-its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
-
 Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
 read the same ROUTE-decided way as the rest: a `playwright-<browser>@<key>` entry (under the resolve line's `key=`) in the plugins
 listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
@@ -316,7 +307,7 @@ toggle, and its next-steps card prints the `/mcp disable playwright-<x>` lines t
 later is `/mcp enable` / `disable`, no configure run needed.
 
 Presence, never the value - run this and paste its lines as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
 ## 8. Plugins
@@ -404,10 +395,9 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 
 ## 11. Prerequisite check
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
+Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
 (`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--playwright-browsers` with the step-7 kept browsers whenever playwright is kept - a kept `msedge` warns
-when Edge is not installed; `--sentry-oauth` when sentry is kept under a headerless registration, so its token warning does not
-fire falsely; `--config-dir` under a `--space` profile, so the env probe reads that account's
+when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
 adds marked with their reasons, the final drop list (incl. accepted orphans) named; (3) each
@@ -440,7 +430,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

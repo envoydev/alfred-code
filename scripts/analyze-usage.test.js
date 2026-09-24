@@ -1645,7 +1645,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
   //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
   //       playwright-chrome browser_click: the user declined -> an answer, not a failure
-  // seat: serena find_symbol ERROR | sentry search_issues ok
+  // seat: serena find_symbol ERROR | playwright-firefox browser_navigate ok
   // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
@@ -1669,7 +1669,7 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   fs.mkdirSync(sub);
   navTranscript(path.join(sub, 'agent-s1.jsonl'), [
     navCall('f1', mcpName('serena', 'find_symbol'), { name_path: 'C' }),
-    navCall('f2', mcpName('sentry', 'search_issues'), { query: 'z' }),
+    navCall('f2', mcpName('playwright-firefox', 'browser_navigate'), { query: 'z' }),
   ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
   const { main, agents } = run([file]);
   assert.strictEqual(main.mcp.serena.errors, 1);

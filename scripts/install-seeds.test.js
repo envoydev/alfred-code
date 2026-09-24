@@ -36,36 +36,41 @@ test('account keys: a credential is logged BY LENGTH, a plain value by value', (
 {
     const configDir = dir();
     const logs = [];
-    seeds.seedAccountKeys({
-        configDir, sentrySlug: 'acme/web',
-        env: { SENTRY_ACCESS_TOKEN: 'sntryu_abcdef123456', CONTEXT7_API_KEY: 'ctx7-xyz' },
-        log: (m) => logs.push(m), note: () => {},
-    });
+    seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-xyz' }, log: (m) => logs.push(m), note: () => {} });
+    seeds.seedAccountEnv({ configDir, key: 'PLAIN_SLUG', value: 'acme/web', log: (m) => logs.push(m), note: () => {} });
     const all = logs.join('\n');
-    assert.match(all, /SENTRY_SLUG=acme\/web written/);
-    assert.match(all, /SENTRY_ACCESS_TOKEN=set \(19 chars\)/);
     assert.match(all, /CONTEXT7_API_KEY=set \(8 chars\)/);
-    assert.ok(!all.includes('sntryu_abcdef123456'), 'a token value reached a log line');
+    assert.match(all, /PLAIN_SLUG=acme\/web written/);
     assert.ok(!all.includes('ctx7-xyz'), 'an api key value reached a log line');
+});
+
+test('account keys: 2.0.0 writes no sentry key, and leaves the ones an older run wrote', () =>
+{
+    const configDir = dir({ 'settings.json': JSON.stringify({ env: { SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' } }) });
+    const written = seeds.seedAccountKeys({ configDir, env: { SENTRY_ACCESS_TOKEN: 'handed', SENTRY_SLUG: 'other' }, log: () => {}, note: () => {} });
+    assert.deepStrictEqual(written, []);
+    const env = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env;
+    assert.deepStrictEqual(env, { SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' });
 });
 
 test('account keys: a key the run was NOT handed is never written, let alone cleared', () =>
 {
-    const configDir = dir({ 'settings.json': JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'kept', OTHER: '1' } }) });
-    seeds.seedAccountKeys({ configDir, sentrySlug: 'acme', env: {}, log: () => {}, note: () => {} });
+    const configDir = dir({ 'settings.json': JSON.stringify({ env: { CONTEXT7_API_KEY: 'kept', OTHER: '1' } }) });
+    const written = seeds.seedAccountKeys({ configDir, env: {}, log: () => {}, note: () => {} });
+    assert.deepStrictEqual(written, []);
     const env = JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8')).env;
-    assert.deepStrictEqual(env, { SENTRY_ACCESS_TOKEN: 'kept', OTHER: '1', SENTRY_SLUG: 'acme' });
+    assert.deepStrictEqual(env, { CONTEXT7_API_KEY: 'kept', OTHER: '1' });
 });
 
 test('account keys: an unchanged value does not rewrite the file', () =>
 {
-    const configDir = dir({ 'settings.json': `${JSON.stringify({ env: { SENTRY_SLUG: 'acme' } }, null, 4)}\n` });
+    const configDir = dir({ 'settings.json': `${JSON.stringify({ env: { CONTEXT7_API_KEY: 'ctx7-same' } }, null, 4)}\n` });
     const before = fs.readFileSync(path.join(configDir, 'settings.json'));
     const logs = [];
-    const written = seeds.seedAccountKeys({ configDir, sentrySlug: 'acme', env: {}, log: (m) => logs.push(m), note: () => {} });
+    const written = seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-same' }, log: (m) => logs.push(m), note: () => {} });
     assert.deepStrictEqual(written, []);
     assert.ok(fs.readFileSync(path.join(configDir, 'settings.json')).equals(before), 'an unchanged run reformatted the account file');
-    assert.ok(logs.some((m) => /already acme/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /CONTEXT7_API_KEY already set \(9 chars\)/.test(m)), logs.join(' | '));
 });
 
 test('account keys: state reports presence and length, never the value', () =>
@@ -80,9 +85,9 @@ test('account keys: a malformed account file is REFUSED, not overwritten', () =>
 {
     const configDir = dir({ 'settings.json': '{ not json' });
     const notes = [];
-    seeds.seedAccountKeys({ configDir, sentrySlug: 'acme', env: {}, log: () => {}, note: (m) => notes.push(m) });
+    seeds.seedAccountKeys({ configDir, env: { CONTEXT7_API_KEY: 'ctx7-xyz' }, log: () => {}, note: (m) => notes.push(m) });
     assert.strictEqual(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'), '{ not json');
-    assert.ok(notes.some((m) => /could not write SENTRY_SLUG/.test(m)), notes.join(' | '));
+    assert.ok(notes.some((m) => /could not write CONTEXT7_API_KEY/.test(m)), notes.join(' | '));
 });
 
 // --- CLAUDE.md ------------------------------------------------------------

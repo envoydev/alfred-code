@@ -407,7 +407,7 @@ the usual per-item consent round:
 [step 10/12 - judgment] corroborated non-use + conflicts + corroborated need + uncalled servers + overlap · next: apply
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
- 1 | mcp chrome-devtools        | JUDGMENT-DROP · MATERIAL | overlap: playwright also drives a browser and is the only one the project docs cite; unique gap - live console/network debug of an already-open Chrome; keep only if that is real here
+ 1 | mcp playwright             | JUDGMENT-DROP · MATERIAL | uncalled: 0 calls across 17 sessions of tools-usage ledgers; headless .NET backend with no UI to drive; 24 tool schemas in every session; keep only if a browser check is planned here
  2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
  3 | skill dotnet-realtime      | JUDGMENT-DROP · MINOR    | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
  4 | skill dotnet-cryptography  | JUDGMENT-ADD             | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
@@ -444,8 +444,8 @@ merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <projec
 (project mode only, per its own message), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--sentry-oauth] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
-(`--sentry-oauth` for a kept headerless sentry registration; `--config-dir` under a `--space`
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
+(`--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
 - **Apply**: run the delta, then the installer from the snapshot. `node "$TMP/repo/scripts/derive-state.js" --delta --installed "$TMP/installed.json" --selection "$TMP/selection.txt" --picked "$TMP/final.json"`
@@ -455,7 +455,7 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
@@ -463,13 +463,9 @@ profile), output to `$TMP/select.out` - then:
   `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
   Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
-  (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the
-  ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask
-  it (`<org>` or `<org>/<project>`) and pass `--sentry-slug`; `SENTRY_ACCESS_TOKEN` missing in token
-  mode -> tell the user to add it there by hand or export it in the shell the installer runs in (the
-  run writes it there; a personal/org API token, never through the chat, never a project-level
-  settings.json - its env does not reach `.mcp.json`, measured) or to choose `--sentry-auth oauth`. Both present: one line, no question. Presence, never the value - run this
-  and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+  (the installer reads its `playwright-<browser>` servers back and keeps them). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
+  its `add it back:` line - pass it through. Presence, never the value - run this
+  and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
   (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked. The installer closes the selection and copies the added artifacts; already-installed
   ones are simply re-laid, harmless. Show the prereq report first; never install past a blocker.
 - **Removes**: on the Node seed the `--drop` lines ARE the removal, applied by that run: a core

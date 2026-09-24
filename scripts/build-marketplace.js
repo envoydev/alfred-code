@@ -349,7 +349,7 @@ function mcpServerShapes(options = {})
         },
         context7: {
             locked: true,
-            description: 'context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. This is the one the core depends on, so it can never be dropped; `--context7 local` adds the context7-local entry beside it for the npx transport.',
+            description: 'context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
             servers: {
                 context7: {
                     type: 'http',
@@ -359,16 +359,6 @@ function mcpServerShapes(options = {})
                     // an unset ${VAR} with no default stays literal in a plugin entry too (S14).
                     headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' },
                 },
-            },
-        },
-        // The local transport is its OWN entry, not a second server in the one above: two servers in
-        // one plugin both load, so every session would pay context7's schemas twice. `--context7
-        // local` enables this one, and the installer prints the `/mcp disable context7` line - the
-        // remote stays INSTALLED because the core depends on it, which is what keeps context7 locked.
-        'context7-local': {
-            description: 'context7 over the local npx transport, as a plugin: the same up-to-date library and framework documentation as the hosted server, run as a local process instead - for a setup that bakes CONTEXT7_API_KEY into the registration rather than reading it from the account settings. Added by `--context7 local`; disable the hosted `context7` server beside it, or both answer.',
-            servers: {
-                'context7-local': { command: 'npx', args: ['-y', `@upstash/context7-mcp${suffix('context7')}`] },
             },
         },
         memory: {
@@ -387,38 +377,8 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // --- the five droppable servers ---------------------------------------------------------
+        // --- the droppable servers: one playwright plugin per browser engine -----------------------
         ...playwright,
-        'angular-cli': {
-            description: 'The Angular CLI MCP server as a plugin: workspace-aware Angular tooling. Unpinned on purpose - it matches the ng the workspace itself resolves.',
-            servers: { 'angular-cli': { command: 'npx', args: ['-y', '@angular/cli', 'mcp'] } },
-        },
-        'chrome-devtools': {
-            description: 'chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.',
-            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', `chrome-devtools-mcp${suffix('chrome-devtools')}`] } },
-        },
-        'appium-mcp': {
-            description: 'The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.',
-            servers: { 'appium-mcp': { command: 'npx', args: ['-y', `appium-mcp${suffix('appium-mcp')}`] } },
-        },
-        sentry: {
-            description: 'Sentry\'s hosted remote MCP as a plugin: issues, events and releases from the project\'s own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.',
-            servers: {
-                sentry: {
-                    type: 'http',
-                    // The slug expands from the ACCOUNT settings env, which a plugin url DOES read
-                    // (measured). Never '${SENTRY_SLUG:-}': the trailing slash 404s.
-                    url: 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}',
-                    // headersHelper is a STRING command - the object form is silently rejected and
-                    // takes the whole server down to 'MCP servers (0)' (measured, S11). Settings-env
-                    // keys do NOT expand here, so the helper reads the token itself; ${CLAUDE_PROJECT_DIR}
-                    // does expand, and the helper needs it because its own cwd is the PLUGIN root.
-                    // Both paths QUOTED: the string runs through a shell, so a space in either one
-                    // split it - the script unfound, or the project's oauth pin unread.
-                    headersHelper: `node "${root}/stack/mcp/sentry-headers.js" "${proj}"`,
-                },
-            },
-        },
     };
 }
 
@@ -440,7 +400,7 @@ function mcpPlugins(options = {})
         };
         // The locked three depend on nothing: the installer puts them beside the core on every run,
         // and an entry with no dependency can never be disabled at load for a missing one. The
-        // droppable five are ordinary picks and name the core.
+        // droppable playwright engines are ordinary picks and name the core.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });

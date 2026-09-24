@@ -90,11 +90,17 @@ test('seed update on the copy route: a shipped copy is the delivery, so it is ne
     assert.ok(r.has('.claude/hooks/guard-secret-value.js'), 'the copy route pruned a shipped hook');
 });
 
-test('seed update: a retired plugin still installed is uninstalled at its own scope', POSIX_ONLY, () =>
+// By its full spec, and only at the run's own scope: a user-scope row serves every project on the
+// machine, so a project run keeps it and names the command that removes it.
+test('seed update: a retired plugin is uninstalled by its full spec at the run\'s scope; one at another scope is kept and named', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'user', enabled: true }]);
-    const { calls } = seedRun('update', SELECTION, { plugins: listing });
-    assert.ok(calls.includes('plugin uninstall ponytail --scope user -y'), calls.filter((c) => /uninstall|ponytail/.test(c)).join('\n') || 'no uninstall call');
+    const here = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'project', enabled: true }]);
+    const { calls } = seedRun('update', SELECTION, { plugins: here });
+    assert.ok(calls.includes('plugin uninstall ponytail@ponytail --scope project -y'), calls.filter((c) => /uninstall|ponytail/.test(c)).join('\n') || 'no uninstall call');
+    const elsewhere = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'user', enabled: true }]);
+    const other = seedRun('update', SELECTION, { plugins: elsewhere });
+    assert.ok(!other.calls.some((c) => /plugin uninstall ponytail/.test(c)), other.calls.filter((c) => /uninstall/.test(c)).join('\n'));
+    assert.match(other.out, /ponytail@ponytail is installed at user scope, not this run's - kept .*claude plugin uninstall ponytail@ponytail --scope user/);
 });
 
 // The per-stack entries retired in 1.3.0 are read from meta/retired-entries.json by the seed alone -
@@ -108,8 +114,8 @@ test('seed update: an enabled retired per-stack entry is uninstalled; a parked o
     ]);
     const { calls } = seedRun('update', SELECTION, { plugins: listing });
     const uninstalls = calls.filter((c) => /plugin uninstall/.test(c));
-    assert.ok(uninstalls.includes('plugin uninstall claude-stack-web-angular --scope project -y'), uninstalls.join('\n') || 'no uninstall call');
-    assert.ok(!uninstalls.some((c) => /claude-stack-angular |claude-stack-aspnet /.test(c)), uninstalls.join('\n'));
+    assert.ok(uninstalls.includes('plugin uninstall claude-stack-web-angular@envoydev --scope project -y'), uninstalls.join('\n') || 'no uninstall call');
+    assert.ok(!uninstalls.some((c) => /claude-stack-angular@|claude-stack-aspnet@/.test(c)), uninstalls.join('\n'));
 });
 
 // One update whose plugin listing could not be read (the CLI failed, or is missing) cannot tell what

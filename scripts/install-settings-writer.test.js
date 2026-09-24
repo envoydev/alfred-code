@@ -18,6 +18,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT } = require('./install/settings.js');
+const { envMigrations } = require('./install/env-migrations.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-settings-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -164,8 +165,8 @@ test('settings-writer: the write is IDEMPOTENT - a second run changes nothing', 
 test('settings-writer: enabledMcpjsonServers gains what we register and loses what we unregistered', () =>
 {
     const file = settingsFile({ enabledMcpjsonServers: ['serena', 'context7', 'theirs'] });
-    const { data } = write(file, { mcpNames: ['sentry'], mcpOff: ['serena', 'context7'] });
-    assert.deepStrictEqual(data.enabledMcpjsonServers, ['theirs', 'sentry'],
+    const { data } = write(file, { mcpNames: ['playwright-chrome'], mcpOff: ['serena', 'context7'] });
+    assert.deepStrictEqual(data.enabledMcpjsonServers, ['theirs', 'playwright-chrome'],
         'a leftover entry names a .mcp.json server that no longer exists - dead config that reads like a knob');
 });
 
@@ -229,12 +230,23 @@ test('settings-env: the SEEDS come from the catalog, absent-only, and never touc
             assert.ok(row.key in env, `the catalog key ${row.key} was not seeded`);
 });
 
-test('settings-env: the two WRITTEN keys overwrite, because they track this run\'s choice', () =>
+test('settings-env: the WRITTEN key overwrites, because it tracks this run\'s choice', () =>
 {
-    const { env } = envPass({ ALFRED_CODE_MEMORY_DB: '/old/memory.db', ALFRED_CODE_SENTRY_AUTH: 'token' },
-        { memoryDb: '/new/memory.db', sentryAuth: 'oauth' });
+    const { env } = envPass({ ALFRED_CODE_MEMORY_DB: '/old/memory.db' }, { memoryDb: '/new/memory.db' });
     assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, '/new/memory.db', 'a level change did not land - the launcher keeps the old db');
-    assert.strictEqual(env.ALFRED_CODE_SENTRY_AUTH, 'oauth');
+});
+
+test('settings-env: the retired sentry auth key goes under either spelling, and the SENTRY_* keys stay', () =>
+{
+    const migrations = envMigrations(require('../meta/migrations.json'));
+    for (const key of ['ALFRED_CODE_SENTRY_AUTH', 'CLAUDE_STACK_SENTRY_AUTH']) // legacy-name
+    {
+        const env = { [key]: 'token', SENTRY_SLUG: 'acme', SENTRY_ACCESS_TOKEN: 'kept' };
+        applyEnv(env, { catalog: CATALOG, migrations, log: () => {} });
+        assert.ok(!('ALFRED_CODE_SENTRY_AUTH' in env) && !(key in env), `${key} outlived the 2.0.0 cut`);
+        assert.strictEqual(env.SENTRY_SLUG, 'acme');
+        assert.strictEqual(env.SENTRY_ACCESS_TOKEN, 'kept');
+    }
 });
 
 test('settings-env: docs versioning - the FLAG writes over a value, the seed only fills an absence', () =>

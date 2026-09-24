@@ -55,6 +55,22 @@ function retiredMcps({ routes, catalog = [], authored = [] })
     return out;
 }
 
+// Of the names a release RETIRED, the ones this run still prunes. A name with a retirement row
+// (meta/retired-plugins.json) goes only while the last install's stamp predates it - that install is
+// what registered it. The first update past it prunes the registration and prints the row's add-back
+// line, so from then on a registration under the name is the user's own and stays; with no stamp at
+// all the stack never registered it either, and a server added by hand is never touched. A name with
+// no row is pruned every run, as before.
+function dueRetired({ names = [], rows = [], lastVersion = '', compare })
+{
+    return names.filter((name) =>
+    {
+        const row = rows.find((r) => r && r.name === name);
+        if (!row || !row.retiredIn) return true;
+        return Boolean(lastVersion) && compare(lastVersion, row.retiredIn) < 0;
+    });
+}
+
 // The servers this run registers under their BARE names - the only ones whose tool names may be
 // spelled `mcp__<server>__`. Empty on the plugin route.
 function bareNamedMcps({ routes, mcps = [] })
@@ -82,8 +98,7 @@ function registerSpec({ name, args, scope, remotes = {}, tokens = {} })
     {
         const remote = remotes[name] || {};
         const argv = ['mcp', 'add', '--transport', 'http', '--scope', scope, name, remote.url || ''];
-        // An EMPTY header (sentry --sentry-auth oauth) registers with no --header at all, so the
-        // OAuth consent flow stays on.
+        // A remote with no header registers without --header at all, so its OAuth consent flow stays on.
         if (remote.header) argv.push('--header', remote.header);
         return argv;
     }
@@ -242,12 +257,9 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
 {
     const ask = (fn, pkg) => { try { return String(fn(pkg) || '').trim(); } catch { return ''; } };
     const found = {
-        context7: ask(npmLatest, '@upstash/context7-mcp'),
         playwright: ask(npmLatest, '@playwright/mcp'),
         serena: ask(pypiLatest, 'serena-agent'),
         memory: ask(pypiLatest, 'mcp-memory-service'),
-        'chrome-devtools': ask(npmLatest, 'chrome-devtools-mcp'),
-        'appium-mcp': ask(npmLatest, 'appium-mcp'),
     };
     for (const [name, version] of Object.entries(found))
     {
@@ -255,12 +267,9 @@ function resolvePins({ npmLatest, pypiLatest, log = () => {} })
         else log(`  !! could not resolve ${name} latest - installing unpinned (re-run when online to pin it)`);
     }
     return {
-        CTX7_PIN: found.context7 ? `@${found.context7}` : '',
         PW_PIN: found.playwright ? `@${found.playwright}` : '',
         SERENA_PIN: found.serena ? `@${found.serena}` : '',
         MEMORY_PIN: found.memory ? `==${found.memory}` : '',
-        CD_PIN: found['chrome-devtools'] ? `@${found['chrome-devtools']}` : '',
-        AP_PIN: found['appium-mcp'] ? `@${found['appium-mcp']}` : '',
         MEMORY_BACKEND: 'sqlite_vec',
         versions: found,
     };
@@ -354,25 +363,14 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
     return changed;
 }
 
-// context7 ships as ONE catalog row whose args are `@CONTEXT7_SPEC@`: the run resolves it to the
-// hosted remote (`@HTTP@`, registered from `remotes.context7`) or, under `--context7 local`, the npx
-// transport - the twin's CONTEXT7_SPEC. Left unresolved, the copy route registered the placeholder
-// itself as the server's command.
-// The hosted context7, as the twin and the context7 plugin entry register it: `:-` sends an EMPTY
-// header when the key is unset - the keyless free tier - where a literal `${CONTEXT7_API_KEY}` is
-// rejected as an invalid key.
+// The hosted context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the context7
+// plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
+// where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
 const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };
 
-function resolveContext7(mcps, { mode, pin = '' })
-{
-    return mcps.map((entry) => (entry.startsWith('context7|')
-        ? (mode === 'local' ? `context7|-- npx -y @upstash/context7-mcp${pin}` : 'context7|@HTTP@')
-        : entry));
-}
-
 module.exports = {
-    CONTEXT7_REMOTE, resolveContext7, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
-    retiredMcps, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
+    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
+    retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright,
 };

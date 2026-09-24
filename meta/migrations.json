@@ -102,6 +102,19 @@
    },
    "why": "the product is Alfred Code from 2.0.0; every setting it owns carries its name",
    "then": "nothing - each value moves with its key, and the hooks read the old name until this runs"
+  },
+  {
+   "id": "sentry-auth-retired",
+   "since": "2.0.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SENTRY_AUTH"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_SENTRY_AUTH"
+   },
+   "why": "2.0.0 cut the sentry MCP server from the stack (R26), and with it the headers helper this key told which auth mode to send - nothing reads it any more, and a dead key in the env block reads as a knob that still works. The account file's SENTRY_SLUG and SENTRY_ACCESS_TOKEN are the user's credentials and are left exactly where they are",
+   "then": "nothing - to keep a Sentry server, add it yourself: claude mcp add --transport http --scope project sentry https://mcp.sentry.dev/mcp"
   }
  ]
 }

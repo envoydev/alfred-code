@@ -24,7 +24,6 @@ const RULE_REL = '.claude/rules/baseline-project-agent-capabilities.md';
 // The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture
 // loop can invoke them - they belong with the slash-only set in the rule, marked as the exception.
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['project-architecture-analyzer', 'project-architecture-quality-analyzer']);
-const HEAVY_NATIVE_DEPS = new Set(['chrome-devtools', 'appium-mcp']);
 // One catalog server expands into one registration per kept browser; every installed-name reader
 // maps them back to the catalog name, and so does the routing row.
 const PLAYWRIGHT_SERVER = /^playwright-(chrome|msedge|firefox|webkit)$/;
@@ -556,8 +555,6 @@ function report(projectRoot)
     const liveByName = new Map(liveRows.map((r) => [r.name, r.state]));
     for (const name of registered) sub(`${name.padEnd(20)} registered  live: ${liveByName.get(name) || (live.ok ? 'not in the live list' : 'unknown')}${routingKey(name) !== name ? `  routing: ${routingKey(name)}` : ''}`);
     for (const r of liveRows) if (!registered.includes(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
-    const heavy = registered.filter((n) => HEAVY_NATIVE_DEPS.has(n));
-    sub(`heavy native deps registered: ${heavy.join(', ') || 'none'}`);
     sub('MCP ROUTING rows - paste verbatim, one per REGISTERED server:');
     for (const name of registered) sub(routingRow(name, map));
 

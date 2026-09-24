@@ -80,28 +80,18 @@ const HARD_PREREQS = [
 // Phase 2 - only checked when 'when' matches the closed selection / options.
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
-    // The sentry registration reads both values from the ACCOUNT settings.json env at launch (or the launch
-    // shell; a project-level settings.json never reaches .mcp.json expansion - measured), so
-    // detectEnvironment() probes that file too. Warnings, not blockers: the registration is secret-free (the
-    // placeholders stay literal in .mcp.json) - only runtime needs the values. As a blocker the token cost
-    // ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
-    { when: { mcp: 'sentry' }, env: 'SENTRY_SLUG', severity: 'warning', need: 'Sentry slug', how: 'add SENTRY_SLUG=<org> (or <org>/<project>) to the account settings.json env - the sentry MCP URL reads it (--sentry-slug seeds it, or export SENTRY_SLUG and the installer writes it there)' },
-    // token mode only (the default; --sentry-oauth registers no header and needs no token)
-    { when: { mcp: 'sentry', unlessOption: 'sentryOauth' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'add SENTRY_ACCESS_TOKEN (a personal/org API token) to the account settings.json env - export it in the shell the installer runs in and the run writes it there - or install with --sentry-auth oauth' },
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
-    { when: { mcp: 'chrome-devtools' }, bin: 'chrome', severity: 'warning', need: 'Chrome / Chromium', how: 'install Google Chrome or Chromium' },
     // The one kept playwright engine that needs a browser the machine must already carry and no platform
     // ships everywhere (chrome, the default, is the server's own long-standing assumption; firefox and
     // webkit are downloaded by the installer). Probed at its install locations, not only PATH.
     { when: { mcp: 'playwright', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the playwright browsers (--playwright-browsers)' },
-    { when: { mcp: 'appium-mcp' }, bin: 'appium', severity: 'warning', need: 'Appium + native SDKs', how: 'install Appium and the Xcode / Android SDK / Java toolchain' },
-    // Advisory for BOTH transports: the remote registration sends `${CONTEXT7_API_KEY:-}` (unset = an
-    // empty header = the keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on
-    // every call), and `claude mcp list` no longer warns for the `:-` form - so this line is the one
-    // place a missing key shows up at install time.
-    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (remote: optional, higher rate limits; local: export it or bake it) - unset = the keyless free tier' },
+    // Advisory: the hosted registration sends `${CONTEXT7_API_KEY:-}` (unset = an empty header = the
+    // keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on every call), and
+    // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
+    // key shows up at install time.
+    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 
@@ -116,7 +106,6 @@ function evaluatePrereqs(selection, env, options)
 
     const matches = when =>
     {
-        if (when.unlessOption && options[when.unlessOption]) return false;
         if (when.optionIncludes && !(options[when.optionIncludes[0]] || []).includes(when.optionIncludes[1])) return false;
         if (when.mcp) return mcps.has(when.mcp);
         if (when.plugin) return plugins.has(when.plugin);
@@ -201,13 +190,14 @@ function accountSettingsEnv(configDir)
     catch { return {}; }
 }
 
-// Chrome and Edge are rarely on PATH (Windows and macOS install them as apps), so their fixed install
-// locations count. Chrome was PATH-only until 2026-09-15: a Mac WITH Chrome was told to install it.
+// Edge is rarely on PATH (Windows and macOS install it as an app), so its fixed install locations
+// count - a browser probed on PATH alone told a Mac WITH it to install it (measured 2026-09-15).
 function browserCandidates(name, platform, env)
 {
     const p = require('path');
-    const win = { chrome: ['Google', 'Chrome', 'Application', 'chrome.exe'], msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'] }[name];
-    const mac = { chrome: ['/Applications/Google Chrome.app', '/Applications/Chromium.app'], msedge: ['/Applications/Microsoft Edge.app'] }[name];
+    const win = { msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'] }[name];
+    const mac = { msedge: ['/Applications/Microsoft Edge.app'] }[name];
+    if (!win) return [];
     if (platform === 'win32') return [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean).map(d => p.win32.join(d, ...win));
     return platform === 'darwin' ? mac : [];
 }
@@ -216,11 +206,10 @@ const browserInstalled = name => browserCandidates(name, process.platform, proce
 function detectEnvironment(opts)
 {
     opts = opts || {};
-    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'chrome', 'appium', 'brew'];
-    const ENVS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'brew'];
+    const ENVS = ['CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
-    bins.chrome = bins.chrome || ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].some(onPath) || browserInstalled('chrome');
     bins.msedge = onPath('msedge') || onPath('microsoft-edge') || browserInstalled('msedge');
     const acct = accountSettingsEnv(opts.configDir);
     const set = v => typeof v === 'string' && v.trim() !== '';
@@ -513,7 +502,7 @@ const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv
 // off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
 const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
     .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
-// A parked MCP entry (`playwright-chrome`, `context7-local`) is that server switched off here.
+// A parked MCP entry (`playwright-chrome`) is that server switched off here.
 const offHere = (inv, layer) => [
     ...(layer === 'plugins' ? parkedPlugins(inv) : []),
     ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
@@ -574,10 +563,9 @@ function findEvidenceGaps(catalog, found, installed)
 // The installer expands the ONE manifest entry `playwright` into a server per browser engine
 // (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
 // From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
-// route - and `context7-local`, the second context7 transport, folds onto its catalog entry too.
+// route.
 const manifestMcpName = n => String(n)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
-    .replace(/^context7-local$/, 'context7');
+    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)
@@ -701,7 +689,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -757,7 +745,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         // A clean check printed NOTHING, and silence is the one result a caller cannot tell from a

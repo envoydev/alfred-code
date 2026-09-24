@@ -183,7 +183,7 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
     assert.strictEqual(sc.canonical('mcp__plugin_serena_serena__list_memories'), BARE('serena', 'list_memories'));
-    assert.strictEqual(sc.canonical('mcp__plugin_context7-local_context7-local__query-docs'), BARE('context7-local', 'query-docs'));
+    assert.strictEqual(sc.canonical('mcp__plugin_playwright-chrome_playwright-chrome__browser_navigate'), BARE('playwright-chrome', 'browser_navigate'));
     assert.strictEqual(sc.canonical('Read'), 'Read');
     const r = sc.grade(expectOf('project-solve-task'), solveRun({ resume: BARE('serena', 'list_memories') }));
     assert.strictEqual(verdicts(r)['resume-first'], 'PASS');

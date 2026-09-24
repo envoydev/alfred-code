@@ -33,7 +33,7 @@ The stack is built for this house's verticals:
 | **Agents** | 43 | model/effort-pinned subagents: the core seats ride the core plugin, every other pick is a library copy in `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |
-| **MCP servers** | 8 | one plugin each, named for the server (12 entries: playwright expands per browser, context7 per transport); the project's closure enables its own |
+| **MCP servers** | 4 | one plugin each, named for the server (7 entries: playwright expands per browser); the project's closure enables its own |
 | **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers`, which every install carries beside the core, and the core `alfred-code` itself - the always-on skills and seats, and every hook |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
@@ -47,9 +47,9 @@ behind a flag.
 | | |
 | --- | --- |
 | **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the three engines and the model-window table only - the seventeen wired hooks come from the core `alfred-code` plugin; skills and agents: the library copies of this project's picks - the always-on ones come from the core plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `alfred-code.stamp`; `<repo>/.mcp.json` only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
-| **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, `superpowers`, installed beside the core on every run, the stack's own core `alfred-code`, and one plugin per MCP server the project keeps), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, twenty-three skills (only `project-agent-capabilities` ships a script), eight agents, two references and nineteen hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the seventeen stack hooks - with no MCP server, no `bin/` and no dependencies of its own |
-| **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
+| **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
+| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, `superpowers`, installed beside the core on every run, the stack's own core `alfred-code`, and one plugin per MCP server the project keeps), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to seven), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, twenty-three skills (only `project-agent-capabilities` ships a script), eight agents, two references and nineteen hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the seventeen stack hooks - with no MCP server, no `bin/` and no dependencies of its own |
+| **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/alfred-code:status` reports your own install's number |
 
 Nothing is written outside the project and that account `env` block, and nothing is deleted that
@@ -120,8 +120,8 @@ node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .cl
 node .claude/alfred-code-src/scripts/install/alfred-code.js update --source .claude/alfred-code-src --installed-only # later refreshes - only what is already installed, from disk
 node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --skills-only   # just the skills, nothing else
 
-# Named flags (any order): --space, --scope, --context7, --sentry-slug, --sentry-auth, --docs-versioning, --memory-level, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
-node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope global --context7 local
+# Named flags (any order): --space, --scope, --docs-versioning, --memory-level, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope global --memory-level scoped
 ```
 
 The same command runs verbatim on Windows under `node.exe`, PowerShell or cmd - one program, no

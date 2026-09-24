@@ -204,13 +204,13 @@ test('--log mode: restart yes on mcps=<n> above 0 in the installer log, and name
     const log = path.join(dir, 'install.log');
     fs.writeFileSync(log, [
         '  installed/refreshed this run - skills=12, plugins=6, mcps=5, hooks=11, agents=11, rules=9',
-        '!! sentry: SENTRY_ACCESS_TOKEN missing, registration still written',
+        '!! could not resolve playwright latest - installing unpinned (re-run when online to pin it)',
         '!! playwright-webkit: browser download failed, server not registered',
         'mcp repaired: serena',
     ].join('\n'));
     const { out } = run(['--log', log]);
     assert.match(out, /^restart: yes$/m);
-    assert.match(out, /^warn: !! sentry: SENTRY_ACCESS_TOKEN missing, registration still written$/m);
+    assert.match(out, /^warn: !! could not resolve playwright latest - installing unpinned \(re-run when online to pin it\)$/m);
     assert.match(out, /^warn: !! playwright-webkit: browser download failed, server not registered$/m);
 });
 

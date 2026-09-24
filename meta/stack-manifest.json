@@ -888,11 +888,6 @@
   ],
   "mcps": [
     {
-      "name": "angular-cli",
-      "args": "-- npx -y @angular/cli mcp",
-      "note": "angular-cli: only for Angular workspaces - comment out elsewhere (unpinned: matches the workspace ng)."
-    },
-    {
       "name": "serena",
       "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
       "note": "LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates serena's registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off"
@@ -903,33 +898,14 @@
       "note": "drive a real browser for visual checks / web app verification - expanded after the selection into one playwright-<engine> server per kept browser"
     },
     {
-      "name": "chrome-devtools",
-      "args": "-- npx -y chrome-devtools-mcp@CD_PIN@",
-      "note": "OPT-IN browser/extension debug; drives a full Chrome (heavy) - comment out outside web projects; no WS-frame payloads"
-    },
-    {
-      "name": "appium-mcp",
-      "args": "-- npx -y appium-mcp@AP_PIN@",
-      "note": "OPT-IN native mobile E2E (official Appium MCP); embedded UiAutomator2/XCUITest drivers, needs Xcode and/or Android SDK + Java (heavy) - comment out outside Capacitor/Ionic mobile projects"
-    },
-    {
-      "name": "sentry",
-      "args": "@HTTP@",
-      "note": "OPT-IN Sentry error monitoring - hosted remote MCP (mcp.sentry.dev/mcp/${SENTRY_SLUG} - SENTRY_SLUG + SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json \"env\", expanded at launch; --sentry-slug seeds the slug); --sentry-auth token (default) sends `Sentry-Bearer ${SENTRY_ACCESS_TOKEN}`, oauth registers no header; comment out where the project has no Sentry"
-    },
-    {
       "name": "memory",
       "args": "-e MCP_MEMORY_STORAGE_BACKEND=@MEMORY_BACKEND@ -e MCP_MEMORY_SQLITE_PATH=@MEMORY_DB_PATH@ -e MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000 -- uvx --python @UV_PYTHON@ --with numpy --from mcp-memory-service[sqlite]@MEMORY_PIN@ memory server",
       "note": "memory: required, like serena/context7 (baseline-memory.md locks it in) - shared recall across sessions/projects; --memory-level picks where its db lives"
     },
     {
       "name": "context7",
-      "args": "@CONTEXT7_SPEC@",
-      "variants": {
-        "remote": "@HTTP@",
-        "local": "-- npx -y @upstash/context7-mcp@CTX7_PIN@"
-      },
-      "note": "up-to-date library/framework/SDK docs (beats recalled API knowledge)"
+      "args": "@HTTP@",
+      "note": "up-to-date library/framework/SDK docs (beats recalled API knowledge) - the hosted server only since 2.0.0 (the local npx transport was cut, R32)"
     }
   ],
   "retired": {
@@ -975,7 +951,13 @@
       "require-convention-skill.js",
       "inject-code-style.js"
     ],
-    "mcps": [],
+    "mcps": [
+      "angular-cli",
+      "chrome-devtools",
+      "appium-mcp",
+      "sentry",
+      "context7-local"
+    ],
     "plugins": [
       "ponytail"
     ]

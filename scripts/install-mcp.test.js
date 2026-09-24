@@ -18,7 +18,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over });
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
 const CATALOG = ['serena|-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena', 'context7|@HTTP@',
-    'memory|@HTTP@', 'playwright|-- npx -y @playwright/mcp@1.0', 'sentry|@HTTP@'];
+    'memory|@HTTP@', 'playwright|-- npx -y @playwright/mcp@1.0'];
 
 let seq = 0;
 const mcpFile = (servers) =>
@@ -46,12 +46,12 @@ test('mcp-argv: a bare * is passed literally, never glob-expanded', () =>
 
 test('register-spec: a hosted server registers http with its header, and an EMPTY header registers none', () =>
 {
-    const remotes = { sentry: { url: 'https://mcp.sentry.dev/mcp/acme', header: 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}' } };
-    assert.deepStrictEqual(mcp.registerSpec({ name: 'sentry', args: '@HTTP@', scope: 'project', remotes }),
-        ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'sentry',
-            'https://mcp.sentry.dev/mcp/acme', '--header', 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}']);
-    // --sentry-auth oauth: no --header at all, so the browser consent flow stays on.
-    const oauth = mcp.registerSpec({ name: 'sentry', args: '@HTTP@', scope: 'project', remotes: { sentry: { url: 'https://x/mcp/a', header: '' } } });
+    const remotes = { context7: mcp.CONTEXT7_REMOTE };
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'context7', args: '@HTTP@', scope: 'project', remotes }),
+        ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'context7',
+            'https://mcp.context7.com/mcp', '--header', 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}']);
+    // A remote with no header: no --header at all, so its browser consent flow stays on.
+    const oauth = mcp.registerSpec({ name: 'context7', args: '@HTTP@', scope: 'project', remotes: { context7: { url: 'https://x/mcp/a', header: '' } } });
     assert.ok(!oauth.includes('--header'), oauth.join(' '));
 });
 
@@ -60,7 +60,7 @@ test('register-spec: a hosted server registers http with its header, and an EMPT
 test('R7: on the plugin route the seed registers NOTHING and retires the whole catalog', () =>
 {
     const retired = mcp.retiredMcps({ routes: ROUTES(), catalog: CATALOG, authored: ['old-server'] });
-    for (const name of ['serena', 'context7', 'memory', 'playwright', 'sentry', 'old-server'])
+    for (const name of ['serena', 'context7', 'memory', 'playwright', 'old-server'])
         assert.ok(retired.includes(name), `${name} was not retired: ${retired.join(',')}`);
     // The four engine spellings an earlier release wrote are retired by name - they are not catalog rows.
     for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`playwright-${e}`), retired.join(','));
@@ -74,14 +74,14 @@ test('R7: the MCP route OFF but the core still on - the locked three stay plugin
     const routes = ROUTES({ mcps: false });
     const retired = mcp.retiredMcps({ routes, catalog: CATALOG, authored: [] });
     assert.deepStrictEqual(retired.sort(), [...mcp.LOCKED].sort());
-    assert.deepStrictEqual(mcp.bareNamedMcps({ routes, mcps: CATALOG }), ['playwright', 'sentry']);
+    assert.deepStrictEqual(mcp.bareNamedMcps({ routes, mcps: CATALOG }), ['playwright']);
 });
 
 test('R7: on the FULL copy route the core is never enabled, so all three come back to .mcp.json', () =>
 {
     assert.deepStrictEqual(mcp.retiredMcps({ routes: COPY, catalog: CATALOG, authored: ['old-server'] }), ['old-server']);
     assert.deepStrictEqual(mcp.bareNamedMcps({ routes: COPY, mcps: CATALOG }),
-        ['serena', 'context7', 'memory', 'playwright', 'sentry']);
+        ['serena', 'context7', 'memory', 'playwright']);
 });
 
 test('R7: a locked server installed as a plugin has no shape to verify', () =>
@@ -92,7 +92,7 @@ test('R7: a locked server installed as a plugin has no shape to verify', () =>
         .map((e) => ({ name: e.split('|')[0], args: e.split('|')[1] }))
         .filter((e) => !(mcp.isLocked(e.name) && mcp.corePluginOn(routes)))
         .map((e) => e.name);
-    assert.deepStrictEqual(expects, ['playwright', 'sentry']);
+    assert.deepStrictEqual(expects, ['playwright']);
 });
 
 // --- the project-scope verify pass ---------------------------------------
@@ -283,7 +283,6 @@ test('pins: every lookup that fails falls through to UNPINNED, never to an abort
         log: (m) => logs.push(m),
     });
     assert.strictEqual(pins.PW_PIN, '@0.0.80');
-    assert.strictEqual(pins.CTX7_PIN, '');
     assert.strictEqual(pins.SERENA_PIN, '');
     assert.strictEqual(pins.MEMORY_PIN, '');
     assert.ok(logs.some((m) => /could not resolve serena latest - installing unpinned/.test(m)), logs.join(' | '));
@@ -296,23 +295,18 @@ test('pins: the memory pin is spelled ==<ver>, the others @<ver>', () =>
     const pins = mcp.resolvePins({ npmLatest: () => '1.2.3', pypiLatest: () => '4.5.6' });
     assert.strictEqual(pins.MEMORY_PIN, '==4.5.6');
     assert.strictEqual(pins.SERENA_PIN, '@4.5.6');
-    assert.strictEqual(pins.CTX7_PIN, '@1.2.3');
+    assert.strictEqual(pins.PW_PIN, '@1.2.3');
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
 });
 
-// The manifest ships context7 as ONE row whose args are the `@CONTEXT7_SPEC@` placeholder, and the
-// run resolves it to a transport. The seed only ever resolved the LOCAL one, so on the MCP copy
-// route a remote install registered `"command": "@CONTEXT7_SPEC@"` - a server that cannot start.
-test('context7 row: the placeholder resolves to the hosted remote or the npx transport, never itself', () =>
+// 2.0.0 cut the local npx transport (R32): the manifest ships context7 as the hosted remote row, which
+// the copy route registers from `remotes.context7` - no placeholder left to resolve, and no second row.
+test('context7 row: the manifest ships the hosted remote only', () =>
 {
     const { loadManifest } = require('./install/manifest.js');
-    const shipped = loadManifest(path.join(__dirname, '..')).mcps;
-    assert.ok(shipped.some((e) => e === 'context7|@CONTEXT7_SPEC@'), 'the fixture this pins moved - re-read the manifest row');
-    const remote = mcp.resolveContext7(shipped, { mode: 'remote', pin: '@1.2.3' });
-    assert.ok(remote.includes('context7|@HTTP@') && !remote.some((e) => e.includes('@CONTEXT7_SPEC@')));
-    const local = mcp.resolveContext7(shipped, { mode: 'local', pin: '@1.2.3' });
-    assert.ok(local.includes('context7|-- npx -y @upstash/context7-mcp@1.2.3') && !local.some((e) => e.includes('@CONTEXT7_SPEC@')));
-    assert.deepStrictEqual(mcp.resolveContext7(['serena|x'], { mode: 'remote', pin: '' }), ['serena|x'], 'no other row is touched');
+    const manifest = loadManifest(path.join(__dirname, '..'));
+    assert.deepStrictEqual(manifest.mcps.filter((e) => e.startsWith('context7')), ['context7|@HTTP@']);
+    assert.ok(!manifest.rows.mcps.some((r) => r.variants), 'no transport variants left on any row');
 });
 
 test('context7 remote: the copy route registers the url and header the context7 plugin entry carries', () =>
@@ -323,3 +317,57 @@ test('context7 remote: the copy route registers the url and header the context7 
     const [key, ...value] = mcp.CONTEXT7_REMOTE.header.split(': ');
     assert.deepStrictEqual({ [key]: value.join(': ') }, server.headers, 'an empty header dropped the account key on the copy route');
 });
+
+// --- the servers 2.0.0 cut (R26, R32) -------------------------------------------------------------
+// The manifest's `retired.mcps` keeps naming the five, so a copy-route registration of one is pruned.
+// Only by the FIRST update past the retirement, though: the prune prints the line that adds the server
+// back, and from then on a registration under that name is the user's own.
+const RETIRED_ROWS = [{ name: 'angular-cli', retiredIn: '2.0.0', addBack: 'claude mcp add --scope <scope> angular-cli -- npx -y @angular/cli mcp' }];
+
+test('retired servers: pruned while the last install predates the retirement, never after', () =>
+{
+    const { compareVersions } = require('./install/source.js');
+    const due = (lastVersion) => mcp.dueRetired({ names: ['angular-cli', 'old-server'], rows: RETIRED_ROWS, lastVersion, compare: compareVersions });
+    assert.deepStrictEqual(due('1.3.0'), ['angular-cli', 'old-server'], 'a 1.x install still carries the stack\'s registration');
+    assert.deepStrictEqual(due('1.10.0'), ['angular-cli', 'old-server'], 'compared as versions, not strings');
+    assert.deepStrictEqual(due(''), ['old-server'], 'no stamp: the stack never registered it - a server added by hand stays');
+    assert.deepStrictEqual(due('2.0.0'), ['old-server'], 'at the retiring release it is the user\'s');
+    assert.deepStrictEqual(due('2.1.0'), ['old-server'], 'and after it');
+});
+
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+const withStamp = (version) => (repo) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `source: test\nversion: ${version}\n`);
+    fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { 'angular-cli': { type: 'stdio', command: 'npx', args: ['-y', '@angular/cli', 'mcp'], env: {} } } }, null, 2)}\n`);
+    fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['angular-cli', 'mine'] }, null, 2)}\n`);
+};
+
+for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
+{
+    test(`seed update (${route} route): a 1.x install's cut registration goes with its add-back line, and leaves the trust list`, POSIX_ONLY, () =>
+    {
+        const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+            env, prepare: withStamp('1.3.0'),
+            inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).enabledMcpjsonServers,
+        });
+        for (const name of ['angular-cli', 'chrome-devtools', 'appium-mcp', 'sentry', 'context7-local'])
+            assert.ok(calls.includes(`mcp remove ${name} -s project`), `${name}:\n${calls.filter((c) => /^mcp /.test(c)).join('\n')}`);
+        assert.match(out, /mcp pruned: angular-cli\n==>     add it back: claude mcp add --scope project angular-cli -- npx -y @angular\/cli mcp\n/);
+        assert.ok(!result.includes('angular-cli') && result.includes('mine'), JSON.stringify(result));
+    });
+
+    test(`seed update (${route} route): past the retirement a registration under a cut name is the user's - never removed`, POSIX_ONLY, () =>
+    {
+        const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+            env, prepare: withStamp('2.0.0'),
+            inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).enabledMcpjsonServers,
+        });
+        for (const name of ['angular-cli', 'chrome-devtools', 'appium-mcp', 'sentry', 'context7-local'])
+            assert.ok(!calls.includes(`mcp remove ${name} -s project`), `${name}:\n${calls.filter((c) => /^mcp /.test(c)).join('\n')}`);
+        assert.ok(!/add it back/.test(out), out);
+        assert.ok(result.includes('angular-cli'), JSON.stringify(result));
+    });
+}

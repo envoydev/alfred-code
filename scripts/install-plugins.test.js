@@ -89,13 +89,13 @@ test('closure: the selection carries skill/agent lines only for the skills route
 {
     const skills = ['a|project-foo'];
     const agents = ['ng-implementer.md::sonnet'];
-    const mcps = ['serena|x', 'sentry|@HTTP@'];
-    assert.deepStrictEqual(P.selectionLines({ routes: ROUTES(), skills, agents, mcps, context7Mode: 'local' }),
-        ['skill project-foo', 'agent ng-implementer', 'mcp serena', 'mcp sentry', 'mcp context7-local']);
+    const mcps = ['serena|x', 'context7|@HTTP@'];
+    assert.deepStrictEqual(P.selectionLines({ routes: ROUTES(), skills, agents, mcps }),
+        ['skill project-foo', 'agent ng-implementer', 'mcp serena', 'mcp context7']);
     assert.deepStrictEqual(P.selectionLines({ routes: ROUTES({ mcps: false }), skills, agents, mcps }),
         ['skill project-foo', 'agent ng-implementer']);
     assert.deepStrictEqual(P.selectionLines({ routes: ROUTES({ skills: false }), skills, agents, mcps }),
-        ['mcp serena', 'mcp sentry']);
+        ['mcp serena', 'mcp context7']);
 });
 
 test('closure: a failure to compute it drops BOTH routes to copy, together and loudly', () =>
@@ -323,15 +323,73 @@ test('source: with no core installed there is nothing to update - the refresh al
 
 // --- retired --------------------------------------------------------------
 
-test('retired: a retired plugin is uninstalled at ITS OWN scope, and an absent one is nothing to do', () =>
+// A retired name is the STACK's own plugin under the key the core is listed under, unless its row in
+// meta/retired-plugins.json names another marketplace (ponytail, a third-party pick the stack dropped).
+const RETIRED_ROWS = [
+    { name: 'ponytail', marketplace: 'ponytail' },
+    { name: 'sentry', addBack: 'claude plugin install sentry@claude-plugins-official --scope <scope>' },
+    { name: 'angular-cli', addBack: 'claude mcp add angular-cli --scope <scope> -- npx -y @angular/cli mcp' },
+];
+const prow = (name, marketplace, scope, extra = {}) => ({ name, marketplace, version: '1.3.0', scope, enabled: true, ...extra });
+
+test('retired: a retired plugin at this scope is uninstalled by its FULL spec, and an absent one is nothing to do', () =>
 {
     const run = cli();
     const logs = [];
-    const listing = [{ name: 'ponytail', version: '0.3.0', scope: 'user', enabled: true }];
-    const gone = P.prunedRetired({ listing, retired: ['ponytail', 'never-installed'], scope: 'project', cli: run, log: (m) => logs.push(m) });
+    const rows = [prow('ponytail', 'ponytail', 'project')];
+    const gone = P.prunedRetired({ rows, retired: ['ponytail', 'never-installed'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(gone, ['ponytail']);
-    assert.deepStrictEqual(run.matching(/uninstall/), ['plugin uninstall ponytail --scope user -y']);
-    assert.ok(logs.some((m) => /pruned \(retired upstream\) \[user\]: ponytail/.test(m)), logs.join(' | '));
+    assert.deepStrictEqual(run.matching(/uninstall/), ['plugin uninstall ponytail@ponytail --scope project -y']);
+    assert.ok(logs.some((m) => /pruned \(retired upstream\) \[project\]: ponytail@ponytail/.test(m)), logs.join(' | '));
+});
+
+test('retired: a same-named plugin from ANOTHER marketplace is never the retired one - the official sentry stays', () =>
+{
+    const run = cli();
+    const rows = [prow('sentry', 'claude-plugins-official', 'project'), prow('sentry', 'envoydev', 'project')];
+    const gone = P.prunedRetired({ rows, retired: ['sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: run });
+    assert.deepStrictEqual(gone, ['sentry']);
+    assert.deepStrictEqual(run.matching(/uninstall/), ['plugin uninstall sentry@envoydev --scope project -y']);
+    // Only the official one installed: nothing of the stack's to remove.
+    const alone = cli();
+    assert.deepStrictEqual(P.prunedRetired({ rows: [rows[0]], retired: ['sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: alone }), []);
+    assert.deepStrictEqual(alone.calls, []);
+});
+
+test('retired: a 1.x install spells the retired name with ITS key, never the new one', () =>
+{
+    const run = cli();
+    const key1x = 'claude-stack'; // legacy-name
+    const rows = [prow('angular-cli', key1x, 'project'), prow('angular-cli', 'envoydev', 'project')];
+    P.prunedRetired({ rows, retired: ['angular-cli'], retiredRows: RETIRED_ROWS, market: key1x, scope: 'project', cli: run });
+    assert.deepStrictEqual(run.matching(/uninstall/), [`plugin uninstall angular-cli@${key1x} --scope project -y`]);
+});
+
+test('retired: a row at ANOTHER scope is kept and logged with its uninstall command - even beside one this run removes', () =>
+{
+    const run = cli();
+    const logs = [];
+    const rows = [prow('ponytail', 'ponytail', 'user'), prow('sentry', 'envoydev', 'user'), prow('sentry', 'envoydev', 'project')];
+    const gone = P.prunedRetired({ rows, retired: ['ponytail', 'sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: run, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(gone, ['sentry']);
+    assert.deepStrictEqual(run.matching(/uninstall/), ['plugin uninstall sentry@envoydev --scope project -y']);
+    for (const spec of ['ponytail@ponytail', 'sentry@envoydev'])
+        assert.ok(logs.some((m) => m.includes(`${spec} is installed at user scope`) && m.includes(`claude plugin uninstall ${spec} --scope user`)), `${spec}: ${logs.join(' | ')}`);
+});
+
+test('retired: each uninstall prints the add-back line of its row, at the scope it went from', () =>
+{
+    const logs = [];
+    const rows = [prow('sentry', 'envoydev', 'project'), prow('angular-cli', 'envoydev', 'project'), prow('ponytail', 'ponytail', 'project')];
+    P.prunedRetired({ rows, retired: ['sentry', 'angular-cli', 'ponytail'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: cli(), log: (m) => logs.push(m) });
+    const at = (re) => logs.findIndex((m) => re.test(m));
+    assert.ok(at(/add it back: claude plugin install sentry@claude-plugins-official --scope project$/) === at(/pruned .*: sentry@envoydev/) + 1, logs.join(' | '));
+    assert.ok(at(/add it back: claude mcp add angular-cli --scope project -- npx -y @angular\/cli mcp$/) === at(/pruned .*: angular-cli@envoydev/) + 1, logs.join(' | '));
+    assert.strictEqual(logs.filter((m) => /add it back/.test(m)).length, 2, 'a row with no add-back line prints none');
+    // A refused uninstall prints no add-back line - the plugin is still there.
+    const refused = [];
+    P.prunedRetired({ rows: [rows[0]], retired: ['sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: cli(['uninstall']), log: (m) => refused.push(m) });
+    assert.ok(!refused.some((m) => /add it back/.test(m)), refused.join(' | '));
 });
 
 // --- update ---------------------------------------------------------------
@@ -490,29 +548,31 @@ test('prunedRetired keeps a parked carrier and one at another scope, and says so
 {
     const calls = [];
     const logs = [];
-    const listing = [
-        { name: 'claude-stack-angular', version: '1.2.0', scope: 'project', enabled: false },
-        { name: 'claude-stack-aspnet', version: '1.2.0', scope: 'user', enabled: true },
-        { name: 'claude-stack-web-angular', version: '1.2.0', scope: 'project', enabled: true },
-        { name: 'ponytail', version: '1.0.0', scope: 'user', enabled: false },
+    const key = 'claude-stack'; // legacy-name
+    const rows = [
+        { name: 'claude-stack-angular', marketplace: key, version: '1.2.0', scope: 'project', enabled: false },
+        { name: 'claude-stack-aspnet', marketplace: key, version: '1.2.0', scope: 'user', enabled: true },
+        { name: 'claude-stack-web-angular', marketplace: key, version: '1.2.0', scope: 'project', enabled: true },
+        { name: 'ponytail', marketplace: 'ponytail', version: '1.0.0', scope: 'project', enabled: false },
     ];
     const carriers = ['claude-stack-angular', 'claude-stack-aspnet', 'claude-stack-web-angular'];
-    const gone = P.prunedRetired({ listing, retired: [...carriers, 'ponytail'], carriers, scope: 'project', cli: (a) => { calls.push(a.join(' ')); return true; }, log: (m) => logs.push(m) });
-    assert.deepStrictEqual(gone.sort(), ['claude-stack-web-angular', 'ponytail'], 'an ordinary retired name still goes at its own scope');
-    assert.ok(!calls.some((c) => /claude-stack-angular |claude-stack-aspnet /.test(c)), calls.join(' | '));
-    assert.ok(logs.some((m) => /claude-stack-angular is parked here - kept/.test(m) && /claude plugin uninstall claude-stack-angular --scope project/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /claude-stack-aspnet is installed at user scope/.test(m) && /claude plugin uninstall claude-stack-aspnet --scope user/.test(m)), logs.join(' | '));
+    const gone = P.prunedRetired({ rows, retired: [...carriers, 'ponytail'], retiredRows: RETIRED_ROWS, carriers, market: key, scope: 'project', cli: (a) => { calls.push(a.join(' ')); return true; }, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(gone.sort(), ['claude-stack-web-angular', 'ponytail'], 'a parked retired name that carries nothing still goes at this scope');
+    assert.ok(!calls.some((c) => /claude-stack-angular@|claude-stack-aspnet@/.test(c)), calls.join(' | '));
+    assert.ok(logs.some((m) => /claude-stack-angular@claude-stack is parked here - kept/.test(m) && /claude plugin uninstall claude-stack-angular@claude-stack --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /claude-stack-aspnet@claude-stack is installed at user scope/.test(m) && /claude plugin uninstall claude-stack-aspnet@claude-stack --scope user/.test(m)), logs.join(' | '));
 });
 
 test('prunedRetired retries a refused uninstall in a second pass', () =>
 {
     const calls = [];
-    const listing = [{ name: 'claude-stack-web-angular', version: '1.2.0', scope: 'project' }, { name: 'claude-stack-angular', version: '1.2.0', scope: 'project' }];
+    const key = 'claude-stack'; // legacy-name
+    const rows = [{ name: 'claude-stack-web-angular', marketplace: key, version: '1.2.0', scope: 'project' }, { name: 'claude-stack-angular', marketplace: key, version: '1.2.0', scope: 'project' }];
     let leafGone = false;
-    const cli = (args) => { calls.push(args[2]); if (args[2] === 'claude-stack-web-angular') { leafGone = true; return true; } return leafGone; };
-    const gone = P.prunedRetired({ listing, retired: ['claude-stack-angular', 'claude-stack-web-angular'], scope: 'project', cli });
+    const cli = (args) => { calls.push(args[2]); if (args[2] === `claude-stack-web-angular@${key}`) { leafGone = true; return true; } return leafGone; };
+    const gone = P.prunedRetired({ rows, retired: ['claude-stack-angular', 'claude-stack-web-angular'], market: key, scope: 'project', cli });
     assert.deepStrictEqual(gone.sort(), ['claude-stack-angular', 'claude-stack-web-angular']);
-    assert.deepStrictEqual(calls, ['claude-stack-angular', 'claude-stack-web-angular', 'claude-stack-angular'], 'the refusal is retried once, after the leaf');
+    assert.deepStrictEqual(calls, [`claude-stack-angular@${key}`, `claude-stack-web-angular@${key}`, `claude-stack-angular@${key}`], 'the refusal is retried once, after the leaf');
 });
 
 // --- 2.0.0: a 1.x account keeps its marketplace KEY and its ids ---------------------------------------
@@ -596,7 +656,7 @@ function migrate(rows, { scope = 'project', fails = [], carriers = LEAVES } = {}
     const run = cli(fails);
     const logs = [];
     const notes = [];
-    const out = P.migrateLegacy({ rows, listing: rows, scope, retired: carriers, carriers, cli: run, log: (m) => logs.push(m), note: (m) => notes.push(m) });
+    const out = P.migrateLegacy({ rows, scope, retired: carriers, carriers, cli: run, log: (m) => logs.push(m), note: (m) => notes.push(m) });
     return { out, run, logs, notes, moves: run.matching(/^plugin (install|uninstall|update|enable) /) };
 }
 
@@ -605,8 +665,8 @@ test('migrate: a 1.x core at this scope - the new core is installed FIRST, then 
     const { out, moves } = migrate([row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(`${OLD}-angular`, 'project'), row1x(`${OLD}-web-angular`, 'project')]);
     assert.deepStrictEqual(moves, [
         `plugin install alfred-code@${OLD} --scope project -y`,
-        `plugin uninstall ${OLD}-web-angular --scope project -y`,
-        `plugin uninstall ${OLD}-angular --scope project -y`,
+        `plugin uninstall ${OLD}-web-angular@${OLD} --scope project -y`,
+        `plugin uninstall ${OLD}-angular@${OLD} --scope project -y`,
         `plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
         `plugin uninstall ${OLD}@${OLD} --scope project -y`,
     ]);
@@ -644,7 +704,7 @@ test('migrate: the old and the new core both at this scope - no install, and the
     // the next run finishes it rather than leaving both cores' hooks running.
     const { out, moves } = migrate([NEW_CORE('project'), row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(`${OLD}-angular`, 'project')]);
     assert.deepStrictEqual(moves, [
-        `plugin uninstall ${OLD}-angular --scope project -y`,
+        `plugin uninstall ${OLD}-angular@${OLD} --scope project -y`,
         `plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
         `plugin uninstall ${OLD}@${OLD} --scope project -y`,
     ]);
@@ -715,8 +775,8 @@ test('seed update: a 1.x project install is moved across - alfred-code installed
     const install = at(`plugin install alfred-code@${OLD} --scope project -y`);
     const order = [
         install,
-        at(`plugin uninstall ${OLD}-web-angular --scope project -y`),
-        at(`plugin uninstall ${OLD}-angular --scope project -y`),
+        at(`plugin uninstall ${OLD}-web-angular@${OLD} --scope project -y`),
+        at(`plugin uninstall ${OLD}-angular@${OLD} --scope project -y`),
         at(`plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`),
         at(`plugin uninstall ${OLD}@${OLD} --scope project -y`),
     ];
@@ -771,10 +831,10 @@ test('seed update: a project holding the new core AND a 1.x id retries the remov
     const listing = JSON.stringify([`alfred-code@${OLD}`, `${OLD}@${OLD}`, `${OLD}-angular@${OLD}`].map((id) => ({ id, version: '2.0.0', scope: 'project', enabled: true })));
     const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing });
     assert.ok(!calls.some((c) => c.startsWith('plugin install alfred-code@')), `the core was installed again:\n${stackMoves(calls).join('\n')}`);
-    const leaf = calls.indexOf(`plugin uninstall ${OLD}-angular --scope project -y`);
+    const leaf = calls.indexOf(`plugin uninstall ${OLD}-angular@${OLD} --scope project -y`);
     const core = calls.indexOf(`plugin uninstall ${OLD}@${OLD} --scope project -y`);
     assert.ok(leaf >= 0 && core > leaf, stackMoves(calls).join('\n'));
-    assert.strictEqual(calls.filter((c) => c === `plugin uninstall ${OLD}-angular --scope project -y`).length, 1, 'one retired pass, not two');
+    assert.strictEqual(calls.filter((c) => c === `plugin uninstall ${OLD}-angular@${OLD} --scope project -y`).length, 1, 'one retired pass, not two');
     assert.ok(calls.includes(`plugin update alfred-code@${OLD} --scope project -y`), 'the installed core is updated as usual');
 });
 
@@ -804,8 +864,8 @@ test('seed plan: --print-plan lists the move as planned and changes no plugin', 
     const planned = out.split('\n').filter((l) => l.startsWith('plan migrate: '));
     assert.deepStrictEqual(planned, [
         `plan migrate: claude plugin install alfred-code@${OLD} --scope project -y`,
-        `plan migrate: claude plugin uninstall ${OLD}-web-angular --scope project -y`,
-        `plan migrate: claude plugin uninstall ${OLD}-angular --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD}-web-angular@${OLD} --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD}-angular@${OLD} --scope project -y`,
         `plan migrate: claude plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
         `plan migrate: claude plugin uninstall ${OLD}@${OLD} --scope project -y`,
     ], out);
@@ -815,6 +875,38 @@ test('seed plan: --print-plan lists the move as planned and changes no plugin', 
 // registered with, a 1.x stamp whose picks are homed in the 1.x core, a 1.x seat deny and a 1.x
 // switch-off. The read-back must be the same install - the picks rehomed, the deny in one spelling,
 // the hooks the user switched off still off - or the first 2.0.0 update turns them back on.
+// 2.0.0 cut five MCP plugins (R26, R32). Update removes the stack's own - by its full spec under the
+// key the core is listed under - and prints the line that adds each server back; the official
+// catalog's same-named `sentry` and a row another scope carries are never touched.
+const CUT = ['angular-cli', 'chrome-devtools', 'appium-mcp', 'sentry', 'context7-local'];
+const cutListing = (key, core) => JSON.stringify([
+    { id: `${core}@${key}`, version: '1.3.0', scope: 'project', enabled: true },
+    ...CUT.map((n) => ({ id: `${n}@${key}`, version: '1.3.0', scope: 'project', enabled: true })),
+    { id: 'sentry@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
+    { id: `angular-cli@${key}`, version: '1.3.0', scope: 'user', enabled: true },
+]);
+
+test('seed update: the five cut MCP plugins go by their stack spec, each with its add-back line - the official sentry and a user-scope row stay', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: cutListing('envoydev', 'alfred-code') });
+    const uninstalls = calls.filter((c) => /^plugin uninstall /.test(c));
+    assert.deepStrictEqual(uninstalls.sort(), CUT.map((n) => `plugin uninstall ${n}@envoydev --scope project -y`).sort(), uninstalls.join('\n'));
+    for (const n of CUT) assert.match(out, new RegExp(`pruned \\(retired upstream\\) \\[project\\]: ${n}@envoydev\\n==>     add it back: claude mcp add .*--scope project .*${n}`));
+    assert.match(out, /add it back: claude mcp add --transport http --scope project sentry https:\/\/mcp\.sentry\.dev\/mcp/);
+    assert.match(out, /angular-cli@envoydev is installed at user scope, not this run's - kept .*claude plugin uninstall angular-cli@envoydev --scope user/);
+    assert.ok(!calls.some((c) => /^plugin (install|update|enable) (angular-cli|chrome-devtools|appium-mcp|sentry|context7-local)@/.test(c)), calls.join('\n'));
+});
+
+test('seed update: a 1.x project loses the cut plugins under ITS key while it moves across', POSIX_ONLY, () =>
+{
+    const key = 'claude-stack'; // legacy-name
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: cutListing(key, key) });
+    const uninstalls = calls.filter((c) => /^plugin uninstall /.test(c));
+    for (const n of CUT) assert.ok(uninstalls.includes(`plugin uninstall ${n}@${key} --scope project -y`), `${n}:\n${uninstalls.join('\n')}`);
+    assert.ok(!uninstalls.some((c) => /@(envoydev|claude-plugins-official) /.test(c)), uninstalls.join('\n'));
+    assert.ok(!uninstalls.some((c) => /--scope user/.test(c)), uninstalls.join('\n'));
+});
+
 test('seed update --installed-only: a 1.x install under its old key keeps its picks, its deny and its hooks-off', POSIX_ONLY, () =>
 {
     const row = (id) => ({ id, version: '2.0.0', scope: 'user', enabled: true });

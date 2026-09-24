@@ -1,11 +1,11 @@
 'use strict';
-// The two small programs a plugin MCP entry cannot do without: the memory launcher, which turns the
-// install's level choice into a db path, and the sentry headers helper, which decides whether there
-// is an auth header at all. Both exist because a plugin entry expands only the SHELL and the ACCOUNT
-// settings env - a PROJECT settings key arrives literal (measured, docs/plugin-migration-evidence.md).
+// The small programs a plugin MCP entry cannot do without: the memory launcher, which turns the
+// install's level choice into a db path, and the serena and uv-python launchers. They exist because
+// a plugin entry expands only the SHELL and the ACCOUNT settings env - a PROJECT settings key arrives
+// literal (measured, docs/plugin-migration-evidence.md).
 //
-// Every case runs on a SCRUBBED environment. This machine has a real SENTRY_ACCESS_TOKEN exported,
-// and a test that inherited it would put a live credential in its own assertions.
+// Every case runs on a SCRUBBED environment. This machine has real credentials exported, and a test
+// that inherited one would put a live credential in its own assertions.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -15,7 +15,6 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const LAUNCH = path.join(ROOT, 'stack/mcp/memory-launch.js');
-const HEADERS = path.join(ROOT, 'stack/mcp/sentry-headers.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-launchers-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
@@ -43,12 +42,6 @@ function resolveDb(projectDir, env)
         'const m=require(process.argv[1]);process.stdout.write(m.resolveDb(process.argv[2]))',
         LAUNCH, projectDir], { env: { ...BARE, ...env }, encoding: 'utf8' });
     return out.trim();
-}
-
-function runHeaders(projectDir, env)
-{
-    return execFileSync(process.execPath, [HEADERS, projectDir],
-        { env: { ...BARE, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 }
 
 // ------------------------------------------------------------------ memory-launch.js
@@ -108,111 +101,6 @@ test('memory-launch: a hand-edited entry with no --package says so instead of la
     try { execFileSync(process.execPath, [LAUNCH], { env: BARE, stdio: 'pipe' }); }
     catch (err) { code = err.status; }
     assert.strictEqual(code, 2);
-});
-
-// ------------------------------------------------------------------ sentry-headers.js
-
-test('sentry-headers: token mode prints the Sentry-Bearer header, the scheme the API takes', () =>
-{
-    const { dir, acct } = project('sentry-token', { account: { SENTRY_ACCESS_TOKEN: 'sntryu_TESTVALUE' } });
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer sntryu_TESTVALUE' });
-});
-
-test('sentry-headers: oauth mode prints NO header, and the two modes never mix', () =>
-{
-    const { dir, acct } = project('sentry-oauth', {
-        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'sntryu_TESTVALUE' },
-    });
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct })), {});
-});
-
-test('sentry-headers: no token in token mode degrades to no header, never to a broken one', () =>
-{
-    const { dir, acct } = project('sentry-none');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct })), {});
-});
-
-test('sentry-headers: stdout is ONE json object and nothing else - it becomes the request headers', () =>
-{
-    const { dir, acct } = project('sentry-quiet');
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '{ not json');
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.strictEqual(out, '{}');
-    assert.doesNotThrow(() => JSON.parse(out));
-});
-
-test('sentry-headers: the SHELL env wins where it survives - the copy route and a run by hand', () =>
-{
-    const { dir, acct } = project('sentry-shell', { account: { SENTRY_ACCESS_TOKEN: 'from-file' } });
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct, SENTRY_ACCESS_TOKEN: 'from-shell' });
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer from-shell' });
-});
-
-// The environment this helper ACTUALLY gets on the plugin route. Claude Code removes every variable
-// whose name carries TOKEN, SECRET, PASSWORD, KEY or AUTH from a helper a plugin or a project
-// `.mcp.json` supplies (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'),
-// and BOTH keys this file reads are such names - so a user who only exported the token gets no
-// header, and the account settings.json is the only source that answers. Scrub the env the way the
-// docs describe and the file path has to carry the whole job.
-const scrub = (env) => Object.fromEntries(Object.entries(env)
-    .filter(([k]) => !/TOKEN|SECRET|PASSWORD|KEY|AUTH/i.test(k)));
-
-test('sentry-headers: with the credential variables removed, the ACCOUNT FILE still answers', () =>
-{
-    const { dir, acct } = project('sentry-scrubbed', { account: { SENTRY_ACCESS_TOKEN: 'from-file' } });
-    const out = runHeaders(dir, scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, SENTRY_ACCESS_TOKEN: 'from-shell' }));
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer from-file' },
-        'the shell export reached a helper that cannot read it, or the file source stopped answering');
-});
-
-test('sentry-headers: the oauth PIN survives the scrub too - it is read from a file, not the env', () =>
-{
-    const { dir, acct } = project('sentry-scrubbed-oauth', {
-        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'from-file' },
-    });
-    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_SENTRY_AUTH: 'token' });
-    assert.ok(!('ALFRED_CODE_SENTRY_AUTH' in env), 'the scrub must drop the mode key - it carries AUTH');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, env)), {},
-        'oauth mode pinned in the project settings lost to an env value the runtime removes');
-});
-
-// The helper STRING runs through a shell ('Use dynamic headers for custom authentication',
-// code.claude.com/docs/en/mcp), so an unquoted placeholder splits on a space: a plugin root under a
-// home like 'C:\Users\First Last' lost the script, a project path with a space lost the settings
-// that pin oauth. So the GENERATED string runs here through sh with a space in both, once with the
-// placeholders substituted as text (how ${CLAUDE_PROJECT_DIR} arrives) and once exported. The
-// oauth pin is the witness: a split project path reads no pin and sends the token instead.
-test('sentry-headers: the generated helper string survives a space in the plugin root and the project', { skip: process.platform === 'win32' && 'sh is not the Windows shell' }, () =>
-{
-    const { mcpServerShapes } = require('./build-marketplace.js');
-    const helper = mcpServerShapes().sentry.servers.sentry.headersHelper;
-    const root = path.join(TMP, 'plugin root');
-    fs.mkdirSync(path.join(root, 'stack', 'mcp'), { recursive: true });
-    fs.copyFileSync(HEADERS, path.join(root, 'stack', 'mcp', 'sentry-headers.js'));
-    const { dir, acct } = project('sentry project dir', {
-        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'from-file' },
-    });
-    const env = { ...BARE, HOME: dir, CLAUDE_CONFIG_DIR: acct };
-    for (const [how, line, extra] of [
-        ['substituted', helper.replaceAll('${CLAUDE_PLUGIN_ROOT}', root).replaceAll('${CLAUDE_PROJECT_DIR}', dir), {}],
-        ['exported', helper, { CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: dir }],
-    ])
-    {
-        const out = execFileSync('sh', ['-c', line], { env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        assert.deepStrictEqual(JSON.parse(out), {}, `${how}: ${helper} lost a path to the space`);
-    }
-});
-
-test('sentry-headers: CLAUDE_CONFIG_DIR is NOT a credential name, so a space install still finds its account file', () =>
-{
-    const { dir, acct } = project('sentry-space', { account: { SENTRY_ACCESS_TOKEN: 'space-token' } });
-    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.strictEqual(env.CLAUDE_CONFIG_DIR, acct, 'the scrub swallowed the config dir - the account file would be unreachable');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, env)), { Authorization: 'Sentry-Bearer space-token' });
 });
 
 // ------------------------------------------------------------------ uv-python.js + the uvx launches

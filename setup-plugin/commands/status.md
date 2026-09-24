@@ -137,7 +137,7 @@ On the copy route the set is joined against `settings.json` as before:
 | guard-catastrophic-rm.js | yes | Bash |
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
-**MCPs** - mcps = the ROUTE decides: with a `<server>@<key>` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
+**MCPs** - mcps = the ROUTE decides: with a `<server>@<key>` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
 registrations - the installer's `--scope global` registers them with `--scope user`, so read
 `claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`). On the
 plugin route the `target` column is the plugin, not a registration:
@@ -146,7 +146,7 @@ plugin route the `target` column is the plugin, not a registration:
 |---|---|---|
 | serena | stdio | uvx --python <pin> ... --project-from-cwd |
 | memory | stdio | uvx --python <pin> --with numpy --from mcp-memory-service[sqlite]==<ver> memory server |
-| sentry | http | https://mcp.sentry.dev/mcp/${SENTRY_SLUG} |
+| context7 | http | https://mcp.context7.com/mcp |
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
 `target` is the command or URL, middle-truncated to keep the row one line. Playwright has one server per
@@ -198,9 +198,7 @@ is how a commit-time security gate sat off through two runs that both reported n
 | ALFRED_CODE_FRESH_SESSION_200K | 150000 (default) - the same trigger on a 200k window; 0 = off for that tier |
 | ALFRED_CODE_FRESH_SESSION_DEFAULT | 180000 (default) - the same trigger for every other case: a window that is neither of those sizes, or one the gate cannot read. Which one applies comes from the session model's row in `.claude/hooks/model-windows.json` |
 | ALFRED_CODE_DEFAULT_CONTEXT_WINDOW | 1000000 (default) - the window for a model `.claude/hooks/model-windows.json` does not list |
-| SENTRY_SLUG (account env) | set / not set - only when sentry is installed |
-| SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
-| CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |
+| CONTEXT7_API_KEY (account env) | set / not set - not set = the keyless free tier |
 
 Stamp from `alfred-code.stamp` - a 1.x install has `claude-stack.stamp` until its first 2.0.0 update, <!-- legacy-name -->
 read the same way (`no stamp - source never resolved at install time` when neither is there); env values from `settings.json` `env`, marking `(default)` when the key is absent and
@@ -211,15 +209,14 @@ account file - that would silence every other project's memory too) and print `f
 `true` or the key ABSENT as `true/absent - the one-time import has not completed yet, Claude's own
 memory is still on` (never read an absent key as success). The rows above are the keys the stack SEEDS; any other `ALFRED_CODE_*`
 key the file carries (`ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, a key a newer release added) gets its
-own row, value as written - this table is not a filter. The sentry and context7 rows read the ACCOUNT `settings.json` (`~/.claude/settings.json`,
-or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value. That holds for ANY key, not just these three: a key matching the catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed as `set (N chars)` or `absent`, never by value; a
-sentry `not set` row ends with `-> add it there (or /alfred-code:configure)` (context7 unset is a
-working free tier - no arrow, the registration sends an empty header). This table names values only - changing them is `configure`'s
+own row, value as written - this table is not a filter. The context7 row reads the ACCOUNT `settings.json` (`~/.claude/settings.json`,
+or the space's - the file `.mcp.json` expansion reads) and show presence only, never the value. That holds for ANY key, not just this one: a key matching the catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed as `set (N chars)` or `absent`, never by value; context7 unset is a
+working free tier (the registration sends an empty header). This table names values only - changing them is `configure`'s
 environment area.
 
 Presence, never the value - run this and paste its lines as-is:
-`G="$PWD/.claude/hooks/guard-secret-value.js"; [ -f "$G" ] || G=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" -path '*/hooks/guard-secret-value.js' 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed core plugin (`alfred-code`, which carries the hooks). Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
+`G="$PWD/.claude/hooks/guard-secret-value.js"; [ -f "$G" ] || G=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" -path '*/hooks/guard-secret-value.js' 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed core plugin (`alfred-code`, which carries the hooks). Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for that row.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly
 as the docs-root rule states) plus serena's local memory:

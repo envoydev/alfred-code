@@ -16,9 +16,8 @@
 //   3. BAD SEEDS - a key whose shipped default turned out wrong is corrected only while it still
 //      holds that default. A value the user set by hand is theirs.
 //   4. SEEDS - absent-only, from meta/environment.json, so the catalog is the one list.
-//   5. WRITTEN keys - the two that track a choice THIS run just made (the memory db path, the
-//      sentry auth mode). A level change or an auth switch has to land, or the plugin launcher and
-//      the headers helper keep reading the old one.
+//   5. WRITTEN keys - the one that tracks a choice THIS run just made (the memory db path). A level
+//      change has to land, or the plugin launcher keeps reading the old one.
 //
 // Two keys are not catalog-simple. ALFRED_CODE_DOCS_VERSIONING is a DECISION with a four-home
 // seeding rule, so the caller resolves it and hands the answer in. ALFRED_CODE_HOOKS_OFF is the
@@ -155,7 +154,7 @@ function wireHooks(data, specs, retiredHooks)
     return changed;
 }
 
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAuth, hooksOff, hooksAnswered, log })
+function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, log })
 {
     let changed = false;
 
@@ -222,9 +221,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAu
     }
 
     // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
-    for (const [key, value, label] of [
-        ['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb],
-        ['ALFRED_CODE_SENTRY_AUTH', sentryAuth, sentryAuth]])
+    for (const [key, value, label] of [['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb]])
         if (value && env[key] !== value) { env[key] = value; changed = true; log(`  settings.json env: ${key} -> ${label}`); }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
@@ -247,7 +244,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
-        docsVersioning, memoryDb, sentryAuth, hooksOff, hooksAnswered = false,
+        docsVersioning, memoryDb, hooksOff, hooksAnswered = false,
         log = () => {}, note = () => {},
     } = opts;
 
@@ -327,7 +324,7 @@ function writeSettings(opts)
     for (const name of mcpOff) if (enabled.includes(name))
     { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  settings.json: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
 
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, sentryAuth, hooksOff, hooksAnswered, log })) changed = true;
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, log })) changed = true;
 
     if (!changed) return { written: false, refused: false };
     fs.mkdirSync(path.dirname(file), { recursive: true });

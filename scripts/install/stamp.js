@@ -33,10 +33,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { stampFile } = require('./brand.js');
 
-// A playwright engine server and the context7 local transport both belong to their FAMILY: the
-// always-list names `playwright` and `context7`, and an install carrying `playwright-firefox` or
-// `context7-local` is carrying them.
-const family = (name) => String(name).replace(/^playwright-.*/, 'playwright').replace(/^context7-local$/, 'context7');
+// A playwright engine server belongs to its FAMILY: the always-list names `playwright`, and an
+// install carrying `playwright-firefox` is carrying it.
+const family = (name) => String(name).replace(/^playwright-.*/, 'playwright');
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
 
@@ -184,6 +183,15 @@ function readLibrary(file)
     };
 }
 
+// The release the last install recorded (`version:`), or '' - no stamp, or none on it. Read from any
+// stamp, a 1.x one included: the retirements key on it.
+function readVersion(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+    return ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim();
+}
+
 // The route the last run delivered the hooks by - `copy` or `plugin`, else null (no stamp, no line, or
 // a value this release does not write).
 function readHooksRoute(file)
@@ -194,4 +202,4 @@ function readHooksRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute };
+module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readVersion };

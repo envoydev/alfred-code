@@ -69,7 +69,7 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'baseline-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'appium-mcp': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'playwright-chrome': {} } }, null, 2), -100);
     write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
@@ -128,7 +128,7 @@ test('inventory: every layer prints its own count, including the .claude/rules l
     assert.match(out, /RULES:\s+3 total, 2 pathless, 1 path-scoped/);
     assert.match(out, /path-scoped: markdown-docs \[\*\*\/\*\.md\]/);
     assert.match(out, /MCP:\s+4 registered in \.mcp\.json, 3 live in `claude mcp list`/);
-    assert.match(out, /heavy native deps registered: appium-mcp/);
+    assert.doesNotMatch(out, /heavy native deps/, 'the stack ships no heavy-native-deps server since 2.0.0 - no flag left to raise');
     assert.match(out, /PLUGINS:\s+2 after dedupe/);
     assert.match(out, /claude-hud \(disabled\), superpowers \(enabled\)/, 'deduped and sorted, so the row is stable between runs');
     assert.doesNotMatch(out, /elsewhere/, 'a sibling repo\'s project-scoped plugin row is not this project\'s');
@@ -350,9 +350,9 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 {
     const root = project('verify-mcp');
     const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'),
-        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.', '- `appium-mcp` - native-mobile debug, only for that target.'));
+        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.', '- `playwright` - browser checks, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
-    assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - appium-mcp/);
+    assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
     assert.match(out, /VERIFY:\s+FAIL \(1 check/);
     assert.equal(status, 1, out);
 });

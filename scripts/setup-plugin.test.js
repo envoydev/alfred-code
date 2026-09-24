@@ -216,26 +216,27 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
     }
 });
 
-test('the always MCP baseline is stack-neutral - a browser or native driver is seeded or proven', () => {
+test('the always MCP baseline is stack-neutral - the browser is seeded or proven, and no cut server comes back', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     // memory joined serena and context7 as a locked server (baseline-memory.md names it, the same
     // way baseline-navigation locks serena in) - the shared-memory-mcp feature made it required.
     assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the three rules lock in');
-    for (const server of ['playwright', 'chrome-devtools', 'appium-mcp', 'angular-cli', 'sentry'])
-    {
-        assert.ok(!(recs.always.mcps || []).includes(server), `${server} must not install into every project`);
-    }
+    assert.ok(!(recs.always.mcps || []).includes('playwright'), 'playwright must not install into every project');
     assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
 
-    // the heavy two fail at launch without Chrome / the mobile SDKs, so no stack seeds them; the
-    // native driver reaches a project through its own dependency instead.
-    for (const heavy of ['chrome-devtools', 'appium-mcp'])
+    // 2.0.0 cut five servers: no seed, no evidence row and no addable list may bring one back.
+    const cut = manifest.retired.mcps;
+    assert.deepStrictEqual([...cut].sort(), ['angular-cli', 'appium-mcp', 'chrome-devtools', 'context7-local', 'sentry']);
+    for (const server of cut)
     {
-        const seededBy = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes(heavy)).map(([st]) => st);
-        assert.deepStrictEqual(seededBy, [], `${heavy} is addable only, seeded by no stack`);
+        const seededBy = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes(server)).map(([st]) => st);
+        assert.deepStrictEqual(seededBy, [], `${server} left the stack in 2.0.0, yet a stack seeds it`);
+        assert.ok(!(evidence.mcps || {})[server], `${server} left the stack in 2.0.0, yet evidence proves it`);
+        assert.ok(!((recs.general || {}).mcps || []).includes(server), `${server} left the stack in 2.0.0, yet it is addable`);
+        assert.ok(!manifest.mcps.some((r) => r.name === server), `${server} is still in the catalog`);
     }
-    assert.ok((evidence.mcps || {})['appium-mcp'], 'appium-mcp arrives by proof - its own dependency');
 
     // two proven routes into a project: a stack whose surface always has a browser, or the packages
     const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('playwright')).map(([st]) => st).sort();

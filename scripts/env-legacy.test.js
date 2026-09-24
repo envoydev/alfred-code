@@ -128,11 +128,11 @@ test('guard-answer-length.js stands down on CLAUDE_STACK_HOOKS_OFF alone', () =>
     assert.notEqual(on, '');
 });
 
-// Both launchers fall back to the ACCOUNT settings.json (~/.claude/settings.json by default) when a
-// project file names nothing - which on a real developer machine may hold a real credential. Every
-// case below points CLAUDE_CONFIG_DIR at an empty temp dir so neither launcher ever opens the real
+// memory-launch.js falls back to the ACCOUNT settings.json (~/.claude/settings.json by default) when
+// a project file names nothing - which on a real developer machine may hold a real credential. The
+// case below points CLAUDE_CONFIG_DIR at an empty temp dir so the launcher never opens the real
 // account file: the account directory is a REQUIRED file argument, not a HOME-derived one, once
-// CLAUDE_CONFIG_DIR is set, in both memory-launch.js and sentry-headers.js.
+// CLAUDE_CONFIG_DIR is set.
 function withIsolatedAccountDir(fn)
 {
     const dir = tmpProject();
@@ -163,24 +163,6 @@ test('memory-launch.js resolveDb falls back to a settings.json holding only CLAU
         });
     }
     finally { if (savedPath === undefined) delete process.env.MCP_MEMORY_SQLITE_PATH; else process.env.MCP_MEMORY_SQLITE_PATH = savedPath; }
-});
-
-test('sentry-headers.js headers() falls back to CLAUDE_STACK_SENTRY_AUTH alone', () =>
-{
-    const { headers } = require('../stack/mcp/sentry-headers.js');
-    const savedFresh = process.env.ALFRED_CODE_SENTRY_AUTH;
-    delete process.env.ALFRED_CODE_SENTRY_AUTH;
-    try
-    {
-        withIsolatedAccountDir((dir) =>
-        {
-            fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
-            fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' } }));
-            // oauth mode registers no Authorization header at all - the mode came from CLAUDE_STACK_SENTRY_AUTH alone.
-            assert.deepEqual(headers(dir), {});
-        });
-    }
-    finally { if (savedFresh !== undefined) process.env.ALFRED_CODE_SENTRY_AUTH = savedFresh; }
 });
 
 test('uv-python.js pythonRequest falls back to CLAUDE_STACK_UV_PYTHON alone', () =>

@@ -43,7 +43,7 @@
     {
       "name": "context7",
       "source": "./",
-      "description": "context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. This is the one the core depends on, so it can never be dropped; `--context7 local` adds the context7-local entry beside it for the npx transport.",
+      "description": "context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -84,120 +84,6 @@
           }
         }
       }
-    },
-    {
-      "name": "angular-cli",
-      "source": "./",
-      "description": "The Angular CLI MCP server as a plugin: workspace-aware Angular tooling. Unpinned on purpose - it matches the ng the workspace itself resolves.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "angular-cli": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@angular/cli",
-            "mcp"
-          ]
-        }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
-    },
-    {
-      "name": "chrome-devtools",
-      "source": "./",
-      "description": "chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "chrome-devtools": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "chrome-devtools-mcp@1.9.0"
-          ]
-        }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
-    },
-    {
-      "name": "appium-mcp",
-      "source": "./",
-      "description": "The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "appium-mcp": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "appium-mcp@1.94.3"
-          ]
-        }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
-    },
-    {
-      "name": "sentry",
-      "source": "./",
-      "description": "Sentry's hosted remote MCP as a plugin: issues, events and releases from the project's own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "sentry": {
-          "type": "http",
-          "url": "https://mcp.sentry.dev/mcp/${SENTRY_SLUG}",
-          "headersHelper": "node \"${CLAUDE_PLUGIN_ROOT}/stack/mcp/sentry-headers.js\" \"${CLAUDE_PROJECT_DIR}\""
-        }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
-    },
-    {
-      "name": "context7-local",
-      "source": "./",
-      "description": "context7 over the local npx transport, as a plugin: the same up-to-date library and framework documentation as the hosted server, run as a local process instead - for a setup that bakes CONTEXT7_API_KEY into the registration rather than reading it from the account settings. Added by `--context7 local`; disable the hosted `context7` server beside it, or both answer.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "context7-local": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@upstash/context7-mcp@4.1.1"
-          ]
-        }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
     },
     {
       "name": "playwright-chrome",

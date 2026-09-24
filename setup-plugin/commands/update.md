@@ -252,23 +252,16 @@ refresh must not flatten deliberate local model/effort pin edits. The refresh re
 and then READS BACK what landed: at project scope the installer compares every stack-owned entry in
 `.mcp.json` against the manifest shape and rewrites the ones that drifted (`mcp repaired: <name>` in
 the log), because `claude mcp add` over a name the preceding `remove` did not clear prints 'already
-exists' and exits 0 - which is how consuming projects kept the pre-0.2.34 stdio sentry registration
-through update after update. Servers the project added by hand are never touched. Plugins are updated
+exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
+update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
-each one as `x -> y` or `already newest` instead of asserting a refresh. The refresh re-registers every MCP;
-for sentry that means the constant `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` registration with
-the `Sentry-Bearer` header (an old plain-`Bearer` header, the broken v0.2.33-and-earlier default,
-migrates by itself; a deliberately headerless oauth registration is read back and kept). Playwright keeps its browsers the same
+each one as `x -> y` or `already newest` instead of asserting a refresh. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
+scope are kept and logged - and each removal prints its `add it back:` line; pass those lines through
+verbatim in the close-out. Playwright keeps its browsers the same
 way: every `playwright-<browser>` server is read back and re-registered (a legacy single `playwright` server
 migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
-for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone. Sentry
-environment plan, no question on this path: when sentry is installed, read the ACCOUNT
-`settings.json` env (`~/.claude/settings.json`, or the space's) and report - as ONE line in the
-close-out, with the file path - any of `SENTRY_SLUG` and (token mode) `SENTRY_ACCESS_TOKEN` still
-missing: the user adds them there by hand (`{ "env": { "SENTRY_SLUG": "<org>[/<project>]",
-"SENTRY_ACCESS_TOKEN": "<token>" } }`; never a project-level `.claude/settings.json`, its env does
-not reach `.mcp.json` - measured), exports them in the shell the installer runs in (the run writes
-every key it is handed into that file), or runs `/alfred-code:configure`, whose sentry plan asks the slug.
+for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,
@@ -276,11 +269,11 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
-registrations, each plugin's `x -> y` or `already newest`, the dependencies the new release
+registrations, each retired server's removal and its `add it back:` line, each plugin's `x -> y` or `already newest`, the dependencies the new release
 pulled in, every env key the run renamed / removed / seeded / set (the installer prints one line each -
 so the ENVIRONMENT line is READ, never asserted), each capture doc moved onto its domain folder and each
 moved folder switched on as a domain (`docs migration` / `docs domain:` - report them as they read), the
@@ -304,12 +297,11 @@ the raw grep.
 Presence, never the value - the line above already carries the installer's own `KEY=` presence
 output on most runs. Run this ONLY when that grep returned no `KEY=` line, and paste its lines
 as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
-The slug is not a secret and can be typed anywhere; SENTRY_ACCESS_TOKEN and CONTEXT7_API_KEY
-(context7 `local` mode) never travel through the chat, either one - offer this copy-ready command
-for whichever key is missing, so the value goes from the user's clipboard into the file without
+CONTEXT7_API_KEY never travels through the chat - when it is missing and the user wants one, offer
+this copy-ready command, so the value goes from the user's clipboard into the file without
 passing through a transcript (it is not echoed, and it is not a shell argument either). **PASTE it
 into your reply. Never run it through Bash and never ask whether to run it** - it prompts for input
 this session cannot supply, it trips the credential guard, and the ask it generates has one
@@ -320,7 +312,7 @@ python3 -c "import getpass,json,pathlib;f=pathlib.Path('~/.claude/settings.json'
 ```
 
 On Windows: `$t = Read-Host 'value' -AsSecureString`, then write the same key with
-`ConvertFrom-SecureString -AsPlainText`. If the user pastes either value into the chat anyway, use
+`ConvertFrom-SecureString -AsPlainText`. If the user pastes the value into the chat anyway, use
 it for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now,
 and that is their decision to make, not one to leave unsaid. Then:
 

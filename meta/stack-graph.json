@@ -1105,13 +1105,9 @@
   },
   "catalog": {
     "mcps": [
-      "angular-cli",
-      "appium-mcp",
-      "chrome-devtools",
       "context7",
       "memory",
       "playwright",
-      "sentry",
       "serena"
     ],
     "plugins": [

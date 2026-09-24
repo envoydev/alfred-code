@@ -19,7 +19,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { parseArgs, FLAG_LIST } = require('./args.js');
-const { createSource } = require('./source.js');
+const { createSource, compareVersions } = require('./source.js');
 const { loadManifest } = require('./manifest.js');
 const selection = require('./selection.js');
 const plugins = require('./plugins.js');
@@ -32,7 +32,7 @@ const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
 const { deriveState, writable, homeOf, splitPick } = require('../derive-state.js');
-const { placement, readRetiredEntries, CORE } = require('../plugin-placement.js');
+const { placement, readRetiredEntries, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
 const stampLayer = require('./stamp.js');
@@ -59,8 +59,6 @@ the repo's CLAUDE.md covers the install surface end to end.`;
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins hardcode the 1.x names, which a 2.0.0 registration cannot resolve.
 const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
-const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
-const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
 // shell `cat` of a denied file is not blocked by anything here - guard-secret-value.js is that
 // route). RETIRED_DENY are the four ACCOUNT-settings entries releases up to 0.2.62 wrote; they are
@@ -254,8 +252,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             picked = selection.parseSelection(closed.join('\n'));
             answered = back.answered;
             listedEngines = back.engines;
-            if (back.context7Local && !args.context7Given)
-            { args.context7 = 'local'; log('installed-only: context7 stays local - its local entry is enabled here'); }
         }
         else if (args.selection)
         {
@@ -276,7 +272,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { CTX7_PIN: '', PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', CD_PIN: '', AP_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
             : mcp.resolvePins({ npmLatest: npmLatest(rt), pypiLatest: pypiLatest(rt), log });
 
         const level = memory.resolveLevel({
@@ -284,10 +280,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             registeredPath: registeredMemoryPath(mcpFile),
             home, space: args.space, projectRoot,
         });
-
-        // context7 travels as ONE catalog row with two transports: the hosted remote, or the npx
-        // one that `--context7 local` adds beside it.
-        lists.mcps = mcp.resolveContext7(lists.mcps, { mode: args.context7, pin: pins.CTX7_PIN });
 
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
@@ -307,11 +299,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             {
                 const raw = rawListing ?? readRaw();
                 const carriers = readRetiredEntries(resolved.dir).map((e) => e.name);
+                const retiredRows = readRetiredPlugins(resolved.dir);
                 const planned = [];
                 plugins.migrateLegacy({
                     rows: plugins.parsePluginList(raw, projectRoot, { everyScope: true }),
-                    listing: plugins.parsePluginList(raw, projectRoot, { byMarketplace: true }),
-                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...carriers])], carriers, log,
+                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])], retiredRows, carriers, log,
                     cli: (argv) => { planned.push(`claude ${argv.join(' ')}`); return true; },
                 });
                 for (const step of planned) plain(`plan migrate: ${step}`);
@@ -336,18 +328,22 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             UV_PYTHON: pythonRequest({ env, projectDir: projectRoot }),
             // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows.
             SERENA_HOME: serenaHomeFor(),
-            SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN, CTX7_PIN: pins.CTX7_PIN,
-            MEMORY_PIN: pins.MEMORY_PIN, CD_PIN: pins.CD_PIN, AP_PIN: pins.AP_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
+            SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
+            MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
-        const remotes = {
-            sentry: { url: SENTRY_URL, header: args.sentryAuth === 'oauth' ? '' : SENTRY_HEADER },
-            context7: mcp.CONTEXT7_REMOTE,
-        };
+        // The one remote server the copy route registers: context7, the hosted transport only (2.0.0).
+        const remotes = { context7: mcp.CONTEXT7_REMOTE };
+        // What a release retired from the MCP catalog and this run still prunes: the first update past
+        // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
+        const retiredMcpsDue = mcp.dueRetired({
+            names: manifest.retired.mcps, rows: readRetiredPlugins(resolved.dir),
+            lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions,
+        });
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets,
+            market, marketSeen, readMarkets, retiredMcpsDue,
         };
 
         const pinSnapshot = args.keepPins
@@ -402,7 +398,7 @@ function runLayers(ctx)
     installSkillsAndAgents(ctx);
     installPlugins(ctx);
     installMcps(ctx);
-    seeds.seedAccountKeys({ configDir: ctx.configDir, sentrySlug: ctx.args.sentrySlug, env: ctx.env, log: ctx.log, note: ctx.note });
+    seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     installHooksAndRules(ctx);
     importMemory(ctx);
     docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot), log: ctx.log });
@@ -530,12 +526,15 @@ function installPlugins(ctx)
     // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
     // nothing, so it keeps them all.
     const carriers = readRetiredEntries(ctx.source.dir).map((e) => e.name);
-    const retired = [...new Set([...ctx.manifest.retired.plugins, ...carriers])];
+    // The plugins a release cut (meta/retired-plugins.json) go the same way, each by its full spec and
+    // with its add-back line - 2.0.0's five MCP entries among them.
+    const retiredRows = readRetiredPlugins(ctx.source.dir);
+    const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])];
     // A 1.x install is moved across first - the new core installed, then the old ids removed - before
     // the core is installed or updated below (plugins.migrateLegacy).
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const moved = plugins.corePluginOn(ctx.routes)
-        ? plugins.migrateLegacy({ rows, listing, scope: ctx.cliScope, retired, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
+        ? plugins.migrateLegacy({ rows, scope: ctx.cliScope, retired, retiredRows, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
         : { fresh: [], gone: [], removed: [], failed: null, ran: false };
     // A failed move leaves the old core carrying the guards; a second install of the new one beside it
     // would run both, and leave nothing for the next update to move.
@@ -548,7 +547,7 @@ function installPlugins(ctx)
     {
         // A move that ran (or retried) pruned the retired entries already; a failed one removes nothing.
         const moving = moved.ran || moved.failed;
-        const gone = moving ? moved.gone : plugins.prunedRetired({ listing, retired, carriers, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
@@ -573,9 +572,15 @@ function installPlugins(ctx)
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
-    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.manifest.retired.mcps });
+    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue });
+    const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
     for (const name of retired)
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true })) ctx.log(`  mcp pruned: ${name}`);
+        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true }))
+        {
+            ctx.log(`  mcp pruned: ${name}`);
+            const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
+            if (back) ctx.log(`    add it back: ${back.split('<scope>').join(ctx.cliScope)}`);
+        }
 
     if (ctx.routes.mcps)
     {
@@ -680,9 +685,8 @@ function installHooksAndRules(ctx)
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot) }),
         },
         mcpNames: ctx.routes.mcps ? [] : ctx.lists.mcps.map((e) => e.split('|')[0]),
-        mcpOff: ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : [],
+        mcpOff: (ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : []).concat(ctx.retiredMcpsDue),
         memoryDb: ctx.level.dbPath,
-        sentryAuth: ctx.args.sentryAuth || 'token',
         hooksOff, hooksAnswered,
         log: ctx.log, note: ctx.note,
     });
@@ -740,7 +744,7 @@ function summarise(ctx, failures)
     line += ctx.args.keepPins ? '; keep-pins=on' : '; keep-pins=off (agent model/effort pins reset to catalog defaults)';
     const engines = pwEngines(ctx);
     if (engines.length) line += `; playwright=${engines.join(',')}`;
-    ctx.log(`${line}; context7=${ctx.args.context7}`);
+    ctx.log(line);
     if (failures) ctx.log(`  ${failures} step(s) reported a failure above - the rest of the run completed`);
 }
 
@@ -819,7 +823,7 @@ function runSelectionPlugins(ctx)
     if (!fs.existsSync(script)) throw new Error('selection-plugins.js is not in this source');
     const lines = plugins.selectionLines({
         routes: ctx.routes, skills: ctx.lists.skills, agents: ctx.lists.agents,
-        mcps: ctx.lists.mcps, context7Mode: ctx.args.context7,
+        mcps: ctx.lists.mcps,
     });
     const file = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'stack-sel-')), 'selection.txt');
     fs.writeFileSync(file, `${lines.join('\n')}\n`);

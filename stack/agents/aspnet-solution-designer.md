@@ -1,7 +1,7 @@
 ---
 name: aspnet-solution-designer
 description: "Use when an ASP.NET Core backend or API feature needs designing before code: a read-only pass that settles endpoints and contracts, fits the repo's architecture, fixes the EF Core and transaction seams, and splits the work into parallel tasks with explicit contracts for aspnet-implementer and aspnet-verifier. Never writes code."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*, mcp__plugin_context7-local_context7-local__*
+tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*
 model: opus
 effort: xhigh
 color: cyan

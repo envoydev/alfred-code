@@ -20,14 +20,14 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     const { lintEvidenceCatalog } = require('./lint-skills.js');
     const rosters = {
         skills: new Set(['dotnet-performance']),
-        mcps: new Set(['sentry']),
+        mcps: new Set(['playwright']),
         plugins: new Set(),
     };
 
     const clean = {
         _comment: 'x',
         skills: { 'dotnet-performance': { packages: ['BenchmarkDotNet'], content: [{ glob: 'Program.cs', regex: 'x', label: 'x wiring' }] } },
-        mcps: { sentry: { packages: ['Sentry.'] } },
+        mcps: { playwright: { packages: ['@playwright/'] } },
         plugins: {},
     };
     assert.deepStrictEqual(lintEvidenceCatalog(clean, rosters), []);
@@ -85,24 +85,24 @@ test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gap
     const rosters = {
         skills: new Set(['capacitor-release']),
         agents: new Set(['security-auditor']),
-        mcps: new Set(['playwright', 'chrome-devtools', 'angular-cli']),
+        mcps: new Set(['playwright', 'serena']),
         plugins: new Set(),
     };
     const clean = {
         _comment: 'x',
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'a', 'mcp:chrome-devtools': 'b' } }],
-        versionConflicts: [{ item: 'mcp:angular-cli', package: '@angular/core', below: '17', conflict: 'newer-major guidance', survives: 'docs lookups' }],
+        overlaps: [{ items: ['mcp:playwright', 'mcp:serena'], shared: 'read the page structure', gaps: { 'mcp:playwright': 'a', 'mcp:serena': 'b' } }],
+        versionConflicts: [{ item: 'mcp:serena', package: '@angular/core', below: '17', conflict: 'newer-major guidance', survives: 'docs lookups' }],
         occasionBound: { 'skill:capacitor-release': 'release-time', 'agent:security-auditor': 'audit-time' },
     };
     assert.deepStrictEqual(lintJudgmentCatalog(clean, rosters), []);
 
     const bad = {
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtool'], shared: '', gaps: { 'mcp:playwright': 'a' } }],
+        overlaps: [{ items: ['mcp:playwright', 'mcp:serenaa'], shared: '', gaps: { 'mcp:playwright': 'a' } }],
         versionConflicts: [{ item: 'skill:nope', package: '@angular/core', below: 'seventeen', conflict: 'x', survives: 'y' }],
         occasionBound: { 'skill:capacitor-release': '  ' },
     };
     const findings = lintJudgmentCatalog(bad, rosters);
-    assert.ok(findings.some(f => f.includes("'mcp:chrome-devtool'")), 'unknown ref flagged');
+    assert.ok(findings.some(f => f.includes("'mcp:serenaa'")), 'unknown ref flagged');
     assert.ok(findings.some(f => f.includes('no gap')), 'overlap item without its gap flagged');
     assert.ok(findings.some(f => f.includes('shared')), 'empty shared flagged');
     assert.ok(findings.some(f => f.includes("'skill:nope'")), 'unknown versionConflicts item flagged');

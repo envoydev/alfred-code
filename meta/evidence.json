@@ -256,33 +256,11 @@
   }
  },
  "mcps": {
-  "appium-mcp": {
-   "packages": [
-    "appium",
-    "appium-",
-    "@wdio/",
-    "webdriverio"
-   ]
-  },
   "playwright": {
    "packages": [
     "Microsoft.Playwright",
     "Microsoft.Playwright.",
     "@playwright/"
-   ]
-  },
-  "sentry": {
-   "packages": [
-    "Sentry",
-    "Sentry.",
-    "@sentry/"
-   ],
-   "content": [
-    {
-     "glob": "appsettings*.json",
-     "regex": "sentry\\.io",
-     "label": "a sentry.io DSN"
-    }
    ]
   }
  },

@@ -1,7 +1,7 @@
 ---
 name: ng-build-error-resolver
 description: "Use when an Angular or Ionic app will not build after frontend changes: an autonomous loop that runs the production build, triages TS / NG / bundler and budget errors, fixes the real cause minimally and rebuilds until clean, then hands off to angular-test-resolver. Triggers on fix the Angular build, make it compile. Not for native-shell builds."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*, mcp__plugin_context7-local_context7-local__*
+tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*
 model: sonnet
 effort: high
 color: orange

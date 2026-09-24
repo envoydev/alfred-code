@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Project Capabilities - inventory what is installed, generate the awareness rule
 
-Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`sentry` where nothing monitors production, `angular-cli` outside Angular), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
+Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`playwright` where nothing renders a browser UI), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
@@ -168,7 +168,7 @@ Flags:      <one row each, or `none`>
 Then the prose, short - four things, each its own line so none of them is skimmed past:
 
 - **Say `Live from:` the one way it is true on BOTH branches** - an always-on rule loads at session start, not retroactively, so this one governs from the next session and its guidance starts applying at the next `/clear`. It is UNCONDITIONAL and identical whether or not anything was written, and there is no next-run line: a capture is suggested only where its output is stale.
-- **The flags are MECHANICAL - read them off the block, do not eyeball them**: the script's `heavy native deps registered:` line is one row per hit; its `seat families` line against its path-scoped rule rows is the convention-rule cross-check (a family whose stack no rule names); and a slash-only skill whose seats are not installed is a third.
+- **The flags are MECHANICAL - read them off the block, do not eyeball them**: the script's `seat families` line against its path-scoped rule rows is the convention-rule cross-check (a family whose stack no rule names); and a slash-only skill whose seats are not installed is the second.
 - **Never infer causation from a machine-global listing** - state observed facts plainly ('typescript-lsp: listed disabled'), and never assert WHY something is installed or disabled: `claude plugin list` is machine-global, so install-scope causation read off it is a guess.
 - **Say that the rule is MACHINE-LOCAL, not committed** - the installers tell every project to gitignore `.claude/*` and re-include only `.claude/CLAUDE.md`, so this file is untracked, a fresh clone does not carry it, and the command has to be re-run there.
 

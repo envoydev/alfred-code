@@ -132,7 +132,6 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "angular-cli",
     "playwright"
    ],
    "skills": [
@@ -275,7 +274,6 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "angular-cli",
     "playwright"
    ]
   },

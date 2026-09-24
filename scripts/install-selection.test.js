@@ -314,11 +314,6 @@ test('read-back: another marketplace\'s same-named plugin is never read as a sta
     assert.ok(!r.lines.includes('mcp sentry') && !r.lines.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
 });
 
-test('read-back: the local context7 transport is read back as local mode', () =>
-{
-    assert.strictEqual(readBackCase({ listing: [row('context7@envoydev'), row('context7-local@envoydev')] }).context7Local, true);
-    assert.strictEqual(readBackCase({ listing: [row('context7@envoydev')] }).context7Local, false);
-});
 
 test('read-back: a malformed deny or env block reads as absent, never aborts the update', () =>
 {
@@ -544,16 +539,16 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
     const listing = [
         row('claude-stack-aspnet@envoydev'), row('claude-stack-csharp@envoydev'),
         row('claude-stack-devops@envoydev'), row('playwright-chrome@envoydev'),
-        row('sentry@envoydev', { enabled: false }),
+        row('playwright-firefox@envoydev', { enabled: false }),
     ];
     const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['alfred-code'] };
     const got = sel.droppedEntries({
-        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'sentry', 'claude-stack-devops'],
+        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'claude-stack-devops'],
         after: ['alfred-code', 'claude-stack-devops'],
         listing, deps, marketplace: 'envoydev',
     });
     assert.deepStrictEqual(got.map((r) => r.name), ['claude-stack-aspnet', 'claude-stack-csharp', 'playwright-chrome'],
-        'aspnet before the csharp it depends on; the parked sentry is not touched; devops stays');
+        'aspnet before the csharp it depends on; the parked firefox browser is not touched; devops stays');
 });
 
 test('leftOut: every item a parked entry carries, and every stack seat the deny list names', () =>
@@ -564,9 +559,9 @@ test('leftOut: every item a parked entry carries, and every stack seat the deny 
 
 test('droppedEntries: the core and the locked servers are never queued', () =>
 {
-    const listing = ['alfred-code', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@envoydev`));
-    const got = sel.droppedEntries({ before: ['alfred-code', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'envoydev' });
-    assert.deepStrictEqual(got.map((r) => r.name), ['context7-local'], 'only the droppable transport of context7');
+    const listing = ['alfred-code', 'serena', 'context7', 'memory', 'playwright-chrome'].map((n) => row(`${n}@envoydev`));
+    const got = sel.droppedEntries({ before: ['alfred-code', 'serena', 'context7', 'memory', 'playwright'], after: [], listing, deps: {}, marketplace: 'envoydev' });
+    assert.deepStrictEqual(got.map((r) => r.name), ['playwright-chrome'], 'only the droppable browser server');
 });
 
 test('deriveFromDisk: a global install reads its skills from the account dir, the rest from the project', () =>

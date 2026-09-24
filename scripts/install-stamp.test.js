@@ -136,14 +136,13 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     assert.match(text, /^installed-always-mcps: serena,context7,memory$/m);
 });
 
-test('install-stamp: a playwright ENGINE and the context7 local transport count as their family', () =>
+test('install-stamp: a playwright ENGINE counts as its family', () =>
 {
     assert.strictEqual(family('playwright-firefox'), 'playwright');
-    assert.strictEqual(family('context7-local'), 'context7');
     assert.strictEqual(family('serena'), 'serena');
     const p = project({
         always: { rules: [], mcps: ['playwright', 'context7'] },
-        plugins: { 'playwright-firefox@envoydev': true, 'context7-local@envoydev': true },
+        plugins: { 'playwright-firefox@envoydev': true, 'context7@envoydev': true },
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-mcps: playwright,context7$/m);

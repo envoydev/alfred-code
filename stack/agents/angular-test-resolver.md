@@ -1,7 +1,7 @@
 ---
 name: angular-test-resolver
 description: "Use when an Angular or Ionic app builds but its spec suite is red: an autonomous loop that runs the workspace's test command (Vitest, Jest or Karma), decides whether the bug is in the code or the spec, fixes the correct side and re-runs until green. Not for a build that fails, and not for writing new tests."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*, mcp__plugin_context7-local_context7-local__*
+tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*
 model: sonnet
 effort: high
 color: orange

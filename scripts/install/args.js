@@ -10,15 +10,12 @@
 // `--docs-versioning` and it is worth everywhere: a typo that reaches settings.json is read back by
 // the next run as a deliberate choice, and nothing downstream can tell the difference.
 //
-// An empty string is not a default. It means 'not given', and a later rule decides - the sentry auth
-// mode from the existing registration, the docs versioning from the absent-only seed, the memory
-// level from what is already registered. Collapsing that into a default here would silently
+// An empty string is not a default. It means 'not given', and a later rule decides - the docs
+// versioning from the absent-only seed, the memory level from what is already registered. Collapsing that into a default here would silently
 // overwrite a project's own answer on every update.
 
 const ENUMS = {
     scope: { values: ['project', 'global'], text: "--scope must be 'project' or 'global'" },
-    context7: { values: ['local', 'remote'], text: "--context7 must be 'local' or 'remote'" },
-    sentryAuth: { values: ['', 'token', 'oauth'], text: "--sentry-auth must be 'token' or 'oauth'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
     memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
 };
@@ -27,8 +24,7 @@ const ENUMS = {
 const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 
 const VALUED = new Map([
-    ['--space', 'space'], ['--scope', 'scope'], ['--context7', 'context7'],
-    ['--sentry-slug', 'sentrySlug'], ['--sentry-auth', 'sentryAuth'],
+    ['--space', 'space'], ['--scope', 'scope'],
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabled'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
@@ -39,7 +35,16 @@ const BOOLEAN = new Map([
     ['--installed-only', 'installedOnly'], ['--print-plan', 'printPlan'], ['--skills-only', 'skillsOnly'],
 ]);
 
-const FLAG_LIST = '--space, --scope, --context7, --memory-level, --sentry-slug, --sentry-auth, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
+// The flags 2.0.0 took out with the servers they configured (the sentry and context7-local cut, R26
+// and R32): refused in one line, whatever the value, so a command body that still passes one fails
+// before anything is written rather than reading as a choice nothing honours.
+const REMOVED = new Map([
+    ['--context7', 'context7 is the hosted server only'],
+    ['--sentry-slug', 'the sentry server left the stack'],
+    ['--sentry-auth', 'the sentry server left the stack'],
+]);
+
+const FLAG_LIST = '--space, --scope, --memory-level, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -56,7 +61,7 @@ const lower = (v) => String(v ?? '').toLowerCase();
 function parseArgs(argv, env = {})
 {
     const out = {
-        action: '', space: '', scope: '', context7: '', sentrySlug: '', sentryAuth: '',
+        action: '', space: '', scope: '',
         playwrightBrowsersRaw: '', playwrightEnabled: '', docsVersioning: '', memoryLevel: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
@@ -69,6 +74,7 @@ function parseArgs(argv, env = {})
         const eq = arg.indexOf('=');
         const name = arg.startsWith('--') && eq > -1 ? arg.slice(0, eq) : arg;
 
+        if (REMOVED.has(name)) fail(`${name} was removed in 2.0.0 - ${REMOVED.get(name)}; drop the flag`);
         if (BOOLEAN.has(name) && name === arg) { out[BOOLEAN.get(name)] = true; continue; }
 
         // Repeatable: each --add is an item the user said yes to, each --drop one they switched off,
@@ -111,14 +117,8 @@ function parseArgs(argv, env = {})
     // The flag wins, else the environment, else the default. The two enums are lower-cased so a
     // non-canonical casing like 'Global' is accepted the same as on the case-insensitive twin.
     out.scope = lower(out.scope || env.SCOPE || 'project');
-    // Whether the transport was CHOSEN, before the default fills it in: an update that asks nothing
-    // reads the installed transport back instead of resetting a local install to remote.
-    out.context7Given = Boolean(out.context7 || env.CONTEXT7_MODE);
-    out.context7 = lower(out.context7 || env.CONTEXT7_MODE || 'remote');
-    out.sentryAuth = lower(out.sentryAuth);
     out.docsVersioning = lower(out.docsVersioning);
     out.memoryLevel = lower(out.memoryLevel);
-    out.sentrySlug = out.sentrySlug || env.SENTRY_SLUG || '';
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);

@@ -140,10 +140,6 @@ const NON_SKILL_TOKENS = new Set([
     // project-solve-cross-task's in-session scoping step.
     'baseline-project-architecture',
     'baseline-project-related-context',
-    // MCP server names stamped by project-agent-capabilities' routing map - servers, not skills.
-    'angular-cli',
-    'chrome-devtools',
-    'appium-mcp',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
@@ -1379,8 +1375,8 @@ function main()
     // 18. Backticked skill names in the base template + claude rules must
     //     resolve too, or a renamed skill rots silently there (the gap check 6
     //     left open). Unlike a skill file, a template/rule legitimately names
-    //     plugins (`csharp-lsp`, `claude-hud`), MCPs (`angular-cli`,
-    //     `chrome-devtools`), subagents (`ng-build-error-resolver`), and the
+    //     plugins (`csharp-lsp`, `claude-hud`), MCPs (`playwright`,
+    //     `serena`), subagents (`ng-build-error-resolver`), and the
     //     superpowers workflow skills - so resolve against the full registration
     //     surface (skills + plugins + MCPs + agent names) plus NON_SKILL_TOKENS,
     //     and only flag a token that matches NONE of them. The same case-collision
@@ -2505,9 +2501,9 @@ function lintMcpEntries()
     const catalog = manifestFlatSet(readStackManifest().mcps, (r) => r.name);
     const carried = new Set();
     for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
-    // playwright expands into one plugin per engine and context7 into remote + local; both map back
-    // to their catalog name, the way every installed-name reader already maps `playwright-*`.
-    const family = name => name.replace(/^playwright-.*/, 'playwright').replace(/^context7-.*/, 'context7');
+    // playwright expands into one plugin per engine; each maps back to its catalog name, the way
+    // every installed-name reader already maps `playwright-*`.
+    const family = name => name.replace(/^playwright-.*/, 'playwright');
     const families = new Set([...carried].map(family));
     for (const name of catalog.active)
         if (!families.has(name))
@@ -2518,10 +2514,9 @@ function lintMcpEntries()
 
     // S14: an unset `${VAR}` with no default stays LITERAL in a plugin entry - it does not become
     // empty. So a placeholder without a `:-` default only ships where the literal is the lesser
-    // evil, and each such case is named here rather than left to read as an oversight.
-    // SENTRY_SLUG is the one: `${SENTRY_SLUG:-}` would leave a trailing slash, which 404s every
-    // call, while the literal at least connects and names the missing variable in the CLI warning.
-    const LITERAL_OK = new Set(['SENTRY_SLUG', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
+    // evil, and each such case is named here rather than left to read as an oversight. The two
+    // left are Claude Code's own variables, which the harness supplies to a plugin server itself.
+    const LITERAL_OK = new Set(['CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
     for (const entry of wanted)
         for (const [server, spec] of Object.entries(entry.mcpServers))
         {

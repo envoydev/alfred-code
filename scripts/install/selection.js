@@ -189,7 +189,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, log = () => {} })
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
-    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
+    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
     // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
@@ -281,7 +281,6 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     }
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
     const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
-    const context7Local = Boolean(routes.mcps) && names.includes('context7-local');
     // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
     // is the whole answer already - a hook it does not name is on, a new release's included - and
     // adopting against an older stamp would switch back on the very hooks the user named there.
@@ -291,7 +290,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
     // run cannot tell a pick the user dropped from one it merely cannot see.
-    return { lines, closeFrom, parked, deny, installed: true, answered, engines, context7Local, blind: !ours.length };
+    return { lines, closeFrom, parked, deny, installed: true, answered, engines, blind: !ours.length };
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -380,7 +379,7 @@ function dropLines(lines, drop = [], log = () => {})
 // hand inventory unioned what the entries CARRY without the denied seats, so every configure run
 // switched them back on. A plugin the listing shows disabled is the third state validate keeps
 // apart - parked, neither installed nor absent.
-const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name === 'context7-local' ? 'context7' : name);
+const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
 // enabled one is installed whatever the selection says (every run installs superpowers), or an

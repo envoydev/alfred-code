@@ -117,11 +117,11 @@ test('--hooks-answered reaches the emitted file through the CLI', () => {
 });
 
 test('raw.mcps are direct picks the closure keeps and emits', () => {
-    const c = computeClosure(graph, { mcps: ['sentry'] });
-    assert.ok(c.mcps.includes('sentry'), 'a directly chosen mcp survives the closure');
-    assert.strictEqual(c.reasons['sentry'], undefined, 'a direct mcp pick is not a closure add');
+    const c = computeClosure(graph, { mcps: ['playwright'] });
+    assert.ok(c.mcps.includes('playwright'), 'a directly chosen mcp survives the closure');
+    assert.strictEqual(c.reasons['playwright'], undefined, 'a direct mcp pick is not a closure add');
     const { emitSelectionFile } = require('./stack-select.js');
-    assert.ok(emitSelectionFile(c).includes('mcp sentry'), 'the direct mcp reaches the emitted selection');
+    assert.ok(emitSelectionFile(c).includes('mcp playwright'), 'the direct mcp reaches the emitted selection');
 });
 
 test('user-chosen items carry no reason; only closure-added ones do', () => {
@@ -185,7 +185,7 @@ test('CLI: an unknown name prints an unknown: line and never reaches the emitted
 
 const { evaluatePrereqs } = require('./stack-select.js');
 
-const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true, CONTEXT7_API_KEY: true } };
+const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { CONTEXT7_API_KEY: true } };
 const emptyEnv = { bins: {}, envs: {} };
 
 test('phase-1 hard prereqs are blockers when the binary is absent', () => {
@@ -196,23 +196,6 @@ test('phase-1 hard prereqs are blockers when the binary is absent', () => {
         assert.ok(needs.includes(label), `expected hard blocker ${label}`);
     }
     assert.strictEqual(r.ok, false);
-});
-
-test('a selected sentry mcp warns for its slug and (token mode) its token, never blocks; with both, clean', () => {
-    // warnings by design: the registration is secret-free, only runtime needs the values -
-    // as a blocker the token cost ~90min/7 aborted runs and invited ad hoc bypasses (audit 2026-07-31)
-    const sel = { skills: [], mcps: ['sentry'], plugins: [] };
-    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const missing = evaluatePrereqs(sel, { bins, envs: {} }, {});
-    assert.ok(!missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry values must not block');
-    assert.ok(missing.warnings.some(b => /Sentry slug/.test(b.need)), 'sentry slug warns');
-    assert.ok(missing.warnings.some(b => /Sentry token/.test(b.need)), 'sentry token warns in the default token mode');
-    // --sentry-oauth registers no header: the token warning goes, the slug warning stays
-    const oauth = evaluatePrereqs(sel, { bins, envs: {} }, { sentryOauth: true });
-    assert.ok(!oauth.warnings.some(b => /Sentry token/.test(b.need)), 'no token warning under oauth');
-    assert.ok(oauth.warnings.some(b => /Sentry slug/.test(b.need)), 'slug still warns under oauth');
-    const present = evaluatePrereqs(sel, { bins, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true } }, {});
-    assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'both sentry values satisfied');
 });
 
 test('playwright keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
@@ -244,13 +227,6 @@ test('full env with no risky selection is clean', () => {
     const r = evaluatePrereqs({ skills: ['csharp'], mcps: [], plugins: [] }, fullEnv, {});
     assert.strictEqual(r.ok, true);
     assert.deepStrictEqual(r.blockers, []);
-});
-
-test('chrome-devtools mcp missing Chrome is a warning, not a blocker', () => {
-    const r = evaluatePrereqs({ skills: [], mcps: ['chrome-devtools'], plugins: [] }, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: {} }, {});
-    assert.ok(r.warnings.some(w => /Chrome/i.test(w.need)));
-    assert.ok(!r.blockers.some(b => /Chrome/i.test(b.need)));
-    assert.strictEqual(r.ok, true, 'a warning alone keeps ok true');
 });
 
 test('computeClosure follows an agent->agent chain and terminates on a cycle', () => {
@@ -379,18 +355,18 @@ test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
     const unev = gaps.unevidenced.map(u => `${u.category} ${u.name}`);
     assert.deepStrictEqual(unev, ['skill dotnet-messaging'], 'installed + catalog-listed + no signal = advisory');
     assert.ok(!unev.includes('skill csharp'), 'no catalog entry -> never unevidenced');
-    assert.ok(!gaps.missing.some(m => m.name === 'sentry') && !unev.includes('mcp sentry'), 'not installed + not found = nothing');
+    assert.ok(!gaps.missing.some(m => m.name === 'playwright') && !unev.includes('mcp playwright'), 'not installed + not found = nothing');
 });
 
 test('findJudgment: overlap only when both installed, dormant only when installed', () => {
     const { findJudgment } = require('./stack-select.js');
     const judgment = {
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'automation + screenshots', 'mcp:chrome-devtools': 'live debug of an open tab' } }],
+        overlaps: [{ items: ['mcp:playwright', 'skill:browser-extension'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'automation + screenshots', 'skill:browser-extension': 'live debug of an open tab' } }],
         occasionBound: { 'skill:capacitor-release': 'release-time - store submission' },
     };
-    const both = findJudgment(judgment, { mcps: ['playwright', 'chrome-devtools'], skills: ['capacitor-release'] });
-    assert.ok(both.some(l => l.startsWith('overlap: mcp playwright + mcp chrome-devtools - shared: drive a browser')), 'overlap line for an installed pair');
-    assert.ok(both.some(l => /gap mcp chrome-devtools: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
+    const both = findJudgment(judgment, { mcps: ['playwright'], skills: ['capacitor-release', 'browser-extension'] });
+    assert.ok(both.some(l => l.startsWith('overlap: mcp playwright + skill browser-extension - shared: drive a browser')), 'overlap line for an installed pair');
+    assert.ok(both.some(l => /gap skill browser-extension: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
     assert.ok(both.some(l => l === 'dormant: skill capacitor-release - release-time - store submission'), 'dormant line for an installed occasion-bound item');
     const one = findJudgment(judgment, { mcps: ['playwright'], skills: [] });
     assert.deepStrictEqual(one, [], 'no overlap with one side absent, no dormant when not installed');
@@ -560,7 +536,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
         rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
         agents: ['architecture-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
         skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
-        mcps: ['serena', 'sentry'],
+        mcps: ['serena', 'my-own-server'],
         plugins: ['csharp-lsp'],
         hooks: ['guard-catastrophic-rm'],
     };
@@ -575,7 +551,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
     const names = new Set(redundant.map(r => r.name));
     assert.ok(!names.has('dotnet-build-error-resolver'), 'a shared aspnet+wpf item survives - aspnet is present');
     assert.ok(!names.has('csharp-conventions'), 'a rule owned by aspnet too survives');
-    assert.ok(!names.has('sentry'), 'a non-stack-owned deliberate extra is never redundant');
+    assert.ok(!names.has('my-own-server'), 'a non-stack-owned deliberate extra is never redundant');
     assert.ok(!names.has('baseline-navigation'), 'an always-baseline item is never redundant');
     assert.strictEqual(redundant.find(r => r.name === 'wpf-conventions').ownedBy, 'wpf', 'the reason names the owning stack');
 });
@@ -809,40 +785,30 @@ test('a table still renders when --found and --dropped name missing files (advis
 
 // The remote context7 registration sends `${CONTEXT7_API_KEY:-}` - an unset key is the keyless
 // free tier, not an error, and `claude mcp list` stops warning for the `:-` form - so the
-// prerequisite check is the one place a missing key still shows, for either transport.
-test('context7 selected without a key warns for either transport, never blocks; with the key, clean', () => {
+// prerequisite check is the one place a missing key still shows.
+test('context7 selected without a key warns, never blocks; with the key, clean', () => {
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
     const sel = { skills: [], mcps: ['context7'], plugins: [] };
-    for (const opts of [{}, { context7Local: true }])
-    {
-        const r = evaluatePrereqs(sel, { bins, envs: {} }, opts);
-        assert.ok(r.warnings.some(w => /context7 API key/.test(w.need)), `warns without a key (${JSON.stringify(opts)})`);
-        assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
-    }
+    const r = evaluatePrereqs(sel, { bins, envs: {} }, {});
+    assert.ok(r.warnings.some(w => /context7 API key/.test(w.need)), 'warns without a key');
+    assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
     const keyed = evaluatePrereqs(sel, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
     assert.ok(!keyed.warnings.some(w => /context7/i.test(w.need)), 'a set key satisfies it');
-    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { context7Local: true });
+    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, {});
     assert.ok(!none.warnings.some(w => /context7/i.test(w.need)), 'context7 not selected - no warning');
 });
 
 // A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
 // CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
-// Measured 2026-09-15: macOS installs Chrome as an app, never on PATH as `chrome`, so a machine
-// WITH Chrome was told to 'install Google Chrome or Chromium' whenever chrome-devtools was kept.
-test('browserCandidates: Chrome and Edge are probed at their app install locations on every platform', () => {
+// Measured 2026-09-15: macOS installs a browser as an app, never on PATH, so a machine WITH one was
+// told to install it. Edge is the one browser a kept playwright engine still needs from the machine.
+test('browserCandidates: Edge is probed at its app install locations on every platform', () => {
     const { browserCandidates } = require('./stack-select.js');
     const env = { ProgramFiles: 'C:\\PF', 'ProgramFiles(x86)': 'C:\\PF86', LOCALAPPDATA: 'C:\\LA' };
-    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Google Chrome.app'), 'macOS Chrome app');
-    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Chromium.app'), 'macOS Chromium app');
-    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google[\\/]Chrome[\\/]Application[\\/]chrome\.exe$/.test(c)), 'Windows Chrome exe');
-    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app, unchanged');
-    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe, unchanged');
-    assert.deepStrictEqual(browserCandidates('chrome', 'linux', env), [], 'Linux relies on PATH');
-    if (process.platform === 'darwin' && fs.existsSync('/Applications/Google Chrome.app'))
-    {
-        const { detectEnvironment } = require('./stack-select.js');
-        assert.strictEqual(detectEnvironment().bins.chrome, true, 'this Mac has Chrome installed as an app');
-    }
+    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app');
+    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe');
+    assert.deepStrictEqual(browserCandidates('msedge', 'linux', env), [], 'Linux relies on PATH');
+    assert.deepStrictEqual(browserCandidates('chrome', 'darwin', env), [], 'no other browser is probed - nothing reads it since 2.0.0');
 });
 
 test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
@@ -850,17 +816,17 @@ test('detectEnvironment reads the account settings.json env from --config-dir (a
     const os = require('node:os');
     const { detectEnvironment } = require('./stack-select.js');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-acct-'));
-    const saved = process.env.SENTRY_SLUG;
-    delete process.env.SENTRY_SLUG;
+    const saved = process.env.CONTEXT7_API_KEY;
+    delete process.env.CONTEXT7_API_KEY;
     try
     {
-        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { SENTRY_SLUG: 'acme' } }));
-        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.SENTRY_SLUG, true, 'read from the given account dir');
-        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.SENTRY_SLUG, false, 'a missing account file reads as unset');
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CONTEXT7_API_KEY: 'ctx7-test' } }));
+        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.CONTEXT7_API_KEY, true, 'read from the given account dir');
+        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.CONTEXT7_API_KEY, false, 'a missing account file reads as unset');
     }
     finally
     {
-        if (saved !== undefined) process.env.SENTRY_SLUG = saved;
+        if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });

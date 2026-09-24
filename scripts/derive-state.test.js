@@ -275,7 +275,7 @@ test('readInstalled: each surface reads back only while its own route is on', ()
     assert.ok(skillsOnly.every((l) => /^(skill|agent) /.test(l)) && skillsOnly.length > 0);
 });
 
-test('readInstalled: MCP entries fold back onto the catalog, once each', () =>
+test('readInstalled: MCP entries fold back onto the catalog, once each - a cut server is no catalog line', () =>
 {
     const lines = readInstalled({
         plugins: ['serena', 'context7', 'context7-local', 'playwright-firefox', 'playwright-webkit', 'claude-hud'],

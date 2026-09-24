@@ -1,7 +1,7 @@
 ---
 name: web-angular-solution-designer
 description: "Use when an Angular web feature needs designing before code: a read-only pass that settles routes and lazy loading against the bundle budget, server vs client state, signals/OnPush and RxJS flows and SSR, then splits the work into parallel tasks with contracts for web-angular-implementer and web-angular-verifier. Never writes code."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*, mcp__plugin_context7-local_context7-local__*
+tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_context7_context7__*
 model: opus
 effort: xhigh
 color: cyan
