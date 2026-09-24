@@ -448,6 +448,50 @@ test('install-scope: update --scope local --installed-only keeps the hooks setti
     assert.strictEqual(result.shared, sharedBefore, 'a local-scope run must write nothing to settings.json');
 });
 
+// N6 (Task 16b): the WRITE half of N5. At local scope the env pass seeded every catalog default into
+// settings.local.json, which Claude Code lays over settings.json - so each value the user customized
+// there was hidden, and on a listing that could not be read the unanswered ALFRED_CODE_HOOKS_OFF seed
+// ('') switched every hook back on. A key settings.json holds now counts as present for every
+// absent-only seed. The reviewer's probe values, once with a readable listing and once with a failing one.
+for (const [label, listFails] of [['a readable listing', false], ['a failing claude plugin list', true]])
+    test(`install-scope: update --scope local --installed-only never hides a settings.json value behind a local default - ${label} (N6)`, POSIX_ONLY, () =>
+    {
+        const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+        const CUSTOM = {
+            ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HISTORY: '0',
+            ALFRED_CODE_TURN_CHECK: '1', ALFRED_CODE_DOCS_VERSIONING: 'local',
+        };
+        const { loadManifest } = require('./install/manifest.js');
+        const { readBackSettings } = require('./install/settings.js');
+        const kept = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))]
+            .filter((h) => !OFF.includes(h));
+        const sharedFile = (repo) => path.join(repo, '.claude', 'settings.json');
+        let sharedBefore = '';
+        const { outs, result } = seedRun(['install', 'update'], `skill csharp\nrule markdown-docs\n${kept.map((h) => `hook ${h}\n`).join('')}`, {
+            args: [['--scope', 'project'], ['--scope', 'local', '--installed-only']],
+            plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.0.0', scope: 'project', enabled: true }]),
+            // The failing listing: `plugin list` exits 1 with nothing on stdout, on the second step only.
+            tools: { claude: 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"\nif [ "$1" = "plugin" ] && [ "$2" = "list" ]; then [ -n "$CLAUDE_STUB_LIST_FAIL" ] && exit 1; cat "$CLAUDE_STUB_PLUGINS"; fi\nexit 0' },
+            env: [{}, listFails ? { CLAUDE_STUB_LIST_FAIL: '1' } : {}],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                const s = JSON.parse(fs.readFileSync(sharedFile(repo), 'utf8'));
+                Object.assign(s.env, CUSTOM);
+                sharedBefore = `${JSON.stringify(s, null, 2)}\n`;
+                fs.writeFileSync(sharedFile(repo), sharedBefore);
+                return null;
+            },
+            inspect: (repo) => ({ shared: fs.readFileSync(sharedFile(repo), 'utf8'), env: readBackSettings(path.join(repo, '.claude'), 'local').env }),
+        });
+        assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
+        const hidden = Object.entries(CUSTOM).filter(([k, v]) => result.env[k] !== v).map(([k, v]) => `${k}: '${v}' -> '${result.env[k]}'`);
+        assert.deepStrictEqual(hidden, [], `N6: a local default hid the settings.json value: ${hidden.join('; ')}`);
+        assert.deepStrictEqual(String(result.env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(), [...OFF].sort(),
+            `N6: the hooks switched off in settings.json came back on: '${result.env.ALFRED_CODE_HOOKS_OFF}'`);
+        assert.strictEqual(result.shared, sharedBefore, 'a local-scope run must write nothing to settings.json');
+    });
+
 // NI1 (fix round 3): under Task 11b alone, a global/user-scope stamp lived in ONE shared account
 // file - a DIFFERENT project's copy-route run (a real None) could overwrite that shared file, and
 // this project's own next copy-route read would then see it and think IT kept no hook, switching

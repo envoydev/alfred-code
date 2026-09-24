@@ -846,6 +846,9 @@ function installHooksAndRules(ctx)
         mcpOff: (ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : []).concat(ctx.retiredMcpsDue),
         memoryDb: ctx.level.dbPath,
         hooksOff, hooksAnswered,
+        // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
+        // gap for a seed to fill - a local default would hide it.
+        inheritedEnv: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project').env : null,
         log: ctx.log, note: ctx.note,
     });
 }

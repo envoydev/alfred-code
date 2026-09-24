@@ -154,30 +154,35 @@ function wireHooks(data, specs, retiredHooks)
     return changed;
 }
 
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, log })
+// Steps 1 and 1b of the env pass, in place: the value moves to the new key, then the old key goes.
+function renameEnv(env, migrations, log)
 {
     let changed = false;
-
+    const move = (oldKey, newKey) =>
+    {
+        if (!(newKey in env) && env[oldKey] !== '') env[newKey] = env[oldKey];
+        delete env[oldKey];
+        changed = true;
+        log(`  settings.json env: ${oldKey} renamed to ${newKey}`);
+    };
     // 1. RENAMES - value first, then drop the old key.
-    for (const [oldKey, newKey] of migrations.renames || [])
-        if (oldKey in env)
-        {
-            if (!(newKey in env) && env[oldKey] !== '') env[newKey] = env[oldKey];
-            delete env[oldKey];
-            changed = true;
-            log(`  settings.json env: ${oldKey} renamed to ${newKey}`);
-        }
-
+    for (const [oldKey, newKey] of migrations.renames || []) if (oldKey in env) move(oldKey, newKey);
     // 1b. PREFIX RENAMES - after the exact ones, so a chain of renames finishes in one run.
     for (const [from, to] of migrations.prefixRenames || [])
-        for (const oldKey of Object.keys(env).filter((k) => k.startsWith(from)))
-        {
-            const newKey = to + oldKey.slice(from.length);
-            if (!(newKey in env) && env[oldKey] !== '') env[newKey] = env[oldKey];
-            delete env[oldKey];
-            changed = true;
-            log(`  settings.json env: ${oldKey} renamed to ${newKey}`);
-        }
+        for (const oldKey of Object.keys(env).filter((k) => k.startsWith(from))) move(oldKey, to + oldKey.slice(from.length));
+    return changed;
+}
+
+// `inherited` (N6): the env of a file Claude Code lays THIS file over - settings.json beneath a
+// local-scope run's settings.local.json. A key it holds, under any spelling the renames carry, counts as
+// present for every absent-only seed below: a default here would hide the user's value there. Renames,
+// retirements and decisions still act on this file alone.
+function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, log })
+{
+    let changed = renameEnv(env, migrations, log);
+    const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
+    renameEnv(beneath, migrations, () => {});
+    const present = (key) => key in env || key in beneath;
 
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
     for (const [key, onlyWhen] of migrations.retired || [])
@@ -198,7 +203,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
         if (row.written) continue;                       // step 5 owns these
         if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
         if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
-        if (row.key in env) continue;
+        if (present(row.key)) continue;
         env[row.key] = row.default;
         changed = true;
         log(`  settings.json env: ${row.key} seeded (${row.default === '' ? 'empty' : row.default})`);
@@ -213,7 +218,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
         log(`  settings.json env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
             + ` (--docs-versioning${old === docsVersioning.value ? ', unchanged' : ''})`);
     }
-    else if (!('ALFRED_CODE_DOCS_VERSIONING' in env) && docsVersioning && docsVersioning.seed)
+    else if (!present('ALFRED_CODE_DOCS_VERSIONING') && docsVersioning && docsVersioning.seed)
     {
         env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.seed;
         changed = true;
@@ -232,7 +237,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
         if (env.ALFRED_CODE_HOOKS_OFF !== off)
         { env.ALFRED_CODE_HOOKS_OFF = off; changed = true; log(`  settings.json env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
-    else if (!('ALFRED_CODE_HOOKS_OFF' in env))
+    else if (!present('ALFRED_CODE_HOOKS_OFF'))
     { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log('  settings.json env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)'); }
 
     return changed;
@@ -244,7 +249,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
-        docsVersioning, memoryDb, hooksOff, hooksAnswered = false,
+        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null,
         log = () => {}, note = () => {},
     } = opts;
 
@@ -324,7 +329,7 @@ function writeSettings(opts)
     for (const name of mcpOff) if (enabled.includes(name))
     { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  settings.json: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
 
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, log })) changed = true;
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, log })) changed = true;
 
     if (!changed) return { written: false, refused: false };
     fs.mkdirSync(path.dirname(file), { recursive: true });

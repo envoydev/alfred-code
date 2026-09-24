@@ -427,3 +427,46 @@ test('readBackSettings: the target alone at project and user scope, the local ov
     assert.deepStrictEqual(readBackSettings(dir, 'project'), {});
     assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
 });
+
+// N6 (Task 16b): at local scope settings.json still applies beneath the file this run writes, so a key
+// it holds is PRESENT for every absent-only seed - the catalog seeds, the docs-versioning seed and the
+// unanswered ALFRED_CODE_HOOKS_OFF seed. A local default would hide it. What the run DECIDES (an
+// answered hooks layer, --docs-versioning, the memory db) still lands in the local file.
+test('settings-env: an inherited key counts as present for every absent-only seed, never for a decision (N6)', () =>
+{
+    const inherited = {
+        ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HISTORY: '0', ALFRED_CODE_TURN_CHECK: '1',
+        ALFRED_CODE_DOCS_VERSIONING: 'local', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+    };
+    const { env } = envPass({}, { inherited, docsVersioning: { seed: 'git' } });
+    for (const key of Object.keys(inherited)) assert.ok(!(key in env), `N6: ${key} was seeded over the inherited '${inherited[key]}'`);
+    assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '0', 'a key the inherited view lacks is still seeded');
+
+    // A legacy spelling there is the same key: renamed on read, so the new spelling is not seeded over it.
+    const legacy = envPass({}, { inherited: { CLAUDE_STACK_PUSH_GATE: '0', CLAUDE_DOCS_PATH: 'docs/old' }, migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] } }).env; // legacy-name
+    assert.ok(!('ALFRED_CODE_PUSH_GATE' in legacy) && !('ALFRED_CODE_DOCS_PATH' in legacy), JSON.stringify(legacy));
+
+    // Decisions still write the local file.
+    const decided = envPass({}, { inherited, hooksOff: ['check-turn-build'], hooksAnswered: true, docsVersioning: { value: 'git' }, memoryDb: '/db' }).env;
+    assert.strictEqual(decided.ALFRED_CODE_HOOKS_OFF, 'check-turn-build');
+    assert.strictEqual(decided.ALFRED_CODE_DOCS_VERSIONING, 'git');
+    assert.strictEqual(decided.ALFRED_CODE_MEMORY_DB, '/db');
+
+    // A malformed inherited view (not an object) is no view: every seed lands, as before.
+    for (const bad of [null, 'x', ['a']])
+        assert.strictEqual(envPass({}, { inherited: bad }).env.ALFRED_CODE_PUSH_GATE, '1');
+});
+
+test('settings-writer: writeSettings passes inheritedEnv through - the local file never shadows the shared value (N6)', () =>
+{
+    const dir = path.join(TMP, `inherit-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const shared = { env: { ALFRED_CODE_DOCS_PATH: 'docs/gen', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(shared));
+    writeSettings({ file: path.join(dir, 'settings.local.json'), catalog: CATALOG, migrations: MIGRATIONS, inheritedEnv: shared.env, docsVersioning: { seed: 'git' } });
+    const env = readBackSettings(dir, 'local').env;
+    assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs/gen');
+    assert.strictEqual(env.ALFRED_CODE_PUSH_GATE, '0');
+    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), shared, 'settings.json was written');
+});
