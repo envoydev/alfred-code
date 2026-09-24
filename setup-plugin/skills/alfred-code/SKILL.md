@@ -8,12 +8,16 @@ disable-model-invocation: true
 
 Route by install state, then hand the user the ONE command to run. The actions are manual-only
 commands - the user stays at the wheel, so you answer with the command, never run the flow
-yourself. The state is two reads of the project's `.claude/`, nothing inferred:
+yourself. The state is one script read of the project's `.claude/`, nothing inferred:
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` prints `not-installed`, `installed`
+or `initialised`.
 
 - **Installed** = an install record: `alfred-code.stamp`, the 1.x `claude-stack.stamp`, or a copied
   `hooks/docs.js` (a 1.x global install kept its stamp in the account dir).
-- **Initialised** = `autoMemoryEnabled: false` in `settings.json` or `settings.local.json` - init's
-  memory step writes it once the old notes are in the shared memory, and setup never does.
+- **Initialised** = the stamp's `initialised:` line holds a date - init's memory step writes it once
+  the old notes are in the shared memory, and no other run does. Setup writes
+  `initialised: pending`; a stamp from before that line counts as initialised when
+  `autoMemoryEnabled: false` sits in `settings.json` or `settings.local.json`.
 
 Then:
 

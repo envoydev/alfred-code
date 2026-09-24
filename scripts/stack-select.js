@@ -194,16 +194,18 @@ function accountSettingsEnv(configDir)
     catch { return {}; }
 }
 
-// Edge is rarely on PATH (Windows and macOS install it as an app), so its fixed install locations
-// count - a browser probed on PATH alone told a Mac WITH it to install it (measured 2026-09-15).
+// Edge and Chrome are rarely on PATH (Windows and macOS install them as apps), so their fixed install
+// locations count - a browser probed on PATH alone told a Mac WITH it to install it (measured
+// 2026-09-15). Chrome's Linux location is the one Playwright's `chrome` channel launches.
 function browserCandidates(name, platform, env)
 {
     const p = require('path');
-    const win = { msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'] }[name];
-    const mac = { msedge: ['/Applications/Microsoft Edge.app'] }[name];
+    const win = { msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'], chrome: ['Google', 'Chrome', 'Application', 'chrome.exe'] }[name];
+    const mac = { msedge: ['/Applications/Microsoft Edge.app'], chrome: ['/Applications/Google Chrome.app'] }[name];
+    const linux = { msedge: [], chrome: ['/opt/google/chrome/chrome'] }[name];
     if (!win) return [];
     if (platform === 'win32') return [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean).map(d => p.win32.join(d, ...win));
-    return platform === 'darwin' ? mac : [];
+    return platform === 'darwin' ? mac : linux;
 }
 const browserInstalled = name => browserCandidates(name, process.platform, process.env).some(c => fs.existsSync(c));
 
@@ -703,8 +705,16 @@ function main(argv)
         const recs = readJson('--recs', arg('--recs'));
         if (!installed || !recs) { console.error('stack-select: --missing needs --recs <recommendations.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const detected = parseStacks(recs);
+        // Fresh mode (setup): the baseline is every install's and the walk locks or pre-selects each
+        // item, so its rows collapse to ONE count and the stack seeds stay readable (Task 18a M1).
+        const fresh = !has('--installed');
+        let baseline = 0;
         for (const m of findStackMissing(graph, recs, installed, detected))
+        {
+            if (fresh && m.neededBy === 'baseline') { baseline += 1; continue; }
             console.log(`missing: ${m.category} ${m.name} - needed by ${m.neededBy}, not installed`);
+        }
+        if (baseline) console.log(`baseline: ${baseline} item(s) every install carries - the walk locks or pre-selects each one`);
         return;
     }
 

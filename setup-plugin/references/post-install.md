@@ -72,8 +72,9 @@ touches no committed file). The lines, minus anything the project already covers
 - `.mcp.json` - only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
   carries every server on its own plugin and PRUNES the stack's names out of this file. Where it
   does exist it is regenerated on every run, so a local edit is wiped anyway. No file, nothing to ignore.
-- `.memory-mcp/` - only present at a `project`-level memory install; the installer already wrote
-  its own `.memory-mcp/.gitignore` (`*`), so it never needs a line here. Nothing to do.
+- `.memory-mcp/` - only present at a `project`-level memory install; whichever run set that level
+  (init, update or configure) wrote its own `.memory-mcp/.gitignore` (`*`), so it never needs a line
+  here. Nothing to do.
 - Add runtime dirs only when they appear in the tree: `.playwright/`, `.slopwatch/`.
 
 ## 3. Check the shared memory landed

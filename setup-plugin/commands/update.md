@@ -228,9 +228,12 @@ refused before anything is written (`--memory-level project` is refused outright
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
 derivation now ADOPTS `baseline-memory` and the `memory` MCP the same way it adopts a new hook,
 whenever they are absent: the registration lands at `global` unless `--memory-level` named another
-level, the installer then imports this project's existing notes through the service once, and - only
-once that import succeeds - switches Claude's own memory off in THIS repo's own `.claude/settings.json`,
-even at global scope (never the account file, which would silence every other project's memory too).
+level. The notes import waits for `/alfred-code:init` - no run imports until the stamp's
+`initialised:` line holds a date (the log says `the notes import waits for /alfred-code:init`, and the
+close names init). Once it does, the installer imports this project's existing notes through the
+service once, and - only once that import succeeds - switches Claude's own memory off in THIS repo's
+own `.claude/settings.json`, even at global scope (never the account file, which would silence every
+other project's memory too).
 A failed import leaves Claude's own memory ON and is logged as such, never retried into a false
 success; the old `MEMORY.md` / `memory/*.md` files are never deleted either way. Read the installer's
 log for what actually happened - the grep below carries both the `memory:` registration line and the

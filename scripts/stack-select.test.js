@@ -828,14 +828,17 @@ test('context7 selected without a key warns, never blocks; with the key, clean',
 // A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
 // CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
 // Measured 2026-09-15: macOS installs a browser as an app, never on PATH, so a machine WITH one was
-// told to install it. Edge is the one browser a kept playwright engine still needs from the machine.
+// told to install it. Edge and Chrome are the browsers a kept playwright engine needs from the machine.
 test('browserCandidates: Edge is probed at its app install locations on every platform', () => {
     const { browserCandidates } = require('./stack-select.js');
     const env = { ProgramFiles: 'C:\\PF', 'ProgramFiles(x86)': 'C:\\PF86', LOCALAPPDATA: 'C:\\LA' };
     assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app');
     assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe');
     assert.deepStrictEqual(browserCandidates('msedge', 'linux', env), [], 'Linux relies on PATH');
-    assert.deepStrictEqual(browserCandidates('chrome', 'darwin', env), [], 'no other browser is probed - nothing reads it since 2.0.0');
+    // Task 18a M2: init-plan reads chrome the same way, since a picked chrome runs the machine's own.
+    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Google Chrome.app'), 'macOS Chrome app');
+    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google\\Chrome\\Application\\chrome\.exe$/.test(c)), 'Windows Chrome exe');
+    assert.deepStrictEqual(browserCandidates('firefox', 'darwin', env), [], 'a Playwright-built engine is never probed as a machine app');
 });
 
 test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
@@ -1022,7 +1025,18 @@ test('CLI --missing and --evidence-gaps run in a fresh-install mode when --insta
 
         const missing = cli(['--missing', '--recs', recsPath, '--stacks', 'aspnet']);
         assert.strictEqual(missing.status, 0, missing.stderr);
-        assert.match(missing.stdout, /^missing: rule baseline-security - needed by baseline, not installed$/m, 'the baseline is suggested, with its reason');
+        // M1: the baseline is every install's - the walk tables lock or pre-select each item - so a fresh
+        // install gets ONE count line for it, and the stack seeds and evidence rows stay readable.
+        assert.ok(!/needed by baseline/.test(missing.stdout), `no per-item baseline line in fresh mode:\n${missing.stdout}`);
+        const count = /^baseline: (\d+) item\(s\) every install carries - the walk locks or pre-selects each one$/m.exec(missing.stdout);
+        assert.ok(count && Number(count[1]) > 10, `one count line: ${missing.stdout}`);
+        assert.ok(!/superpowers/.test(missing.stdout), 'R72: superpowers is suggested in the plugins table, never pre-selected here');
+        // Over an install (validate) every missing baseline item is still its own line - it is a real gap there.
+        const inv = path.join(dir, 'installed.json');
+        fs.writeFileSync(inv, JSON.stringify({ skills: [], agents: [], rules: [], mcps: [], plugins: [] }));
+        const over = cli(['--missing', '--installed', inv, '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.match(over.stdout, /^missing: rule baseline-security - needed by baseline, not installed$/m);
+        assert.ok(!/^baseline: /m.test(over.stdout));
         assert.match(missing.stdout, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m, 'a detected stack seed is suggested, with its reason');
 
         const gaps = cli(['--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'meta', 'evidence.json'), '--recs', recsPath, '--stacks', 'aspnet']);

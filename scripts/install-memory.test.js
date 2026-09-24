@@ -248,6 +248,7 @@ function initSandbox({ settings = { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/me
     fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
     execFileSync('git', ['init', '-q', root]);
     fs.writeFileSync(path.join(root, '.claude', 'rules', 'baseline-memory.md'), '# rule\n');
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');   // setup's install
     if (settings !== null) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), typeof settings === 'string' ? settings : JSON.stringify(settings, null, 2));
     const acct = path.join(work, 'acct');
     const pluginRoot = path.join(work, 'plugin-cache', 'memory', '1.0.0');
@@ -294,6 +295,9 @@ test('init: the level lands in the key the launcher reads, the notes are importe
     assert.match(rows[0].content, /Builds need the offline cache\./);
     assert.match(r.stdout, /memory: level project -> .*\.memory-mcp[/\\]memory\.db/);
     assert.deepStrictEqual(fs.readdirSync(path.join(sb.root, '.claude')).sort(), before, 'nothing else under .claude/ - no install ran');
+    // I1: the one signal only init writes - the router reads it, every later run carries it.
+    assert.match(fs.readFileSync(path.join(sb.root, '.claude', 'alfred-code.stamp'), 'utf8'), /^initialised: \d{4}-\d{2}-\d{2}T[\d:]+Z$/m);
+    assert.strictEqual(require('./install/stamp.js').installState(sb.root), 'initialised');
     // Idempotent: a second run stores nothing and exits clean.
     const calls = sb.callCount();
     const again = sb.run('--level', 'project');
@@ -315,6 +319,7 @@ test('init: scoped names the space\'s file, global the machine\'s; the key goes 
     assert.match(r.stdout, /uvx not found/);
     assert.ok(!('autoMemoryEnabled' in sb.settingsNow()));
     assert.strictEqual(sb.callCount(), 0);
+    assert.match(fs.readFileSync(path.join(sb.root, '.claude', 'alfred-code.stamp'), 'utf8'), /^initialised: pending$/m, 'a failed import leaves init owed');
     // A local-scope stamp sends the key to the local file even when neither file holds it yet.
     const l = initSandbox({ uvx: false });
     fs.writeFileSync(path.join(l.root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
@@ -338,6 +343,29 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
     assert.strictEqual(fs.readFileSync(settingsOf(sb.root), 'utf8'), before);
     assert.strictEqual(sb.callCount(), 0);
 
+    // M4: the importer falls back to the ACCOUNT registration, so init checks that file too - a user-
+    // scope copy-route registration, then the account file's entry for this project.
+    for (const account of [
+        (root) => ({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/acct/memory.db' } } } }),
+        (root) => ({ projects: { [root]: { mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/acct/memory.db' } } } } } }),
+    ])
+    {
+        const a = initSandbox();
+        fs.mkdirSync(a.acct, { recursive: true });
+        fs.writeFileSync(path.join(a.acct, '.claude.json'), JSON.stringify(account(a.root)));
+        const settingsBefore = fs.readFileSync(settingsOf(a.root), 'utf8');
+        const ra = a.run('--level', 'project');
+        assert.strictEqual(ra.status, 1, ra.stdout + ra.stderr);
+        assert.match(ra.stdout, /\.claude\.json registers memory at \/acct\/memory\.db - .*update --memory-level project/);
+        assert.strictEqual(fs.readFileSync(settingsOf(a.root), 'utf8'), settingsBefore, 'nothing written');
+        assert.strictEqual(a.callCount(), 0);
+    }
+    // The same path registered is no mismatch.
+    const same = initSandbox({ uvx: false });
+    fs.mkdirSync(same.acct, { recursive: true });
+    fs.writeFileSync(path.join(same.acct, '.claude.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: path.join(same.work, '.memory-mcp', 'memory.db') } } } }));
+    assert.doesNotMatch(same.run('--level', 'global').stdout, /registers memory at/);
+
     const bad = initSandbox({ settings: '{ not json' });
     const b = bad.run('--level', 'global');
     assert.strictEqual(b.status, 1);
@@ -349,17 +377,65 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
     assert.match(u.stderr, /--level must be global, scoped or project/);
 });
 
-// setup installs with no --memory-level: the level is init's question, so the import waits for it -
-// importing now would file every note under a database the user has not chosen yet.
-test('seed: an install with no --memory-level leaves the notes import to init, and says so', POSIX_ONLY, () =>
+// I1 (Task 18a review): 'initialised' is the stamp line only init writes. Before it, no run imports
+// the notes or switches Claude's own memory off - not setup's install, not a /alfred-code:update, not
+// configure's or validate's apply with a level named - so the router keeps offering init.
+const stampText = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+test('seed: install, update, and an update naming a level before init import nothing and leave the router on init (I1)', POSIX_ONLY, () =>
 {
     const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
-    const { out, result } = seedRun('install', SEL, { inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')) });
-    assert.match(out, /memory: the notes import waits for \/alfred-code:init/);
-    assert.doesNotMatch(out, /importing Claude's existing notes|memory notes import was skipped/);
-    assert.ok(!('autoMemoryEnabled' in result), 'Claude\'s own memory stays on until init');
-    const withLevel = seedRun('install', SEL, { args: ['--memory-level', 'global'] });
-    assert.doesNotMatch(withLevel.out, /waits for \/alfred-code:init/, 'a named level (configure, update) imports as before');
+    const { installState } = require('./install/stamp.js');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },   // the import would run: uvx answers, and no notes is a clean 'nothing to import'
+        args: [[], [], ['--memory-level', 'project']],
+        each: (repo) => ({ s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), stamp: stampText(repo), state: installState(repo) }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        assert.ok(!('autoMemoryEnabled' in step.s), `run ${i}: Claude's own memory stays on until init`);
+        assert.match(step.stamp, /^initialised: pending$/m, `run ${i}`);
+        assert.strictEqual(step.state, 'installed', `run ${i}: the router still routes to init`);
+        assert.match(outs[i], /memory: the notes import waits for \/alfred-code:init/, `run ${i}`);
+        assert.doesNotMatch(outs[i], /importing Claude's existing notes|autoMemoryEnabled set to false/, `run ${i}`);
+    }
+    assert.match(steps[2].s.env.ALFRED_CODE_MEMORY_DB, /\.memory-mcp[/\\]memory\.db$/, 'the named level still applies - only the import waits');
+});
+
+// After init the line is carried, and a later run imports as it always did (a no-op once memory is off).
+test('seed: once init marked the stamp, an update carries the line and the import gate opens again (I1)', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { markInitialised, installState } = require('./install/stamp.js');
+    const { out, result } = seedRun(['install', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },
+        each: (repo, i) => { if (i === 0) markInitialised(path.join(repo, '.claude'), new Date('2026-09-25T10:00:00Z')); return null; },
+        inspect: (repo) => ({ stamp: stampText(repo), s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), state: installState(repo) }),
+    });
+    assert.match(result.stamp, /^initialised: 2026-09-25T10:00:00Z$/m, 'carried across the rewrite');
+    assert.strictEqual(result.state, 'initialised');
+    assert.doesNotMatch(out, /waits for \/alfred-code:init/);
+    assert.strictEqual(result.s.autoMemoryEnabled, false, 'the gate opened: nothing to import, so the switch-off landed');
+});
+
+// M5 (Task 18a review): every run that lands the project level writes the database's own .gitignore -
+// update and configure with --memory-level project too, not only init - so post-install's 'the
+// installer already wrote it' holds whichever command set the level.
+test('seed: a project-level run writes .memory-mcp/.gitignore, and a machine level writes no project folder (M5)', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const ignore = (repo) => path.join(repo, '.memory-mcp', '.gitignore');
+    const { steps } = seedRun(['install', 'update'], SEL, {
+        args: [['--memory-level', 'global'], ['--memory-level', 'project']],
+        each: (repo) => (fs.existsSync(ignore(repo)) ? fs.readFileSync(ignore(repo), 'utf8') : null),
+    });
+    assert.strictEqual(steps[0], null, 'global: no project folder at all');
+    assert.strictEqual(steps[1], '*\n', 'the update that moved the level to project ignores the database');
+    const { result } = seedRun('install', SEL, {
+        args: ['--memory-level', 'project'],
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.memory-mcp')); fs.writeFileSync(ignore(repo), '# mine\n*\n'); },
+        inspect: (repo) => fs.readFileSync(ignore(repo), 'utf8'),
+    });
+    assert.strictEqual(result, '# mine\n*\n', 'an existing .gitignore is left as the user wrote it');
 });
 
 // The plugin route has no registration to read back: its record of the level is the settings key.

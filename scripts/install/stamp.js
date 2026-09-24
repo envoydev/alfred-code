@@ -31,6 +31,13 @@
 // next run reads: the installed set to keep (and to uninstall from, when a run keeps fewer), and the
 // last choice an engine installed again is switched back to.
 //
+// `initialised` is the one line only /alfred-code:init writes (its memory step, `memory.js init`, once
+// the notes are in and Claude's own memory is off): a date. A fresh install writes `pending`, every
+// later run carries the value forward, and nothing but init turns `pending` into a date - so an update
+// between setup and init can neither import the notes nor flip the router past init (Task 18a I1). A
+// stamp from before the line counts as initialised only when Claude's own memory is already off, which
+// the pre-2.0 installer did only after importing; the first run over it records that, dated.
+//
 // `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
 // CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
 // or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
@@ -97,7 +104,7 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, library = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, library = {} } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -112,6 +119,7 @@ function renderStamp(fields)
         `installed: ${installed}`,
         `action: ${action}`,
         `scope: ${scope}`,
+        ...(initialised ? [`initialised: ${initialised}`] : []),
         `shipped-hooks: ${hooks.join(',')}`,
         ...(hooksRoute ? [`hooks-route: ${hooksRoute}`] : []),
         `installed-always-rules: ${alwaysRules.join(',')}`,
@@ -148,6 +156,7 @@ function writeStamp(opts)
         source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, library,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
+    const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
 
     if (!source || !source.sha)
     {
@@ -171,7 +180,7 @@ function writeStamp(opts)
         fs.writeFileSync(dest, renderStamp({
             repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-            action, scope,
+            action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute,
             alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, library,
         }));
@@ -283,6 +292,59 @@ function markHooksRoute(file, route)
     try { fs.writeFileSync(file, next); return true; } catch { return false; }
 }
 
+// --- initialised (Task 18a I1) -------------------------------------------------------------------
+const INIT_LINE = /^initialised: *(.*)$/m;
+const isoSeconds = (d) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+// The raw value of the stamp's `initialised:` line, or null (no stamp, or one from before the line).
+function readInitialised(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const m = INIT_LINE.exec(text);
+    return m ? m[1].trim() || null : null;
+}
+
+// Claude's own memory switched off in either project settings file.
+function memoryOff(claudeDir)
+{
+    return ['settings.local.json', 'settings.json'].some((name) => readJson(path.join(claudeDir, name)).autoMemoryEnabled === false);
+}
+
+const isInitialised = (value) => Boolean(value) && value !== 'pending';
+
+// What this run's stamp records: the line carried; a stamp from before it dated when memory is off.
+function initialisedValue({ claudeDir, now = new Date() })
+{
+    const { read } = stampFile(claudeDir);
+    if (!read) return 'pending';
+    const prev = readInitialised(read);
+    if (prev) return prev;
+    return memoryOff(claudeDir) ? `${isoSeconds(now)} (memory already off before this release)` : 'pending';
+}
+
+// The router's one read: not-installed | installed (never initialised) | initialised. Installed is
+// the prelude's own record list, so the router and the hooks' GATE 4 can never disagree.
+function installState(projectRoot)
+{
+    const claudeDir = path.join(projectRoot, '.claude');
+    const { INSTALL_RECORDS } = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js'));
+    if (!INSTALL_RECORDS.some((record) => fs.existsSync(path.join(claudeDir, ...record)))) return 'not-installed';
+    return isInitialised(initialisedValue({ claudeDir })) ? 'initialised' : 'installed';
+}
+
+// init's mark, in place: the line replaced, or added. No stamp, nothing written (false).
+function markInitialised(claudeDir, now = new Date())
+{
+    const { read } = stampFile(claudeDir);
+    if (!read) return false;
+    let text;
+    try { text = fs.readFileSync(read, 'utf8'); } catch { return false; }
+    const line = `initialised: ${isoSeconds(now)}`;
+    const next = INIT_LINE.test(text) ? text.replace(INIT_LINE, line) : `${text.replace(/\n+$/, '')}\n${line}\n`;
+    try { fs.writeFileSync(read, next); return true; } catch { return false; }
+}
+
 // T16 (R29): a 1.x GLOBAL install put its stamp AND its skills in the account dir. A project that
 // still shows no stamp of its own (a native project/user/local install already writes one - this
 // never runs twice) is READ from there ONCE, on the first 'update' after 2.0.0, and copied into the
@@ -357,4 +419,13 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
     readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised,
 };
+
+// `node scripts/install/stamp.js state [projectRoot]` - the router's read, one word on stdout.
+if (require.main === module)
+{
+    const [cmd, root] = process.argv.slice(2);
+    if (cmd !== 'state') { console.error('usage: stamp.js state [projectRoot]'); process.exit(2); }
+    console.log(installState(path.resolve(root || '.')));
+}

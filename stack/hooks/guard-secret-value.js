@@ -30,11 +30,14 @@ const pathMod = require('path');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// R86: a repo never set up keeps this guard live but gets no block row (R54) - false fails open to logging.
+let unsetRepo = false;
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     if (prelude.standDown('guard-secret-value')) process.exit(0);
+    unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
@@ -473,7 +476,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');

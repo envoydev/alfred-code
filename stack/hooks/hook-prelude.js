@@ -30,9 +30,12 @@
 // GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
 // opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
 // so a plugin-launched hook there does nothing and writes nothing (no `.claude/docs/` ledger or
-// history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`:
-// the stamp (2.x, or the 1.x name), or a copied engine (a 1.x global install kept its stamp in the
-// account dir, never its engines). A copied hook is set up by definition.
+// history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
+// or its git top level's, or - for a linked worktree - the main checkout's: the stamp (2.x, or the
+// 1.x name), or a copied engine (a 1.x global install kept its stamp in the account dir, never its
+// engines). A copied hook is set up by definition. Three guards stay live even there (R86), each
+// skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
+// a repo never set up has.
 //
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
@@ -180,13 +183,44 @@ function aliasYieldsToCore(env)
 
 const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name
 
+// The checkouts whose record speaks for `dir`: itself, its git top level, and - for a linked worktree,
+// whose `.git` is a FILE - the main checkout it belongs to. The record is machine-local and `.claude/`
+// ignored, so `git worktree add` (Claude Code's `.claude/worktrees/<n>` too) carries none of its own.
+// Files alone: `gitdir: <main>/.git/worktrees/<n>`, then that dir's `commondir` (else the layout's own
+// `../..`). A home directory reached by walking up is skipped - its `.claude/` is the account dir.
+function checkoutsOf(dir)
+{
+    const roots = [dir];
+    for (let at = dir, up; ; at = up)
+    {
+        const dotGit = path.join(at, '.git');
+        let stat = null;
+        try { stat = fs.statSync(dotGit); } catch { /* not this level */ }
+        if (stat)
+        {
+            if (at !== dir && at !== os.homedir()) roots.push(at);
+            if (!stat.isFile()) return roots;
+            const line = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
+            if (!line) return roots;
+            const gitdir = path.resolve(at, line[1]);
+            let common = null;
+            try { common = path.resolve(gitdir, fs.readFileSync(path.join(gitdir, 'commondir'), 'utf8').trim()); }
+            catch { if (path.basename(path.dirname(gitdir)) === 'worktrees') common = path.dirname(path.dirname(gitdir)); }
+            if (common && path.basename(common) === '.git') roots.push(path.dirname(common));
+            return roots;
+        }
+        up = path.dirname(at);
+        if (up === at) return roots;
+    }
+}
+
 function neverSetUp(env)
 {
     const source = env || process.env;
     if (!source || !source.CLAUDE_PLUGIN_ROOT) return false;   // a copied hook: the project wired it
     const root = source.CLAUDE_PROJECT_DIR;
     if (!root) return false;
-    return !INSTALL_RECORDS.some((record) => fs.existsSync(path.join(root, '.claude', ...record)));
+    return !checkoutsOf(path.resolve(root)).some((at) => INSTALL_RECORDS.some((record) => fs.existsSync(path.join(at, '.claude', ...record))));
 }
 
 // Three of these files are also CLIs the model and the commands run by hand -
@@ -199,15 +233,20 @@ function isCliInvocation(argv)
     return /^--/.test(String((argv || process.argv)[2] || ''));
 }
 
+// R86: what these stop cannot be undone, so GATE 4 never stands them down - each reads neverSetUp()
+// itself and skips its block row there instead.
+const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
+
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing.
 function standDown(hook, env, argv)
 {
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env) || neverSetUp(env);
+        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env)
+            || (neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, INSTALL_RECORDS, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

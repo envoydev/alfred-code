@@ -136,8 +136,10 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
 
 // R54 / Task 16 review M8: under a user-scope core every hook runs in every repo the user opens. A repo
 // never set up gets nothing written - no .claude/docs/ ledger, history, state or compact file - from
-// any of them, whatever the event. Each payload is one the hook acts on in a set-up project.
-test('in a never-set-up project every plugin-launched hook writes nothing and prints nothing', () => {
+// any of them, whatever the event. Each payload is one the hook acts on in a set-up project. R86: the
+// three PROTECTIVE guards stay live there (the rm guard still blocks `rm -rf /`), and skip their row.
+test('in a never-set-up project every plugin-launched hook writes nothing, and only the protective guards speak', () => {
+    const { PROTECTIVE } = require(path.join(HOOKS_DIR, 'hook-prelude.js'));
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-unset-'));
     execFileSync('git', ['init', '-q', repo]);
     fs.writeFileSync(path.join(repo, 'big.js'), 'x'.repeat(200000));
@@ -166,8 +168,16 @@ test('in a never-set-up project every plugin-launched hook writes nothing and pr
                     });
                 }
                 catch (err) { status = err.status; out = String(err.stdout || '') + String(err.stderr || ''); }
-                assert.strictEqual(status, 0, `${hook} on ${event.hook_event_name} must stand down, got ${status}: ${out.slice(0, 200)}`);
-                assert.strictEqual(out.trim(), '', `${hook} on ${event.hook_event_name} printed: ${out.slice(0, 200)}`);
+                if (PROTECTIVE.has(hook))
+                {
+                    const destructive = event.tool_input && event.tool_input.command === 'rm -rf /';
+                    assert.strictEqual(status, hook === 'guard-catastrophic-rm' && destructive ? 2 : 0, `${hook} on ${event.hook_event_name} stays live: ${out.slice(0, 200)}`);
+                }
+                else
+                {
+                    assert.strictEqual(status, 0, `${hook} on ${event.hook_event_name} must stand down, got ${status}: ${out.slice(0, 200)}`);
+                    assert.strictEqual(out.trim(), '', `${hook} on ${event.hook_event_name} printed: ${out.slice(0, 200)}`);
+                }
                 assert.ok(!fs.existsSync(path.join(repo, '.claude')), `${hook} on ${event.hook_event_name} wrote .claude/ into a repo never set up`);
             }
     }

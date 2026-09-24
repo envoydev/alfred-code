@@ -1894,7 +1894,7 @@ test('seed: a copy-route run that dies after the hooks layer keeps the user\'s h
 
             // Step 2: every hook copy and the settings write land, then the run dies.
             const r2 = s.run(['update', '--installed-only'], copyEnv,
-                (line) => { if (/memory notes import|notes import was skipped|^memory: /.test(line)) throw new Error('FAULT: simulated death after the hooks layer'); });
+                (line) => { if (/memory notes import|notes import was skipped|notes import waits|^memory: /.test(line)) throw new Error('FAULT: simulated death after the hooks layer'); });
             assert.strictEqual(r2, 1, `${route}: the interrupted run must fail`);
             assert.deepStrictEqual(hooksOnDisk(), [...kept].sort(), `${route}: the hooks layer did not finish`);
             if (route === 'full copy') assert.deepStrictEqual(s.hooksOff(), [], 'the full copy route blanks the stored list - the precondition');

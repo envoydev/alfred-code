@@ -47,12 +47,15 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.match(lineOf(lines, /^machine: csharp-ls /), /^machine: csharp-ls - blocked: needs the \.NET 10 SDK \(dotnet\) first/);
     assert.strictEqual(lineOf(lines, /^machine: playwright firefox /),
         `machine: playwright firefox - missing: npx -y -p @playwright/mcp@${PINS.playwright.version} playwright install firefox`);
-    assert.ok(!lines.some((l) => /playwright chrome/.test(l)), 'chrome runs the installed browser - nothing to download');
+    // M2: chrome downloads nothing - it runs the machine's Google Chrome - so a picked one that is not
+    // there is reported, with the fix the user makes (probed like stack-select probes msedge).
+    assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
+        'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the playwright browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
         `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.serena.version} serena project index`);
     // Order is install order: uv, python, csharp-ls, the engines, the index.
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
-    assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright firefox', 'machine: serena index']);
+    assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index']);
 });
 
 test('machine: everything present is reported present, and csharp-ls is asked only when csharp-lsp is kept', () =>
@@ -61,7 +64,7 @@ test('machine: everything present is reported present, and csharp-ls is asked on
     fs.mkdirSync(path.join(root, '.serena', 'cache', 'typescript'), { recursive: true });
     const probe = { has: () => true, pythonFound: () => true, dir: () => true };
     const lines = render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe }));
-    for (const what of ['uv', 'python 3.13', 'csharp-ls', 'playwright firefox', 'serena index'])
+    for (const what of ['uv', 'python 3.13', 'csharp-ls', 'playwright chrome', 'playwright firefox', 'serena index'])
         assert.ok(lines.includes(`machine: ${what} - present`), `${what}: ${lines.join('\n')}`);
     assert.match(lines[lines.length - 1], /^init-plan: 0 to install, 0 blocked, /);
     const noLsp = render(plan({ inv: INV({ plugins: [{ name: 'alfred-code', scope: 'project' }] }), root, platform: 'linux', env: E(), probe }));
@@ -77,6 +80,25 @@ test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 P
     assert.match(lineOf(lines, /^machine: uv /), /powershell -ExecutionPolicy ByPass -c "irm https:\/\/astral\.sh\/uv\/install\.ps1 \| iex"$/);
     assert.match(lineOf(lines, /^machine: python /), /uv python install cpython-3\.13-windows-x86_64-none$/);
     assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
+});
+
+test('machine: a picked chrome or msedge is found on PATH or at its app install location, and reported when missing (M2)', () =>
+{
+    const root = project();
+    const { browserCandidates } = require('./stack-select.js');
+    assert.ok(browserCandidates('chrome', 'darwin', {}).includes('/Applications/Google Chrome.app'));
+    assert.ok(browserCandidates('chrome', 'linux', {}).includes('/opt/google/chrome/chrome'));
+    assert.ok(browserCandidates('chrome', 'win32', { ProgramFiles: 'C:\\Program Files' }).includes('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'));
+    const inv = INV({ playwright: { installed: ['chrome', 'msedge'], enabled: ['chrome'] } });
+    const at = (file) => ({ ...NONE, file: (p) => p === file });
+    const mac = render(plan({ inv, root, platform: 'darwin', env: E(), probe: at('/Applications/Google Chrome.app') }));
+    assert.ok(mac.includes('machine: playwright chrome - present'), mac.join('\n'));
+    assert.strictEqual(lineOf(mac, /^machine: playwright msedge /),
+        'machine: playwright msedge - blocked: needs Microsoft Edge - install it, or drop msedge from the playwright browsers (/alfred-code:configure)');
+    const noLsp = { ...inv, plugins: [{ name: 'alfred-code', scope: 'project' }] };
+    const onPath = render(plan({ inv: noLsp, root, platform: 'linux', env: E(), probe: { ...NONE, has: (b) => b === 'google-chrome' || b === 'microsoft-edge' } }));
+    assert.ok(onPath.includes('machine: playwright chrome - present') && onPath.includes('machine: playwright msedge - present'), onPath.join('\n'));
+    assert.match(onPath[onPath.length - 1], /, 0 blocked, /, 'present browsers block nothing');
 });
 
 test('machine: no playwright kept, no engine lines; the engine is found under PLAYWRIGHT_BROWSERS_PATH', () =>
@@ -131,7 +153,7 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     stub('uv', 'if [ "$1" = "python" ] && [ "$2" = "find" ]; then echo "error: No interpreter found" >&2; exit 2; fi\necho "uv 0.9.0"');
     stub('dotnet', 'exit 0');
     const inv = path.join(root, 'installed.json');
-    fs.writeFileSync(inv, JSON.stringify(INV()));
+    fs.writeFileSync(inv, JSON.stringify(INV({ playwright: { installed: ['firefox'], enabled: [] } })));   // chrome's probe reads this machine's apps
     const env = { PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, PLAYWRIGHT_BROWSERS_PATH: path.join(root, 'pw') };
     const r = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env, encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);

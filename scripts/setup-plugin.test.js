@@ -78,6 +78,10 @@ test('setup: the suggestions are validate\'s checks in fresh-install mode, paste
     const call = block.split('\n').find((l) => l.includes('stack-select.js" --missing'));
     assert.ok(call && !/--installed/.test(call), 'fresh-install mode: no inventory to diff against');
     assert.match(flat(block), /each already carries its reason/);
+    assert.match(flat(block), /ONE `baseline: <n> item\(s\)` count line/, 'M1: the baseline is a count, not 59 rows');
+    // M1: what 3a says the walk pre-selects agrees with step 9 - superpowers is suggested, never pre-selected.
+    assert.match(flat(block), /`superpowers` is never among them; it is step 9's suggestion, never pre-selected/);
+    assert.match(flat(setup), /`superpowers` is an OPTIONAL pick \(R72\): suggested, never seeded or pre-selected/);
     assert.match(setup, /--found "\$TMP\/found\.json"/, 'the tables still carry the scan\'s evidence labels');
 });
 
@@ -103,10 +107,17 @@ test('setup: the playwright ENABLE pre-selection reads plan-out\'s live state wh
     assert.match(mcps, /pre-selected: `enabled` plus any newly added one when a stamp exists - never the stamp's own `playwright-enabled:` line/);
     assert.match(mcps, /every one only on a first install/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
+    // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
+    assert.match(mcps, /Picking one IS installing it, and the question says so in one line: this run's install downloads a picked `firefox` \/ `webkit` now/);
+    assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
 });
 
 test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, CLAUDE.md; no sentry', () => {
     const init = cmdBody('init');
+    // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
+    assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
+    // The hook count, stated once per table: the manifest ships seventeen.
+    assert.match(flat(cmdBody('setup')), /Recommended = all seventeen:.*\*\*None\*\* names all seventeen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
@@ -126,7 +137,12 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
 test('the router: nothing installed -> setup, installed but never initialised -> init, initialised -> no bootstrap', () => {
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
     assert.match(router, /\*\*Installed\*\* = an install record: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
-    assert.match(router, /\*\*Initialised\*\* = `autoMemoryEnabled: false` in `settings\.json` or `settings\.local\.json`/);
+    // I1: the state is ONE script read - the stamp's `initialised:` line only init writes - never the
+    // memory switch alone, which an update or the user's own settings could flip.
+    assert.match(router, /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./);
+    assert.match(router, /\*\*Initialised\*\* = the stamp's `initialised:` line holds a date/);
+    assert.match(router, /`initialised: pending`/);
+    assert.match(router, /a stamp from before that line counts as initialised when `autoMemoryEnabled: false`/);
     assert.match(router, /Not installed -> `\/alfred-code:setup`/);
     assert.match(router, /Installed, never initialised -> `\/alfred-code:init`/);
     assert.match(router, /Initialised -> no bootstrap/);

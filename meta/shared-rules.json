@@ -4525,7 +4525,7 @@
       ]
     },
     "guided-skeleton-invariant": {
-      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. setup and configure carry the paragraph verbatim (12 and 13 steps).",
+      "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. setup and configure carry the paragraph verbatim (11 and 13 steps).",
       "owner": {
         "file": "setup-plugin/commands/setup.md",
         "marker": "The skeleton is INVARIANT - the stability contract"

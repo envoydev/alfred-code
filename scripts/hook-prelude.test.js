@@ -7,7 +7,7 @@ const path = require('node:path');
 
 const PRELUDE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
 const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp } = require(PRELUDE);
-const { spawnSync } = require('node:child_process');
+const { spawnSync, execFileSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
 function project(settings)
@@ -331,6 +331,120 @@ test('a plugin-launched hook stands down in a project with no install record, an
         assert.strictEqual(neverSetUp({ CLAUDE_PROJECT_DIR: dir }), false, 'a copied hook is set up by definition');
         assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: env.CLAUDE_PLUGIN_ROOT }), false, 'no project dir - run');
         assert.strictEqual(standDown('guard-secret-value', env, ['node', 'guard-secret-value.js', '--presence', '/tmp/f']), false, 'a CLI is never gated');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// C1 (Task 18a review): the stamp is machine-local and `.claude/` is ignored, so a `git worktree add`
+// checkout - Claude Code's own `.claude/worktrees/<n>` included - carries no record of its own. Its
+// `.git` FILE names the main checkout, whose record counts; a session opened in a subdirectory walks
+// up to its top level first. Read from files alone - a hook never spawns git here.
+const UNSET_ROOT = '/cfg/plugins/cache/envoydev/alfred-code/2.0.0';
+function repoWithWorktree({ stamp = true } = {})
+{
+    const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-wt-')));
+    const main = path.join(base, 'main');
+    fs.mkdirSync(main);
+    fs.writeFileSync(path.join(base, 'gitconfig'), '');
+    const gitEnv = { PATH: process.env.PATH, HOME: base, GIT_CONFIG_GLOBAL: path.join(base, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
+    const git = (...a) => execFileSync('git', a, { cwd: main, env: gitEnv, stdio: 'pipe' });
+    git('init', '-q', '-b', 'main');
+    fs.writeFileSync(path.join(main, '.gitignore'), '.claude/\n');
+    git('add', '.gitignore');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-q', '-m', 'start');
+    if (stamp)
+    {
+        fs.mkdirSync(path.join(main, '.claude'));
+        fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+    }
+    const wt = path.join(base, 'wt');
+    git('worktree', 'add', '-q', '-b', 'wt', wt);
+    return { base, main, wt, git };
+}
+const unsetEnv = (dir) => ({ CLAUDE_PLUGIN_ROOT: UNSET_ROOT, CLAUDE_PROJECT_DIR: dir });
+const HOOK_FILE = (file) => path.join(__dirname, '..', 'stack', 'hooks', file);
+function fireIn(file, dir, toolInput, toolName = 'Bash')
+{
+    return spawnSync(process.execPath, [HOOK_FILE(file)], {
+        input: JSON.stringify({ session_id: 's', cwd: dir, hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput }),
+        env: { PATH: process.env.PATH, HOME: path.join(os.tmpdir(), 'prelude-no-home'), ...unsetEnv(dir) }, encoding: 'utf8',
+    });
+}
+
+test('a git worktree of a set-up repo is set up - its guards stay on under a user-scope core (C1)', () => {
+    const { base, main, wt, git } = repoWithWorktree();
+    try
+    {
+        assert.ok(fs.statSync(path.join(wt, '.git')).isFile() && !fs.existsSync(path.join(wt, '.claude')), 'a worktree: a .git FILE, no record of its own');
+        assert.strictEqual(neverSetUp(unsetEnv(wt)), false, 'the main checkout\'s stamp counts');
+        const deep = path.join(wt, 'src', 'deep');
+        fs.mkdirSync(deep, { recursive: true });
+        assert.strictEqual(neverSetUp(unsetEnv(deep)), false, 'a subdirectory launch walks up to the worktree, then to the main checkout');
+        const inner = path.join(main, '.claude', 'worktrees', 'feat');
+        git('worktree', 'add', '-q', '-b', 'feat', inner);
+        assert.strictEqual(neverSetUp(unsetEnv(inner)), false, 'Claude Code\'s own .claude/worktrees/<n> checkout');
+        assert.strictEqual(standDown('guard-unapproved-dispatch', unsetEnv(wt), ['node', 'x.js']), false);
+        // End to end, the way the core launches them: a protective guard and an ordinary one both deny.
+        const rm = fireIn('guard-catastrophic-rm.js', wt, { command: 'rm -rf ~' });
+        assert.strictEqual(rm.status, 2, `rm -rf ~ in the worktree must be blocked: ${rm.stdout}${rm.stderr}`);
+        const dispatch = fireIn('guard-unapproved-dispatch.js', wt, { subagent_type: 'aspnet-implementer', prompt: 'x' }, 'Agent');
+        assert.strictEqual(dispatch.status, 2, `an unapproved implementer in the worktree must be blocked: ${dispatch.stderr}`);
+    }
+    finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+test('a worktree of a repo never set up is not set up either, and a .git file that names nothing fails to the project alone (C1)', () => {
+    const { base, wt } = repoWithWorktree({ stamp: false });
+    try
+    {
+        assert.strictEqual(neverSetUp(unsetEnv(wt)), true, 'no record in the worktree or the main checkout');
+        assert.strictEqual(standDown('guard-unapproved-dispatch', unsetEnv(wt), ['node', 'x.js']), true);
+        // A worktree whose gitdir lost its commondir (older git, hand-made) still reaches <main>/.git/worktrees/<n>/../..
+        const gitdir = fs.readFileSync(path.join(wt, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)[1].trim();
+        fs.rmSync(path.join(gitdir, 'commondir'));
+        fs.mkdirSync(path.join(base, 'main', '.claude'));
+        fs.writeFileSync(path.join(base, 'main', '.claude', 'alfred-code.stamp'), '');
+        assert.strictEqual(neverSetUp(unsetEnv(wt)), false, 'the worktrees/<n> layout names the main checkout');
+        // Junk in the .git file: only the project's own .claude/ is read, and it has no record.
+        fs.writeFileSync(path.join(wt, '.git'), 'not a gitdir line\n');
+        assert.strictEqual(neverSetUp(unsetEnv(wt)), true);
+        fs.writeFileSync(path.join(wt, '.git'), 'gitdir: /nowhere/at/all\n');
+        assert.strictEqual(neverSetUp(unsetEnv(wt)), true);
+    }
+    finally { fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+// R86 (the coordinator's ruling on Task 18a): three guards stop what cannot be undone - a recursive
+// rm of an unrecoverable target, a credential value read into the transcript, a force-push over a
+// protected branch - and in a repo never set up a user-scope core is the only guard it has. They stay
+// live there and skip their block row, so R54 still holds: nothing is written. Every other hook
+// stands down. ALFRED_CODE_HOOKS_OFF still switches any of the three off.
+test('in a repo never set up the three protective guards stay live and write nothing; every other hook stands down (R86)', () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-r86-')));
+    const env = unsetEnv(dir);
+    try
+    {
+        assert.deepStrictEqual([...require(PRELUDE).PROTECTIVE].sort(), ['guard-catastrophic-rm', 'guard-protected-force-push', 'guard-secret-value']);
+        for (const hook of ['guard-catastrophic-rm', 'guard-secret-value.js', 'guard-protected-force-push'])
+            assert.strictEqual(standDown(hook, env, ['node', 'x.js']), false, `${hook} stays live`);
+        for (const hook of ['guard-ungated-commit', 'guard-cross-project-write', 'guard-fresh-session-start', 'history-session', 'docs-session'])
+            assert.strictEqual(standDown(hook, env, ['node', 'x.js']), true, `${hook} stands down`);
+        assert.strictEqual(standDown('guard-catastrophic-rm', { ...env, ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' }, ['node', 'x.js']), true, 'the csv still wins');
+
+        const rm = fireIn('guard-catastrophic-rm.js', dir, { command: 'rm -rf ~' });
+        assert.strictEqual(rm.status, 2, `rm -rf ~ blocked: ${rm.stderr}`);
+        const push = fireIn('guard-protected-force-push.js', dir, { command: 'git push --force origin main' });
+        assert.strictEqual(push.status, 2, `a force-push to main blocked: ${push.stderr}`);
+        fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }));
+        const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
+        assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
+        assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'three blocks, no block row - nothing written into a repo never set up');
+
+        // Positive control: once set up, the same block writes its row.
+        fs.mkdirSync(path.join(dir, '.claude'));
+        fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), '');
+        assert.strictEqual(fireIn('guard-catastrophic-rm.js', dir, { command: 'rm -rf ~' }).status, 2);
+        assert.ok(fs.existsSync(path.join(dir, '.claude', 'docs', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

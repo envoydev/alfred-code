@@ -55,7 +55,8 @@ change (see the invariants below).
   the walk's hooks layer now writes the rows it did NOT pick into `ALFRED_CODE_HOOKS_OFF` instead of
   leaving files out. The four gates live in `hook-prelude.js`, never inlined in every hook: the csv
   opt-out; the plugin copy standing down while a project still wires its copied twin; a repo never
-  set up (R54); and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
+  set up (R54: no record in it, its git top level or a worktree's main checkout - the rm, secret and
+  force-push guards stay live there, writing no row, R86); and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
   while settings enable an `alfred-code@*` its `installed_plugins.json` row can load, so the two
   never double-fire (S26). All fail open - an unreadable file runs the hook.
   The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
@@ -380,7 +381,8 @@ mirrored there in the same sitting.
   what gives the service real 384-dim embeddings; without it the server refuses to start on a
   database already holding memories. Env: `MCP_MEMORY_STORAGE_BACKEND=sqlite_vec`,
   `MCP_MEMORY_SQLITE_PATH=<db>`, `MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000` (a shared file,
-  several writers). Before switching Claude's own memory off, the installer imports the project's
+  several writers). Before switching Claude's own memory off, `/alfred-code:init` (`memory.js init`,
+  which then stamps `initialised: <date>`; no run imports before that line) imports the project's
   existing `MEMORY.md` / `memory/*.md` notes into the chosen database once, through the memory
   service itself (idempotent - a re-run imports nothing twice); the switch-off
   (`autoMemoryEnabled: false`) writes to THIS repo's own project `.claude/settings.json` - always,

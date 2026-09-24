@@ -8,9 +8,11 @@
 //
 //   machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
-//     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the playwright engines
-//     Playwright downloads (firefox, webkit - chrome and msedge run the installed browser), and the
-//     serena index. The command is the exact one to run; init puts every missing one through ONE ask.
+//     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
+//     browsers, and the serena index. Setup's install already downloaded a picked firefox / webkit, so
+//     one is here only when that download failed; chrome and msedge run the machine's own browser,
+//     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
+//     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
 //     The four captures in their fixed order, each only when the install lists its skill AND its seat
@@ -28,8 +30,14 @@ const REPO = path.join(__dirname, '..');
 const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
 const { serenaHomeFor } = require(path.join(REPO, 'stack', 'mcp', 'serena-launch.js'));
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
+const { browserCandidates } = require(path.join(REPO, 'scripts', 'stack-select.js'));
 
 const DOWNLOADED = ['firefox', 'webkit'];
+// The machine browsers a picked chrome / msedge runs: PATH names, then stack-select's app locations.
+const MACHINE_BROWSERS = {
+    chrome: { need: 'Google Chrome', bins: ['google-chrome', 'google-chrome-stable', 'chrome'] },
+    msedge: { need: 'Microsoft Edge', bins: ['msedge', 'microsoft-edge'] },
+};
 const CAPTURES = [
     { skill: 'project-related-context', seat: 'related-project-analyzer', output: () => '.claude/rules/baseline-project-related-context.md' },
     { skill: 'project-architecture-analyzer', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
@@ -95,10 +103,18 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         else add('csharp-ls', 'blocked', 'needs the .NET 10 SDK (dotnet) first - https://dot.net, then dotnet tool install --global csharp-ls');
     }
 
-    const engines = ((inv.playwright && inv.playwright.installed) || []).filter((e) => DOWNLOADED.includes(e));
     const pwDir = browsersDir(platform, env);
-    for (const engine of engines)
-        add(`playwright ${engine}`, probe.dir(pwDir, `${engine}-`) ? 'present' : 'missing', `npx -y -p @playwright/mcp${pinOf('playwright')} playwright install ${engine}`);
+    for (const engine of (inv.playwright && inv.playwright.installed) || [])
+    {
+        if (DOWNLOADED.includes(engine))
+            add(`playwright ${engine}`, probe.dir(pwDir, `${engine}-`) ? 'present' : 'missing', `npx -y -p @playwright/mcp${pinOf('playwright')} playwright install ${engine}`);
+        else if (MACHINE_BROWSERS[engine])
+        {
+            const { need, bins } = MACHINE_BROWSERS[engine];
+            const found = bins.some((b) => probe.has(b, env)) || browserCandidates(engine, platform, env).some((c) => (probe.file || fs.existsSync)(c));
+            add(`playwright ${engine}`, found ? 'present' : 'blocked', `needs ${need} - install it, or drop ${engine} from the playwright browsers (/alfred-code:configure)`);
+        }
+    }
 
     const serenaHome = serenaHomeFor(platform);
     const index = `uvx --python ${request} --from serena-agent${pinOf('serena')} serena project index`;

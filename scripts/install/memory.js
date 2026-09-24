@@ -166,8 +166,10 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
 //
 // setup installs with no level (the import waits); init asks it and lands it HERE - the settings key
 // the plugin's launcher reads, the project database's own .gitignore, then the gated import and the
-// switch-off above. No reinstall: nothing else under .claude/ is touched. A copy-route registration
-// in .mcp.json is the installer's to re-point, so a different path there is refused, never edited.
+// switch-off above, and on success the stamp's `initialised:` line - the one signal the router and
+// every later run read (Task 18a I1). No reinstall: nothing else under .claude/ is touched. A copy-route
+// registration is the installer's to re-point, so a different path there is refused, never edited - in
+// the file the importer would spawn from: .mcp.json, else the account .claude.json (M4).
 // Exit 0: imported, already off, or nothing to import. 1: a refusal or a failed import. 2: usage.
 const USAGE = 'usage: memory.js init --project-root <root> --level <global|scoped|project> [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]';
 
@@ -195,6 +197,42 @@ function stampScope(claudeDir)
     return '';
 }
 
+// The registration the importer spawns the server from, in its own order (the engine's
+// registrationEntry): this project's .mcp.json, then the account file's user-scope entry, then its
+// entry for this project. The account file is `<config-dir>/.claude.json` when a config dir is named or
+// live, else `$HOME/.claude.json`. Null when none registers memory - the plugin route.
+function registeredMemory(projectRoot, { home, configDir })
+{
+    const withPath = (file, entry) =>
+    {
+        if (!entry || typeof entry.command !== 'string' || !entry.command) return null;
+        const raw = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
+        return { file, path: typeof raw === 'string' && raw ? raw.replace(/^~(?=[/\\]|$)/, home) : '' };
+    };
+    const mcpFile = path.join(projectRoot, '.mcp.json');
+    const project = withPath(mcpFile, (readObject(mcpFile).data || {}).mcpServers?.memory);
+    if (project) return project;
+    const acctFile = path.join(configDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json');
+    const account = readObject(acctFile).data || {};
+    const user = withPath(acctFile, account.mcpServers?.memory);
+    if (user) return user;
+    const projects = account.projects || {};
+    const own = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
+    return withPath(acctFile, own && own.mcpServers && own.mcpServers.memory);
+}
+
+// A project-level database lives in the repo, so it gets its own `.gitignore` (`*`) the moment the
+// level lands - from init, update or configure alike (M5). An existing one is the user's, left alone.
+function ensureProjectIgnore(projectRoot, log = () => {})
+{
+    const ignore = path.join(projectRoot, MEMORY_DIR, '.gitignore');
+    if (fs.existsSync(ignore)) return false;
+    fs.mkdirSync(path.dirname(ignore), { recursive: true });
+    fs.writeFileSync(ignore, '*\n');
+    log(`  memory: ${MEMORY_DIR}/.gitignore written - the project database is never committed`);
+    return true;
+}
+
 function initMemory(argv, { which, runNode, homedir, log = console.log, err = console.error })
 {
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
@@ -210,10 +248,11 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     const dbPath = pathForLevel(level, { home, space: flag('--space'), projectRoot });
     const claudeDir = path.join(projectRoot, '.claude');
 
-    const registered = (readObject(path.join(projectRoot, '.mcp.json')).data || {}).mcpServers?.memory?.env?.MCP_MEMORY_SQLITE_PATH;
-    if (registered && path.normalize(registered) !== path.normalize(dbPath))
+    const registered = registeredMemory(projectRoot, { home, configDir: flag('--config-dir') });
+    if (registered && registered.path && path.normalize(registered.path) !== path.normalize(dbPath))
     {
-        log(`  !! memory: .mcp.json registers memory at ${registered} - the copy route re-points it through the installer: /alfred-code:update --memory-level ${level}`);
+        const where = path.basename(registered.file) === '.mcp.json' ? '.mcp.json' : registered.file;
+        log(`  !! memory: ${where} registers memory at ${registered.path} - the copy route re-points it through the installer: /alfred-code:update --memory-level ${level}`);
         return 1;
     }
 
@@ -239,11 +278,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
         fs.writeFileSync(target, `${JSON.stringify(data, null, 2)}\n`);
     }
     log(`memory: level ${level} -> ${dbPath} (${path.basename(target)} env ALFRED_CODE_MEMORY_DB)`);
-    if (level === 'project')
-    {
-        const ignore = path.join(projectRoot, MEMORY_DIR, '.gitignore');
-        if (!fs.existsSync(ignore)) { fs.mkdirSync(path.dirname(ignore), { recursive: true }); fs.writeFileSync(ignore, '*\n'); }
-    }
+    if (level === 'project') ensureProjectIgnore(projectRoot, log);
 
     const settingsFile = target;
     const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });
@@ -258,10 +293,14 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
         },
     });
     if (gate.already) log("memory: Claude's own memory is already off - nothing to import again");
-    return out.switchedOff ? 0 : 1;
+    if (!out.switchedOff) return 1;
+    const stamp = require('./stamp.js');
+    if (stamp.markInitialised(claudeDir)) log(`memory: initialised - the stamp records it, so no later run defers to /alfred-code:init`);
+    else log('  !! memory: no install stamp to mark - run /alfred-code:setup first');
+    return 0;
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, initMemory };
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, initMemory, ensureProjectIgnore };
 
 if (require.main === module)
 {

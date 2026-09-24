@@ -859,10 +859,16 @@ function installHooksAndRules(ctx)
 
 function importMemory(ctx)
 {
-    // setup installs with no level - it is init's question, asked in the session after the restart,
-    // and init imports through `memory.js init`. Importing now would file the notes under a
-    // database the user has not chosen yet.
-    if (ctx.args.action === 'install' && !ctx.args.memoryLevel)
+    if (ctx.level.level === 'project')
+    {
+        try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log); }
+        catch (err) { ctx.note(`${memory.MEMORY_DIR}/.gitignore could not be written (${err.message}) - add the folder to the repo's own .gitignore`); }
+    }
+    // Task 18a I1: the notes import and the switch-off belong to /alfred-code:init (`memory.js init`),
+    // which asks the level first and marks the stamp `initialised:`. Until that line holds a date, no
+    // run imports - not setup's install, an update, or configure's apply with a level named - or the
+    // notes land in a database the user never chose and the router skips init.
+    if (!stampLayer.isInitialised(stampLayer.initialisedValue({ claudeDir: ctx.claudeDir })))
     {
         ctx.log("memory: the notes import waits for /alfred-code:init, which asks the level first - Claude's own memory stays on until then");
         return;

@@ -11,8 +11,8 @@ them. Three checks come first, in order, each one line:
 
 - **Nothing installed** - no install record in the project's `.claude/` (`alfred-code.stamp`, the
   1.x `claude-stack.stamp`, or a copied `hooks/docs.js`): stop and name `/alfred-code:setup` for the
-  USER to type, then end the turn. It is `disable-model-invocation`, so a Skill call from this run is
-  denied, and it belongs in its own session.
+  USER to type, then end the turn. It is `disable-model-invocation` - the user's to type, never a
+  Skill call from this run - and it belongs in its own session.
 - **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
   session. What setup installed is on disk but not loaded here.
 - **Run before** - go on: every step below reads what is already in place and skips it
@@ -52,9 +52,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 `node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
 
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why>` -
-  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the playwright
-  engines Playwright downloads (firefox, webkit - chrome and msedge run the installed browser), the
-  serena index. The command is the exact one to run.
+  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
+  playwright browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
+  machine does not have), the serena index. The command is the exact one to run.
 - `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
   captures in their fixed order, each only when the install lists its skill AND its seat.
 
@@ -66,11 +66,13 @@ No `missing` line: one narration line, next step. Otherwise ONE AskUserQuestion,
 option per `missing` / `missing after uv` line - the label names the item, the description carries
 its exact command - every one pre-selected, 'install the selected' recommended (the servers that need
 them cannot start without them). A `blocked` line is not an option: name its fix once (the .NET SDK
-for csharp-ls) - the user installs it; never attempt one.
+for csharp-ls, the browser for a picked chrome or msedge) - the user installs it; never attempt one.
 
 Run the picked commands in plan order, uv first - the `after uv` ones need it. A fresh uv lands in a
-directory the running shell may not have on PATH yet: its installer prints where, and the next
-command uses that path when `uv` is not found. The serena index and a browser download take minutes:
+directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not
+found afterwards, EVERY later command of this run carries that directory first -
+`PATH="<dir>:$PATH" <command>` - step 3's `after uv` commands and step 4's `memory.js init` alike,
+since the import it runs needs `uvx`. The serena index and a browser download take minutes:
 start them in the background and go on to step 4, collecting each result before step 5's
 architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
 error line quoted) or skipped by the answer. A server this session started before its runtime existed
@@ -93,17 +95,21 @@ shared memory. Picking `project` while this project's related-projects domain na
 (`.claude/rules/baseline-project-related-context.md`) means their memories are not visible from
 here - one caveat line in the close.
 
-Apply it with the init-only entry point - no reinstall, nothing else under `.claude/` touched:
+Apply it with the init-only entry point - no reinstall; under `.claude/` only the settings key and the
+stamp's `initialised:` line change:
 `node "$TMP/repo/scripts/install/memory.js" init --project-root . --level <answer> [--space <name>]`
-(`--space` when this session's account dir is `~/.claude-<name>`). It writes the level into the
+(`--space` when this session's account dir is `~/.claude-<name>`; the same `PATH` prefix as step 3
+after a fresh uv). It writes the level into the
 `ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
 writes `.memory-mcp/.gitignore` at `project` level, imports this project's old `MEMORY.md` /
 `memory/*.md` notes into THAT database once through the memory service, and - only when the import
-succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`). Report its lines: the
+succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`) and marks the stamp
+`initialised: <date>`, the one signal the router reads and no other run writes. Report its lines: the
 level, the import count or WHY it stopped (no `uvx` is the usual one - step 3 skipped uv), and
 whether the switch-off happened; never claim it from the answer alone. A failed import leaves Claude's
-own memory ON, and the old note files are never deleted. It refuses a copy-route `.mcp.json`
-registration at another path - name its `/alfred-code:update --memory-level <level>` line. The server
+own memory ON, and the old note files are never deleted. It refuses a copy-route registration at
+another path (`.mcp.json`, else the account `.claude.json`) - name its
+`/alfred-code:update --memory-level <level>` line. The server
 this session runs still opens the database setup pointed it at until a restart - when the level is
 not `global`, the close names the restart.
 

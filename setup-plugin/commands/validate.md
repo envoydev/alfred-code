@@ -286,7 +286,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   account file) and report it -
   `false` reads as done (Claude's own memory is off, the one-time import succeeded); `true` or the
   key ABSENT both read as 'the one-time import has not completed yet, so Claude's own memory is
-  still on' - never claim success from an absent key.
+  still on' - never claim success from an absent key. A stamp reading `initialised: pending` means
+  `/alfred-code:init` never ran: name it, since no other run imports.
 
 ## 9. Environment - the settings.json env block against this release
 
