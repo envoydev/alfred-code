@@ -264,7 +264,9 @@ test('read-back: a plugin-route install with nothing on disk is still an install
     // An ACCOUNT-scope entry is every project's - reading it as this one's would install into a
     // project the stack never touched.
     assert.strictEqual(bare([row('alfred-code@envoydev', { scope: 'user' })]).installed, false);
-    assert.strictEqual(bare([row('alfred-code@envoydev', { enabled: false })]).installed, false, 'a parked entry is no install');
+    assert.strictEqual(bare([row('claude-stack-csharp@envoydev', { enabled: false })]).installed, false, 'a parked entry is no install'); // legacy-name
+    // The core is locked on: its listing flag can read false for a moved project-scope core that runs (S22).
+    assert.strictEqual(bare([row('alfred-code@envoydev', { enabled: false })]).installed, true, 'a listed core is an install whatever its flag');
     assert.strictEqual(bare([row('alfred-code@other-market')]).installed, false, 'another marketplace is not ours');
 });
 
@@ -280,8 +282,28 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
         row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev', { enabled: false }),
         row('playwright-firefox@envoydev', { enabled: false }), row('playwright-webkit@envoydev'),
     ] });
-    assert.strictEqual(r.answered.hooks, false, 'a parked hooks entry is no evidence of the hook state');
+    assert.strictEqual(r.answered.hooks, true, 'the hooks entry is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
     assert.deepStrictEqual(r.engines, ['webkit']);
+});
+
+test('read-back: the core and the hooks entry read as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
+{
+    const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+    const seat = 'code-style-analyzer';
+    assert.ok(core.agents.includes(seat) && core.skills.includes('markdown-style'), 'fixture: the core carries both');
+    const stale = { enabled: false };
+    const r = readBackCase({
+        listing: [row('alfred-code@envoydev', stale), row('alfred-code-hooks@envoydev', stale)],
+        settings: { permissions: { deny: [`Agent(alfred-code:${seat})`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
+    });
+    assert.deepStrictEqual(r.parked, [], 'neither entry is parked by its flag');
+    assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
+    assert.ok(r.lines.includes('skill markdown-style'), r.lines.join(', '));
+    assert.ok(!r.lines.includes(`agent ${seat}`), 'the denied seat stays off');
+    assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'), 'HOOKS_OFF still holds');
+    assert.deepStrictEqual(sel.leftOut({ parked: r.parked, deny: r.deny }), [`agent ${seat}`], 'only the denied seat is left out - no core item for the flag');
+    const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('alfred-code-hooks@envoydev', stale), row('claude-hud@claude-hud', stale)], answered: r.answered, pluginCatalog: ['claude-hud'] });
+    assert.deepStrictEqual(inv.plugins_disabled, ['claude-hud'], 'validate shows no DISABLED row for the core or the hooks entry');
 });
 
 test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>

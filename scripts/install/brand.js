@@ -35,6 +35,14 @@ const rowId = (row) =>
     return [String(row.name || ''), String(row.marketplace || '')];
 };
 
+// The core and the hooks entry are LOCKED on, under either spelling, so a listed row of either is
+// enabled whatever its `enabled` flag says: the listing reads `false` for a moved project-scope
+// core that visibly runs, session after session (docs/rebrand-evidence.md S22). Only the
+// plugin-level flag is overruled - a user's off-switch for one core item (a seat deny, a
+// skillOverrides value) is read elsewhere and still holds.
+const alwaysOn = (name) => isCore(name) || isHooks(name);
+const rowOn = (row) => Boolean(row) && (row.enabled !== false || alwaysOn(rowId(row)[0]));
+
 const sameSlug = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
 // A git URL names the repo too: https://github.com/<slug>(.git) or git@github.com:<slug>(.git).
 const urlSlug = (url) => (/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(String(url || '')) || [])[1] || '';
@@ -95,4 +103,4 @@ function stampFile(dir)
     return { read, write, legacy: old };
 }
 
-module.exports = { BRAND, LEGACY, isCore, isHooks, currentName, marketOf, marketKey, stampFile };
+module.exports = { BRAND, LEGACY, isCore, isHooks, alwaysOn, rowOn, currentName, marketOf, marketKey, stampFile };

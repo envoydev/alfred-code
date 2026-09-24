@@ -624,13 +624,30 @@ test('migrate: a moved project still names the 1.x core another scope carries', 
     assert.ok(logs.some((m) => m.includes(`claude plugin uninstall ${OLD}@${OLD} --scope user`)), logs.join(' | '));
 });
 
-test('migrate: the old and the new core both at this scope, or no old core at all - nothing to move', () =>
+test('migrate: the old and the new core both at this scope - no install, and the removals an earlier run left are retried in order', () =>
 {
-    for (const rows of [[row1x(OLD, 'project'), NEW_CORE('project')], [NEW_CORE('project')], []])
+    // An earlier move installed the new core, but an uninstall did not take (refused, or cut short):
+    // the next run finishes it rather than leaving both cores' hooks running.
+    const { out, moves } = migrate([NEW_CORE('project'), row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(`${OLD}-angular`, 'project')]);
+    assert.deepStrictEqual(moves, [
+        `plugin uninstall ${OLD}-angular --scope project -y`,
+        `plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
+        `plugin uninstall ${OLD}@${OLD} --scope project -y`,
+    ]);
+    assert.deepStrictEqual(out.fresh, [], 'nothing was installed this run');
+    assert.strictEqual(out.ran, true, 'the retired pass ran here - the caller runs no second one');
+    assert.deepStrictEqual(migrate([NEW_CORE('project'), row1x(OLD_HOOKS, 'project')], { carriers: [] }).moves,
+        [`plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`], 'a hooks alias left alone is retried too');
+});
+
+test('migrate: no old row left at this scope - nothing to move', () =>
+{
+    for (const rows of [[NEW_CORE('project')], [], [NEW_CORE('project'), row1x(OLD, 'user'), row1x(OLD_HOOKS, 'user')]])
     {
         const { out, moves } = migrate(rows);
         assert.deepStrictEqual(moves, [], JSON.stringify(rows));
         assert.deepStrictEqual(out.fresh, []);
+        assert.strictEqual(out.ran, false);
     }
     // The new core at ANOTHER scope does not cover this one.
     assert.deepStrictEqual(migrate([row1x(OLD, 'project'), NEW_CORE('user')], { carriers: [] }).moves[0], `plugin install alfred-code@${OLD} --scope project -y`);
@@ -653,6 +670,18 @@ test('update: a plugin this run installed is not installed, enabled or updated a
     assert.deepStrictEqual(run.matching(/^plugin (install|enable|update) /), []);
     assert.ok(!/DISABLED|NOT installed/.test(report[0]), report[0]);
     assert.match(report[0], /plugin alfred-code: 2\.0\.0 \(installed this run\)/);
+});
+
+test('update: the core and the hooks entry are locked on - a stale disabled flag runs no enable and reads no DISABLED (S22)', () =>
+{
+    const run = cli();
+    const rows = [NEW_CORE('project', { enabled: false }), { ...NEW_CORE('project', { enabled: false }), name: 'alfred-code-hooks' }, { name: 'serena', marketplace: OLD, version: '1.0.0', scope: 'project', enabled: false }];
+    const specs = ['alfred-code', 'alfred-code-hooks', 'serena'].map((n) => `${n}@${OLD}`);
+    const report = P.updatePlugins({ plugins: specs, scope: 'project', before: rows, after: rows, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin enable /), [`plugin enable serena@${OLD} --scope project`], 'a parked ordinary entry is still enabled');
+    assert.match(report[0], /plugin alfred-code: 2\.0\.0 \(already newest\)/);
+    assert.match(report[1], /plugin alfred-code-hooks: 2\.0\.0 \(already newest\)/);
+    assert.match(report[2], /plugin serena: 1\.0\.0 but DISABLED/);
 });
 
 test('install: a plugin this run installed is not installed again', () =>
@@ -722,6 +751,37 @@ test('seed update: a failed install of the new core removes nothing and prints t
     assert.deepStrictEqual(calls.filter((c) => c.startsWith('plugin uninstall ')), [], 'nothing is removed while the old core carries the guards');
     assert.strictEqual(calls.filter((c) => c.startsWith('plugin install alfred-code@')).length, 1, 'no second attempt beside the old core');
     assert.ok(out.includes(`claude plugin install alfred-code@${OLD} --scope project -y`), out);
+});
+
+test('seed update: a project holding the new core AND a 1.x id retries the removals and installs nothing', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify([`alfred-code@${OLD}`, `${OLD}@${OLD}`, `${OLD}-angular@${OLD}`].map((id) => ({ id, version: '2.0.0', scope: 'project', enabled: true })));
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing });
+    assert.ok(!calls.some((c) => c.startsWith('plugin install alfred-code@')), `the core was installed again:\n${stackMoves(calls).join('\n')}`);
+    const leaf = calls.indexOf(`plugin uninstall ${OLD}-angular --scope project -y`);
+    const core = calls.indexOf(`plugin uninstall ${OLD}@${OLD} --scope project -y`);
+    assert.ok(leaf >= 0 && core > leaf, stackMoves(calls).join('\n'));
+    assert.strictEqual(calls.filter((c) => c === `plugin uninstall ${OLD}-angular --scope project -y`).length, 1, 'one retired pass, not two');
+    assert.ok(calls.includes(`plugin update alfred-code@${OLD} --scope project -y`), 'the installed core is updated as usual');
+});
+
+test('seed plan --installed-only: a stale disabled flag on the core leaves out no core item and shows no DISABLED core (S22)', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify(['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory']
+        .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: !n.startsWith('alfred-code') })));
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] } }));
+    };
+    const { result } = seedRun('update', 'skill markdown-style\n', {
+        plugins: listing, prepare, args: ['--installed-only', '--print-plan', '--plan-out', 'plan.json'],
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, 'plan.json'), 'utf8')),
+    });
+    assert.deepStrictEqual(result.left_out, ['agent code-style-analyzer'], 'only the denied seat - no core item for the flag');
+    assert.ok(!result.plugins_disabled.some((n) => n.startsWith('alfred-code')), result.plugins_disabled.join(','));
+    assert.ok(result.skills.includes('markdown-style'), result.skills.join(','));
 });
 
 test('seed plan: --print-plan lists the move as planned and changes no plugin', POSIX_ONLY, () =>

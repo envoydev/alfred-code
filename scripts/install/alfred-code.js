@@ -513,7 +513,7 @@ function installPlugins(ctx)
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const moved = plugins.corePluginOn(ctx.routes)
         ? plugins.migrateLegacy({ rows, listing, scope: ctx.cliScope, retired, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
-        : { fresh: [], gone: [], removed: [], failed: null };
+        : { fresh: [], gone: [], removed: [], failed: null, ran: false };
     // A failed move leaves the old core carrying the guards; a second install of the new one beside it
     // would run both, and leave nothing for the next update to move.
     if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
@@ -523,8 +523,8 @@ function installPlugins(ctx)
     ctx.liveCarriers = installed(moved.gone);
     if (ctx.args.action === 'update')
     {
-        // A move that ran pruned the retired entries already; a failed one removes nothing at all.
-        const moving = moved.fresh.length > 0 || moved.failed;
+        // A move that ran (or retried) pruned the retired entries already; a failed one removes nothing.
+        const moving = moved.ran || moved.failed;
         const gone = moving ? moved.gone : plugins.prunedRetired({ listing, retired, carriers, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({

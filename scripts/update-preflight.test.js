@@ -383,7 +383,7 @@ test('new items: global mode reads the account dir itself - its settings.json, n
     assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
 });
 
-test('new items: an arriving rename still names its old copy for the prune; None holds only while the hooks entry is enabled', () => {
+test('new items: an arriving rename still names its old copy for the prune; None holds while the hooks entry is listed, whatever its flag', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
         settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } },
@@ -401,9 +401,31 @@ test('new items: an arriving rename still names its old copy for the prune; None
     const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     assert.match(on, /^new: rule baseline-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
     assert.match(on, /^new: hook docs-session\toff\talfred-code-hooks$/m, 'None held');
+    // The hooks entry is locked on: its listing flag can read false while it runs (S22), and the
+    // installer's read-back holds the None the same way.
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
-    const parked = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(parked, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, 'the installer enables the hooks entry and writes no hook none there - the hook arrives');
+    const stale = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    assert.match(stale, /^new: hook docs-session\toff\talfred-code-hooks$/m, 'None held - the flag is not the hook state');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const absent = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    assert.match(absent, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, 'no hooks entry listed: the installer installs it and writes no hook none - the hook arrives');
+});
+
+test('new items: a stale disabled flag on the core changes no verdict - a core item arrives, a denied seat stays off (S22)', () => {
+    const { snap, install, fixtureFile } = scaffold({
+        fixture: NEW_FIXTURE,
+        settings: { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: '' } },
+    });
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: false }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.deepStrictEqual(out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule ')), [
+        'new: skill markdown-style\tarrives\talfred-code',
+        'new: skill dotnet-web-backend\toffer\t-\tleave',
+        'new: agent code-style-analyzer\toff\talfred-code',
+        'new: hook docs-session\tarrives\talfred-code-hooks',
+    ]);
 });
 
 // A 1.x install as 2.0.0's update first meets it: the stamp under its old name, every stack row
@@ -433,9 +455,11 @@ test('new items: a 1.x install is read under its old stamp, marketplace key, hoo
         'new: agent code-style-analyzer\toff\talfred-code',
         'new: hook docs-session\tarrives\talfred-code-hooks',
     ]);
-    // an explicit --marketplace still wins over what the listing says
-    const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'envoydev']).out;
-    assert.match(forced, /^new: skill markdown-style\toff\talfred-code$/m, forced);
+    // an explicit --marketplace still wins over what the listing says: a key no core row is listed
+    // under reads the core as absent, so its item is only offered (a listed core is never parked by
+    // its flag any more - S22 - so the leftover's disabled row cannot show the forcing)
+    const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'elsewhere']).out;
+    assert.match(forced, /^new: skill markdown-style\toffer\t/m, forced);
 });
 
 test('global mode: an account dir holding only the 1.x stamp is still the account dir', () => {

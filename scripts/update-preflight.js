@@ -43,7 +43,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { isHooks, marketKey, stampFile: stampIn } = require('./install/brand.js');
+const { isHooks, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
 function arg(name, fallback)
 {
@@ -234,12 +234,14 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
     // The installer holds None only while the hooks entry is enabled (it enables that entry
     // regardless, and writes no hook none without it) - so the verdict holds it only then too.
-    const hooksEntryOn = Boolean(listing && listing.some((r) => isHooks(r.name) && r.enabled));
+    // Listed is enabled for the hooks entry and the core: both are locked on, and the listing's flag
+    // can read false while they run (brand.js rowOn, docs/rebrand-evidence.md S22).
+    const hooksEntryOn = Boolean(listing && listing.some((r) => isHooks(r.name) && rowOn(r)));
     const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: hooksOff }));
     const rows = classifyNew({
         added, noneBefore,
-        plugins: listing && listing.filter((r) => r.enabled).map((r) => r.name),
-        parked: listing ? listing.filter((r) => !r.enabled).map((r) => r.name) : [],
+        plugins: listing && listing.filter(rowOn).map((r) => r.name),
+        parked: listing ? listing.filter((r) => !rowOn(r)).map((r) => r.name) : [],
         deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
         hooksOff,
         routes: pluginRoutes(process.env),

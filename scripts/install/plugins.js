@@ -21,7 +21,7 @@
 //     its old version under a project install.
 //   - VERSIONS ARE READ BACK. `claude plugin update` reports success whether or not anything moved.
 const path = require('node:path');
-const { BRAND, LEGACY, marketOf, marketKey } = require('./brand.js');
+const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
 
 // claude-hud is a statusline HUD: a project-scoped install plus the global statusline enable
 // mismatch, so every OTHER project warns 'plugin not cached'. It is user scope, always.
@@ -304,29 +304,37 @@ function prunedRetired({ listing, retired = [], carriers = [], scope, cli, log =
 // per-stack entries go the `prunedRetired` way, then the hooks alias, then the core alias - the order
 // their dependencies allow (S22). A failed install removes NOTHING, since the old core is what still
 // carries the guards; an old core at another scope is every other project's install too, so it stays
-// and is named. `rows` keeps every scope (`parsePluginList` everyScope), `listing` is what
-// `prunedRetired` reads.
+// and is named. The new core already here beside a 1.x id at this scope is a move an earlier run did
+// not finish (an uninstall refused, or cut short): the install is skipped and the removals retried,
+// in the same order. `ran` says the retired pass ran here. `rows` keeps every scope
+// (`parsePluginList` everyScope), `listing` is what `prunedRetired` reads.
 function migrateLegacy({ rows = [], listing = rows, scope, retired = [], carriers = [], cli, log = () => {}, note = () => {} })
 {
-    const out = { fresh: [], gone: [], removed: [], failed: null };
+    const out = { fresh: [], gone: [], removed: [], failed: null, ran: false };
     const named = (name, key) => rows.filter((r) => r.name === name && (!key || r.marketplace === key));
+    const here = (name, key) => named(name, key).some((r) => r.scope === scope);
     const kept = (r) => log(`  ${r.name}@${r.marketplace} is installed at ${r.scope} scope, not this run's - kept for the projects that use it; the update run at that scope moves it across: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope}`);
     for (const r of named(LEGACY.core).filter((x) => x.scope !== scope)) kept(r);
-    const core = named(LEGACY.core).find((r) => r.scope === scope
-        && !rows.some((n) => n.name === BRAND.core && n.marketplace === r.marketplace && n.scope === scope));
-    if (!core) return out;
+    const core = named(LEGACY.core).find((r) => r.scope === scope && !here(BRAND.core, r.marketplace));
+    const left = core ? null : [...named(LEGACY.core), ...named(LEGACY.hooks)].find((r) => r.scope === scope && here(BRAND.core, r.marketplace));
+    if (!core && !left) return out;
 
-    const key = core.marketplace;
+    const key = (core || left).marketplace;
     const spec = `${BRAND.core}@${key}`;
-    const install = ['plugin', 'install', spec, '--scope', scope, '-y'];
-    log(`plugin [${scope}]: ${spec} (moves the 1.x install across - installed before its old ids go)`);
-    if (!cli(install))
+    if (core)
     {
-        out.failed = spec;
-        note(`the 1.x install was not moved - 'claude ${install.join(' ')}' failed, so nothing was removed and the old core keeps the guards running; run it by hand, then update again`);
-        return out;
+        const install = ['plugin', 'install', spec, '--scope', scope, '-y'];
+        log(`plugin [${scope}]: ${spec} (moves the 1.x install across - installed before its old ids go)`);
+        if (!cli(install))
+        {
+            out.failed = spec;
+            note(`the 1.x install was not moved - 'claude ${install.join(' ')}' failed, so nothing was removed and the old core keeps the guards running; run it by hand, then update again`);
+            return out;
+        }
+        out.fresh.push(spec);
     }
-    out.fresh.push(spec);
+    else log(`plugin [${scope}]: ${spec} is installed beside a 1.x id - the removals an earlier move left are retried`);
+    out.ran = true;
     out.gone = prunedRetired({ listing, retired, carriers, scope, cli, log });
     for (const name of [LEGACY.hooks, LEGACY.core])
         for (const r of named(name, key))
@@ -335,7 +343,7 @@ function migrateLegacy({ rows = [], listing = rows, scope, retired = [], carrier
             const id = `${name}@${key}`;
             if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true }))
             { log(`  plugin removed (a 1.x id, now a retired alias) [${scope}]: ${id}`); out.removed.push(r); }
-            else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes: claude plugin uninstall ${id} --scope ${scope}`);
+            else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes; the next update retries it, or: claude plugin uninstall ${id} --scope ${scope}`);
         }
     return out;
 }
@@ -365,7 +373,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
             log(`plugin install [${pscope}]: ${spec}`);
             cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
         }
-        else if (fieldOf(before, spec, 'enabled') === false)
+        // The core and the hooks entry are locked on (brand.js alwaysOn): their flag is no reason to act.
+        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
             cli(['plugin', 'enable', spec, '--scope', pscope]);
@@ -384,7 +393,7 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
         let line;
         if (fresh.includes(spec)) line = `  plugin ${name}: ${is ? `${is} (installed this run)` : 'installed this run'}`;
         else if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
-        else if (fieldOf(now, spec, 'enabled') === false) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
+        else if (fieldOf(now, spec, 'enabled') === false && !alwaysOn(name)) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
         else if (was && was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
         else line = `  plugin ${name}: ${is} (already newest)`;
         log(line);

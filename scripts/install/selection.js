@@ -25,7 +25,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
-const { BRAND, currentName } = require('./brand.js');
+const { BRAND, currentName, rowOn } = require('./brand.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -193,18 +193,19 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
     // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
     // entry is every project's, and would read a project the stack never touched as installed.
-    const ownEntries = ours.some((r) => r.enabled && (r.scope === 'project' || r.scope === 'local'));
+    // The core and the hooks entry count as enabled whatever their flag (brand.js rowOn, S22).
+    const ownEntries = ours.some((r) => rowOn(r) && (r.scope === 'project' || r.scope === 'local'));
     if (!hasInstall(lines) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
     // A 1.x listing can still name the core and the hooks entry by their old names: the same entries.
-    const names = ours.filter((r) => r.enabled).map((r) => currentName(r.name));
+    const names = ours.filter(rowOn).map((r) => currentName(r.name));
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    const parked = ours.filter((r) => !r.enabled).map((r) => currentName(r.name));
+    const parked = ours.filter((r) => !rowOn(r)).map((r) => currentName(r.name));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
     const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
@@ -373,7 +374,7 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
         mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        plugins_disabled: listing.filter((r) => !r.enabled).map((r) => r.name),
+        plugins_disabled: listing.filter((r) => !rowOn(r)).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
         answered,
