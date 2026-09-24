@@ -9,9 +9,11 @@
 //
 // The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
 // meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries to the live file, leaving the generated hooks entry and the marketplace metadata alone.
+// entries - plus the two 1.x aliases and the retired per-stack entries - to the live file, leaving
+// the MCP entries and the marketplace metadata alone.
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
+//   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
 // own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
@@ -20,10 +22,15 @@
 // entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
 // agents - plus the layer-table hook INLINE and the superpowers dependency that plugin.json used to
 // declare. Dropping either on the way across would be a silent behaviour change.
+//
+// From 2.0.0 the core also carries EVERY stack hook inline (user ruling 'Fold into core in 2.0.0'):
+// there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
+const { loadManifest } = require('./install/manifest.js');
+const { LEGACY } = require('./install/brand.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -78,8 +85,8 @@ function coreEntry(options = {})
         agents: plug.agents.map(a => `./stack/agents/${a}.md`),
         // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
         // the shared root it is not, so it is declared inline - the shape Phase 2 proved for the
-        // thirteen stack hooks.
-        hooks: {
+        // stack hooks, which follow it in the same block.
+        hooks: mergeHooks({
             PreToolUse: [{
                 matcher: 'AskUserQuestion',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
@@ -90,9 +97,29 @@ function coreEntry(options = {})
                 matcher: 'startup',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
             }],
-        },
+        }, hooksBlock(options.wirings || parseHookWirings(options.sourceDir))),
     };
     return entry;
+}
+
+// THE ONE MERGE of two hooks blocks: per event, `first`'s groups lead, and a matcher both carry is
+// one group with `first`'s hooks ahead - the grouping hooksBlock keeps, so the entry stays readable.
+// Neither input is mutated.
+function mergeHooks(first, second)
+{
+    const out = {};
+    for (const block of [first, second])
+        for (const [event, groups] of Object.entries(block || {}))
+        {
+            const list = out[event] || (out[event] = []);
+            for (const g of groups)
+            {
+                const same = list.find((h) => String(h.matcher) === String(g.matcher));
+                if (same) same.hooks.push(...g.hooks);
+                else list.push({ ...g, hooks: [...g.hooks] });
+            }
+        }
+    return out;
 }
 
 function buildEntries(options = {})
@@ -105,28 +132,10 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
-// The 1.x -> 2.x plugin rename, ONE constant: Claude Code reads it from the marketplace's own
-// top-level `renames` key to move an existing install's `enabledPlugins` entries at the next
-// session start (`claude-stack@claude-stack` -> `alfred-code@claude-stack`; the marketplace KEY
-// itself never migrates - docs/rebrand-evidence.md S1/S4/S9). The frozen `meta/retired-entries.json`
-// still spells its own dependency on the core in the same 1.x names, so this map does double duty:
-// `applyRenames` writes it into the live file, and `retiredMarketplaceEntries` below translates a
-// retired entry's `claude-stack` / `claude-stack-hooks` dependency through the same pairs - every
-// other dependency is another retired entry's own frozen name and is left alone.
-const MARKETPLACE_RENAMES = { 'claude-stack': 'alfred-code', 'claude-stack-hooks': 'alfred-code-hooks' }; // legacy-name
-
-// Writes the `renames` map onto the live marketplace, in place. Never a null value for either key -
-// a null DROPS the key at startup, before the seed can copy a retired entry's picks (plan decision
-// D2) - so this always writes the full two-pair object, never a partial or emptied one.
-function applyRenames(mkt, renames = MARKETPLACE_RENAMES)
-{
-    mkt.renames = { ...renames };
-    return mkt;
-}
-
 // The retired per-stack entries, listed for their last release under a RETIRED description. The
 // shape is the one 1.2.0 shipped, so an installed entry resolves the same files until update
-// removes it.
+// removes it - its dependencies included, verbatim: the 1.x core they name is listed again as the
+// alias below, so an entry `plugin update`d before the seed runs still resolves them.
 function retiredMarketplaceEntries(options = {})
 {
     const version = options.version || marketplaceVersion(options);
@@ -143,9 +152,27 @@ function retiredMarketplaceEntries(options = {})
         };
         if (row.skills.length) entry.skills = row.skills.map((s) => `./stack/skills/${s}`);
         if (row.agents.length) entry.agents = row.agents.map((a) => `./stack/agents/${a}.md`);
-        entry.dependencies = row.dependencies.map((d) => MARKETPLACE_RENAMES[d] || d);
+        entry.dependencies = [...row.dependencies];
         return entry;
     });
+}
+
+// THE 1.x IDS, LISTED - never renamed. 2.0.0 ships no `renames` map: a rename strands a 1.x install
+// with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
+// that stays listed refreshes in place (S21). So both 1.x ids stay in the catalog through the 2.x
+// line, and the seed's migration installs the new core and removes them (install/plugins.js
+// migrateLegacy). The core's alias is the 2.0.0 core under its old name; the hooks id carries
+// nothing - an explicit empty `skills`, because an entry that omits the key auto-discovers the
+// shared root's skill folders (S20, which validated exactly this shape under --strict). Dropping
+// either from the catalog is a total blackout for a straggler still on it (S25).
+function aliasEntries(options = {})
+{
+    const core = coreEntry(options);
+    const description = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs ${CORE} and removes this entry.`;
+    return [
+        { ...core, name: LEGACY.core, description },
+        { name: LEGACY.hooks, source: './', description, version: core.version, author: core.author, strict: false, skills: [] },
+    ];
 }
 
 function serialize(entries)
@@ -157,30 +184,24 @@ function serialize(entries)
     }, null, 2) + '\n';
 }
 
-// Puts the hooks entry into the live marketplace, in place, leaving every other entry - the
-// hand-written core included - exactly where it was. The entry is GENERATED from the installer's
-// wiring table, so this is a transcription, never a place to hand-edit a matcher.
-function applyHooksPlugin(mkt, entry)
-{
-    const wanted = entry || hooksPlugin();
-    const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
-    const at = plugins.findIndex(p => p && p.name === wanted.name);
-    if (at >= 0) plugins[at] = wanted; else plugins.push(wanted);
-    return mkt;
-}
+// An entry this generator USED to write and no longer does: the hooks entry the 2.0.0 line
+// generated before the hooks folded into the core. Never released, so it is no retirement the seed
+// prunes - only a stale entry the live file must not keep installable.
+const FOLDED_ENTRIES = ['alfred-code-hooks'];
 
 // Applies the generated entries to the live marketplace, the CORE entry included from Phase 3 on.
-// Anything the generator does not own - the hooks entry, a hand-written extra - keeps its place,
-// except a RETIRED name the entries no longer carry: it would keep a dead entry installable.
+// Anything the generator does not own - an MCP entry, a hand-written extra - keeps its place,
+// except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
-    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !retired.includes(p.name));
+    const gone = new Set([...retired, ...FOLDED_ENTRIES]);
+    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
     mkt.plugins = kept.concat(entries);
     return mkt;
 }
 
 // ---------------------------------------------------------------------------------------------
-// The hooks plugin entry. The wiring table has ONE home - the `hooks` list in
+// The stack hooks the core carries. The wiring table has ONE home - the `hooks` list in
 // meta/stack-manifest.json (hand-edited since Phase 7b deleted the twins that used to generate it),
 // where each row renders to `file::matcher::args` and a matcher starting with `@` names its own
 // event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Reading that list rather than
@@ -188,11 +209,10 @@ function applyToMarketplace(mkt, entries, { retired = [] } = {})
 // seed (scripts/install/manifest.js) and this generator read the same file - and the lint fails
 // when the generated entry goes stale.
 //
-// The hooks are declared INLINE in the marketplace entry, not through a `hooks/hooks.json` at the
-// shared root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry
-// over it, and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its
-// own hooks, fired once, for all six event types the stack uses.
-const { loadManifest } = require('./install/manifest.js');
+// The hooks are declared INLINE in the core entry, not through a `hooks/hooks.json` at the shared
+// root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry over it,
+// and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its own hooks,
+// fired once, for all six event types the stack uses.
 
 function parseHookWirings(sourceDir)
 {
@@ -238,20 +258,6 @@ function hooksBlock(wirings)
         group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file) });
     }
     return block;
-}
-
-function hooksPlugin(options = {})
-{
-    return {
-        name: 'alfred-code-hooks',
-        source: './',
-        description: 'The seventeen alfred-code hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.',
-        version: options.version || marketplaceVersion(options),
-        author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
-        strict: false,
-        hooks: hooksBlock(options.wirings),
-        dependencies: [CORE],
-    };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -434,7 +440,7 @@ function mcpPlugins(options = {})
         };
         // The locked three depend on nothing: the installer puts them beside the core on every run,
         // and an entry with no dependency can never be disabled at load for a missing one. The
-        // droppable five are ordinary picks and name the core the way the hooks entry does.
+        // droppable five are ordinary picks and name the core.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });
@@ -489,15 +495,11 @@ function main(argv)
         return 0;
     }
 
+    // The core's whole hooks block - its own two plus every stack wiring - which is what lint check
+    // 48 compares with the live core. Printed, never written: --write-marketplace writes the core.
     if (argv.includes('--hooks-entry'))
     {
-        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
-        const mkt = readJson(file, 'marketplace.json');
-        const before = JSON.stringify(mkt, null, 2) + '\n';
-        const after = JSON.stringify(applyHooksPlugin(mkt), null, 2) + '\n';
-        if (before === after) { console.log('hooks entry current: no change'); return 0; }
-        fs.writeFileSync(file, after);
-        console.log(`hooks entry written: ${Object.keys(hooksPlugin().hooks).length} event(s) -> ${path.relative(REPO, file)}`);
+        console.log(JSON.stringify(entries.find((e) => e.name === CORE).hooks, null, 2));
         return 0;
     }
 
@@ -515,9 +517,10 @@ function main(argv)
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
         const before = JSON.stringify(mkt, null, 2) + '\n';
-        const { loadManifest } = require('./install/manifest.js');
-        const listed = entries.concat(retiredMarketplaceEntries());
-        const applied = applyRenames(applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins }));
+        const listed = entries.concat(aliasEntries(options), retiredMarketplaceEntries());
+        const applied = applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins });
+        // No renames map in 2.0.0 (S11/S16): the 1.x ids are LISTED as aliases instead.
+        delete applied.renames;
         const after = JSON.stringify(applied, null, 2) + '\n';
         if (before === after) { console.log(`marketplace current: ${listed.length} entries`); return 0; }
         fs.writeFileSync(file, after);
@@ -540,4 +543,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, retiredMarketplaceEntries, serialize, applyToMarketplace, applyHooksPlugin, applyMcpPlugins, applyRenames, MARKETPLACE_RENAMES, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, aliasEntries, retiredMarketplaceEntries, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

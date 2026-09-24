@@ -631,10 +631,46 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('check 48: the hooks entry matches the installer table, and every wired hook carries the gate', () => {
+test('check 48: the core carries the manifest\'s hook wiring, and every wired hook carries the gate', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
     assert.deepStrictEqual(lintHooksEntry(), [],
-        'the committed alfred-code-hooks entry must match `build-marketplace.js --hooks-entry`');
+        'the committed core entry\'s hooks must match `build-marketplace.js --hooks-entry`');
+});
+
+// The fixtures below are the live file with one thing changed, so each finding is that change's.
+const liveMarketplace = () => JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+
+test('check 48: a core missing a stack wiring, or a core with no hooks, is a finding', () => {
+    const { lintHooksEntry } = require('./lint-skills.js');
+    const lost = liveMarketplace();
+    const core = lost.plugins.find((p) => p.name === 'alfred-code');
+    core.hooks.Stop = core.hooks.Stop.slice(1);
+    assert.ok(lintHooksEntry(lost).some((f) => /core entry's hooks are STALE/.test(f)), 'a dropped Stop hook is caught');
+    const none = liveMarketplace();
+    none.plugins = none.plugins.filter((p) => p.name !== 'alfred-code');
+    assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
+});
+
+test('check 49: the two 1.x aliases pass as generated, and a drifted alias, a renames key or a hooks entry fail', () => {
+    const { lintMarketplaceEntries } = require('./lint-skills.js');
+    const { LEGACY } = require('./install/brand.js');
+    assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file, aliases and all, is clean');
+
+    const drifted = liveMarketplace();
+    drifted.plugins.find((p) => p.name === LEGACY.hooks).hooks = { Stop: [] };
+    assert.ok(lintMarketplaceEntries(drifted).some((f) => f.includes(`entry ${LEGACY.hooks} does not match the generated one`)), 'an alias edited by hand is drift');
+
+    const missing = liveMarketplace();
+    missing.plugins = missing.plugins.filter((p) => p.name !== LEGACY.core);
+    assert.ok(lintMarketplaceEntries(missing).some((f) => f.includes(`missing the generated entry ${LEGACY.core}`)), 'a dropped alias strands a 1.x install (S25)');
+
+    const renamed = liveMarketplace();
+    renamed.renames = { [LEGACY.core]: 'alfred-code' };
+    assert.ok(lintMarketplaceEntries(renamed).some((f) => /`renames` key/.test(f)), 'a renames map is a finding');
+
+    const hooks = liveMarketplace();
+    hooks.plugins.push({ name: 'alfred-code-hooks', source: './', description: 'x', hooks: {} });
+    assert.ok(lintMarketplaceEntries(hooks).some((f) => /alfred-code-hooks.*folded into the core/.test(f)), 'a hooks entry is a finding');
 });
 
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {

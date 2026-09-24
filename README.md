@@ -32,9 +32,9 @@ The stack is built for this house's verticals:
 | **Skills** | 80 | house conventions + workflow skills: the always-on ones ride the core plugin, every other pick is a library copy in `.claude/skills/` |
 | **Agents** | 43 | model/effort-pinned subagents: the core seats ride the core plugin, every other pick is a library copy in `.claude/agents/` |
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
-| **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped as the `alfred-code-hooks` plugin; only the three engines and the model-window table land in `.claude/hooks/` |
+| **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 8 | one plugin each, named for the server (12 entries: playwright expands per browser, context7 per transport); the project's closure enables its own |
-| **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers`, which every install carries beside the core, `alfred-code-hooks`, and the entries this project's skills and agents live in |
+| **Plugins** | 5 + the stack's own | five third-party picks via the `claude` CLI, plus `superpowers`, which every install carries beside the core, and the core `alfred-code` itself - the always-on skills and seats, and every hook |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
 inventory at [`docs/alfred-code.html`](docs/alfred-code.html), not in this README.
@@ -46,9 +46,9 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the three engines and the model-window table only - the seventeen wired hooks come from the `alfred-code-hooks` plugin; skills and agents: the library copies of this project's picks - the always-on ones come from the core plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `alfred-code.stamp`; `<repo>/.mcp.json` only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
+| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the three engines and the model-window table only - the seventeen wired hooks come from the core `alfred-code` plugin; skills and agents: the library copies of this project's picks - the always-on ones come from the core plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `alfred-code.stamp`; `<repo>/.mcp.json` only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY`, `SENTRY_SLUG`, `SENTRY_ACCESS_TOKEN` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, the stack's own `alfred-code-hooks`, and the entries carrying this project's skills and agents - `superpowers` needs no call of its own, the core entry depends on it), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, one skill, two references and one hook (`guard-layer-table.js`, the table-before-question gate), with no MCP server, no `bin/` and no dependencies of its own |
+| **Starts** | one `claude plugin install` call per plugin (the five third-party picks, the stack's own core `alfred-code`, which carries the hooks too, and the entries carrying this project's skills and agents - `superpowers` needs no call of its own, the core entry depends on it), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to eight), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, one skill, two references and one hook (`guard-layer-table.js`, the table-before-question gate), with no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins, and a Sentry API token where the project has Sentry; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/alfred-code:status` reports your own install's number |
 
@@ -141,7 +141,7 @@ Each run stamps the installed source commit into `alfred-code.stamp`;
 ## Token & tool usage analysis
 
 The one piece of the stack worth naming here: the `instrument-tool-usage` hook, shipped with the
-rest in the `alfred-code-hooks` plugin, records per-run tool / skill / MCP usage - wired by
+rest in the core `alfred-code` plugin, records per-run tool / skill / MCP usage - wired by
 default behind an env gate, so it costs nothing until you flip `ALFRED_CODE_INSTRUMENT` from `"0"` to
 `"1"` in `.claude/settings.json` env (flip it back after the measured run), and
 [`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus

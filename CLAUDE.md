@@ -41,20 +41,23 @@ change (see the invariants below).
   source the seed reads its six lists from. `docs/alfred-code.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - seventeen hooks, shipped as the `alfred-code-hooks` plugin entry: the installers
+- `stack/hooks/` - seventeen hooks, shipped INSIDE the core `alfred-code` plugin entry since 2.0.0: the installers
   register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
   three engines (`docs.js`, `memory.js`, `history.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
-  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js rulings`). The entry is GENERATED from the
-  installer's own `HOOKS_CATALOG` (`build-marketplace.js --hooks-entry`, lint check 48), so one table
+  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js rulings`). The core's hooks block is GENERATED from the
+  manifest's `hooks[]` table after the core's own two per event (`mergeHooks`, lint check 48), so one table
   owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
   600s default) - `check-turn-build.js` carries 60, the one declared exception, from the same
   `HOOK_TIMEOUTS` table the seed writes (`install/settings.js`) - and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
   bit, which git carries into the cache as committed, and never runs on Windows).
-  `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged, and
+  `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the core still carries the
+  hooks: its copies stand down for the wired ones, `ALFRED_CODE_HOOKS_OFF` names the unpicked), and
   the walk's hooks layer now writes the rows it did NOT pick into `ALFRED_CODE_HOOKS_OFF` instead of
-  leaving files out. Both gates live in `hook-prelude.js`, never inlined in every hook: the csv
-  opt-out, and the migration window where the plugin copy stands down while a project still wires its
-  copied twin (fail-open - a hook that cannot read the settings file runs).
+  leaving files out. The three gates live in `hook-prelude.js`, never inlined in every hook: the csv
+  opt-out; the migration window where the plugin copy stands down while a project still wires its
+  copied twin; and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
+  while the project or account settings enable `alfred-code@*`, so a 1.x core never double-fires
+  beside the 2.x one (fail-open - a hook that cannot read a settings file runs).
   The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
   home too: `fresh-session.js`, an engine the two fresh-session hooks and the session monitor require
   from their own directory, copied with the hooks on the copy route; a hook that runs before it lands
@@ -238,8 +241,8 @@ change (see the invariants below).
     read-back. A drop runs BEFORE the closure: one something kept requires, or a locked always-on rule
     or server, is logged 'not applied'; a dropped core seat is denied, a dropped hook named off, a
     dropped library copy deleted (a copy-route hook unwired too), and an MCP entry nothing kept needs
-    is disabled at the run's own scope and route - never the core, the hooks entry or the three locked
-    servers.
+    is disabled at the run's own scope and route - never the core (which carries the hooks) or the
+    three locked servers.
   - The seed prunes only names in its own RETIRED_SKILLS / RETIRED_AGENTS / RETIRED_RULES /
     RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend the list when any of the six is
     renamed or removed (a stamp compare only names what left after the stamped commit), then hand-edit
@@ -263,9 +266,13 @@ change (see the invariants below).
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
     `npm run graph` (lint fails when stale).
   - `plugin-entries.json` - the GENERATED core entry, computed by `scripts/build-marketplace.js` from
-    the placement rule in `scripts/plugin-placement.js`: the core is the always closure, every other
-    item is library. Regenerate with `npm run marketplace`; lint checks 44 and 45 fail when the file
-    is stale, a second plugin appears, or an item has no home or two.
+    the placement rule in `scripts/plugin-placement.js`: the core is the always closure plus every
+    stack hook, every other item is library. Regenerate with `npm run marketplace`; lint checks 44 and
+    45 fail when the file is stale, a second plugin appears, or an item has no home or two. The live
+    marketplace also lists the 1.x ids as RETIRED aliases (`aliasEntries`, from `brand.js` `LEGACY`):
+    `claude-stack` is the core under its old name, `claude-stack-hooks` carries nothing. No `renames` <!-- legacy-name -->
+    key - a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md`
+    S11, S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
   - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN: listed in the
     marketplace for one release under a RETIRED description (lint 49 counts them as generated) so an
     installed one keeps working until the Node seed's update copies its picks and uninstalls it
@@ -308,8 +315,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 12 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched against the manifest's own parked rows, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/alfred-code:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the stack's own `alfred-code-hooks@envoydev` and the core; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries (the core and the hooks entry always are); a per-stack entry an older release installed is read back while enabled, then uninstalled by update (`meta/retired-entries.json`) |
-| Hooks | `alfred-code-hooks@envoydev` plugin (all seventeen, generated from `HOOKS_CATALOG`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
+| Plugins | 5 third-party picks via `claude plugin install` (claude-md-management, the `*-lsp` pair, security-guidance, claude-hud) plus `superpowers`, installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched against the manifest's own parked rows, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, its six commands with it, so `/alfred-code:update` could not repair it (measured on 2.1.280, a 0.2.87 -> 1.0.0 upgrade; each later install added ONE missing dependency) - plus the core, which carries the stack hooks too; every run refreshes each marketplace its specs name first (once per seed run - the command that handed it `--source` refreshed the stack catalog once already; `install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships `serena`, `sentry`, `playwright` too), install updates one the listing already carries, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is read back while enabled, then uninstalled by update (`meta/retired-entries.json`) |
+| Hooks | the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the frozen `scripts/os` twins it used to select were deleted in 2.0.0) |
 | Install stamp | `alfred-code.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release - takes what the enabled entries carry as its picks) and `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each library copy as written); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project; every plugin / MCP call it makes is user-scoped |

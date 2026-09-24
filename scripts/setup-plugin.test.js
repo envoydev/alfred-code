@@ -26,8 +26,8 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
         for (const rel of [...(p.commands || []), ...(p.skills || []), ...(p.agents || [])])
             assert.ok(fs.existsSync(path.join(ROOT, rel)), `${p.name} lists a path that does not exist: ${rel}`);
     }
-    const hooks = mp.plugins.find(x => x.name === 'alfred-code-hooks');
-    assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');
+    assert.strictEqual(mp.plugins.find(x => x.name === 'alfred-code-hooks'), undefined, 'no hooks entry - the hooks ride the core');
+    assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/guard-secret-value.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {

@@ -92,8 +92,9 @@ comma-separated> --settings <account settings.json> --settings .claude/settings.
 account file alone in global mode) prints the skill descriptions they carry (a
 `disable-model-invocation` skill costs nothing, which is why this number sits below the repo lint's
 always-on budget, which counts every description) plus the SEATS' descriptions minus every seat
-`permissions.deny` switches off - take its `chars`. The entries it lists under `skipped` (the
-hooks entry, the MCP entries) are OTHER plugins for the next sentence. For each OTHER enabled plugin, total its
+`permissions.deny` switches off - take its `chars`. The entries it lists under `skipped` (the MCP
+entries) are OTHER plugins for the next sentence, and the core joins them for its HOOKS alone - the
+stack hooks ride the core, and `--floor` counts only its skills and seats. For each OTHER enabled plugin, total its
 skill, command and agent DESCRIPTION frontmatter (skipping a `disable-model-invocation` one) plus
 the static text any `SessionStart` or `SubagentStart` hook injects, and render `plugin floor: <N>
 chars (~<N/4000>k tokens) across <n> enabled plugins - <m> of it per SUBAGENT as well`. A plugin
@@ -127,7 +128,7 @@ one line under the table: 'the project copies are from `<version>`, the stack is
 /alfred-code:update takes them'. `library: no library stamp` prints instead of JSON on an install
 older than the library route - say so in one line and skip the table.
 
-**Hooks** - hooks = the ROUTE decides: with the hooks entry (`alfred-code-hooks@<key>`) in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `ALFRED_CODE_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`, `fresh-session`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
+**Hooks** - hooks = the ROUTE decides: the hooks ride the core, so with the core (`alfred-code@<key>`) in the plugins listing and `ALFRED_CODE_HOOKS_VIA_PLUGIN` not `false` the installed set is the release's whole hook catalog MINUS the names in `ALFRED_CODE_HOOKS_OFF`; otherwise (the copy route, where the core's own copies stand down for the wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`, `fresh-session`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
 On the copy route the set is joined against `settings.json` as before:
 
@@ -218,7 +219,7 @@ environment area.
 
 Presence, never the value - run this and paste its lines as-is:
 `G="$PWD/.claude/hooks/guard-secret-value.js"; [ -f "$G" ] || G=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" -path '*/hooks/guard-secret-value.js' 2>/dev/null | head -1); node "$G" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed `alfred-code-hooks` plugin. Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
+(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable). The guard lives in TWO homes and the line takes whichever exists, newest first: a project `.claude/hooks/` copy (the pre-1.0 route) or the installed core plugin (`alfred-code`, which carries the hooks). Output is `KEY=set (N chars)` or `KEY=absent`. When neither home has it - a global install, the guard deselected, the plugin not installed - `$G` is empty, so do NOT run the line (it fails with `MODULE_NOT_FOUND`) and do NOT read the file another way: print `presence: not checked - guard-secret-value is not installed here` for those three rows.
 
 **Generated docs & data** - the capture output under `<docs-path>` (resolve the root exactly
 as the docs-root rule states) plus serena's local memory:

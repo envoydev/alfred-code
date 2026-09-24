@@ -230,10 +230,12 @@ function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], s
     });
 }
 
+// The hooks ride the core (2.0.0, 'Fold into core'): the core's row is what says the hooks arrive
+// through a plugin - there is no hooks entry to list.
 test('read-back: a healthy listing reads seats, hooks and MCP entries back, and answers both surfaces', () =>
 {
     const r = readBackCase({
-        listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('claude-stack-aspnet@envoydev'), row('serena@envoydev')],
+        listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev'), row('serena@envoydev')],
         settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
     });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
@@ -257,7 +259,7 @@ test('read-back: a plugin-route install with nothing on disk is still an install
     const bare = (listing) => sel.readBack({
         claudeDir: target({}), mcpServers: [], listing, settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
     });
-    const project = bare([row('alfred-code@envoydev'), row('claude-stack-csharp@envoydev'), row('alfred-code-hooks@envoydev')]);
+    const project = bare([row('alfred-code@envoydev'), row('claude-stack-csharp@envoydev')]);
     assert.ok(project.installed, 'the project-scoped entries were not read as an install');
     assert.ok(project.lines.includes('skill csharp') && project.lines.some((l) => l.startsWith('hook ')), project.lines.join(', '));
     assert.ok(bare([row('alfred-code@envoydev', { scope: 'local' })]).installed, 'a local-scope entry is this project too');
@@ -270,7 +272,7 @@ test('read-back: a plugin-route install with nothing on disk is still an install
     assert.strictEqual(bare([row('alfred-code@other-market')]).installed, false, 'another marketplace is not ours');
 });
 
-test('read-back: copied hooks on disk still answer the hooks surface without the hooks entry', () =>
+test('read-back: copied hooks on disk still answer the hooks surface without the core listed', () =>
 {
     const r = readBackCase({ listing: [], hooks: ['guard-read-whole-file'] });
     assert.strictEqual(r.answered.hooks, true);
@@ -279,31 +281,31 @@ test('read-back: copied hooks on disk still answer the hooks surface without the
 test('read-back: a PARKED entry reads back nothing - a disabled browser stays disabled', () =>
 {
     const r = readBackCase({ listing: [
-        row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev', { enabled: false }),
+        row('alfred-code@envoydev', { enabled: false }),
         row('playwright-firefox@envoydev', { enabled: false }), row('playwright-webkit@envoydev'),
     ] });
-    assert.strictEqual(r.answered.hooks, true, 'the hooks entry is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
+    assert.strictEqual(r.answered.hooks, true, 'the core carrying the hooks is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
     assert.deepStrictEqual(r.engines, ['webkit']);
 });
 
-test('read-back: the core and the hooks entry read as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
+test('read-back: the core reads as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
 {
     const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
     const seat = 'code-style-analyzer';
     assert.ok(core.agents.includes(seat) && core.skills.includes('markdown-style'), 'fixture: the core carries both');
     const stale = { enabled: false };
     const r = readBackCase({
-        listing: [row('alfred-code@envoydev', stale), row('alfred-code-hooks@envoydev', stale)],
+        listing: [row('alfred-code@envoydev', stale)],
         settings: { permissions: { deny: [`Agent(alfred-code:${seat})`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
     });
-    assert.deepStrictEqual(r.parked, [], 'neither entry is parked by its flag');
+    assert.deepStrictEqual(r.parked, [], 'the core is not parked by its flag');
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
     assert.ok(r.lines.includes('skill markdown-style'), r.lines.join(', '));
     assert.ok(!r.lines.includes(`agent ${seat}`), 'the denied seat stays off');
     assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'), 'HOOKS_OFF still holds');
     assert.deepStrictEqual(sel.leftOut({ parked: r.parked, deny: r.deny }), [`agent ${seat}`], 'only the denied seat is left out - no core item for the flag');
-    const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('alfred-code-hooks@envoydev', stale), row('claude-hud@claude-hud', stale)], answered: r.answered, pluginCatalog: ['claude-hud'] });
-    assert.deepStrictEqual(inv.plugins_disabled, ['claude-hud'], 'validate shows no DISABLED row for the core or the hooks entry');
+    const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('claude-hud@claude-hud', stale)], answered: r.answered, pluginCatalog: ['claude-hud'] });
+    assert.deepStrictEqual(inv.plugins_disabled, ['claude-hud'], 'validate shows no DISABLED row for the core');
 });
 
 test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>
@@ -433,12 +435,12 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const before = shipped.slice(1);   // the last release shipped all but the first
-    const r = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.join(',') } }, stampHooks: before });
+    const r = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.join(',') } }, stampHooks: before });
     assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none']);
-    const some = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
+    const some = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
     assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
     // A 1.x settings file still spells the switch-off CLAUDE_STACK_HOOKS_OFF: the same None. // legacy-name
-    const old = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before }); // legacy-name
+    const old = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before }); // legacy-name
     assert.deepStrictEqual(old.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'the 1.x spelling of the None');
 });
 
@@ -512,10 +514,10 @@ test('leftOut: every item a parked entry carries, and every stack seat the deny 
     assert.deepStrictEqual(got.sort(), ['agent devops-implementer', 'agent devops-solution-designer', 'agent devops-verifier', 'agent evidence-gatherer', 'skill devops'].sort());
 });
 
-test('droppedEntries: the core, the hooks entry and the locked servers are never queued', () =>
+test('droppedEntries: the core and the locked servers are never queued', () =>
 {
-    const listing = ['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@envoydev`));
-    const got = sel.droppedEntries({ before: ['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'envoydev' });
+    const listing = ['alfred-code', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@envoydev`));
+    const got = sel.droppedEntries({ before: ['alfred-code', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'envoydev' });
     assert.deepStrictEqual(got.map((r) => r.name), ['context7-local'], 'only the droppable transport of context7');
 });
 
@@ -534,7 +536,7 @@ test('deriveFromDisk: a global install reads its skills from the account dir, th
 });
 
 // 2.0.0: a 1.x install keeps its marketplace KEY `claude-stack`, its listing may still name the core // legacy-name
-// and the hooks entry by their 1.x names (the catalog refreshed, no session since - evidence S9), and
+// and the hooks id by their 1.x names (the catalog refreshed, no session since - evidence S9), and
 // its stamp homes a core pick `@claude-stack`. The seed hands readBack the key it resolved; the rows // legacy-name
 // under it are the same install, and the picks carry through the first 2.0.0 update.
 const OLD = 'claude-stack'; // legacy-name
@@ -545,10 +547,11 @@ test('read-back: a 1.x install - the old key, the core still named claude-stack 
     // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
     const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
     const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
-    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('serena@envoydev')], stampPicked, settings: renamed });
+    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('serena@envoydev')], stampPicked, settings: renamed });
     for (const listing of [
         [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`serena@${OLD}`)],
-        [row(`alfred-code@${OLD}`), row(`alfred-code-hooks@${OLD}`), row(`serena@${OLD}`)],
+        [row(`alfred-code@${OLD}`), row(`serena@${OLD}`)],
+        [row(`${OLD}@${OLD}`), row(`serena@${OLD}`)],
     ])
     {
         const r = readBackCase({ listing, stampPicked, settings, marketplace: OLD });

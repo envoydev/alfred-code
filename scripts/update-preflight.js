@@ -43,7 +43,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { isHooks, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
+const { isCore, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
 function arg(name, fallback)
 {
@@ -232,12 +232,12 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     const hooksOff = String(envOf(env, 'HOOKS_OFF') || '');
     let shippedBefore = [];
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
-    // The installer holds None only while the hooks entry is enabled (it enables that entry
-    // regardless, and writes no hook none without it) - so the verdict holds it only then too.
-    // Listed is enabled for the hooks entry and the core: both are locked on, and the listing's flag
-    // can read false while they run (brand.js rowOn, docs/rebrand-evidence.md S22).
-    const hooksEntryOn = Boolean(listing && listing.some((r) => isHooks(r.name) && rowOn(r)));
-    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: hooksOff }));
+    // The installer holds None only while the core that carries the hooks is enabled (it enables the
+    // core regardless, and writes no hook none without it) - so the verdict holds it only then too.
+    // Listed is enabled for the core: it is locked on, and the listing's flag can read false while
+    // it runs (brand.js rowOn, docs/rebrand-evidence.md S22). A 1.x hooks id says nothing on its own.
+    const coreOn = Boolean(listing && listing.some((r) => isCore(r.name) && rowOn(r)));
+    const noneBefore = coreOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: hooksOff }));
     const rows = classifyNew({
         added, noneBefore,
         plugins: listing && listing.filter(rowOn).map((r) => r.name),

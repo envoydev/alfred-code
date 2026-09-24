@@ -30,8 +30,8 @@
 //     is locked on. So a core skill the selection did not pick is REPORTED as undroppable, and there
 //     is deliberately no `off` key to mistake for a lever. Every OTHER skill is a LIBRARY copy, and
 //     a copy is droppable: deleted by a drop, or switched per project through `skillOverrides`.
-//   - HOOKS are switched off by NAME, against the whole shipped catalog, because the hooks plugin
-//     carries all thirteen whatever the project picked (`ALFRED_CODE_HOOKS_OFF`, Phase 2).
+//   - HOOKS are switched off by NAME, against the whole shipped catalog, because the core carries
+//     every one whatever the project picked (`ALFRED_CODE_HOOKS_OFF`, Phase 2; the core since 2.0.0).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -39,7 +39,7 @@ const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./se
 const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
-const { pluginRoutes } = require('./install/plugins.js');
+const { pluginRoutes, corePluginOn } = require('./install/plugins.js');
 const { BRAND, LEGACY, currentName } = require('./install/brand.js');
 
 const REPO = path.resolve(__dirname, '..');
@@ -130,8 +130,9 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
     };
 }
 
-// The hooks entry and the two MCP families that fan one catalog row out into several plugins.
-const HOOKS_ENTRY = BRAND.hooks;
+// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it - and the two MCP
+// families that fan one catalog row out into several plugins.
+const HOOKS_HOME = BRAND.core;
 const catalogServer = (name) => String(name)
     .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
     .replace(/^context7-local$/, 'context7');
@@ -147,7 +148,7 @@ const catalogServer = (name) => String(name)
 // is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
 function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO } = {})
 {
-    // A 1.x listing's core and hooks entry are the same entries under their old names.
+    // A 1.x listing's core is the same entry under its old name, and it carries the hooks.
     const names = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])))];
     const lines = [];
     if (routes.skills)
@@ -169,7 +170,7 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         }
     }
     const manifest = loadManifest(sourceDir);
-    if (routes.hooks && names.includes(HOOKS_ENTRY))
+    if (routes.hooks && names.includes(HOOKS_HOME))
     {
         // The prelude's own matcher, so the read-back honours exactly the spellings the hooks do.
         const env = { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') };
@@ -254,7 +255,7 @@ function costOfTaking({ category, name, place, graph, enabled, copied })
 
 // THE NEW-ITEM VERDICT, one row per item a release added:
 //   arrives  - this refresh brings it, on (a hook on the plugin route always does: the installer
-//              enables the hooks entry whatever the listing says, so only HOOKS_OFF can say no);
+//              enables the core that carries it whatever the listing says, so only HOOKS_OFF can say no);
 //   renamed  - a copied item under a new name whose OLD copy is on disk: the update carries it;
 //   offer    - only the user's yes brings it; `recommend` is `take` only for a rule whose closure
 //              enables no entry and copies no library item the project lacks (`copied`, the
@@ -290,7 +291,7 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         {
             if (routes.hooks)
             {
-                row.entry = HOOKS_ENTRY;
+                row.entry = HOOKS_HOME;
                 row.verdict = hookOff(name) || noneBefore ? 'off' : 'arrives';
             }
             else if (hasHooks && !noneBefore) row.verdict = 'arrives';
@@ -332,7 +333,10 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     const agents = Boolean(state && answered.agents && routes.skills);
     return {
-        hooksOff: hooks && routes.hooks ? state.hooks.off : [],
+        // Written whenever the CORE is on, whatever the hooks route: the core carries every hook, so
+        // on the hooks copy route an unpicked one - no wired twin to stand down for - is kept quiet
+        // by this name alone. On the full copy route there is no core, and absence is off.
+        hooksOff: hooks && corePluginOn(routes) ? state.hooks.off : [],
         hooksAnswered: hooks,
         agentDeny: agents ? state.agents.deny : [],
         agentAllow: agents ? state.agents.allow : [],
@@ -373,9 +377,10 @@ function floor({ plugins = [], deny = [] } = {})
     const skills = carried.skills.filter((s) => !manualOnly(s));
     const seats = carried.agents.filter((a) => !denied.has(a));
     const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);
-    // `skipped`: the entries this count does not cover - the hooks entry, whose SessionStart
-    // injections are text a script cannot size ahead, and the MCP entries. The caller counts them
-    // as any other plugin; a name dropped here without a word is how a floor under-reports.
+    // `skipped`: the entries this count does not cover - the MCP entries, and any other plugin. The
+    // caller counts them as any other plugin; a name dropped here without a word is how a floor
+    // under-reports. The core's hooks ride it, and their SessionStart injections are text a script
+    // cannot size ahead - the caller counts those as the core's hooks, not here.
     const out = {
         entries,
         skipped: named.filter((n) => !place.plugins[n]).sort(),

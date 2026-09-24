@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 //
-// The two gates every stack hook runs before it does anything, kept in ONE file because a copy
+// The gates every stack hook runs before it does anything, kept in ONE file because a copy
 // of the same twelve lines inlined in every hook is a chance to drift per hook. The hooks already reach
 // siblings this way (`require('./docs.js')`, `model-windows.json` through `__dirname`), so this is
 // the established shape rather than a new one.
@@ -20,10 +20,17 @@
 // AskUserQuestions. The PLUGIN copy is the one that steps aside, because the copied one is what the
 // project's own settings file points at and is the older, already-trusted route.
 //
-// Both gates FAIL OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
+// GATE 3 - the 1.x alias. 2.0.0 lists the 1.x core id as a RETIRED alias carrying the 2.0.0 core,
+// hooks included (docs/rebrand-evidence.md S20), and an installed alias refreshes into that content
+// at the next session (S21). A 1.x core left at user scope, seen from a project the seed already
+// moved onto `alfred-code`, would fire every guard twice (S23) - so the ALIAS's copy steps aside
+// whenever the project or the account enables the new core.
+//
+// Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
 'use strict';
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 // The wiring the installers write, in both spellings that shipped: quoted (current) and bare
@@ -96,6 +103,48 @@ function yieldToCopiedTwin(hook, env)
     return false;
 }
 
+// The alias is recognised by its plugin root: the CLI caches a plugin at
+// `<config>/plugins/cache/<marketplace>/<plugin>/<version>`, so the alias runs from a directory
+// whose PARENT is the 1.x core's name - the new core's never is, whatever its marketplace key.
+const CORE_PLUGIN = 'alfred-code';
+const ALIAS_PLUGIN = 'claude-stack'; // legacy-name
+
+function launchedFromAlias(root)
+{
+    const parts = String(root || '').split(/[\\/]+/).filter(Boolean);
+    return parts.length >= 2 && parts[parts.length - 2].toLowerCase() === ALIAS_PLUGIN;
+}
+
+// `enabledPlugins` of one settings file: an ABSENT file enables nothing; one that exists and cannot
+// be read or parsed returns null - the caller runs the hook.
+function enabledIn(file)
+{
+    let parsed;
+    try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch (err) { return err && err.code === 'ENOENT' ? new Map() : null; }
+    const map = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.enabledPlugins : null;
+    return new Map(map && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : []);
+}
+
+function aliasYieldsToCore(env)
+{
+    const source = env || process.env;
+    if (!source || !launchedFromAlias(source.CLAUDE_PLUGIN_ROOT)) return false;
+    const root = source.CLAUDE_PROJECT_DIR;
+    if (!root) return false;
+    const account = source.CLAUDE_CONFIG_DIR || path.join(os.homedir() || '', '.claude');
+    // Lowest scope first, so the project and then its local file win for a key more than one names.
+    const merged = new Map();
+    for (const file of [path.join(account, 'settings.json'), path.join(root, '.claude', 'settings.json'), path.join(root, '.claude', 'settings.local.json')])
+    {
+        const enabled = enabledIn(file);
+        if (!enabled) return false;
+        for (const [id, value] of enabled) merged.set(id, value);
+    }
+    for (const [id, value] of merged) if (value === true && String(id).split('@')[0] === CORE_PLUGIN) return true;
+    return false;
+}
+
 // Three of these files are also CLIs the model and the commands run by hand -
 // `guard-secret-value.js --presence <file> KEY ...`, `--redacted`, `--redacted-env`. A hook
 // invocation never carries an argument (every catalog row's args field is empty), so a leading
@@ -112,9 +161,9 @@ function standDown(hook, env, argv)
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env);
+        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env);
     }
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, standDown, isCliInvocation, COPIED_PREFIX, envOf };
+module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, isCliInvocation, COPIED_PREFIX, envOf };

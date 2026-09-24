@@ -10,7 +10,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const BRAND = { marketplace: 'envoydev', core: 'alfred-code', hooks: 'alfred-code-hooks', slug: 'envoydev/alfred-code', stamp: 'alfred-code.stamp' };
+// No hooks entry: 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'). The
+// 1.x hooks id stays in LEGACY - a retired alias the migration uninstalls (plugins.migrateLegacy).
+const BRAND = { marketplace: 'envoydev', core: 'alfred-code', slug: 'envoydev/alfred-code', stamp: 'alfred-code.stamp' };
 const LEGACY = {
     marketplace: 'claude-stack', // legacy-name
     core: 'claude-stack', // legacy-name
@@ -20,11 +22,11 @@ const LEGACY = {
 };
 
 const isCore = (name) => name === BRAND.core || name === LEGACY.core;
-const isHooks = (name) => name === BRAND.hooks || name === LEGACY.hooks;
 
-// The name an entry goes by from 2.0.0. Only the core and the hooks entry were renamed: a per-stack
-// entry retired in 1.3.0 stays listed under its own name until update removes it.
-const currentName = (name) => (isCore(name) ? BRAND.core : isHooks(name) ? BRAND.hooks : name);
+// The name an entry goes by from 2.0.0. Only the core was renamed: the 1.x hooks id has no 2.0.0
+// counterpart (its hooks ride the core), and a per-stack entry retired in 1.3.0 stays listed under
+// its own name until update removes it.
+const currentName = (name) => (isCore(name) ? BRAND.core : name);
 
 // A listing row as `claude plugin list --json` prints it (`id: name@key`) or as parsePluginList
 // returns it (`name`, `marketplace`) - both callers exist.
@@ -35,12 +37,12 @@ const rowId = (row) =>
     return [String(row.name || ''), String(row.marketplace || '')];
 };
 
-// The core and the hooks entry are LOCKED on, under either spelling, so a listed row of either is
-// enabled whatever its `enabled` flag says: the listing reads `false` for a moved project-scope
-// core that visibly runs, session after session (docs/rebrand-evidence.md S22). Only the
-// plugin-level flag is overruled - a user's off-switch for one core item (a seat deny, a
-// skillOverrides value) is read elsewhere and still holds.
-const alwaysOn = (name) => isCore(name) || isHooks(name);
+// The core is LOCKED on, under either spelling, so a listed core row is enabled whatever its
+// `enabled` flag says: the listing reads `false` for a moved project-scope core that visibly runs,
+// session after session (docs/rebrand-evidence.md S22). Only the plugin-level flag is overruled - a
+// user's off-switch for one core item (a seat deny, a skillOverrides value, a hook named in
+// ALFRED_CODE_HOOKS_OFF) is read elsewhere and still holds.
+const alwaysOn = (name) => isCore(name);
 const rowOn = (row) => Boolean(row) && (row.enabled !== false || alwaysOn(rowId(row)[0]));
 
 const sameSlug = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
@@ -103,4 +105,4 @@ function stampFile(dir)
     return { read, write, legacy: old };
 }
 
-module.exports = { BRAND, LEGACY, isCore, isHooks, alwaysOn, rowOn, currentName, marketOf, marketKey, stampFile };
+module.exports = { BRAND, LEGACY, isCore, alwaysOn, rowOn, currentName, marketOf, marketKey, stampFile };

@@ -56,9 +56,6 @@ What each flag does is documented where it is set: the guided /alfred-code:init,
 :configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
 the repo's CLAUDE.md covers the install surface end to end.`;
 
-// The fresh-install spelling. A 1.x install keeps its own marketplace key, so every stack spec of a
-// run is spelled with the key it resolved (`ctx.market`), never with this constant.
-const HOOKS_PLUGIN = `${BRAND.hooks}@${BRAND.marketplace}`;
 const { CORE_DEP_PLUGINS } = plugins;
 // D1: the frozen twins hardcode the 1.x names, which a 2.0.0 registration cannot resolve.
 const SHELL_SEED_RETIRED = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
@@ -519,7 +516,7 @@ function installPlugins(ctx)
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     let set = plugins.pluginSet({
-        routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: `${BRAND.hooks}@${ctx.market}`,
+        routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
@@ -838,4 +835,4 @@ if (require.main === module)
     });
 }
 
-module.exports = { main, USAGE, HOOKS_PLUGIN, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY };
+module.exports = { main, USAGE, CORE_DEP_PLUGINS, HOOK_ENGINES, SECRET_DENY, RETIRED_DENY };

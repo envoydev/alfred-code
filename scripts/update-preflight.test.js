@@ -295,7 +295,7 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
     });
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([
-        { id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true },
+        { id: 'alfred-code@envoydev', enabled: true },
         { id: 'claude-stack-aspnet@envoydev', enabled: false },
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
@@ -305,7 +305,7 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
         'new: skill markdown-style\tarrives\talfred-code',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
-        'new: hook docs-session\tarrives\talfred-code-hooks',
+        'new: hook docs-session\tarrives\talfred-code',
     ]);
     // a renamed line with no old copy on disk is a plain offer; its closure copies a library skill
     // the project lacks, so the recommendation is leave and the copy is named
@@ -383,7 +383,7 @@ test('new items: global mode reads the account dir itself - its settings.json, n
     assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
 });
 
-test('new items: an arriving rename still names its old copy for the prune; None holds while the hooks entry is listed, whatever its flag', () => {
+test('new items: an arriving rename still names its old copy for the prune; None holds while the core is listed, whatever its flag', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
         settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } },
@@ -397,18 +397,22 @@ test('new items: an arriving rename still names its old copy for the prune; None
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-memory.md'), '# old\n');
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     assert.match(on, /^new: rule baseline-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
-    assert.match(on, /^new: hook docs-session\toff\talfred-code-hooks$/m, 'None held');
-    // The hooks entry is locked on: its listing flag can read false while it runs (S22), and the
-    // installer's read-back holds the None the same way.
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
+    assert.match(on, /^new: hook docs-session\toff\talfred-code$/m, 'None held');
+    // The core carrying the hooks is locked on: its listing flag can read false while it runs (S22),
+    // and the installer's read-back holds the None the same way.
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: false }]));
     const stale = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(stale, /^new: hook docs-session\toff\talfred-code-hooks$/m, 'None held - the flag is not the hook state');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    assert.match(stale, /^new: hook docs-session\toff\talfred-code$/m, 'None held - the flag is not the hook state');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'serena@envoydev', enabled: true }]));
     const absent = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(absent, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, 'no hooks entry listed: the installer installs it and writes no hook none - the hook arrives');
+    assert.match(absent, /^new: hook docs-session\tarrives\talfred-code$/m, 'no core listed: the installer installs it and writes no hook none - the hook arrives');
+    // A leftover 1.x hooks id says nothing on its own: the hooks ride the core.
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'serena@envoydev', enabled: true }, { id: 'claude-stack-hooks@envoydev', enabled: true }])); // legacy-name
+    const alias = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
+    assert.match(alias, /^new: hook docs-session\tarrives\talfred-code$/m, 'the hooks alias is no hooks home');
 });
 
 test('new items: a stale disabled flag on the core changes no verdict - a core item arrives, a denied seat stays off (S22)', () => {
@@ -417,22 +421,22 @@ test('new items: a stale disabled flag on the core changes no verdict - a core i
         settings: { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: '' } },
     });
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: false }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: false }]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
     assert.deepStrictEqual(out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule ')), [
         'new: skill markdown-style\tarrives\talfred-code',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
-        'new: hook docs-session\tarrives\talfred-code-hooks',
+        'new: hook docs-session\tarrives\talfred-code',
     ]);
 });
 
 // A 1.x install as 2.0.0's update first meets it: the stamp under its old name, every stack row
-// under the old marketplace KEY (a registered key never changes), the hooks entry and the seat deny
-// under the old names. The preflight must read all four, or it reports no stamp, reads the listing
+// under the old marketplace KEY (a registered key never changes), the core, the hooks id and the
+// seat deny under the old names. The preflight must read all four, or it reports no stamp, reads the listing
 // as empty, and offers items the project already carries.
-test('new items: a 1.x install is read under its old stamp, marketplace key, hooks entry and deny', () => {
+test('new items: a 1.x install is read under its old stamp, marketplace key, core and deny', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: null,
         fixture: NEW_FIXTURE,
@@ -453,7 +457,7 @@ test('new items: a 1.x install is read under its old stamp, marketplace key, hoo
         'new: skill markdown-style\tarrives\talfred-code',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
-        'new: hook docs-session\tarrives\talfred-code-hooks',
+        'new: hook docs-session\tarrives\talfred-code',
     ]);
     // an explicit --marketplace still wins over what the listing says: a key no core row is listed
     // under reads the core as absent, so its item is only offered (a listed core is never parked by
@@ -479,14 +483,14 @@ test('new items: a 1.x CLAUDE_STACK_HOOKS_OFF is the switch-off - the None holds
     const none = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n', fixture,
         settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'guard-read-whole-file' } } }); // legacy-name
     const listing = path.join(none.install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const held = run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile, '--listing', listing]).out;
-    assert.match(held, /^new: hook docs-session\toff\talfred-code-hooks$/m, `the None held: ${held}`);
+    assert.match(held, /^new: hook docs-session\toff\talfred-code$/m, `the None held: ${held}`);
     const named = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file,other-hook\n', fixture,
         settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'docs-session' } } }); // legacy-name
     fs.writeFileSync(path.join(named.install, 'listing.json'), fs.readFileSync(listing));
     const off = run(['--snapshot', named.snap, '--root', named.install, '--fixture', named.fixtureFile, '--listing', path.join(named.install, 'listing.json')]).out;
-    assert.match(off, /^new: hook docs-session\toff\talfred-code-hooks$/m, `the named hook is off: ${off}`);
+    assert.match(off, /^new: hook docs-session\toff\talfred-code$/m, `the named hook is off: ${off}`);
 });
 
 // `claude plugin list --json` prints every project's project-scope rows. Another project on the same
@@ -497,10 +501,9 @@ test('new items: the key comes from THIS project\'s rows, never another project\
     fs.writeFileSync(listing, JSON.stringify([
         { id: 'alfred-code@envoydev', enabled: true, scope: 'project', projectPath: path.join(path.dirname(install), 'other-project') },
         { id: 'alfred-code@claude-stack', enabled: true, scope: 'project', projectPath: install }, // legacy-name
-        { id: 'alfred-code-hooks@claude-stack', enabled: true, scope: 'project', projectPath: install }, // legacy-name
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
     assert.match(out, /^new: skill markdown-style\tarrives\talfred-code$/m, out);
-    assert.match(out, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, out);
+    assert.match(out, /^new: hook docs-session\tarrives\talfred-code$/m, out);
 });

@@ -170,7 +170,7 @@ function entryItems(installPath, pluginName)
         entry = (mk.plugins || []).find((x) => x && x.name === pluginName);
     }
     catch { return null; }
-    // An entry that exists and lists nothing ships nothing - `alfred-code-hooks` is hooks only.
+    // An entry that exists and lists nothing ships nothing - an MCP entry, or the 1.x hooks alias.
     // Returning null there sent it to the directory scan, which handed back all 43 of the shared
     // root's seats under its name (measured: 85 seats where the truth is 42 plus one local extra).
     if (!entry) return null;

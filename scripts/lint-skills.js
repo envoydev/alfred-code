@@ -2263,10 +2263,11 @@ function main()
     // 47. The marketplace manifest passes `claude plugin validate --strict`.
     for (const finding of lintPluginPlacement()) flag(finding);
     for (const finding of lintRepoRootReserved()) flag(finding);
-    // 48. The hooks plugin entry matches the installer's own wiring table.
+    // 48. The core's hooks block matches the manifest's own wiring table.
     for (const finding of lintHooksEntry()) flag(finding);
     // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
-    // too, so a hand edit to any entry is drift, not a change.
+    // too, so a hand edit to any entry is drift, not a change; the two 1.x aliases are generated
+    // like the retired entries, and a `renames` key or a hooks entry is a finding.
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
     for (const finding of lintAgentPreloads()) flag(finding);
@@ -2623,11 +2624,12 @@ function stackTextFiles(root = ROOT)
     return files;
 }
 
-// 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
-// the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
-// one place and not the other is exactly the bug this catches: the copied hook would still gate a
-// tool the plugin hook no longer sees, or the reverse.
-function lintHooksEntry()
+// 48. The stack hooks ride the CORE entry (2.0.0, 'Fold into core'), GENERATED from the manifest's
+// own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
+// exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
+// hook would still gate a tool the plugin hook no longer sees, or the reverse. `liveIn` is a parsed
+// marketplace for a test; the lint reads the committed file.
+function lintHooksEntry(liveIn)
 {
     const out = [];
     let build;
@@ -2635,22 +2637,26 @@ function lintHooksEntry()
     catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
 
     let wanted;
-    try { wanted = build.hooksPlugin(); }
-    catch (err) { return [`the hooks entry could not be generated: ${err.message}`]; }
+    let stack;
+    try { wanted = build.coreEntry(); stack = build.hooksBlock(build.parseHookWirings()); }
+    catch (err) { return [`the core's hooks could not be generated: ${err.message}`]; }
 
-    let mkt;
-    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
-    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+    let mkt = liveIn;
+    if (!mkt)
+    {
+        try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
+        catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+    }
 
     const live = (mkt.plugins || []).find(p => p && p.name === wanted.name);
-    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`node scripts/build-marketplace.js --hooks-entry\`.`];
-    if (JSON.stringify(live) !== JSON.stringify(wanted))
-        out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
+    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`npm run marketplace\`.`];
+    if (JSON.stringify(live.hooks) !== JSON.stringify(wanted.hooks))
+        out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
     const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js']);
     const wired = new Set();
-    for (const blocks of Object.values(wanted.hooks))
+    for (const blocks of Object.values(stack))
         for (const block of blocks)
             for (const entry of block.hooks)
             {
@@ -2659,13 +2665,13 @@ function lintHooksEntry()
                 const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
                 if (!m)
                 {
-                    out.push(`the hooks entry runs \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    out.push(`the core's stack hooks run \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
                     continue;
                 }
                 const file = m[1];
                 wired.add(file);
                 if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
-                    out.push(`the hooks entry wires ${file}, which is not in stack/hooks/.`);
+                    out.push(`the core wires ${file}, which is not in stack/hooks/.`);
             }
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
@@ -2704,19 +2710,22 @@ function lintAgentPreloads()
 }
 
 // 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
-// ships and meta/retired-entries.json what each retiring entry still lists, so a hand-edited path
-// list, description or dependency is drift. The hooks entry has its own check (48) and is left to it.
-function lintMarketplaceEntries()
+// ships, meta/retired-entries.json what each retiring entry still lists, and brand.js LEGACY the two
+// 1.x ids listed as retired aliases - so a hand-edited path list, description or dependency is
+// drift. The core is the one PLUGIN; the aliases are the only other stack entries it accepts, each
+// exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
+// and the fold). `liveIn` is a parsed marketplace for a test; the lint reads the committed file.
+function lintMarketplaceEntries(liveIn)
 {
     const findings = [];
-    let live;
+    let live = liveIn;
     let wanted;
     let build;
     try
     {
         build = require('./build-marketplace.js');
-        live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
-        wanted = build.buildEntries().concat(build.retiredMarketplaceEntries());
+        if (!live) live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
+        wanted = build.buildEntries().concat(build.aliasEntries(), build.retiredMarketplaceEntries());
     }
     catch (err)
     {
@@ -2731,14 +2740,20 @@ function lintMarketplaceEntries()
             findings.push(`marketplace.json entry ${entry.name} does not match the generated one - run \`npm run marketplace\`; it is generated, never hand-edited`);
     }
     const generated = new Set(wanted.map(e => e.name));
-    // Two entry families are generated by OTHER tables and have their own checks: the hooks entry
-    // (48, from the installer's HOOKS array) and the eight MCP plugins (53, from meta/mcp-pins.json
-    // plus the shapes in build-marketplace.js). Placement never produces either, so neither is drift.
-    const elsewhere = new Set(['alfred-code-hooks']);
+    if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
+        findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands a 1.x install with no hooks and no skills (docs/rebrand-evidence.md S11, S16); the 1.x ids are listed as aliases instead - run `npm run marketplace`');
+    // The MCP plugins are generated by ANOTHER table and have their own check (53, from
+    // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
+    // they are not drift.
+    const elsewhere = new Set();
     try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
-        if (p && !elsewhere.has(p.name) && !generated.has(p.name))
-            findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    {
+        if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
+        if ((build.FOLDED_ENTRIES || []).includes(p.name))
+            findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
+        else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    }
     return findings;
 }
 

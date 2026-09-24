@@ -7,7 +7,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { marketKey, isCore, isHooks, currentName, stampFile, BRAND, LEGACY } = require('./install/brand.js');
+const brand = require('./install/brand.js');
+const { marketKey, isCore, currentName, stampFile, alwaysOn, rowOn, BRAND, LEGACY } = brand;
 
 test('the marketplace key follows the installed core, not the manifest name', () =>
 {
@@ -26,7 +27,18 @@ test('both keys registered: the one carrying the installed core wins', () =>
 test('either core spelling is the core', () =>
 {
     assert.ok(isCore('alfred-code') && isCore('claude-stack') && !isCore('serena')); // legacy-name
-    assert.ok(isHooks('alfred-code-hooks') && isHooks('claude-stack-hooks') && !isHooks('claude-stack-dotnet')); // legacy-name
+});
+
+// 2.0.0 folds the hooks into the core: there is no current hooks entry to name, and the 1.x hooks id
+// is kept only for the migration's uninstall (plugins.migrateLegacy).
+test('the hooks ride the core - no hooks entry name, the 1.x one kept for the uninstall', () =>
+{
+    assert.strictEqual(BRAND.hooks, undefined);
+    assert.ok(!('isHooks' in brand));
+    assert.strictEqual(LEGACY.hooks, 'claude-stack-hooks'); // legacy-name
+    assert.ok(alwaysOn('alfred-code') && alwaysOn(LEGACY.core) && !alwaysOn(LEGACY.hooks) && !alwaysOn('alfred-code-hooks'));
+    assert.strictEqual(rowOn({ name: LEGACY.core, enabled: false }), true, 'the core reads enabled whatever its flag (S22)');
+    assert.strictEqual(rowOn({ name: LEGACY.hooks, enabled: false }), false, 'the hooks alias carries nothing - its flag is just its flag');
 });
 
 test('the stamp is read under either name and written under the new one', () =>
@@ -86,10 +98,10 @@ test('an enabled core wins over a parked one, and a parsed listing row reads lik
     assert.equal(marketKey({ listing: 'garbage', marketplaces: null }), BRAND.marketplace);
 });
 
-test('currentName maps only the two renamed entries - a retired per-stack entry keeps its name', () =>
+test('currentName maps only the core - the hooks alias and a retired per-stack entry keep their names', () =>
 {
     assert.equal(currentName('claude-stack'), 'alfred-code'); // legacy-name
-    assert.equal(currentName('claude-stack-hooks'), 'alfred-code-hooks'); // legacy-name
+    assert.equal(currentName('claude-stack-hooks'), 'claude-stack-hooks'); // legacy-name
     assert.equal(currentName('claude-stack-dotnet'), 'claude-stack-dotnet'); // legacy-name
     assert.equal(currentName('serena'), 'serena');
 });

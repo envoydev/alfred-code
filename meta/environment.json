@@ -206,7 +206,7 @@
       "key": "ALFRED_CODE_HOOKS_OFF",
       "default": "",
       "ask": false,
-      "what": "a csv of hook names this project switches off, e.g. `guard-answer-length,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: the thirteen now arrive together through the alfred-code-hooks plugin, so there is no file to leave out of an install, and the rows a setup or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
+      "what": "a csv of hook names this project switches off, e.g. `guard-answer-length,instrument-tool-usage`. It is where the guided walk's hooks LAYER lands: every hook now arrives together inside the core alfred-code plugin, so there is no file to leave out of an install, and the rows a setup or configure run does NOT pick are written here (that answer overwrites this value; every other run seeds it only when absent). Matching is exact on the base name, `.js` optional; a prefix never matches.",
       "validate": {
         "type": "csv"
       }

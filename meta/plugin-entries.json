@@ -73,6 +73,126 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
                 "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-protected-force-push.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-catastrophic-rm.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Read",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Grep",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Task|Agent",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Skill",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": ".*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
+                "timeout": 10
               }
             ]
           }
@@ -85,6 +205,151 @@
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
                 "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "compact",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "Stop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 60
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "SubagentStop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "UserPromptSubmit": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PreCompact": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "SubagentStart": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 60
               }
             ]
           }

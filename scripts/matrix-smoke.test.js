@@ -69,7 +69,7 @@ for (const route of Object.keys(ROUTES))
         if (route === 'plugin')
         {
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
-            assert.ok(calls.includes('plugin install alfred-code-hooks@envoydev --scope project -y'), 'the hooks entry is installed');
+            assert.ok(!calls.some((c) => /-hooks@/.test(c)), 'no hooks entry is installed - the hooks ride the core');
             assert.ok(!result.skill, 'the plugin carries the skill - no copy lands');
             assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on the plugin route');
         }

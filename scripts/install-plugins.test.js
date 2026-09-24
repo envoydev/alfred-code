@@ -139,18 +139,32 @@ test('set: superpowers is installed on every run, a stack entry or not', () =>
     const third = ['claude-hud@claude-plugins-official'];
     const entries = ['alfred-code@envoydev', ...LOCKED_SPECS];
     assert.deepStrictEqual(
-        P.pluginSet({ routes: ROUTES(), thirdParty: third, hooksPlugin: 'alfred-code-hooks@envoydev', stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
-        [...third, 'alfred-code-hooks@envoydev', ...entries, ...CORE_DEPS],
-        'the hooks plugin leads, the selection names the locked three once, superpowers comes last');
-    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, hooksPlugin: 'h@envoydev', stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
+        P.pluginSet({ routes: ROUTES(), thirdParty: third, stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
+        [...third, ...entries, ...CORE_DEPS],
+        'the core leads, the selection names the locked three once, superpowers comes last');
+    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
         [...third, ...CORE_DEPS], 'the full copy route registers the locked three instead of installing them');
 });
 
 test('set: with the MCP route off and the core on, the locked three are installed as plugins', () =>
 {
     // The selection names no MCP plugin on that route, and nothing else would bring them in now.
-    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: 'alfred-code-hooks@envoydev', stackEntries: ['alfred-code@envoydev'], coreDeps: CORE_DEPS, locked: LOCKED });
-    assert.deepStrictEqual(set, ['alfred-code-hooks@envoydev', 'alfred-code@envoydev', ...LOCKED_SPECS, ...CORE_DEPS]);
+    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), stackEntries: ['alfred-code@envoydev'], coreDeps: CORE_DEPS, locked: LOCKED });
+    assert.deepStrictEqual(set, ['alfred-code@envoydev', ...LOCKED_SPECS, ...CORE_DEPS]);
+});
+
+// 2.0.0 folds the hooks into the core ('Fold into core in 2.0.0'): no run installs a hooks entry, and
+// the core carries the hooks whenever it is on - with the skills and MCP routes both on copy (or
+// dropped there by a failed closure), the hooks route alone still puts the core in the set.
+test('set: no hooks entry ever, and the hooks route alone brings the core', () =>
+{
+    for (const routes of [ROUTES(), ROUTES({ mcps: false }), ROUTES({ skills: false, mcps: false }), COPY])
+    {
+        const set = P.pluginSet({ routes, stackEntries: routes.skills || routes.mcps ? ['alfred-code@envoydev'] : [], coreDeps: CORE_DEPS, locked: LOCKED });
+        assert.ok(!set.some((spec) => /-hooks@/.test(spec)), `no hooks entry: ${set.join(' ')}`);
+    }
+    const hooksOnly = P.pluginSet({ routes: ROUTES({ skills: false, mcps: false }), stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED, market: OLD });
+    assert.deepStrictEqual(hooksOnly, [`alfred-code@${OLD}`, ...LOCKED.map((n) => `${n}@${OLD}`), ...CORE_DEPS], 'the core leads, spelled with the run\'s key');
 });
 
 // --- scope ----------------------------------------------------------------
@@ -520,7 +534,7 @@ test('plugin-list: a 1.x row is its own plugin - no rename note is read, and the
     assert.deepStrictEqual(listing, [row1x(OLD, 'user')], 'the row carries no `renamed` field');
     assert.strictEqual(P.fieldOf(listing, `alfred-code@${OLD}`, 'version'), undefined, 'the old core row is not the new core');
     assert.strictEqual(P.fieldOf(listing, 'alfred-code', 'version'), undefined, 'not by the bare name either');
-    assert.strictEqual(P.fieldOf([row1x(OLD_HOOKS, 'user')], `alfred-code-hooks@${OLD}`, 'version'), undefined, 'nor the hooks alias the new hooks entry');
+    assert.strictEqual(P.fieldOf([row1x(OLD_HOOKS, 'user')], `alfred-code@${OLD}`, 'version'), undefined, 'nor the hooks alias the new core');
     assert.strictEqual(P.fieldOf(listing, `${OLD}@${OLD}`, 'version'), '1.3.0', 'the old id still finds its own row');
 });
 
@@ -567,8 +581,8 @@ test('source: both keys registered - the one carrying the installed core is used
 
 test('set: the locked servers ride the run\'s marketplace key', () =>
 {
-    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: `alfred-code-hooks@${OLD}`, stackEntries: [`alfred-code@${OLD}`], coreDeps: CORE_DEPS, locked: LOCKED, market: OLD });
-    assert.deepStrictEqual(set, [`alfred-code-hooks@${OLD}`, `alfred-code@${OLD}`, ...LOCKED.map((n) => `${n}@${OLD}`), ...CORE_DEPS]);
+    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), stackEntries: [`alfred-code@${OLD}`], coreDeps: CORE_DEPS, locked: LOCKED, market: OLD });
+    assert.deepStrictEqual(set, [`alfred-code@${OLD}`, ...LOCKED.map((n) => `${n}@${OLD}`), ...CORE_DEPS]);
 });
 
 // --- 2.0.0: the migration (ruling R24) ------------------------------------------------------------------
@@ -672,16 +686,15 @@ test('update: a plugin this run installed is not installed, enabled or updated a
     assert.match(report[0], /plugin alfred-code: 2\.0\.0 \(installed this run\)/);
 });
 
-test('update: the core and the hooks entry are locked on - a stale disabled flag runs no enable and reads no DISABLED (S22)', () =>
+test('update: the core is locked on - a stale disabled flag runs no enable and reads no DISABLED (S22)', () =>
 {
     const run = cli();
-    const rows = [NEW_CORE('project', { enabled: false }), { ...NEW_CORE('project', { enabled: false }), name: 'alfred-code-hooks' }, { name: 'serena', marketplace: OLD, version: '1.0.0', scope: 'project', enabled: false }];
-    const specs = ['alfred-code', 'alfred-code-hooks', 'serena'].map((n) => `${n}@${OLD}`);
+    const rows = [NEW_CORE('project', { enabled: false }), { name: 'serena', marketplace: OLD, version: '1.0.0', scope: 'project', enabled: false }];
+    const specs = ['alfred-code', 'serena'].map((n) => `${n}@${OLD}`);
     const report = P.updatePlugins({ plugins: specs, scope: 'project', before: rows, after: rows, cli: run });
     assert.deepStrictEqual(run.matching(/^plugin enable /), [`plugin enable serena@${OLD} --scope project`], 'a parked ordinary entry is still enabled');
     assert.match(report[0], /plugin alfred-code: 2\.0\.0 \(already newest\)/);
-    assert.match(report[1], /plugin alfred-code-hooks: 2\.0\.0 \(already newest\)/);
-    assert.match(report[2], /plugin serena: 1\.0\.0 but DISABLED/);
+    assert.match(report[1], /plugin serena: 1\.0\.0 but DISABLED/);
 });
 
 test('install: a plugin this run installed is not installed again', () =>
@@ -767,7 +780,7 @@ test('seed update: a project holding the new core AND a 1.x id retries the remov
 
 test('seed plan --installed-only: a stale disabled flag on the core leaves out no core item and shows no DISABLED core (S22)', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory']
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory']
         .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: !n.startsWith('alfred-code') })));
     const prepare = (repo) =>
     {
@@ -805,7 +818,7 @@ test('seed plan: --print-plan lists the move as planned and changes no plugin', 
 test('seed update --installed-only: a 1.x install under its old key keeps its picks, its deny and its hooks-off', POSIX_ONLY, () =>
 {
     const row = (id) => ({ id, version: '2.0.0', scope: 'user', enabled: true });
-    const listing = JSON.stringify(['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory'].map((n) => row(`${n}@${OLD}`)));
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => row(`${n}@${OLD}`)));
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });

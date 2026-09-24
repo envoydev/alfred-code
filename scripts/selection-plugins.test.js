@@ -59,9 +59,9 @@ test('itemsOf round-trips: the core items re-select the core and copy nothing', 
 });
 
 test('itemsOf ignores a name no placement knows, and accepts the @marketplace spelling', () => {
-    const a = itemsOf(['claude-stack-wpf@envoydev', 'alfred-code-hooks', 'not-a-plugin']);
+    const a = itemsOf(['claude-stack-wpf@envoydev', 'claude-stack-hooks', 'not-a-plugin']); // legacy-name
     const b = itemsOf(['claude-stack-wpf']);
-    assert.deepStrictEqual(a, b, 'the hooks entry and an unknown name carry no skills or agents');
+    assert.deepStrictEqual(a, b, 'the 1.x hooks alias and an unknown name carry no skills or agents');
 });
 
 // status reads what a not-yet-removed per-stack entry carries through --items, while the user is

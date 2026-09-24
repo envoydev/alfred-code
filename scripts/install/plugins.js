@@ -158,16 +158,18 @@ function selectionLines({ routes, skills = [], agents = [], mcps = [], context7M
 }
 
 // Everything this run hands to `claude plugin install`, in order: the third-party picks, then the
-// stack's own entries (the hooks plugin first, so it resolves in the same run that prunes the
-// copied hooks it replaces), then the core's companions. While the core is on, the locked servers
-// ride as plugins: the selection names them on the MCP route, and any it did not name join here.
-// `coreDeps` join on every route - on the full copy route nothing else would bring superpowers either.
-function pluginSet({ routes, thirdParty = [], hooksPlugin, stackEntries = [], coreDeps = [], locked = [], market = BRAND.marketplace })
+// stack's own entries (the core first, so the hooks it carries resolve in the same run that prunes
+// the copied hooks they replace), then the core's companions. The hooks ride the CORE (2.0.0, 'Fold
+// into core') whenever it is on - the selection names it on the skills and MCP routes, and the hooks
+// route alone puts it here. While the core is on, the locked servers ride as plugins: the selection
+// names them on the MCP route, and any it did not name join here. `coreDeps` join on every route -
+// on the full copy route nothing else would bring superpowers either.
+function pluginSet({ routes, thirdParty = [], stackEntries = [], coreDeps = [], locked = [], market = BRAND.marketplace })
 {
     const stack = [];
     if (corePluginOn(routes))
     {
-        if (routes.hooks && hooksPlugin) stack.push(hooksPlugin);
+        if (!stackEntries.some((spec) => bareName(spec) === BRAND.core)) stack.push(`${BRAND.core}@${market}`);
         stack.push(...stackEntries);
         for (const name of locked)
             if (!stack.some((spec) => bareName(spec) === name)) stack.push(`${name}@${market}`);
@@ -373,7 +375,7 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
             log(`plugin install [${pscope}]: ${spec}`);
             cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
         }
-        // The core and the hooks entry are locked on (brand.js alwaysOn): their flag is no reason to act.
+        // The core is locked on (brand.js alwaysOn): its flag is no reason to act.
         else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);

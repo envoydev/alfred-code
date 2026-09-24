@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, applyToMarketplace, retiredMarketplaceEntries, applyRenames, MARKETPLACE_RENAMES } = require('./build-marketplace.js');
+const { buildEntries, coreEntry, applyToMarketplace, retiredMarketplaceEntries, aliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
+const { LEGACY } = require('./install/brand.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
 
@@ -88,16 +89,79 @@ test('applying to a marketplace rewrites the core and leaves what the generator 
         metadata: { version: '9.9.9' },
         plugins: [
             { name: 'alfred-code', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
-            { name: 'alfred-code-hooks', source: './', description: 'generated elsewhere', hooks: { Stop: [] } },
+            { name: 'serena', source: './', description: 'generated elsewhere', mcpServers: {} },
         ],
     };
     const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
     const core = after.plugins.find(p => p.name === 'alfred-code');
     assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
     assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
-    const hooksEntry = after.plugins.find(p => p.name === 'alfred-code-hooks');
-    assert.strictEqual(hooksEntry.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
-    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the hooks entry plus every generated entry');
+    const other = after.plugins.find(p => p.name === 'serena');
+    assert.strictEqual(other.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
+    assert.strictEqual(after.plugins.length, 1 + entries.length, 'the other entry plus every generated entry');
+});
+
+// 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'): a separate hooks
+// entry left in the live file would stay installable, and every guard it carries would fire beside
+// the core's own copy.
+test('applying to a marketplace drops the folded hooks entry, and nothing else it does not own', () => {
+    assert.deepStrictEqual(FOLDED_ENTRIES, ['alfred-code-hooks']);
+    const before = { plugins: [
+        { name: 'alfred-code-hooks', source: './', description: 'the pre-fold hooks entry', hooks: { Stop: [] } },
+        { name: 'third-party', source: './x' },
+    ] };
+    const after = applyToMarketplace(before, entries);
+    assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the stale hooks entry is gone');
+    assert.ok(after.plugins.find((p) => p.name === 'third-party'), 'a hand entry is kept');
+});
+
+test('the core carries every stack hook inline, its own two first in each event', () => {
+    const core = coreEntry();
+    const stack = hooksBlock(parseHookWirings());
+    const commands = (block, event) => (block[event] || []).flatMap((g) => g.hooks.map((h) => `${g.matcher}|${h.command}|${h.timeout}`));
+    for (const event of Object.keys(stack))
+        for (const c of commands(stack, event))
+            assert.ok(commands(core.hooks, event).includes(c), `the core must carry ${event} ${c}`);
+    const own = (event) => commands(core.hooks, event).filter((c) => c.includes('/setup-plugin/hooks/'));
+    assert.deepStrictEqual(own('PreToolUse').length + own('SessionStart').length, 2, 'the core keeps its own two hooks');
+    assert.match(core.hooks.PreToolUse[0].hooks[0].command, /setup-plugin\/hooks\/guard-layer-table\.js/, 'the layer-table guard leads PreToolUse');
+    assert.match(core.hooks.SessionStart[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/, 'the library-stamp line leads SessionStart');
+    const total = (block) => Object.values(block).flat().reduce((n, g) => n + g.hooks.length, 0);
+    assert.strictEqual(total(core.hooks), total(stack) + 2, 'nothing doubled, nothing lost');
+});
+
+test('mergeHooks keeps one group per matcher, the first block\'s hooks first', () => {
+    const own = { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [{ command: 'own' }] }], SessionStart: [{ matcher: 'startup', hooks: [{ command: 'stamp' }] }] };
+    const stack = { PreToolUse: [{ matcher: 'Bash', hooks: [{ command: 'rm' }] }, { matcher: 'AskUserQuestion', hooks: [{ command: 'stop' }] }], Stop: [{ hooks: [{ command: 'contract' }] }] };
+    const merged = mergeHooks(own, stack);
+    assert.deepStrictEqual(merged.PreToolUse, [
+        { matcher: 'AskUserQuestion', hooks: [{ command: 'own' }, { command: 'stop' }] },
+        { matcher: 'Bash', hooks: [{ command: 'rm' }] },
+    ]);
+    assert.deepStrictEqual(merged.SessionStart, own.SessionStart);
+    assert.deepStrictEqual(merged.Stop, stack.Stop);
+    assert.deepStrictEqual(own.PreToolUse[0].hooks, [{ command: 'own' }], 'the inputs are not mutated');
+});
+
+// Rulings R24 and 'retired aliases' (docs/rebrand-evidence.md S20-S25): 2.0.0 ships no `renames` map
+// - a rename strands a 1.x install with zero hooks and skills (S11, S16). The 1.x ids stay LISTED.
+test('the two 1.x ids are generated retired aliases: the core under its old name, and an empty hooks id', () => {
+    const [core, hooks] = aliasEntries();
+    const wantDescription = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs alfred-code and removes this entry.`;
+    assert.strictEqual(core.name, LEGACY.core);
+    assert.strictEqual(core.description, wantDescription);
+    assert.deepStrictEqual({ ...core, name: 'alfred-code', description: coreEntry().description }, coreEntry(), 'the core alias is the 2.0.0 core, renamed');
+    // S20: validated under --strict with no component but an explicit empty skills list - omitting
+    // the key would auto-discover the shared root's skill folders.
+    assert.deepStrictEqual(Object.keys(hooks), ['name', 'source', 'description', 'version', 'author', 'strict', 'skills']);
+    assert.strictEqual(hooks.name, LEGACY.hooks);
+    assert.strictEqual(hooks.source, './');
+    assert.strictEqual(hooks.description, wantDescription);
+    assert.strictEqual(hooks.strict, false);
+    assert.deepStrictEqual(hooks.skills, []);
+    assert.strictEqual(hooks.version, core.version);
+    assert.deepStrictEqual(hooks.author, core.author);
+    assert.ok(!/—/.test(wantDescription), 'house voice: no em-dash');
 });
 
 test('malformed input fails loudly rather than emitting a short list', () => {
@@ -126,10 +190,11 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     // The three locked MCP servers are the exception, and by design: the installer installs them
     // beside the core on every run, and a plugin that depends on nothing can never be disabled at
     // load by a missing one. Everything else must reach the core, or enabling it would not enable
-    // the baseline.
+    // the baseline. The two 1.x aliases are the core under its old name and an empty id, so the old
+    // core's alias counts as the core for a retired entry, whose frozen dependency still names it.
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || LOCKED.includes(e.name)) continue;
+        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -145,7 +210,7 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
                 stack.push(d);
             }
         }
-        assert.ok(seen.has('alfred-code'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
+        assert.ok(seen.has('alfred-code') || seen.has(LEGACY.core), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
     }
 });
 
@@ -199,40 +264,64 @@ test('a retired name missing from the frozen file is dropped from the marketplac
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 
-// Requirement 2 (task-5c): the frozen meta/retired-entries.json still spells its own dependency on
-// the core in 1.x names - build-marketplace.js is what translates it, so a retired entry keeps
-// reaching the core through the renamed marketplace shape (build-marketplace.test.js:125, legacy
-// failure 1 of Task 2's report).
-test('retiredMarketplaceEntries translates the frozen claude-stack / claude-stack-hooks dependency, keeps every other one', () => {
+// The retired entries keep their FROZEN dependencies. `claude-stack` is listed again, as the core's // legacy-name
+// alias, so a retired entry a 1.x install `plugin update`s before the seed runs still resolves the
+// dependency it names (reverting 5c's mapping onto the new core's name).
+test('retiredMarketplaceEntries keeps every frozen dependency verbatim', () => {
+    const frozen = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-entries.json'), 'utf8')).entries;
     const list = retiredMarketplaceEntries();
-    const retiredByName = Object.fromEntries(list.map((e) => [e.name, e]));
-    // A terminal entry named the frozen core name directly.
-    assert.deepStrictEqual(retiredByName['claude-stack-csharp'].dependencies, ['alfred-code']);
-    assert.deepStrictEqual(retiredByName['claude-stack-aspnet-data'].dependencies, ['alfred-code']);
-    // A non-terminal entry still names another retired entry by its own frozen name - untouched.
-    assert.deepStrictEqual(retiredByName['claude-stack-aspnet'].dependencies, ['claude-stack-aspnet-data', 'claude-stack-csharp', 'claude-stack-dotnet']);
-    for (const e of list) assert.ok(!e.dependencies.includes('claude-stack') && !e.dependencies.includes('claude-stack-hooks'), `${e.name} still names an unrenamed core dependency`);
+    assert.deepStrictEqual(list.map((e) => [e.name, e.dependencies]), frozen.map((e) => [e.name, e.dependencies]));
+    const byName = Object.fromEntries(list.map((e) => [e.name, e]));
+    assert.deepStrictEqual(byName['claude-stack-csharp'].dependencies, [LEGACY.core], 'a terminal entry names the 1.x core');
+    assert.ok(shippedBy[LEGACY.core], 'which the live marketplace lists, as the alias');
 });
 
-// Requirement 1 (task-5c): the top-level `renames` map Claude Code reads to move a 1.x install's
-// `enabledPlugins` keys at startup (docs/rebrand-evidence.md S1/S4/S9) - ONE constant, never a null
-// value (plan decision D2: a null drops the key before the seed can copy a retired entry's picks).
-test('applyRenames writes the 1.x -> 2.x plugin map onto the live marketplace, never a null value', () => {
-    const mkt = applyRenames({ plugins: [] });
-    assert.deepStrictEqual(mkt.renames, { 'claude-stack': 'alfred-code', 'claude-stack-hooks': 'alfred-code-hooks' });
-    for (const [from, to] of Object.entries(MARKETPLACE_RENAMES))
+// Ruling 'retired aliases': 2.0.0 ships NO renames map (S11/S16 - a rename strands a 1.x install
+// with zero hooks and skills), and no hooks entry (the fold). The live file is what a CLI reads.
+test('the live marketplace carries no renames key, no hooks entry, and both 1.x aliases as generated', () => {
+    assert.ok(!('renames' in SHIPPED), 'a renames key would move a 1.x install onto an id it never installs');
+    assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
+    for (const alias of aliasEntries())
+        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
+    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 22, '20 retired per-stack entries plus the two aliases');
+});
+
+test('--write-marketplace drops a renames key and the hooks entry, and lists both aliases', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mkt-'));
+    const file = path.join(tmp, 'marketplace.json');
+    const stale = JSON.parse(JSON.stringify(SHIPPED));
+    stale.renames = { [LEGACY.core]: 'alfred-code', [LEGACY.hooks]: 'alfred-code-hooks' };
+    stale.plugins = stale.plugins.filter((p) => p.name !== LEGACY.core && p.name !== LEGACY.hooks)
+        .concat({ name: 'alfred-code-hooks', source: './', description: 'pre-fold', hooks: { Stop: [] } });
+    fs.writeFileSync(file, JSON.stringify(stale, null, 2) + '\n');
+    try
     {
-        assert.notStrictEqual(to, null, `${from} must never rename to null`);
-        assert.strictEqual(typeof to, 'string');
+        run(['--write-marketplace', '--marketplace-file', file]);
+        const after = JSON.parse(fs.readFileSync(file, 'utf8'));
+        assert.ok(!('renames' in after), 'the renames key is deleted');
+        assert.strictEqual(after.plugins.find((p) => p.name === 'alfred-code-hooks'), undefined, 'the hooks entry is dropped');
+        for (const alias of aliasEntries()) assert.deepStrictEqual(after.plugins.find((p) => p.name === alias.name), alias);
+        const once = fs.readFileSync(file, 'utf8');
+        assert.match(run(['--write-marketplace', '--marketplace-file', file]), /marketplace current/, 'a re-run changes nothing');
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), once);
     }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('--hooks-entry prints the core hooks block and writes nothing', () => {
+    const before = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
+    const printed = JSON.parse(run(['--hooks-entry']));
+    assert.deepStrictEqual(printed, coreEntry().hooks);
+    assert.strictEqual(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'), before);
 });
 
 test('the core entry wires the library-stamp line at session start, startup only, with a timeout', () =>
 {
     const core = buildEntries().find((e) => e.name === 'alfred-code');
     const start = core.hooks.SessionStart;
-    assert.ok(Array.isArray(start) && start.length === 1, JSON.stringify(core.hooks));
-    assert.strictEqual(start[0].matcher, 'startup');
+    assert.ok(Array.isArray(start) && start.length >= 1, JSON.stringify(core.hooks));
+    assert.strictEqual(start[0].matcher, 'startup', 'its own group leads the event');
+    assert.strictEqual(start[0].hooks.length, 1, 'no stack hook shares the startup matcher');
     assert.match(start[0].hooks[0].command, /setup-plugin\/hooks\/library-stamp\.js/);
     assert.strictEqual(start[0].hooks[0].timeout, 10);
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'setup-plugin', 'hooks', 'library-stamp.js')));

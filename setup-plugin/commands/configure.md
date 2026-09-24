@@ -256,11 +256,11 @@ drops before them.
 ## 6. Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. The set ships together in the `alfred-code-hooks` plugin, so dropping
+cascade never reaches here. The set ships together inside the core `alfred-code` plugin, so dropping
 a row copies and unwires nothing: it is named in `ALFRED_CODE_HOOKS_OFF` in the scope's
 `settings.json` env, and re-adding a row removes its name from that value. The environment area is
 where the same value can also be edited by hand. An install still on the copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the
-old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit).
+old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit) - and, while the core is on for the skills or the MCP servers, names it in `ALFRED_CODE_HOOKS_OFF` too, since the core carries every hook.
 
 ## 7. MCPs
 
