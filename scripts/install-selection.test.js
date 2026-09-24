@@ -142,7 +142,7 @@ test('derive: only KNOWN plugins are taken from the listing, and none listed is 
     assert.deepStrictEqual(got.filter((l) => l.startsWith('plugin ')), ['plugin claude-hud']);
     // update INSTALLS an absent plugin, so a manifest-set fallback put all five on a project whose
     // user picked none - a listing that names none of them, or one that could not be read.
-    for (const plugins of [[], ['claude-stack@claude-stack']])
+    for (const plugins of [[], ['alfred-code@envoydev']])
         assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: dir, plugins, knownPlugins: known }).filter((l) => l.startsWith('plugin ')), [], JSON.stringify(plugins));
 });
 
@@ -233,8 +233,8 @@ function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], s
 test('read-back: a healthy listing reads seats, hooks and MCP entries back, and answers both surfaces', () =>
 {
     const r = readBackCase({
-        listing: [row('claude-stack@claude-stack'), row('claude-stack-hooks@claude-stack'), row('claude-stack-aspnet@claude-stack'), row('serena@claude-stack')],
-        settings: { permissions: { deny: ['Agent(claude-stack:security-auditor)'] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } },
+        listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('claude-stack-aspnet@envoydev'), row('serena@envoydev')],
+        settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
     });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
     assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
@@ -257,15 +257,15 @@ test('read-back: a plugin-route install with nothing on disk is still an install
     const bare = (listing) => sel.readBack({
         claudeDir: target({}), mcpServers: [], listing, settings: {}, routes: ALL, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {},
     });
-    const project = bare([row('claude-stack@claude-stack'), row('claude-stack-csharp@claude-stack'), row('claude-stack-hooks@claude-stack')]);
+    const project = bare([row('alfred-code@envoydev'), row('claude-stack-csharp@envoydev'), row('alfred-code-hooks@envoydev')]);
     assert.ok(project.installed, 'the project-scoped entries were not read as an install');
     assert.ok(project.lines.includes('skill csharp') && project.lines.some((l) => l.startsWith('hook ')), project.lines.join(', '));
-    assert.ok(bare([row('claude-stack@claude-stack', { scope: 'local' })]).installed, 'a local-scope entry is this project too');
+    assert.ok(bare([row('alfred-code@envoydev', { scope: 'local' })]).installed, 'a local-scope entry is this project too');
     // An ACCOUNT-scope entry is every project's - reading it as this one's would install into a
     // project the stack never touched.
-    assert.strictEqual(bare([row('claude-stack@claude-stack', { scope: 'user' })]).installed, false);
-    assert.strictEqual(bare([row('claude-stack@claude-stack', { enabled: false })]).installed, false, 'a parked entry is no install');
-    assert.strictEqual(bare([row('claude-stack@other-market')]).installed, false, 'another marketplace is not ours');
+    assert.strictEqual(bare([row('alfred-code@envoydev', { scope: 'user' })]).installed, false);
+    assert.strictEqual(bare([row('alfred-code@envoydev', { enabled: false })]).installed, false, 'a parked entry is no install');
+    assert.strictEqual(bare([row('alfred-code@other-market')]).installed, false, 'another marketplace is not ours');
 });
 
 test('read-back: copied hooks on disk still answer the hooks surface without the hooks entry', () =>
@@ -277,8 +277,8 @@ test('read-back: copied hooks on disk still answer the hooks surface without the
 test('read-back: a PARKED entry reads back nothing - a disabled browser stays disabled', () =>
 {
     const r = readBackCase({ listing: [
-        row('claude-stack@claude-stack'), row('claude-stack-hooks@claude-stack', { enabled: false }),
-        row('playwright-firefox@claude-stack', { enabled: false }), row('playwright-webkit@claude-stack'),
+        row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev', { enabled: false }),
+        row('playwright-firefox@envoydev', { enabled: false }), row('playwright-webkit@envoydev'),
     ] });
     assert.strictEqual(r.answered.hooks, false, 'a parked hooks entry is no evidence of the hook state');
     assert.deepStrictEqual(r.engines, ['webkit']);
@@ -286,30 +286,30 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
 
 test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>
 {
-    const r = readBackCase({ listing: [row('claude-stack@claude-stack'), row('sentry@claude-plugins-official', { scope: 'user' }), row('playwright@claude-plugins-official')] });
+    const r = readBackCase({ listing: [row('alfred-code@envoydev'), row('sentry@claude-plugins-official', { scope: 'user' }), row('playwright@claude-plugins-official')] });
     assert.ok(!r.lines.includes('mcp sentry') && !r.lines.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
 });
 
 test('read-back: the local context7 transport is read back as local mode', () =>
 {
-    assert.strictEqual(readBackCase({ listing: [row('context7@claude-stack'), row('context7-local@claude-stack')] }).context7Local, true);
-    assert.strictEqual(readBackCase({ listing: [row('context7@claude-stack')] }).context7Local, false);
+    assert.strictEqual(readBackCase({ listing: [row('context7@envoydev'), row('context7-local@envoydev')] }).context7Local, true);
+    assert.strictEqual(readBackCase({ listing: [row('context7@envoydev')] }).context7Local, false);
 });
 
 test('read-back: a malformed deny or env block reads as absent, never aborts the update', () =>
 {
-    const r = readBackCase({ listing: [row('claude-stack@claude-stack')], settings: { permissions: { deny: { oops: 1 } }, env: 'x' } });
+    const r = readBackCase({ listing: [row('alfred-code@envoydev')], settings: { permissions: { deny: { oops: 1 } }, env: 'x' } });
     assert.ok(r.lines.includes('agent security-auditor'));
 });
 
 test('read-back: a skill the last install carried survives the release that retired its entry, as a pick', () =>
 {
     const stampPicked = { skills: ['dotnet-web-backend@claude-stack-aspnet'], agents: [] };
-    const moved = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack')], stampPicked });
+    const moved = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev')], stampPicked });
     assert.ok(moved.lines.includes('skill dotnet-web-backend') && moved.closeFrom.includes('skill dotnet-web-backend'));
-    const gone = readBackCase({ listing: [row('claude-stack@claude-stack')], stampPicked });
+    const gone = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked });
     assert.ok(!gone.lines.includes('skill dotnet-web-backend'), 'its old home is uninstalled here - the user removed it');
-    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack', { enabled: false })], stampPicked });
+    const parked = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev', { enabled: false })], stampPicked });
     assert.ok(!parked.lines.includes('skill dotnet-web-backend'), 'the user parked its entry');
     const blind = readBackCase({ listing: [], stampPicked });
     assert.ok(!blind.lines.includes('skill dotnet-web-backend'), 'no listing, no evidence of what is parked - the stamp is not read');
@@ -317,7 +317,7 @@ test('read-back: a skill the last install carried survives the release that reti
 
 test('read-back: an enabled retired entry turns its stamp PICKS into picks, never what it merely carried', () =>
 {
-    const listing = [row('claude-stack@claude-stack'), row('claude-stack-angular@claude-stack')];
+    const listing = [row('alfred-code@envoydev'), row('claude-stack-angular@envoydev')];
     const stampPicked = { skills: ['angular-conventions@claude-stack-angular', 'angular-testing@claude-stack-angular'], agents: [] };
     const r = readBackCase({ listing, stampPicked });
     assert.ok(r.closeFrom.includes('skill angular-conventions') && r.closeFrom.includes('skill angular-testing'), r.closeFrom.join(','));
@@ -328,14 +328,14 @@ test('read-back: an enabled retired entry turns its stamp PICKS into picks, neve
     const legacy = readBackCase({ listing, stampPicked: null });
     for (const s of ['angular-conventions', 'angular-security', 'angular-styling', 'angular-testing'])
         assert.ok(legacy.closeFrom.includes(`skill ${s}`) && legacy.lines.includes(`skill ${s}`), `a stamp without picks adopts ${s}`);
-    const parked = readBackCase({ listing: [row('claude-stack@claude-stack'), row('claude-stack-angular@claude-stack', { enabled: false })], stampPicked });
+    const parked = readBackCase({ listing: [row('alfred-code@envoydev'), row('claude-stack-angular@envoydev', { enabled: false })], stampPicked });
     assert.ok(!parked.closeFrom.some((l) => /^skill angular-/.test(l)), 'a parked retired entry carries nothing');
 });
 
 test('read-back: a stamp with no picked lines (an older install) takes what the enabled entries carry as picked', () =>
 {
-    const listing = [row('claude-stack@claude-stack'), row('claude-stack-aspnet@claude-stack')];
-    const legacy = readBackCase({ listing, stampPicked: null, settings: { permissions: { deny: ['Agent(claude-stack:security-auditor)'] } } });
+    const listing = [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev')];
+    const legacy = readBackCase({ listing, stampPicked: null, settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] } } });
     assert.ok(legacy.closeFrom.includes('skill dotnet-web-backend') && legacy.closeFrom.includes('agent aspnet-implementer'), 'carried by an enabled entry');
     assert.ok(!legacy.closeFrom.includes('agent security-auditor'), 'a denied seat is no pick');
     const current = readBackCase({ listing, stampPicked: { skills: [], agents: [] } });
@@ -388,7 +388,7 @@ test('closeLines: no graph is a logged no-op, never a crash', () =>
 
 test('read-back: closeFrom is the picked set - disk and the stamp - never the carried-only items', () =>
 {
-    const r = readBackCase({ listing: [row('claude-stack@claude-stack')], stampPicked: { skills: ['markdown-style'], agents: [] } });
+    const r = readBackCase({ listing: [row('alfred-code@envoydev')], stampPicked: { skills: ['markdown-style'], agents: [] } });
     assert.ok(r.closeFrom.includes('rule baseline-security'), 'disk');
     assert.ok(r.closeFrom.includes('skill markdown-style'), 'the stamp');
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.closeFrom.includes('agent evidence-gatherer'), 'carried only');
@@ -411,9 +411,9 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const before = shipped.slice(1);   // the last release shipped all but the first
-    const r = readBackCase({ listing: [row('claude-stack-hooks@claude-stack')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before });
+    const r = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.join(',') } }, stampHooks: before });
     assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none']);
-    const some = readBackCase({ listing: [row('claude-stack-hooks@claude-stack')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
+    const some = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
     assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
 });
 
@@ -446,7 +446,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
             hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js'],
             mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
         },
-        listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('claude-stack-devops@claude-stack', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
+        listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('claude-stack-devops@envoydev', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
         answered: { hooks: true, agents: false },
         pluginCatalog: ['superpowers', 'claude-hud', 'csharp-lsp'],
         leftOut: ['agent security-auditor'],
@@ -467,15 +467,15 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
 test('droppedEntries: what the drop took out of the set, folded onto the listing, dependents first', () =>
 {
     const listing = [
-        row('claude-stack-aspnet@claude-stack'), row('claude-stack-csharp@claude-stack'),
-        row('claude-stack-devops@claude-stack'), row('playwright-chrome@claude-stack'),
-        row('sentry@claude-stack', { enabled: false }),
+        row('claude-stack-aspnet@envoydev'), row('claude-stack-csharp@envoydev'),
+        row('claude-stack-devops@envoydev'), row('playwright-chrome@envoydev'),
+        row('sentry@envoydev', { enabled: false }),
     ];
-    const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['claude-stack'] };
+    const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['alfred-code'] };
     const got = sel.droppedEntries({
-        before: ['claude-stack', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'sentry', 'claude-stack-devops'],
-        after: ['claude-stack', 'claude-stack-devops'],
-        listing, deps, marketplace: 'claude-stack',
+        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'sentry', 'claude-stack-devops'],
+        after: ['alfred-code', 'claude-stack-devops'],
+        listing, deps, marketplace: 'envoydev',
     });
     assert.deepStrictEqual(got.map((r) => r.name), ['claude-stack-aspnet', 'claude-stack-csharp', 'playwright-chrome'],
         'aspnet before the csharp it depends on; the parked sentry is not touched; devops stays');
@@ -483,14 +483,14 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
 
 test('leftOut: every item a parked entry carries, and every stack seat the deny list names', () =>
 {
-    const got = sel.leftOut({ parked: ['claude-stack-devops'], deny: ['Agent(claude-stack:evidence-gatherer)', 'Agent(my-own-seat)', 'Bash(curl:*)'] });
+    const got = sel.leftOut({ parked: ['claude-stack-devops'], deny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(my-own-seat)', 'Bash(curl:*)'] });
     assert.deepStrictEqual(got.sort(), ['agent devops-implementer', 'agent devops-solution-designer', 'agent devops-verifier', 'agent evidence-gatherer', 'skill devops'].sort());
 });
 
 test('droppedEntries: the core, the hooks entry and the locked servers are never queued', () =>
 {
-    const listing = ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@claude-stack`));
-    const got = sel.droppedEntries({ before: ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'claude-stack' });
+    const listing = ['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory', 'context7-local'].map((n) => row(`${n}@envoydev`));
+    const got = sel.droppedEntries({ before: ['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory'], after: [], listing, deps: {}, marketplace: 'envoydev' });
     assert.deepStrictEqual(got.map((r) => r.name), ['context7-local'], 'only the droppable transport of context7');
 });
 

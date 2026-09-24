@@ -12,14 +12,14 @@
 //                    what a merge just folded into mainline comes first
 //   Stop          -> once per session, the same ask for what the SESSION wrote itself (a skill's work is main-session
 //                    work) plus every change no actor claimed - a script's output, a tool this hook is not wired on
-// CLAUDE_STACK_DOCS_BLOCK=0 / CLAUDE_STACK_DOCS_GATE=0 / CLAUDE_STACK_DOCS_ASK=0 turn the three parts off.
+// ALFRED_CODE_DOCS_BLOCK=0 / ALFRED_CODE_DOCS_GATE=0 / ALFRED_CODE_DOCS_ASK=0 turn the three parts off.
 'use strict';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -31,7 +31,7 @@ if (require.main === module) {
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
@@ -94,7 +94,7 @@ const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
 function recordWrite(root, input, wrote) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return; // the switch turns the part off, record included
+  if (process.env.ALFRED_CODE_DOCS_ASK === '0') return; // the switch turns the part off, record included
   const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
@@ -171,7 +171,7 @@ function sessionStart(input, root, docs, state) {
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
   for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
-  if (process.env.CLAUDE_STACK_DOCS_BLOCK === '0') return;
+  if (process.env.ALFRED_CODE_DOCS_BLOCK === '0') return;
   let st = null;
   try { st = docs.status(); } catch {}
   const lines = orientation(root, docs);
@@ -209,7 +209,7 @@ function sessionStart(input, root, docs, state) {
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
-  if (process.env.CLAUDE_STACK_DOCS_GATE !== '0' && readable) {
+  if (process.env.ALFRED_CODE_DOCS_GATE !== '0' && readable) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);
@@ -241,14 +241,14 @@ function main() {
 function subagentStart(input, root, docs) {
   // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
   // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
-  if (process.env.CLAUDE_STACK_DOCS_ASK !== '0') {
+  if (process.env.ALFRED_CODE_DOCS_ASK !== '0') {
     const key = agentKey(input);
     const a = loadAgent(input.session_id, key);
     // Only the first start writes it: where two seats fold onto one key, the earlier snapshot keeps both their
     // changes in view instead of hiding the first agent's work behind the second's start.
     if (!a.snapshot) { try { a.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, a, key); }
   }
-  if (process.env.CLAUDE_STACK_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
+  if (process.env.ALFRED_CODE_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
 }
 
 // A section ref is spelled three ways on the CLI ('patterns#orders', 'references/patterns#orders',
@@ -382,7 +382,7 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
 // so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
 function subagentStop(input, root, docs) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return;
+  if (process.env.ALFRED_CODE_DOCS_ASK === '0') return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
   // The stop our own block caused. The row it writes states what HAPPENED to the sections we asked about - which of
@@ -588,7 +588,7 @@ function preToolUse(input, root, docs, state) {
     saveState(input.session_id, state);
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
-  if (process.env.CLAUDE_STACK_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
+  if (process.env.ALFRED_CODE_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
@@ -691,7 +691,7 @@ function finishAsk(docs, files, asks, warnings = []) {
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  if (process.env.ALFRED_CODE_DOCS_ASK === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
   let changed;
   let hits = [];
@@ -702,7 +702,7 @@ function stop(input, root, docs, state) {
     // carry no agent id - plus every change no actor claimed at all, which is how a script's output and a write
     // through a tool this hook is not wired on still get asked about. What a SEAT wrote is that seat's to answer
     // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
-    // earns itself a CLAUDE_STACK_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
+    // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
     const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
     const seats = otherActorWrites(input.session_id, MAIN_ACTOR);

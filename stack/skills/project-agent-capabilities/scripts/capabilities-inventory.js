@@ -170,7 +170,7 @@ function entryItems(installPath, pluginName)
         entry = (mk.plugins || []).find((x) => x && x.name === pluginName);
     }
     catch { return null; }
-    // An entry that exists and lists nothing ships nothing - `claude-stack-hooks` is hooks only.
+    // An entry that exists and lists nothing ships nothing - `alfred-code-hooks` is hooks only.
     // Returning null there sent it to the directory scan, which handed back all 43 of the shared
     // root's seats under its name (measured: 85 seats where the truth is 42 plus one local extra).
     if (!entry) return null;
@@ -349,25 +349,25 @@ function routingRow(name, map)
 
 function docsRoot(projectRoot)
 {
-    for (const key of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
+    for (const key of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
     {
         if (process.env[key]) return { value: process.env[key], from: `${key} in the environment` };
     }
     try
     {
         const env = (JSON.parse(readText(path.join(projectRoot, '.claude', 'settings.json')) || '{}') || {}).env || {};
-        for (const key of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
+        for (const key of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
         {
             if (env[key]) return { value: env[key], from: `${key} in .claude/settings.json env` };
         }
     }
     catch { /* a malformed settings.json is the default's case, not a failure */ }
-    return { value: '.claude/docs', from: 'the default - no CLAUDE_STACK_DOCS_PATH set' };
+    return { value: '.claude/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
 }
 
 function installStamp(projectRoot)
 {
-    const text = readText(path.join(projectRoot, '.claude', 'claude-stack.stamp'));
+    const text = readText(path.join(projectRoot, '.claude', 'alfred-code.stamp'));
     if (text === null) return null;
     const pick = (k) => (new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(text) || [])[1];
     const sha = (pick('sha') || '').trim();
@@ -399,7 +399,7 @@ function precheck(projectRoot, rulePath)
         if (!st.isFile() || skipName(path.basename(p)) || path.resolve(p) === path.resolve(rulePath)) return;
         if (st.mtimeMs > ruleStat.mtimeMs) hits.push({ path: relTo(projectRoot, p), mtime: st.mtimeMs });
     };
-    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', '.claude/claude-stack.stamp'])
+    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', '.claude/alfred-code.stamp'])
     {
         visit(path.join(projectRoot, src), 0);
     }

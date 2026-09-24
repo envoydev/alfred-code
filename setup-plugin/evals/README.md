@@ -1,4 +1,4 @@
-# claude-stack plugin evals
+# alfred-code plugin evals
 
 `claude plugin eval` runs these cases against the plugin and again WITHOUT it, and reports the
 delta. Every run is a real, billed model call on your own account.
@@ -19,8 +19,8 @@ install to change.
 
 | case | prompt | what it proves |
 |---|---|---|
-| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:init` instead of rendering its fixed table shapes from the command body |
-| `router-hands-back-one-command` | `/claude-stack` | the router reads the state, names ONE command, and does not start the walk itself |
+| `status-no-install` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:init` instead of rendering its fixed table shapes from the command body |
+| `router-hands-back-one-command` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
 | `size-first-trivial` | `/project-solve-task fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
 | `size-first-small` | `/project-solve-task the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
 | `size-first-floor` | `/project-solve-task add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
@@ -50,7 +50,7 @@ own contract, and a `with` score under 1.00 is the command failing it outright.
 ```bash
 claude plugin eval setup-plugin --case '[rs][ot]*' --max-cost-usd 3 --judge-model claude-haiku-4-5   # router + status
 claude plugin eval setup-plugin --case status-no-install --runs 1 --ablation none   # iterate cheaply
-claude plugin eval claude-stack@claude-stack --eval-dir setup-plugin/evals --case 'size-first-*' --scaffold --max-cost-usd 5
+claude plugin eval alfred-code@envoydev --eval-dir setup-plugin/evals --case 'size-first-*' --scaffold --max-cost-usd 5
 ```
 
 The `size-first-*` cases need the CORE plugin as the target, because `setup-plugin/` alone does not

@@ -36,7 +36,7 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
 
     const install = path.join(root, 'project');
     fs.mkdirSync(path.join(install, '.claude'), { recursive: true });
-    if (stamp !== null) fs.writeFileSync(path.join(install, '.claude', 'claude-stack.stamp'), stamp);
+    if (stamp !== null) fs.writeFileSync(path.join(install, '.claude', 'alfred-code.stamp'), stamp);
     if (settings) fs.writeFileSync(path.join(install, '.claude', 'settings.json'), JSON.stringify(settings));
     const fixtureFile = path.join(root, 'compare.json');
     fs.writeFileSync(fixtureFile, JSON.stringify(fixture));
@@ -228,18 +228,18 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               then: 're-run /project-code-style-analyzer' },
             { id: 'env-one',
               detect: { settings_env_key: 'CLAUDE_DOCS_PATH' },
-              rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'CLAUDE_STACK_DOCS_PATH' },
-              why: 'every other variable this stack owns is CLAUDE_STACK_*' },
+              rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'ALFRED_CODE_DOCS_PATH' },
+              why: 'every other variable this stack owns is ALFRED_CODE_*' },
             { id: 'reset-one',
-              detect: { settings_env_value: { key: 'CLAUDE_STACK_EXAMPLE', equals: 'old' } },
-              clear_settings_env: { key: 'CLAUDE_STACK_EXAMPLE', when_value: 'old', to: 'new' },
+              detect: { settings_env_value: { key: 'ALFRED_CODE_EXAMPLE', equals: 'old' } },
+              clear_settings_env: { key: 'ALFRED_CODE_EXAMPLE', when_value: 'old', to: 'new' },
               why: 'a seeded default that turned out wrong is reset only where it still holds the seed' },
             { id: 'quiet-one',
               detect: { file_exists: '.claude/hooks/never-here.js' },
               why: 'this entry did not fire and must print nothing',
               then: 'nothing' },
         ],
-        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs', CLAUDE_STACK_EXAMPLE: 'old' } },
+        settings: { env: { CLAUDE_DOCS_PATH: '.claude/docs', ALFRED_CODE_EXAMPLE: 'old' } },
     });
     fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'hooks', 'inject-code-style.js'), '// legacy');
@@ -250,8 +250,8 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     assert.match(out, /^ {2}then: re-run \/project-code-style-analyzer$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
-    assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> CLAUDE_STACK_DOCS_PATH$/m, 'the env edit, on the entry that carries one');
-    assert.match(out, /^ {2}env-reset: CLAUDE_STACK_EXAMPLE: old -> new$/m, 'a seeded default the installers reset, on the entry that carries one');
+    assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> ALFRED_CODE_DOCS_PATH$/m, 'the env edit, on the entry that carries one');
+    assert.match(out, /^ {2}env-reset: ALFRED_CODE_EXAMPLE: old -> new$/m, 'a seeded default the installers reset, on the entry that carries one');
     assert.doesNotMatch(out, /quiet-one|did not fire/, 'an entry that did not fire costs nothing at all');
     assert.doesNotMatch(out, /xxxx/, 'and the maintainer comment never reaches the caller');
 });
@@ -274,21 +274,21 @@ const NEW_FIXTURE = { files: [
 test('new items: a core item arrives, a library item is offered, the user\'s off-state wins', () => {
     const { snap, install, fixtureFile } = scaffold({
         fixture: NEW_FIXTURE,
-        settings: { permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] }, env: { CLAUDE_STACK_HOOKS_OFF: '' } },
+        settings: { permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: '' } },
     });
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([
-        { id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: true },
-        { id: 'claude-stack-aspnet@claude-stack', enabled: false },
+        { id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true },
+        { id: 'claude-stack-aspnet@envoydev', enabled: false },
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
     const rows = out.split('\n').filter((l) => l.startsWith('new: '));
     assert.deepStrictEqual(rows.filter((r) => !r.startsWith('new: rule ')), [
-        'new: skill markdown-style\tarrives\tclaude-stack',
+        'new: skill markdown-style\tarrives\talfred-code',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
-        'new: agent code-style-analyzer\toff\tclaude-stack',
-        'new: hook docs-session\tarrives\tclaude-stack-hooks',
+        'new: agent code-style-analyzer\toff\talfred-code',
+        'new: hook docs-session\tarrives\talfred-code-hooks',
     ]);
     // a renamed line with no old copy on disk is a plain offer; its closure copies a library skill
     // the project lacks, so the recommendation is leave and the copy is named
@@ -298,7 +298,7 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
 test('new items: a library skill the project already copied makes the rule that pulls it the free take', () => {
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/rules/sql-conventions.md' }] } });
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const before = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     const copies = /^new: rule sql-conventions\toffer\t-\tleave\tcopies=(\S+)$/m.exec(before);
     assert.ok(copies, before);
@@ -321,7 +321,7 @@ test('new items: none added prints `new: none`; an unreadable listing leaves a c
     const bad = path.join(blind.install, 'listing.json');
     fs.writeFileSync(bad, '{ not json');
     const r2 = run(['--snapshot', blind.snap, '--root', blind.install, '--fixture', blind.fixtureFile, '--listing', bad]);
-    assert.match(r2.out, /^new: skill markdown-style\tunknown\tclaude-stack$/m);
+    assert.match(r2.out, /^new: skill markdown-style\tunknown\talfred-code$/m);
     // a library item is a copy, so no plugin listing decides it
     assert.match(r2.out, /^new: skill dotnet-web-backend\toffer\t-\tleave$/m);
 });
@@ -348,7 +348,7 @@ test('new items: a real rename line carries its old name, and an old copy on dis
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-sql.md'), '# old\n');
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.match(out, /^renamed\tstack\/rules\/sql-conventions\.md\t<- stack\/rules\/old-sql\.md$/m, 'the compare line shape this parser reads');
     assert.match(out, /^new: rule sql-conventions\trenamed\t-\tfrom=old-sql\told-on-disk$/m);
@@ -358,18 +358,18 @@ test('new items: global mode reads the account dir itself - its settings.json, n
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/agents/code-style-analyzer.md' }] } });
     const acct = path.join(install, '.claude-work');
     fs.mkdirSync(acct, { recursive: true });
-    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] } }));
-    fs.copyFileSync(path.join(install, '.claude', 'claude-stack.stamp'), path.join(acct, 'claude-stack.stamp'));
+    fs.writeFileSync(path.join(acct, 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] } }));
+    fs.copyFileSync(path.join(install, '.claude', 'alfred-code.stamp'), path.join(acct, 'alfred-code.stamp'));
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
     const { out } = run(['--snapshot', snap, '--root', acct, '--fixture', fixtureFile, '--listing', listing]);
-    assert.match(out, /^new: agent code-style-analyzer\toff\tclaude-stack$/m, out);
+    assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
 });
 
 test('new items: an arriving rename still names its old copy for the prune; None holds only while the hooks entry is enabled', () => {
     const { snap, install, fixtureFile } = scaffold({
         stamp: 'sha: aaa111\nversion: 0.2.60\nshipped-hooks: guard-read-whole-file\n',
-        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'guard-read-whole-file' } },
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-read-whole-file' } },
         fixture: { files: [
             { status: 'renamed', filename: 'stack/rules/baseline-memory.md', previous_filename: 'stack/rules/old-memory.md' },
             { status: 'added', filename: 'stack/hooks/docs-session.js' },
@@ -380,11 +380,11 @@ test('new items: an arriving rename still names its old copy for the prune; None
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'old-memory.md'), '# old\n');
     const listing = path.join(install, 'listing.json');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: true }]));
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true }]));
     const on = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     assert.match(on, /^new: rule baseline-memory\tarrives\t-\tfrom=old-memory\told-on-disk$/m, on);
-    assert.match(on, /^new: hook docs-session\toff\tclaude-stack-hooks$/m, 'None held');
-    fs.writeFileSync(listing, JSON.stringify([{ id: 'claude-stack@claude-stack', enabled: true }, { id: 'claude-stack-hooks@claude-stack', enabled: false }]));
+    assert.match(on, /^new: hook docs-session\toff\talfred-code-hooks$/m, 'None held');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
     const parked = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
-    assert.match(parked, /^new: hook docs-session\tarrives\tclaude-stack-hooks$/m, 'the installer enables the hooks entry and writes no hook none there - the hook arrives');
+    assert.match(parked, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, 'the installer enables the hooks entry and writes no hook none there - the hook arrives');
 });

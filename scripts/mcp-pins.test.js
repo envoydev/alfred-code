@@ -88,7 +88,7 @@ test('both twins resolve a pin for chrome-devtools-mcp and appium-mcp', () =>
 
 // End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as a
 // version, or as nothing - a literal `@CD_PIN@` is a package name npx cannot find.
-const COPY_ROUTE = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' };
+const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 const SELECTION = 'skill markdown-style\nmcp chrome-devtools\nmcp appium-mcp\n';
 const NPM = 'case "$2" in chrome-devtools-mcp) echo 1.9.0 ;; appium-mcp) echo 1.94.2 ;; *) exit 1 ;; esac';
 const launch = (repo) =>

@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const historyDir = (root) => path.resolve(root, docsRootEnv(), 'history');
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)

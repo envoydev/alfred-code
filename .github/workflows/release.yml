@@ -30,8 +30,8 @@ jobs:
       - name: Build the source archives
         run: |
           printf 'sha: %s\nref: main\nversion: %s\nbuilt: %s\n' "$GITHUB_SHA" "${{ steps.ver.outputs.version }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > RELEASE-SOURCE
-          git archive --format=tar.gz --add-file=RELEASE-SOURCE -o claude-stack.tar.gz HEAD
-          git archive --format=zip    --add-file=RELEASE-SOURCE -o claude-stack.zip    HEAD
+          git archive --format=tar.gz --add-file=RELEASE-SOURCE -o alfred-code.tar.gz HEAD
+          git archive --format=zip    --add-file=RELEASE-SOURCE -o alfred-code.zip    HEAD
 
       - name: Recreate the release for this version
         env:
@@ -40,6 +40,6 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
           gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
-          gh release create "v$VERSION" claude-stack.tar.gz claude-stack.zip \
+          gh release create "v$VERSION" alfred-code.tar.gz alfred-code.zip \
             --latest --title "v$VERSION" \
             --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."

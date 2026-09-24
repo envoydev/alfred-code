@@ -55,29 +55,29 @@ function runHeaders(projectDir, env)
 
 test('memory-launch: the project settings env is the db, because a plugin entry cannot read it', () =>
 {
-    const { dir } = project('proj-db', { settings: { CLAUDE_STACK_MEMORY_DB: '/tmp/chosen/memory.db' } });
+    const { dir } = project('proj-db', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/chosen/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/chosen/memory.db');
 });
 
 test('memory-launch: settings.local.json is the per-machine override, read after settings.json', () =>
 {
-    const { dir } = project('local-db', { local: { CLAUDE_STACK_MEMORY_DB: '/tmp/local/memory.db' } });
+    const { dir } = project('local-db', { local: { ALFRED_CODE_MEMORY_DB: '/tmp/local/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
     // ... and settings.json WINS when both are present: it is what the install wrote.
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_MEMORY_DB: '/tmp/installed/memory.db' } }));
+        JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/tmp/installed/memory.db' } }));
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/installed/memory.db');
 });
 
 test('memory-launch: the ACCOUNT settings env answers for a global install', () =>
 {
-    const { dir, acct } = project('acct-db', { account: { CLAUDE_STACK_MEMORY_DB: '/tmp/acct/memory.db' } });
+    const { dir, acct } = project('acct-db', { account: { ALFRED_CODE_MEMORY_DB: '/tmp/acct/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), '/tmp/acct/memory.db');
 });
 
 test('memory-launch: an explicit MCP_MEMORY_SQLITE_PATH wins over every file', () =>
 {
-    const { dir } = project('env-db', { settings: { CLAUDE_STACK_MEMORY_DB: '/tmp/chosen/memory.db' } });
+    const { dir } = project('env-db', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/chosen/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir, MCP_MEMORY_SQLITE_PATH: '/tmp/forced/memory.db' }),
         '/tmp/forced/memory.db');
 });
@@ -91,7 +91,7 @@ test('memory-launch: no key anywhere falls back to the global default, never to 
 
 test('memory-launch: a RELATIVE value resolves against the project, the way the docs engine reads it', () =>
 {
-    const { dir } = project('rel-db', { settings: { CLAUDE_STACK_MEMORY_DB: '.memory-mcp/memory.db' } });
+    const { dir } = project('rel-db', { settings: { ALFRED_CODE_MEMORY_DB: '.memory-mcp/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), path.join(dir, '.memory-mcp/memory.db'));
 });
 
@@ -122,7 +122,7 @@ test('sentry-headers: token mode prints the Sentry-Bearer header, the scheme the
 test('sentry-headers: oauth mode prints NO header, and the two modes never mix', () =>
 {
     const { dir, acct } = project('sentry-oauth', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
+        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
         account: { SENTRY_ACCESS_TOKEN: 'sntryu_TESTVALUE' },
     });
     assert.deepStrictEqual(JSON.parse(runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct })), {});
@@ -170,11 +170,11 @@ test('sentry-headers: with the credential variables removed, the ACCOUNT FILE st
 test('sentry-headers: the oauth PIN survives the scrub too - it is read from a file, not the env', () =>
 {
     const { dir, acct } = project('sentry-scrubbed-oauth', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
+        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
         account: { SENTRY_ACCESS_TOKEN: 'from-file' },
     });
-    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, CLAUDE_STACK_SENTRY_AUTH: 'token' });
-    assert.ok(!('CLAUDE_STACK_SENTRY_AUTH' in env), 'the scrub must drop the mode key - it carries AUTH');
+    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, ALFRED_CODE_SENTRY_AUTH: 'token' });
+    assert.ok(!('ALFRED_CODE_SENTRY_AUTH' in env), 'the scrub must drop the mode key - it carries AUTH');
     assert.deepStrictEqual(JSON.parse(runHeaders(dir, env)), {},
         'oauth mode pinned in the project settings lost to an env value the runtime removes');
 });
@@ -193,7 +193,7 @@ test('sentry-headers: the generated helper string survives a space in the plugin
     fs.mkdirSync(path.join(root, 'stack', 'mcp'), { recursive: true });
     fs.copyFileSync(HEADERS, path.join(root, 'stack', 'mcp', 'sentry-headers.js'));
     const { dir, acct } = project('sentry project dir', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
+        settings: { ALFRED_CODE_SENTRY_AUTH: 'oauth' },
         account: { SENTRY_ACCESS_TOKEN: 'from-file' },
     });
     const env = { ...BARE, HOME: dir, CLAUDE_CONFIG_DIR: acct };
@@ -252,17 +252,17 @@ test('uv-python: an x64 node emulated on Windows ARM still sees the ARM machine 
     assert.strictEqual(pythonRequest({ platform: 'linux', arch: 'x64', env: { PROCESSOR_ARCHITECTURE: 'ARM64' } }), '3.13');
 });
 
-test('uv-python: CLAUDE_STACK_UV_PYTHON overrides the choice; an empty one does not', () =>
+test('uv-python: ALFRED_CODE_UV_PYTHON overrides the choice; an empty one does not', () =>
 {
-    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: { CLAUDE_STACK_UV_PYTHON: '3.12' } }), '3.12');
-    assert.strictEqual(pythonRequest({ platform: 'darwin', arch: 'arm64', env: { CLAUDE_STACK_UV_PYTHON: '  ' } }), '3.13');
+    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: { ALFRED_CODE_UV_PYTHON: '3.12' } }), '3.12');
+    assert.strictEqual(pythonRequest({ platform: 'darwin', arch: 'arm64', env: { ALFRED_CODE_UV_PYTHON: '  ' } }), '3.13');
 });
 
 test('uv-python: the override is read from the settings files a plugin server never gets as env - this machine first', () =>
 {
-    const { dir, acct } = project('uvpy-files', { settings: { CLAUDE_STACK_UV_PYTHON: '3.11' }, local: { CLAUDE_STACK_UV_PYTHON: '3.12' }, account: { CLAUDE_STACK_UV_PYTHON: '3.10' } });
+    const { dir, acct } = project('uvpy-files', { settings: { ALFRED_CODE_UV_PYTHON: '3.11' }, local: { ALFRED_CODE_UV_PYTHON: '3.12' }, account: { ALFRED_CODE_UV_PYTHON: '3.10' } });
     const ask = (extra = {}) => pythonRequest({ platform: 'linux', arch: 'x64', env: { CLAUDE_CONFIG_DIR: acct, ...extra }, projectDir: dir });
-    assert.strictEqual(ask({ CLAUDE_STACK_UV_PYTHON: '3.9' }), '3.9', 'the shell env beats every file');
+    assert.strictEqual(ask({ ALFRED_CODE_UV_PYTHON: '3.9' }), '3.9', 'the shell env beats every file');
     assert.strictEqual(ask(), '3.12', 'settings.local.json is this machine');
     fs.rmSync(path.join(dir, '.claude', 'settings.local.json'));
     assert.strictEqual(ask(), '3.11', 'then the project settings.json');
@@ -318,7 +318,7 @@ for (const [label, script] of [['serena', 'serena-launch.js'], ['memory', 'memor
 {
     test(`${label} launcher: the server's exit code comes back, and stdout carries nothing of the launcher's`, POSIX, () =>
     {
-        const { dir } = project(`${label}-exit`, { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, `${label}-exit-db`, 'memory.db') } });
+        const { dir } = project(`${label}-exit`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `${label}-exit-db`, 'memory.db') } });
         const PATH = scriptedUvx(`${label}-exit`, "process.stderr.write('dying\\n'); process.exit(7);");
         let res;
         try { res = { status: 0, stdout: execFileSync(process.execPath, [path.join(ROOT, 'stack/mcp', script), '--package', 'pkg==1', '--', 'x'], { cwd: dir, env: { ...BARE, PATH, HOME: dir }, stdio: 'pipe', encoding: 'utf8' }) }; }
@@ -329,7 +329,7 @@ for (const [label, script] of [['serena', 'serena-launch.js'], ['memory', 'memor
 
     test(`${label} launcher: a stop signal reaches the server instead of orphaning it`, POSIX, async () =>
     {
-        const { dir } = project(`${label}-sig`, { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, `${label}-sig-db`, 'memory.db') } });
+        const { dir } = project(`${label}-sig`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `${label}-sig-db`, 'memory.db') } });
         const ready = path.join(TMP, `${label}-sig-ready`);
         const got = path.join(TMP, `${label}-sig-got`);
         const PATH = scriptedUvx(`${label}-sig`, `const fs = require('fs'); process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(got)}, 'SIGTERM'); process.exit(0); }); fs.writeFileSync(${JSON.stringify(ready)}, '1'); setInterval(() => {}, 1000);`);
@@ -367,18 +367,18 @@ test('serena home spelling for the copy route: backslash on Windows, forward sla
     for (const p of ['darwin', 'linux']) assert.strictEqual(serenaHomeFor(p), '.serena/home', p);
 });
 
-test('serena-launch: CLAUDE_STACK_UV_PYTHON reaches uvx', POSIX, () =>
+test('serena-launch: ALFRED_CODE_UV_PYTHON reaches uvx', POSIX, () =>
 {
     const { dir } = project('serena-override');
     const uvx = stubUvx('serena-override');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
-        { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_STACK_UV_PYTHON: 'cpython-3.13-windows-x86_64-none' }, stdio: 'pipe' });
+        { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, ALFRED_CODE_UV_PYTHON: 'cpython-3.13-windows-x86_64-none' }, stdio: 'pipe' });
     assert.deepStrictEqual(uvx.argv().argv.slice(0, 2), ['--python', 'cpython-3.13-windows-x86_64-none']);
 });
 
 test('serena-launch: an override in the PROJECT settings reaches uvx, though the entry never passes it', POSIX, () =>
 {
-    const { dir, acct } = project('serena-proj-override', { settings: { CLAUDE_STACK_UV_PYTHON: '3.12' } });
+    const { dir, acct } = project('serena-proj-override', { settings: { ALFRED_CODE_UV_PYTHON: '3.12' } });
     const uvx = stubUvx('serena-proj-override');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct }, stdio: 'pipe' });
@@ -395,7 +395,7 @@ test('serena-launch: a hand-edited entry with no --package says so instead of la
 
 test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, () =>
 {
-    const { dir } = project('memory-run', { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, 'memory-run-db', 'memory.db') } });
+    const { dir } = project('memory-run', { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'memory-run-db', 'memory.db') } });
     const uvx = stubUvx('memory');
     execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir }, stdio: 'pipe' });

@@ -20,8 +20,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
 // fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // ... and a Claude Code session's own settings env reaches this process: the seeded
-// CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
-delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+// ALFRED_CODE_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
+delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // Every guard appends a block row under CLAUDE_PROJECT_DIR, falling back to the process cwd - so an
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -46,7 +46,7 @@ const ctxRows = (name, ctx, text) => [
   assistantRow(`${name}-floor`, 'the first turn of this session', { cache_creation_input_tokens: 20000 }),
   assistantRow(name, text || 'ok', { cache_read_input_tokens: ctx }),
 ];
-const logEnv = (extra) => ({ ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(extra || {}) });
+const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(extra || {}) });
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
   fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify(model === null ? {} : { model }));
@@ -181,7 +181,7 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
   assert.match(long, /resume in a fresh session/i, 'a five-hour cycle at 120k - under every trigger - is offered the resume');
   assert.match(long, /5\.0h/, '... and the note names the span it fired on');
   assert.equal(ctxOf(askIn(rows('ask-short', 1, 120000), oneQ)), '', 'a one-hour session is left alone');
-  assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ CLAUDE_STACK_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
+  assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
     '0 on the hours knob switches the route off');
   // The recoverable-share rule owns this route too: a carry that is mostly the install's own floor
   // buys nothing by resuming, however long the session has been open.
@@ -257,8 +257,8 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   };
 
   assert.equal(slash(transcript('ab-dup', [
-    cmd('claude-stack:setup'), cmd('claude-stack:update'),
-  ]), 'claude-stack:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
+    cmd('alfred-code:setup'), cmd('alfred-code:update'),
+  ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
     cmd('project-solve-task'), userRow('resume the build cycle, steps 1-3 are stamped'),
   ])), '', "a re-typed run the model never answered is not a run this session already made");
@@ -274,7 +274,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
 
   // `init` is the guided install's name from Phase 8 (`setup` stays as its alias for a release):
   // both are the same multi-phase walk, so both take the offer.
-  for (const walk of ['claude-stack:init', 'claude-stack:setup'])
+  for (const walk of ['alfred-code:init', 'alfred-code:setup'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
       cmd('project-architecture-analyzer'),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
@@ -334,7 +334,7 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   ]);
   const stopAnswer = () => runIn('guard-answer-length.js',
     { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
 
   const alone = stopAnswer();
   assert.equal(alone.status, 2, 'an em-dash still blocks');
@@ -362,7 +362,7 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   ]);
   const longAnswer = () => runIn('guard-answer-length.js',
     { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: wall },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
   assert.doesNotMatch(longAnswer().stderr, /blocked this same turn too/, 'a stale ledger leaves the length text alone');
   fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
     JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'fresh-session offer' }) + '\n');

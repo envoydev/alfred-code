@@ -1,7 +1,7 @@
 # The one-download protocol - shared by the init, update, configure, and validate commands
 
-The four downloading commands (`/claude-stack:init` - fresh install, `/claude-stack:update` -
-refresh + prune, `/claude-stack:configure` - adjust the selection, `/claude-stack:validate` -
+The four downloading commands (`/alfred-code:init` - fresh install, `/alfred-code:update` -
+refresh + prune, `/alfred-code:configure` - adjust the selection, `/alfred-code:validate` -
 reconcile to the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
 apply it, this file says WHAT holds. It lives at `setup-plugin/references/` under the plugin root -
@@ -11,7 +11,7 @@ as `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`.
 ## The plugin cache IS the snapshot - the common run downloads nothing
 
 Claude Code installs the core plugin by taking this repo into its own cache at
-`<config>/plugins/cache/<marketplace>/claude-stack/<version>/`, and because every marketplace entry
+`<config>/plugins/cache/<marketplace>/alfred-code/<version>/`, and because every marketplace entry
 shares the REPO ROOT as its `source`, that entry is the WHOLE repo - not just the `setup-plugin/`
 subdir it serves as the plugin. Measured on a real install: `stack/rules`,
 `stack/CLAUDE.template.md`, the two hook engines, `stack/hooks/model-windows.json`,
@@ -24,7 +24,7 @@ releases.
 **Latest first.** The cache holds only what the CLI last installed, and a refreshed catalog does not
 move it: only `claude plugin update` lands a newer version dir (a `plugin install` of a plugin already
 installed does nothing, and this marketplace has auto-update OFF by default -
-code.claude.com/docs/en/discover-plugins). So both snippets below refresh the `claude-stack`
+code.claude.com/docs/en/discover-plugins). So both snippets below refresh the `envoydev`
 catalog and update EVERY installed stack entry at its OWN scope before they pick - not the core
 alone: Claude Code launches an entry as the marketplace clone declares it, so an entry left on its
 old version can name a file that version lacks (docs/uv-python-pin-evidence.md), and a run that
@@ -39,7 +39,7 @@ The stack keeps no second cache of its own: `<config>/cache/stack-source/...` an
 `STACK_SOURCE_CACHE` switch are RETIRED, and no run writes them any more.
 
 The archive route below stays for the two cases with no plugin cache to read: a machine with no
-`claude` CLI, and the copy route (both `CLAUDE_STACK_*_VIA_PLUGIN` switches off).
+`claude` CLI, and the copy route (both `ALFRED_CODE_*_VIA_PLUGIN` switches off).
 
 The run still works in its own `$TMP/repo`, copied from the cache - not read in place. A copy costs
 0.1s and buys two things: an `update` landing a new release mid-run cannot pull files out from under
@@ -54,32 +54,32 @@ Windows run's first call silently no-opped, no `RESOLVED`/`REUSING` line, until 
 platform, pre-set env var or not:
 
 ```bash
-MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
+MARK="/tmp/alfred-code-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${CLAUDE_STACK_SEED:-node}"   # a valid marker from an earlier call
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-node}"   # a valid marker from an earlier call
 else
-REPO_URL=https://github.com/envoydev/claude-stack
+REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d)
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 if command -v claude >/dev/null 2>&1; then
-  claude plugin marketplace update claude-stack >/dev/null 2>&1
+  claude plugin marketplace update envoydev >/dev/null 2>&1
   # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>"
-  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@claude-stack$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
-  WAS=$(printf '%s\n' "$ROWS" | awk '$2=="claude-stack@claude-stack"{print $3; exit}')
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
+  WAS=$(printf '%s\n' "$ROWS" | awk '$2=="alfred-code@envoydev"{print $3; exit}')
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
-SRC=$(for d in "$CFG"/plugins/cache/*/claude-stack/*; do            # newest valid entry, any marketplace
+SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/*; do            # newest valid entry, any marketplace
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 if [ -n "$SRC" ]; then
   cp -R "$SRC" "$TMP/repo"; rm -rf "$TMP/repo/.git"     # the CLI already fetched it: nothing is downloaded
 else
-  curl -fsSL "$REPO_URL/releases/latest/download/claude-stack.tar.gz" -o "$TMP/claude-stack.tar.gz"
-  mkdir -p "$TMP/repo" && tar -xzf "$TMP/claude-stack.tar.gz" -C "$TMP/repo"
+  curl -fsSL "$REPO_URL/releases/latest/download/alfred-code.tar.gz" -o "$TMP/alfred-code.tar.gz"
+  mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${CLAUDE_STACK_SEED:-node} running=${WAS:-?}"
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?}"
 fi
 ```
 
@@ -102,19 +102,19 @@ projects, one of them re-downloading the whole 1.4MB archive after `$TMP` came o
 ```powershell
 $TMP = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $TMP -Force | Out-Null
-$RepoUrl = 'https://github.com/envoydev/claude-stack'
+$RepoUrl = 'https://github.com/envoydev/alfred-code'
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 $Was = ''     # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-  claude plugin marketplace update claude-stack *> $null
+  claude plugin marketplace update envoydev *> $null
   $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
   # PSObject, never `$list.installed`: over a bare array that is one $null per row - truthy, and no rows
   if ($list -and ($list.PSObject.Properties.Name -contains 'installed')) { $list = $list.installed }
   # every stack entry installed for THIS project or the account, this project's rows first
   $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
-  $rows = @($list | Where-Object { "$($_.id)" -like '*@claude-stack' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
+  $rows = @($list | Where-Object { "$($_.id)" -like '*@envoydev' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
-  $core = $rows | Where-Object { $_.id -eq 'claude-stack@claude-stack' } | Select-Object -First 1
+  $core = $rows | Where-Object { $_.id -eq 'alfred-code@envoydev' } | Select-Object -First 1
   if ($core) { $Was = $core.version }
   foreach ($r in $rows) { claude plugin update $r.id --scope $r.scope -y *> $null }
 }
@@ -123,7 +123,7 @@ $BestVer = $null
 $Base = Join-Path $ConfigDir 'plugins/cache'
 if (Test-Path -LiteralPath $Base -PathType Container) {
   foreach ($mkt in (Get-ChildItem -LiteralPath $Base -Directory -ErrorAction SilentlyContinue)) {
-    $entry = Join-Path $mkt.FullName 'claude-stack'
+    $entry = Join-Path $mkt.FullName 'alfred-code'
     if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
     foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
       if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
@@ -140,8 +140,8 @@ if ($Src) {
   Copy-Item -LiteralPath $Src -Destination "$TMP/repo" -Recurse                      # nothing is downloaded
   Remove-Item -LiteralPath "$TMP/repo/.git" -Recurse -Force -ErrorAction SilentlyContinue
 } else {
-  Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/claude-stack.zip" -OutFile "$TMP/claude-stack.zip"
-  Expand-Archive -LiteralPath "$TMP/claude-stack.zip" -DestinationPath "$TMP/repo"
+  Invoke-WebRequest -Uri "$RepoUrl/releases/latest/download/alfred-code.zip" -OutFile "$TMP/alfred-code.zip"
+  Expand-Archive -LiteralPath "$TMP/alfred-code.zip" -DestinationPath "$TMP/repo"
 }
 $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" -ErrorAction SilentlyContinue | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
 ```
@@ -157,13 +157,13 @@ it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call i
 the resolve-or-reuse block above already keys and tests this marker itself, first call or later, a
 stale marker (its `$TMP/repo` gone) falling straight back to a fresh resolve with no separate check.
 The marker name is DERIVED, never a fixed path: two Claude Code sessions on one machine run these
-commands concurrently in different projects, and a shared `/tmp/claude-stack-run.path` hands the
+commands concurrently in different projects, and a shared `/tmp/alfred-code-run.path` hands the
 second run's `$TMP` to the first - measured: an installer log came back holding the other session's
 lines, and the other session's cleanup step deleted the still-live `$TMP` out from under a run in
 progress. Every later call in this run just re-reads it:
 
 ```bash
-MARK="/tmp/claude-stack-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
+MARK="/tmp/alfred-code-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 TMP=$(cat "$MARK")
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
@@ -182,7 +182,7 @@ path on its own initiative. PowerShell keeps `$TMP` the same way, in a marker ke
 
 ```powershell
 $Root = (git rev-parse --show-toplevel 2>$null); if (-not $Root) { $Root = (Get-Location).Path }
-$Mark = Join-Path ([System.IO.Path]::GetTempPath()) ('claude-stack-run.' + (($Root -replace '[^A-Za-z0-9]','-')) + '.path')
+$Mark = Join-Path ([System.IO.Path]::GetTempPath()) ('alfred-code-run.' + (($Root -replace '[^A-Za-z0-9]','-')) + '.path')
 ```
 
 **Every PowerShell block on this page reaches pwsh through the BASH tool, so it is written to a
@@ -209,7 +209,7 @@ pwsh -NoProfile -File "$TMP/step.ps1"
   hand back a stale installer or a skewed mix of versions. Never fetch anything from a raw URL -
   not even as a fallback.
 - **Fallback when the download fails** (no release reachable, a proxy, the moment the workflow
-  is recreating the release): `git clone --depth 1 -b main https://github.com/envoydev/claude-stack
+  is recreating the release): `git clone --depth 1 -b main https://github.com/envoydev/alfred-code
   "$TMP/repo"` - the same one-snapshot contract, just fetched with git. Keep the `-b main` pin:
   the fallback must deliver the release branch, never whatever the default branch happens to be.
   If both fail there is no source left: the plugin cache is the only one needing no network at
@@ -229,14 +229,14 @@ update lands on disk, and a session keeps the version it started with until a re
 command's markdown at injection time, but it is NOT in the Bash tool's environment - a command that
 reads it inside the shell gets an empty string, and the check silently skips itself every time
 (measured: the same `no CLAUDE_PLUGIN_ROOT` line in five sessions across four projects, so the
-currency check had never once run). `running=?` (no CLI, or no `claude-stack` row) -> drop the check and emit NO line about it. 'Skip silently' as prose
+currency check had never once run). `running=?` (no CLI, or no `alfred-code` row) -> drop the check and emit NO line about it. 'Skip silently' as prose
 produced a narration line about skipping, which is the same cost as the check (measured). When they differ, size the gap before deciding: ONE release behind is a report line and the run
 CONTINUES - the tooling is the snapshot's and is current either way, so the only risk is that these
 numbered steps lag it by one release (measured: a run that asked instead spent 5 turns on two
 meta-asks and ended telling the user to restart, with zero reconciliation done). A MULTI-release
 gap is worth the ask: say so, recommend a restart (the resolve already installed the newest, so the
 next session loads its steps), and offer to continue anyway. The plugin cache is keyed by version
-(`~/.claude/plugins/cache/claude-stack/claude-stack/<version>/`), so after an update the old
+(`~/.claude/plugins/cache/envoydev/alfred-code/<version>/`), so after an update the old
 version dirs are stale leftovers. **Do not offer to delete them, and never delete one yourself.**
 Claude Code marks the previous version orphaned on an update or uninstall and sweeps it in a
 background pass roughly 14 days later; the grace period is deliberate, so that a concurrent session
@@ -247,8 +247,8 @@ takes the NEWEST valid entry, so a stale dir is never the source. When the listi
 ONE version dir, say so in ONE close-out line - the count and the keeper - and say that Claude Code
 clears the rest itself.
 And if an update ever does NOT change the running content (a same-version re-release - the trap
-every release now avoids by bumping), the hard reset is `claude plugin uninstall claude-stack`
-then `claude plugin install claude-stack@claude-stack`, which rebuilds the cache from the
+every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code`
+then `claude plugin install alfred-code@envoydev`, which rebuilds the cache from the
 marketplace.
 
 ## Narrate, don't trace
@@ -292,7 +292,7 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 ## Use the tools from the snapshot
 
 Everything comes out of `$TMP/repo`:
-- the installer - `scripts/install/claude-stack.js`, run with `node` and the same command on every
+- the installer - `scripts/install/alfred-code.js`, run with `node` and the same command on every
   OS. The OS twins (`scripts/os/claude-stack.sh`, `scripts/os/claude-stack.ps1` via `pwsh`) are the
   one-release fallback, taken ONLY when the resolve line above reported `seed=shell`. `node` is
   already a hard prerequisite of the stack - every hook and every selection step runs it - so the
@@ -321,10 +321,10 @@ roughly 882k tokens between them. So:
 
 ## Hand the same snapshot to the installer
 
-**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/claude-stack.js" <install|update>
+**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/alfred-code.js" <install|update>
 [flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
 program now and not two. The OS twins ship for one more release and are taken ONLY when the resolve
-line reported `seed=shell`, which is `CLAUDE_STACK_SEED=shell` in the environment this session
+line reported `seed=shell`, which is `ALFRED_CODE_SEED=shell` in the environment this session
 started in: then it is `bash "$TMP/repo/scripts/os/claude-stack.sh"` on `darwin`/`linux` and `pwsh
 -File "$TMP/repo/scripts/os/claude-stack.ps1"` on Windows, with the PowerShell spellings (`-Source`,
 `-Scope`, `-Selection`). Never cross the two: a `-Scope` handed to the Node seed is an unknown flag,
@@ -333,7 +333,7 @@ and it refuses before the run writes anything.
 Pass `--source "$TMP/repo"` (`-Source` on Windows) when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same
 revision the command's earlier steps inspected. The installer copies out of `$TMP/repo`, writes the
-`claude-stack.stamp` naming that revision (from `RELEASE-SOURCE`, or the checkout's HEAD when the
+`alfred-code.stamp` naming that revision (from `RELEASE-SOURCE`, or the checkout's HEAD when the
 fallback cloned), and never deletes a source it was handed - cleanup is the command's job, below.
 
 **Capture the installer's own output, one fixed form.** Every command that runs the installer
@@ -363,7 +363,7 @@ you passed via `--source`. Do this on EVERY exit path, not just the happy one - 
 final step lists its own exit cases.
 
 **After cleanup, a stack-owned file is still one `cat` away - in the PLUGIN CACHE, not in a new
-download.** The entry sits at `<config>/plugins/cache/<marketplace>/claude-stack/<version>`, holding
+download.** The entry sits at `<config>/plugins/cache/<marketplace>/alfred-code/<version>`, holding
 the very tree `$TMP/repo` was copied from. When a later turn needs one file from it (a catalog, a
 template, a hook's header), read it there. Measured: a run deleted its snapshot, then seven minutes
 later pulled the whole 1.4MB archive again to read one 75-line file - it HAD looked in the plugin

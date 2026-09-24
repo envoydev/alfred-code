@@ -66,7 +66,7 @@ const EVAL_TYPES = new Set(['tool_used', 'tool_order', 'regex']);
 const SKIP_TYPES = { llm: 'needs a model judge - out of scope offline', baseline: 'needs a model judge - out of scope offline', file_exists: 'needs the run\'s created-files list, which a transcript does not carry' };
 const X_TYPES = new Set(['x_between', 'x_quotes_user']);
 const SECRETS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
-const COPY_ROUTE = ['CLAUDE_STACK_SKILLS_VIA_PLUGIN=false', 'CLAUDE_STACK_HOOKS_VIA_PLUGIN=false', 'CLAUDE_STACK_MCPS_VIA_PLUGIN=false'];
+const COPY_ROUTE = ['ALFRED_CODE_SKILLS_VIA_PLUGIN=false', 'ALFRED_CODE_HOOKS_VIA_PLUGIN=false', 'ALFRED_CODE_MCPS_VIA_PLUGIN=false'];
 
 // --- the transcript -------------------------------------------------------------------------------
 
@@ -503,7 +503,7 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
             const proj = path.join(ldir, 'project');
             const transcript = path.join(ldir, 'transcript.jsonl');
             add(`mkdir -p ${q(proj)} && git -C ${q(proj)} init -q`, 'prep', `${skill} / ${level}`);
-            add(`(cd ${q(proj)} && ${clean} ${COPY_ROUTE.join(' ')} node ${q(path.join(src, 'scripts', 'install', 'claude-stack.js'))} install --source ${q(src)} --selection ${q(selTxt)} --memory-level project)`);
+            add(`(cd ${q(proj)} && ${clean} ${COPY_ROUTE.join(' ')} node ${q(path.join(src, 'scripts', 'install', 'alfred-code.js'))} install --source ${q(src)} --selection ${q(selTxt)} --memory-level project)`);
             add(`(cd ${q(proj)} && ${clean} bash ${q(path.join(dir, 'scaffold.sh'))})`);
             const flags = ['-p', '--output-format stream-json', '--verbose', `--max-turns ${e.run.max_turns}`, '--permission-mode dontAsk',
                 '--setting-sources user,project,local', `--allowed-tools=${q(tools)}`, `--max-budget-usd ${budget}`];
@@ -640,8 +640,8 @@ function main(argv)
                 const problems = checkExpectation(loadExpectation(s));
                 if (problems.length) throw new Error(problems.join('\n'));
             }
-            if (flags.source && !fs.existsSync(path.join(flags.source, 'scripts', 'install', 'claude-stack.js')))
-                throw new Error(`--source ${flags.source} is not a stack source (no scripts/install/claude-stack.js)`);
+            if (flags.source && !fs.existsSync(path.join(flags.source, 'scripts', 'install', 'alfred-code.js')))
+                throw new Error(`--source ${flags.source} is not a stack source (no scripts/install/alfred-code.js)`);
             cmds = replayPlan({ skills, levels, source: flags.source, out, model: flags.model, budget, claude: flags.claude || 'claude' });
         }
         catch (err) { console.error(`skill-comply: ${err.message}`); return 1; }

@@ -75,7 +75,7 @@ function resolveDocsRoot(projectRoot)
     try
     {
         const env = JSON.parse(fs.readFileSync(path.join(projectRoot, '.claude', 'settings.json'), 'utf8')).env || {};
-        return env.CLAUDE_STACK_DOCS_PATH || env.CLAUDE_DOCS_PATH || DOCS_ROOT_DEFAULT;
+        return env.ALFRED_CODE_DOCS_PATH || env.CLAUDE_DOCS_PATH || DOCS_ROOT_DEFAULT;
     }
     catch { return DOCS_ROOT_DEFAULT; }
 }

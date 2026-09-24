@@ -16,9 +16,9 @@ const ROOT = path.join(__dirname, '..');
 const SELECTION = 'skill markdown-style\nrule markdown-docs\nhook guard-secret-value\nmcp serena\nmcp context7\nmcp memory\n';
 const ROUTES = {
     plugin: {},
-    copy: { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' },
+    copy: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
 };
-const STAMP = path.join('repo', '.claude', 'claude-stack.stamp');
+const STAMP = path.join('repo', '.claude', 'alfred-code.stamp');
 const LOCKED = ['serena', 'context7', 'memory'];
 
 // Every file the sandbox holds after a run - the project (its .git aside) AND the HOME around it, where
@@ -54,7 +54,7 @@ for (const route of Object.keys(ROUTES))
                 rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), 'utf8'),
                 claudeMd: fs.existsSync(path.join(repo, '.claude', 'CLAUDE.md')),
                 engines: ['docs.js', 'memory.js', 'model-windows.json'].filter((f) => fs.existsSync(path.join(repo, '.claude', 'hooks', f))),
-                stamp: fs.readFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'utf8'),
+                stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
                 settings: json(repo, path.join('.claude', 'settings.json')),
                 skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'markdown-style', 'SKILL.md')),
                 mcp: fs.existsSync(path.join(repo, '.mcp.json')) ? json(repo, '.mcp.json') : null,
@@ -65,11 +65,11 @@ for (const route of Object.keys(ROUTES))
         assert.deepStrictEqual(result.engines, ['docs.js', 'memory.js', 'model-windows.json'], 'both hook engines and the window table are copied on every route');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         assert.match(result.stamp, /^picked-skills: markdown-style@/m, 'the stamp records the pick');
-        assert.strictEqual(result.settings.env.CLAUDE_STACK_DOCS_PATH, '.claude/docs', 'the settings env is seeded');
+        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, '.claude/docs', 'the settings env is seeded');
         if (route === 'plugin')
         {
-            assert.ok(calls.includes('plugin install claude-stack@claude-stack --scope project -y'), 'the core entry is installed');
-            assert.ok(calls.includes('plugin install claude-stack-hooks@claude-stack --scope project -y'), 'the hooks entry is installed');
+            assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
+            assert.ok(calls.includes('plugin install alfred-code-hooks@envoydev --scope project -y'), 'the hooks entry is installed');
             assert.ok(!result.skill, 'the plugin carries the skill - no copy lands');
             assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on the plugin route');
         }
@@ -119,7 +119,7 @@ for (const route of Object.keys(ROUTES))
                 key: settings.includeCoAuthoredBy,
                 env: settings.env.OWN_FLAG,
                 hook: (settings.hooks.PreToolUse || []).find((e) => JSON.stringify(e).includes('own-hook.js')),
-                stack: settings.env.CLAUDE_STACK_DOCS_PATH,
+                stack: settings.env.ALFRED_CODE_DOCS_PATH,
             };
         };
         const { steps } = run(['install', 'update'], route, { prepare, each: own });

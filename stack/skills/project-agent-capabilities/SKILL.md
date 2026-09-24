@@ -23,7 +23,7 @@ resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the p
 
 ```bash
 CAPS=.claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
-[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do
+[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
   f="$d/stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js"
   [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
@@ -137,7 +137,7 @@ addressable only as `<plugin>:<seat>`, and a bare name returns 'Agent type not f
 <the script's PLUGINS name line; omit the section when it printed `CLI absent`>
 ```
 
-The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/claude-stack:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
+The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
 
 This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
 

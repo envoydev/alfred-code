@@ -194,7 +194,7 @@ function buildStackGraph()
                 // is stripped back off here: the graph's nodes are bare skill names and stay that way,
                 // or the two would define each other. A foreign cite (`superpowers:...`) is a plugin
                 // token, never a skill node, and pluginFromToken below is what reads it.
-                const bare = meta.skills.map(s => (/^claude-stack(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
+                const bare = meta.skills.map(s => (/^alfred-code(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
                 declared = bare.filter(s => cat.skills.has(s));
                 source = 'frontmatter';
                 for (const s of meta.skills)

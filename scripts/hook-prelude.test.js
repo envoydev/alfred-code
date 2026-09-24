@@ -20,8 +20,8 @@ const wiring = (file) => JSON.stringify({
     hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${file}"`, timeout: 10 }] }] },
 });
 
-test('CLAUDE_STACK_HOOKS_OFF names hooks exactly, with or without the .js suffix', () => {
-    const env = { CLAUDE_STACK_HOOKS_OFF: 'guard-secret-value, docs-session.js' };
+test('ALFRED_CODE_HOOKS_OFF names hooks exactly, with or without the .js suffix', () => {
+    const env = { ALFRED_CODE_HOOKS_OFF: 'guard-secret-value, docs-session.js' };
     assert.strictEqual(hookDisabled('guard-secret-value', env), true);
     assert.strictEqual(hookDisabled('guard-secret-value.js', env), true);
     assert.strictEqual(hookDisabled('docs-session', env), true);
@@ -31,9 +31,9 @@ test('CLAUDE_STACK_HOOKS_OFF names hooks exactly, with or without the .js suffix
     assert.strictEqual(hookDisabled('guard-stop-contract', env), false);
 });
 
-test('an empty, absent or junk CLAUDE_STACK_HOOKS_OFF disables nothing', () => {
+test('an empty, absent or junk ALFRED_CODE_HOOKS_OFF disables nothing', () => {
     for (const value of [undefined, '', '   ', ',', ' , , '])
-        assert.strictEqual(hookDisabled('guard-secret-value', { CLAUDE_STACK_HOOKS_OFF: value }), false,
+        assert.strictEqual(hookDisabled('guard-secret-value', { ALFRED_CODE_HOOKS_OFF: value }), false,
             `value ${JSON.stringify(value)} must disable nothing`);
 });
 
@@ -87,17 +87,17 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 });
 
 test('the prelude reads process.env when no env is handed in', () => {
-    const before = process.env.CLAUDE_STACK_HOOKS_OFF;
-    process.env.CLAUDE_STACK_HOOKS_OFF = 'guard-answer-length';
+    const before = process.env.ALFRED_CODE_HOOKS_OFF;
+    process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer-length';
     try { assert.strictEqual(hookDisabled('guard-answer-length'), true); }
-    finally { if (before === undefined) delete process.env.CLAUDE_STACK_HOOKS_OFF; else process.env.CLAUDE_STACK_HOOKS_OFF = before; }
+    finally { if (before === undefined) delete process.env.ALFRED_CODE_HOOKS_OFF; else process.env.ALFRED_CODE_HOOKS_OFF = before; }
 });
 
 // guard-secret-value.js is also the sanctioned CLI for reading a credential's PRESENCE, and
 // docs.js / memory.js are run by path from 22 shared bodies. Switching a guard off must not take
 // its CLI away - a hook invocation never carries an argument, so a leading flag means CLI.
 test('a --flag invocation is never gated, however the env reads', () => {
-    const env = { CLAUDE_STACK_HOOKS_OFF: 'guard-secret-value', CLAUDE_PLUGIN_ROOT: '/p', CLAUDE_PROJECT_DIR: '/x' };
+    const env = { ALFRED_CODE_HOOKS_OFF: 'guard-secret-value', CLAUDE_PLUGIN_ROOT: '/p', CLAUDE_PROJECT_DIR: '/x' };
     assert.strictEqual(standDown('guard-secret-value', env, ['node', 'guard-secret-value.js', '--presence', '/tmp/f']), false);
     assert.strictEqual(standDown('guard-secret-value', env, ['node', 'guard-secret-value.js', '--redacted-env']), false);
     assert.strictEqual(standDown('guard-secret-value', env, ['node', 'guard-secret-value.js']), true, 'the hook route is still gated');

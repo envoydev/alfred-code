@@ -24,9 +24,9 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const CATALOG = require('../meta/environment.json').env;
 const MIGRATIONS = {
-    renames: [['CLAUDE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH']],
+    renames: [['CLAUDE_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']],
     retired: [['CLAUDE_STACK_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']],
-    reseed: [['CLAUDE_STACK_FRESH_SESSION_DEFAULT', '250000', '180000']],
+    reseed: [['ALFRED_CODE_FRESH_SESSION_DEFAULT', '250000', '180000']],
 };
 
 let seq = 0;
@@ -119,7 +119,7 @@ test('settings-writer: an older install\'s UNQUOTED entry is migrated in place, 
 
 test('settings-writer: the instrument hook is env-gated so it costs nothing when off', () =>
 {
-    assert.match(hookCommand('instrument-tool-usage.js', '').command, /^\[ "\$CLAUDE_STACK_INSTRUMENT" != "1" \] \|\| /);
+    assert.match(hookCommand('instrument-tool-usage.js', '').command, /^\[ "\$ALFRED_CODE_INSTRUMENT" != "1" \] \|\| /);
 });
 
 test('settings-writer: a RETIRED hook is unwired from EVERY event, not just PreToolUse', () =>
@@ -188,15 +188,15 @@ const envPass = (env, opts = {}) =>
 test('settings-env: a RENAME carries the value before any seed can overwrite it', () =>
 {
     const { env } = envPass({ CLAUDE_DOCS_PATH: 'docs/mine' });
-    assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, 'docs/mine',
+    assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs/mine',
         'the seed ran first and wrote the default over the user\'s value');
     assert.ok(!('CLAUDE_DOCS_PATH' in env), 'the old key survived the rename');
 });
 
 test('settings-env: a rename never overwrites a value already set under the NEW name', () =>
 {
-    const { env } = envPass({ CLAUDE_DOCS_PATH: 'old', CLAUDE_STACK_DOCS_PATH: 'new' });
-    assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, 'new');
+    const { env } = envPass({ CLAUDE_DOCS_PATH: 'old', ALFRED_CODE_DOCS_PATH: 'new' });
+    assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'new');
     assert.ok(!('CLAUDE_DOCS_PATH' in env));
 });
 
@@ -215,45 +215,45 @@ test('settings-env: a RETIRED key is dropped, and a conditional one only at its 
 
 test('settings-env: a BAD SEED is corrected only while it still holds that seed', () =>
 {
-    assert.strictEqual(envPass({ CLAUDE_STACK_FRESH_SESSION_DEFAULT: '250000' }).env.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '180000');
-    assert.strictEqual(envPass({ CLAUDE_STACK_FRESH_SESSION_DEFAULT: '120000' }).env.CLAUDE_STACK_FRESH_SESSION_DEFAULT, '120000',
+    assert.strictEqual(envPass({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000' }).env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.strictEqual(envPass({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '120000' }).env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '120000',
         'a tuned value was reset to the stack\'s number');
 });
 
 test('settings-env: the SEEDS come from the catalog, absent-only, and never touch a set value', () =>
 {
-    const { env } = envPass({ CLAUDE_STACK_INSTRUMENT: '1' });
-    assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '1', 'an absent-only seed overwrote a deliberate value');
+    const { env } = envPass({ ALFRED_CODE_INSTRUMENT: '1' });
+    assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '1', 'an absent-only seed overwrote a deliberate value');
     for (const row of CATALOG)
-        if (!row.written && row.key !== 'CLAUDE_STACK_DOCS_VERSIONING')
+        if (!row.written && row.key !== 'ALFRED_CODE_DOCS_VERSIONING')
             assert.ok(row.key in env, `the catalog key ${row.key} was not seeded`);
 });
 
 test('settings-env: the two WRITTEN keys overwrite, because they track this run\'s choice', () =>
 {
-    const { env } = envPass({ CLAUDE_STACK_MEMORY_DB: '/old/memory.db', CLAUDE_STACK_SENTRY_AUTH: 'token' },
+    const { env } = envPass({ ALFRED_CODE_MEMORY_DB: '/old/memory.db', ALFRED_CODE_SENTRY_AUTH: 'token' },
         { memoryDb: '/new/memory.db', sentryAuth: 'oauth' });
-    assert.strictEqual(env.CLAUDE_STACK_MEMORY_DB, '/new/memory.db', 'a level change did not land - the launcher keeps the old db');
-    assert.strictEqual(env.CLAUDE_STACK_SENTRY_AUTH, 'oauth');
+    assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, '/new/memory.db', 'a level change did not land - the launcher keeps the old db');
+    assert.strictEqual(env.ALFRED_CODE_SENTRY_AUTH, 'oauth');
 });
 
 test('settings-env: docs versioning - the FLAG writes over a value, the seed only fills an absence', () =>
 {
-    assert.strictEqual(envPass({ CLAUDE_STACK_DOCS_VERSIONING: 'git' }, { docsVersioning: { value: 'local' } })
-        .env.CLAUDE_STACK_DOCS_VERSIONING, 'local');
-    assert.strictEqual(envPass({ CLAUDE_STACK_DOCS_VERSIONING: 'git' }, { docsVersioning: { seed: 'local' } })
-        .env.CLAUDE_STACK_DOCS_VERSIONING, 'git', 'the absent-only seed overwrote a project\'s decision');
+    assert.strictEqual(envPass({ ALFRED_CODE_DOCS_VERSIONING: 'git' }, { docsVersioning: { value: 'local' } })
+        .env.ALFRED_CODE_DOCS_VERSIONING, 'local');
+    assert.strictEqual(envPass({ ALFRED_CODE_DOCS_VERSIONING: 'git' }, { docsVersioning: { seed: 'local' } })
+        .env.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the absent-only seed overwrote a project\'s decision');
     assert.strictEqual(envPass({}, { docsVersioning: { seed: 'local' } })
-        .env.CLAUDE_STACK_DOCS_VERSIONING, 'local');
+        .env.ALFRED_CODE_DOCS_VERSIONING, 'local');
 });
 
 test('settings-env: HOOKS_OFF is absent-only UNLESS a walk answered the layer this run', () =>
 {
-    assert.strictEqual(envPass({ CLAUDE_STACK_HOOKS_OFF: 'guard-a' }).env.CLAUDE_STACK_HOOKS_OFF, 'guard-a',
+    assert.strictEqual(envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-a' }).env.ALFRED_CODE_HOOKS_OFF, 'guard-a',
         'a plain run wiped the answer the user gave at install time');
-    assert.strictEqual(envPass({ CLAUDE_STACK_HOOKS_OFF: 'guard-a' },
-        { hooksAnswered: true, hooksOff: ['guard-b', 'guard-c'] }).env.CLAUDE_STACK_HOOKS_OFF, 'guard-b,guard-c');
-    assert.strictEqual(envPass({}, { hooksAnswered: true, hooksOff: [] }).env.CLAUDE_STACK_HOOKS_OFF, '',
+    assert.strictEqual(envPass({ ALFRED_CODE_HOOKS_OFF: 'guard-a' },
+        { hooksAnswered: true, hooksOff: ['guard-b', 'guard-c'] }).env.ALFRED_CODE_HOOKS_OFF, 'guard-b,guard-c');
+    assert.strictEqual(envPass({}, { hooksAnswered: true, hooksOff: [] }).env.ALFRED_CODE_HOOKS_OFF, '',
         'answering "keep every hook" must write the empty value, not skip the key');
 });
 
@@ -268,9 +268,9 @@ test('settings-writer: a dropped seat is denied, and the project keeps its own d
     const file = settingsFile({ permissions: { deny: ['Agent(my-own-seat)', 'Read(./private)'] } });
     const { data } = write(file, {
         denySpecs: ['Read(./.env)'],
-        agentDeny: ['Agent(claude-stack:evidence-gatherer)', 'Agent(claude-stack-aspnet:aspnet-verifier)'],
+        agentDeny: ['Agent(alfred-code:evidence-gatherer)', 'Agent(claude-stack-aspnet:aspnet-verifier)'],
     });
-    assert.ok(data.permissions.deny.includes('Agent(claude-stack:evidence-gatherer)'));
+    assert.ok(data.permissions.deny.includes('Agent(alfred-code:evidence-gatherer)'));
     assert.ok(data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'));
     assert.ok(data.permissions.deny.includes('Agent(my-own-seat)'), "the project's own Agent rule was dropped");
     assert.ok(data.permissions.deny.includes('Read(./private)'), "the project's own Read rule was dropped");
@@ -279,11 +279,11 @@ test('settings-writer: a dropped seat is denied, and the project keeps its own d
 
 test('settings-writer: a retired entry seat deny is re-spelled to the core, so the seat stays off; the rest is untouched', () =>
 {
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-angular:angular-test-resolver)', 'Agent(claude-stack:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)'] } });
-    const { data, logs } = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
-    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(claude-stack:angular-test-resolver)', 'Agent(claude-stack:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)']);
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-angular:angular-test-resolver)', 'Agent(alfred-code:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)'] } });
+    const { data, logs } = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
+    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(alfred-code:angular-test-resolver)', 'Agent(alfred-code:security-auditor)', 'Agent(my-own-seat)', 'Read(./.env)']);
     assert.ok(logs.some((m) => /angular-test-resolver/.test(m) && /retired/.test(m)), logs.join('\n'));
-    const again = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    const again = write(file, { retiredEntries: ['claude-stack-angular'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
     assert.strictEqual(again.result.written, false, 'a second run changes nothing');
 });
 
@@ -293,13 +293,13 @@ test('settings-writer: a retired entry seat deny is re-spelled to the core, so t
 test('settings-writer: a retired entry still installed keeps the user\'s deny spelling beside the core one', () =>
 {
     const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } });
-    const live = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: ['claude-stack-aspnet'], agentDeny: ['Agent(claude-stack:security-auditor)'] });
+    const live = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: ['claude-stack-aspnet'], agentDeny: ['Agent(alfred-code:security-auditor)'] });
     assert.ok(live.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), live.data.permissions.deny.join(','));
-    assert.ok(live.data.permissions.deny.includes('Agent(claude-stack:aspnet-verifier)'), live.data.permissions.deny.join(','));
+    assert.ok(live.data.permissions.deny.includes('Agent(alfred-code:aspnet-verifier)'), live.data.permissions.deny.join(','));
     const unknown = write(settingsFile({ permissions: { deny: ['Agent(claude-stack-aspnet:aspnet-verifier)'] } }), { retiredEntries: ['claude-stack-aspnet'] });
     assert.ok(unknown.data.permissions.deny.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), 'a caller that cannot say keeps it');
-    const gone = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: [], agentDeny: ['Agent(claude-stack:security-auditor)'] });
-    assert.deepStrictEqual(gone.data.permissions.deny.filter((d) => /aspnet-verifier/.test(d)), ['Agent(claude-stack:aspnet-verifier)'], 'once the entry is gone only the core spelling stays');
+    const gone = write(file, { retiredEntries: ['claude-stack-aspnet'], liveEntries: [], agentDeny: ['Agent(alfred-code:security-auditor)'] });
+    assert.deepStrictEqual(gone.data.permissions.deny.filter((d) => /aspnet-verifier/.test(d)), ['Agent(alfred-code:aspnet-verifier)'], 'once the entry is gone only the core spelling stays');
 });
 
 test('settings-writer: a seat the selection now KEEPS has its deny cleared', () =>
@@ -320,8 +320,8 @@ test('settings-writer: deny and allow for the same seat is a KEPT seat - the all
     // way silently disables a seat the run just installed.
     const file = settingsFile({});
     const { data } = write(file, {
-        agentDeny: ['Agent(claude-stack:evidence-gatherer)'],
-        agentAllow: ['Agent(claude-stack:evidence-gatherer)'],
+        agentDeny: ['Agent(alfred-code:evidence-gatherer)'],
+        agentAllow: ['Agent(alfred-code:evidence-gatherer)'],
     });
     assert.deepStrictEqual(data.permissions.deny, []);
 });
@@ -329,10 +329,10 @@ test('settings-writer: deny and allow for the same seat is a KEPT seat - the all
 test('settings-writer: no agent lists means the deny array is left exactly as it was', () =>
 {
     // A run holding no selection passes no agent lists, so it may not rewrite the seat state a user
-    // chose - the same rule CLAUDE_STACK_HOOKS_OFF follows.
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack:evidence-gatherer)'] } });
+    // chose - the same rule ALFRED_CODE_HOOKS_OFF follows.
+    const file = settingsFile({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)'] } });
     const { data } = write(file, { denySpecs: ['Read(./.env)'] });
-    assert.deepStrictEqual(data.permissions.deny, ['Agent(claude-stack:evidence-gatherer)', 'Read(./.env)']);
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:evidence-gatherer)', 'Read(./.env)']);
 });
 
 test('settings-writer: a seat that moved home loses its OLD stack spelling, whichever way it goes', () =>
@@ -341,8 +341,8 @@ test('settings-writer: a seat that moved home loses its OLD stack spelling, whic
     // old entry then addresses nothing and would sit in the file forever.
     const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-old:security-auditor)', 'Agent(claude-stack-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } });
     const { data } = write(file, {
-        agentDeny: ['Agent(claude-stack:security-auditor)'],
-        agentAllow: ['Agent(claude-stack:evidence-gatherer)'],
+        agentDeny: ['Agent(alfred-code:security-auditor)'],
+        agentAllow: ['Agent(alfred-code:evidence-gatherer)'],
     });
-    assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(claude-stack:security-auditor)']);
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(alfred-code:security-auditor)']);
 });

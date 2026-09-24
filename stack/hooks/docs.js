@@ -39,7 +39,7 @@ const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
 const DOCS = path.join(DOCS_ROOT, 'architecture');
 const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');
@@ -400,7 +400,7 @@ function tracked() {
 // The env keys that can declare the mode, in precedence order. ONE list, and every message below names the key that
 // ACTUALLY answered rather than spelling one - a twin reading a different spelling then diverges on this line alone
 // instead of on the header, the two status lines and the two mismatch sentences.
-const VERSIONING_KEYS = ['CLAUDE_STACK_DOCS_VERSIONING'];
+const VERSIONING_KEYS = ['ALFRED_CODE_DOCS_VERSIONING'];
 // How the docs are versioned is an install-time DECISION, not a guess: 'git' = committed docs, git versions them per
 // branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to
 // keptOutOfGit() below.

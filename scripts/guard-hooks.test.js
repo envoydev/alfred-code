@@ -31,15 +31,15 @@ function transcript(name, rows) {
 // exercise the layers point it at a fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // ... and a Claude Code session's settings env reaches this process too: the seeded
-// CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
+// ALFRED_CODE_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
 // The fallback's own test sets it explicitly.
-delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
-// Same route, second key: an install of this stack writes CLAUDE_STACK_DOCS_PATH into the
+delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
+// Same route, second key: an install of this stack writes ALFRED_CODE_DOCS_PATH into the
 // project's settings.json env, which Claude Code exports into every tool call - so a suite run
 // inside a stack-INSTALLED checkout resolves the receipt cases below from the SESSION's docs root
 // instead of from the case, and the old-spelling fallback case can never take its fallback
 // (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
-delete process.env.CLAUDE_STACK_DOCS_PATH;
+delete process.env.ALFRED_CODE_DOCS_PATH;
 delete process.env.CLAUDE_DOCS_PATH;
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
@@ -170,7 +170,7 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
     assistantRow('m9', 'Copied the token into .env as asked; all tests green.'),
   ]);
   const stop = () => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
   const r = stop();
   assert.equal(r.status, 2, 'a shape in a tool result with no consent');
   assert.match(r.stderr, /Rotate it now/);
@@ -182,7 +182,7 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
   assert.equal(stop().status, 2, 'a stale receipt is no consent');
 });
 
-test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and CLAUDE_STACK_ROTATE_ASK=0 turns it off', () => {
+test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED_CODE_ROTATE_ASK=0 turns it off', () => {
   // Every turn after an exposure re-demanded the ask - the shape stays in the transcript, so the
   // detector kept firing on a decision the user had already made. An answered rotate ask now covers
   // every credential already in the session; only a NEW exposure after it asks again.
@@ -192,7 +192,7 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and CLAUDE
   const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
   // pushes the answer out of askJustAnswered's 8KB tail, so the once-per-exposure rule is what is judged
   const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' };
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' };
   const stop = (name, rows, extra = {}) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env: { ...env, ...extra } });
   assert.equal(stop('r1', [leak, assistantRow('a1', 'Wired the token as asked; tests green.')]).status, 2, 'the first exposure asks');
   const quiet = stop('r2', [leak, answered, filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
@@ -201,8 +201,8 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and CLAUDE
   const again = stop('r3', [leak, answered, filler, second, assistantRow('a3', 'Copied the second token as asked; done.')]);
   assert.equal(again.status, 2, 'a NEW exposure after the answer asks again');
   assert.match(again.stderr, /once/, 'and says the ask comes once');
-  assert.match(again.stderr, /CLAUDE_STACK_ROTATE_ASK=0/, 'and names the switch');
-  assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { CLAUDE_STACK_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
+  assert.match(again.stderr, /ALFRED_CODE_ROTATE_ASK=0/, 'and names the switch');
+  assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
 });
 
 test('guard-stop-contract: one turn split across rows sharing a message.id is judged whole', () => {
@@ -225,7 +225,7 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
   assert.equal(call('project-quality-loop', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('claude-stack:project-quality-loop', hot('b')), 2, 'namespaced form');
+  assert.equal(call('alfred-code:project-quality-loop', hot('b')), 2, 'namespaced form');
   assert.equal(call('project-diagnose-failure', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
   assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
@@ -238,7 +238,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   // A guard that denies the route its own denial offers is the failure DISCARD-ALLOW was bought for
   // on the rm guard; the sibling Stop-route offer already re-arms on 1.5x growth, so this does too.
   const logDir = fs.mkdtempSync(path.join(TMP, 'fresh-rearm-'));
-  const env = { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } };
+  const env = { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } };
   // ONE transcript throughout: the offer is remembered per session, so growth has to be written
   // into the same file a real session would grow.
   const tp = transcript('rearm', ctxRows('rearm', 450000));
@@ -264,14 +264,14 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
 
   // The window comes from ONE place, model-windows.json, keyed by the session's model id (these
   // fixtures carry no message.model, so the settings model answers). A model the table lacks takes
-  // CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW, unset here, so the DEFAULT trigger.
+  // ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, unset here, so the DEFAULT trigger.
   const w1m = (env) => ({ CLAUDE_CONFIG_DIR: accountDir('tier-1m', 'claude-opus-5'), ...(env || {}) });
   const w200 = (env) => ({ CLAUDE_CONFIG_DIR: accountDir('tier-200k', 'claude-haiku-4-5'), ...(env || {}) });
-  // 200k tier: CLAUDE_STACK_FRESH_SESSION_200K, default 150,000 (the measured figure).
+  // 200k tier: ALFRED_CODE_FRESH_SESSION_200K, default 150,000 (the measured figure).
   assert.equal(call(at('w-200k-140', 140000), w200()), 0, '140k is under the 200k tier default');
   assert.equal(call(at('w-200k-160', 160000), w200()), 2, '160k is past it');
-  assert.equal(call(at('w-200k-110', 110000), w200({ CLAUDE_STACK_FRESH_SESSION_200K: '100000' })), 2, 'the tier variable moves it');
-  // A window that cannot be read is not guessed at: it takes CLAUDE_STACK_FRESH_SESSION_DEFAULT,
+  assert.equal(call(at('w-200k-110', 110000), w200({ ALFRED_CODE_FRESH_SESSION_200K: '100000' })), 2, 'the tier variable moves it');
+  // A window that cannot be read is not guessed at: it takes ALFRED_CODE_FRESH_SESSION_DEFAULT,
   // 180,000 - a figure REACHABLE on the smallest window it could be applied to. At 250,000 it sat
   // above a 200k window entirely, so an unreadable window on that tier could never trip the gate.
   assert.equal(call(at('w-undeclared', 170000)), 0, '170k with nothing declared is under the 180k default');
@@ -279,19 +279,19 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   assert.equal(call(at('w-undeclared-260k', 260000)), 2, 'no model and no fallback: 260k is past the DEFAULT trigger - usage proves nothing any more');
   assert.equal(call(at('w-bare-sonnet-260k', 260000), { CLAUDE_CONFIG_DIR: accountDir('tier-bare', 'claude-sonnet-5') }), 0, 'Sonnet 5 on a bare id is 1M by its table row - 260k is under 400k');
   assert.equal(call(at('w-200k-row-260k', 260000), w200()), 2, 'a 200k row is the answer even at a carry that window could not hold');
-  assert.equal(call(at('w-undeclared-160k', 160000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '150000' }), 2, 'the default variable moves it');
-  assert.equal(call(at('w-undeclared-190k-off', 190000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
+  assert.equal(call(at('w-undeclared-160k', 160000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '150000' }), 2, 'the default variable moves it');
+  assert.equal(call(at('w-undeclared-190k-off', 190000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), 0, '0 switches the unreadable-window offer off');
   assert.equal(call(at('w-suffix-190k', 190000), { CLAUDE_CONFIG_DIR: accountDir('tier-suffix', 'opus[1m]') }), 2,
     'a [1m] suffix on an alias is not read - opus is no table row, so the DEFAULT trigger');
-  // 1M tier: CLAUDE_STACK_FRESH_SESSION_1M, default 400,000 - deliberately above the harness's own
+  // 1M tier: ALFRED_CODE_FRESH_SESSION_1M, default 400,000 - deliberately above the harness's own
   // auto-compaction band (387,619-397,171 measured), so the Stop offer there is usually unreachable
   // and the SessionStart compact route carries it instead. Lower the variable to be asked earlier.
   assert.equal(call(at('w-1m-395k', 395000), w1m()), 0, '395k is under the 1M tier default');
   assert.equal(call(at('w-1m-450k', 450000), w1m()), 2, '450k is past it');
-  assert.equal(call(at('w-1m-450k-nodecl', 450000), { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' }), 0,
+  assert.equal(call(at('w-1m-450k-nodecl', 450000), { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' }), 0,
     'without a model id it is not the 1M tier - it is the default one, off here');
-  assert.equal(call(at('w-1m-260k', 260000), w1m({ CLAUDE_STACK_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
-  assert.equal(call(at('w-1m-450k-off', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
+  assert.equal(call(at('w-1m-260k', 260000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
+  assert.equal(call(at('w-1m-450k-off', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
   assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch');
 });
 
@@ -345,7 +345,7 @@ test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cu
 });
 
 test('guard-read-whole-file: runtime dumps, file redirects, multi-file cats and unresolvable paths on Bash', () => {
-  const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '', CLAUDE_STACK_DOCS_PATH: LEDGER };
+  const noRoot = { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_DOCS_PATH: LEDGER };
   assert.equal(bash('guard-read-whole-file.js', `node -e "console.log(require('fs').readFileSync('${BIG}','utf8'))"`), 2, 'node readFileSync dump');
   assert.equal(bash('guard-read-whole-file.js', `ruby -e "puts File.read('${BIG}')"`), 2, 'ruby File.read dump');
   assert.equal(bash('guard-read-whole-file.js', `cat ${BIG} > ${path.join(TMP, 'copy.js')}`), 0, 'a redirect into a file is a copy, not a dump');
@@ -466,10 +466,10 @@ test('guard-ungated-commit: the receipt states', () => {
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under CLAUDE_STACK_DOCS_PATH');
+  assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs' }), 0, 'the receipt is looked up under ALFRED_CODE_DOCS_PATH');
   // the pre-0.2.43 spelling still resolves, so an install the rename has not reached keeps working
   assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_DOCS_PATH: 'docs' }), 0, 'the old key is read as a fallback');
-  assert.equal(gateIn(dir, 'git commit -am x', { CLAUDE_STACK_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
+  assert.equal(gateIn(dir, 'git commit -am x', { ALFRED_CODE_DOCS_PATH: 'docs', CLAUDE_DOCS_PATH: 'nowhere' }), 0, 'and the new key wins when both are set');
 });
 
 test('guard-ungated-commit: an option label THIS run wrote is not the user asking', () => {
@@ -558,7 +558,7 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
     'the atomic write+publish shape carries its own receipt');
   assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .claude/docs/flow/PUSH-GATE && git push`), 2,
     '... and gets no lighter contract than the file');
-  assert.equal(gateIn(dir, 'git push', { CLAUDE_STACK_PUSH_GATE: '0' }), 0, 'the switch turns the publish half off');
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_PUSH_GATE: '0' }), 0, 'the switch turns the publish half off');
 
   // the false-positive class this gate must never reproduce
   assert.equal(gateIn(dir, "cat > report.md <<'EOF'\nThen run `gh pr merge 12 --squash` and `git push`.\nEOF"), 0,
@@ -675,7 +675,7 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   const old = (Date.now() - 9 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
   assert.equal(disp('wpf-implementer'), 2, 'a 9h-old stamp is absent');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
-  assert.equal(disp('wpf-implementer', { CLAUDE_STACK_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under CLAUDE_STACK_DOCS_PATH');
+  assert.equal(disp('wpf-implementer', { ALFRED_CODE_DOCS_PATH: 'docs' }), 2, 'the stamp is looked up under ALFRED_CODE_DOCS_PATH');
 });
 
 // Spike S1 run 4: a plugin agent is addressable ONLY as `<plugin>:<agent>` - the bare name returns
@@ -689,7 +689,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
   assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
   assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
-  assert.equal(disp('claude-stack:project-implementer'), 2, 'scoped to the core plugin');
+  assert.equal(disp('alfred-code:project-implementer'), 2, 'scoped to the core plugin');
   // Gating this one would block a tool the user chose with a message about a flow it has no part
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
@@ -726,7 +726,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects and NEVER denies',
   ]);
   const ask = (tp, questions) => runIn('guard-stop-contract.js',
     { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp, tool_input: { questions } },
-    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } });
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 
   const deep = ask(hot, [{ question: 'Which next?', options: [{ label: 'Continue', description: 'x' }, { label: 'Stop', description: 'y' }] }]);
@@ -818,28 +818,28 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
 
 test('instrument-tool-usage: off by default, one JSONL row per call when switched on, never blocks', () => {
   const log = path.join(TMP, 'ledger.jsonl');
-  const inst = (payload, env) => runIn('instrument-tool-usage.js', payload, { env: { ...process.env, CLAUDE_STACK_INSTRUMENT_LOG: log, ...env } }).status;
-  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '0' }), 0);
-  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '' }), 0);
+  const inst = (payload, env) => runIn('instrument-tool-usage.js', payload, { env: { ...process.env, ALFRED_CODE_INSTRUMENT_LOG: log, ...env } }).status;
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '0' }), 0);
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '' }), 0);
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
-  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: 'true' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__plugin_serena_serena__find_symbol', tool_input: {}, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_serena_serena__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
-  assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
-  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { CLAUDE_STACK_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_serena_serena__find_symbol', 'serena'],
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
   assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'instrument-tool-usage.js')], { input: 'not json', encoding: 'utf8',
-    env: { ...process.env, CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
+    env: { ...process.env, ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: log } }).status, 0, 'bad input never blocks');
   const root = fs.mkdtempSync(path.join(TMP, 'inst-'));
   assert.equal(inst({ tool_name: 'Grep', tool_input: { pattern: 'x' }, session_id: 'sid/../up' },
-    { CLAUDE_STACK_INSTRUMENT: '1', CLAUDE_STACK_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: 'docs' }), 0);
+    { ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_INSTRUMENT_LOG: '', CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: 'docs' }), 0);
   assert.deepEqual(fs.readdirSync(path.join(root, 'docs', 'tools-usage')), ['sid..up.jsonl'], 'default ledger under the docs root, session id sanitized');
 });
 
@@ -865,7 +865,7 @@ test('guard-stop-contract: the fresh-session offer lands at turn end, once per c
   const logDir = fs.mkdtempSync(path.join(TMP, 'freshstop-'));
   const at = (name, ctx, text) => transcript(name, ctxRows(name, ctx, text || 'Applied the change; tests pass.'));
   const stop = (tp) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
-    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir } }).status;
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir } }).status;
 
   assert.equal(stop(at('fs-cold', 170000)), 0, '170k with no readable window is under the 180k default - nothing to offer');
   const s1 = at('fs-hot', 500000);
@@ -886,16 +886,16 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   // a fresh state dir per call: the offer is made ONCE per session, so a shared one would answer
   // every assertion after the first with the already-asked 0 rather than with the tier's verdict
   const stop = (extra) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
-    { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'freshoff-')), ...extra } }).status;
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'freshoff-')), ...extra } }).status;
 
   // the settings model is claude-opus-5, a 1M table row, so that tier's trigger applies
-  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
+  assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
   assert.equal(stop(w1m), 2, 'and the same session still qualifies at the 1M default');
-  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0', CLAUDE_STACK_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
+  assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_DEFAULT: '0', ALFRED_CODE_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
   assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all');
   const acct1m = fs.mkdtempSync(path.join(TMP, 'stopoff-1m-'));
   fs.writeFileSync(path.join(acct1m, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
-  assert.equal(stop({ CLAUDE_CONFIG_DIR: acct1m, CLAUDE_STACK_FRESH_SESSION_1M: '0' }), 0, 'a readable 1M window reads its own switch');
+  assert.equal(stop({ CLAUDE_CONFIG_DIR: acct1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, 'a readable 1M window reads its own switch');
 });
 
 // --- guard-cross-project-write: one session, one project -------------------
@@ -907,7 +907,7 @@ const xp = (payload) => {
   const r = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify(payload),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   });
   return r.status;
 };
@@ -959,7 +959,7 @@ test('guard-cross-project-write: the session\'s own scratch and the account dir 
   // root - the fixtures above deliberately do, which is what proves the containment rule.
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '', CLAUDE_STACK_DOCS_PATH: LEDGER } }).status;
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER } }).status;
   const w = (f) => inRepo({ tool_name: 'Write', tool_input: { file_path: f } });
 
   assert.equal(w(path.join(os.tmpdir(), 'scratch', 'notes.md')), 0, 'the harness scratchpad');
@@ -1013,7 +1013,7 @@ test('guard-cross-project-write: it fails open rather than guessing', () => {
   const opened = spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'a.ts') } }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: XP_OTHER },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: XP_OTHER },
   }).status;
   assert.equal(opened, 0, 'the escape hatch opens a second tree this project really owns');
 });
@@ -1119,22 +1119,22 @@ test('guard-cross-project-write: space account dirs, ~ in the allowance, and unr
   const home = os.homedir();
   const repoRoot = path.join(__dirname, '..');
   const inRepo = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '', CLAUDE_STACK_DOCS_PATH: LEDGER, ...env } }).status;
+    { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: LEDGER, ...env } }).status;
   if (home) {
     // A --space install keeps its memory under ~/.claude-<space>; the old check disabled that
     // allowance for every project living under HOME, i.e. every real project (reproduced).
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-work', 'projects', 'p', 'memory', 'm.md') } }), 0, 'a space account dir');
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(home, '.claude-x', '..', 'elsewhere', 'f.txt') } }), 2, 'reaching back out of one');
-    const owned = path.join(home, `claude-stack-owned-tree-${process.pid}`); // never created - realish resolves through the missing tail
+    const owned = path.join(home, `alfred-code-owned-tree-${process.pid}`); // never created - realish resolves through the missing tail
     assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }), 2, 'a second tree under HOME is outside');
-    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }, { CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '~' + owned.slice(home.length) }), 0, 'a ~ in the allowance expands');
+    assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(owned, 'f.txt') } }, { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '~' + owned.slice(home.length) }), 0, 'a ~ in the allowance expands');
   }
   assert.equal(inRepo({ tool_name: 'Write', tool_input: { file_path: path.join(XP_OTHER, 'f.txt') } }, { CLAUDE_PROJECT_DIR: '/nonexistent/root' }), 0, 'a root that does not exist fails open, as the header promises');
   // Without CLAUDE_PROJECT_DIR the nearest .git ancestor of the session cwd is the root - the cwd
   // itself may be a subdirectory the session cd-ed into, which called a sibling folder 'outside'.
   assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(repoRoot, 'stack', 'x.md') }, cwd: path.join(repoRoot, 'scripts') }),
-    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' },
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: '', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   }).status, 0, 'a subdirectory cwd still sees the whole repo');
 });
 
@@ -1148,7 +1148,7 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   const receipt = path.join(root, '.claude', 'docs', 'flow', 'CROSS-WRITE-ALLOW');
   const tp = path.join(root, 'session.jsonl');
   const go = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '', CLAUDE_STACK_DOCS_PATH: '.claude/docs', ...env } });
+    { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.claude/docs', ...env } });
   const target = path.join(other, 'src', 'a.ts');
   const denied = go({ tool_name: 'Write', tool_input: { file_path: target } });
   assert.equal(denied.status, 2);
@@ -1211,7 +1211,7 @@ const mountRuleOf = (hook) => {
 test('mount paths: the shipped rule maps a Git Bash temp path into the Windows temp allowance', () => {
   const w = path.win32;
   const TEMP = 'C:\\Users\\u\\AppData\\Local\\Temp';
-  const raw = '/c/Users/u/AppData/Local/Temp/claude-stack/x';
+  const raw = '/c/Users/u/AppData/Local/Temp/alfred-code/x';
   const inside = (t, d) => t === d || t.startsWith(d.endsWith(w.sep) ? d : d + w.sep);
 
   // the defect, reproduced under win32 semantics: the raw mount form lands nowhere near Temp
@@ -1243,7 +1243,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 // 200k x every percent from 5 to 75 collapses onto the 150k floor. Both that key and the
 // CLAUDE_STACK_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
-const winEnv = (extra) => ({ ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
+const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
     { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, { env }).status;
 const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
@@ -1272,11 +1272,11 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
     assert.match(injected(ups('/project-agent-capabilities', hot)), /Do NOT start the run yet/, 'a hand-typed slash is the same intent');
-    assert.match(injected(ups('<command-name>/claude-stack:update</command-name>', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
+    assert.match(injected(ups('<command-name>/alfred-code:update</command-name>', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
     assert.equal(injected(ups('<command-name>/project-quality-loop</command-name>', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(ups('fix the failing test', hot)), '', 'an ordinary prompt is never touched');
     assert.equal(injected(ups('/help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(ups('/project-quality-loop', hot, { CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(ups('/project-quality-loop', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
     // compaction event itself is the evidence.
@@ -1286,7 +1286,7 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     assert.match(injected(start('compact')), /language of the user's own prompts/, '... with the language line');
     assert.match(injected(start('compact')), /re-read its HEADER first/, '... and the plan-first line');
     assert.equal(injected(start('startup')), '', 'an ordinary session start does not');
-    assert.equal(injected(start('compact', { CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })), '', 'and all three off disables it - SessionStart measures nothing, so no single trigger owns it');
+    assert.equal(injected(start('compact', { ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', 'and all three off disables it - SessionStart measures nothing, so no single trigger owns it');
 
     // the Skill route is unchanged, and the widened list reaches the review seats
     assert.equal(askLoop(hot, winEnv()), 2, 'the Skill route still BLOCKS');
@@ -1328,17 +1328,17 @@ test('fresh-session window: the tier variable is the whole setting on a declared
     const at260 = ctxAt('win-tier-260k', 260000);
     const env = (extra) => winEnv({ CLAUDE_CONFIG_DIR: accountDir('tier-decl-1m', 'claude-opus-5'), ...extra });
     assert.equal(askLoop(at260, env()), 0, '260k is under the 400,000 default of the 1M tier');
-    assert.equal(askLoop(at260, env({ CLAUDE_STACK_FRESH_SESSION_1M: '250000' })), 2, '... and past a 250,000 setting');
-    assert.equal(askLoop(at260, env({ CLAUDE_STACK_FRESH_SESSION_1M: '0' })), 0, '0 disables that tier outright');
+    assert.equal(askLoop(at260, env({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, '... and past a 250,000 setting');
+    assert.equal(askLoop(at260, env({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 disables that tier outright');
     // the 200k tier has its own knob and the two never interfere
     const at160 = ctxAt('win-tier-160k', 160000);
     const w200 = (extra) => winEnv({ CLAUDE_CONFIG_DIR: accountDir('tier-decl-200k', 'claude-haiku-4-5'), ...extra });
     assert.equal(askLoop(at160, w200()), 2, '160k is past the 150,000 default of the 200k tier');
-    assert.equal(askLoop(at160, w200({ CLAUDE_STACK_FRESH_SESSION_1M: '100000' })), 2, 'the 1M knob does not touch the 200k tier');
-    assert.equal(askLoop(at160, w200({ CLAUDE_STACK_FRESH_SESSION_200K: '180000' })), 0, '... and its own knob does');
+    assert.equal(askLoop(at160, w200({ ALFRED_CODE_FRESH_SESSION_1M: '100000' })), 2, 'the 1M knob does not touch the 200k tier');
+    assert.equal(askLoop(at160, w200({ ALFRED_CODE_FRESH_SESSION_200K: '180000' })), 0, '... and its own knob does');
 });
 
-test('fresh-session window: model-windows.json is the single source, CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW the fallback', () => {
+test('fresh-session window: model-windows.json is the single source, ALFRED_CODE_DEFAULT_CONTEXT_WINDOW the fallback', () => {
     // ONE rule: the session's model id -> its table row, else the fallback variable, else the DEFAULT
     // trigger. No suffix, carry or compaction moves it.
     const onModel = (name, ctx, model, extra = []) => transcript(name, [
@@ -1346,7 +1346,7 @@ test('fresh-session window: model-windows.json is the single source, CLAUDE_STAC
         { type: 'assistant', message: { id: name, model, content: [{ type: 'text', text: 'ok' }], usage: { cache_read_input_tokens: ctx } } },
         ...extra,
     ]);
-    const fb = (extra) => winEnv({ CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW: '1000000', ...extra });
+    const fb = (extra) => winEnv({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '1000000', ...extra });
     assert.equal(askLoop(onModel('tbl-haiku-160k', 160000, 'claude-haiku-4-5-20251001'), fb()), 2,
         'a dated Haiku id matches its 200k row - 160k is past the 150k trigger, the 1M fallback never consulted');
     assert.equal(askLoop(onModel('tbl-haiku-260k', 260000, 'claude-haiku-4-5-20251001'), fb()), 2,
@@ -1364,9 +1364,9 @@ test('fresh-session window: model-windows.json is the single source, CLAUDE_STAC
         'the transcript model outranks the settings model');
     // not in the table: the fallback variable
     assert.equal(askLoop(onModel('fb-unknown-190k', 190000, 'claude-nova-9'), fb()), 0, 'an unlisted model takes the 1M fallback - 190k is under 400k');
-    assert.equal(askLoop(onModel('fb-unknown-160k-200k', 160000, 'claude-nova-9'), winEnv({ CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW: '200000' })), 2, '... or a 200k one - 160k is past 150k');
+    assert.equal(askLoop(onModel('fb-unknown-160k-200k', 160000, 'claude-nova-9'), winEnv({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000' })), 2, '... or a 200k one - 160k is past 150k');
     assert.equal(askLoop(onModel('fb-unset-190k', 190000, 'claude-nova-9'), winEnv()), 2, 'fallback unset: the 180k DEFAULT trigger');
-    assert.equal(askLoop(onModel('fb-junk-190k', 190000, 'claude-nova-9'), fb({ CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW: 'lots' })), 2, 'garbage is no fallback');
+    assert.equal(askLoop(onModel('fb-junk-190k', 190000, 'claude-nova-9'), fb({ ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: 'lots' })), 2, 'garbage is no fallback');
     assert.equal(askLoop(ctxAt('fb-nomodel-190k', 190000), fb()), 0, 'no model id at all takes the fallback too');
 });
 
@@ -1374,11 +1374,11 @@ test('fresh-session window: a trigger at or above its own window is clamped back
     // A gate that cannot fire is the gate not existing. The measured case is the DEFAULT at 250,000
     // on a 200k window, and the same hole opens whenever the variable is hand-set past the window.
     const hot = ctxAt('clamp-190k', 190000);
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k', 'claude-haiku-4-5'), CLAUDE_STACK_FRESH_SESSION_200K: '250000' })), 2,
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k', 'claude-haiku-4-5'), ALFRED_CODE_FRESH_SESSION_200K: '250000' })), 2,
         'a 250,000 trigger on a 200k window is unreachable - clamped to 90% of the window, so 190k still fires');
-    assert.equal(askLoop(ctxAt('clamp-170k', 170000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k2', 'claude-haiku-4-5'), CLAUDE_STACK_FRESH_SESSION_200K: '250000' })), 0,
+    assert.equal(askLoop(ctxAt('clamp-170k', 170000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-200k2', 'claude-haiku-4-5'), ALFRED_CODE_FRESH_SESSION_200K: '250000' })), 0,
         '... and the clamp does not fire the gate early - 170k is under the clamped 180,000');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-off', 'claude-haiku-4-5'), CLAUDE_STACK_FRESH_SESSION_200K: '0' })), 0,
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('clamp-off', 'claude-haiku-4-5'), ALFRED_CODE_FRESH_SESSION_200K: '0' })), 0,
         '0 is still the off switch, never clamped into a trigger');
 });
 
@@ -1477,12 +1477,12 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
 
 test('guard-read-whole-file: the ungoverned docs root is RESOLVED, not assumed to be .claude', () => {
   // markdown-docs.md says every document under the generated docs root is not governed by it. The
-  // test that dropped the announcement hard-coded `.claude/`, so with CLAUDE_STACK_DOCS_PATH=docs -
+  // test that dropped the announcement hard-coded `.claude/`, so with ALFRED_CODE_DOCS_PATH=docs -
   // the committed-root case the docs-root rule itself describes - a write to
   // docs/architecture/ARCHITECTURE.md still drew an announcement the rule says does not apply.
   const call = (command, session_id, docsRoot) => runIn('guard-read-whole-file.js',
     { tool_name: 'Bash', tool_input: { command }, session_id },
-    { env: { ...process.env, CLAUDE_STACK_DOCS_PATH: docsRoot } });
+    { env: { ...process.env, ALFRED_CODE_DOCS_PATH: docsRoot } });
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   const sid = () => `md6-${Math.random().toString(36).slice(2)}`;
   assert.equal(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), 'docs')), '', 'a custom docs root is ungoverned');
@@ -1567,7 +1567,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   const status = spawnSync(process.execPath, [path.join(HOOKS, 'guard-ungated-commit.js')], {
     input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git commit -am wip' } }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_STACK_DOCS_PATH: docs },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_DOCS_PATH: docs },
     cwd: dir,
   }).status;
   assert.equal(status, 0, 'a conformant receipt under an absolute in-repo docs root passes');
@@ -1620,20 +1620,20 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
     fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
     const place = (plugin, name, front, sub) =>
     {
-        const dir = path.join(cfg, 'plugins', 'cache', 'claude-stack', plugin, '1.0.0', ...sub, name);
+        const dir = path.join(cfg, 'plugins', 'cache', 'envoydev', plugin, '1.0.0', ...sub, name);
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    place('claude-stack', 'project-quality-loop', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('alfred-code', 'project-quality-loop', 'disable-model-invocation: true\n', ['stack', 'skills']);
     place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
     assert.equal(skillCall('project-quality-loop').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('claude-stack:project-quality-loop').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('alfred-code:project-quality-loop').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
-    assert.equal(skillCall('claude-stack:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
+    assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 });
 
 test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, at any context size', () => {
@@ -1738,7 +1738,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
       cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('project-quality-loop'),
-    ]), winEnv({ CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' })), '',
+    ]), winEnv({ ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });
 
@@ -1788,7 +1788,7 @@ test('guard-stop-contract: the three block shapes the audit reproduced', () => {
     const logDir = fs.mkdtempSync(path.join(TMP, 'stoplog-'));
     const close = (text, extra) => runIn('guard-stop-contract.js',
         { hook_event_name: 'Stop', session_id: 'shapes', cwd: ledger, last_assistant_message: text, ...(extra || {}) },
-        { env: { ...process.env, CLAUDE_PROJECT_DIR: ledger, CLAUDE_STACK_DOCS_PATH: path.join(ledger, 'docs'), CLAUDE_STACK_HOOK_LOG_DIR: logDir } });
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: ledger, ALFRED_CODE_DOCS_PATH: path.join(ledger, 'docs'), ALFRED_CODE_HOOK_LOG_DIR: logDir } });
 
     // 1. `your call` inside a NEGATION is not an offer - it says the opposite. Measured: a step-12
     //    post-check closing 'closure-held, not your call' was blocked, 174,321 cache-read retried.
@@ -1836,7 +1836,7 @@ test('guard-stop-contract: a credential the USER pasted demands the rotate ask t
     ]);
     const stop = (tp) => runIn('guard-stop-contract.js',
         { hook_event_name: 'Stop', session_id: 'paste', cwd: root, transcript_path: tp, last_assistant_message: 'Registered it; the install is green.' },
-        { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: path.join(root, 'docs') } });
+        { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: path.join(root, 'docs') } });
     const blocked = stop(pasted);
     assert.equal(blocked.status, 2, 'a pasted credential ends the turn in the rotate ask');
     assert.match(blocked.stderr, /pasted into the chat/, 'and the denial names the route it came in by');
@@ -1870,7 +1870,7 @@ test('guard-cross-project-write: the fork-liveness probe logs a mutating call be
   const probe = (payload, sid) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')], {
     input: JSON.stringify({ ...payload, transcript_path: path.join(dir, sid + '.jsonl'), session_id: sid }),
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, CLAUDE_STACK_DOCS_PATH: docs, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: XP_ROOT, ALFRED_CODE_DOCS_PATH: docs, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' },
   }).status;
   const ledger = (sid) => {
     const p = path.join(docs, 'hook-blocks', sid + '.jsonl');
@@ -1951,7 +1951,7 @@ function subStop(tp, text, { agentId, agentType = 'fork', logDir } = {}) {
   return runIn('guard-stop-contract.js', {
     hook_event_name: 'SubagentStop', session_id: 'sub-stop', agent_id: agentId || `a${Math.random().toString(16).slice(2, 14)}`,
     agent_type: agentType, agent_transcript_path: tp, last_assistant_message: text,
-  }, { env: { ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: logDir || fs.mkdtempSync(path.join(TMP, 'sub-')) } });
+  }, { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir || fs.mkdtempSync(path.join(TMP, 'sub-')) } });
 }
 
 test('guard-stop-contract: the field-report fork - stopped on a wait with no background work of its own - is held and told to do its task', () => {
@@ -2063,9 +2063,9 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
     fs.utimesSync(path.join(root, '.claude/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
     assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
   });
-  withProject(root, { CLAUDE_STACK_CONFIG_PROTECT: '0' }, () =>
+  withProject(root, { ALFRED_CODE_CONFIG_PROTECT: '0' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the env switch turns it off'));
-  withProject(root, { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length,guard-config-protection' }, () =>
+  withProject(root, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-config-protection' }, () =>
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
 });
 

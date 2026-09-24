@@ -28,7 +28,7 @@
 const fs = require('fs');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -39,10 +39,10 @@ if (require.main === module) {
     if (standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -69,7 +69,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -112,7 +112,7 @@ const { FRESH_OFF, ctxThreshold, coldFloor, worthResuming } = fresh;
 // the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
 // override, not a setting, until the block rate says what it should be.
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(process.env.CLAUDE_STACK_FRESH_SESSION_AFTER_HOURS);
+  const n = parseFloat(process.env.ALFRED_CODE_FRESH_SESSION_AFTER_HOURS);
   return Number.isNaN(n) || n < 0 ? 2 : n;
 })();
 
@@ -407,9 +407,9 @@ function secretReadAllowed() {
 // naming rotation, or the defer option) covers every credential shape that entered the session
 // BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
 // again. Judged over the same 256KB tail secretInSession reads, and fail-open like it.
-// CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
+// ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
-const ROTATE_ASK_ON = process.env.CLAUDE_STACK_ROTATE_ASK !== '0';
+const ROTATE_ASK_ON = process.env.ALFRED_CODE_ROTATE_ASK !== '0';
 const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
 function rotateAskAnswered() {
   try {
@@ -448,7 +448,7 @@ function blockDetail(branch, matched) {
 }
 function breadcrumb(why) {
   try {
-    const dir = process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir();
+    const dir = process.env.ALFRED_CODE_HOOK_LOG_DIR || require('os').tmpdir();
     fs.appendFileSync(`${dir}/guard-stop-contract.log`, `${new Date().toISOString()} ${why}\n`);
   } catch { /* never let logging break the gate */ }
 }
@@ -500,7 +500,7 @@ if (payload.hook_event_name === 'SubagentStop') {
   const reportsBack = tools.some((b) => (b.input && b.input.run_in_background === true) || /^(Agent|Task|Monitor)$/.test(b.name));
   if (reportsBack) process.exit(0);
   const key = String(payload.agent_id || payload.agent_transcript_path).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  const held = `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
+  const held = `${process.env.ALFRED_CODE_HOOK_LOG_DIR || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
   if (fs.existsSync(held)) process.exit(0); // held once already - never a loop
   try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
   blockDetail('subagent-wait', claim ? claim[0] : 'ScheduleWakeup');
@@ -600,7 +600,7 @@ if (payload.hook_event_name === 'Stop') {
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
       'and its shape only - never repeat the value, and never pass it to a tool.\n' +
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
-      'a new exposure asks again. CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns it off.',
+      'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
   }
@@ -724,7 +724,7 @@ function recordBlockCtx(ctx) {
 function blockStateFile() {
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
+  return `${process.env.ALFRED_CODE_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
 }
 
 

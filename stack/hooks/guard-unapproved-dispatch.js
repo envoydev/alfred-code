@@ -28,14 +28,14 @@
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -72,7 +72,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -106,10 +106,10 @@ const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
 // name returns 'Agent type not found'), so from the release that ships the seats as plugins every
 // house dispatch arrives prefixed. Two spellings are therefore the same seat - bare, which is the
-// copy route and cursor-stack, and `claude-stack[-<group>]:<seat>`. A FOREIGN plugin's
+// copy route and cursor-stack, and `alfred-code[-<group>]:<seat>`. A FOREIGN plugin's
 // `x-implementer` is not this flow's seat: it has no APPROVAL convention behind it, so gating it
 // would block a tool the user chose with a message about a flow that does not apply to it.
-const HOUSE_PREFIX = /^claude-stack(?:-[a-z0-9-]+)?:/;
+const HOUSE_PREFIX = /^alfred-code(?:-[a-z0-9-]+)?:/;
 const houseSeat = !seat.includes(':') ? seat : (HOUSE_PREFIX.test(seat) ? seat.slice(seat.indexOf(':') + 1) : null);
 const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 

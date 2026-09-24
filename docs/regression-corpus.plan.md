@@ -60,7 +60,7 @@ from `<docs-path>/hook-blocks/`: the two should agree, and a divergence means th
 has drifted from how the hooks actually run.
 
 **1c. Config matrix.** Run 1a under each config the field actually produces - relative vs absolute
-`CLAUDE_STACK_DOCS_PATH`, project vs global scope, a Git Bash mount path, each context-window tier.
+`ALFRED_CODE_DOCS_PATH`, project vs global scope, a Git Bash mount path, each context-window tier.
 B4 was one row of this matrix.
 
 **1d. Secret-shape sweep.** Scan the corpus for credential shapes and report every hit no hook
@@ -147,7 +147,7 @@ Four design points worth keeping:
   everything - a fabricated rate, not a measurement.
 - **Scratch isolation is mandatory, and pinned by a test.** The guards write session state and a
   block row under `<docs-path>/hook-blocks/`. Pointed at a real project, a 120k-payload replay would
-  forge a field ledger out of history. `CLAUDE_STACK_DOCS_PATH` and `CLAUDE_CONFIG_DIR` both go to
+  forge a field ledger out of history. `ALFRED_CODE_DOCS_PATH` and `CLAUDE_CONFIG_DIR` both go to
   scratch; an empty config dir also stops a real account `settings.json` model id from moving a
   context threshold under the run.
 - **A Stop replay is a prefix of the real transcript.** Both Stop hooks take `transcript_path` and

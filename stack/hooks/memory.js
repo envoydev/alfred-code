@@ -114,7 +114,7 @@ function memoryEnvPath(entry, home) {
 
 // The settings.json `env` key the PLUGIN route writes first, then the registration route's own
 // files. From 1.0.0 the memory server arrives through a plugin and there is no `.mcp.json` entry to
-// read: the install writes its resolved db path to CLAUDE_STACK_MEMORY_DB in the project's
+// read: the install writes its resolved db path to ALFRED_CODE_MEMORY_DB in the project's
 // settings.json (the account file for a global install), which is exactly what the plugin's
 // launcher reads at start-up - so this resolver and the running server agree by construction.
 // The registration lookups below stay for the copy route and for every install made before 1.0.0.
@@ -129,7 +129,7 @@ function settingsEnvDbPath(projectRoot, home, configDir) {
   for (const file of files) {
     try {
       const data = readJson(file);
-      const value = data && data.env && data.env.CLAUDE_STACK_MEMORY_DB;
+      const value = data && data.env && data.env.ALFRED_CODE_MEMORY_DB;
       if (typeof value !== 'string' || !value) continue;
       // Same resolution the plugin's own launcher uses (stack/mcp/memory-launch.js): a relative
       // value is the project's, never the reader's cwd, or the two would disagree about the db.
@@ -168,7 +168,7 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
 }
 
 // The MAIN repo directory, not the checkout's own - inside a git worktree, `--show-toplevel` answers
-// with the WORKTREE's own folder (measured: 'branch-aware-docs', not 'claude-stack'), which would tag
+// with the WORKTREE's own folder (measured: 'branch-aware-docs', not 'alfred-code'), which would tag
 // every memory a worktree session saves with the wrong project, hide every memory the main checkout
 // already holds, and (levelOfPath, below) read the installer's own project-level db path as 'unknown'.
 // `--git-common-dir` is shared by every worktree of one repo and always ends in '.git' for a normal or
@@ -503,7 +503,7 @@ async function reembedPass({ entry, cwd, rows }) {
   };
   let index = 0;
   try {
-    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-reembed', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-reembed', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
     rpc.notify('notifications/initialized');
     for (; index < rows.length; index++) {
       const { row, mode } = rows[index];
@@ -591,7 +591,7 @@ const backupDir = () => path.join(os.homedir(), '.memory-mcp', 'backups');
 const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), metadata: parseMeta(row.metadata) });
 const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
-const STACK_MEMORY_PLUGIN = 'memory@claude-stack';
+const STACK_MEMORY_PLUGIN = 'memory@envoydev';
 
 // A registration the copy route (or a pre-1.0.0 install) wrote: the project's .mcp.json, then the
 // account file's user-scope and project-scope entries - the files registeredDbPath reads.
@@ -609,7 +609,7 @@ function registrationEntry(projectRoot, home, configDir) {
   return withCommand(proj && proj.mcpServers && proj.mcpServers.memory);
 }
 
-// From 1.0.0 the server rides the memory@claude-stack PLUGIN, and no registration exists to read. The
+// From 1.0.0 the server rides the memory@envoydev PLUGIN, and no registration exists to read. The
 // plugin's install directory is the whole stack repo (every marketplace entry is sourced from its
 // root), so its own marketplace.json declares the server exactly as Claude Code launches it. This
 // project's install first, then an account-level one; another project's install, or a `memory`
@@ -657,7 +657,7 @@ const SHUTDOWN_WAIT_MS = 5000;
 const PRESENT_QUERY = 'SELECT 1 FROM memories WHERE (content_hash = ? OR content = ?) AND deleted_at IS NULL LIMIT 1';
 
 // Test hook: forces the path a genuinely unavailable node:sqlite takes, on any Node version.
-const storeSqlite = () => (process.env.CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE === '1' ? null : nodeSqlite());
+const storeSqlite = () => (process.env.ALFRED_CODE_MEMORY_IMPORT_FORCE_NO_SQLITE === '1' ? null : nodeSqlite());
 
 function openForPrecheck(DatabaseSync, dbPath) {
   try { return new DatabaseSync(dbPath, { readOnly: true }); } catch {}
@@ -771,7 +771,7 @@ async function storeThroughService({ entry, cwd, items }) {
     const deadline = Date.now() + OVERALL_TIMEOUT_MS;
     const timeLeft = () => Math.max(1, deadline - Date.now());
     try {
-      await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-import', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+      await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-import', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
       rpc.notify('notifications/initialized');
       for (const item of pendingItems) {
         if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
@@ -867,7 +867,7 @@ async function cliImport(args) {
   if (!items.length) { console.log(`memory import: nothing to import, from ${file}`); return 0; }
   const projectRoot = cliRoot(opts);
   const entry = serviceEntry(projectRoot);
-  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it\n'); return 1; }
+  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@envoydev plugin installed for it\n'); return 1; }
   try {
     const res = await storeThroughService({ entry, cwd: projectRoot, items });
     console.log(`memory import: ${res.imported} imported, ${res.present} already present, from ${file}${res.sqliteNote}`);
@@ -900,7 +900,7 @@ function cliDuplicates(args) {
   return 0;
 }
 
-const NO_SERVER = 'no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it';
+const NO_SERVER = 'no memory server found for this project - no registration, and no memory@envoydev plugin installed for it';
 
 // The registered server, pointed at the database this run judges.
 function reembedEntry(projectRoot, dbPath) {

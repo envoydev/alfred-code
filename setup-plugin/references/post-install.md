@@ -30,7 +30,7 @@ claude mcp list
 Every row should read connected. A timeout on `serena` usually means its first run is still
 fetching the language server (re-run once it settles, or pre-warm with `uvx --from serena-agent
 serena --help`); a timeout on any other stdio server means its runtime is not installed on this
-machine - fix it, or drop that server via `/claude-stack:configure` rather than carrying a dead
+machine - fix it, or drop that server via `/alfred-code:configure` rather than carrying a dead
 registration whose tool schemas are injected into every session.
 
 **And check the plugins are ENABLED, not merely installed.** Installing a plugin does not enable it
@@ -44,7 +44,7 @@ claude plugin list
 ```
 
 Every stack plugin should read enabled for this project. One that does not is one command away -
-`claude plugin enable <name>` - and `/claude-stack:status` reports the same state per plugin any
+`claude plugin enable <name>` - and `/alfred-code:status` reports the same state per plugin any
 time after that.
 
 ## 2. Git hygiene - keep the machine-local artifacts out of the repo
@@ -64,10 +64,10 @@ touches no committed file). The lines, minus anything the project already covers
   `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include. That ignore
   keeps the default docs root out of git, so docs versioning should read `local`: an install that ran
   BEFORE the ignore existed seeded `git` (the docs root was not ignored then) - switch it once with
-  `/claude-stack:update --docs-versioning local`.
+  `/alfred-code:update --docs-versioning local`.
 - `.serena/` - the per-project LSP cache and serena's local memories (only when serena is
   installed). Never commit it.
-- `.mcp.json` - only on the opt-out route (`CLAUDE_STACK_MCPS_VIA_PLUGIN=false`); the default run
+- `.mcp.json` - only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
   carries every server on its own plugin and PRUNES the stack's names out of this file. Where it
   does exist it is regenerated on every run, so a local edit is wiped anyway. No file, nothing to ignore.
 - `.memory-mcp/` - only present at a `project`-level memory install; the installer already wrote
@@ -77,10 +77,10 @@ touches no committed file). The lines, minus anything the project already covers
 ## 3. Check the shared memory landed
 
 The memory MCP is required in every install, at the level chosen during init (`global`,
-`scoped`, or `project` - `/claude-stack:status` names it and the database file). The install also
+`scoped`, or `project` - `/alfred-code:status` names it and the database file). The install also
 imported this project's old `MEMORY.md` notes into that database once, and switched off Claude's
 own memory ONLY if that import succeeded - a failed import leaves it on rather than risk losing a
-note. Check it once: `/claude-stack:status` shows `autoMemoryEnabled` in the Environment table;
+note. Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
 `false` means done, `true` or absent means the import has not completed - read the install log for
 why (a missing `uvx` or Python is the usual cause) and fix that before running the install again.
 `baseline-memory.md` (always-on) names what belongs in the store and when to search it before
@@ -130,7 +130,7 @@ the `csharp-lsp` plugin; serena keeps its seat either way as the per-project mem
 ## 5. Run the captures - in this order
 
 The deliberate captures turn a fresh install into an oriented one. Run each only if its skill is
-installed (`/claude-stack:configure` adds a missing one). The order is dependency order - do not
+installed (`/alfred-code:configure` adds a missing one). The order is dependency order - do not
 shuffle it. These are yours to type: all but the two analyzers (`project-architecture-analyzer`,
 `project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so the assistant
 cannot invoke one on your behalf:
@@ -142,7 +142,7 @@ cannot invoke one on your behalf:
 3. `/project-related-context <name - path> ...` - OPTIONAL, only when this project has sibling
    repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`);
    it never scans on its own. A standalone repo skips it and installs neither the skill nor the
-   `related-project-analyzer` seat - both are opt-in adds via `/claude-stack:configure`.
+   `related-project-analyzer` seat - both are opt-in adds via `/alfred-code:configure`.
 4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 
@@ -164,7 +164,7 @@ whether the Serena memories still describe this branch accurately.
 The architecture docs handle a branch switch themselves: under `local` versioning the docs hook
 serves the branch's own section versions and folds a merged branch back into mainline at the next
 session start; under `git` versioning the branch's commits carry its docs and git does the merge.
-Which one this install uses is `CLAUDE_STACK_DOCS_VERSIONING` in the settings.json `env` block, and
+Which one this install uses is `ALFRED_CODE_DOCS_VERSIONING` in the settings.json `env` block, and
 `node .claude/hooks/docs.js status` names it.
 
 ## Done looks like

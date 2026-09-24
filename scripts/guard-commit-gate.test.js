@@ -17,7 +17,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 // account settings and this checkout's own `.claude/docs/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 const runIn = (hook, payload, opts) =>
@@ -133,7 +133,7 @@ test('guard-ungated-commit: a pure docs diff, and a NOT RUN probe, are not scope
   git('add', '-A'); git('commit', '-qm', 'docs: architecture notes');
   const docsHead = headOf(dir);
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(docsHead, { scope: null }));
-  assert.equal(gateIn(dir, 'git push', { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }), 0,
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_DOCS_PATH: '.claude/docs' }), 0,
     'a docs-only diff touches no identifiable project - no scope: line required');
 
   fs.mkdirSync(path.join(dir, 'apps', 'auth'), { recursive: true });

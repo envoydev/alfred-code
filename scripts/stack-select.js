@@ -385,10 +385,10 @@ function emitTable(graph, layer, opts)
             // src/Api.csproj' tells the user the project uses what the install lacks.
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
             why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
-                : dependencyPlugins.has(name) ? 'carried by claude-stack@claude-stack - cannot be dropped'
+                : dependencyPlugins.has(name) ? 'carried by alfred-code@envoydev - cannot be dropped'
                 : reasons[name] || evidence || '-';
         }
-        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by claude-stack@claude-stack - cannot be dropped'; }
+        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by alfred-code@envoydev - cannot be dropped'; }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {

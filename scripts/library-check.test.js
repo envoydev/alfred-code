@@ -24,7 +24,7 @@ function fx({ sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawS
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'setup-plugin/.claude-plugin'), { recursive: true });
-    fs.writeFileSync(path.join(src, 'setup-plugin/.claude-plugin/plugin.json'), JSON.stringify({ name: 'claude-stack', version: sourceVersion }));
+    fs.writeFileSync(path.join(src, 'setup-plugin/.claude-plugin/plugin.json'), JSON.stringify({ name: 'alfred-code', version: sourceVersion }));
 
     const project = path.join(root, 'proj');
     const config = path.join(root, 'config');
@@ -35,7 +35,7 @@ function fx({ sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawS
     const library = copyLibrary({ sourceDir: src, skillsDir: skills, agentsDir: agents, skills: ['demo'], agents: ['seat'], stamped: null });
     if (!noStamp)
     {
-        fs.writeFileSync(path.join(base, 'claude-stack.stamp'), renderStamp({
+        fs.writeFileSync(path.join(base, 'alfred-code.stamp'), renderStamp({
             repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'a'.repeat(40), version: '1.3.0', installed: '2026-09-24T00:00:00Z',
             action: 'install', scope, hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
         }));
@@ -101,7 +101,7 @@ test('no stamp, or a stamp without library lines, reads as nothing to check', ()
     assert.equal(r.code, 0);
     assert.match(r.out, /no library stamp/);
     const f = fx();
-    fs.writeFileSync(path.join(f.project, '.claude', 'claude-stack.stamp'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
+    fs.writeFileSync(path.join(f.project, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
     assert.match(run(f).out, /no library stamp/);
 });
 

@@ -12,7 +12,7 @@
 const os = require('os');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -75,7 +75,7 @@ async function main() {
   if (!dbPath) return; // no memory server registered for this project - nothing to push
   const level = memory.levelOfPath(dbPath, { home, projectRoot: root }) || 'unknown';
   const project = memory.projectName(root);
-  // related-projects is read through docs.js's own docs-root resolution (CLAUDE_STACK_DOCS_PATH in the
+  // related-projects is read through docs.js's own docs-root resolution (ALFRED_CODE_DOCS_PATH in the
   // settings.json env, default '.claude/docs') - never re-derived here. Its absence (an older or
   // missing docs.js copy) just means no related-project group this session, not a failed push.
   let related = [];

@@ -4,7 +4,7 @@
 // The stack used to keep its own extracted-snapshot cache under the account dir, plus a version
 // probe and an adoption path for Claude Code's marketplace clone. Phase 5 of the plugin migration
 // deleted all three: every marketplace entry shares this repo's root as its `source`, so installing
-// the core plugin leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/claude-stack/
+// the core plugin leaves the WHOLE repo at <config>/plugins/cache/<marketplace>/alfred-code/
 // <version> - RELEASE-SOURCE included - and that is the same snapshot the installer was
 // downloading. The archive and clone routes remain for the two paths with no plugin cache to read:
 // the copy route (both VIA_PLUGIN switches off) and a machine with no `claude` CLI.
@@ -32,9 +32,9 @@ const FAKE_SHA = 'abadcafe'.repeat(5);
 const FIXTURE = fs.mkdtempSync(path.join(os.tmpdir(), 'srccache-fixture-'));
 const RELEASE_SOURCE = path.join(FIXTURE, 'RELEASE-SOURCE');
 fs.writeFileSync(RELEASE_SOURCE, `sha: ${FAKE_SHA}\nref: main\nversion: ${VERSION}\nbuilt: 2026-09-09T00:00:00Z\n`);
-const ARCHIVE = path.join(FIXTURE, 'claude-stack.tar.gz');
+const ARCHIVE = path.join(FIXTURE, 'alfred-code.tar.gz');
 execFileSync('git', ['-C', ROOT, 'archive', '--format=tar.gz', `--add-file=${RELEASE_SOURCE}`, '-o', ARCHIVE, 'HEAD'], { stdio: 'ignore' });
-const ZIP = path.join(FIXTURE, 'claude-stack.zip');
+const ZIP = path.join(FIXTURE, 'alfred-code.zip');
 execFileSync('git', ['-C', ROOT, 'archive', '--format=zip', `--add-file=${RELEASE_SOURCE}`, '-o', ZIP, 'HEAD'], { stdio: 'ignore' });
 test.after(() => fs.rmSync(FIXTURE, { recursive: true, force: true }));
 
@@ -56,7 +56,7 @@ http.createServer((req, res) => {
         res.writeHead(302, { location: '/releases/tag/' + tag }); res.end(); return;
     }
     if (url.startsWith('/releases/tag/')) { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<html></html>'); return; }
-    if (url === '/releases/latest/download/claude-stack.tar.gz' || url === '/releases/latest/download/claude-stack.zip') {
+    if (url === '/releases/latest/download/claude-stack.tar.gz' || url === '/releases/latest/download/claude-stack.zip') { // legacy-name - only the frozen twins download here
         hit('asset');
         const body = fs.readFileSync(url.endsWith('.zip') ? zip : archive);
         res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': body.length });
@@ -105,7 +105,7 @@ function runSh(home, host, env = {}) {
         cwd: home,
         encoding: 'utf8',
         env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, CLAUDE_CONFIG_DIR: '',
-            CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', ...env },
+            CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', ...env }, // legacy-name - the twin's own switches
     });
 }
 
@@ -122,10 +122,10 @@ function installedSkill(home) {
 }
 
 // A plugin cache entry the way `claude plugin install` leaves it: the whole repo under
-// <config>/plugins/cache/<marketplace>/claude-stack/<version>. Built from the same archive the
+// <config>/plugins/cache/<marketplace>/alfred-code/<version>. Built from the same archive the
 // release host serves, so a run that reads it installs exactly what a download would have.
-function plantPluginCache(home, { version = VERSION, marketplace = 'claude-stack', truncated = false } = {}) {
-    const dir = path.join(home, '.claude', 'plugins', 'cache', marketplace, 'claude-stack', version);
+function plantPluginCache(home, { version = VERSION, marketplace = 'envoydev', plugin = 'alfred-code', truncated = false } = {}) {
+    const dir = path.join(home, '.claude', 'plugins', 'cache', marketplace, plugin, version);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('tar', ['-xzf', ARCHIVE, '-C', dir]);
     // The CLI names the directory after the release it installed, so the entry's own RELEASE-SOURCE
@@ -137,12 +137,15 @@ function plantPluginCache(home, { version = VERSION, marketplace = 'claude-stack
     return dir;
 }
 
+// The frozen twins read the 1.x layout, cache/<marketplace>/claude-stack/<version>.
+const TWIN_CACHE = { marketplace: 'claude-stack', plugin: 'claude-stack' }; // legacy-name
+
 test('the plugin cache is the source, and nothing is downloaded', () => {
     const host = startHost();
     const home = work();
     try
     {
-        plantPluginCache(home);
+        plantPluginCache(home, TWIN_CACHE);
         const out = runSh(home, host);
         assert.match(out, /source: plugin cache/, 'the run did not read the cache Claude Code left');
         assert.strictEqual(host.assets, 0, 'an archive was fetched although the cache was there');
@@ -157,8 +160,8 @@ test('the newest version directory wins when the cache holds several', () => {
     const home = work();
     try
     {
-        plantPluginCache(home, { version: '0.9.0' });
-        plantPluginCache(home, { version: '0.10.0' });   // newer by VERSION order, older by string order
+        plantPluginCache(home, { ...TWIN_CACHE, version: '0.9.0' });
+        plantPluginCache(home, { ...TWIN_CACHE, version: '0.10.0' });   // newer by VERSION order, older by string order
         const out = runSh(home, host);
         assert.match(out, /source: plugin cache .*0\.10\.0/, `the older entry was taken:\n${out}`);
         assert.strictEqual(host.assets, 0);
@@ -171,7 +174,7 @@ test('a half-written cache entry is rejected and the archive is taken instead', 
     const home = work();
     try
     {
-        plantPluginCache(home, { truncated: true });
+        plantPluginCache(home, { ...TWIN_CACHE, truncated: true });
         const out = runSh(home, host);
         assert.doesNotMatch(out, /source: plugin cache/, 'a broken entry was installed from');
         assert.match(out, /releases\/latest\/download/, 'the archive is the fallback');
@@ -224,13 +227,13 @@ test('the ps1 twin reads the same plugin cache', { skip: skipNoPwsh }, () => {
     const home = work();
     try
     {
-        plantPluginCache(home);
+        plantPluginCache(home, TWIN_CACHE);
         const out = execFileSync('pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project',
             '-Selection', path.join(home, 'sel.txt'), '-SkillsOnly'], {
             cwd: home,
             encoding: 'utf8',
             env: { ...process.env, STACK_SKILLS_REPO: host.url, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '',
-                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' },
+                CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' }, // legacy-name - the twin's own switches
         });
         assert.match(out, /source: plugin cache/, 'ps1: the cache was not read');
         assert.strictEqual(host.assets, 0, 'ps1: an archive was fetched anyway');
@@ -255,7 +258,7 @@ function plantThree(home) {
     plantPluginCache(home, { version: '0.9.0' });
     plantPluginCache(home, { version: '0.10.0' });                   // newest VALID - the expected answer
     plantPluginCache(home, { version: '0.11.0', truncated: true });  // newer, but half-written
-    return path.join(home, '.claude', 'plugins', 'cache', 'claude-stack', 'claude-stack', '0.10.0');
+    return path.join(home, '.claude', 'plugins', 'cache', 'envoydev', 'alfred-code', '0.10.0');
 }
 
 // Git Bash prints its own mount spelling (/tmp/tmp.X), which native node resolves against the current
@@ -264,33 +267,33 @@ const nativePath = (p) => process.platform === 'win32'
     ? execFileSync('bash', ['-c', 'cygpath -w "$1"', 'cygpath', p], { encoding: 'utf8' }).trim() : p;
 
 // A recording `claude` on PATH, so no snippet test reaches the real CLI or the real account. With
-// `lands`, its `plugin update claude-stack@claude-stack` writes that newer valid entry into the cache -
+// `lands`, its `plugin update alfred-code@envoydev` writes that newer valid entry into the cache -
 // what the real CLI does - so a snippet that picks BEFORE it updates is caught taking the stale one.
 const POSIX_STUB = { skip: process.platform === 'win32' && 'the recording claude stub is a shell script' };
 function stubClaude(home, listing, lands) {
     const bin = path.join(home, 'bin');
     fs.mkdirSync(bin, { recursive: true });
-    const cache = path.join(home, '.claude', 'plugins', 'cache', 'claude-stack', 'claude-stack');
+    const cache = path.join(home, '.claude', 'plugins', 'cache', 'envoydev', 'alfred-code');
     fs.writeFileSync(path.join(home, 'listing.json'), listing);
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh',
         `printf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'claude-calls.log'))}`,
         `if [ "$1 $2" = "plugin list" ]; then cat ${JSON.stringify(path.join(home, 'listing.json'))}; fi`,
-        lands ? `if [ "$1 $2 $3" = "plugin update claude-stack@claude-stack" ]; then cp -R ${JSON.stringify(path.join(cache, '0.10.0'))} ${JSON.stringify(path.join(cache, lands))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(cache, lands, 'RELEASE-SOURCE'))}; fi` : '',
+        lands ? `if [ "$1 $2 $3" = "plugin update alfred-code@envoydev" ]; then cp -R ${JSON.stringify(path.join(cache, '0.10.0'))} ${JSON.stringify(path.join(cache, lands))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(cache, lands, 'RELEASE-SOURCE'))}; fi` : '',
         'exit 0', ''].join('\n'), { mode: 0o755 });
     return bin + path.delimiter + process.env.PATH;
 }
 const claudeCalls = (home) => { try { return fs.readFileSync(path.join(home, 'claude-calls.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
-const CORE_ROW = (scope, version) => JSON.stringify([{ id: 'claude-stack@claude-stack', version, scope, enabled: true }]);
+const CORE_ROW = (scope, version) => JSON.stringify([{ id: 'alfred-code@envoydev', version, scope, enabled: true }]);
 // Every installed stack entry is updated, each at its own scope - the refreshed catalog is what Claude
 // Code launches, so an entry left on its old version can name a file that version lacks. Not another
 // project's row, and not the official marketplace's plugin of the same name.
 const STACK_ROWS = (home) => JSON.stringify([
-    { id: 'claude-stack@claude-stack', version: '0.10.0', scope: 'user', enabled: true },
-    { id: 'serena@claude-stack', version: '0.10.0', scope: 'project', enabled: true, projectPath: fs.realpathSync(home) },
-    { id: 'serena@claude-stack', version: '0.9.0', scope: 'project', enabled: true, projectPath: '/elsewhere/another-project' },
+    { id: 'alfred-code@envoydev', version: '0.10.0', scope: 'user', enabled: true },
+    { id: 'serena@envoydev', version: '0.10.0', scope: 'project', enabled: true, projectPath: fs.realpathSync(home) },
+    { id: 'serena@envoydev', version: '0.9.0', scope: 'project', enabled: true, projectPath: '/elsewhere/another-project' },
     { id: 'serena@claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
 ]);
-const WANT_UPDATES = ['plugin update claude-stack@claude-stack --scope user -y', 'plugin update serena@claude-stack --scope project -y'];
+const WANT_UPDATES = ['plugin update alfred-code@envoydev --scope user -y', 'plugin update serena@envoydev --scope project -y'];
 const updatesIn = (home) => claudeCalls(home).filter((c) => /^plugin update /.test(c)).sort();
 
 test("the protocol's bash snippet updates the core FIRST, takes the entry that lands, and says what was running", POSIX_STUB, () => {
@@ -311,12 +314,12 @@ test("the protocol's bash snippet updates the core FIRST, takes the entry that l
         assert.strictEqual(m[2], '0.12.0', 'it read the cache before the update landed the newer entry');
         assert.strictEqual(m[3], '0.10.0', 'running= must name the version this session loaded, from BEFORE the update');
         const calls = claudeCalls(home);
-        assert.ok(calls.includes('plugin marketplace update claude-stack'), calls.join(' | '));
+        assert.ok(calls.includes('plugin marketplace update envoydev'), calls.join(' | '));
         assert.deepStrictEqual(updatesIn(home), WANT_UPDATES, calls.join(' | '));
     }
     finally
     {
-        const mark = `/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
+        const mark = `/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
         for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
         fs.rmSync(home, { recursive: true, force: true });
     }
@@ -358,7 +361,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
         tmp = nativePath(m[1]);
         assert.strictEqual(m[2], '0.10.0', 'it read a different version than the twins take');
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
-        assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.tar.gz')), 'it downloaded the archive over a usable cache');
+        assert.ok(!fs.existsSync(path.join(tmp, 'alfred-code.tar.gz')), 'it downloaded the archive over a usable cache');
         assert.strictEqual(
             fs.readFileSync(path.join(tmp, 'repo', 'RELEASE-SOURCE'), 'utf8'),
             fs.readFileSync(path.join(want, 'RELEASE-SOURCE'), 'utf8'),
@@ -366,7 +369,7 @@ test("the protocol's bash snippet resolves the same entry as the sh twin", () =>
     }
     finally
     {
-        const mark = nativePath(`/tmp/claude-stack-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`);
+        const mark = nativePath(`/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`);
         for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
         fs.rmSync(home, { recursive: true, force: true });
     }
@@ -390,7 +393,7 @@ test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNo
             'it took a different cache entry than the sh snippet');
         const tmp = out.match(/PS-TMP=(.+)/)[1].trim();
         assert.ok(fs.existsSync(path.join(tmp, 'repo', 'stack', 'skills')), 'nothing was copied into $TMP/repo');
-        assert.ok(!fs.existsSync(path.join(tmp, 'claude-stack.zip')), 'it downloaded the archive over a usable cache');
+        assert.ok(!fs.existsSync(path.join(tmp, 'alfred-code.zip')), 'it downloaded the archive over a usable cache');
         fs.rmSync(tmp, { recursive: true, force: true });
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
@@ -417,7 +420,7 @@ test('the capabilities script and the reviewer protocol resolve to the NEWEST ca
         {
             for (const v of versions)
             {
-                const skills = path.join(home, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', v, 'stack', 'skills');
+                const skills = path.join(home, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', v, 'stack', 'skills');
                 fs.mkdirSync(path.join(skills, 'project-agent-capabilities', 'scripts'), { recursive: true });
                 fs.writeFileSync(path.join(skills, 'project-agent-capabilities', 'scripts', 'capabilities-inventory.js'), '');
                 fs.mkdirSync(path.join(skills, 'project-solve-cross-task', 'references'), { recursive: true });

@@ -9,12 +9,12 @@ const PLUGIN_DIR = path.join(ROOT, 'setup-plugin');
 
 test('marketplace.json is valid and every entry shares the repo root', () => {
     const mp = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    assert.strictEqual(mp.name, 'claude-stack');
+    assert.strictEqual(mp.name, 'envoydev');
     assert.ok(Array.isArray(mp.plugins) && mp.plugins.length >= 1);
     // From Phase 3 every entry is GENERATED over the shared root, the core included - it used to
     // ship from ./setup-plugin, whose own plugin.json was its manifest, but its skills and agents
     // live under stack/, outside that folder.
-    const core = mp.plugins.find(x => x.name === 'claude-stack');
+    const core = mp.plugins.find(x => x.name === 'alfred-code');
     assert.ok(core, 'the core entry must survive every generator run');
     assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided walks ship from the core - init and its setup alias among them');
     assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && core.commands.includes('./setup-plugin/commands/setup.md'));
@@ -26,29 +26,29 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
         for (const rel of [...(p.commands || []), ...(p.skills || []), ...(p.agents || [])])
             assert.ok(fs.existsSync(path.join(ROOT, rel)), `${p.name} lists a path that does not exist: ${rel}`);
     }
-    const hooks = mp.plugins.find(x => x.name === 'claude-stack-hooks');
+    const hooks = mp.plugins.find(x => x.name === 'alfred-code-hooks');
     assert.ok(hooks && hooks.hooks, 'the hooks entry declares its hooks INLINE, so nothing sits at the shared root');
 });
 
 test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
-    assert.strictEqual(pj.name, 'claude-stack');
+    assert.strictEqual(pj.name, 'alfred-code');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
     assert.ok(typeof pj.description === 'string' && pj.description.trim() !== '');
-    // Plugin COMMANDS display namespaced-only (/claude-stack:setup); plugin SKILLS display bare -
+    // Plugin COMMANDS display namespaced-only (/alfred-code:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
-    // (bare /claude-stack, no /claude-stack:claude-stack stutter). Empirically proven layout.
+    // (bare /alfred-code, no /alfred-code:alfred-code stutter). Empirically proven layout.
     assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
     for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
     {
-        assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /claude-stack:${name} command exists`);
+        assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /alfred-code:${name} command exists`);
     }
-    assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md')), 'the /claude-stack router skill exists');
-    assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'claude-stack.md')), 'no router COMMAND - a command named like the plugin displays as the /claude-stack:claude-stack stutter');
+    assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md')), 'the /alfred-code router skill exists');
+    assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'alfred-code.md')), 'no router COMMAND - a command named like the plugin displays as the /alfred-code:alfred-code stutter');
 });
 
 test('init is the walk and setup its thin alias - both manual-only, the alias naming init', () => {
-    // Phase 8 R3: a new name, not a new walk. The alias keeps /claude-stack:setup working for one
+    // Phase 8 R3: a new name, not a new walk. The alias keeps /alfred-code:setup working for one
     // release; a copy of the walk under two names would drift the first time either is edited.
     const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
     const init = read('init');
@@ -64,7 +64,7 @@ test('no tracked plugin file leaks an email address', () => {
     for (const rel of ['.claude-plugin/marketplace.json', 'setup-plugin/.claude-plugin/plugin.json'])
     {
         const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-        assert.ok(!/@[a-z0-9.-]+\.[a-z]{2,}/i.test(text.replace(/@claude-stack|@main/g, '')), `${rel} must not contain an email`);
+        assert.ok(!/@[a-z0-9.-]+\.[a-z]{2,}/i.test(text.replace(/@envoydev|@main/g, '')), `${rel} must not contain an email`);
     }
 });
 
@@ -314,22 +314,22 @@ for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'
 }
 
 // Phase 7, T5: the installer is ONE node command on every OS, and the frozen twins are the
-// one-release fallback behind CLAUDE_STACK_SEED=shell. A body still typing the twin as its default
+// one-release fallback behind ALFRED_CODE_SEED=shell. A body still typing the twin as its default
 // installs from a script nobody edits any more; one that drops the fallback line strands the user
 // who set the switch. The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
 test('every command that runs the installer runs the SEED, with the shell route named as the fallback', () => {
     for (const name of ['init', 'update', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/claude-stack\.js" (install|update)/,
+        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update)/,
             `${name} does not run the Node seed`);
-        assert.match(body, /CLAUDE_STACK_SEED=shell/, `${name} does not name the shell fallback`);
-        assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/claude-stack\.sh"/.test(body),
+        assert.match(body, /ALFRED_CODE_SEED=shell/, `${name} does not name the shell fallback`);
+        assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/alfred-code\.sh"/.test(body),
             `${name} still offers the twin as a first-class route`);
     }
     // status runs no installer at all, so it names neither.
     const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
-    assert.ok(!/claude-stack\.(sh|ps1)|install\/claude-stack\.js/.test(status), 'status must stay read-only');
+    assert.ok(!/alfred-code\.(sh|ps1)|install\/alfred-code\.js/.test(status), 'status must stay read-only');
 });
 
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
@@ -362,8 +362,8 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
-    assert.match(body, /install\/claude-stack\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
-    assert.match(body, /CLAUDE_STACK_SEED=shell/, '... and still names the one-release shell fallback');
+    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
+    assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the one-release shell fallback');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');
@@ -413,11 +413,11 @@ test('every command holds to the shared one-download protocol and the router ski
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
-    const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'claude-stack', 'SKILL.md'), 'utf8');
-    assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*claude-stack/, 'router skill named like the plugin -> displays bare /claude-stack');
+    const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8');
+    assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*alfred-code/, 'router skill named like the plugin -> displays bare /alfred-code');
     for (const name of ['init', 'update', 'configure'])
     {
-        assert.match(router, new RegExp('/claude-stack:' + name), `/claude-stack routes to /claude-stack:${name}`);
+        assert.match(router, new RegExp('/alfred-code:' + name), `/alfred-code routes to /alfred-code:${name}`);
     }
 });
 

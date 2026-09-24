@@ -193,14 +193,14 @@ test('user prompts: one typed turn counts once; echoes, stdout siblings and comp
     { type: 'user', timestamp: '2026-07-15T07:00:00.000Z', parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'run the audit' } },
     // the same typed turn's sibling records share the parentUuid - they are not new prompts
     { type: 'user', timestamp: '2026-07-15T07:00:00.100Z', parentUuid: 'p1', origin: { kind: 'human' }, message: { content: '<local-command-stdout>done</local-command-stdout>' } },
-    { type: 'user', timestamp: '2026-07-15T07:01:00.000Z', parentUuid: 'p2', origin: { kind: 'slash_command' }, message: { content: '<command-name>/claude-stack:setup</command-name>' } },
+    { type: 'user', timestamp: '2026-07-15T07:01:00.000Z', parentUuid: 'p2', origin: { kind: 'slash_command' }, message: { content: '<command-name>/alfred-code:setup</command-name>' } },
     { type: 'user', timestamp: '2026-07-15T07:02:00.000Z', parentUuid: 'p3', isCompactSummary: true, message: { content: 'summary' } },
     // no origin at all: the exclusion list is the fallback
     { type: 'user', timestamp: '2026-07-15T07:03:00.000Z', parentUuid: 'p4', message: { content: '<task-notification>agent done</task-notification>' } },
   ]);
   const { main } = run([file]);
   assert.strictEqual(main.userPrompts, 1, 'prompt count was inflated up to 500% by echoes and siblings');
-  assert.strictEqual(main.commandInvocations['claude-stack:setup'], 1, 'the slash command is still stamped');
+  assert.strictEqual(main.commandInvocations['alfred-code:setup'], 1, 'the slash command is still stamped');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -1263,7 +1263,7 @@ test("inventory: the session's own roster wins, and a stamp that postdates the s
   fs.writeFileSync(path.join(claude, 'rules', 'baseline-demo.md'), '---\ndescription: always-on\n---\n\nbody\n');
   // the install landed AFTER the session ran - the very drift that reported 44 skills to a session
   // whose own transcript proves `.claude` did not exist
-  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'source: x\nref: main\nsha: abcdef1234567890\nversion: 0.9.9\ninstalled: 2026-08-01T00:00:00Z\n');
+  fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'source: x\nref: main\nsha: abcdef1234567890\nversion: 0.9.9\ninstalled: 2026-08-01T00:00:00Z\n');
   const file = path.join(dir, 'session.jsonl');
   fs.writeFileSync(file, [
     line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
@@ -1293,7 +1293,7 @@ test('--report-md carries a Session vintage block naming what the session loaded
   // today's source has a section the session never saw
   fs.writeFileSync(path.join(claude, 'skills', 'demo-skill', 'SKILL.md'),
     '---\nname: demo-skill\ndescription: "fixture"\n---\n\n# Demo\n\nstep one\n\n## A rule added later\n\nnever load a whole file\n');
-  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\ninstalled: 2026-07-01T00:00:00Z\n');
+  fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\ninstalled: 2026-07-01T00:00:00Z\n');
   const file = path.join(dir, 'session.jsonl');
   fs.writeFileSync(file, [
     line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' }, version: '2.1.0' }),

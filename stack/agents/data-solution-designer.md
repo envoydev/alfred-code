@@ -8,7 +8,7 @@ color: cyan
 skills:
   - database-conventions
   - dotnet-migrate
-  - claude-stack:project-solution-design
+  - alfred-code:project-solution-design
 
 ---
 

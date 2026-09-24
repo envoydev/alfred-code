@@ -13,7 +13,7 @@ const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const SELECTION = 'skill markdown-style\nrule markdown-docs\n';
-const COPY_ROUTE = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' };
+const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 
 function write(repo, rel, text = 'x\n')
 {
@@ -102,9 +102,9 @@ test('seed update: a retired plugin still installed is uninstalled at its own sc
 test('seed update: an enabled retired per-stack entry is uninstalled; a parked one and one at another scope stay', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify([
-        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: false },
-        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+        { id: 'claude-stack-web-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@envoydev', version: '1.2.0', scope: 'project', enabled: false },
+        { id: 'claude-stack-aspnet@envoydev', version: '1.2.0', scope: 'user', enabled: true },
     ]);
     const { calls } = seedRun('update', SELECTION, { plugins: listing });
     const uninstalls = calls.filter((c) => /plugin uninstall/.test(c));
@@ -118,14 +118,14 @@ test('seed update: an enabled retired per-stack entry is uninstalled; a parked o
 test('seed update: a blind listing read keeps the stamp picks, so the next update still copies them', POSIX_ONLY, () =>
 {
     const healthy = JSON.stringify([
-        { id: 'claude-stack@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'alfred-code@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
     ]);
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
         fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
-        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'),
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'),
             'version: 1.2.0\nsha: 0000000\npicked-skills: angular-conventions@claude-stack-angular,angular-testing@claude-stack-angular\npicked-agents: \n');
     };
     const { steps } = seedRun(['update', 'update'], SELECTION, {
@@ -133,7 +133,7 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
         each: (repo, i) =>
         {
             if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), healthy);
-            const stamp = fs.readFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'utf8');
+            const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
             return { picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '', copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')) };
         },
     });
@@ -146,15 +146,15 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
 test('seed update: a denied seat of a retired entry that stays installed keeps its own deny spelling', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify([
-        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+        { id: 'claude-stack-web-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-aspnet@envoydev', version: '1.2.0', scope: 'user', enabled: true },
     ]);
     const prepare = (repo) => write(repo, '.claude/settings.json', `${JSON.stringify({ permissions: { deny: [
         'Agent(claude-stack-aspnet:aspnet-verifier)', 'Agent(claude-stack-web-angular:web-angular-verifier)'] } }, null, 2)}\n`);
     const { result } = seedRun('update', SELECTION, { plugins: listing, prepare,
         inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).permissions.deny });
     assert.ok(result.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), `kept at user scope, so its spelling stays: ${result.join(',')}`);
-    assert.ok(result.includes('Agent(claude-stack:aspnet-verifier)'), result.join(','));
+    assert.ok(result.includes('Agent(alfred-code:aspnet-verifier)'), result.join(','));
     assert.ok(!result.includes('Agent(claude-stack-web-angular:web-angular-verifier)'), `uninstalled here, so only the core spelling: ${result.join(',')}`);
-    assert.ok(result.includes('Agent(claude-stack:web-angular-verifier)'), result.join(','));
+    assert.ok(result.includes('Agent(alfred-code:web-angular-verifier)'), result.join(','));
 });

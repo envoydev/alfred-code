@@ -23,7 +23,7 @@ const stampLine = root => fs.readFileSync(path.join(root, '.claude', 'rules', 'b
     .split('\n').find(l => l.includes("This install's root"));
 
 test('stamps the placeholder with the settings env value', () => {
-    const root = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs"}}');
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
     run(root);
     assert.match(stampLine(root), /This install's root: `docs`/);
 });
@@ -38,9 +38,9 @@ test('missing settings, missing key, and broken JSON all stamp the default', () 
 });
 
 test('re-stamps an already stamped value after an env change (the configure path)', () => {
-    const root = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs"}}');
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
     run(root);
-    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), '{"env":{"CLAUDE_STACK_DOCS_PATH":"team/docs"}}');
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
     run(root);
     assert.match(stampLine(root), /This install's root: `team\/docs`/);
 });
@@ -64,7 +64,7 @@ const envOf = root => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'set
 // grandfathered in), any other folder is a domain only because of the watch.json written beside its doc.
 function projectWithCommittedDocs(docsPath, versioning, domain = 'architecture')
 {
-    const root = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: docsPath, CLAUDE_STACK_DOCS_VERSIONING: versioning } }));
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: docsPath, ALFRED_CODE_DOCS_VERSIONING: versioning } }));
     gitIn(root, 'init', '-q', '-b', 'develop', '.');
     fs.mkdirSync(path.join(root, docsPath, domain), { recursive: true });
     fs.writeFileSync(path.join(root, docsPath, domain, 'ARCHITECTURE.md'), '# Map\n');
@@ -79,10 +79,10 @@ test('--reprobe-versioning re-reads the mode at the docs path that ended up in t
     try
     {
         assert.match(reprobe(root), /docs versioning re-probed at docs\/: 'git'/);
-        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'git');
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
         assert.match(reprobe(root, 'git'), /docs versioning already 'git' at docs\//, 'a second run says so and rewrites nothing');
         assert.match(reprobe(root), /holds 'git', not the 'local'/, 'and the same command twice stops at the guard');
-        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'git');
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -97,12 +97,12 @@ test('--reprobe-versioning reads committed docs in any domain, and a watch-less 
     try
     {
         assert.match(reprobe(style), /docs versioning re-probed at docs\/: 'git'/, 'code-style/ alone is committed docs');
-        assert.strictEqual(envOf(style).CLAUDE_STACK_DOCS_VERSIONING, 'git');
+        assert.strictEqual(envOf(style).ALFRED_CODE_DOCS_VERSIONING, 'git');
         fs.rmSync(path.join(quality, 'docs', 'quality', 'watch.json'));   // the findings folder never carries one
         fs.mkdirSync(path.join(quality, 'docs', 'architecture'));
         fs.writeFileSync(path.join(quality, 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');   // an UNTRACKED domain beside it
         assert.match(reprobe(quality), /docs versioning already 'local' at docs\//, 'a folder with no watch.json is no domain, so the untracked architecture/ decides');
-        assert.strictEqual(envOf(quality).CLAUDE_STACK_DOCS_VERSIONING, 'local');
+        assert.strictEqual(envOf(quality).ALFRED_CODE_DOCS_VERSIONING, 'local');
     }
     finally { for (const d of [style, quality]) fs.rmSync(d, { recursive: true, force: true }); }
 });
@@ -113,27 +113,27 @@ test('--reprobe-versioning refuses when the file holds a value this run did not 
     {
         const out = reprobe(root, 'git');                     // ... and an install that seeded something else
         assert.match(out, /holds 'local', not the 'git'/);
-        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'local', 'a decision is never re-probed away');
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'local', 'a decision is never re-probed away');
         assert.match(execFileSync('node', [SCRIPT, root, '--reprobe-versioning'], { encoding: 'utf8' }),
             /needs the value the install seeded/, 'and the flag without its value probes nothing');
-        assert.strictEqual(envOf(root).CLAUDE_STACK_DOCS_VERSIONING, 'local');
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'local');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test('--reprobe-versioning is a no-op where there is no key, no repo or no project root', () => {
-    const noKey = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs"}}');
-    const noRepo = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs","CLAUDE_STACK_DOCS_VERSIONING":"git"}}');
+    const noKey = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    const noRepo = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs","ALFRED_CODE_DOCS_VERSIONING":"git"}}');
     const acct = fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-acct-'));
     try
     {
-        assert.match(reprobe(noKey), /no CLAUDE_STACK_DOCS_VERSIONING/);
-        assert.strictEqual(envOf(noKey).CLAUDE_STACK_DOCS_VERSIONING, undefined, 'a key nobody set is never introduced here');
+        assert.match(reprobe(noKey), /no ALFRED_CODE_DOCS_VERSIONING/);
+        assert.strictEqual(envOf(noKey).ALFRED_CODE_DOCS_VERSIONING, undefined, 'a key nobody set is never introduced here');
         assert.match(reprobe(noRepo, 'git'), /not a git repository/);
-        assert.strictEqual(envOf(noRepo).CLAUDE_STACK_DOCS_VERSIONING, 'git', 'and the value is left alone');
+        assert.strictEqual(envOf(noRepo).ALFRED_CODE_DOCS_VERSIONING, 'git', 'and the value is left alone');
         fs.mkdirSync(path.join(acct, 'rules'), { recursive: true });
         fs.copyFileSync(SOURCE_RULE, path.join(acct, 'rules', 'baseline-docs-root.md'));
-        fs.writeFileSync(path.join(acct, 'settings.json'), '{"env":{"CLAUDE_STACK_DOCS_VERSIONING":"git"}}');
+        fs.writeFileSync(path.join(acct, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_VERSIONING":"git"}}');
         const out = execFileSync('node', [SCRIPT, '--claude-dir', acct, '--reprobe-versioning'], { encoding: 'utf8' });
         assert.match(out, /needs a project root/, 'a global install has no repo to probe');
     }
@@ -146,25 +146,25 @@ test('--reprobe-versioning is a no-op where there is no key, no repo or no proje
 const seed = (root) => execFileSync('node', [SCRIPT, root, '--seed-versioning'], { encoding: 'utf8' });
 
 test('--seed-versioning writes the probed value when the key is absent', () => {
-    const uncommitted = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs' } }));
-    const fresh = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs' } }));
-    const ignored = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs' } }));
+    const uncommitted = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
+    const fresh = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
+    const ignored = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
     try
     {
         // absent + uncommitted docs (a domain exists, none tracked) -> local
         gitIn(uncommitted, 'init', '-q', '-b', 'develop', '.');
         fs.mkdirSync(path.join(uncommitted, 'docs', 'architecture'), { recursive: true });
         fs.writeFileSync(path.join(uncommitted, 'docs', 'architecture', 'ARCHITECTURE.md'), '# Map\n');
-        assert.match(seed(uncommitted), /settings\.json env: CLAUDE_STACK_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
-        assert.strictEqual(envOf(uncommitted).CLAUDE_STACK_DOCS_VERSIONING, 'local');
+        assert.match(seed(uncommitted), /settings\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
+        assert.strictEqual(envOf(uncommitted).ALFRED_CODE_DOCS_VERSIONING, 'local');
 
         // absent + a fresh, non-ignored root -> git
         gitIn(fresh, 'init', '-q', '-b', 'develop', '.');
         fs.writeFileSync(path.join(fresh, 'README.md'), '# repo\n');
         gitIn(fresh, 'add', '-A');
         gitIn(fresh, 'commit', '-qm', 'seed');
-        assert.match(seed(fresh), /CLAUDE_STACK_DOCS_VERSIONING seeded 'git' at docs\/ - the docs are not kept out of git/);
-        assert.strictEqual(envOf(fresh).CLAUDE_STACK_DOCS_VERSIONING, 'git');
+        assert.match(seed(fresh), /ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\/ - the docs are not kept out of git/);
+        assert.strictEqual(envOf(fresh).ALFRED_CODE_DOCS_VERSIONING, 'git');
 
         // absent + a folder-only ignore pattern naming the root itself, root not created -> local (the trailing-slash probe)
         gitIn(ignored, 'init', '-q', '-b', 'develop', '.');
@@ -172,15 +172,15 @@ test('--seed-versioning writes the probed value when the key is absent', () => {
         fs.writeFileSync(path.join(ignored, 'README.md'), '# repo\n');
         gitIn(ignored, 'add', '-A');
         gitIn(ignored, 'commit', '-qm', 'seed');
-        assert.match(seed(ignored), /CLAUDE_STACK_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
-        assert.strictEqual(envOf(ignored).CLAUDE_STACK_DOCS_VERSIONING, 'local');
+        assert.match(seed(ignored), /ALFRED_CODE_DOCS_VERSIONING seeded 'local' at docs\/ - the docs are kept out of git/);
+        assert.strictEqual(envOf(ignored).ALFRED_CODE_DOCS_VERSIONING, 'local');
         assert.ok(!fs.existsSync(path.join(ignored, 'docs')), 'the probe never creates the root it is checking');
     }
     finally { for (const d of [uncommitted, fresh, ignored]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 test('--seed-versioning leaves an existing value untouched, byte for byte', () => {
-    const root = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs","CLAUDE_STACK_DOCS_VERSIONING":"local"}}');
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs","ALFRED_CODE_DOCS_VERSIONING":"local"}}');
     const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
     try
     {
@@ -222,7 +222,7 @@ test('--seed-versioning refuses JSON of the wrong shape: no write, a message, ex
 });
 
 test('--seed-versioning preserves every other env key and merges only the one it owns', () => {
-    const root = makeProject(JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs', CLAUDE_STACK_INSTRUMENT: '1' } }));
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs', ALFRED_CODE_INSTRUMENT: '1' } }));
     try
     {
         gitIn(root, 'init', '-q', '-b', 'develop', '.');
@@ -231,9 +231,9 @@ test('--seed-versioning preserves every other env key and merges only the one it
         gitIn(root, 'commit', '-qm', 'seed');
         seed(root);
         const env = envOf(root);
-        assert.strictEqual(env.CLAUDE_STACK_DOCS_VERSIONING, 'git');
-        assert.strictEqual(env.CLAUDE_STACK_INSTRUMENT, '1', 'an unrelated key survives the merge');
-        assert.strictEqual(env.CLAUDE_STACK_DOCS_PATH, 'docs');
+        assert.strictEqual(env.ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, '1', 'an unrelated key survives the merge');
+        assert.strictEqual(env.ALFRED_CODE_DOCS_PATH, 'docs');
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -247,7 +247,7 @@ test('--seed-versioning skips a global install (no project repo to probe)', () =
         fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{}}');
         const out = execFileSync('node', [SCRIPT, '--claude-dir', dir, '--seed-versioning'], { encoding: 'utf8' });
         assert.match(out, /--seed-versioning needs a project root - skipped for a global install/);
-        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).env.CLAUDE_STACK_DOCS_VERSIONING, undefined);
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING, undefined);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -259,7 +259,7 @@ test('--claude-dir stamps a global install from the account dir itself', () => {
     {
         fs.mkdirSync(path.join(dir, 'rules'), { recursive: true });
         fs.copyFileSync(SOURCE_RULE, path.join(dir, 'rules', 'baseline-docs-root.md'));
-        fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{"CLAUDE_STACK_DOCS_PATH":"global/docs"}}');
+        fs.writeFileSync(path.join(dir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"global/docs"}}');
         execFileSync('node', [SCRIPT, '--claude-dir', dir], { encoding: 'utf8' });
         const line = fs.readFileSync(path.join(dir, 'rules', 'baseline-docs-root.md'), 'utf8').split('\n').find(l => l.includes("This install's root"));
         assert.match(line, /This install's root: `global\/docs`/);

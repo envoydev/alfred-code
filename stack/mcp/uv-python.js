@@ -9,7 +9,7 @@
 // ruamel.yaml.clib ship no ARM64 wheel on ANY Python, while the x64 CPython runs there under the
 // OS's own emulation with every wheel (docs/uv-python-pin-evidence.md).
 //
-//   CLAUDE_STACK_UV_PYTHON   a uv python request that replaces the choice below (e.g. 3.12), read
+//   ALFRED_CODE_UV_PYTHON   a uv python request that replaces the choice below (e.g. 3.12), read
 //                            from the shell env, then the project's settings.local.json, its
 //                            settings.json and the account settings.json `env` - a plugin server never
 //                            sees a PROJECT settings env key (memory-launch.js says why), so the files
@@ -37,7 +37,7 @@ function isWindowsArm({ arch, env })
 // This machine's file before the shared one, the way Claude Code layers them.
 function overrideFrom({ env, projectDir })
 {
-    const own = (env.CLAUDE_STACK_UV_PYTHON || '').trim();
+    const own = (env.ALFRED_CODE_UV_PYTHON || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     for (const file of [
@@ -48,7 +48,7 @@ function overrideFrom({ env, projectDir })
     {
         try
         {
-            const value = String(((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}).CLAUDE_STACK_UV_PYTHON || '').trim();
+            const value = String(((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}).ALFRED_CODE_UV_PYTHON || '').trim();
             if (value) return value;
         }
         catch { /* absent, unreadable or malformed: the next file answers */ }

@@ -65,7 +65,7 @@ test('where keeps the last slot for the area-wide section when narrow ones would
   } finally { r.rm(); }
 });
 
-test('the docs root follows CLAUDE_STACK_DOCS_PATH', () => {
+test('the docs root follows ALFRED_CODE_DOCS_PATH', () => {
   const r = repo({ docsPath: 'docs', docs: { 'references/patterns.md': PATTERNS } });
   try {
     assert.match(r.cli(['show', 'patterns#orders']).stdout, /ledgered/);
@@ -137,7 +137,7 @@ test('in place: on mainline, with committed docs, and without git', () => {
 // from git. The declaration WINS in both directions - a doc write must never be silently untracked or silently
 // local - and the engine says so where the setting and the repo disagree.
 test('declared git versioning writes in place although git ignores the docs', () => {
-  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     r.git('switch', '-qc', 'feat/declared-git');
@@ -147,13 +147,13 @@ test('declared git versioning writes in place although git ignores the docs', ()
     assert.ok(!r.exists('.claude/docs/.branches'), 'git versioning never writes an overlay');
     assert.match(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/);
     const st = r.cli(['status'], undefined, GIT).stdout;
-    assert.match(st, /^mode: git \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/m);
+    assert.match(st, /^mode: git \(declared by ALFRED_CODE_DOCS_VERSIONING/m);
+    assert.match(st, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/m);
   } finally { r.rm(); }
 });
 
 test('declared local versioning keeps the branch overlay although the docs are committed', () => {
-  const LOCAL = { CLAUDE_STACK_DOCS_VERSIONING: 'local' };
+  const LOCAL = { ALFRED_CODE_DOCS_VERSIONING: 'local' };
   const r = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS } });
   try {
     r.git('switch', '-qc', 'feat/declared-local');
@@ -163,8 +163,8 @@ test('declared local versioning keeps the branch overlay although the docs are c
     assert.doesNotMatch(r.read('.claude/docs/architecture/references/patterns.md'), /capped at 10/, 'the committed text is untouched');
     assert.match(r.cli(['show', 'patterns#orders'], undefined, LOCAL).stdout, /capped at 10/, 'and the branch reads its own version');
     const st = r.cli(['status'], undefined, LOCAL).stdout;
-    assert.match(st, /^mode: overlay \(declared by CLAUDE_STACK_DOCS_VERSIONING/m);
-    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+    assert.match(st, /^mode: overlay \(declared by ALFRED_CODE_DOCS_VERSIONING/m);
+    assert.match(st, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
   } finally { r.rm(); }
 });
 
@@ -193,8 +193,8 @@ test('committed docs in a domain other than architecture/ are read as committed,
     assert.ok(!r.exists('.claude/docs/.branches'), 'nothing is written under .branches/ inside a docs root git versions');
     assert.match(r.read('.claude/docs/code-style/CODE-STYLE.md'), /next line/, 'the committed file itself carries the change');
     // and a declaration that disagrees is REPORTED, naming the docs root the probe now answers for
-    const st = r.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: 'local' }).stdout;
-    assert.match(st, /^Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
+    const st = r.cli(['status'], undefined, { ALFRED_CODE_DOCS_VERSIONING: 'local' }).stdout;
+    assert.match(st, /^Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/m);
   } finally { r.rm(); }
 });
 
@@ -204,7 +204,7 @@ test('a committed docs root holding no domain at all is no fact to disagree with
   const r = repo({ tracked: true, files: { '.claude/docs/quality/ASSESSMENT.md': '# Findings\n' } });
   try {
     for (const mode of ['git', 'local']) {
-      const st = r.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: mode }).stdout;
+      const st = r.cli(['status'], undefined, { ALFRED_CODE_DOCS_VERSIONING: mode }).stdout;
       assert.doesNotMatch(st, /Versioning mismatch/, `quality/ carries no watch.json, so it is no domain: '${mode}'`);
     }
   } finally { r.rm(); }
@@ -217,21 +217,21 @@ test('absent, empty or unknown versioning falls back to the kept-out-of-git rule
   const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS } });
   try {
     for (const v of ['', 'auto', 'yes', 'true']) {
-      const extra = { CLAUDE_STACK_DOCS_VERSIONING: v };
+      const extra = { ALFRED_CODE_DOCS_VERSIONING: v };
       const a = ignored.cli(['status'], undefined, extra).stdout;
       const b = committed.cli(['status'], undefined, extra).stdout;
       assert.match(a, /^mode: overlay \(docs are kept out of git - branch versions live in \.branches\/\)/m, `ignored docs at '${v}'`);
       assert.match(b, /^mode: git \(docs are not kept out of git - git versions them per branch\)/m, `committed docs at '${v}'`);
       for (const out of [a, b]) assert.doesNotMatch(out, /Versioning mismatch/, `nothing declared, nothing to mismatch at '${v}'`);
     }
-    assert.match(ignored.cli(['status'], undefined, { CLAUDE_STACK_DOCS_VERSIONING: ' GIT ' }).stdout, /^mode: git \(declared/m, 'the value is trimmed and read case-insensitively');
+    assert.match(ignored.cli(['status'], undefined, { ALFRED_CODE_DOCS_VERSIONING: ' GIT ' }).stdout, /^mode: git \(declared/m, 'the value is trimmed and read case-insensitively');
   } finally { ignored.rm(); committed.rm(); }
 });
 
 // In git mode the automatic halves have nothing to do - git carries the docs with the branch - and an overlay
 // written before the setting changed is stranded, exactly as it is when a previously ignored docs root is committed.
 test('git versioning stands promote down and strands an overlay written before the flip', () => {
-  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {
     r.git('switch', '-qc', 'feat/left');
@@ -250,7 +250,7 @@ test('git versioning stands promote down and strands an overlay written before t
 // guard: a merged, never-promoted overlay whose branch is gone was deleted with its text. The whole promote /
 // prune machinery stands down under git versioning; naming one by hand still works.
 test('git versioning: the 30-day sweep stands down instead of deleting what a promote would have kept', () => {
-  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
   const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   const over = '.claude/docs/.branches/feat-landed/architecture/references/patterns/orders.md';
   try {
@@ -278,7 +278,7 @@ test('the mode messages name the env key that declared the mode, never a hardcod
   const enginePath = require.resolve('../stack/hooks/docs.js');
   const saved = { ...process.env };
   try {
-    Object.assign(process.env, { CLAUDE_PROJECT_DIR: r.root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: '' });
+    Object.assign(process.env, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '' });
     delete require.cache[enginePath];
     const docs = require(enginePath);
     docs.VERSIONING_KEYS.unshift('DOCS_VERSIONING_OTHER_SPELLING');
@@ -909,7 +909,7 @@ test('status: mode, branch, overrides and conflicts; a shallow clone skips promo
     r.git('switch', '-q', 'develop');
     const clone = `${r.root}-shallow`;
     require('node:child_process').spawnSync('git', ['clone', '-q', '--depth', '1', `file://${r.root}`, clone]);
-    const s = require('node:child_process').spawnSync(process.execPath, [require('./docs-fixture').HOOKS + '/docs.js', 'promote', '--merged'], { cwd: clone, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: clone, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    const s = require('node:child_process').spawnSync(process.execPath, [require('./docs-fixture').HOOKS + '/docs.js', 'promote', '--merged'], { cwd: clone, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: clone, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
     assert.match(s.stdout, /shallow clone: merged branches cannot be detected/);
     fs.rmSync(clone, { recursive: true, force: true });
   } finally { r.rm(); }
@@ -982,7 +982,7 @@ const ENGINE_PATH = require.resolve(path.join(require('./docs-fixture').HOOKS, '
 function requireEngine(root) {
   delete require.cache[ENGINE_PATH];
   process.env.CLAUDE_PROJECT_DIR = root;
-  process.env.CLAUDE_STACK_DOCS_PATH = '.claude/docs';
+  process.env.ALFRED_CODE_DOCS_PATH = '.claude/docs';
   process.env.CLAUDE_DOCS_PATH = '';
   return require(ENGINE_PATH);
 }
@@ -1875,7 +1875,7 @@ test('status says the end-of-session check is blind without git', () => {
     fs.mkdirSync(path.join(root, '.claude', 'docs', 'architecture', 'references'), { recursive: true });
     fs.writeFileSync(path.join(root, '.claude', 'docs', 'architecture', 'references', 'patterns.md'), PATTERNS);
     const out = spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), 'status'], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' },
+      cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '' },
     });
     assert.strictEqual(out.status, 0);
     assert.match(out.stdout, /^mode: no git \(docs written in place; the end-of-session check cannot see what changed\)/m);
@@ -1916,7 +1916,7 @@ test('the engine log lands under the docs root, beside hook-blocks', () => {
 // refuses the write and hands the text that is there now over, instead of dropping the first rewrite.
 
 test('the hash is content only, so a re-stamp is no lost update', () => {
-  const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+  const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
   const r = repo({ tracked: true, files: { 'src/Api/Orders/Refund.cs': 'class Refund {}\n' }, docs: { 'references/patterns.md': PATTERNS } });
   try {
     const before = r.cli(['hash', 'patterns#orders'], '', GIT).stdout.trim();

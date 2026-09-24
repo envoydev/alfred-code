@@ -246,7 +246,7 @@ test('lintOptionalCites flags a NAMED load of a skill that can be absent; a desc
 
 // The usage-policy block ships VERBATIM into every project's generated capabilities rule and is
 // never re-fetched, so a project can carry a two-release-old policy with nothing able to notice.
-// The stamp is what /claude-stack:validate compares a project's copy against - so it has to be
+// The stamp is what /alfred-code:validate compares a project's copy against - so it has to be
 // true in the source first, and the lint is what keeps it true.
 test('check 29: the capabilities usage policy carries a stamp that matches its own block', () =>
 {
@@ -586,10 +586,10 @@ test('check 44: a second plugin, a double home and a lost item are all findings'
 
     const second = placement();
     second.plugins['claude-stack-aspnet'] = { skills: [], agents: [], dependencies: [] };
-    assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than claude-stack/.test(f)), 'a per-stack plugin is caught');
+    assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than alfred-code/.test(f)), 'a per-stack plugin is caught');
 
     const doubled = placement();
-    doubled.plugins['claude-stack'].skills.push('dotnet');   // already library
+    doubled.plugins['alfred-code'].skills.push('dotnet');   // already library
     assert.ok(lintPluginPlacement(doubled).some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
 
     const lost = placement();
@@ -633,7 +633,7 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
 test('check 48: the hooks entry matches the installer table, and every wired hook carries the gate', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
     assert.deepStrictEqual(lintHooksEntry(), [],
-        'the committed claude-stack-hooks entry must match `build-marketplace.js --hooks-entry`');
+        'the committed alfred-code-hooks entry must match `build-marketplace.js --hooks-entry`');
 });
 
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {

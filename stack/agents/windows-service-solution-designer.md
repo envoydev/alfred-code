@@ -10,7 +10,7 @@ skills:
   - dotnet-hosted-services
   - dotnet-windows-service
   - dotnet-testing
-  - claude-stack:project-solution-design
+  - alfred-code:project-solution-design
 
 ---
 

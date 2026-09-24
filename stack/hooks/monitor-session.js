@@ -7,7 +7,7 @@
 //   context - the session's context reached 80% of the fresh-session trigger `fresh-session.js`
 //             computes (one table - no second window guess), once per session.
 // A turn is the span between two UserPromptSubmit events; a subagent is counted under its own
-// agent_id. CLAUDE_STACK_MONITOR: `log` (the seed, and the value when absent) writes the rows and
+// agent_id. ALFRED_CODE_MONITOR: `log` (the seed, and the value when absent) writes the rows and
 // injects nothing - the week that says whether a threshold is right; `inject` also hands the note
 // back as PostToolUse additionalContext; `0` is off. Thresholds stay constants until those rows say
 // otherwise. State: <docs-path>/flow/monitor-<session>.json, rewritten per call, reset on garbage.
@@ -94,7 +94,7 @@ module.exports = { step, REPEAT_AT, SCOPE_OVER, CONTEXT_SHARE };
 if (require.main === module)
 {
   // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook: the
-  // CLAUDE_STACK_HOOKS_OFF csv, and the migration window where the plugin copy stands down while a
+  // ALFRED_CODE_HOOKS_OFF csv, and the migration window where the plugin copy stands down while a
   // project still wires its copied twin. Fail-open - no prelude leaves this hook running.
   try
   {
@@ -102,7 +102,7 @@ if (require.main === module)
     if (standDown('monitor-session')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  const mode = String(process.env.CLAUDE_STACK_MONITOR || 'log').trim().toLowerCase();
+  const mode = String(process.env.ALFRED_CODE_MONITOR || 'log').trim().toLowerCase();
   if (mode === '0' || mode === 'off') process.exit(0);
 
   let payload;
@@ -111,9 +111,9 @@ if (require.main === module)
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
 
-  // CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH the pre-0.2.43 spelling, still read.
+  // ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH the pre-0.2.43 spelling, still read.
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const docs = path.resolve(root, process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs');
+  const docs = path.resolve(root, process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs');
   const sid = String(payload.session_id || 'nosession');
   const stateFile = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
   let state = null;

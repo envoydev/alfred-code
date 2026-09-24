@@ -1,7 +1,7 @@
 'use strict';
 // THE INSTALL STAMP OF THE NODE SEED - Phase 7, T2.
 //
-// The stamp is read by two things that matter: `/claude-stack:configure`, which diffs its SHA
+// The stamp is read by two things that matter: `/alfred-code:configure`, which diffs its SHA
 // against main to say what an update would bring, and `--installed-only`, which reads
 // `shipped-hooks` and the two `installed-always-*` lines to tell an item the user DROPPED from one
 // that did not exist when the install was made. On disk those two look identical, so a wrong line
@@ -35,7 +35,7 @@ function project({ rules = [], servers = {}, plugins = {}, always } = {})
     return { base, src, mcpFile: path.join(base, '.mcp.json') };
 }
 
-const SOURCE = (dir) => ({ dir, sha: 'f'.repeat(40), ref: 'main', repoUrl: 'https://example.invalid/envoydev/claude-stack' });
+const SOURCE = (dir) => ({ dir, sha: 'f'.repeat(40), ref: 'main', repoUrl: 'https://example.invalid/envoydev/alfred-code' });
 
 function write(p, opts = {})
 {
@@ -69,9 +69,9 @@ test('install-stamp: a failed run leaves the PREVIOUS stamp untouched', () =>
 {
     const p = project();
     write(p);
-    const before = fs.readFileSync(path.join(p.base, '.claude', 'claude-stack.stamp'), 'utf8');
+    const before = fs.readFileSync(path.join(p.base, '.claude', 'alfred-code.stamp'), 'utf8');
     write(p, { source: { dir: p.src, sha: '', ref: '', repoUrl: 'x' } });
-    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'claude-stack.stamp'), 'utf8'), before,
+    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'alfred-code.stamp'), 'utf8'), before,
         'a run with no revision overwrote a good stamp - configure would then report the wrong diff');
 });
 
@@ -91,9 +91,9 @@ test('install-stamp: the stamp carries the revision, the action and the scope', 
 test('install-stamp: project scope writes beside the install, global scope writes to the account', () =>
 {
     const p = project();
-    assert.strictEqual(write(p).dest, path.join(p.base, '.claude', 'claude-stack.stamp'));
+    assert.strictEqual(write(p).dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
     const acct = path.join(p.base, 'acct');
-    assert.strictEqual(write(p, { scope: 'global', configDir: acct }).dest, path.join(acct, 'claude-stack.stamp'));
+    assert.strictEqual(write(p, { scope: 'global', configDir: acct }).dest, path.join(acct, 'alfred-code.stamp'));
 });
 
 test('install-stamp: shipped-hooks is one entry per FILE, not per matcher', () =>
@@ -129,7 +129,7 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     const p = project({
         rules: ['baseline-interaction', 'baseline-security'],
         servers: {},
-        plugins: { 'serena@claude-stack': true, 'context7@claude-stack': true, 'memory@claude-stack': true },
+        plugins: { 'serena@envoydev': true, 'context7@envoydev': true, 'memory@envoydev': true },
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-mcps: serena,context7,memory$/m);
@@ -142,7 +142,7 @@ test('install-stamp: a playwright ENGINE and the context7 local transport count 
     assert.strictEqual(family('serena'), 'serena');
     const p = project({
         always: { rules: [], mcps: ['playwright', 'context7'] },
-        plugins: { 'playwright-firefox@claude-stack': true, 'context7-local@claude-stack': true },
+        plugins: { 'playwright-firefox@envoydev': true, 'context7-local@envoydev': true },
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-mcps: playwright,context7$/m);
@@ -225,7 +225,7 @@ test('install-stamp: stampPath is where writeStamp writes, per scope', () =>
 {
     const p = project();
     const acct = path.join(p.base, 'acct');
-    assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), path.join(p.base, '.claude', 'claude-stack.stamp'));
-    assert.strictEqual(stampPath({ scope: 'global', configDir: acct, projectRoot: p.base }), path.join(acct, 'claude-stack.stamp'));
+    assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), path.join(p.base, '.claude', 'alfred-code.stamp'));
+    assert.strictEqual(stampPath({ scope: 'global', configDir: acct, projectRoot: p.base }), path.join(acct, 'alfred-code.stamp'));
     assert.strictEqual(write(p).dest, stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }));
 });

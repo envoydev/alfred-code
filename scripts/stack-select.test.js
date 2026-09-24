@@ -725,7 +725,7 @@ test('CLI --redundant prints per-category redundant lines from an installed inve
 test('onPath resolves a real binary without a shell and rejects a nonexistent one', () => {
     const { onPath } = require('./stack-select.js');
     assert.strictEqual(onPath('node'), true, 'node runs this test suite, so it must be on PATH');
-    assert.strictEqual(onPath('no-such-binary-claude-stack-test'), false);
+    assert.strictEqual(onPath('no-such-binary-alfred-code-test'), false);
 });
 
 test('detectEnvironment probes bins via the PATH walk (no /bin/bash dependency)', () => {
@@ -910,7 +910,7 @@ test('a plugin the core entry depends on gets its own row status, in both table 
     const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
     const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
     assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
-    assert.ok(/carried by claude-stack@claude-stack/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    assert.ok(/carried by alfred-code@envoydev/.test(irow), `installed mode still says where it came from, got: ${irow}`);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -927,7 +927,7 @@ test('the recommended hook set is the whole catalog - a walk that takes it switc
     const recs = require('../meta/recommendations.json');
     const missing = (graph.catalog.hooks || []).filter(h => !(recs.always.hooks || []).includes(h));
     assert.deepEqual(missing, [],
-        'a catalog hook the recommendation leaves out lands in CLAUDE_STACK_HOOKS_OFF on every default setup');
+        'a catalog hook the recommendation leaves out lands in ALFRED_CODE_HOOKS_OFF on every default setup');
 });
 
 // Phase 8 T4: the installer's read-back lists what the user switched off as `left_out` - a seat

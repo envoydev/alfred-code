@@ -40,10 +40,10 @@ function stackDir(name, { releaseSource } = {})
     return d;
 }
 
-// The cache the CLI writes: <config>/plugins/cache/<marketplace>/claude-stack/<version>/<the repo>.
+// The cache the CLI writes: <config>/plugins/cache/<marketplace>/alfred-code/<version>/<the repo>.
 function cacheEntry(configDir, marketplace, version, { valid = true, releaseSource } = {})
 {
-    const d = path.join(configDir, 'plugins', 'cache', marketplace, 'claude-stack', version);
+    const d = path.join(configDir, 'plugins', 'cache', marketplace, 'alfred-code', version);
     fs.mkdirSync(path.join(d, 'stack', 'skills'), { recursive: true });
     if (valid) fs.mkdirSync(path.join(d, 'stack', 'agents'), { recursive: true });
     if (releaseSource) fs.writeFileSync(path.join(d, 'RELEASE-SOURCE'), releaseSource);
@@ -58,7 +58,7 @@ function source(opts = {})
     const s = createSource({
         configDir: opts.configDir || dir('cfg'),
         sourceDir: opts.sourceDir,
-        repoUrl: 'https://example.invalid/envoydev/claude-stack',
+        repoUrl: 'https://example.invalid/envoydev/alfred-code',
         log: () => {},
         note: (m) => calls.notes = [...(calls.notes || []), m],
         fetchArchive: opts.fetchArchive || (() => { calls.archive++; return null; }),
@@ -91,7 +91,7 @@ test('install-source: a --source that is NOT a checkout fails loudly instead of 
 {
     const { s, calls } = source({ sourceDir: dir('not-the-stack') });
     assert.strictEqual(s.resolve(), null);
-    assert.ok((calls.notes || []).some((m) => /not a claude-stack checkout/.test(m)),
+    assert.ok((calls.notes || []).some((m) => /not an alfred-code checkout/.test(m)),
         'the wrong --source was accepted silently - the run would report a failure per file instead');
     assert.strictEqual(calls.archive + calls.clone, 0, 'a rejected --source fell through to the network');
 });
@@ -99,7 +99,7 @@ test('install-source: a --source that is NOT a checkout fails loudly instead of 
 test('install-source: the plugin cache is taken before any download', () =>
 {
     const cfg = dir('cfg-cache');
-    const entry = cacheEntry(cfg, 'claude-stack', '1.0.0', { releaseSource: 'sha: abc123\nref: main\n' });
+    const entry = cacheEntry(cfg, 'envoydev', '1.0.0', { releaseSource: 'sha: abc123\nref: main\n' });
     const { s, calls } = source({ configDir: cfg });
     const got = s.resolve();
     assert.strictEqual(got.dir, entry);
@@ -113,8 +113,8 @@ test('install-source: the plugin cache is taken before any download', () =>
 test('install-source: the NEWEST cache entry wins, by version order and not by string order', () =>
 {
     const cfg = dir('cfg-newest');
-    cacheEntry(cfg, 'claude-stack', '0.9.0');
-    const newest = cacheEntry(cfg, 'claude-stack', '0.10.0');   // string-sorts BELOW 0.9.0
+    cacheEntry(cfg, 'envoydev', '0.9.0');
+    const newest = cacheEntry(cfg, 'envoydev', '0.10.0');   // string-sorts BELOW 0.9.0
     const { s } = source({ configDir: cfg });
     assert.strictEqual(s.resolve().dir, newest, '0.10.0 lost to 0.9.0 - the sort is lexical, not version');
 });
@@ -131,8 +131,8 @@ test('install-source: the newest entry across DIFFERENT marketplaces wins', () =
 test('install-source: a half-written cache entry is passed over, not installed from', () =>
 {
     const cfg = dir('cfg-half');
-    const good = cacheEntry(cfg, 'claude-stack', '1.0.0');
-    cacheEntry(cfg, 'claude-stack', '2.0.0', { valid: false });   // newer, but missing stack/agents
+    const good = cacheEntry(cfg, 'envoydev', '1.0.0');
+    cacheEntry(cfg, 'envoydev', '2.0.0', { valid: false });   // newer, but missing stack/agents
     const { s } = source({ configDir: cfg });
     assert.strictEqual(s.resolve().dir, good, 'the half-written 2.0.0 entry was taken');
 });
@@ -181,7 +181,7 @@ test('install-source: the FAILURE is memoised - five callers pay one timeout, no
 test('install-source: the SUCCESS is memoised too - the worktree is resolved once', () =>
 {
     const cfg = dir('cfg-memo-ok');
-    const entry = cacheEntry(cfg, 'claude-stack', '1.0.0');
+    const entry = cacheEntry(cfg, 'envoydev', '1.0.0');
     const { s } = source({ configDir: cfg });
     const first = s.resolve();
     assert.strictEqual(s.resolve(), first, 'a second caller re-resolved instead of reusing the worktree');
@@ -218,7 +218,7 @@ test('install-source: the release archive is downloaded and extracted, and leave
     const assetDir = path.join(origin, 'releases', 'latest', 'download');
     fs.mkdirSync(assetDir, { recursive: true });
     const tar = require('node:child_process').spawnSync('tar',
-        ['-czf', path.join(assetDir, 'claude-stack.tar.gz'), '-C', payload, '.'], { encoding: 'utf8' });
+        ['-czf', path.join(assetDir, 'alfred-code.tar.gz'), '-C', payload, '.'], { encoding: 'utf8' });
     assert.strictEqual(tar.status, 0, `could not build the fixture archive: ${tar.stderr}`);
 
     const tmpdir = dir('archive-tmp');

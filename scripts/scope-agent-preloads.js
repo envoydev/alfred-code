@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // Rewrites every agent's `skills:` frontmatter to the spelling its placement needs: a CORE skill
-// scoped to the core plugin (`claude-stack:<name>`), a LIBRARY skill bare - it is the project copy
+// scoped to the core plugin (`alfred-code:<name>`), a LIBRARY skill bare - it is the project copy
 // the installer wrote beside the agent.
 //
 //   node scripts/scope-agent-preloads.js --write    rewrite stack/agents/*.md in place
@@ -71,7 +71,7 @@ function scopedFor(options = {})
         const problems = [];
         const wanted = parsed.names.map((name) =>
         {
-            if (name.includes(':') && !name.startsWith('claude-stack')) return name;   // foreign, not ours to scope
+            if (name.includes(':') && !name.startsWith('alfred-code')) return name;   // foreign, not ours to scope
             const bare = name.includes(':') ? name.slice(name.indexOf(':') + 1) : name;
             const home = skillHome.get(bare);
             if (home) return `${home}:${bare}`;

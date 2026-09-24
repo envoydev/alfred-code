@@ -15,8 +15,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
-for (const k of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_STACK_HOOKS_OFF', 'CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW', 'CLAUDE_STACK_DOCS_ASK',
-    'CLAUDE_STACK_FRESH_SESSION_200K', 'CLAUDE_STACK_FRESH_SESSION_1M', 'CLAUDE_STACK_FRESH_SESSION_DEFAULT'])
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_DOCS_ASK',
+    'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_DEFAULT'])
     delete BASE_ENV[k];
 
 let seq = 0;
@@ -143,7 +143,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
 test('compact-state: with every fresh-session offer off, the compact start still points at the snapshot - and says nothing else', () =>
 {
     const p = project();
-    const off = { CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' };
+    const off = { ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' };
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, off);
     const r = p.run({ hook_event_name: 'SessionStart', source: 'compact' }, off);
     const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
@@ -154,9 +154,9 @@ test('compact-state: with every fresh-session offer off, the compact start still
     assert.strictEqual(q.run({ hook_event_name: 'SessionStart', source: 'compact' }, off).stdout, '');
 });
 
-test('compact-state: CLAUDE_STACK_HOOKS_OFF naming the hook writes nothing', () =>
+test('compact-state: ALFRED_CODE_HOOKS_OFF naming the hook writes nothing', () =>
 {
     const p = project();
-    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, { CLAUDE_STACK_HOOKS_OFF: 'guard-fresh-session-start' });
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' });
     assert.ok(!fs.existsSync(p.state));
 });

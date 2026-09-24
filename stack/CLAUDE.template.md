@@ -85,7 +85,7 @@ running it.
 | `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
-| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`CLAUDE_STACK_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
+| `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture docs pointer - where the docs live and how to read them by section; the orientation itself arrives through the docs hook |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |

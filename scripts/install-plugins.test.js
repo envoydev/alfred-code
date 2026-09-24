@@ -31,15 +31,15 @@ const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over 
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
 const CORE_DEPS = ['superpowers@claude-plugins-official'];
 const LOCKED = ['serena', 'context7', 'memory'];
-const LOCKED_SPECS = LOCKED.map((n) => `${n}@claude-stack`);
+const LOCKED_SPECS = LOCKED.map((n) => `${n}@envoydev`);
 
 // --- the route switches ---------------------------------------------------
 
 test('routes: every route defaults ON, and only the documented `false` turns one off', () =>
 {
     assert.deepStrictEqual(P.pluginRoutes({}), { hooks: true, skills: true, mcps: true });
-    assert.deepStrictEqual(P.pluginRoutes({ CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' }), { hooks: true, skills: true, mcps: false });
-    assert.strictEqual(P.pluginRoutes({ CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'true' }).hooks, true);
+    assert.deepStrictEqual(P.pluginRoutes({ ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' }), { hooks: true, skills: true, mcps: false });
+    assert.strictEqual(P.pluginRoutes({ ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }).hooks, true);
 });
 
 test('routes: the core plugin is on while ANY route is - that is when its companions are installed', () =>
@@ -53,25 +53,25 @@ test('routes: the core plugin is on while ANY route is - that is when its compan
 test('plugin-list: THIS project\'s row wins over the account row, and another project\'s is dropped', () =>
 {
     const listing = P.parsePluginList(JSON.stringify({ installed: [
-        { id: 'claude-stack@claude-stack', version: '0.9.0', scope: 'user', enabled: true },
-        { id: 'claude-stack@claude-stack', version: '1.0.0', scope: 'project', enabled: true, projectPath: '/repo' },
+        { id: 'alfred-code@envoydev', version: '0.9.0', scope: 'user', enabled: true },
+        { id: 'alfred-code@envoydev', version: '1.0.0', scope: 'project', enabled: true, projectPath: '/repo' },
         { id: 'other@x', version: '2.0.0', scope: 'project', enabled: true, projectPath: '/elsewhere' },
     ] }), '/repo');
-    assert.deepStrictEqual(listing, [{ name: 'claude-stack', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true }]);
+    assert.deepStrictEqual(listing, [{ name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true }]);
 });
 
 test('plugin-list: a marketplace filter runs BEFORE the per-name pick - a same-named foreign row never wins', () =>
 {
     const json = JSON.stringify({ installed: [
         { id: 'serena@claude-plugins-official', version: '9', scope: 'project', enabled: true, projectPath: '/repo' },
-        { id: 'serena@claude-stack', version: '1', scope: 'user', enabled: true },
+        { id: 'serena@envoydev', version: '1', scope: 'user', enabled: true },
     ] });
-    assert.deepStrictEqual(P.parsePluginList(json, '/repo', { marketplace: 'claude-stack' }).map((r) => r.version), ['1']);
+    assert.deepStrictEqual(P.parsePluginList(json, '/repo', { marketplace: 'envoydev' }).map((r) => r.version), ['1']);
     assert.deepStrictEqual(P.parsePluginList(json, '/repo').map((r) => r.marketplace), ['claude-plugins-official']);
     // byMarketplace: one row per name@marketplace, so a pass over specs from BOTH reads each its own
     const both = P.parsePluginList(json, '/repo', { byMarketplace: true });
-    assert.deepStrictEqual(both.map((r) => `${r.name}@${r.marketplace} ${r.version}`), ['serena@claude-plugins-official 9', 'serena@claude-stack 1']);
-    assert.strictEqual(P.fieldOf(both, 'serena@claude-stack', 'version'), '1');
+    assert.deepStrictEqual(both.map((r) => `${r.name}@${r.marketplace} ${r.version}`), ['serena@claude-plugins-official 9', 'serena@envoydev 1']);
+    assert.strictEqual(P.fieldOf(both, 'serena@envoydev', 'version'), '1');
 });
 
 test('plugin-list: a missing `enabled` is enabled, and garbage is an EMPTY listing, never a crash', () =>
@@ -116,9 +116,9 @@ test('closure: the entries come back with the extras split into skills and agent
 {
     const out = P.resolveStackPlugins({
         routes: ROUTES(),
-        runSelection: () => ({ entries: ['claude-stack@claude-stack', 'web-angular@claude-stack', ''], copy: ['skill project-extra', 'agent lone-analyzer', 'noise'] }),
+        runSelection: () => ({ entries: ['alfred-code@envoydev', 'web-angular@envoydev', ''], copy: ['skill project-extra', 'agent lone-analyzer', 'noise'] }),
     });
-    assert.deepStrictEqual(out.entries, ['claude-stack@claude-stack', 'web-angular@claude-stack']);
+    assert.deepStrictEqual(out.entries, ['alfred-code@envoydev', 'web-angular@envoydev']);
     assert.deepStrictEqual(out.extraSkills, ['project-extra']);
     assert.deepStrictEqual(out.extraAgents, ['lone-analyzer']);
 });
@@ -137,20 +137,20 @@ test('closure: the full copy route asks for no closure at all', () =>
 test('set: superpowers is installed on every run, a stack entry or not', () =>
 {
     const third = ['claude-hud@claude-plugins-official'];
-    const entries = ['claude-stack@claude-stack', ...LOCKED_SPECS];
+    const entries = ['alfred-code@envoydev', ...LOCKED_SPECS];
     assert.deepStrictEqual(
-        P.pluginSet({ routes: ROUTES(), thirdParty: third, hooksPlugin: 'claude-stack-hooks@claude-stack', stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
-        [...third, 'claude-stack-hooks@claude-stack', ...entries, ...CORE_DEPS],
+        P.pluginSet({ routes: ROUTES(), thirdParty: third, hooksPlugin: 'alfred-code-hooks@envoydev', stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
+        [...third, 'alfred-code-hooks@envoydev', ...entries, ...CORE_DEPS],
         'the hooks plugin leads, the selection names the locked three once, superpowers comes last');
-    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, hooksPlugin: 'h@claude-stack', stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
+    assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, hooksPlugin: 'h@envoydev', stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
         [...third, ...CORE_DEPS], 'the full copy route registers the locked three instead of installing them');
 });
 
 test('set: with the MCP route off and the core on, the locked three are installed as plugins', () =>
 {
     // The selection names no MCP plugin on that route, and nothing else would bring them in now.
-    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: 'claude-stack-hooks@claude-stack', stackEntries: ['claude-stack@claude-stack'], coreDeps: CORE_DEPS, locked: LOCKED });
-    assert.deepStrictEqual(set, ['claude-stack-hooks@claude-stack', 'claude-stack@claude-stack', ...LOCKED_SPECS, ...CORE_DEPS]);
+    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: 'alfred-code-hooks@envoydev', stackEntries: ['alfred-code@envoydev'], coreDeps: CORE_DEPS, locked: LOCKED });
+    assert.deepStrictEqual(set, ['alfred-code-hooks@envoydev', 'alfred-code@envoydev', ...LOCKED_SPECS, ...CORE_DEPS]);
 });
 
 // --- scope ----------------------------------------------------------------
@@ -158,9 +158,9 @@ test('set: with the MCP route off and the core on, the locked three are installe
 test('scope: claude-hud is user scope whatever the run says, and the LISTING wins when it can speak', () =>
 {
     assert.strictEqual(P.scopeFor('claude-hud@m', 'project', []), 'user');
-    assert.strictEqual(P.scopeFor('claude-stack@claude-stack', 'project', []), 'project');
+    assert.strictEqual(P.scopeFor('alfred-code@envoydev', 'project', []), 'project');
     // `claude plugin update --scope <other>` is a silent no-op, so the plugin's OWN scope wins.
-    assert.strictEqual(P.scopeFor('claude-stack@claude-stack', 'project', [{ name: 'claude-stack', version: '1', scope: 'user', enabled: true }]), 'user');
+    assert.strictEqual(P.scopeFor('alfred-code@envoydev', 'project', [{ name: 'alfred-code', version: '1', scope: 'user', enabled: true }]), 'user');
 });
 
 test('marketplaces: a third-party source is registered only for a plugin this run installs', () =>
@@ -201,10 +201,10 @@ test('update: a stuck upgrade - the core on, its companions absent - installs ea
 {
     // What `claude plugin update` left behind on a real 0.2.87 -> 1.0.0 upgrade.
     const run = cli();
-    const set = P.pluginSet({ routes: ROUTES(), stackEntries: ['claude-stack@claude-stack', ...LOCKED_SPECS], coreDeps: CORE_DEPS, locked: LOCKED });
+    const set = P.pluginSet({ routes: ROUTES(), stackEntries: ['alfred-code@envoydev', ...LOCKED_SPECS], coreDeps: CORE_DEPS, locked: LOCKED });
     P.updatePlugins({
         plugins: set, scope: 'project', cli: run, log: () => {},
-        before: [{ name: 'claude-stack', version: '1.0.0', scope: 'user', enabled: true }],
+        before: [{ name: 'alfred-code', version: '1.0.0', scope: 'user', enabled: true }],
         after: [],
     });
     assert.deepStrictEqual(run.matching(/^plugin install /).map((c) => c.split(' ')[2]), [...LOCKED_SPECS, ...CORE_DEPS]);
@@ -219,9 +219,9 @@ test('update: a stuck upgrade - the core on, its companions absent - installs ea
 test('install: every marketplace the run installs from is refreshed once, before its first install', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: ['a@m', 'b@m', 'claude-stack@claude-stack', 'superpowers@claude-plugins-official'], scope: 'project', cli: run });
+    P.installPlugins({ plugins: ['a@m', 'b@m', 'alfred-code@envoydev', 'superpowers@claude-plugins-official'], scope: 'project', cli: run });
     const firstInstall = run.calls.findIndex((c) => /^plugin install /.test(c));
-    for (const mp of ['m', 'claude-stack', 'claude-plugins-official'])
+    for (const mp of ['m', 'envoydev', 'claude-plugins-official'])
     {
         const at = run.calls.indexOf(`plugin marketplace update ${mp}`);
         assert.ok(at >= 0 && at < firstInstall, `${mp} not refreshed before the installs: ${run.calls.join(' | ')}`);
@@ -245,28 +245,28 @@ test('install: an official plugin of the same NAME is not the stack\'s - it neit
     // their row for ours, and an update at THEIR scope is a silent no-op on ours.
     const official = { name: 'serena', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true };
     const fresh = cli();
-    P.installPlugins({ plugins: ['serena@claude-stack'], scope: 'project', before: [official], cli: fresh });
+    P.installPlugins({ plugins: ['serena@envoydev'], scope: 'project', before: [official], cli: fresh });
     assert.deepStrictEqual(fresh.matching(/^plugin update /), [], 'the stack serena was not installed before - nothing to update');
     const both = cli();
-    const ours = { name: 'serena', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true };
-    P.installPlugins({ plugins: ['serena@claude-stack'], scope: 'user', before: [official, ours], cli: both });
-    assert.deepStrictEqual(both.matching(/^plugin update /), ['plugin update serena@claude-stack --scope project -y']);
+    const ours = { name: 'serena', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true };
+    P.installPlugins({ plugins: ['serena@envoydev'], scope: 'user', before: [official, ours], cli: both });
+    assert.deepStrictEqual(both.matching(/^plugin update /), ['plugin update serena@envoydev --scope project -y']);
 });
 
 test('install: a marketplace this run already refreshed is not refreshed again', () =>
 {
     const run = cli();
-    P.installPlugins({ plugins: ['claude-stack@claude-stack', 'a@m'], scope: 'project', cli: run, refreshed: new Set(['claude-stack']) });
-    assert.deepStrictEqual(run.matching(/^plugin marketplace update (claude-stack|m)$/), ['plugin marketplace update m']);
+    P.installPlugins({ plugins: ['alfred-code@envoydev', 'a@m'], scope: 'project', cli: run, refreshed: new Set(['envoydev']) });
+    assert.deepStrictEqual(run.matching(/^plugin marketplace update (envoydev|m)$/), ['plugin marketplace update m']);
 });
 
 test('update: every marketplace the specs name is refreshed before the first update', () =>
 {
     const run = cli();
     const before = [{ name: 'live', version: '1.0.0', scope: 'project', enabled: true }];
-    P.updatePlugins({ plugins: ['live@m', 'claude-stack@claude-stack'], scope: 'project', before, after: before, cli: run });
+    P.updatePlugins({ plugins: ['live@m', 'alfred-code@envoydev'], scope: 'project', before, after: before, cli: run });
     const firstUpdate = run.calls.findIndex((c) => /^plugin (install|update) /.test(c));
-    for (const mp of ['m', 'claude-stack'])
+    for (const mp of ['m', 'envoydev'])
     {
         const at = run.calls.indexOf(`plugin marketplace update ${mp}`);
         assert.ok(at >= 0 && at < firstUpdate, `${mp}: ${run.calls.join(' | ')}`);
@@ -282,21 +282,21 @@ test('source: EVERY installed stack entry is updated at its own scope before the
     const refreshed = new Set();
     P.refreshStackSource({
         listing: [
-            { name: 'claude-stack', marketplace: 'claude-stack', version: '1.0.0', scope: 'user', enabled: true },
-            { name: 'serena', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: true },
+            { name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'user', enabled: true },
+            { name: 'serena', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true },
             { name: 'serena', marketplace: 'claude-plugins-official', version: '3.0.0', scope: 'user', enabled: true },
-            { name: 'claude-stack-hooks', marketplace: 'claude-stack', version: '1.0.0', scope: 'project', enabled: false },
+            { name: 'alfred-code-hooks', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: false },
         ],
         cli: run, refreshed,
     });
     assert.deepStrictEqual(run.calls, [
-        'plugin marketplace add envoydev/claude-stack',
-        'plugin marketplace update claude-stack',
-        'plugin update claude-stack@claude-stack --scope user -y',
-        'plugin update serena@claude-stack --scope project -y',
-        'plugin update claude-stack-hooks@claude-stack --scope project -y',
+        'plugin marketplace add envoydev/alfred-code',
+        'plugin marketplace update envoydev',
+        'plugin update alfred-code@envoydev --scope user -y',
+        'plugin update serena@envoydev --scope project -y',
+        'plugin update alfred-code-hooks@envoydev --scope project -y',
     ]);
-    assert.ok(refreshed.has('claude-stack'), 'the later passes must not refresh it again');
+    assert.ok(refreshed.has('envoydev'), 'the later passes must not refresh it again');
 });
 
 test('source: with no core installed there is nothing to update - the refresh alone runs', () =>
@@ -304,7 +304,7 @@ test('source: with no core installed there is nothing to update - the refresh al
     const run = cli();
     P.refreshStackSource({ listing: [], cli: run });
     assert.deepStrictEqual(run.matching(/^plugin update /), []);
-    assert.ok(run.calls.includes('plugin marketplace update claude-stack'), run.calls.join(' | '));
+    assert.ok(run.calls.includes('plugin marketplace update envoydev'), run.calls.join(' | '));
 });
 
 // --- retired --------------------------------------------------------------
@@ -401,17 +401,17 @@ test('seed install: claude-hud\'s marketplace is registered before claude-hud is
 
 test('seed install: with no --source, the core is updated FIRST and the run installs from the newer cache', POSIX_ONLY, () =>
 {
-    // The stub's `plugin update claude-stack@claude-stack` lands 9.9.9 beside the stale 0.0.1, exactly
+    // The stub's `plugin update alfred-code@envoydev` lands 9.9.9 beside the stale 0.0.1, exactly
     // what the real CLI does to the cache; a seed that resolved its snapshot first would use 0.0.1.
     // A cache entry is a real directory (the resolver skips a symlinked one); its children link to
     // this tree, so the run installs from the working copy without copying it.
-    const entry = (work, ver) => path.join(work, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', ver);
-    const listing = JSON.stringify([{ id: 'claude-stack@claude-stack', version: '0.0.1', scope: 'user', enabled: true }]);
+    const entry = (work, ver) => path.join(work, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', ver);
+    const listing = JSON.stringify([{ id: 'alfred-code@envoydev', version: '0.0.1', scope: 'user', enabled: true }]);
     const { calls, out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         source: null,
         plugins: listing,
         // A regression must fail here, never fall back to cloning the real repository.
-        env: { CLAUDE_STACK_REPO_URL: 'file:///nonexistent/claude-stack' },
+        env: { ALFRED_CODE_REPO_URL: 'file:///nonexistent/alfred-code' },
         prepare: (repo, work) =>
         {
             fs.mkdirSync(entry(work, '0.0.1'), { recursive: true });
@@ -423,27 +423,27 @@ test('seed install: with no --source, the core is updated FIRST and the run inst
                 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
                 'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
                 // Once only: a second `ln -s` onto an existing link would plant the link INSIDE this tree.
-                'if [ "$1 $2 $3" = "plugin update claude-stack@claude-stack" ] && [ ! -d "$CLAUDE_CONFIG_DIR/plugins/cache/claude-stack/claude-stack/9.9.9" ]; then',
-                '  new="$CLAUDE_CONFIG_DIR/plugins/cache/claude-stack/claude-stack/9.9.9"; mkdir -p "$new"',
+                'if [ "$1 $2 $3" = "plugin update alfred-code@envoydev" ] && [ ! -d "$CLAUDE_CONFIG_DIR/plugins/cache/envoydev/alfred-code/9.9.9" ]; then',
+                '  new="$CLAUDE_CONFIG_DIR/plugins/cache/envoydev/alfred-code/9.9.9"; mkdir -p "$new"',
                 `  for n in stack meta scripts setup-plugin .claude-plugin; do ln -s ${JSON.stringify(ROOT)}/$n "$new/$n"; done`,
                 'fi',
                 'exit 0',
             ].join('\n'),
         },
     });
-    const update = calls.indexOf('plugin update claude-stack@claude-stack --scope user -y');
+    const update = calls.indexOf('plugin update alfred-code@envoydev --scope user -y');
     assert.ok(update >= 0, `the core was never updated:\n${calls.join('\n')}`);
     assert.match(out, /source: plugin cache \S*9\.9\.9/, 'the run read the stale cache entry, not the one the update landed');
 });
 
 test('seed plan: --print-plan with no --source changes no plugin - it reads the cache as it stands', POSIX_ONLY, () =>
 {
-    const entry = (work) => path.join(work, 'acct', 'plugins', 'cache', 'claude-stack', 'claude-stack', '0.0.1');
+    const entry = (work) => path.join(work, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', '0.0.1');
     const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         source: null,
         args: ['--print-plan'],
-        plugins: JSON.stringify([{ id: 'claude-stack@claude-stack', version: '0.0.1', scope: 'user', enabled: true }]),
-        env: { CLAUDE_STACK_REPO_URL: 'file:///nonexistent/claude-stack' },
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '0.0.1', scope: 'user', enabled: true }]),
+        env: { ALFRED_CODE_REPO_URL: 'file:///nonexistent/alfred-code' },
         prepare: (repo, work) =>
         {
             fs.mkdirSync(entry(work), { recursive: true });

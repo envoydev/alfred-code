@@ -149,7 +149,7 @@ Run these in this order; each is cheap and each catches a class the previous one
    from a default `agents/` folder). So a plugin that lists its agents pays their descriptions ON
    TOP of the number. The estimate also ignores `disable-model-invocation`
    (the skills docs say such a description is NOT in context, yet a user-only skill still shows an
-   always-on number - measured on the claude-stack router: ~210 tok reported, 0 loaded). Read the
+   always-on number - measured on the alfred-code router: ~210 tok reported, 0 loaded). Read the
    number as the cost of every description the MODEL can see. The always-on number is what every session pays before
    the first message; a description that grows by a paragraph is costed here, never assumed free.
 4. `claude plugin eval <plugin-dir>` (Claude Code 2.1.269+) - behavioural cases under `evals/`,

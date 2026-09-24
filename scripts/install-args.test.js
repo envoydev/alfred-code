@@ -169,7 +169,7 @@ test('install-args: --playwright-enabled must be one of the KEPT engines', () =>
 
 // ------------------------------------------------------------------ the entry point
 
-const { main } = require('./install/claude-stack.js');
+const { main } = require('./install/alfred-code.js');
 
 // The entry is driven in-process with captured streams - an execFileSync per case would add seconds
 // to a file that runs in milliseconds - so it is SANDBOXED BY ITS CWD. `main` takes the project
@@ -233,7 +233,7 @@ test('install-entry: a --source that is not the stack fails before any layer is 
     assert.strictEqual(r.code, 1);
     // On the log stream, not stderr - the same place the sh twin reports it, so a run's transcript
     // reads the same whichever route produced it.
-    assert.match(r.out, /not a claude-stack checkout/);
+    assert.match(r.out, /not an alfred-code checkout/);
 });
 
 // An install carrying one copied skill and nothing else, read back by a copy-route update's dry run.
@@ -244,7 +244,7 @@ function planOverSkillOnly(skill)
     fs.copyFileSync(path.join(ROOT, 'stack', 'skills', skill, 'SKILL.md'), path.join(repo, '.claude', 'skills', skill, 'SKILL.md'));
     let out = '';
     let err = '';
-    const copyRoute = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' };
+    const copyRoute = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
     const code = main(['update', '--source', ROOT, '--installed-only', '--print-plan'],
         { HOME: '/nonexistent-home', CLAUDE_CONFIG_DIR: path.join(repo, '.acct'), ...copyRoute },
         { out: (s) => { out += s; }, err: (s) => { err += s; }, cwd: repo });

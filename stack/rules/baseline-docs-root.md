@@ -8,7 +8,7 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   folder: the architecture map (`architecture/`), the code-style capture (`code-style/CODE-STYLE.md`),
   ADRs with no existing home (`decisions/`), the related-projects orientation doc
   (`related-projects/RELATED-PROJECTS.md`), the quality-loop prompts (`loops/`), the coverage capture
-  (`test-coverage/`), the usage-audit bundles (`claude-stack-usage-report/`), superpowers plans + specs,
+  (`test-coverage/`), the usage-audit bundles (`alfred-code-usage-report/`), superpowers plans + specs,
   the instrumentation ledgers (`tools-usage/`), and the task cards handed to another repo
   (`cross-project-tasks/`). Two folders hold no domain, by design: `quality/ASSESSMENT.md` is
   recomputed fresh every run rather than versioned (no `watch.json`, so the engine never sections or
@@ -26,7 +26,7 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   `cross-project-tasks/`. Editing an EXISTING first-class repo doc where it already lives (the top-level
   `README.md`, an established ADR home) is not a generated doc and needs no ask.
 - **This install's root: `__DOCS_ROOT__`** - stamped by every install, update and configure run from
-  the `CLAUDE_STACK_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`. Edited
+  the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`. Edited
   by hand since the last run, the env value wins. Wherever an instruction names a doc as
   `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means this root.
 - To move the docs, change that env value and nothing else - forward slashes on every OS. Existing
@@ -48,8 +48,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
      (do not gitignore it). Configuration, not model behaviour, so it is not injected - the
      installer's next-steps say the same thing at install time. -->
 
-<!-- Maintainer note: the env value is read as process.env.CLAUDE_STACK_DOCS_PATH by the hooks and
-     $env:CLAUDE_STACK_DOCS_PATH by the PowerShell installer twin; both also read the pre-0.2.43
+<!-- Maintainer note: the env value is read as process.env.ALFRED_CODE_DOCS_PATH by the hooks and
+     $env:ALFRED_CODE_DOCS_PATH by the PowerShell installer twin; both also read the pre-0.2.43
      CLAUDE_DOCS_PATH spelling as a fallback, and an install/update renames the key in place. That
      history changed no model behaviour, so it is not injected - meta/shared-rules.json's
      docs-root-resolution entry is where the fallback is recorded. -->

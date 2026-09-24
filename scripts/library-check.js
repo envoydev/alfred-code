@@ -7,9 +7,9 @@
 //
 //   drift   - the copy differs from the hash the stamp recorded: edited in the project
 //   missing - the stamp lists it, the project has no copy
-//   behind  - the running stack ships a different version of it: /claude-stack:update takes it
+//   behind  - the running stack ships a different version of it: /alfred-code:update takes it
 //   stale   - the stamp's release is older than the running stack's (plugins update themselves,
-//             library copies only move on /claude-stack:update)
+//             library copies only move on /alfred-code:update)
 //
 // Exit 1 on any finding, 0 when clean - and 0 with 'no library stamp' when the stamp has no library
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
@@ -30,7 +30,7 @@ const newer = (a, b) =>
 function check({ project, source, scope = 'project', configDir })
 {
     const base = (scope === 'global' || scope === 'user') && configDir ? configDir : path.join(project, '.claude');
-    const stamp = readLibrary(path.join(base, 'claude-stack.stamp'));
+    const stamp = readLibrary(path.join(base, 'alfred-code.stamp'));
     if (!stamp) return null;
     const overrides = (file) => { const o = readJson(file).skillOverrides; return o && typeof o === 'object' ? o : {}; };
     const settings = overrides(path.join(project, '.claude', 'settings.json'));
@@ -69,7 +69,7 @@ function main(argv)
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const findings = bad.length + (res.stale ? 1 : 0);
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
-    if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /claude-stack:update`);
+    if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
     for (const r of res.rows.filter((row) => row.mode && row.mode !== 'on')) console.log(`switched: skill ${r.name} is '${r.mode}' in skillOverrides`);

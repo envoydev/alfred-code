@@ -23,7 +23,7 @@ test('every entry shares ONE source and lists its own paths', () => {
         assert.ok(e.version && e.author && e.description, `${e.name} needs version, author, description`);
         // The core also ships the router skill from setup-plugin/, which is not a stack skill.
         for (const s of e.skills || [])
-            assert.ok(s.startsWith('./stack/skills/') || s === './setup-plugin/skills/claude-stack', `skill path: ${s}`);
+            assert.ok(s.startsWith('./stack/skills/') || s === './setup-plugin/skills/alfred-code', `skill path: ${s}`);
         for (const a of e.agents || []) assert.ok(/^\.\/stack\/agents\/.+\.md$/.test(a), `agent path: ${a}`);
     }
 });
@@ -33,27 +33,27 @@ test('every entry shares ONE source and lists its own paths', () => {
 // is listed - and the two that are easy to lose on the way across are the layer-table hook and the
 // superpowers dependency.
 test('the core entry carries the commands, the router skill, the inline hook, and no dependency', () => {
-    const core = byName['claude-stack'];
+    const core = byName['alfred-code'];
     assert.ok(core, 'the core entry is generated from Phase 3 on');
     assert.strictEqual(core.source, './');
     const setup = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'setup-plugin/.claude-plugin/plugin.json'), 'utf8'));
     assert.strictEqual(core.commands.length, setup.commands.length, 'every guided-walk command ships');
     for (const c of core.commands) assert.ok(fs.existsSync(path.join(__dirname, '..', c)), `command path: ${c}`);
-    assert.ok(core.skills.includes('./setup-plugin/skills/claude-stack'), 'the router skill ships');
+    assert.ok(core.skills.includes('./setup-plugin/skills/alfred-code'), 'the router skill ships');
     assert.ok(core.agents.length > 0, 'the core carries its placed agents');
     const wired = JSON.stringify(core.hooks);
     assert.ok(wired.includes('setup-plugin/hooks/guard-layer-table.js'), 'the layer-table guard is declared inline');
     assert.ok(wired.includes('${CLAUDE_PLUGIN_ROOT}'), 'and resolved through the plugin root');
     // Measured on 2.1.280: `claude plugin update` over an older core installs none of the dependencies
     // a release adds, and a plugin with one missing is disabled at load - its six commands with it, so
-    // `/claude-stack:update` cannot repair the install. The core must load with nothing beside it.
+    // `/alfred-code:update` cannot repair the install. The core must load with nothing beside it.
     assert.strictEqual(core.dependencies, undefined, 'the core declares no dependencies - its companions are the installer\'s to install');
     assert.strictEqual(setup.dependencies, undefined, 'and plugin.json keeps none for a generator to carry back in');
 });
 
 test('the core is the only generated entry, listing skill FOLDERS and agent FILES that exist', () => {
-    assert.deepStrictEqual(entries.map(e => e.name), ['claude-stack'], 'every other skill and agent is library, listed by no entry');
-    const core = byName['claude-stack'];
+    assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every other skill and agent is library, listed by no entry');
+    const core = byName['alfred-code'];
     assert.ok(core.skills.includes('./stack/skills/project-solve-cross-task'));
     assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md'));
     assert.ok(!core.skills.includes('./stack/skills/angular-conventions'), 'a library skill is not in the core');
@@ -84,18 +84,18 @@ test('--write is idempotent - a second run changes nothing', () => {
 
 test('applying to a marketplace rewrites the core and leaves what the generator does not own', () => {
     const before = {
-        name: 'claude-stack',
+        name: 'envoydev',
         metadata: { version: '9.9.9' },
         plugins: [
-            { name: 'claude-stack', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
-            { name: 'claude-stack-hooks', source: './', description: 'generated elsewhere', hooks: { Stop: [] } },
+            { name: 'alfred-code', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
+            { name: 'alfred-code-hooks', source: './', description: 'generated elsewhere', hooks: { Stop: [] } },
         ],
     };
     const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
-    const core = after.plugins.find(p => p.name === 'claude-stack');
+    const core = after.plugins.find(p => p.name === 'alfred-code');
     assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
     assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
-    const hooksEntry = after.plugins.find(p => p.name === 'claude-stack-hooks');
+    const hooksEntry = after.plugins.find(p => p.name === 'alfred-code-hooks');
     assert.strictEqual(hooksEntry.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
     assert.strictEqual(after.plugins.length, 1 + entries.length, 'the hooks entry plus every generated entry');
 });
@@ -129,7 +129,7 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     // the baseline.
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'claude-stack' || LOCKED.includes(e.name)) continue;
+        if (e.name === 'alfred-code' || LOCKED.includes(e.name)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -145,7 +145,7 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
                 stack.push(d);
             }
         }
-        assert.ok(seen.has('claude-stack'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
+        assert.ok(seen.has('alfred-code'), `${e.name} does not reach the core plugin - enabling it would not enable the baseline`);
     }
 });
 
@@ -156,7 +156,7 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
         {
             if (typeof d === 'string') continue;                                  // same marketplace
             if (d.marketplace === SHIPPED.name) continue;                         // ... written the long way
-            assert.strictEqual(e.name, 'claude-stack', `${e.name} reaches outside the marketplace; only the core may`);
+            assert.strictEqual(e.name, 'alfred-code', `${e.name} reaches outside the marketplace; only the core may`);
             assert.ok(d.marketplace, `${e.name}'s dependency on ${d.name} names no marketplace`);
             reached.add(d.marketplace);
         }
@@ -165,7 +165,7 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
 });
 
 test('superpowers is the one plugin the installer adds from another marketplace, on every run', () => {
-    assert.strictEqual(shippedBy['claude-stack'].dependencies, undefined);
+    assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
     assert.deepStrictEqual(CORE_DEP_PLUGINS, ['superpowers@claude-plugins-official']);
 });
 
@@ -201,7 +201,7 @@ test('a retired name missing from the frozen file is dropped from the marketplac
 
 test('the core entry wires the library-stamp line at session start, startup only, with a timeout', () =>
 {
-    const core = buildEntries().find((e) => e.name === 'claude-stack');
+    const core = buildEntries().find((e) => e.name === 'alfred-code');
     const start = core.hooks.SessionStart;
     assert.ok(Array.isArray(start) && start.length === 1, JSON.stringify(core.hooks));
     assert.strictEqual(start[0].matcher, 'startup');

@@ -7,7 +7,7 @@ effort: xhigh
 color: orange
 skills:
   - superpowers:systematic-debugging
-  - claude-stack:project-runtime-failure-signatures
+  - alfred-code:project-runtime-failure-signatures
 
 ---
 

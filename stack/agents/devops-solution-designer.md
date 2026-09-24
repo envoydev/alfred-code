@@ -7,7 +7,7 @@ effort: xhigh
 color: cyan
 skills:
   - devops
-  - claude-stack:project-solution-design
+  - alfred-code:project-solution-design
 
 ---
 

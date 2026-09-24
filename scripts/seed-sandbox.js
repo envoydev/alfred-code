@@ -12,7 +12,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
-const SEED = path.join(__dirname, 'install', 'claude-stack.js');
+const SEED = path.join(__dirname, 'install', 'alfred-code.js');
 const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub is a shell script' };
 
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
@@ -42,7 +42,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     // This runner may sit in a session whose account env carries real keys and stack settings - none
     // of them may reach the run, or land in the sandbox.
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
-    for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_STACK_')) delete env[k];
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
     for (const [k, v] of Object.entries(extra)) { if (v === undefined) delete env[k]; else env[k] = v; }
     try
     {

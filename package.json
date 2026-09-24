@@ -1,5 +1,5 @@
 {
-  "name": "claude-stack",
+  "name": "alfred-code",
   "version": "1.0.0",
   "private": true,
   "description": "Coding-agent skills and the Claude Code stack - repo tooling (skill/manifest/template/README parity + hygiene lint). The Cursor twin stack lives in the cursor-stack repo.",

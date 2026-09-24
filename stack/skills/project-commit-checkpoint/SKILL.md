@@ -114,7 +114,7 @@ is uncommitted here, so it is required and never counted against the working tre
 receipt as its own call, publish, clear it. `guard-ungated-commit` enforces this half too. A push
 that publishes nothing - a dry run, or a branch already level with its upstream - is never gated,
 and a repo whose remote is already gated by branch protection or a required review turns the half
-off for good with `CLAUDE_STACK_PUSH_GATE=0` in the settings.json env block.
+off for good with `ALFRED_CODE_PUSH_GATE=0` in the settings.json env block.
 
 When the probe actually ran something and the commit set touches more than one identifiable
 project, the receipt adds a sixth line - `scope: <workspace, or the project list the probe ran>`.

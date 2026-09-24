@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Stamp the deployed baseline-docs-root.md rule with the CURRENT docs root: the CLAUDE_STACK_DOCS_PATH
+// Stamp the deployed baseline-docs-root.md rule with the CURRENT docs root: the ALFRED_CODE_DOCS_PATH
 // env value in <root>/.claude/settings.json, else the default. Handles both the fresh copy (the
 // __DOCS_ROOT__ placeholder) and a previously stamped value - so the guided commands can re-stamp
 // after an env change without re-running the installer (the installers stamp fresh copies with
@@ -12,7 +12,7 @@
 //                                                   (re-probe the docs-versioning mode at the path the file now
 //                                                    holds; refused unless the file still holds that value)
 //        node stamp-docs-root.js [project-root] --seed-versioning
-//                                                   (CLAUDE_STACK_DOCS_VERSIONING absent -> write probeVersioning's
+//                                                   (ALFRED_CODE_DOCS_VERSIONING absent -> write probeVersioning's
 //                                                    answer for the docs root the file holds; present -> untouched.
 //                                                    Project root only - a global install is skipped with a message.)
 // Exit 0 always - a missing rule file or unreadable settings is a fail-soft no-op with a message.
@@ -31,7 +31,7 @@ function resolveDocsRoot(settingsFile)
         const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
         // CLAUDE_DOCS_PATH is the pre-0.2.43 spelling - still read, so an install whose settings
         // the rename has not reached yet stamps its own root rather than the default.
-        return env.CLAUDE_STACK_DOCS_PATH || env.CLAUDE_DOCS_PATH || DEFAULT_ROOT;
+        return env.ALFRED_CODE_DOCS_PATH || env.CLAUDE_DOCS_PATH || DEFAULT_ROOT;
     }
     catch
     {
@@ -65,7 +65,7 @@ function stamp(root)
     stampDir(path.join(root, '.claude'));
 }
 
-// The rule an ABSENT CLAUDE_STACK_DOCS_VERSIONING is seeded by - the same rule as both installer seeds and docs.js
+// The rule an ABSENT ALFRED_CODE_DOCS_VERSIONING is seeded by - the same rule as both installer seeds and docs.js
 // keptOutOfGit(), and a table-driven test runs all four over the same repos: 'local' only when the docs are kept OUT
 // of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - and 'git' otherwise,
 // a fresh project whose docs root is not ignored included. A tracked domain wins over an ignored root. `docs` is the
@@ -93,7 +93,7 @@ function probeVersioning(root, docs)
     return docs && spawnSync('git', ['check-ignore', '-q', '--', `${docs}/`], quiet).status === 0 ? 'local' : 'git';
 }
 
-// CLAUDE_STACK_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings file
+// ALFRED_CODE_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings file
 // held when the INSTALL ran. On the setup route the user's chosen docs root is applied AFTER that, so a key seeded
 // against the old path can describe the wrong folder. The walk that MOVES the path re-probes here, in the same
 // step that re-stamps the rule, and only when its own run seeded the key: a value an earlier install wrote is a
@@ -113,14 +113,14 @@ function reprobeVersioning(root, seeded)
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - docs versioning left as it is`); return; }
-    if (!data || typeof data !== 'object' || !data.env || !data.env.CLAUDE_STACK_DOCS_VERSIONING)
+    if (!data || typeof data !== 'object' || !data.env || !data.env.ALFRED_CODE_DOCS_VERSIONING)
     {
-        console.log('stamp-docs-root: no CLAUDE_STACK_DOCS_VERSIONING in the env block - nothing to re-probe');
+        console.log('stamp-docs-root: no ALFRED_CODE_DOCS_VERSIONING in the env block - nothing to re-probe');
         return;
     }
-    if (data.env.CLAUDE_STACK_DOCS_VERSIONING !== seeded)
+    if (data.env.ALFRED_CODE_DOCS_VERSIONING !== seeded)
     {
-        console.log(`stamp-docs-root: the env block holds '${data.env.CLAUDE_STACK_DOCS_VERSIONING}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
+        console.log(`stamp-docs-root: the env block holds '${data.env.ALFRED_CODE_DOCS_VERSIONING}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
     const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
@@ -130,12 +130,12 @@ function reprobeVersioning(root, seeded)
         return;
     }
     const value = probeVersioning(root, docs);
-    if (data.env.CLAUDE_STACK_DOCS_VERSIONING === value)
+    if (data.env.ALFRED_CODE_DOCS_VERSIONING === value)
     {
         console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
         return;
     }
-    data.env.CLAUDE_STACK_DOCS_VERSIONING = value;
+    data.env.ALFRED_CODE_DOCS_VERSIONING = value;
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
     console.log(`stamp-docs-root: docs versioning re-probed at ${docs}/: '${value}'`);
 }
@@ -164,18 +164,18 @@ function seedVersioning(root)
         console.log(`stamp-docs-root: ${settingsFile} has an env that is not a JSON object - nothing seeded`);
         return;
     }
-    if (data.env && data.env.CLAUDE_STACK_DOCS_VERSIONING)
+    if (data.env && data.env.ALFRED_CODE_DOCS_VERSIONING)
     {
-        console.log(`stamp-docs-root: CLAUDE_STACK_DOCS_VERSIONING already '${data.env.CLAUDE_STACK_DOCS_VERSIONING}' - nothing seeded`);
+        console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${data.env.ALFRED_CODE_DOCS_VERSIONING}' - nothing seeded`);
         return;
     }
     const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const value = probeVersioning(root, docs);
     const why = value === 'local' ? 'the docs are kept out of git' : 'the docs are not kept out of git';
     data.env = data.env || {};
-    data.env.CLAUDE_STACK_DOCS_VERSIONING = value;
+    data.env.ALFRED_CODE_DOCS_VERSIONING = value;
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    console.log(`stamp-docs-root: settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
+    console.log(`stamp-docs-root: settings.json env: ALFRED_CODE_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
 }
 
 if (require.main === module)

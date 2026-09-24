@@ -117,7 +117,7 @@ function main(argv)
     }
     const file = arg('--selection');
     if (!file) { console.error('usage: selection-plugins.js --selection <file> [--copy] [--marketplace <name>] | --items <plugin>[,<plugin>]'); return 1; }
-    const marketplace = arg('--marketplace') || 'claude-stack';
+    const marketplace = arg('--marketplace') || 'envoydev';
     const { plugins, copy } = pluginsFor(readSelection(path.resolve(file)));
     if (argv.includes('--copy'))
     {

@@ -136,7 +136,7 @@ test('install-copy: __DOCS_ROOT__ is stamped with the value in settings.json', (
     const file = path.join(rulesDir, 'baseline-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/agent' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/agent' } }));
 
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     const text = fs.readFileSync(file, 'utf8');
@@ -172,7 +172,7 @@ test('install-copy: COPY THEN STAMP is what makes the rule track a changed env',
 
     const cycle = (value) =>
     {
-        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: value } }));
+        fs.writeFileSync(settings, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: value } }));
         run(src, rulesDir, ['baseline-docs-root.md']);
         stampDocsRoot(base, { log: () => {}, note: () => {} });
         return fs.readFileSync(path.join(rulesDir, 'baseline-docs-root.md'), 'utf8');
@@ -192,10 +192,10 @@ test('install-copy: the stamp alone is once-only - the placeholder is gone after
     const file = path.join(rulesDir, 'baseline-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/one' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/one' } }));
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/two' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/two' } }));
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     assert.ok(fs.readFileSync(file, 'utf8').includes('docs/one'),
         'the stamp rewrote an already-stamped value - it must only ever replace the placeholder');

@@ -75,7 +75,7 @@ const CLAUDE_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
 const CLAUDE_PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
 const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = README;   // merged into the root README at the repo flatten
-const STACK_HTML = path.join(ROOT, 'docs', 'claude-stack.html');
+const STACK_HTML = path.join(ROOT, 'docs', 'alfred-code.html');
 const AGENTS_DIR = path.join(ROOT, 'stack', 'agents');
 const CLAUDE_TEMPLATE = path.join(ROOT, 'stack', 'CLAUDE.template.md');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'stack', 'rules');
@@ -1309,6 +1309,8 @@ function main()
         'claude-stack.ps1': parseManifest(CLAUDE_PS1, "'", '$Skills = @('),
     };
     const primary = skills['claude-stack.sh'];   // canonical SKILLS view (both are identical)
+    // The frozen twins' SKILLS rows name this repo's own skills by its 1.x slug.
+    const TWIN_HOUSE_REPO = 'envoydev/claude-stack'; // legacy-name
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
@@ -1377,9 +1379,9 @@ function main()
     // 3. Every active envoydev manifest entry has a local directory.
     for (const [skill, repo] of primary.active)
     {
-        if (repo === 'envoydev/claude-stack' && !dirs.includes(skill))
+        if (repo === TWIN_HOUSE_REPO && !dirs.includes(skill))
         {
-            flag(`SKILLS registers envoydev/claude-stack|${skill} but skills/${skill}/ does not exist`);
+            flag(`SKILLS registers ${TWIN_HOUSE_REPO}|${skill} but skills/${skill}/ does not exist`);
         }
     }
 
@@ -1575,7 +1577,7 @@ function main()
         }
     }
 
-    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== 'envoydev/claude-stack'));
+    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== TWIN_HOUSE_REPO));
     const inventory = new Set([...thirdPartyActive, ...primary.commented.keys()]);
     for (const name of thirdPartyActive)
     {
@@ -1660,7 +1662,7 @@ function main()
     const claudeAgentCount = parseStringArray(CLAUDE_SH, '"', 'AGENTS=(').length;
     const claudeRuleCount = parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=(').length;
 
-    // 12b. Stack hooks in claude-stack.html: the 'Stack hooks' section rows and the
+    // 12b. Stack hooks in alfred-code.html: the 'Stack hooks' section rows and the
     //      c-hooks count must match the installer HOOKS=() array (names stripped of
     //      their .js, both directions; count tied to the array size - same rigor as
     //      the README hook count above).
@@ -1669,7 +1671,7 @@ function main()
     {
         if (!html.hooks.has(name))
         {
-            flag(`active hook '${name}' is missing from the claude-stack.html Stack hooks section`);
+            flag(`active hook '${name}' is missing from the alfred-code.html Stack hooks section`);
         }
     }
 
@@ -1677,18 +1679,18 @@ function main()
     {
         if (!installerHooks.has(name))
         {
-            flag(`claude-stack.html Stack hooks row '${name}' is not in the installer HOOKS block`);
+            flag(`alfred-code.html Stack hooks row '${name}' is not in the installer HOOKS block`);
         }
     }
 
     const htmlHookCount = (fs.readFileSync(STACK_HTML, 'utf8').match(/id="c-hooks">(\d+)</) || [])[1];
     if (htmlHookCount == null)
     {
-        flag('claude-stack.html: no c-hooks count element found to verify against the HOOKS array');
+        flag('alfred-code.html: no c-hooks count element found to verify against the HOOKS array');
     }
     else if (Number(htmlHookCount) !== claudeHookCount)
     {
-        flag(`claude-stack.html: c-hooks count is ${htmlHookCount} but the installer holds ${claudeHookCount} hooks`);
+        flag(`alfred-code.html: c-hooks count is ${htmlHookCount} but the installer holds ${claudeHookCount} hooks`);
     }
 
     const readmeCount = (file, label, rowLabel) =>
@@ -1812,7 +1814,7 @@ function main()
     {
         if (/dotnet-/.test(line) && provenance.test(line))
         {
-            flag(`claude-stack.html has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
+            flag(`alfred-code.html has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
         }
     }
 
@@ -1955,7 +1957,7 @@ function main()
     {
         if (!html.houseManual.has(name))
         {
-            flag(`claude-stack.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
+            flag(`alfred-code.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
         }
     }
 
@@ -1963,7 +1965,7 @@ function main()
     {
         if (!manualSkills.has(name))
         {
-            flag(`claude-stack.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
+            flag(`alfred-code.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
         }
     }
 
@@ -2170,7 +2172,7 @@ function main()
     //     That block ships VERBATIM into every project's generated baseline-project-agent-capabilities.md,
     //     and nothing could tell a project carrying a two-release-old copy from a current one - the
     //     generated rule is never re-fetched, only re-generated by a user re-run. The stamp is what
-    //     `/claude-stack:validate` compares a project's copy against, so it has to be true here first.
+    //     `/alfred-code:validate` compares a project's copy against, so it has to be true here first.
     try
     {
         const capPath = path.join(SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
@@ -2872,7 +2874,7 @@ function lintMarketplaceEntries()
     // Two entry families are generated by OTHER tables and have their own checks: the hooks entry
     // (48, from the installer's HOOKS array) and the eight MCP plugins (53, from meta/mcp-pins.json
     // plus the shapes in build-marketplace.js). Placement never produces either, so neither is drift.
-    const elsewhere = new Set(['claude-stack-hooks']);
+    const elsewhere = new Set(['alfred-code-hooks']);
     try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
         if (p && !elsewhere.has(p.name) && !generated.has(p.name))
@@ -2925,8 +2927,11 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
     }
 
-    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => m[1]));
-    const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => m[1]));
+    // The frozen twins seed each key under its 1.x name, and migrations.json keeps its history's
+    // words: both are read here under the catalog's own name.
+    const current = (key) => key.replace(/^CLAUDE_STACK_/, 'ALFRED_CODE_'); // legacy-name
+    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => current(m[1])));
+    const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => current(m[1])));
     const keys = new Set();
     for (const row of rows)
     {
@@ -2957,8 +2962,8 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
     {
         const r = m.rename_settings_env;
         if (!r) { continue; }
-        if (!keys.has(r.to)) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
-        const row = rows.find(x => x.key === r.to);
+        if (!keys.has(current(r.to))) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
+        const row = rows.find(x => x.key === current(r.to));
         if (row && row.renamed_from !== r.from) { out.push(`environment.json ${r.to} does not record renamed_from '${r.from}' - validate reads it to spot the old spelling on disk`); }
     }
 

@@ -14,7 +14,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
 // to the process cwd - pin a scratch root so this suite never writes into the repo's own ledger.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 const LEDGER = path.join(TMP, 'ledger');
-process.env.CLAUDE_STACK_DOCS_PATH = LEDGER;
+process.env.ALFRED_CODE_DOCS_PATH = LEDGER;
 
 // Fake by construction, and deliberately NOT a run of one character: a value that is just `xxx...`
 // is a placeholder by content, which the guard's own template tells now read as 'not live'.
@@ -26,7 +26,7 @@ const SECRET_JSON = JSON.stringify({ env: { SENTRY_SLUG: 'acme', SENTRY_ACCESS_T
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 fs.mkdirSync(path.join(ROOT, '.claude'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, '.claude', 'settings-secret.json'), SECRET_JSON);
-fs.writeFileSync(path.join(ROOT, '.claude', 'clean.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs' } }, null, 2));
+fs.writeFileSync(path.join(ROOT, '.claude', 'clean.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }, null, 2));
 fs.mkdirSync(path.join(ROOT, 'my dir'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, 'my dir', 'settings.json'), SECRET_JSON);
 fs.writeFileSync(path.join(ROOT, '.env'), 'API_KEY=abc123\n');
@@ -52,7 +52,7 @@ function fixtures() {
     envExample: w('.env.example', 'API_KEY=your-api-key-here\nDB_PASSWORD=<your-password>\nSMTP_SECRET=changeme\n'),
     envSample: w('config.json.sample', JSON.stringify({ apiKey: 'abc123' }, null, 2)),
     testFixture: w('client.json', JSON.stringify({ apiKey: 'test-key-1234' }, null, 2)),
-    clean: w('clean-settings.json', JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_STACK_PUSH_GATE: '1' }, hooks: {} }, null, 2)),
+    clean: w('clean-settings.json', JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_PUSH_GATE: '1' }, hooks: {} }, null, 2)),
     mcp: w('.mcp.json', JSON.stringify({ mcpServers: { context7: { env: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY}' } } } }, null, 2)),
     dotenv: w('.env', 'DB_HOST=localhost\nAPI_KEY=abc123\n'),
     crlf: w('crlf.env', 'DB_HOST=localhost\r\nAPI_KEY=abc123\r\nSMTP_SECRET="changeme"\r\n'),
@@ -75,7 +75,7 @@ const rewritten = (command, env) => updatedCommand(run({ tool_name: 'Bash', tool
 const read = (file_path, env) => run({ tool_name: 'Read', tool_input: { file_path }, session_id: 'suite' }, env).status;
 const cli = (...args) => spawnSync(process.execPath, [HOOK, ...args], { encoding: 'utf8' });
 
-// Measured across four audited sessions: five blocks on /claude-stack:update's own downloaded
+// Measured across four audited sessions: five blocks on /alfred-code:update's own downloaded
 // snapshot. Not the temp PATH - the CONTENT: this stack's catalogs are lists of variable NAMES
 // under a field literally called `key`, and a name that names a credential is not one. The shell
 // route was the worse half - the walk got its own catalog back with every `key` masked.
@@ -215,9 +215,9 @@ test('guard-secret-value: a variable print and a whole-environment dump are rewr
 test('guard-secret-value: a block appends one ledger row naming the hook and never the value', () => {
   const f = fixtures();
   const ledger = path.join(TMP, 'ledger-' + Date.now());
-  assert.equal(bash(`cat ${f.secret}`, { CLAUDE_STACK_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
+  assert.equal(bash(`cat ${f.secret}`, { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
   assert.ok(!fs.existsSync(path.join(ledger, 'hook-blocks')), 'and writes no ledger row');
-  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { CLAUDE_STACK_DOCS_PATH: ledger }), 2);
+  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
   const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].hook, 'guard-secret-value.js');
@@ -282,8 +282,8 @@ test('guard-secret-value: printing a credential-shaped variable is blocked; a le
   assert.equal(bash('printenv SENTRY_ACCESS_TOKEN'), REWRITE, 'printenv NAME');
   assert.equal(bash('[ -n "$SENTRY_ACCESS_TOKEN" ] && echo "SENTRY_ACCESS_TOKEN=set (${#SENTRY_ACCESS_TOKEN} chars)" || echo "SENTRY_ACCESS_TOKEN=absent"'), 0, 'the presence idiom: a test and a length');
   assert.equal(bash('echo $PATH'), 0, 'a non-secret variable');
-  assert.equal(bash('echo "$CLAUDE_STACK_DOCS_PATH"'), 0, 'PATH suffix is not a credential');
-  assert.equal(bash('printenv CLAUDE_STACK_INSTRUMENT'), 0, 'printenv of a non-secret');
+  assert.equal(bash('echo "$ALFRED_CODE_DOCS_PATH"'), 0, 'PATH suffix is not a credential');
+  assert.equal(bash('printenv ALFRED_CODE_INSTRUMENT'), 0, 'printenv of a non-secret');
   assert.equal(bash('echo "token count: 3"'), 0, 'a word, not a variable');
 });
 
@@ -418,7 +418,7 @@ test('guard-secret-value: the shell\'s own variable dumps are whole-environment 
   assert.equal(bash('set -- x'), 0, 'positional parameters');
   assert.equal(bash('export FOO=1'), 0, 'an assignment');
   assert.equal(bash('declare -a arr'), 0, 'a declaration');
-  assert.equal(bash('declare -p CLAUDE_STACK_INSTRUMENT'), 0, 'a non-credential name');
+  assert.equal(bash('declare -p ALFRED_CODE_INSTRUMENT'), 0, 'a non-credential name');
 });
 
 test('guard-secret-value: a runtime handed the credential file, or building its path, is judged', () => {

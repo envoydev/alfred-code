@@ -27,8 +27,8 @@ const path = require('node:path');
 const USER_SCOPE_PLUGINS = ['claude-hud'];
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
-const STACK_MARKETPLACE = 'envoydev/claude-stack';
-const CORE_SPEC = 'claude-stack@claude-stack';
+const STACK_MARKETPLACE = 'envoydev/alfred-code';
+const CORE_SPEC = 'alfred-code@envoydev';
 
 // The plugin every install carries beside the core from ANOTHER marketplace. It is not a dependency
 // of the core: `claude plugin update` over an older core installs none a release adds, and a plugin
@@ -39,9 +39,9 @@ const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
 // 'false' as on; on every documented value they agree, and this takes the documented reading.)
 const pluginRoutes = (env = {}) => ({
-    hooks: env.CLAUDE_STACK_HOOKS_VIA_PLUGIN !== 'false',
-    skills: env.CLAUDE_STACK_SKILLS_VIA_PLUGIN !== 'false',
-    mcps: env.CLAUDE_STACK_MCPS_VIA_PLUGIN !== 'false',
+    hooks: env.ALFRED_CODE_HOOKS_VIA_PLUGIN !== 'false',
+    skills: env.ALFRED_CODE_SKILLS_VIA_PLUGIN !== 'false',
+    mcps: env.ALFRED_CODE_MCPS_VIA_PLUGIN !== 'false',
 });
 
 const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes.mcps);
@@ -164,7 +164,7 @@ function pluginSet({ routes, thirdParty = [], hooksPlugin, stackEntries = [], co
         if (routes.hooks && hooksPlugin) stack.push(hooksPlugin);
         stack.push(...stackEntries);
         for (const name of locked)
-            if (!stack.some((spec) => bareName(spec) === name)) stack.push(`${name}@claude-stack`);
+            if (!stack.some((spec) => bareName(spec) === name)) stack.push(`${name}@envoydev`);
     }
     return [...thirdParty, ...stack, ...coreDeps];
 }

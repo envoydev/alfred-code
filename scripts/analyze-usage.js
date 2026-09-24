@@ -18,7 +18,7 @@
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
-//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_STACK_DOCS_PATH is non-default
+//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when ALFRED_CODE_DOCS_PATH is non-default
 //   node scripts/analyze-usage.js <s.jsonl> --inventory <.claude>  # the installed set the INVENTORY vs USE block scores
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
@@ -465,9 +465,9 @@ const CATALOG_DIR = path.join(__dirname, '..', 'stack');
 // not have.
 function readInstallStamp(claudeDir) {
   let txt;
-  try { txt = fs.readFileSync(path.join(claudeDir, 'claude-stack.stamp'), 'utf8'); } catch { return null; }
+  try { txt = fs.readFileSync(path.join(claudeDir, 'alfred-code.stamp'), 'utf8'); } catch { return null; }
   const val = (k) => { const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(txt); return m ? m[1].trim() : null; };
-  return { version: val('version'), sha: val('sha'), installed: val('installed'), file: path.join(claudeDir, 'claude-stack.stamp') };
+  return { version: val('version'), sha: val('sha'), installed: val('installed'), file: path.join(claudeDir, 'alfred-code.stamp') };
 }
 
 // The install's skills and agents have TWO homes: copied under `.claude/`, or served by the
@@ -569,7 +569,7 @@ function resolveInventory(explicitDir, cwd, sessionLastTs) {
         inv.drifted = true;
         inv.why = `project ${d} - INSTALLED ${stamp.installed} (v${stamp.version || '?'}), AFTER this session's last row ${sessionLastTs}: read at analysis time, not the set the session had`;
       } else if (!stamp) {
-        inv.why = `project ${d} (the transcript's own cwd; no claude-stack.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
+        inv.why = `project ${d} (the transcript's own cwd; no alfred-code.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
       } else {
         inv.why = `project ${d} (the transcript's own cwd; installed ${stamp.installed || '?'} v${stamp.version || '?'}, before this session ran)`;
       }
@@ -765,11 +765,11 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
 
   // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
-  // plugin-scoped name (`claude-stack:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
+  // plugin-scoped name (`alfred-code:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
   // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item.
-  const houseBare = (name) => String(name || '').replace(/^claude-stack(?:-[a-z0-9-]+)?:/, '');
+  const houseBare = (name) => String(name || '').replace(/^alfred-code(?:-[a-z0-9-]+)?:/, '');
 
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence
@@ -2404,7 +2404,7 @@ function efficiencyRows(main, agg, blockLedger) {
   }
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /claude-stack:status reports it per install' });
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
   }
   rows.push({
     practice: 'cache continuity',
@@ -2704,7 +2704,7 @@ function vintageMarkdown(invUse, main, out) {
     const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded' : 'installed before this session ran') : 'install date unknown';
     out.push(`| Stack install | v${st.version || '?'} (${st.sha ? st.sha.slice(0, 12) : 'sha unknown'}), stamped ${when} - ${rel} |`);
   } else {
-    out.push('| Stack install | no `claude-stack.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
+    out.push('| Stack install | no `alfred-code.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
   }
   out.push(`| Inventory source | ${(v && v.inventoryWhy) || (invUse && invUse.source.skills_agents_rules) || '-'} |`, '');
   const rows = (v && v.rows) || [];

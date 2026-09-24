@@ -82,20 +82,20 @@ test('SessionStart with no earlier entry on the branch prints nothing', () => {
   } finally { rmDir(root); }
 });
 
-test('CLAUDE_STACK_HISTORY=0 writes nothing and prints nothing', () => {
+test('ALFRED_CODE_HISTORY=0 writes nothing and prints nothing', () => {
   const root = project();
   try {
-    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { CLAUDE_STACK_HISTORY: '0' });
+    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { ALFRED_CODE_HISTORY: '0' });
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
     assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
   } finally { rmDir(root); }
 });
 
-test('CLAUDE_STACK_HOOKS_OFF naming the hook stands it down', () => {
+test('ALFRED_CODE_HOOKS_OFF naming the hook stands it down', () => {
   const root = project();
   try {
-    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: '' }, { CLAUDE_STACK_HOOKS_OFF: 'history-session' });
+    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: '' }, { ALFRED_CODE_HOOKS_OFF: 'history-session' });
     assert.strictEqual(r.status, 0);
     assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
   } finally { rmDir(root); }

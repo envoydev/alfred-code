@@ -12,7 +12,7 @@
 // I1: the DEFAULT account's file is `$HOME/.claude.json` - a sibling of the `.claude` dir, never
 // inside it; only an explicit `--config-dir` or a live `CLAUDE_CONFIG_DIR` moves it to
 // `<dir>/.claude.json`), else - the plugin route, where no registration exists - the server the
-// installed memory@claude-stack plugin declares, with the database path pinned.
+// installed memory@envoydev plugin declares, with the database path pinned.
 //
 // `--memory-dir` pins a single explicit notes folder (tests, or a caller that already knows the
 // answer) and skips everything below. Left out, the importer AUTODETECTS every notes folder that
@@ -443,7 +443,7 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
     // with sessions but no notes is the normal case, not a sign the folder computation is wrong.
     if (noteEntries.length === 0) return { ok: true, message: `nothing to import, from ${fromLabel}` };
 
-    // A registration (the copy route, any pre-1.0.0 install), else the installed memory@claude-stack
+    // A registration (the copy route, any pre-1.0.0 install), else the installed memory@envoydev
     // plugin: from 1.0.0 the server rides that plugin and no registration exists, which is why the
     // notes import found nothing to store into on every plugin-route install until 1.1.0.
     const entry = engine.serviceEntry(projectRoot, { home, configDir: explicitConfigDir || undefined });

@@ -1,11 +1,11 @@
 ---
-description: "ADJUST an existing claude-stack install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing alfred-code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
 # Configure the Claude stack - adjust an existing install
 
-You are adjusting a claude-stack install that already exists. Same discipline as `init`: drive
+You are adjusting an alfred-code install that already exists. Same discipline as `init`: drive
 it interactively, walk the selection one layer at a time, always show the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
 you orchestrate. Two differences from `init`: the baseline selection is what is INSTALLED, not
@@ -17,10 +17,10 @@ sibling `update` command is the shorter path - this command is for CHOOSING what
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
 cache_read + cache_creation` off the last assistant message in the transcript. Ask ONLY when that
 figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's own absolute
-trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or `CLAUDE_STACK_FRESH_SESSION_1M`
-(default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
+trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
+(default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
 neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW` - or when that hook has already
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already
 injected the ask into this turn. Below the
 trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
 with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
@@ -80,7 +80,7 @@ comparable banner by banner; the content varies, the skeleton never does.
 - **Find the install.** Project mode: cwd is a project root with a populated `.claude/`
   (skills/agents/rules dirs, or `.mcp.json`). Global mode: no project here, but the account
   (`~/.claude`, or `~/.claude-<space>`) carries installed skills. Nothing installed in either
-  place -> stop and route to the sibling `/claude-stack:init` command; there is nothing to
+  place -> stop and route to the sibling `/alfred-code:init` command; there is nothing to
   configure yet.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched
@@ -89,7 +89,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `--print-plan` run writes nothing:
 
   ```bash
-  node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" [--space <name>] > "$TMP/plan.out" 2>&1
+  node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" [--space <name>] > "$TMP/plan.out" 2>&1
   ```
 
   `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
@@ -100,7 +100,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/claude-stack:init`; `plan routes: skills=<plugin|copy>
+  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
   hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
@@ -111,13 +111,13 @@ comparable banner by banner; the content varies, the skeleton never does.
   "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
   tables can label what the project provably uses (`--found`); skip it in global mode (no
   project to scan).
-- **Report what changed since the install.** `.claude/claude-stack.stamp` (or the account's)
+- **Report what changed since the install.** `.claude/alfred-code.stamp` (or the account's)
   records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
   they choose:
 
 ```bash
-node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude/claude-stack.stamp
+node "$TMP/repo/scripts/stamp-compare.js" --snapshot "$TMP/repo" --stamp .claude/alfred-code.stamp
 ```
 
 (A fork install passes `--repo <owner/name>`; the script reads the snapshot's `RELEASE-SOURCE`,
@@ -255,10 +255,10 @@ drops before them.
 ## 6. Hooks
 
 Leaf picks - nothing requires a hook and a hook requires nothing, so every row is free and the
-cascade never reaches here. The set ships together in the `claude-stack-hooks` plugin, so dropping
-a row copies and unwires nothing: it is named in `CLAUDE_STACK_HOOKS_OFF` in the scope's
+cascade never reaches here. The set ships together in the `alfred-code-hooks` plugin, so dropping
+a row copies and unwires nothing: it is named in `ALFRED_CODE_HOOKS_OFF` in the scope's
 `settings.json` env, and re-adding a row removes its name from that value. The environment area is
-where the same value can also be edited by hand. An install still on the copy route (`CLAUDE_STACK_HOOKS_VIA_PLUGIN=false`) keeps the
+where the same value can also be edited by hand. An install still on the copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the
 old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit).
 
 ## 7. MCPs
@@ -302,7 +302,7 @@ line and ask nothing. An existing registration needs no auth flag: `update` read
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
 Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
-read the same ROUTE-decided way as the rest: a `playwright-<browser>@claude-stack` entry in the plugins
+read the same ROUTE-decided way as the rest: a `playwright-<browser>@envoydev` entry in the plugins
 listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
 `playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
 run - and ask in
@@ -345,7 +345,7 @@ front of the user in its own words; do not carry a copy of the rows here, or the
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row whose key is missing from the file is one the
 release INTRODUCED - offer it with the catalog's default; a row's `renamed_from` still present on
-disk is the old spelling, and accepting it moves the value, never resets it. `CLAUDE_STACK_DOCS_VERSIONING`
+disk is the old spelling, and accepting it moves the value, never resets it. `ALFRED_CODE_DOCS_VERSIONING`
 is the ONE row this does not apply to when it is missing: its value is DETECTED, not constant, so offering
 the catalog's `git` there would write it over a project whose docs are kept out of git - the switch the
 rule exists to prevent. Preview it read-only instead - `node .claude/hooks/docs.js status` (project mode;
@@ -378,7 +378,7 @@ REFUSES when the file no longer holds that value, so a key an earlier install wr
 changed, is never re-probed: pass the seeded value and let the check answer. Nothing else
 needs editing. Apply on consent with a
 merge touching ONLY the chosen keys - everything else in settings.json is preserved, EXCEPT a
-MISSING `CLAUDE_STACK_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that
+MISSING `ALFRED_CODE_DOCS_VERSIONING` row accepted at its previewed (recommended) value: write that
 one by running `node $TMP/repo/scripts/stamp-docs-root.js <project root> --seed-versioning` instead
 of folding it into the merge, so the write re-probes at write time rather than trusting a preview a
 few turns stale, and report its printed line. A typed override (Other) for that same row is a
@@ -439,9 +439,9 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
-- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead, and it has no `--add` / `--drop`: it takes the whole selection. Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [same optional flags] 2>&1 | tee "$TMP/install.log"`. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`. The twin writes no seat deny - say so in the report.
-- `--docs-versioning` only when the user's own invocation names a value (`/claude-stack:configure
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead, and it has no `--add` / `--drop`: it takes the whole selection. Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [same optional flags] 2>&1 | tee "$TMP/install.log"`. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`. The twin writes no seat deny - say so in the report.
+- `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
   key that is present - so it needs no flag.
@@ -458,8 +458,8 @@ rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on di
 that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
 items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
 
-- a core seat is denied (`Agent(claude-stack:<name>)` in `permissions.deny`); a hook on the plugin
-  route is named in `CLAUDE_STACK_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy route, or a
+- a core seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny`); a hook on the plugin
+  route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy route, or a
   library copy) has its file deleted, a copied hook its wiring too;
 - an MCP entry nothing kept needs any more - a dropped server's own entry - is disabled:
   `plugin disabled [<scope>]: <entry>`;
@@ -523,7 +523,7 @@ Report what changed per category (refreshed / added / dropped, orphans removed v
 CLAUDE.md decision and reconcile result, anything deferred, and remind that a restart picks up
 MCP registration changes. When step 7 touched `memory`, add one line naming the level (unchanged
 or the old -> new file) and, when `project` was chosen while sibling repos are named, that those
-projects' memories are not visible from this one. The run rewrites `claude-stack.stamp` to the
+projects' memories are not visible from this one. The run rewrites `alfred-code.stamp` to the
 revision it installed, so the next configure diffs from here.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the

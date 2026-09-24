@@ -25,13 +25,13 @@ function fx({ stampVersion = '1.3.0', stackVersion = '1.3.0', noStamp = false, s
     fs.mkdirSync(path.join(plugin, 'scripts', 'install'), { recursive: true });
     fs.copyFileSync(path.join(REPO, 'scripts', 'install', 'stamp.js'), path.join(plugin, 'scripts', 'install', 'stamp.js'));
     fs.mkdirSync(path.join(plugin, 'setup-plugin', '.claude-plugin'), { recursive: true });
-    fs.writeFileSync(path.join(plugin, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'claude-stack', version: stackVersion }));
+    fs.writeFileSync(path.join(plugin, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'alfred-code', version: stackVersion }));
     const project = path.join(root, 'proj');
     fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
-    if (!noStamp) fs.writeFileSync(path.join(project, '.claude', 'claude-stack.stamp'), stampText === undefined ? stampOf(stampVersion) : stampText);
+    if (!noStamp) fs.writeFileSync(path.join(project, '.claude', 'alfred-code.stamp'), stampText === undefined ? stampOf(stampVersion) : stampText);
     const config = path.join(root, 'config');
     fs.mkdirSync(config, { recursive: true });
-    if (globalStamp) fs.writeFileSync(path.join(config, 'claude-stack.stamp'), stampOf(globalStamp));
+    if (globalStamp) fs.writeFileSync(path.join(config, 'alfred-code.stamp'), stampOf(globalStamp));
     return { plugin, project, config };
 }
 
@@ -50,9 +50,9 @@ function runHook(f, stdin)
 test('an older library stamp warns once, to the user and the model', () =>
 {
     const out = JSON.parse(runHook(fx({ stampVersion: '1.3.0', stackVersion: '1.4.0' })));
-    assert.match(out.systemMessage, /library copies are from 1\.3\.0, the stack is 1\.4\.0 - run \/claude-stack:update/);
+    assert.match(out.systemMessage, /library copies are from 1\.3\.0, the stack is 1\.4\.0 - run \/alfred-code:update/);
     assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
-    assert.match(out.hookSpecificOutput.additionalContext, /claude-stack:update/);
+    assert.match(out.hookSpecificOutput.additionalContext, /alfred-code:update/);
 });
 
 test('an equal or newer stamp is silent', () =>

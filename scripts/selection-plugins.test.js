@@ -59,7 +59,7 @@ test('itemsOf round-trips: the core items re-select the core and copy nothing', 
 });
 
 test('itemsOf ignores a name no placement knows, and accepts the @marketplace spelling', () => {
-    const a = itemsOf(['claude-stack-wpf@claude-stack', 'claude-stack-hooks', 'not-a-plugin']);
+    const a = itemsOf(['claude-stack-wpf@envoydev', 'alfred-code-hooks', 'not-a-plugin']);
     const b = itemsOf(['claude-stack-wpf']);
     assert.deepStrictEqual(a, b, 'the hooks entry and an unknown name carry no skills or agents');
 });
@@ -69,7 +69,7 @@ test('itemsOf ignores a name no placement knows, and accepts the @marketplace sp
 test('itemsOf reads a retired per-stack entry from its frozen 1.2.0 contents', () => {
     const { readRetiredEntries } = require('./plugin-placement.js');
     const angular = readRetiredEntries().find((e) => e.name === 'claude-stack-angular');
-    const got = itemsOf(['claude-stack-angular@claude-stack']);
+    const got = itemsOf(['claude-stack-angular@envoydev']);
     assert.deepStrictEqual(got.skills, [...angular.skills].sort());
     assert.deepStrictEqual(got.agents, [...angular.agents].sort());
     assert.ok(got.skills.length > 0);

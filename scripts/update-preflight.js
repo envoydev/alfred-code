@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// update-preflight.js - everything /claude-stack:update needs to know BEFORE it runs the
+// update-preflight.js - everything /alfred-code:update needs to know BEFORE it runs the
 // installer, in ONE call. It wraps stamp-compare.js and adds the two things the command
 // used to compute by hand, in the model, in three more round trips:
 //
@@ -211,7 +211,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     const shipped = new Set(classifyNew({ added: found, routes: {} }).map((r) => `${r.category} ${r.name}`));
     const added = found.filter((a) => shipped.has(`${a.category} ${a.name}`));
     if (!added.length) return ['new: none'];
-    const listing = readListing(root, arg('--marketplace', 'claude-stack'));
+    const listing = readListing(root, arg('--marketplace', 'envoydev'));
     const s = settings && typeof settings === 'object' ? settings : {};
     const env = s.env && typeof s.env === 'object' ? s.env : {};
     const hooksDir = path.join(claudeDir, 'hooks');
@@ -223,14 +223,14 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
     // The installer holds None only while the hooks entry is enabled (it enables that entry
     // regardless, and writes no hook none without it) - so the verdict holds it only then too.
-    const hooksEntryOn = Boolean(listing && listing.some((r) => r.name === 'claude-stack-hooks' && r.enabled));
-    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    const hooksEntryOn = Boolean(listing && listing.some((r) => r.name === 'alfred-code-hooks' && r.enabled));
+    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }));
     const rows = classifyNew({
         added, noneBefore,
         plugins: listing && listing.filter((r) => r.enabled).map((r) => r.name),
         parked: listing ? listing.filter((r) => !r.enabled).map((r) => r.name) : [],
         deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
-        hooksOff: env.CLAUDE_STACK_HOOKS_OFF,
+        hooksOff: env.ALFRED_CODE_HOOKS_OFF,
         routes: pluginRoutes(process.env),
         always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
         hasHooks,
@@ -292,9 +292,9 @@ function main()
     // An account dir set through CLAUDE_CONFIG_DIR can have any name - it is recognised by holding the
     // stamp itself and no `.claude/` of its own.
     const accountDir = /^\.claude(-.+)?$/.test(path.basename(path.resolve(root)))
-        || (!fs.existsSync(path.join(root, '.claude')) && fs.existsSync(path.join(root, 'claude-stack.stamp')));
+        || (!fs.existsSync(path.join(root, '.claude')) && fs.existsSync(path.join(root, 'alfred-code.stamp')));
     const claudeDir = accountDir ? path.resolve(root) : path.join(root, '.claude');
-    const stampFile = arg('--stamp', path.join(claudeDir, 'claude-stack.stamp'));
+    const stampFile = arg('--stamp', path.join(claudeDir, 'alfred-code.stamp'));
     const settingsFile = arg('--settings', path.join(claudeDir, 'settings.json'));
 
     const compareArgs = [path.join(snapshot, 'scripts', 'stamp-compare.js'), '--snapshot', snapshot, '--stamp', stampFile];

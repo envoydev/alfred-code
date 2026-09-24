@@ -42,7 +42,7 @@ function cleanExport(repo, dest)
     }
     // The export has no .git, and the installer reads a source's revision from HEAD or, failing
     // that, from a RELEASE-SOURCE file - the same file a real release archive carries. Without it
-    // the run resolves no revision and deliberately writes NO claude-stack.stamp, which would make
+    // the run resolves no revision and deliberately writes NO alfred-code.stamp, which would make
     // every stamp assertion in the matrix fail for a reason the change under test did not cause.
     // Synthesizing it here is what makes the export behave like the archive a user installs from.
     const sha = git(src, ['rev-parse', 'HEAD']) || '';

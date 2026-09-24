@@ -6,7 +6,7 @@
 // siblings this way (`require('./docs.js')`, `model-windows.json` through `__dirname`), so this is
 // the established shape rather than a new one.
 //
-// GATE 1 - CLAUDE_STACK_HOOKS_OFF. A csv of hook names a project does not want. It replaces the
+// GATE 1 - ALFRED_CODE_HOOKS_OFF. A csv of hook names a project does not want. It replaces the
 // guided walk's hooks LAYER: selection used to mean 'do not copy this file', and once the hooks
 // arrive through a plugin there is no file to leave out - the whole set ships together and a
 // project turns one off by naming it. Matching is exact on the base name, `.js` optional, case and
@@ -40,7 +40,7 @@ function baseName(hook)
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
-    const off = String((source && source.CLAUDE_STACK_HOOKS_OFF) || '');
+    const off = String((source && source.ALFRED_CODE_HOOKS_OFF) || '');
     if (!off.trim()) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;

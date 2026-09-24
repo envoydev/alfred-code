@@ -21,7 +21,7 @@ The script ships in the stack's plugin cache, where several versions can sit sid
 NEWEST is the one this skill came from. From the project root:
 
 ```bash
-SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do
+SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
   f="$d/scripts/scan-evidence.js"
   [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)

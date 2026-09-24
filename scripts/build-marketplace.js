@@ -74,7 +74,7 @@ function coreEntry(options = {})
         category: 'development',
         tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
         commands,
-        skills: ['./setup-plugin/skills/claude-stack'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
+        skills: ['./setup-plugin/skills/alfred-code'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
         agents: plug.agents.map(a => `./stack/agents/${a}.md`),
         // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
         // the shared root it is not, so it is declared inline - the shape Phase 2 proved for the
@@ -84,7 +84,7 @@ function coreEntry(options = {})
                 matcher: 'AskUserQuestion',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
-            // Library copies move only on /claude-stack:update, so a session on a newer stack says
+            // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so once - at startup, never on a resume or a compaction.
             SessionStart: [{
                 matcher: 'startup',
@@ -117,7 +117,7 @@ function retiredMarketplaceEntries(options = {})
         const entry = {
             name: row.name,
             source: './',
-            description: 'RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.',
+            description: 'RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.',
             version,
             author,
             strict: false,
@@ -226,9 +226,9 @@ function hooksBlock(wirings)
 function hooksPlugin(options = {})
 {
     return {
-        name: 'claude-stack-hooks',
+        name: 'alfred-code-hooks',
         source: './',
-        description: 'The seventeen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.',
+        description: 'The seventeen alfred-code hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.',
         version: options.version || marketplaceVersion(options),
         author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
         strict: false,
@@ -242,7 +242,7 @@ function hooksPlugin(options = {})
 // `mcpServers`, one plugin per server family. Two rulings shape what is written here, both in
 // docs/superpowers/plans/2026-09-20-plugin-native-migration-phase-6.md and both measured:
 //
-//   R1 - the plugin is NAMED for its server (`serena`, not `claude-stack-mcp-serena`), because the
+//   R1 - the plugin is NAMED for its server (`serena`, not `alfred-code-mcp-serena`), because the
 //        plugin name sits inside every tool name: `mcp__plugin_<plugin>_<server>__<tool>`, repeated
 //        837 times across the shipped surfaces. The short name costs 14,000 fewer characters.
 //   R3 - the version pins are resolved at RELEASE time from meta/mcp-pins.json, never from the
@@ -354,7 +354,7 @@ function mcpServerShapes(options = {})
             servers: {
                 memory: {
                     // The launcher, not uvx directly: cwd is the project, so it can read
-                    // <cwd>/.claude/settings.json for CLAUDE_STACK_MEMORY_DB and exec uvx itself.
+                    // <cwd>/.claude/settings.json for ALFRED_CODE_MEMORY_DB and exec uvx itself.
                     command: 'node',
                     args: [`${root}/stack/mcp/memory-launch.js`, '--package',
                         `mcp-memory-service[sqlite]${suffix('memory')}`],

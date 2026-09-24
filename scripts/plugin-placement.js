@@ -21,7 +21,7 @@ const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
 
 const REPO = path.resolve(__dirname, '..');
-const CORE = 'claude-stack';
+const CORE = 'alfred-code';
 const LIBRARY = 'library';
 
 function readJson(rel)

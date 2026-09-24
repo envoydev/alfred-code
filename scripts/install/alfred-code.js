@@ -12,7 +12,7 @@
 // left on disk (the plugins are enabled before the copied files they replace are pruned; the stamp
 // is written after every copy step, so it only ever names a revision that fully landed).
 //
-// The twins stay reachable behind `CLAUDE_STACK_SEED=shell` for one release (R1): there is no
+// The twins stay reachable behind `ALFRED_CODE_SEED=shell` for one release (R1): there is no
 // Windows machine here, and `pwsh` on macOS proves PowerShell syntax, never Windows path semantics.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,7 +39,7 @@ const library = require('./library.js');
 const runtime = require('./runtime.js');
 const { envMigrations } = require('./env-migrations.js');
 
-const USAGE = `claude-stack - install or update the Claude Code stack into a project.
+const USAGE = `alfred-code - install or update the Claude Code stack into a project.
 
 Usage: node ${path.basename(__filename)} <install|update> [flags]
 
@@ -52,7 +52,7 @@ Named flags (any order, each optional): ${FLAG_LIST}
 Every flag means exactly what it means on scripts/os/claude-stack.sh - this is a rewrite, not a
 redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.`;
 
-const HOOKS_PLUGIN = 'claude-stack-hooks@claude-stack';
+const HOOKS_PLUGIN = 'alfred-code-hooks@envoydev';
 const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
 const { STACK_MARKETPLACE } = plugins;
 const { CORE_DEP_PLUGINS } = plugins;
@@ -102,7 +102,7 @@ function main(argv, env, io)
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');
 
-    const repoUrl = env.CLAUDE_STACK_REPO_URL || 'https://github.com/envoydev/claude-stack';
+    const repoUrl = env.ALFRED_CODE_REPO_URL || 'https://github.com/envoydev/alfred-code';
     const source = createSource({
         configDir,
         sourceDir: args.source,
@@ -183,7 +183,7 @@ function main(argv, env, io)
             });
             if (!back.installed)
             {
-                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /claude-stack:init) first\n`);
+                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:init) first\n`);
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
@@ -618,7 +618,7 @@ function downconvert(ctx)
     if (!bare.length) return;
     if (ctx.routes.skills)
     {
-        ctx.log(`  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare.join(' ')} - set CLAUDE_STACK_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route`);
+        ctx.log(`  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare.join(' ')} - set ALFRED_CODE_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route`);
         return;
     }
     mcp.downconvertToolNames({

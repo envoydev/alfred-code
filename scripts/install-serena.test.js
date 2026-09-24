@@ -98,7 +98,7 @@ test('set-key: an ABSENT key is appended once, with its reason', () =>
     const root = project({ '.serena/project.yml': 'project_name: "x"\n' });
     serena.seedProject({ projectRoot: root, selected: true });
     const text = cfgOf(root);
-    assert.match(text, /# Added by claude-stack: .serena holds/);
+    assert.match(text, /# Added by alfred-code: .serena holds/);
     assert.strictEqual((text.match(/^ignored_paths:/gm) || []).length, 1);
 });
 

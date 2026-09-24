@@ -10,7 +10,7 @@
 //     three get the minimal `{}` written for them. `quality/` and `related-context/` are watch-less
 //     BY DESIGN and are left alone: one is recomputed every run, the other is a drop box.
 //
-//   - THE VERSIONING SEED. `CLAUDE_STACK_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
+//   - THE VERSIONING SEED. `ALFRED_CODE_DOCS_VERSIONING` says HOW the docs follow a branch: `git`
 //     when they are committed, `local` when they are kept out of git and need per-branch overlays.
 //     The rule lives in FOUR homes (both installer seeds, `stamp-docs-root.js`, the `docs.js`
 //     engine fallback) and one table-driven test pins them together. Getting it wrong is silent and

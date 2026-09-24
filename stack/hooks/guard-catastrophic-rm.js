@@ -30,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -41,10 +41,10 @@ if (require.main === module) {
     if (standDown('guard-catastrophic-rm')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 
 // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
 // inert text, and matching it blocked a document write for its own prose (reproduced). Blank the
@@ -207,7 +207,7 @@ function main()
                 {
                     // `path` is required at module scope above.
                     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-                    // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+                    // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');

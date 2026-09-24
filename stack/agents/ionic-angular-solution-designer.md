@@ -9,7 +9,7 @@ skills:
   - ionic
   - angular-conventions
   - angular-testing
-  - claude-stack:project-solution-design
+  - alfred-code:project-solution-design
 
 ---
 

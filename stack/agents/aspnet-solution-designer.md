@@ -9,7 +9,7 @@ skills:
   - csharp-design-patterns
   - dotnet-web-backend
   - dotnet-testing
-  - claude-stack:project-solution-design
+  - alfred-code:project-solution-design
 
 ---
 

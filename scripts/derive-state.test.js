@@ -80,7 +80,7 @@ test('derive-state: the plugin set is selection-plugins, not a second opinion', 
 {
     const file = realSelection();
     const got = derive(file);
-    const want = pluginsFor(readSelection(file)).plugins.map((p) => `${p}@claude-stack`);
+    const want = pluginsFor(readSelection(file)).plugins.map((p) => `${p}@envoydev`);
     assert.deepStrictEqual(got.plugins, want);
 });
 
@@ -121,7 +121,7 @@ test('derive-state: the deny spelling is the SCOPED identifier the spike measure
     assert.strictEqual(denySpec('aspnet-verifier', 'claude-stack-aspnet'), 'Agent(claude-stack-aspnet:aspnet-verifier)');
     const got = derive(realSelection());
     for (const spec of got.agents.deny)
-        assert.match(spec, /^Agent\(claude-stack[a-z-]*:[a-z0-9-]+\)$/, `${spec} is not the scoped spelling`);
+        assert.match(spec, /^Agent\(alfred-code[a-z-]*:[a-z0-9-]+\)$/, `${spec} is not the scoped spelling`);
     assert.strictEqual(got.agents.deny.length, got.agents.off.length, 'every denied seat needs its spec, and only those');
 });
 
@@ -137,7 +137,7 @@ test('derive-state: every KEPT seat carries the spec that clears a deny an earli
     // A library seat is copied, and its spec is the core spelling a retired entry's deny was
     // re-spelled to - so picking it again clears that deny.
     const library = [...picked.agents].filter((a) => !homes.has(a)).sort();
-    assert.deepStrictEqual(got.agents.allow, carriedKept.map((a) => denySpec(a, homes.get(a))).concat(library.map((a) => denySpec(a, 'claude-stack'))));
+    assert.deepStrictEqual(got.agents.allow, carriedKept.map((a) => denySpec(a, homes.get(a))).concat(library.map((a) => denySpec(a, 'alfred-code'))));
     // deny and allow are disjoint - one seat cannot be both, or the writer's last-wins rule decides
     // something the derivation should have.
     for (const spec of got.agents.allow) assert.ok(!got.agents.deny.includes(spec), `${spec} is in both lists`);
@@ -158,7 +158,7 @@ test('derive-state: the hooks off-list is the whole shipped catalog minus what w
         [...got.hooks.off].sort(),
         'on + off must be the whole catalog, or a hook is neither wired nor named',
     );
-    assert.strictEqual(got.env.CLAUDE_STACK_HOOKS_OFF, got.hooks.off.join(','));
+    assert.strictEqual(got.env.ALFRED_CODE_HOOKS_OFF, got.hooks.off.join(','));
 });
 
 test('derive-state: a skill the closure carries but nobody picked is REPORTED, never dropped', () =>
@@ -191,8 +191,8 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
 test('derive-state: an empty selection installs the core and denies every seat it carries', () =>
 {
     const got = derive(selectionFile(['rule baseline-security']));
-    assert.deepStrictEqual(got.plugins, ['claude-stack@claude-stack'], 'the core is always enabled');
-    const core = itemsOf(['claude-stack']);
+    assert.deepStrictEqual(got.plugins, ['alfred-code@envoydev'], 'the core is always enabled');
+    const core = itemsOf(['alfred-code']);
     assert.deepStrictEqual(got.agents.off, core.agents, 'the core seats ride in either way, so each is denied');
     assert.deepStrictEqual(got.agents.on, []);
     assert.deepStrictEqual(got.skills.undroppable, core.skills, 'and its skills are reported, because nothing can drop them');
@@ -215,7 +215,7 @@ test('derive-state: the CLI prints the same object it returns', () =>
 
 // THE INVERSE - what `update --installed-only` reads back. On the plugin routes `.claude/` holds
 // only the extras, so a disk read found no seat and no hook: measured on the Phase 8 matrix, one
-// update wrote all thirteen hooks into CLAUDE_STACK_HOOKS_OFF, denied the eight core seats, and
+// update wrote all thirteen hooks into ALFRED_CODE_HOOKS_OFF, denied the eight core seats, and
 // refreshed only the hooks and core entries while every stack and MCP plugin stayed a release
 // behind. Each surface is read from the state its own route writes instead.
 const { readInstalled } = require('./derive-state.js');
@@ -231,7 +231,7 @@ function narrowed({ dropAgent, dropHook })
 
 function listingOf(state)
 {
-    return [...state.plugins.map((p) => p.split('@')[0]), 'claude-stack-hooks', 'claude-hud'];
+    return [...state.plugins.map((p) => p.split('@')[0]), 'alfred-code-hooks', 'claude-hud'];
 }
 
 test('readInstalled: an install read back derives the SAME off-state it was written from', () =>
@@ -239,20 +239,20 @@ test('readInstalled: an install read back derives the SAME off-state it was writ
     const before = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
     const lines = readInstalled({
         plugins: listingOf(before), deny: before.agents.deny,
-        hooksOff: before.env.CLAUDE_STACK_HOOKS_OFF, routes: ALL_ROUTES, sourceDir: ROOT,
+        hooksOff: before.env.ALFRED_CODE_HOOKS_OFF, routes: ALL_ROUTES, sourceDir: ROOT,
     });
     const after = fromText(lines);
     assert.deepStrictEqual(after.agents.deny, before.agents.deny, 'a seat the user switched off stays off');
     assert.deepStrictEqual(after.hooks.off, before.hooks.off, 'a hook the user switched off stays off');
-    assert.deepStrictEqual(after.plugins.filter((p) => p.startsWith('claude-stack')), before.plugins.filter((p) => p.startsWith('claude-stack')),
+    assert.deepStrictEqual(after.plugins.filter((p) => p.startsWith('alfred-code')), before.plugins.filter((p) => p.startsWith('alfred-code')),
         'every stack entry the project enabled is still in the set the update refreshes');
-    assert.ok(before.agents.deny.includes('Agent(claude-stack:security-auditor)'), 'the fixture really dropped a carried seat');
+    assert.ok(before.agents.deny.includes('Agent(alfred-code:security-auditor)'), 'the fixture really dropped a carried seat');
     assert.ok(before.hooks.off.includes('guard-answer-length'), 'the fixture really dropped a hook');
 });
 
 test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook is adopted', () =>
 {
-    const lines = readInstalled({ plugins: ['claude-stack', 'claude-stack-hooks'], hooksOff: 'guard-answer-length', routes: ALL_ROUTES, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code', 'alfred-code-hooks'], hooksOff: 'guard-answer-length', routes: ALL_ROUTES, sourceDir: ROOT });
     const hooks = lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5));
     assert.ok(!hooks.includes('guard-answer-length'));
     assert.ok(hooks.includes('docs-session') && hooks.includes('memory-session'));
@@ -261,10 +261,10 @@ test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook i
 
 test('readInstalled: each surface reads back only while its own route is on', () =>
 {
-    const plugins = ['claude-stack', 'claude-stack-aspnet', 'claude-stack-hooks', 'serena'];
+    const plugins = ['alfred-code', 'claude-stack-aspnet', 'alfred-code-hooks', 'serena'];
     assert.deepStrictEqual(readInstalled({ plugins, hooksOff: '', routes: {}, sourceDir: ROOT }), [],
         'the full copy route reads the disk alone');
-    const noHooksPlugin = readInstalled({ plugins: ['claude-stack'], hooksOff: '', routes: ALL_ROUTES, sourceDir: ROOT });
+    const noHooksPlugin = readInstalled({ plugins: ['alfred-code'], hooksOff: '', routes: ALL_ROUTES, sourceDir: ROOT });
     assert.ok(!noHooksPlugin.some((l) => l.startsWith('hook ')), 'no hooks entry enabled: the hooks on disk decide');
     const skillsOnly = readInstalled({ plugins, hooksOff: '', routes: { skills: true }, sourceDir: ROOT });
     assert.ok(skillsOnly.every((l) => /^(skill|agent) /.test(l)) && skillsOnly.length > 0);
@@ -282,8 +282,8 @@ test('readInstalled: MCP entries fold back onto the catalog, once each', () =>
 test('readInstalled: a denied seat is not read back, whatever plugin carries it', () =>
 {
     const lines = readInstalled({
-        plugins: ['claude-stack', 'claude-stack-aspnet'],
-        deny: ['Agent(claude-stack:evidence-gatherer)', 'Read(./.env)'],
+        plugins: ['alfred-code', 'claude-stack-aspnet'],
+        deny: ['Agent(alfred-code:evidence-gatherer)', 'Read(./.env)'],
         routes: { skills: true }, sourceDir: ROOT,
     });
     assert.ok(!lines.includes('agent evidence-gatherer'));
@@ -294,14 +294,14 @@ test('readInstalled: HOOKS_OFF matches the way the hooks read it - `.js`, case a
 {
     // The frozen shell twin writes `guard-answer-length.js`; the prelude honours it. A read-back
     // that missed it would switch the user's hook back on at the next node update.
-    const lines = readInstalled({ plugins: ['claude-stack-hooks'], hooksOff: ' Guard-Answer-Length.js ,guard-secret', routes: { hooks: true }, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code-hooks'], hooksOff: ' Guard-Answer-Length.js ,guard-secret', routes: { hooks: true }, sourceDir: ROOT });
     assert.ok(!lines.includes('hook guard-answer-length'));
     assert.ok(lines.includes('hook guard-secret-value'), 'a prefix never matches, as in the prelude');
 });
 
 test('readInstalled: a seat denied under ANY stack entry\'s spelling stays off after it moves home', () =>
 {
-    const lines = readInstalled({ plugins: ['claude-stack'], deny: ['Agent(claude-stack-old-home:security-auditor)'], routes: { skills: true }, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code'], deny: ['Agent(claude-stack-old-home:security-auditor)'], routes: { skills: true }, sourceDir: ROOT });
     assert.ok(!lines.includes('agent security-auditor'));
 });
 
@@ -325,7 +325,7 @@ test('writable: a surface the read-back found no evidence of writes nothing back
 // description is not in context at all ('Control who invokes a skill', code.claude.com/docs/en/skills).
 const { floor } = require('./derive-state.js');
 const { descriptionChars } = require('./plugin-placement.js');
-const FLOOR_ENTRIES = ['claude-stack', 'claude-stack-aspnet'];
+const FLOOR_ENTRIES = ['alfred-code', 'claude-stack-aspnet'];
 
 test('floor: the model-invocable skills plus the seats not denied, from the stack\'s own entries', () =>
 {
@@ -335,7 +335,7 @@ test('floor: the model-invocable skills plus the seats not denied, from the stac
     const all = floor({ plugins: FLOOR_ENTRIES });
     assert.strictEqual(all.skills.count, carried.skills.length - manual.length);
     assert.strictEqual(all.agents.count, carried.agents.length);
-    const one = floor({ plugins: FLOOR_ENTRIES.map((p) => `${p}@claude-stack`), deny: ['Agent(claude-stack:security-auditor)', 'Read(.env)'] });
+    const one = floor({ plugins: FLOOR_ENTRIES.map((p) => `${p}@envoydev`), deny: ['Agent(alfred-code:security-auditor)', 'Read(.env)'] });
     assert.deepStrictEqual(one.agents.denied, ['security-auditor']);
     assert.strictEqual(all.agents.chars - one.agents.chars, descriptionChars('agent', 'security-auditor'));
     assert.strictEqual(one.chars, one.skills.chars + one.agents.chars);
@@ -361,10 +361,10 @@ test('floor: a name that is no stack entry counts nothing', () =>
 test('floor: the CLI reads the entries and the project settings file', () =>
 {
     const settingsFile = path.join(TMP, 'floor-settings.json');
-    fs.writeFileSync(settingsFile, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:security-auditor)'] } }));
+    fs.writeFileSync(settingsFile, JSON.stringify({ permissions: { deny: ['Agent(alfred-code:security-auditor)'] } }));
     const { execFileSync } = require('node:child_process');
     const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', FLOOR_ENTRIES.join(','), '--settings', settingsFile], { encoding: 'utf8' }));
-    assert.deepStrictEqual(out, floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack:security-auditor)'] }));
+    assert.deepStrictEqual(out, floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(alfred-code:security-auditor)'] }));
     const bad = path.join(TMP, 'floor-bad.json');
     fs.writeFileSync(bad, '{ nope');
     const noDeny = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', FLOOR_ENTRIES.join(','), '--settings', bad], { encoding: 'utf8' }));
@@ -377,7 +377,7 @@ test('derive-state: a selection with NO hook lines switches no hook off - every 
 {
     const got = derive(selectionFile(['rule baseline-security', 'skill markdown-style']));
     assert.deepStrictEqual(got.hooks.off, []);
-    assert.strictEqual(got.env.CLAUDE_STACK_HOOKS_OFF, '');
+    assert.strictEqual(got.env.ALFRED_CODE_HOOKS_OFF, '');
 });
 
 test('derive-state: `hook none` - the walk\'s None at the hooks layer - switches every shipped hook off', () =>
@@ -394,12 +394,12 @@ test('derive-state CLI: `written` is what THIS route writes - the copy routes wr
     const { execFileSync } = require('node:child_process');
     const sel = selectionFile(fs.readFileSync(realSelection(), 'utf8').split('\n').filter((l) => l.trim() !== 'agent security-auditor' && l.trim() !== 'hook guard-answer-length'));
     const run = (env) => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel], { encoding: 'utf8', env: { ...process.env, ...env } }));
-    const plugin = run({ CLAUDE_STACK_SKILLS_VIA_PLUGIN: '', CLAUDE_STACK_HOOKS_VIA_PLUGIN: '', CLAUDE_STACK_MCPS_VIA_PLUGIN: '' });
+    const plugin = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '', ALFRED_CODE_MCPS_VIA_PLUGIN: '' });
     assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true, mcps: true });
-    assert.deepStrictEqual(plugin.written.agentDeny, ['Agent(claude-stack:security-auditor)']);
+    assert.deepStrictEqual(plugin.written.agentDeny, ['Agent(alfred-code:security-auditor)']);
     assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer-length']);
     assert.deepStrictEqual(plugin.written.undroppable, plugin.skills.undroppable);
-    const copy = run({ CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' });
+    const copy = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
     assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff, copy.written.undroppable], [[], [], []]);
 });
 
@@ -418,9 +418,9 @@ test('init reports only keys the derivation prints', () =>
 
 test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>
 {
-    const got = floor({ plugins: ['claude-stack', 'claude-stack-hooks', 'serena@claude-stack'] });
-    assert.deepStrictEqual(got.entries, ['claude-stack']);
-    assert.deepStrictEqual(got.skipped, ['claude-stack-hooks', 'serena']);
+    const got = floor({ plugins: ['alfred-code', 'alfred-code-hooks', 'serena@envoydev'] });
+    assert.deepStrictEqual(got.entries, ['alfred-code']);
+    assert.deepStrictEqual(got.skipped, ['alfred-code-hooks', 'serena']);
 });
 
 test('floor: skill chars are the model-invocable descriptions, measured independently', () =>
@@ -443,9 +443,9 @@ test('floor CLI: every --settings file given counts - deny rules merge across sc
 {
     const { execFileSync } = require('node:child_process');
     const a = path.join(TMP, 'floor-a.json'); const b = path.join(TMP, 'floor-b.json');
-    fs.writeFileSync(a, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:security-auditor)'] } }));
-    fs.writeFileSync(b, JSON.stringify({ permissions: { deny: ['Agent(claude-stack:evidence-gatherer)'] } }));
-    const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'claude-stack', '--settings', a, '--settings', b, '--settings', path.join(TMP, 'absent.json')], { encoding: 'utf8' }));
+    fs.writeFileSync(a, JSON.stringify({ permissions: { deny: ['Agent(alfred-code:security-auditor)'] } }));
+    fs.writeFileSync(b, JSON.stringify({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)'] } }));
+    const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'alfred-code', '--settings', a, '--settings', b, '--settings', path.join(TMP, 'absent.json')], { encoding: 'utf8' }));
     assert.deepStrictEqual(out.agents.denied.sort(), ['evidence-gatherer', 'security-auditor']);
 });
 
@@ -463,10 +463,10 @@ test('stampCarried: an item MOVED out of an entry still enabled here into the co
 test('stampCarried: no move, an uninstalled or parked old home, a parked core, a denied seat, a library item - nothing', () =>
 {
     const moved = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] };
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['project-solve-cross-task@claude-stack'] }, enabled: ['claude-stack'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['project-solve-cross-task@alfred-code'] }, enabled: ['alfred-code'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['claude-stack'], routes: ALL_ROUTES }), [], 'the new home is parked');
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['alfred-code'], routes: ALL_ROUTES }), [], 'the new home is parked');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), ['skill project-solve-cross-task'], 'a seat denied under any spelling');
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'project-solve-cross-task'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home');
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one');
@@ -476,7 +476,7 @@ test('stampCarried: no move, an uninstalled or parked old home, a parked core, a
 test('readInstalled: every hook switched off reads back as `hook none`, not as unanswered', () =>
 {
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
-    const lines = readInstalled({ plugins: ['claude-stack-hooks'], hooksOff: shipped.join(','), routes: { hooks: true }, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code-hooks'], hooksOff: shipped.join(','), routes: { hooks: true }, sourceDir: ROOT });
     assert.deepStrictEqual(lines, ['hook none']);
 });
 
@@ -490,7 +490,7 @@ test('classifyNew: a core item arrives, a library item is offered, the user\'s o
         { category: 'skill', name: 'angular-material' }, { category: 'rule', name: 'markdown-docs' },
     ];
     const rows = classifyNew({
-        added, plugins: ['claude-stack', 'claude-stack-hooks'], deny: ['Agent(claude-stack:code-style-analyzer)'],
+        added, plugins: ['alfred-code', 'alfred-code-hooks'], deny: ['Agent(alfred-code:code-style-analyzer)'],
         hooksOff: 'guard-answer-length', routes: ALL_ROUTES, always: { rules: ['baseline-memory'] }, sourceDir: ROOT,
     });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
@@ -510,16 +510,16 @@ test('classifyNew: a core item arrives, a library item is offered, the user\'s o
 
 test('classifyNew: a library item the project already copied costs nothing, so the rule that pulls it is the free take', () =>
 {
-    const bare = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['claude-stack'], routes: ALL_ROUTES, sourceDir: ROOT })[0];
+    const bare = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['alfred-code'], routes: ALL_ROUTES, sourceDir: ROOT })[0];
     const copied = { skills: bare.copies.filter((c) => c.startsWith('skill ')).map((c) => c.slice(6)), agents: bare.copies.filter((c) => c.startsWith('agent ')).map((c) => c.slice(6)) };
-    const row = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['claude-stack'], routes: ALL_ROUTES, copied, sourceDir: ROOT })[0];
+    const row = classifyNew({ added: [{ category: 'rule', name: 'sql-conventions' }], plugins: ['alfred-code'], routes: ALL_ROUTES, copied, sourceDir: ROOT })[0];
     assert.deepStrictEqual([row.copies, row.recommend], [[], 'take']);
 });
 
 test('classifyNew: on the copy routes a skill or seat is copied only on a yes, and a hook arrives only into an install that has hooks', () =>
 {
     const added = [{ category: 'skill', name: 'markdown-style' }, { category: 'agent', name: 'evidence-gatherer' }, { category: 'hook', name: 'docs-session' }];
-    const withHooks = classifyNew({ added, plugins: ['claude-stack'], routes: {}, hasHooks: true, sourceDir: ROOT });
+    const withHooks = classifyNew({ added, plugins: ['alfred-code'], routes: {}, hasHooks: true, sourceDir: ROOT });
     assert.deepStrictEqual(withHooks.map((r) => r.verdict), ['offer', 'offer', 'arrives']);
     const noHooks = classifyNew({ added, plugins: [], routes: {}, hasHooks: false, sourceDir: ROOT });
     assert.strictEqual(noHooks[2].verdict, 'offer');
@@ -532,7 +532,7 @@ test('classifyNew: a name this release does not carry is no new item', () =>
 
 test('classifyNew: a hook on the plugin route arrives even with the hooks entry absent - the installer enables it regardless', () =>
 {
-    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['claude-stack'], routes: ALL_ROUTES, sourceDir: ROOT });
+    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['alfred-code'], routes: ALL_ROUTES, sourceDir: ROOT });
     assert.strictEqual(rows[0].verdict, 'arrives');
     const unread = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: null, routes: ALL_ROUTES, sourceDir: ROOT });
     assert.strictEqual(unread[0].verdict, 'arrives', 'HOOKS_OFF is in settings - no listing needed');
@@ -540,7 +540,7 @@ test('classifyNew: a hook on the plugin route arrives even with the hooks entry 
 
 test('classifyNew: the walk\'s None held - a hook a release adds after every hook was switched off stays off', () =>
 {
-    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['claude-stack-hooks'], noneBefore: true, routes: ALL_ROUTES, sourceDir: ROOT });
+    const rows = classifyNew({ added: [{ category: 'hook', name: 'docs-session' }], plugins: ['alfred-code-hooks'], noneBefore: true, routes: ALL_ROUTES, sourceDir: ROOT });
     assert.strictEqual(rows[0].verdict, 'off');
 });
 
@@ -553,7 +553,7 @@ test('classifyNew: a rename is carried when its old copy is on disk, and an old 
             { category: 'agent', name: 'evidence-gatherer', from: 'old-gatherer' },
             { category: 'hook', name: 'docs-session', from: 'old-docs' },
         ],
-        plugins: ['claude-stack', 'claude-stack-hooks'], deny: ['Agent(claude-stack:old-gatherer)'], hooksOff: 'old-docs', routes: ALL_ROUTES, sourceDir: ROOT,
+        plugins: ['alfred-code', 'alfred-code-hooks'], deny: ['Agent(alfred-code:old-gatherer)'], hooksOff: 'old-docs', routes: ALL_ROUTES, sourceDir: ROOT,
     });
     const by = Object.fromEntries(rows.map((r) => [r.name, r]));
     assert.deepStrictEqual([by['sql-conventions'].verdict, by['sql-conventions'].from], ['renamed', 'old-sql']);
@@ -642,7 +642,7 @@ test('delta CLI: kept-off and keep-parked lines follow the verdict, which stays 
 test('an enabled retired entry reads back its items, a denied seat excluded', () =>
 {
     const lines = readInstalled({
-        plugins: ['claude-stack', 'claude-stack-angular'],
+        plugins: ['alfred-code', 'claude-stack-angular'],
         deny: ['Agent(claude-stack-angular:ng-build-error-resolver)'],
         routes: { skills: true },
     });
@@ -656,12 +656,12 @@ test('a stamp pick homed in an enabled retired entry is carried into the library
 {
     const lines = stampCarried({
         stamp: { skills: ['angular-conventions@claude-stack-angular'], agents: ['angular-test-resolver@claude-stack-angular'] },
-        enabled: ['claude-stack', 'claude-stack-angular'], parked: [], deny: [], routes: { skills: true },
+        enabled: ['alfred-code', 'claude-stack-angular'], parked: [], deny: [], routes: { skills: true },
     });
     assert.deepStrictEqual(lines.sort(), ['agent angular-test-resolver', 'skill angular-conventions']);
     const denied = stampCarried({
         stamp: { skills: [], agents: ['angular-test-resolver@claude-stack-angular'] },
-        enabled: ['claude-stack', 'claude-stack-angular'], deny: ['Agent(claude-stack-angular:angular-test-resolver)'], routes: { skills: true },
+        enabled: ['alfred-code', 'claude-stack-angular'], deny: ['Agent(claude-stack-angular:angular-test-resolver)'], routes: { skills: true },
     });
     assert.deepStrictEqual(denied, [], 'a denied seat stays out');
 });
@@ -670,7 +670,7 @@ test('a parked retired entry carries nothing across', () =>
 {
     const lines = stampCarried({
         stamp: { skills: ['angular-conventions@claude-stack-angular'], agents: [] },
-        enabled: ['claude-stack'], parked: ['claude-stack-angular'], deny: [], routes: { skills: true },
+        enabled: ['alfred-code'], parked: ['claude-stack-angular'], deny: [], routes: { skills: true },
     });
     assert.deepStrictEqual(lines, []);
 });
@@ -679,6 +679,6 @@ test('a picked library seat clears its deny, so a seat switched off in 1.2.0 com
 {
     const state = fromText(['agent angular-test-resolver', 'agent evidence-gatherer']);
     assert.ok(state.agents.library.includes('angular-test-resolver'));
-    assert.ok(state.agents.allow.includes('Agent(claude-stack:angular-test-resolver)'), state.agents.allow.join(','));
-    assert.ok(!state.agents.deny.includes('Agent(claude-stack:angular-test-resolver)'));
+    assert.ok(state.agents.allow.includes('Agent(alfred-code:angular-test-resolver)'), state.agents.allow.join(','));
+    assert.ok(!state.agents.deny.includes('Agent(alfred-code:angular-test-resolver)'));
 });

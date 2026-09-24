@@ -113,7 +113,7 @@ test('one matcher holding several hooks groups them, so the entry stays readable
 });
 
 test('the hooks plugin entry is the shared-root, inline shape spike S9 and Phase 2 proved', () => {
-    assert.strictEqual(HOOKS_PLUGIN.name, 'claude-stack-hooks');
+    assert.strictEqual(HOOKS_PLUGIN.name, 'alfred-code-hooks');
     assert.strictEqual(HOOKS_PLUGIN.source, './');
     assert.strictEqual(HOOKS_PLUGIN.strict, false);
     assert.ok(HOOKS_PLUGIN.hooks, 'the hooks are declared INLINE, so nothing sits at the shared root');

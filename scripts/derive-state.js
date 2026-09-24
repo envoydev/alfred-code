@@ -31,7 +31,7 @@
 //     is deliberately no `off` key to mistake for a lever. Every OTHER skill is a LIBRARY copy, and
 //     a copy is droppable: deleted by a drop, or switched per project through `skillOverrides`.
 //   - HOOKS are switched off by NAME, against the whole shipped catalog, because the hooks plugin
-//     carries all thirteen whatever the project picked (`CLAUDE_STACK_HOOKS_OFF`, Phase 2).
+//     carries all thirteen whatever the project picked (`ALFRED_CODE_HOOKS_OFF`, Phase 2).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -46,11 +46,11 @@ const REPO = path.resolve(__dirname, '..');
 // The scoped identifier - the address S1's dispatch finding and S3's deny measurement both used.
 // `Tool(param:value)` rules exist too, but only for a direct field of the tool's input ('Match by
 // input parameter', code.claude.com/docs/en/permissions) - so a plugin named like an Agent field
-// (`model`, `isolation`) would be read as one; every stack entry starts `claude-stack`.
+// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code`.
 const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
 
 // The seat a stack deny names, under ANY stack entry's spelling - null for a user's own entry.
-const stackSeat = (spec) => (/^Agent\(claude-stack[a-z0-9-]*:([A-Za-z0-9_-]+)\)$/.exec(String(spec)) || [])[1] || null;
+const stackSeat = (spec) => (/^Agent\(alfred-code[a-z0-9-]*:([A-Za-z0-9_-]+)\)$/.exec(String(spec)) || [])[1] || null;
 
 // Which plugin carries each agent - the deny spelling needs the home, not just the name.
 function agentHomes(place)
@@ -76,7 +76,7 @@ const pickedLines = (text) =>
 
 // `selection` is a FILE; `selectionText` is the same lines already in hand, which is what the
 // installer holds on the --installed-only route where nothing was written to disk.
-function deriveState({ selection, selectionText, sourceDir = REPO, marketplace = 'claude-stack' } = {})
+function deriveState({ selection, selectionText, sourceDir = REPO, marketplace = 'envoydev' } = {})
 {
     // readSelection throws with the path in the message when the file is unreadable; an empty
     // install derived from a missing file is the failure mode this refuses to have.
@@ -122,12 +122,12 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
         rules: { copy: [...flat.rules].sort() },
         hooks: { on: hooksOn, off: hooksOff, answered: hooksAnswered },
         mcps: [...picked.mcps].sort(),
-        env: { CLAUDE_STACK_HOOKS_OFF: hooksOff.join(',') },
+        env: { ALFRED_CODE_HOOKS_OFF: hooksOff.join(',') },
     };
 }
 
 // The hooks entry and the two MCP families that fan one catalog row out into several plugins.
-const HOOKS_ENTRY = 'claude-stack-hooks';
+const HOOKS_ENTRY = 'alfred-code-hooks';
 const catalogServer = (name) => String(name)
     .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
     .replace(/^context7-local$/, 'context7');
@@ -136,7 +136,7 @@ const catalogServer = (name) => String(name)
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the
 // disk read alone found no seat and no hook - and the derivation above then switched every one of
 // them off. Each surface is read from the state ITS route writes: the enabled entries' contents
-// minus the seats `permissions.deny` names, the hook catalog minus CLAUDE_STACK_HOOKS_OFF, the MCP
+// minus the seats `permissions.deny` names, the hook catalog minus ALFRED_CODE_HOOKS_OFF, the MCP
 // entries folded onto the catalog. Deriving from these lines writes back the state they came from,
 // which is how a seat or hook the user switched off survives an update. `plugins` is this stack's
 // ENABLED entries only (`install/selection.js` readBack filters the listing); a surface whose route
@@ -167,7 +167,7 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
     if (routes.hooks && names.includes(HOOKS_ENTRY))
     {
         // The prelude's own matcher, so the read-back honours exactly the spellings the hooks do.
-        const env = { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') };
+        const env = { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') };
         const shipped = [...new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
         const on = shipped.filter((h) => !hookDisabled(h, env));
         for (const h of on) lines.push(`hook ${h}`);
@@ -272,7 +272,7 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
     const enabled = plugins === null ? null : new Set(plugins.map((p) => String(p).split('@')[0]));
     const off = new Set(parked);
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
-    const hookOff = (h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') });
+    const hookOff = (h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') });
     const rows = [];
     for (const { category, name, from, oldOnDisk } of added)
     {
@@ -420,7 +420,7 @@ function main(argv)
     const state = deriveState({
         selection: path.resolve(selection),
         sourceDir: arg('--source') ? path.resolve(arg('--source')) : REPO,
-        marketplace: arg('--marketplace') || 'claude-stack',
+        marketplace: arg('--marketplace') || 'envoydev',
     });
     // What THIS environment's routes write, by the installer's own rule - so a walk reporting the
     // derivation before the install reports the copy routes as writing no off-state.

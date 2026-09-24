@@ -15,7 +15,7 @@
 // it, and NOTHING gated them - replayed across four bundles, every push and merge passed every
 // guard. In one session the FIRST state-changing act of the run published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated. Same
-// receipt shape, its own file (<docs-root>/flow/PUSH-GATE), and CLAUDE_STACK_PUSH_GATE=0 turns
+// receipt shape, its own file (<docs-root>/flow/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns
 // it off for a repo whose remote is already gated by branch protection or a required review.
 // Receipt lifecycle: the gate step writes <docs-root>/flow/COMMIT-GATE when its checks
 // pass (VERIFIED <scope>) or the user explicitly waives (WAIVED - "<their words>");
@@ -23,15 +23,15 @@
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -68,7 +68,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -92,7 +92,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 const command = String((payload.tool_input || {}).command || '');
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review). Any value but "0" leaves it on.
-const PUSH_GATE_ON = process.env.CLAUDE_STACK_PUSH_GATE !== '0';
+const PUSH_GATE_ON = process.env.ALFRED_CODE_PUSH_GATE !== '0';
 // A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
 // merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a
 // full re-author of the same document (~19.8k output + 24.4k cache-write, ~3 minutes), and a
@@ -542,7 +542,7 @@ if (publishMatch) {
           `verbatim>" instead; never fabricate either quote. Then retry, and clear the file once\n` +
           `it lands.\n` +
           `A repo whose remote is already gated (branch protection, a required review) can turn\n` +
-          `this half off for good: CLAUDE_STACK_PUSH_GATE=0 in the settings.json env block.`,
+          `this half off for good: ALFRED_CODE_PUSH_GATE=0 in the settings.json env block.`,
       );
       process.exit(2);
     }

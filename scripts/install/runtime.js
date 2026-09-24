@@ -42,7 +42,7 @@ function capture(bin, argv, { cwd, env } = {})
 }
 
 // The revision a PROVIDED source is at. Without this the stamp is skipped for a plain checkout -
-// and the stamp is what `/claude-stack:configure` diffs to say what an update would bring.
+// and the stamp is what `/alfred-code:configure` diffs to say what an update would bring.
 function gitRevision(dir)
 {
     const ask = (args) =>
@@ -80,10 +80,10 @@ const lines = (text) => String(text).split('\n').map((l) => l.trim()).filter(Boo
 function fetchArchive({ repoUrl, tmpdir = os.tmpdir() } = {})
 {
     if (!which('curl') || !which('tar')) return null;
-    const dl = fs.mkdtempSync(path.join(tmpdir, 'claude-stack-dl-'));
-    const repo = fs.mkdtempSync(path.join(tmpdir, 'claude-stack-src-'));
-    const tgz = path.join(dl, 'claude-stack.tar.gz');
-    const ok = spawnSync('curl', ['-fsSL', `${repoUrl}/releases/latest/download/claude-stack.tar.gz`, '-o', tgz], { stdio: 'ignore' }).status === 0
+    const dl = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-dl-'));
+    const repo = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-src-'));
+    const tgz = path.join(dl, 'alfred-code.tar.gz');
+    const ok = spawnSync('curl', ['-fsSL', `${repoUrl}/releases/latest/download/alfred-code.tar.gz`, '-o', tgz], { stdio: 'ignore' }).status === 0
         && spawnSync('tar', ['-xzf', tgz, '-C', repo], { stdio: 'ignore' }).status === 0;
     fs.rmSync(dl, { recursive: true, force: true });
     if (!ok) { fs.rmSync(repo, { recursive: true, force: true }); return null; }
@@ -95,7 +95,7 @@ function fetchArchive({ repoUrl, tmpdir = os.tmpdir() } = {})
 function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
 {
     if (!which('git')) return null;
-    const dir = fs.mkdtempSync(path.join(tmpdir, 'claude-stack-clone-'));
+    const dir = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-clone-'));
     if (spawnSync('git', ['clone', '--depth', '1', '-b', 'main', repoUrl, dir], { stdio: 'ignore' }).status !== 0)
     {
         fs.rmSync(dir, { recursive: true, force: true });

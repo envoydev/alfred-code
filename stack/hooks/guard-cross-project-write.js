@@ -29,15 +29,15 @@
 // `--git-dir=`/`--work-tree=`, `bash -c '...'`, `eval`, `xargs rm`, `find ... -delete`, a
 // wrapper script - is NOT caught here; this guard reads the literal command.
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 const os = require('os');
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -74,7 +74,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -145,7 +145,7 @@ function realish(p) {
 }
 const ROOT = real(root);
 const HOME = os.homedir() || '';
-// `~\\x` is the Windows spelling of the same thing, and CLAUDE_STACK_ALLOW_WRITE_OUTSIDE is
+// `~\\x` is the Windows spelling of the same thing, and ALFRED_CODE_ALLOW_WRITE_OUTSIDE is
 // where a user writes one by hand - unexpanded, the allowance stays a literal `~...` string,
 // matches no path, and the tree the project genuinely owns is blocked (measured on windows-latest).
 const expandTilde = (p) => (p === '~' || p.startsWith('~/') || (process.platform === 'win32' && p.startsWith('~\\')))
@@ -153,15 +153,15 @@ const expandTilde = (p) => (p === '~' || p.startsWith('~/') || (process.platform
 
 // Anything under one of these may be written even though it is outside the project: the
 // session's own scratch, the account-level Claude config (memory writes land here - blocking
-// them breaks the memory system), the hook log dir, and device files. CLAUDE_STACK_ALLOW_WRITE_OUTSIDE
+// them breaks the memory system), the hook log dir, and device files. ALFRED_CODE_ALLOW_WRITE_OUTSIDE
 // is the deliberate escape hatch: a list of extra roots (colon-separated, semicolon on Windows; a
 // leading ~ expands) for the rare project that really does own a second tree (a generated-output
 // dir, a deploy checkout).
 const allowRoots = [
   os.tmpdir(), '/tmp', '/private/tmp', '/var/folders', '/dev',
-  process.env.CLAUDE_STACK_HOOK_LOG_DIR,
+  process.env.ALFRED_CODE_HOOK_LOG_DIR,
   ...(HOME ? [path.join(HOME, '.claude')] : []),
-  ...(process.env.CLAUDE_STACK_ALLOW_WRITE_OUTSIDE || '').split(path.delimiter).map((s) => s.trim()),
+  ...(process.env.ALFRED_CODE_ALLOW_WRITE_OUTSIDE || '').split(path.delimiter).map((s) => s.trim()),
 ].filter(Boolean).map(expandTilde).map(nativePath).map(real);
 
 function inside(target, dir) {
@@ -180,7 +180,7 @@ const effectiveAllow = allowRoots.filter((d) => !inside(ROOT, d));
 // the way the dispatch guard's APPROVAL stamp is - older than 8h, or written before this session
 // began (the transcript's birthtime, where the filesystem reports a real one), reads as absent -
 // and a root that contains the project is dropped, the containment rule above.
-// CLAUDE_STACK_ALLOW_WRITE_OUTSIDE stays the permanent lever for a tree the project owns.
+// ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays the permanent lever for a tree the project owns.
 const RECEIPT = path.resolve(ROOT, docsRootEnv(), 'flow', 'CROSS-WRITE-ALLOW');
 const MAX_RECEIPT_AGE_MS = 8 * 60 * 60 * 1000;
 let receiptStale = false;
@@ -295,7 +295,7 @@ function block(what, shown, abs = shown) {
         `session began - so it records another run's decision; rewrite it only on a fresh 'allow'.\n`
       : '') +
     `Reading and investigating ${other} stays open - that is how the card gets specific.\n` +
-    `A tree this project genuinely owns belongs in CLAUDE_STACK_ALLOW_WRITE_OUTSIDE instead - permanent, no ask.`,
+    `A tree this project genuinely owns belongs in ALFRED_CODE_ALLOW_WRITE_OUTSIDE instead - permanent, no ask.`,
   );
   process.exit(2);
 }

@@ -8,7 +8,7 @@
     {
      "file": "plugins/claude-hud/config.json",
      "why": {
-      "display": "the stack's own working surface, on screen: skills / MCP / agents / tools are what a claude-stack session actually runs (the same four analyze-usage.js reconstructs from the transcript afterwards), config counts say whether this project's rules and hooks really loaded, cost is the number the flow-vs-single benchmarks turn on, the effort level is pinned per seat and otherwise invisible after a runtime /effort, and the prompt-cache expiry decides whether a pause costs a full re-read",
+      "display": "the stack's own working surface, on screen: skills / MCP / agents / tools are what an alfred-code session actually runs (the same four analyze-usage.js reconstructs from the transcript afterwards), config counts say whether this project's rules and hooks really loaded, cost is the number the flow-vs-single benchmarks turn on, the effort level is pinned per seat and otherwise invisible after a runtime /effort, and the prompt-cache expiry decides whether a pause costs a full re-read",
       "gitStatus": "baseline-git's anti-split discipline: unpushed commits and the working-tree file counts are the two things the pre-commit checkpoint asks about"
      },
      "settings": {

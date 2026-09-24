@@ -21,7 +21,7 @@
 // Claude Code removes every variable whose name carries TOKEN, SECRET, PASSWORD, KEY or AUTH in
 // either case (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'). Both keys
 // this file reads are such names, so on the plugin route neither `SENTRY_ACCESS_TOKEN` nor
-// `CLAUDE_STACK_SENTRY_AUTH` can arrive through the shell, whatever the user exported. The FILES are
+// `ALFRED_CODE_SENTRY_AUTH` can arrive through the shell, whatever the user exported. The FILES are
 // the route that works there, which is why the installer writes the token into the account
 // settings.json rather than trusting an export. The env branch below stays for the copy route and
 // for running this file by hand, where nothing is removed.
@@ -72,7 +72,7 @@ function lookup(key, projectDir)
 
 function headers(projectDir)
 {
-    const mode = (lookup('CLAUDE_STACK_SENTRY_AUTH', projectDir) || 'token').toLowerCase();
+    const mode = (lookup('ALFRED_CODE_SENTRY_AUTH', projectDir) || 'token').toLowerCase();
     if (mode === 'oauth') return {};   // the browser consent flow registers no header at all
     const token = lookup('SENTRY_ACCESS_TOKEN', projectDir);
     if (!token)

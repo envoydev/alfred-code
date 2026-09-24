@@ -2,7 +2,7 @@
 'use strict';
 // stamp-compare.js - the stamp-vs-snapshot delta the guided commands report.
 //
-// Reads the install's claude-stack.stamp (the commit + version the install was
+// Reads the install's alfred-code.stamp (the commit + version the install was
 // copied from) and the snapshot's RELEASE-SOURCE (or the clone's git HEAD),
 // asks the GitHub compare API what changed between them, and prints a compact
 // line contract the update/configure commands consume verbatim - so the model
@@ -63,10 +63,10 @@ async function compareFiles(repo, base, head)
 
 async function main()
 {
-    const stampFile = arg('--stamp') || '.claude/claude-stack.stamp';
+    const stampFile = arg('--stamp') || '.claude/alfred-code.stamp';
     const snapshot = arg('--snapshot');
     if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(1); }
-    const repo = arg('--repo') || 'envoydev/claude-stack';
+    const repo = arg('--repo') || 'envoydev/alfred-code';
 
     const stamp = readStampFile(stampFile);
     const head = snapshotHead(snapshot);

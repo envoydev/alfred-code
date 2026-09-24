@@ -345,14 +345,14 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         for (const b of billed)
         {
             assert.match(b, / -p --output-format stream-json --verbose --max-turns \d+ --permission-mode dontAsk --setting-sources user,project,local /);
-            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u CLAUDE_STACK_DOCS_PATH /);
+            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DOCS_PATH /);
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
         assert.ok(billed.some((b) => b.includes(BARE('serena', 'list_memories'))), 'the copy route allows the bare spelling');
-        const installs = lines.filter((l) => l.includes('claude-stack.js install'));
+        const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 9);
-        for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* CLAUDE_STACK_SKILLS_VIA_PLUGIN=false CLAUDE_STACK_HOOKS_VIA_PLUGIN=false CLAUDE_STACK_MCPS_VIA_PLUGIN=false node /);
+        for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
         fs.writeFileSync(script, r.out);
@@ -392,7 +392,7 @@ test('replay --live against a stub claude installs, scaffolds, records and grade
             'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then echo "[]"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
         for (const t of ['uvx', 'npx']) fs.writeFileSync(path.join(bin, t), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
         const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, SKILL_COMPLY_CANNED: canned };
-        for (const k of Object.keys(env)) if (k.startsWith('CLAUDE_STACK_') || ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'].includes(k)) delete env[k];
+        for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_') || ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'].includes(k)) delete env[k];
         const out = path.join(dir, 'run');
         const r = cli(['replay', '--live', '--skill', 'csharp', '--level', 'plain', '--source', path.join(__dirname, '..'), '--out', out, '--claude', stub], { env });
         assert.strictEqual(r.code, 0, r.err.slice(-3000));

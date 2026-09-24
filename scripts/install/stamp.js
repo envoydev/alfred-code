@@ -1,7 +1,7 @@
 'use strict';
 // THE INSTALL STAMP - the revision every artifact of this install was copied from.
 //
-// `/claude-stack:configure` diffs it against `main` to say what an update would bring, and
+// `/alfred-code:configure` diffs it against `main` to say what an update would bring, and
 // `--installed-only` reads two of its lines to tell a DROPPED item from one that did not exist yet.
 // That second job is why the stamp records more than a SHA.
 //
@@ -65,10 +65,10 @@ function renderStamp(fields)
     const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {}, library = {} } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
-        '# claude-stack install stamp - machine-local, written by the claude-stack installer.',
+        '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
         '# The revision every artifact of this install was copied from. To see what changed since:',
         `#   open ${repoUrl}/compare/${sha}...main`,
-        '# /claude-stack:configure reports exactly this diff. Then re-run the installer\'s',
+        '# /alfred-code:configure reports exactly this diff. Then re-run the installer\'s',
         `# '${action}' action (or that skill) to take the changes.`,
         `source: ${repoUrl}`,
         `ref: ${ref}`,
@@ -93,7 +93,7 @@ function renderStamp(fields)
 function stampPath({ scope, configDir, projectRoot })
 {
     const dir = scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude');
-    return path.join(dir, 'claude-stack.stamp');
+    return path.join(dir, 'alfred-code.stamp');
 }
 
 function writeStamp(opts)

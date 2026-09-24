@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // SessionStart, core entry: plugins update themselves, LIBRARY copies move only on
-// /claude-stack:update. When the project's copies are from an older release than the stack that is
+// /alfred-code:update. When the project's copies are from an older release than the stack that is
 // running, say so once per session - to the user (who runs the update) and to the model (so it does
 // not trust a copy's content as current). Silent in every other case, and never fails a session.
 //
@@ -21,8 +21,8 @@ function main()
     let readLibrary;
     try { ({ readLibrary } = require(path.join(root, 'scripts', 'install', 'stamp.js'))); } catch { return; }
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const own = path.join(project, '.claude', 'claude-stack.stamp');
-    const lib = readLibrary(fs.existsSync(own) ? own : path.join(account, 'claude-stack.stamp'));
+    const own = path.join(project, '.claude', 'alfred-code.stamp');
+    const lib = readLibrary(fs.existsSync(own) ? own : path.join(account, 'alfred-code.stamp'));
     if (!lib || !lib.version) return;
     let stack = '';
     try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }
@@ -34,7 +34,7 @@ function main()
     const [a, b] = [n(stack), n(lib.version)];
     const older = a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : (a[2] || 0) > (b[2] || 0);
     if (!older) return;
-    const line = `claude-stack: this project's library copies are from ${lib.version}, the stack is ${stack} - run /claude-stack:update to take the newer skills and agents.`;
+    const line = `alfred-code: this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents.`;
     process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));
 }
 

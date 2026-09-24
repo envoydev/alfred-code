@@ -5,7 +5,7 @@
 //
 //   1. a handed `--source`  - a local checkout, the route every plugin command and the temp-project
 //      matrix take, because the command has already resolved the snapshot and passes it down;
-//   2. the PLUGIN CACHE     - `<config>/plugins/cache/<marketplace>/claude-stack/<version>/`, which
+//   2. the PLUGIN CACHE     - `<config>/plugins/cache/<marketplace>/alfred-code/<version>/`, which
 //      is the whole repo, because every marketplace entry is sourced from the repo root. This is
 //      the common run and it downloads NOTHING. It is also, by construction, the revision the
 //      enabled plugins are running from, so the seed and the plugins can never be two releases;
@@ -82,7 +82,7 @@ function pluginCache(configDir)
     for (const mkt of marketplaces)
     {
         if (!mkt.isDirectory()) continue;
-        const entryDir = path.join(base, mkt.name, 'claude-stack');
+        const entryDir = path.join(base, mkt.name, 'alfred-code');
         let versions;
         try { versions = fs.readdirSync(entryDir, { withFileTypes: true }); }
         catch { continue; }
@@ -124,7 +124,7 @@ function createSource(opts)
         {
             // A wrong --source would otherwise 'install' nothing and report one failure per file,
             // which reads as 117 problems instead of the one that is actually there.
-            note(`--source '${sourceDir}' is not a claude-stack checkout (no stack/skills + stack/agents) - stack source unavailable`);
+            note(`--source '${sourceDir}' is not an alfred-code checkout (no stack/skills + stack/agents) - stack source unavailable`);
             return null;
         }
         const git = gitRevision ? gitRevision(sourceDir) : null;

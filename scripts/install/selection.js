@@ -184,7 +184,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'claude-stack', log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'envoydev', log = () => {} })
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
@@ -203,11 +203,11 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     const parked = ours.filter((r) => !r.enabled).map((r) => r.name);
-    const installed = readInstalled({ plugins: names, deny, hooksOff: env.CLAUDE_STACK_HOOKS_OFF, routes, sourceDir });
+    const installed = readInstalled({ plugins: names, deny, hooksOff: env.ALFRED_CODE_HOOKS_OFF, routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
-    const noneBefore = routes.hooks && names.includes('claude-stack-hooks') && stampHooks.length > 0
-        && stampHooks.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    const noneBefore = routes.hooks && names.includes('alfred-code-hooks') && stampHooks.length > 0
+        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }));
     // A retired entry carries its whole stack, picked or not, and the library copies what the
     // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
     // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
@@ -251,13 +251,13 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         if (adopted.length) log(`installed-only: the stamp predates recorded picks - ${adopted.length} skills and seats the enabled entries carry are recorded as picked`);
     }
 
-    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('claude-stack') };
+    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('alfred-code') };
     const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
     const context7Local = Boolean(routes.mcps) && names.includes('context7-local');
-    // Adoption is for hooks read off DISK. Read from the hooks entry, CLAUDE_STACK_HOOKS_OFF is the
+    // Adoption is for hooks read off DISK. Read from the hooks entry, ALFRED_CODE_HOOKS_OFF is the
     // whole answer already - a hook it does not name is on, a new release's included - and adopting
     // against an older stamp would switch back on the very hooks the user named there.
-    if (!(routes.hooks && names.includes('claude-stack-hooks')))
+    if (!(routes.hooks && names.includes('alfred-code-hooks')))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
     lines = adoptAlways({ lines, always, log });
     for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
@@ -402,7 +402,7 @@ function leftOut({ parked = [], deny = [] })
 //
 // The core, the hooks entry and the three locked servers are never queued: the core depends on the
 // servers, so the CLI would refuse, and a drop of them is refused before it gets here anyway.
-const NEVER_DISABLED = new Set(['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory']);
+const NEVER_DISABLED = new Set(['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory']);
 function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));

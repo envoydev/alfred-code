@@ -18,9 +18,9 @@
 //
 // Resolution order for the database, first hit wins:
 //   1. MCP_MEMORY_SQLITE_PATH already in the environment - someone set it deliberately, obey it
-//   2. CLAUDE_STACK_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
-//   3. CLAUDE_STACK_MEMORY_DB in <cwd>/.claude/settings.local.json `env` (a per-machine override)
-//   4. CLAUDE_STACK_MEMORY_DB in the ACCOUNT settings.json `env`
+//   2. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
+//   3. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.local.json `env` (a per-machine override)
+//   4. ALFRED_CODE_MEMORY_DB in the ACCOUNT settings.json `env`
 //   5. ~/.memory-mcp/memory.db - the global default, which is what a fresh install picks
 const fs = require('node:fs');
 const os = require('node:os');
@@ -52,7 +52,7 @@ function resolveDb(projectDir)
         path.join(accountDir(), 'settings.json'),
     ])
     {
-        const value = envFrom(file).CLAUDE_STACK_MEMORY_DB;
+        const value = envFrom(file).ALFRED_CODE_MEMORY_DB;
         if (value) return path.isAbsolute(value) ? value : path.join(projectDir, value);
     }
     return path.join(os.homedir(), '.memory-mcp', 'memory.db');

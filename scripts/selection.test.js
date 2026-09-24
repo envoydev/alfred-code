@@ -129,7 +129,7 @@ function makeInstallSandbox({ hooks = true, stamp = ALL_SHIPPED_HOOKS } = {})
     if (hooks) fs.writeFileSync(path.join(root, '.claude/hooks/guard-catastrophic-rm.js'), 'x');
     fs.writeFileSync(path.join(root, '.claude/hooks/inject-code-style.js'), 'x');              // legacy generated - excluded
     fs.writeFileSync(path.join(root, '.mcp.json'), '{"mcpServers":{"serena":{}}}');
-    if (stamp !== null) fs.writeFileSync(path.join(root, '.claude', 'claude-stack.stamp'), `sha: aaa\nversion: 0.2.60\nshipped-hooks: ${stamp.join(',')}\n`);
+    if (stamp !== null) fs.writeFileSync(path.join(root, '.claude', 'claude-stack.stamp'), `sha: aaa\nversion: 0.2.60\nshipped-hooks: ${stamp.join(',')}\n`); // legacy-name - the twin reads its own stamp
     return root;
 }
 
@@ -298,14 +298,14 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
     // triggers, which replaced a percentage that the clamps made inert at its own default.
     // 'window' is a context-window SIZE in tokens: no off value, since a window of 0 is not a window.
     // 'csv' is a comma-separated name list whose EMPTY default means 'nothing switched off' -
-    // CLAUDE_STACK_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
+    // ALFRED_CODE_HOOKS_OFF, which replaced the walk's hooks layer once the set stopped being copied.
     // 'absolute-path' is a resolved filesystem path the install WRITES rather than asks -
-    // CLAUDE_STACK_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
+    // ALFRED_CODE_MEMORY_DB, the channel a plugin MCP entry cannot expand and its launcher reads.
     const TYPES = new Set(['percent', 'enum', 'relative-path', 'absolute-path', 'int-or-auto', 'tokens', 'window', 'csv']);
     assert.ok(cat.env.length >= 5, 'the catalog carries the stack env values');
     for (const row of cat.env)
     {
-        assert.match(row.key, /^CLAUDE_[A-Z0-9_]+$/, `${row.key} is an env key`);
+        assert.match(row.key, /^ALFRED_CODE_[A-Z0-9_]+$/, `${row.key} is an env key`);
         assert.strictEqual(typeof row.default, 'string', `${row.key} has a string default`);
         assert.ok(row.what && row.what.length > 20, `${row.key} explains itself in plain words`);
         assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);

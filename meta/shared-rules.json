@@ -31,10 +31,10 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: CLAUDE_STACK_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installers rename the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, both installer seeds) must state the same value.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installers rename the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, both installer seeds) must state the same value.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
-        "marker": "the `CLAUDE_STACK_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
+        "marker": "the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
       },
       "sites": [
         {
@@ -51,19 +51,19 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         },
         {
           "file": "stack/hooks/docs-session.js",
-          "marker": "process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
         }
       ]
     },
@@ -1597,12 +1597,12 @@
       "_note": "The release-archive-first, -b-main-clone-fallback source download (URL + pin). Canonical in the plugin source protocol; the usage-analyzer skill fetches the analyzer the same way, and both installer twins carry the same URL.",
       "owner": {
         "file": "setup-plugin/references/source-protocol.md",
-        "marker": "releases/latest/download/claude-stack.tar.gz"
+        "marker": "releases/latest/download/alfred-code.tar.gz"
       },
       "sites": [
         {
           "file": "stack/skills/project-stack-usage-analyzer/SKILL.md",
-          "marker": "releases/latest/download/claude-stack.tar.gz"
+          "marker": "releases/latest/download/alfred-code.tar.gz"
         },
         {
           "file": "scripts/os/claude-stack.sh",
@@ -1615,27 +1615,27 @@
       ]
     },
     "seed-route-selection": {
-      "_note": "The seed route: the installer is ONE `node scripts/install/claude-stack.js` command on every OS, and the frozen `scripts/os` twins run only when the run's environment sets CLAUDE_STACK_SEED=shell (the snapshot resolve line reports it as `seed=<value>`). Phase 7 ships the Node seed as the default and keeps the twins for one release; the flag spellings never cross - Unix spellings for node and the sh twin, PowerShell spellings for the ps1. The protocol file owns the rule; each command body carries the copy-ready call for its own action.",
+      "_note": "The seed route: the installer is ONE `node scripts/install/alfred-code.js` command on every OS, and the frozen `scripts/os` twins run only when the run's environment sets ALFRED_CODE_SEED=shell (the snapshot resolve line reports it as `seed=<value>`). Phase 7 ships the Node seed as the default and keeps the twins for one release; the flag spellings never cross - Unix spellings for node and the sh twin, PowerShell spellings for the ps1. The protocol file owns the rule; each command body carries the copy-ready call for its own action.",
       "owner": {
         "file": "setup-plugin/references/source-protocol.md",
-        "marker": "**ONE seed, one command on every OS:** `node \"$TMP/repo/scripts/install/claude-stack.js\" <install|update>"
+        "marker": "**ONE seed, one command on every OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" <install|update>"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/init.md",
-          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/claude-stack.js\" install --source"
+          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" install --source"
         },
         {
           "file": "setup-plugin/commands/update.md",
-          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/claude-stack.js\" update --source"
+          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" update --source"
         },
         {
           "file": "setup-plugin/commands/configure.md",
-          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/claude-stack.js\" update --source"
+          "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" update --source"
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "`node \"$TMP/repo/scripts/install/claude-stack.js\" update --source \"$TMP/repo\" --scope project --installed-only [--add"
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope project --installed-only [--add"
         }
       ]
     },
@@ -3289,7 +3289,7 @@
       ]
     },
     "where-to-run-ask-threshold": {
-      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - CLAUDE_STACK_FRESH_SESSION_200K, default 150000, CLAUDE_STACK_FRESH_SESSION_1M, default 400000, or CLAUDE_STACK_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers.",
+      "_note": "The guided commands' step-0 'where to run it' ask is THRESHOLDED, not unconditional: it fires only past the same trigger guard-fresh-session-start.js uses (the resolved window's own trigger - ALFRED_CODE_FRESH_SESSION_200K, default 150000, ALFRED_CODE_FRESH_SESSION_1M, default 400000, or ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, for any other or unreadable window), or when that hook has already injected it. Below the trigger, or with no readable context figure at all, the run starts silently - measured: the unconditional prose form fired on the FIRST message of a brand-new session, twice in one run, with no number behind it. The hook owns the trigger; each command body restates it so the walk and the gate can never sit on different numbers.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "The trigger is an ABSOLUTE token count per WINDOW TIER"
@@ -3401,7 +3401,7 @@
         },
         {
           "file": "stack/skills/project-agent-capabilities/SKILL.md",
-          "marker": "`/claude-stack:validate` compares a project's stamp against the snapshot's"
+          "marker": "`/alfred-code:validate` compares a project's stamp against the snapshot's"
         }
       ]
     },
@@ -4804,7 +4804,7 @@
         },
         {
           "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "its own file (<docs-root>/flow/PUSH-GATE), and CLAUDE_STACK_PUSH_GATE=0 turns"
+          "marker": "its own file (<docs-root>/flow/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns"
         }
       ]
     },
@@ -5292,12 +5292,12 @@
       "_note": "How an installed MCP SET is read back, once the servers ship as plugins: the route decides, and status's table and update's refresh state it (configure and validate read the install back through the installer since Phase 8 T4 - inventory-read-back). A .mcp.json-only rule reports ZERO mcps on every plugin-route install, which reads as a stack that dropped them.",
       "owner": {
         "file": "setup-plugin/commands/status.md",
-        "marker": "with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
+        "marker": "with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/update.md",
-          "marker": "with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
+          "marker": "with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
         }
       ]
     },

@@ -251,7 +251,7 @@ function extract(files, opts) {
 
 // ---------------------------------------------------------------------------
 // Replay. Each job is the shipped hook, spawned exactly as the harness spawns
-// it. The isolation matters: CLAUDE_STACK_DOCS_PATH goes to scratch so no state
+// it. The isolation matters: ALFRED_CODE_DOCS_PATH goes to scratch so no state
 // file or hook-block row lands in a real project, and CLAUDE_CONFIG_DIR is empty
 // so a real account settings.json model id cannot move a context threshold.
 // ---------------------------------------------------------------------------
@@ -259,12 +259,12 @@ function makeEnv(scratch, cwd) {
   return {
     ...process.env,
     CLAUDE_PROJECT_DIR: cwd || scratch,
-    CLAUDE_STACK_DOCS_PATH: path.join(scratch, 'docs'),
+    ALFRED_CODE_DOCS_PATH: path.join(scratch, 'docs'),
     CLAUDE_CONFIG_DIR: path.join(scratch, 'config'),
-    CLAUDE_STACK_INSTRUMENT: '0',
+    ALFRED_CODE_INSTRUMENT: '0',
     // Once-markers and latches (the SubagentStop hold, the fresh-session latch) land in scratch: in the
     // default os.tmpdir() a second replay would read the first run's markers and pass every repeat.
-    CLAUDE_STACK_HOOK_LOG_DIR: scratch,
+    ALFRED_CODE_HOOK_LOG_DIR: scratch,
   };
 }
 

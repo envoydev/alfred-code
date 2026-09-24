@@ -27,7 +27,7 @@ const os = require('os');
 const pathMod = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -38,9 +38,9 @@ if (require.main === module) {
     if (standDown('guard-secret-value')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`
@@ -73,7 +73,7 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
-// (`env.0.key` = `CLAUDE_STACK_DOCS_PATH`) and `meta/migrations.json`
+// (`env.0.key` = `ALFRED_CODE_DOCS_PATH`) and `meta/migrations.json`
 // (`detect.settings_env_key` = `CLAUDE_DOCS_PATH`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
@@ -478,7 +478,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');

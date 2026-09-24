@@ -2,7 +2,7 @@
 'use strict';
 // THE INSTALL AUDIT - a read-only pass over an install's OWN agent config: what the stack or the user
 // wired into this project (.mcp.json, the project settings files, CLAUDE.md), never the project's
-// code. Advisory: it prints rows, fixes nothing and always exits 0 - /claude-stack:validate pastes
+// code. Advisory: it prints rows, fixes nothing and always exits 0 - /alfred-code:validate pastes
 // the table and asks at most once.
 //
 //   node scripts/audit-install.js [<projectRoot>] [--json]

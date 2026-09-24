@@ -29,7 +29,7 @@ const fs = require('fs');
 const nodePath = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
+// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
 // together through the plugin and there is no file to leave out. The other is the migration window:
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
@@ -40,10 +40,10 @@ if (require.main === module) {
     if (standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
 // spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
 // (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -70,7 +70,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
@@ -211,7 +211,7 @@ function compactPointer() {
 // after that spend. `project-agent-capabilities` is here because the stack's own next-steps card
 // tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(init|setup|update|configure|validate))$/;
+const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
 const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));
@@ -436,7 +436,7 @@ function priorOrchestrationRun() {
 function chainedOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
+  return `${process.env.ALFRED_CODE_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
 }
 // The SIZE offer's re-arm. The denial mandates an AskUserQuestion whose second answer is 'run it
 // here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
@@ -452,7 +452,7 @@ const REOFFER_GROWTH = 1.5;
 function sizeOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-size-${key}.offered`;
+  return `${process.env.ALFRED_CODE_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-size-${key}.offered`;
 }
 function sizeOfferedAt() {
   try { return parseInt(fs.readFileSync(sizeOfferFile(), 'utf8'), 10) || 0; } catch { return 0; }

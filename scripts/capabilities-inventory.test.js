@@ -70,7 +70,7 @@ function project(name, opts = {})
     write(path.join(root, '.claude', 'rules', 'baseline-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'appium-mcp': {} } }, null, 2), -100);
-    write(path.join(root, '.claude', 'claude-stack.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
+    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
 }
@@ -365,7 +365,7 @@ test('--verify: a hand-edited policy block fails, and a resolved <docs-path> doe
     assert.match(run(['--verify', ruleA], { cwd: root }).out, /policy block:\s+FAIL - differs from the skill at line \d+/);
 
     // the one slot that is not a slot: `<docs-path>` resolved to this project's docs root
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai' } }), -100);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
     const ruleB = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), validRule('docs/ai'));
     const { status, out } = run(['--verify', ruleB], { cwd: root });
     assert.match(out, /policy block:\s+ok - \d+ lines, verbatim from the skill \(`<docs-path>` resolved to docs\/ai\)/);
@@ -383,9 +383,9 @@ test('--verify: a missing rule file fails rather than reporting a green check it
 test('report: the docs root is resolved and printed, so `<docs-path>` is never left in the rule', { skip: posixOnly }, () =>
 {
     const root = project('docs-root');
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai' } }), -100);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
     const { out } = run([], { cwd: root });
-    assert.match(out, /DOCS ROOT: docs\/ai\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/);
+    assert.match(out, /DOCS ROOT: docs\/ai\s+\(from ALFRED_CODE_DOCS_PATH in \.claude\/settings\.json env\)/);
     assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
     assert.match(out, /COMPARE:\s+no --body yet/);
 });

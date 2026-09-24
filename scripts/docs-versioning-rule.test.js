@@ -1,5 +1,5 @@
 'use strict';
-// ONE rule, FIVE homes. When CLAUDE_STACK_DOCS_VERSIONING is absent, the docs are versioned 'local' only when they are
+// ONE rule, FIVE homes. When ALFRED_CODE_DOCS_VERSIONING is absent, the docs are versioned 'local' only when they are
 // kept OUT of git - no domain is tracked AND either (a) a domain exists or (b) git ignores the docs root - and 'git'
 // otherwise, a fresh project whose docs root is not ignored included. The rule is written four times, in three
 // languages: the engine's fallback (stack/hooks/docs.js keptOutOfGit), the re-probe (scripts/stamp-docs-root.js), the
@@ -87,13 +87,15 @@ function build(sc, home)
 }
 const settingsFile = (repo) => path.join(repo, '.claude', 'settings.json');
 const writeEnv = (repo, env) => { fs.mkdirSync(path.join(repo, '.claude'), { recursive: true }); fs.writeFileSync(settingsFile(repo), `${JSON.stringify({ env }, null, 2)}\n`); };
-const readValue = (repo) => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8')).env.CLAUDE_STACK_DOCS_VERSIONING;
+const readValue = (repo) => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING;
+// The frozen twins read and write their 1.x keys.
+const readTwinValue = (repo) => JSON.parse(fs.readFileSync(settingsFile(repo), 'utf8')).env.CLAUDE_STACK_DOCS_VERSIONING; // legacy-name
 
 // The engine: its own resolver, the declared value (if any) handed in the environment exactly as the hook gets it.
 function viaEngine(sc)
 {
     const { repo, docsPath } = build(sc, 'engine');
-    const env = { ...process.env, CLAUDE_PROJECT_DIR: repo, CLAUDE_STACK_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: sc.declared || '' };
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: repo, ALFRED_CODE_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: sc.declared || '' };
     const r = spawnSync(process.execPath, ['-e', `process.stdout.write(require(${JSON.stringify(DOCS_JS)}).docsMode())`], { cwd: repo, env, encoding: 'utf8' });
     return r.status === 0 ? r.stdout : `error: ${r.stderr}`;
 }
@@ -105,7 +107,7 @@ function viaStamp(sc)
 {
     const { repo, docsPath } = build(sc, 'stamp');
     const held = sc.declared || 'git';
-    writeEnv(repo, { CLAUDE_STACK_DOCS_PATH: docsPath, CLAUDE_STACK_DOCS_VERSIONING: held });
+    writeEnv(repo, { ALFRED_CODE_DOCS_PATH: docsPath, ALFRED_CODE_DOCS_VERSIONING: held });
     const seeded = sc.declared ? (sc.declared === 'git' ? 'local' : 'git') : held;
     execFileSync(process.execPath, [STAMP, repo, '--reprobe-versioning', seeded], { encoding: 'utf8' });
     return readValue(repo);
@@ -116,13 +118,13 @@ function viaStamp(sc)
 function viaSeed(sc)
 {
     const { repo, docsPath } = build(sc, 'seed');
-    const env = { CLAUDE_STACK_DOCS_PATH: docsPath, ...(sc.declared ? { CLAUDE_STACK_DOCS_VERSIONING: sc.declared } : {}) };
+    const env = { ALFRED_CODE_DOCS_PATH: docsPath, ...(sc.declared ? { ALFRED_CODE_DOCS_VERSIONING: sc.declared } : {}) };
     applyEnv(env, {
         catalog: ENV_CATALOG.env, migrations: MIGRATIONS.env || {},
         docsVersioning: { value: '', seed: installDocs.docsVersioningSeed({ projectRoot: repo, docsPath }) },
         hooksOff: [], hooksAnswered: false, log: () => {},
     });
-    return env.CLAUDE_STACK_DOCS_VERSIONING;
+    return env.ALFRED_CODE_DOCS_VERSIONING;
 }
 
 // The installers: a full, hermetic install (stub claude on PATH, account dirs inside the sandbox, one rule and one
@@ -130,7 +132,7 @@ function viaSeed(sc)
 function viaInstaller(sc, twin)
 {
     const { repo, docsPath } = build(sc, twin);
-    writeEnv(repo, { CLAUDE_STACK_DOCS_PATH: docsPath, ...(sc.declared ? { CLAUDE_STACK_DOCS_VERSIONING: sc.declared } : {}) });
+    writeEnv(repo, { CLAUDE_STACK_DOCS_PATH: docsPath, ...(sc.declared ? { CLAUDE_STACK_DOCS_VERSIONING: sc.declared } : {}) }); // legacy-name
     const home = path.join(WORK, `${path.basename(repo)}-home`);
     fs.mkdirSync(path.join(home, 'acct'), { recursive: true });
     const env = { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, 'acct'), PATH: BIN + path.delimiter + process.env.PATH };
@@ -140,7 +142,7 @@ function viaInstaller(sc, twin)
         : ['pwsh', ['-NoProfile', '-File', PS1, 'install', '-Scope', 'project', '-Selection', SEL, '-Source', ROOT]];
     return new Promise((resolve) => execFile(cmd, args, { cwd: repo, env, encoding: 'utf8', maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
         if (err) return resolve(`error: ${stderr || err.message}`);
-        try { resolve(readValue(repo)); } catch (e) { resolve(`error: ${e.message}`); }
+        try { resolve(readTwinValue(repo)); } catch (e) { resolve(`error: ${e.message}`); }
     }));
 }
 

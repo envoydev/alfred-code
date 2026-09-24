@@ -21,7 +21,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-rw-'));
 // docs root (measured once at 12,480 rows). Pin a scratch root and an absolute ledger for the whole
 // run; the cases that need a different root pass one of their own.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
-process.env.CLAUDE_STACK_DOCS_PATH = path.join(TMP, 'ledger');
+process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 
 const run = (hook, payload, opts) => spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
@@ -148,7 +148,7 @@ test('guard-cross-project-write: a quote inside a $( ) substitution does not clo
   // `sed 's/<OutputType>//'` read as a redirection to `//`. ~112k tokens re-sent on the retry.
   const other = fs.mkdtempSync(path.join(TMP, 'projB-'));
   const xp = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command } },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' } }).status;
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
   assert.equal(xp(`echo "$(grep -o 'Sdk="[^"]*"' app.csproj)" && sed 's/<OutputType>//' app.csproj`), 0, 'the replayed command');
   assert.equal(xp(`sed 's/<OutputType>//' app.csproj`), 0, 'the sed alone always passed');
   assert.equal(xp(`V="$(jq -r '.name' pkg.json)"; echo "$V" > out.txt`), 0, 'an in-project write after a substitution is ordinary work');

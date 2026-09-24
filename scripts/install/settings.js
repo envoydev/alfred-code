@@ -20,8 +20,8 @@
 //      sentry auth mode). A level change or an auth switch has to land, or the plugin launcher and
 //      the headers helper keep reading the old one.
 //
-// Two keys are not catalog-simple. CLAUDE_STACK_DOCS_VERSIONING is a DECISION with a four-home
-// seeding rule, so the caller resolves it and hands the answer in. CLAUDE_STACK_HOOKS_OFF is the
+// Two keys are not catalog-simple. ALFRED_CODE_DOCS_VERSIONING is a DECISION with a four-home
+// seeding rule, so the caller resolves it and hands the answer in. ALFRED_CODE_HOOKS_OFF is the
 // one exception to absent-only: when a walk answered the hooks layer THIS run, that answer wins,
 // because the user is looking at the question as it is asked.
 const fs = require('node:fs');
@@ -65,7 +65,7 @@ function hookCommand(file, args)
     if (file === 'instrument-tool-usage.js')
     {
         // env-gated: the shell test costs nothing when off; node spawns only under the flag.
-        const gate = '[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] || ';
+        const gate = '[ "$ALFRED_CODE_INSTRUMENT" != "1" ] || ';
         return { command: gate + quoted, legacy: gate + legacy };
     }
     return { command: quoted, legacy };
@@ -185,8 +185,8 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAu
     for (const row of catalog)
     {
         if (row.written) continue;                       // step 5 owns these
-        if (row.key === 'CLAUDE_STACK_DOCS_VERSIONING') continue;   // a decision, below
-        if (row.key === 'CLAUDE_STACK_HOOKS_OFF') continue;         // answered-wins, below
+        if (row.key === 'ALFRED_CODE_DOCS_VERSIONING') continue;   // a decision, below
+        if (row.key === 'ALFRED_CODE_HOOKS_OFF') continue;         // answered-wins, below
         if (row.key in env) continue;
         env[row.key] = row.default;
         changed = true;
@@ -197,34 +197,34 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAu
     // it the caller's seed rule answers, and only when the key is absent.
     if (docsVersioning && docsVersioning.value)
     {
-        const old = env.CLAUDE_STACK_DOCS_VERSIONING;
-        if (old !== docsVersioning.value) { env.CLAUDE_STACK_DOCS_VERSIONING = docsVersioning.value; changed = true; }
-        log(`  settings.json env: CLAUDE_STACK_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
+        const old = env.ALFRED_CODE_DOCS_VERSIONING;
+        if (old !== docsVersioning.value) { env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.value; changed = true; }
+        log(`  settings.json env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
             + ` (--docs-versioning${old === docsVersioning.value ? ', unchanged' : ''})`);
     }
-    else if (!('CLAUDE_STACK_DOCS_VERSIONING' in env) && docsVersioning && docsVersioning.seed)
+    else if (!('ALFRED_CODE_DOCS_VERSIONING' in env) && docsVersioning && docsVersioning.seed)
     {
-        env.CLAUDE_STACK_DOCS_VERSIONING = docsVersioning.seed;
+        env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.seed;
         changed = true;
-        log(`  settings.json env: CLAUDE_STACK_DOCS_VERSIONING seeded (${docsVersioning.seed})`);
+        log(`  settings.json env: ALFRED_CODE_DOCS_VERSIONING seeded (${docsVersioning.seed})`);
     }
 
     // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
     for (const [key, value, label] of [
-        ['CLAUDE_STACK_MEMORY_DB', memoryDb, memoryDb],
-        ['CLAUDE_STACK_SENTRY_AUTH', sentryAuth, sentryAuth]])
+        ['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb],
+        ['ALFRED_CODE_SENTRY_AUTH', sentryAuth, sentryAuth]])
         if (value && env[key] !== value) { env[key] = value; changed = true; log(`  settings.json env: ${key} -> ${label}`); }
 
-    // CLAUDE_STACK_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
+    // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
     // value - the one exception to absent-only, because the user is looking at the question.
     const off = (hooksOff || []).join(',');
     if (hooksAnswered)
     {
-        if (env.CLAUDE_STACK_HOOKS_OFF !== off)
-        { env.CLAUDE_STACK_HOOKS_OFF = off; changed = true; log(`  settings.json env: CLAUDE_STACK_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
+        if (env.ALFRED_CODE_HOOKS_OFF !== off)
+        { env.ALFRED_CODE_HOOKS_OFF = off; changed = true; log(`  settings.json env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
-    else if (!('CLAUDE_STACK_HOOKS_OFF' in env))
-    { env.CLAUDE_STACK_HOOKS_OFF = ''; changed = true; log('  settings.json env: CLAUDE_STACK_HOOKS_OFF seeded (empty - every hook runs)'); }
+    else if (!('ALFRED_CODE_HOOKS_OFF' in env))
+    { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log('  settings.json env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)'); }
 
     return changed;
 }
@@ -269,7 +269,7 @@ function writeSettings(opts)
     {
         const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
         if (!m || !retiredEntries.includes(m[1])) continue;
-        const core = `Agent(claude-stack:${m[2]})`;
+        const core = `Agent(alfred-code:${m[2]})`;
         if (!deny.includes(core)) { deny.push(core); changed = true; log(`  settings.json: ${entry} also denied as ${core} (its entry retired)`); }
         if (live.includes(m[1])) continue;
         deny.splice(deny.indexOf(entry), 1);

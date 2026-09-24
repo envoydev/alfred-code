@@ -7,7 +7,7 @@ effort: high
 color: orange
 skills:
   - superpowers:systematic-debugging
-  - claude-stack:project-ci-failure-signatures
+  - alfred-code:project-ci-failure-signatures
 
 ---
 

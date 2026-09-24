@@ -14,7 +14,7 @@ function makeDirs({ stamp, releaseSource, fixture })
     const snap = path.join(root, 'repo');
     fs.mkdirSync(snap, { recursive: true });
     if (releaseSource !== null) fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), releaseSource);
-    const stampFile = path.join(root, 'claude-stack.stamp');
+    const stampFile = path.join(root, 'alfred-code.stamp');
     if (stamp !== null) fs.writeFileSync(stampFile, stamp);
     const fixtureFile = path.join(root, 'compare.json');
     if (fixture) fs.writeFileSync(fixtureFile, JSON.stringify(fixture));

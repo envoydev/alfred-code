@@ -92,7 +92,7 @@ function setListKey(cfgFile, key, value, comment, { log = () => {} } = {})
         log(`  serena: ${key} set to ${value} (was empty)`);
         return true;
     }
-    fs.writeFileSync(cfgFile, `${text}\n# Added by claude-stack: ${comment}\n${key}: ${value}\n`);
+    fs.writeFileSync(cfgFile, `${text}\n# Added by alfred-code: ${comment}\n${key}: ${value}\n`);
     log(`  serena: ${key} ${value} appended to project.yml`);
     return true;
 }
@@ -134,7 +134,7 @@ function seedProject({ projectRoot, selected = true, log = () => {} })
     }
     const name = path.basename(projectRoot);
     fs.mkdirSync(path.dirname(cfg), { recursive: true });
-    fs.writeFileSync(cfg, `# Seeded by claude-stack. serena binds this repo via --project-from-cwd; the config it would
+    fs.writeFileSync(cfg, `# Seeded by alfred-code. serena binds this repo via --project-from-cwd; the config it would
 # auto-generate instead is written with an EMPTY language list in async mode and with only the
 # single top language otherwise, so it is stated here explicitly. Detected from the files in this
 # repo at install time; edit freely - a key that carries entries is never rewritten by an update.

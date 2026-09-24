@@ -48,7 +48,7 @@ function run(hook, dir, env)
         const out = execFileSync(process.execPath, [file], {
             input: payload(dir), encoding: 'utf8', timeout: 20000,
             stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_STACK_HOOKS_OFF: '', ...env },
+            env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_HOOKS_OFF: '', ...env },
         });
         return { status: 0, out };
     }
@@ -79,11 +79,11 @@ test('every wired hook stands down when the project still wires its copied twin'
     }
 });
 
-test('every wired hook stands down when CLAUDE_STACK_HOOKS_OFF names it', () => {
+test('every wired hook stands down when ALFRED_CODE_HOOKS_OFF names it', () => {
     for (const hook of WIRED)
     {
         const dir = fixture('some-other-hook');
-        const result = run(hook, dir, { CLAUDE_STACK_HOOKS_OFF: `something-else, ${hook}` });
+        const result = run(hook, dir, { ALFRED_CODE_HOOKS_OFF: `something-else, ${hook}` });
         assert.strictEqual(result.status, 0, `${hook} must exit 0 when switched off, got ${result.status}: ${result.out}`);
         assert.strictEqual(result.out.trim(), '', `${hook} must print nothing when switched off`);
         fs.rmSync(dir, { recursive: true, force: true });
@@ -94,7 +94,7 @@ test('a hook whose NEIGHBOUR is wired or switched off still runs', () => {
     for (const hook of WIRED)
     {
         const dir = fixture('guard-not-a-real-hook');
-        const result = run(hook, dir, { CLAUDE_PLUGIN_ROOT: '/somewhere/plugin', CLAUDE_STACK_HOOKS_OFF: 'guard-nothing' });
+        const result = run(hook, dir, { CLAUDE_PLUGIN_ROOT: '/somewhere/plugin', ALFRED_CODE_HOOKS_OFF: 'guard-nothing' });
         assert.ok(result.status === 0 || result.status === 2,
             `${hook} must run normally (exit 0 or 2), got ${result.status}: ${result.out.slice(0, 200)}`);
         fs.rmSync(dir, { recursive: true, force: true });
@@ -118,7 +118,7 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
                 const out = execFileSync(process.execPath, [path.join(tmp, hook + '.js')], {
                     input: payload(dir), encoding: 'utf8', timeout: 20000,
                     stdio: ['pipe', 'pipe', 'pipe'],
-                    env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/p', CLAUDE_STACK_HOOKS_OFF: hook },
+                    env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/p', ALFRED_CODE_HOOKS_OFF: hook },
                 });
                 return { status: 0, out };
             }

@@ -14,7 +14,7 @@ visibly separate. Never fabricate a number.
 
 ## 0. What you are benchmarking
 
-The stack lives in the `claude-stack` repo (referred to below as `<STACK>`). It provides, per consuming
+The stack lives in the `alfred-code` repo (referred to below as `<STACK>`). It provides, per consuming
 project: ~53 house **skills**, 32 **agents** (a `cross-stack-agents-flow` router over `main-stack-agents-flow`; per-domain
 `solution-designer -> implementer -> verifier` trios for asp.net/angular/wpf/mobile/data/devops; cross
 cutting `architecture-analyzer`, `task-analyzer`, `runtime-failure-diagnoser`, `ci-failure-diagnoser`,
@@ -43,7 +43,7 @@ They share one `Task` contract (`id`, `title`, `description`, `status`, `priorit
 
 ## 1. Setup (Requirement 1 - install the stack per project)
 
-These projects currently live as tracked content inside `claude-stack`, so they have **no git repo of
+These projects currently live as tracked content inside `alfred-code`, so they have **no git repo of
 their own**. The installer resolves the project root via `git rev-parse` and serena binds via
 `--project-from-cwd`, so each must be a standalone git repo or the install scopes to the wrong root.
 
