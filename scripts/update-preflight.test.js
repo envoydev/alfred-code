@@ -28,9 +28,10 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-'));
     const snap = path.join(root, 'repo');
-    fs.mkdirSync(path.join(snap, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'scripts', 'install'), { recursive: true });
     fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
     fs.copyFileSync(path.join(__dirname, 'stamp-compare.js'), path.join(snap, 'scripts', 'stamp-compare.js'));
+    fs.copyFileSync(path.join(__dirname, 'install', 'source.js'), path.join(snap, 'scripts', 'install', 'source.js'));
     fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.70\n');
     fs.writeFileSync(path.join(snap, 'meta', 'migrations.json'), JSON.stringify({ _comment: 'x'.repeat(2000), migrations }));
 

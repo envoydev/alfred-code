@@ -561,8 +561,9 @@ mirrored there in the same sitting.
 - **The plugin cache IS the snapshot, so the common run downloads nothing but a newer release** (`_stack_plugin_cache` /
   `Get-StackPluginCache`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` is the whole
   repo, because every marketplace entry is sourced from the repo ROOT - measured on a real install
-  (`stack/rules`, `stack/CLAUDE.template.md`, both hook engines, `meta/`, `scripts/`,
-  `RELEASE-SOURCE`). The NEWEST valid entry across marketplaces wins, by `sort -V` over the directory
+  (`stack/rules`, `stack/CLAUDE.template.md`, both hook engines, `meta/`, `scripts/`) - but NO
+  `RELEASE-SOURCE` and no `.git` (a GitHub marketplace writes the repo tree), so its revision is the
+  `v<version>` tag of its own `plugin.json` (`readRevision`, which `stamp-compare.js` shares). The NEWEST valid entry across marketplaces wins, by `sort -V` over the directory
   names; an entry counts only with `stack/skills` + `stack/agents`, so a half-written one is rejected.
   It is by construction the revision the enabled plugins run from, so seed and plugins can never be
   two releases. The stack writes no cache of its own - the per-release `<config>/cache/stack-source/`
@@ -583,8 +584,8 @@ mirrored there in the same sitting.
   Standalone (no `--source`) still resolves and cleans up what it fetched; keep that path working.
   Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install, not a copy of it.
 - **The install is versioned, not the file.** `version:` exists only in plugin.json - a `version:` key on
-  a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit +
-  release version); configure diffs it via the GitHub compare API. A run whose source never resolved
+  a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit, or
+  the `v<version>` tag when the snapshot names none, + release version); configure diffs it via the GitHub compare API. A run whose source never resolved
   writes NO stamp.
 - Authoring a skill in `stack/skills/`: superpowers writing-skills is a reference - take its testing
   discipline, subordinate it to the parity lint, HTML + count sync and house voice.

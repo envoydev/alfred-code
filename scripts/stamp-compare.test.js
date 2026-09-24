@@ -82,6 +82,19 @@ test('300-file fixture leads with TRUNCATED', () => {
     assert.match(out.trim().split('\n')[2], /^TRUNCATED - /);
 });
 
+// A plugin-cache snapshot carries no RELEASE-SOURCE and no .git: its plugin version tag is the head,
+// the same revision the installer stamps from it.
+test('a snapshot with no RELEASE-SOURCE and no git compares from its plugin version tag', () => {
+    const { snap, stampFile, fixtureFile } = makeDirs({ stamp: 'sha: v1.2.0\nversion: 1.2.0\n', releaseSource: null, fixture: FIXTURE });
+    fs.mkdirSync(path.join(snap, 'setup-plugin', '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(snap, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '1.3.0' }));
+    const { out, code } = run(['--snapshot', snap, '--stamp', stampFile, '--fixture', fixtureFile]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^version: 1\.2\.0 -> 1\.3\.0$/m);
+    assert.match(out, /^base: v1\.2\.0 head: v1\.3\.0$/m);
+    assert.match(out, /^modified\tstack\/skills\/csharp\/SKILL\.md$/m);
+});
+
 // The commands branch on exit 2 = no-stamp; a usage error must never masquerade as that signal.
 test('usage error exits 1 and prints no signal line', () => {
     const { out, code } = run([]);

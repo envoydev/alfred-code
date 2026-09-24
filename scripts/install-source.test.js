@@ -31,22 +31,30 @@ const dir = (name) => { const d = path.join(TMP, `${name}-${seq++}`); fs.mkdirSy
 // A directory that looks like the stack to rule 5. `releaseSource` writes the RELEASE-SOURCE file a
 // cache entry and an extracted archive both carry, which is where a non-git snapshot's revision
 // comes from.
-function stackDir(name, { releaseSource } = {})
+function stackDir(name, { releaseSource, pluginVersion } = {})
 {
     const d = dir(name);
     fs.mkdirSync(path.join(d, 'stack', 'skills'), { recursive: true });
     fs.mkdirSync(path.join(d, 'stack', 'agents'), { recursive: true });
     if (releaseSource) fs.writeFileSync(path.join(d, 'RELEASE-SOURCE'), releaseSource);
+    if (pluginVersion) writePluginVersion(d, pluginVersion);
     return d;
 }
 
+function writePluginVersion(d, version)
+{
+    fs.mkdirSync(path.join(d, 'setup-plugin', '.claude-plugin'), { recursive: true });
+    fs.writeFileSync(path.join(d, 'setup-plugin', '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'alfred-code', version }));
+}
+
 // The cache the CLI writes: <config>/plugins/cache/<marketplace>/alfred-code/<version>/<the repo>.
-function cacheEntry(configDir, marketplace, version, { valid = true, releaseSource } = {})
+function cacheEntry(configDir, marketplace, version, { valid = true, releaseSource, pluginVersion } = {})
 {
     const d = path.join(configDir, 'plugins', 'cache', marketplace, 'alfred-code', version);
     fs.mkdirSync(path.join(d, 'stack', 'skills'), { recursive: true });
     if (valid) fs.mkdirSync(path.join(d, 'stack', 'agents'), { recursive: true });
     if (releaseSource) fs.writeFileSync(path.join(d, 'RELEASE-SOURCE'), releaseSource);
+    if (pluginVersion) writePluginVersion(d, pluginVersion);
     return d;
 }
 
@@ -108,6 +116,27 @@ test('install-source: the plugin cache is taken before any download', () =>
     assert.strictEqual(got.sha, 'abc123');
     assert.strictEqual(got.ref, 'main');
     assert.strictEqual(calls.archive + calls.clone, 0, 'the common run downloaded something');
+});
+
+// A GitHub marketplace writes its cache entry from the repo tree: no RELEASE-SOURCE, no .git (measured
+// on real installs). The snapshot's own plugin version names the release, and the release workflow
+// tags every one, so v<version> is the revision - without it the run writes no stamp.
+test('install-source: a cache entry with no RELEASE-SOURCE is its plugin version tag', () =>
+{
+    const cfg = dir('cfg-tag');
+    const entry = cacheEntry(cfg, 'envoydev', '1.3.0', { pluginVersion: '1.3.0' });
+    const got = source({ configDir: cfg }).s.resolve();
+    assert.strictEqual(got.dir, entry);
+    assert.strictEqual(got.sha, 'v1.3.0', 'no revision - no stamp, and every stamp-backed check goes dark');
+    assert.strictEqual(got.ref, 'v1.3.0');
+});
+
+test('install-source: a handed --source falls back to its version tag; RELEASE-SOURCE still wins; no plugin.json is no revision', () =>
+{
+    assert.strictEqual(source({ sourceDir: stackDir('tagged', { pluginVersion: '1.3.0' }) }).s.resolve().sha, 'v1.3.0');
+    assert.strictEqual(source({ sourceDir: stackDir('both', { pluginVersion: '1.3.0', releaseSource: 'sha: abc123\nref: main\n' }) }).s.resolve().sha, 'abc123',
+        'the version tag outranked the exact commit RELEASE-SOURCE names');
+    assert.strictEqual(source({ sourceDir: stackDir('bare') }).s.resolve().sha, '', 'a revision was invented for a snapshot that names none');
 });
 
 test('install-source: the NEWEST cache entry wins, by version order and not by string order', () =>

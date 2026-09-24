@@ -22,6 +22,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { versionTag } = require('./install/source.js');
 
 const STACK_PATHS = /^(stack|skills|agents|rules|hooks|templates)\//;
 
@@ -48,7 +49,12 @@ function snapshotHead(dir)
     if (rs.sha) return rs;
     // A clone fallback has no RELEASE-SOURCE - its git HEAD is the same truth.
     try { return { sha: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
-    catch { return { sha: undefined, version: undefined }; }
+    catch
+    {
+        // A plugin-cache snapshot has neither: its version tag, the revision the installer stamps from it.
+        const tag = versionTag(dir);
+        return { sha: tag || undefined, version: tag ? tag.slice(1) : undefined };
+    }
 }
 
 async function compareFiles(repo, base, head)

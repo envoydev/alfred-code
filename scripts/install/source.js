@@ -56,8 +56,8 @@ function compareVersions(a, b)
     return 0;
 }
 
-// `sha:` / `ref:` out of the RELEASE-SOURCE file a cache entry and an extracted archive both carry.
-// A missing or unreadable file is not an error: it means no revision, which means no stamp.
+// `sha:` / `ref:` out of the RELEASE-SOURCE file an extracted release archive carries.
+// A missing or unreadable file is not an error: readRevision falls back to the version tag.
 function readReleaseSource(dir)
 {
     try
@@ -67,6 +67,29 @@ function readReleaseSource(dir)
         return { sha: field('sha'), ref: field('ref') };
     }
     catch { return { sha: '', ref: '' }; }
+}
+
+// The release a snapshot IS, as the tag the release workflow cuts for it: `v<version>` from its own
+// plugin.json. A GitHub marketplace writes its cache entry from the repo tree, which carries no
+// RELEASE-SOURCE and no .git (measured on real installs), so this is the one revision such an entry
+// can name - without it the run writes no stamp. '' when the snapshot names no version.
+function versionTag(dir)
+{
+    try
+    {
+        const version = JSON.parse(fs.readFileSync(path.join(dir, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+        return version ? `v${version}` : '';
+    }
+    catch { return ''; }
+}
+
+// RELEASE-SOURCE's exact commit when the snapshot carries one, else its version tag.
+function readRevision(dir)
+{
+    const release = readReleaseSource(dir);
+    if (release.sha) return release;
+    const tag = versionTag(dir);
+    return { sha: tag, ref: tag };
 }
 
 // The newest valid entry across EVERY marketplace. A machine can have the stack cached under more
@@ -128,10 +151,10 @@ function createSource(opts)
             return null;
         }
         const git = gitRevision ? gitRevision(sourceDir) : null;
-        const release = readReleaseSource(sourceDir);
+        const release = readRevision(sourceDir);
         const sha = git?.sha || release.sha;
         const ref = git?.ref || release.ref;
-        if (!sha) log(`source: ${sourceDir} (provided; no git checkout or RELEASE-SOURCE - no revision, so no stamp)`);
+        if (!sha) log(`source: ${sourceDir} (provided; no git checkout, RELEASE-SOURCE or plugin version - no revision, so no stamp)`);
         else log(`source: ${sourceDir} (provided) @ ${ref || '?'} ${sha.slice(0, 12)}`);
         // Stamp the URL the caller actually cloned from, not our default - they may have used a fork.
         return { dir: sourceDir, owned: false, route: 'provided', sha, ref, repoUrl: httpsRemote(git?.remote || repoUrl) };
@@ -141,7 +164,7 @@ function createSource(opts)
     {
         const dir = pluginCache(configDir);
         if (!dir) return null;
-        const { sha, ref } = readReleaseSource(dir);
+        const { sha, ref } = readRevision(dir);
         log(`source: plugin cache ${dir} @ ${ref || '?'} ${(sha || 'unknown').slice(0, 12)} (no download)`);
         // The cache is the CLI's own plugin install, not a copy of it - never ours to delete.
         return { dir, owned: false, route: 'plugin-cache', sha, ref, repoUrl };
@@ -151,7 +174,7 @@ function createSource(opts)
     {
         const dir = fetchArchive ? fetchArchive() : null;
         if (!dir || !isValidSource(dir)) return null;
-        const { sha, ref } = readReleaseSource(dir);
+        const { sha, ref } = readRevision(dir);
         log(`source: ${repoUrl}/releases/latest/download @ ${ref || '?'} ${(sha || 'unknown').slice(0, 12)}`);
         return { dir, owned: true, route: 'release-archive', sha, ref, repoUrl };
     }
@@ -189,4 +212,4 @@ function createSource(opts)
     return { resolve, cleanup, get current() { return resolved; } };
 }
 
-module.exports = { createSource, isValidSource, pluginCache, compareVersions, readReleaseSource, httpsRemote };
+module.exports = { createSource, isValidSource, pluginCache, compareVersions, readReleaseSource, readRevision, versionTag, httpsRemote };
