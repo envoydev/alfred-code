@@ -41,20 +41,36 @@ test('stack-manifest: every row a list carries has the fields its own block need
     for (const row of m.mcps) { assert.strictEqual(typeof row.name, 'string'); assert.strictEqual(typeof row.args, 'string'); }
 });
 
-// 'shipped but not seeded' is a real state - an MCP server no stack seeds, a plugin parked for a
-// release (superpowers, a hard core dependency rather than a pick). Flattening it to 'absent' would
-// silently drop the item from the catalog the guided walk offers, which is a different install, not
-// a smaller file. The manifest's own convention - `active: false` survives, never dropped - is
-// pinned here so a hand-edit cannot un-park a row by deleting it and losing the note.
-test('stack-manifest: a parked row keeps its note and stays out of the seeded (active) set', () =>
+// 'shipped but not seeded' is a real state - an MCP server no stack seeds, a plugin parked because
+// the installer adds it beside the core on every run (CORE_DEP_PLUGINS) rather than as a pick.
+// Flattening it to 'absent' would silently drop the item from the catalog the guided walk offers,
+// which is a different install, not a smaller file. The manifest's own convention - `active: false`
+// survives, never dropped - is pinned here so a hand-edit cannot un-park a row by deleting it and
+// losing the note, and a parked plugin row is exactly a companion the seed installs, nothing else.
+test('stack-manifest: a parked row keeps its note, and the parked plugins are exactly the core companions', () =>
 {
     const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
     const parked = m.plugins.filter((r) => r.active === false);
-    assert.ok(parked.length, 'the manifest lost its parked row - superpowers is a core dependency, not a pick');
+    const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
+    assert.deepStrictEqual(parked.map((r) => r.id).sort(), [...CORE_DEP_PLUGINS].sort(),
+        'a parked plugin row is a companion the seed installs on every run - an optional pick is an ordinary row');
     for (const row of parked)
     {
         assert.ok(row.note && row.note.trim(), `parked plugin '${row.id}' has no note explaining why it is shipped but not seeded`);
     }
+});
+
+// R72: superpowers is an OPTIONAL pick - suggested, never seeded. Its row stays (an install that has
+// it reads it back from the catalog, and the walk can offer it), active like any other pick, and the
+// note carries the measured cost a user weighs before adding it back.
+test('stack-manifest: superpowers is an ordinary optional row that names its always-on cost', () =>
+{
+    const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+    const row = m.plugins.find((r) => r.id === 'superpowers@claude-plugins-official');
+    assert.ok(row, 'the optional row is kept - dropping it would hide an installed superpowers from the read-back');
+    assert.notStrictEqual(row.active, false, 'not parked: a parked row is a companion installed on every run');
+    assert.match(row.note, /optional/i, 'the note says it is optional');
+    assert.match(row.note, /5,707/, 'the note names the measured always-on cost (chars per session)');
 });
 
 // A plugin from a marketplace that is neither the official one nor this repo installs only once
@@ -67,7 +83,7 @@ test('stack-manifest: a plugin from a third-party marketplace names the source i
     const claudeHud = m.plugins.find((r) => r.id === 'claude-hud@claude-hud');
     assert.ok(claudeHud, 'the claude-hud plugin row is missing');
     assert.strictEqual(claudeHud.marketplace, 'jarrodwatts/claude-hud');
-    // R27: required, so parked like superpowers - the seed's CORE_DEP_PLUGINS installs it on every run.
+    // R27: required, so parked - the seed's CORE_DEP_PLUGINS installs it on every run.
     assert.strictEqual(claudeHud.active, false, 'claude-hud is a core companion, not a pick');
 });
 

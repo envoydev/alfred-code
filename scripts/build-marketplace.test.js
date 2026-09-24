@@ -31,8 +31,7 @@ test('every entry shares ONE source and lists its own paths', () => {
 
 // Phase 3 moved the core off ./setup-plugin, where its own plugin.json was the manifest. At the
 // shared root nothing under setup-plugin/ is auto-discovered, so every path it used to get for free
-// is listed - and the two that are easy to lose on the way across are the layer-table hook and the
-// superpowers dependency.
+// is listed - and the one that is easy to lose on the way across is the layer-table hook.
 test('the core entry carries the commands, the router skill, the inline hook, and no dependency', () => {
     const core = byName['alfred-code'];
     assert.ok(core, 'the core entry is generated from Phase 3 on');
@@ -229,9 +228,12 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
         'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
 });
 
-test('superpowers and claude-hud are the plugins the installer adds from other marketplaces, on every run', () => {
+// R72: superpowers is an optional pick - suggested, never seeded - so no run adds it on its own.
+// claude-hud is the one plugin from another marketplace every run installs.
+test('claude-hud is the plugin the installer adds from another marketplace on every run, and superpowers is not', () => {
     assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
-    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['superpowers@claude-plugins-official', 'claude-hud@claude-hud']);
+    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['claude-hud@claude-hud']);
+    assert.ok(!CORE_DEP_PLUGINS.some((spec) => spec.split('@')[0] === 'superpowers'), `CORE_DEP_PLUGINS still names superpowers: ${CORE_DEP_PLUGINS.join(', ')}`);
 });
 
 // The three servers a project can never drop ship as standalone entries the installer installs beside

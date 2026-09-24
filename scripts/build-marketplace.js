@@ -20,8 +20,8 @@
 // outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
 // refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
 // entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
-// agents - plus the layer-table hook INLINE and the superpowers dependency that plugin.json used to
-// declare. Dropping either on the way across would be a silent behaviour change.
+// agents - plus the layer-table hook INLINE that plugin.json used to declare. Dropping it on the way
+// across would be a silent behaviour change.
 //
 // From 2.0.0 the core also carries EVERY stack hook inline (user ruling 'Fold into core in 2.0.0'):
 // there is no separate hooks entry, so a project that has the core has the guards.

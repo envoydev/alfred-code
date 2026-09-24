@@ -8,22 +8,30 @@
 // the install depends on, active-vs-parked filtering, and the retired-block defaults.
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const { loadManifest } = require('./install/manifest.js');
 
 const ROOT = path.join(__dirname, '..');
 
+// A fixture, not the shipped manifest: which plugin is parked changes with the release (R72 took
+// superpowers out of it), the loader's contract does not.
 test('manifest: an active:false row is SHIPPED but not seeded', () =>
 {
-    const m = loadManifest(ROOT);
-    const parked = (m.rows.plugins || []).filter((r) => r.active === false).map((r) => r.id);
-    assert.ok(parked.length, 'the fixture lost its parked row - superpowers is a core dependency, not a pick');
-    for (const id of parked)
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'manifest-parked-'));
+    try
     {
-        assert.ok(!m.plugins.includes(id), `${id} is seeded although it is parked`);
-        assert.ok(m.catalogs.plugins.includes(id), `${id} left the catalog - the stamp and --installed-only both read it`);
+        fs.mkdirSync(path.join(dir, 'meta'));
+        fs.writeFileSync(path.join(dir, 'meta', 'stack-manifest.json'), JSON.stringify({
+            plugins: [{ id: 'companion@elsewhere', active: false, note: 'installed beside the core' }, { id: 'pick@elsewhere' }],
+        }));
+        const m = loadManifest(dir);
+        assert.deepStrictEqual(m.plugins, ['pick@elsewhere'], 'the parked row is not seeded');
+        assert.deepStrictEqual(m.catalogs.plugins, ['companion@elsewhere', 'pick@elsewhere'], 'and it stays in the catalog - the stamp and --installed-only both read it');
     }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('manifest: the hook and mcp CATALOGS are never narrowed', () =>

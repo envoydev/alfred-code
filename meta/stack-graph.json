@@ -251,9 +251,7 @@
     },
     "project-ci-failure-signatures": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-code-style-analyzer": {
       "mcps": [],
@@ -265,9 +263,7 @@
     },
     "project-diagnose-failure": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-first-look": {
       "mcps": [],
@@ -275,9 +271,7 @@
     },
     "project-implementer": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-quality-loop": {
       "mcps": [],
@@ -289,17 +283,17 @@
       ],
       "plugins": []
     },
+    "project-root-cause": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-runtime-failure-signatures": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-solution-design": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-solve-cross-task": {
       "mcps": [],
@@ -307,9 +301,7 @@
     },
     "project-solve-task": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-stack-usage-analyzer": {
       "mcps": [],
@@ -325,15 +317,11 @@
     },
     "project-verify-code": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-verify-plan": {
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "project-version-upgrade": {
       "mcps": [],
@@ -362,9 +350,7 @@
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "architecture-analyzer": {
       "skills": [],
@@ -409,9 +395,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "browser-extension-implementer": {
       "skills": [
@@ -445,20 +429,17 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "ci-failure-diagnoser": {
       "skills": [
-        "project-ci-failure-signatures"
+        "project-ci-failure-signatures",
+        "project-root-cause"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "code-style-analyzer": {
       "skills": [],
@@ -500,9 +481,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "data-implementer": {
       "skills": [
@@ -536,9 +515,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "devops-implementer": {
       "skills": [
@@ -566,27 +543,21 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "dotnet-build-error-resolver": {
       "skills": [],
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "dotnet-test-failure-resolver": {
       "skills": [],
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "evidence-gatherer": {
       "skills": [],
@@ -637,18 +608,14 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "ng-build-error-resolver": {
       "skills": [],
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "related-project-analyzer": {
       "skills": [],
@@ -659,23 +626,20 @@
     },
     "runtime-failure-diagnoser": {
       "skills": [
+        "project-root-cause",
         "project-runtime-failure-signatures"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "security-auditor": {
       "skills": [],
       "skillsSource": "body",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "test-coverage-analyzer": {
       "skills": [],
@@ -716,9 +680,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "windows-service-implementer": {
       "skills": [
@@ -756,9 +718,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "winforms-implementer": {
       "skills": [
@@ -793,9 +753,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     },
     "wpf-implementer": {
       "skills": [
@@ -830,9 +788,7 @@
       "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ]
+      "plugins": []
     }
   },
   "rules": {
@@ -924,12 +880,13 @@
       "paths": []
     },
     "baseline-interaction": {
-      "skills": [],
+      "skills": [
+        "project-root-cause",
+        "project-solution-design"
+      ],
       "agents": [],
       "mcps": [],
-      "plugins": [
-        "superpowers"
-      ],
+      "plugins": [],
       "paths": []
     },
     "baseline-memory": {
@@ -956,9 +913,7 @@
       "mcps": [
         "context7"
       ],
-      "plugins": [
-        "superpowers"
-      ],
+      "plugins": [],
       "paths": []
     },
     "baseline-security": {
@@ -1119,8 +1074,7 @@
       "typescript-lsp"
     ],
     "dependencyPlugins": [
-      "claude-hud",
-      "superpowers"
+      "claude-hud"
     ],
     "hooks": [
       "check-turn-build",

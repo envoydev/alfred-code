@@ -414,7 +414,8 @@ function dropLines(lines, drop = [], log = () => {})
 const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
-// enabled one is installed whatever the selection says (every run installs superpowers), or an
+// enabled one is installed whatever the selection says (a companion every run adds, or an optional
+// pick such as superpowers the user installed - R72: kept, never removed), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
 // A disabled claude-hud is parked but gets no DISABLED row: that row's accept action is an enable,

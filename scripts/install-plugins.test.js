@@ -29,7 +29,8 @@ function cli(fails = [])
 
 const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over });
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
-const CORE_DEPS = ['superpowers@claude-plugins-official'];
+// A companion from another marketplace - a fixture: which plugin that is changes with the release (R72).
+const CORE_DEPS = ['companion@elsewhere'];
 const LOCKED = ['serena', 'context7', 'memory'];
 const LOCKED_SPECS = LOCKED.map((n) => `${n}@envoydev`);
 
@@ -134,14 +135,14 @@ test('closure: the full copy route asks for no closure at all', () =>
 // The core declares no dependencies: `claude plugin update` over an older core installs none a
 // release adds, and a plugin missing one is disabled at load, commands and all (measured on 2.1.280).
 // So the run installs the companions itself, whatever else the set holds.
-test('set: superpowers is installed on every run, a stack entry or not', () =>
+test('set: a core companion is installed on every run, a stack entry or not', () =>
 {
     const third = ['claude-hud@claude-plugins-official'];
     const entries = ['alfred-code@envoydev', ...LOCKED_SPECS];
     assert.deepStrictEqual(
         P.pluginSet({ routes: ROUTES(), thirdParty: third, stackEntries: entries, coreDeps: CORE_DEPS, locked: LOCKED }),
         [...third, ...entries, ...CORE_DEPS],
-        'the core leads, the selection names the locked three once, superpowers comes last');
+        'the core leads, the selection names the locked three once, the companion comes last');
     assert.deepStrictEqual(P.pluginSet({ routes: COPY, thirdParty: third, stackEntries: [], coreDeps: CORE_DEPS, locked: LOCKED }),
         [...third, ...CORE_DEPS], 'the full copy route registers the locked three instead of installing them');
 });
@@ -439,7 +440,7 @@ test('update: the version is READ BACK, and each outcome gets its own line', () 
 const HUD_OFF = { name: 'claude-hud', marketplace: 'claude-hud', version: '0.8.0', scope: 'user', enabled: false };
 const SP_OFF = { name: 'superpowers', marketplace: 'claude-plugins-official', version: '6.4.1', scope: 'user', enabled: false };
 
-test('update: a claude-hud the user disabled stays off - updated, never enabled - while superpowers is enabled', () =>
+test('update: a claude-hud the user disabled stays off - updated, never enabled - while a parked pick in the set is enabled', () =>
 {
     const run = cli();
     const report = P.updatePlugins({
@@ -728,9 +729,9 @@ test('seed plan: --print-plan with no --source changes no plugin - it reads the 
     assert.deepStrictEqual(calls.filter((c) => /^plugin (update|install|enable|marketplace (add|update)) /.test(c)), [], calls.join('\n'));
 });
 
-// R27: claude-hud is required - installed on every run beside superpowers, never a pick, and still at
-// user scope (its status line is account-wide). The other four third-party plugins are optional picks:
-// a selection naming none of them installs none of them.
+// R27: claude-hud is required - installed on every run beside the core, never a pick, and still at
+// user scope (its status line is account-wide). The other four third-party plugins are optional picks,
+// and so is superpowers (R72): a selection naming none of them installs none of them.
 const OPTIONAL = ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'];
 
 test('seed install: a selection naming no plugin still installs claude-hud at user scope, its marketplace first, and none of the optional four', POSIX_ONLY, () =>
@@ -740,8 +741,7 @@ test('seed install: a selection naming no plugin still installs claude-hud at us
     const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
     assert.ok(inst >= 0, `claude-hud was not installed at user scope:\n${calls.join('\n')}`);
     assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
-    assert.ok(calls.includes('plugin install superpowers@claude-plugins-official --scope project -y'), calls.join('\n'));
-    for (const name of OPTIONAL)
+    for (const name of [...OPTIONAL, 'superpowers'])
         assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} is optional, yet a selection naming no plugin installed it:\n${calls.join('\n')}`);
 });
 
@@ -805,6 +805,48 @@ test('seed update --installed-only: a claude-hud the user disabled stays off, wi
         const hud = calls.filter((c) => /^plugin (install|enable|update|uninstall|disable) claude-hud@/.test(c));
         assert.deepStrictEqual(hud, ['plugin update claude-hud@claude-hud --scope user -y'], `${args.join(' ')}:\n${calls.join('\n')}`);
     }
+});
+
+// R72: superpowers is an optional pick, never seeded. A selection that does not name it installs none;
+// one that names it installs it from its own marketplace. And an install that already has it - every
+// install before 2.0.0 does - keeps it: it lives in another marketplace, which no retirement pass
+// touches (R32), so update refreshes it at the scope it sits at and never uninstalls or disables it.
+const SP = 'superpowers@claude-plugins-official';
+const spTouched = (calls, verbs) => calls.filter((c) => new RegExp(`^plugin (${verbs}) ${SP}( |$)`).test(c));
+
+test('seed install: a selection that names no superpowers installs none, one that names it installs it', POSIX_ONLY, () =>
+{
+    const bare = seedRun('install', 'skill markdown-style\nrule markdown-docs\n').calls;
+    assert.deepStrictEqual(spTouched(bare, 'install|enable|update'), [], bare.join('\n'));
+    const picked = seedRun('install', 'skill markdown-style\nrule markdown-docs\nplugin superpowers\n').calls;
+    assert.deepStrictEqual(spTouched(picked, 'install'), [`plugin install ${SP} --scope project -y`], picked.join('\n'));
+});
+
+const spListing = (scope) => JSON.stringify([
+    ...['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })),
+    { id: SP, version: '6.4.1', scope, enabled: true },
+]);
+const spPrepare = (repo) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 1.3.0\nsha: 0000000\n');
+};
+
+test('seed update --installed-only: an install that has superpowers keeps it, refreshed at its own scope', POSIX_ONLY, () =>
+{
+    for (const scope of ['user', 'project'])
+    {
+        const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: spListing(scope), args: ['--installed-only'], prepare: spPrepare });
+        assert.deepStrictEqual(spTouched(calls, 'uninstall|disable'), [], `${scope}: superpowers was taken out:\n${calls.join('\n')}`);
+        assert.deepStrictEqual(spTouched(calls, 'update'), [`plugin update ${SP} --scope ${scope} -y`], `${scope}: it was not kept:\n${calls.join('\n')}`);
+    }
+});
+
+test('seed update: a selection that does not name an installed superpowers leaves it installed and enabled', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: spListing('project'), prepare: spPrepare });
+    assert.deepStrictEqual(spTouched(calls, 'uninstall|disable'), [], calls.join('\n'));
 });
 
 test('seed update: an absent claude-hud gets its marketplace before the install', POSIX_ONLY, () =>

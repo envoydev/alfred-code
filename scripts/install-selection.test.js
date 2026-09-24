@@ -620,7 +620,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
     assert.deepStrictEqual(inv.hooks, ['guard-read-whole-file', 'docs-session']);
     assert.deepStrictEqual(inv.mcps, ['playwright', 'serena']);
     assert.deepStrictEqual(inv.plugins, [{ name: 'claude-hud', scope: 'user' }, { name: 'superpowers', scope: 'user' }],
-        'an enabled catalog plugin the selection never lists (the core\'s dependency) is installed all the same');
+        'an enabled catalog plugin the selection never lists (an optional pick the user installed, R72) is kept all the same');
     assert.deepStrictEqual(inv.parked_plugins, ['csharp-lsp'], 'only CATALOG plugins parked here - the read-back would enable them');
     assert.deepStrictEqual(inv.left_out, ['agent security-auditor']);
     assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp', 'claude-stack-devops'], 'a parked stack entry is the same third state');

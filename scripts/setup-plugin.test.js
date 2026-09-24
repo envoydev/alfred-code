@@ -246,8 +246,9 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
 
 test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    // active:false rows are the plugins every install carries beside the core (superpowers,
-    // claude-hud) - never a pick, so never part of the selectable catalog a suggestion has to reach.
+    // active:false rows are the plugins every install carries beside the core (claude-hud; superpowers
+    // is an optional pick since R72) - never a pick, so never part of the selectable catalog a
+    // suggestion has to reach.
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     const shipped = manifest.plugins.filter((r) => r.active !== false).map((r) => r.id.split('@')[0]).sort();
     assert.ok(shipped.length >= 4, 'the manifest lists the shipped plugins');

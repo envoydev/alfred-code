@@ -47,10 +47,33 @@ test('a core cite is scoped to the core, a library cite is bare - the project co
     assert.ok(scoped > 0 && bare > 0, `both forms must occur (scoped ${scoped}, bare ${bare}), or this proves nothing`);
 });
 
+// No shipped agent preloads a foreign skill since R72, so a fixture seat carries one.
 test('a FOREIGN cite is left exactly as it is - this generator owns house skills only', () => {
-    const diag = rows.find(r => r.file === 'ci-failure-diagnoser.md');
-    assert.ok(diag, 'the diagnoser declares preloads');
-    assert.ok(diag.wanted.includes('- superpowers:systematic-debugging'), 'the superpowers cite is untouched');
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preload-foreign-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'ci-failure-diagnoser.md'),
+            '---\nname: ci-failure-diagnoser\nskills:\n  - other-plugin:some-skill\n  - project-root-cause\n---\n\nbody\n');
+        const [row] = scopedFor({ agentsDir: dir });
+        assert.strictEqual(row.problem, null, row.problem);
+        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-code:project-root-cause\n',
+            'the foreign cite is untouched, the house one scoped');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// R72: the root-cause method is a CORE house skill, and both diagnosers are core seats - so each
+// preloads it scoped to the core, which Spike S6 showed is the spelling that cannot pick up a stale copy.
+test('both diagnosers preload the house root-cause skill, scoped to the core', () => {
+    for (const file of ['ci-failure-diagnoser.md', 'runtime-failure-diagnoser.md'])
+    {
+        const r = rows.find(x => x.file === file);
+        assert.ok(r, `${file} declares preloads`);
+        assert.match(r.block, /^\s*-\s*alfred-code:project-root-cause$/m, `${file} preloads alfred-code:project-root-cause`);
+        assert.doesNotMatch(r.block, /superpowers/, `${file} still preloads a superpowers skill`);
+    }
+    assert.ok(place.plugins[CORE].skills.includes('project-root-cause'), 'the core carries the skill both core seats preload');
 });
 
 test('a core agent cites no library skill - the core would not carry what it preloads', () => {

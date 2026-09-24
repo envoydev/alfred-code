@@ -39,11 +39,12 @@ const STACK_MARKETPLACE = BRAND.slug;
 // (brand.js marketKey) and spells every stack spec with - never this constant.
 const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
 
-// The plugins every install carries beside the core from OTHER marketplaces - required, never a pick
-// (R27). Neither is a dependency of the core: `claude plugin update` over an older core installs none
+// The plugin every install carries beside the core from ANOTHER marketplace - required, never a pick
+// (R27). It is not a dependency of the core: `claude plugin update` over an older core installs none
 // a release adds, and a plugin missing one is disabled at load, its commands with it (measured on
-// 2.1.280) - so the run installs them. claude-hud keeps its user-scope pin above.
-const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official', 'claude-hud@claude-hud'];
+// 2.1.280) - so the run installs it. claude-hud keeps its user-scope pin above. superpowers is an
+// optional pick since R72, never added here.
+const CORE_DEP_PLUGINS = ['claude-hud@claude-hud'];
 
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
@@ -167,7 +168,7 @@ function selectionLines({ routes, skills = [], agents = [], mcps = [] })
 // into core') whenever it is on - the selection names it on the skills and MCP routes, and the hooks
 // route alone puts it here. While the core is on, the locked servers ride as plugins: the selection
 // names them on the MCP route, and any it did not name join here. `coreDeps` join on every route -
-// on the full copy route nothing else would bring superpowers either.
+// on the full copy route nothing else would bring them either.
 function pluginSet({ routes, thirdParty = [], stackEntries = [], coreDeps = [], locked = [], market = BRAND.marketplace })
 {
     const stack = [];

@@ -256,7 +256,7 @@ function readCommitted()
     return fs.existsSync(GRAPH_FILE) ? fs.readFileSync(GRAPH_FILE, 'utf8') : null;
 }
 
-module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted };
+module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted, pluginFromToken };
 
 if (require.main === module)
 {

@@ -881,37 +881,39 @@ test('CLI: an unknown --stacks name is named on stderr and the table still rende
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// superpowers is installed beside the core on every run, so the walk must not present it as
-// something to pick or drop.
-test('a plugin the core entry depends on gets its own row status, in both table modes', () => {
+// A plugin the installer adds beside the core on every run (CORE_DEP_PLUGINS, read into the graph as
+// catalog.dependencyPlugins) is never something to pick or drop. Which plugin that is changes with the
+// release (R72 took superpowers out), so the graph here names one itself: this pins the row status.
+test('a plugin the core carries beside it gets its own row status, in both table modes', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-'));
     const sel = path.join(dir, 'raw.json');
     const inv = path.join(dir, 'inv.json');
+    const graphPath = path.join(dir, 'graph.json');
+    const companion = graph.catalog.plugins.find((p) => p !== 'superpowers');
+    fs.writeFileSync(graphPath, JSON.stringify({ ...graph, catalog: { ...graph.catalog, dependencyPlugins: [companion] } }));
     fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['baseline-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
-    fs.writeFileSync(inv, JSON.stringify({ plugins: ['superpowers'], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
+    fs.writeFileSync(inv, JSON.stringify({ plugins: [companion], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
     const script = path.join(__dirname, 'stack-select.js');
-    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+    const rowOf = (out) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === companion);
 
-    const selected = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' });
-    const row = selected.split('\n').find(l => l.includes('superpowers'));
+    const row = rowOf(execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' }));
     assert.ok(/\bdependency\b/.test(row), `the row must say dependency, got: ${row}`);
     assert.ok(/cannot be dropped/.test(row), `the row must say it cannot be dropped, got: ${row}`);
     assert.ok(!/required by/.test(row), 'it must not read like a pick the closure happens to force');
 
-    const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
-    const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
+    const irow = rowOf(execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' }));
     assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
     assert.ok(/installed beside alfred-code@envoydev on every run/.test(irow), `installed mode still says where it came from, got: ${irow}`);
     assert.ok(!/carried by/.test(row + irow), 'the core carries no plugin - the installer adds it beside the core');
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// R27: claude-hud is required like superpowers - a `dependency` row, never a pick - and no plugin is an
-// always-baseline SEED any more: the optional four are suggested on evidence instead.
-test('claude-hud gets the dependency row too, and no plugin is seeded into every install', () => {
+// R27: claude-hud is required - a `dependency` row, never a pick - and no plugin is an always-baseline
+// SEED any more: the optional four are suggested on evidence, and superpowers (R72) is an optional pick.
+test('claude-hud gets the dependency row, and no plugin is seeded into every install', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
@@ -924,20 +926,59 @@ test('claude-hud gets the dependency row too, and no plugin is seeded into every
     fs.rmSync(dir, { recursive: true, force: true });
     const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
     assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
-    assert.ok(!/stays off/.test(rowOf('superpowers')), `superpowers is enabled back on every run: ${rowOf('superpowers')}`);
-    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
+    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp', 'superpowers'])
         assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');
     assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');
 });
 
-test('superpowers is no longer a SEED, and the baseline closure still reaches it', () => {
+// R72: superpowers is an OPTIONAL pick - suggested (the general opt-in list), never seeded, and no
+// baseline item cites it any more, so nothing the walk keeps pulls it in.
+test('superpowers is an optional pick: suggested, in no seed, reached by no closure, not a companion', () => {
+    const { execFileSync } = require('node:child_process');
     const recs = require('../meta/recommendations.json');
-    assert.ok(!(recs.always.plugins || []).includes('superpowers'),
-        'the installer does not seed it any more - the core plugin\'s dependency installs it');
-    const closure = computeClosure(graph, recs.always);
-    assert.ok((closure.plugins || []).includes('superpowers'),
-        'it must still be reachable, or validate would stop reporting it absent on a broken install');
+    assert.ok(((recs.general || {}).plugins || []).includes('superpowers'), 'suggested: it is on the general opt-in list');
+    assert.ok(!(recs.always.plugins || []).includes('superpowers'), 'never an always seed');
+    for (const [st, sel] of Object.entries(recs.stacks)) assert.ok(!(sel.plugins || []).includes('superpowers'), `never a ${st} seed`);
+    assert.ok(!(computeClosure(graph, recs.always).plugins || []).includes('superpowers'), 'no baseline rule, skill or seat cites it');
+    for (const sel of Object.values(recs.stacks)) assert.ok(!(computeClosure(graph, sel).plugins || []).includes('superpowers'), 'no stack closure reaches it');
+    assert.ok(!(graph.catalog.dependencyPlugins || []).includes('superpowers'), 'not a companion the installer adds on every run');
+    assert.ok(graph.catalog.plugins.includes('superpowers'), 'still in the catalog - addable, and read back where installed');
+
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-row-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify(recs.always));
+    const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins',
+        '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
+    fs.rmSync(dir, { recursive: true, force: true });
+    const row = out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === 'superpowers');
+    assert.match(row, /\|\s*-\s*\|\s*-\s*$/, `the recommended walk leaves it unselected, with nothing requiring it: ${row}`);
+});
+
+// R72, validate's side: an install that has superpowers keeps it. The redundant pass never proposes
+// removing it (no stack owns it, and it is on the general list) and the missing pass never proposes
+// adding it (nothing the baseline or a detected stack carries needs it).
+test('validate proposes neither removing nor adding superpowers, whatever stacks are detected', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-validate-'));
+    try
+    {
+        const inv = path.join(dir, 'installed.json');
+        const run = (mode, stacks) => execFileSync('node', [path.join(__dirname, 'stack-select.js'), mode, '--installed', inv,
+            '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'),
+            ...(stacks ? ['--stacks', stacks] : [])], { encoding: 'utf8' });
+        fs.writeFileSync(inv, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [{ name: 'superpowers', scope: 'user' }] }));
+        for (const stacks of [null, 'aspnet', 'web-angular,devops'])
+            assert.doesNotMatch(run('--redundant', stacks), /superpowers/, `an installed superpowers is never redundant (stacks: ${stacks || 'none'})`);
+        fs.writeFileSync(inv, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [] }));
+        for (const stacks of [null, 'aspnet'])
+            assert.doesNotMatch(run('--missing', stacks), /missing: plugin superpowers/, `an absent superpowers is never missing (stacks: ${stacks || 'none'})`);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('the recommended hook set is the whole catalog - a walk that takes it switches nothing off', () => {

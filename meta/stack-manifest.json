@@ -119,8 +119,13 @@
     },
     {
       "repo": "envoydev/claude-stack",
+      "name": "project-root-cause",
+      "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers, cited by the resolvers, the investigation flow and baseline-interaction"
+    },
+    {
+      "repo": "envoydev/claude-stack",
       "name": "project-runtime-failure-signatures",
-      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with systematic-debugging"
+      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with project-root-cause"
     },
     {
       "repo": "envoydev/claude-stack",
@@ -861,8 +866,7 @@
   "plugins": [
     {
       "id": "superpowers@claude-plugins-official",
-      "active": false,
-      "note": "workflow skills: plan, TDD, debug, verify-before-done."
+      "note": "OPTIONAL pick, suggested, never seeded (R72): workflow skills (plan, TDD, debug, verify-before-done) whose load-bearing four have house homes in the core. Costs 5,707 always-on chars a session on 6.4.1 (3,405 SessionStart injection, back after every compaction, + 2,302 for 15 descriptions), outside lint check 33's budget"
     },
     {
       "id": "claude-md-management@claude-plugins-official",

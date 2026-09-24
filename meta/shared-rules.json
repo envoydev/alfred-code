@@ -4044,44 +4044,44 @@
       "_note": "Each task is gated against its acceptance criterion by this session's run, and against the CURRENT contract_version - a divergence is CONTRACT_MISMATCH. Restated in every *-verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+        "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `superpowers:verification-before-completion`"
+          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
         }
       ]
     },
@@ -4662,8 +4662,8 @@
         }
       ]
     },
-    "resolver-systematic-debugging-method": {
-      "_note": "The four build/test resolvers drive localization with the superpowers systematic-debugging method, cited as NAME + its content clause so the rule still stands where the plugin is absent, and each skips the method's Phase-4 write-a-test beat (out of a resolver's scope) and questions the design after 3 fixes that each surface a new failure. The head is byte-identical across the four; the Phase-4 clause and the noun (error / failure, tests / specs) are per-stack.",
+    "resolver-root-cause-method": {
+      "_note": "The four build/test resolvers drive localization with the house root-cause loop (project-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and questions the design after 3 fixes that each surface a new failure. The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
         "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
@@ -5223,7 +5223,7 @@
       ]
     },
     "dependency-plugin-not-removable": {
-      "_note": "A plugin every install carries beside the core (superpowers) is never proposed for removal: the installer puts it back on every run, so the removal would only be undone. It is not a dependency of the core - a missing one disables the core at load, commands and all (measured 2026-09-23 on a 0.2.87 -> 1.0.0 upgrade). Restated in both walks that remove plugins, beside the scope rule they already share.",
+      "_note": "A plugin every install carries beside the core (CORE_DEP_PLUGINS) is never proposed for removal: the installer puts it back on every run, so the removal would only be undone. It is not a dependency of the core - a missing one disables the core at load, commands and all (measured 2026-09-23 on a 0.2.87 -> 1.0.0 upgrade). Restated in both walks that remove plugins, beside the scope rule they already share.",
       "owner": {
         "file": "setup-plugin/commands/validate.md",
         "marker": "never propose removing one: the installer puts it back on every"

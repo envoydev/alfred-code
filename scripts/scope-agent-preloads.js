@@ -15,7 +15,7 @@
 // 1.3.0 its copy in `.claude/skills` IS the intended one, so the bare name is the right cite, and
 // the graph closes an agent's preloads into its selection, so the copy is there whenever the agent is.
 //
-// A cite that already carries a colon is FOREIGN (`superpowers:systematic-debugging`) and is left
+// A cite that already carries a colon is FOREIGN (another plugin's `<plugin>:<skill>`) and is left
 // exactly as it is - this script owns house skills only.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -59,10 +59,11 @@ function scopedFor(options = {})
     const place = options.placement || placement(options);
     const { skillHome, agentHome } = homes(place);
     const library = new Set(place.library.skills);
+    const agentsDir = options.agentsDir || AGENTS_DIR;
     const out = [];
-    for (const file of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).sort())
+    for (const file of fs.readdirSync(agentsDir).filter(f => f.endsWith('.md')).sort())
     {
-        const full = path.join(AGENTS_DIR, file);
+        const full = path.join(agentsDir, file);
         const text = fs.readFileSync(full, 'utf8');
         const parsed = parse(text, file);
         if (!parsed) continue;

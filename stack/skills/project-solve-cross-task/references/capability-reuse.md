@@ -21,10 +21,10 @@ Only serena is locked into every install. The rest of the baseline's servers - t
 ## Cross-cutting disciplines
 
 - **The library docs before a library API, always.** A wrong package or framework version is a common rework trigger; the current signature from the docs MCP (context7 where the project kept it) is cheaper than the failed build it prevents. Never write against a recalled version - where no docs source is reachable, the claim is marked unverified in the report, not asserted. This extends past API signatures to framework runtime semantics - signal / computed reactivity, change-detection, lifecycle order: cite context7 or the house convention skill before resting correctness on a recalled semantic, never a guess.
-- **superpowers on ambiguity.** Route the brainstorm discipline in before freezing a contract on genuinely
-  ambiguous design; route the verify-before-done discipline to the closing seat (the domain verifier or the
-  integration reviewer). Its two DISPATCH skills - the parallel-agents one and the subagent-driven one - are
-  superseded here and are not a second route in: this skill is the single entry point for multi-agent work, the
+- **Clarify before freezing, verify before closing.** Run the clarify gate (SKILL.md) before freezing a contract
+  on genuinely ambiguous design; route the done gate (`baseline-quality-gates.md`) to the closing seat (the domain
+  verifier or the integration reviewer). An optional workflow-skills plugin's DISPATCH skills, where the install
+  has one - a parallel-agents one, a subagent-driven one - are superseded here and are not a second route in: this skill is the single entry point for multi-agent work, the
   capabilities rule says dispatch is explicit and never automatic, and the house dispatch guard denies a run
   started any other way. So the phrasing that fires them ('two independent tasks', 'execute this plan in
   parallel') lands on this skill, and their firing costs a denial and a retried turn.

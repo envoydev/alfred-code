@@ -389,7 +389,7 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     const { lintPluginCites } = require('./lint-skills.js');
     const plugins = new Set(['superpowers', 'claude-hud']);
 
-    // the golden form, live in baseline-quality-gates.md - the name, then the clause
+    // the golden form (baseline-quality-gates.md's until R72 folded the gate in) - the name, then the clause
     const golden = 'satisfy `superpowers:verification-before-completion` - build + relevant tests run, output quoted - before any done word.\n';
     assert.deepStrictEqual(lintPluginCites('rules/baseline-quality-gates.md', golden, plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Use `superpowers:writing-plans`: the plan format the house writes to.\n', plugins), []);
@@ -417,6 +417,35 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     // the description stays in scope - it is shipped prose a router reads, not a registration
     const inDesc = '---\nname: x\ndescription: Use for a red build. Follow `superpowers:systematic-debugging` and report.\nskills:\n  - superpowers:systematic-debugging\n---\n\nbody\n';
     assert.strictEqual(lintPluginCites('agents/x.md', inDesc, plugins).length, 1);
+});
+
+// R72: superpowers is an optional pick, so nothing the stack ships may rest on one of its skills -
+// each one it leaned on has a house home now (the done gate, the plan format, the test-first line,
+// the clarify gate, project-root-cause). History keeps its words; the optional plugin row names the
+// plugin, never a skill of it. A `<docs-path>/superpowers/plans/` PATH is the stack's own folder.
+test('no shipped text cites a superpowers skill - by qualified name or in prose', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.join(__dirname, '..');
+    const history = new Set(['meta/migrations.json', 'meta/retired-entries.json', 'meta/retired-plugins.json']);
+    const cite = /superpowers:[a-z]/;
+    const prose = /superpowers['’]?s? +(systematic-debugging|brainstorm\w*|writing-plans|verification|verify|test-driven|tdd|plan-format|dispatch\w*|subagent-driven|executing-plans)/i;
+    const hits = [];
+    const walk = (rel) =>
+    {
+        for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true }))
+        {
+            const r = `${rel}/${e.name}`;
+            if (e.isDirectory()) { walk(r); continue; }
+            if (history.has(r) || !/\.(md|json|js|ya?ml)$/.test(e.name)) continue;
+            fs.readFileSync(path.join(root, r), 'utf8').split('\n').forEach((line, i) =>
+            {
+                if (cite.test(line) || prose.test(line)) hits.push(`${r}:${i + 1}: ${line.trim().slice(0, 120)}`);
+            });
+        }
+    };
+    for (const dir of ['stack', 'setup-plugin', 'meta']) walk(dir);
+    assert.deepStrictEqual(hits, [], 'a shipped cite of a superpowers skill');
 });
 
 // 38. The Availability blanket covers its own section, never the whole file.

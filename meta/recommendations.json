@@ -56,6 +56,7 @@
    "project-first-look",
    "project-implementer",
    "project-quality-loop",
+   "project-root-cause",
    "project-solution-design",
    "project-solve-cross-task",
    "project-solve-task",
@@ -77,7 +78,9 @@
   "agents": [
    "related-project-analyzer"
   ],
-  "plugins": []
+  "plugins": [
+   "superpowers"
+  ]
  },
  "stacks": {
   "aspnet": {

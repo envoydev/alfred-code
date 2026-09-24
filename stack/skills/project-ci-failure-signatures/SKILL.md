@@ -5,7 +5,7 @@ description: Use when a CI pipeline or PR check goes red and you want to triage 
 
 # CI Triage - turn a red pipeline into a verdict and a route
 
-A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of the local-runtime signature catalogue (a crash on your own machine) and runs on `superpowers:systematic-debugging` - read the full error, quote the part that matters, form one hypothesis, and prove it with a check before changing anything, which holds whether or not that plugin is installed.
+A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the ci-failure-diagnoser seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of the local-runtime signature catalogue (a crash on your own machine) and runs on `project-root-cause` - read the full error, quote the part that matters, form one hypothesis, and prove it with a check before changing anything.
 
 ## First: pull the right log, read the right line
 

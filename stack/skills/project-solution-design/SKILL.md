@@ -82,13 +82,7 @@ Then hand off: gate the plan with `project-verify-plan` before building, build e
 
 ## Plan format
 
-For the plan FORMAT, load `superpowers:writing-plans` - the implementation-plan format skill, where the install has it; absent it, use the task-entry shape in the Example below. It is a Skill call, not a recalled pairing, and you take its FORMAT only:
-
-- Strip any banner or execution advice it stamps into the plan before the file is written. The execution mode belongs to `project-solve-task`'s mode ask, never to the format skill.
-- Consulting a prior plan as a format reference, scope the read: the header plus one task entry, never the whole file, and never another ticket's plan as a substitute for the format authority.
-- An external claim in the plan - a vendor API's behavior, a package's capability, a rate limit - is verified via context7 or the vendor doc and cited, or marked `unverified`; never recall stated as fact.
-
-This skill adds the house architecture-fit and stack-trap layer a generic plan is silent on.
+The plan file's one shape - the header lines, the task card, the status marks the build adds, the `## Decisions` ledger, the resume line - is `references/plan-format.md`: Read it at method step 4 with the design rules, before the plan is written. The execution mode belongs to `project-solve-task`'s mode ask, never to the plan. Consulting a prior plan as a format reference, scope the read: the header plus one task entry, never the whole file, and never another ticket's plan as a substitute for the format authority. An external claim in the plan - a vendor API's behavior, a package's capability, a rate limit - is verified via context7 or the vendor doc and cited, or marked `unverified`; never recall stated as fact.
 
 ## Example
 

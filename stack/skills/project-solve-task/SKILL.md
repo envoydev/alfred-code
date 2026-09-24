@@ -177,7 +177,7 @@ run makes.
    SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code.
    Stamp the verdict. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
-   (`superpowers:verification-before-completion` - the whole feature's acceptance criteria, each one
+   (the done gate in `baseline-quality-gates.md` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
    into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next

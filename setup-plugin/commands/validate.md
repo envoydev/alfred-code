@@ -253,9 +253,9 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
-- **MCPs / plugins** - no plugin is always-baseline: `superpowers` and `claude-hud` ride beside the
-  core, so neither is ever REDUNDANT and the next update puts back whichever is gone (`superpowers`
-  still shows MISSING on an install that lost it - the baseline closure reaches it). One exception:
+- **MCPs / plugins** - no plugin is always-baseline: `claude-hud` rides beside the core, so it is
+  never REDUNDANT and the next update puts it back when it is gone. `superpowers` is an optional pick
+  (R72) on the general list: never REDUNDANT where installed, never MISSING where not. One exception:
   a `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed
   for an enable. The four optional ones (`security-guidance`, `claude-md-management`, `csharp-lsp`,
   `typescript-lsp`) show MISSING only on evidence - an `evidence-missing:` line naming the matched

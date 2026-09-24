@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { buildStackGraph } = require('./stack-graph.js');
+const { buildStackGraph, pluginFromToken } = require('./stack-graph.js');
 
 const graph = buildStackGraph();
 
@@ -76,17 +76,37 @@ test('the hook catalog carries the installer HOOKS block basenames', () => {
         'catalog.hooks mirrors HOOKS=( ... ) sans .js, sorted');
 });
 
-test('ci-failure-diagnoser plugins edge resolves from a namespaced plugin:skill frontmatter entry', () => {
-    const a = graph.agents['ci-failure-diagnoser'];
-    assert.ok(a, 'ci-failure-diagnoser must be in the graph');
-    assert.ok(a.plugins.includes('superpowers'), 'expected agent->plugin edge to superpowers');
+test('a namespaced plugin:skill token resolves to its plugin, a house or unknown one to none', () => {
+    const plugins = new Set(['superpowers', 'csharp-lsp']);
+    assert.strictEqual(pluginFromToken('superpowers:systematic-debugging', plugins), 'superpowers');
+    assert.strictEqual(pluginFromToken('csharp-lsp', plugins), 'csharp-lsp');
+    assert.strictEqual(pluginFromToken('alfred-code:project-root-cause', plugins), null);
+    assert.strictEqual(pluginFromToken('project-root-cause', plugins), null);
+});
+
+// R72: the root-cause method is a house skill now. Both diagnoser seats preload it - a preload is a
+// hard edge, so the closure of every install that keeps either seat carries it - and no rule, skill
+// or seat keeps an edge to superpowers, which is what lets it be an optional pick.
+test('both diagnosers preload the house root-cause skill, and nothing cites superpowers', () => {
+    for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
+    {
+        const a = graph.agents[seat];
+        assert.ok(a, `${seat} must be in the graph`);
+        assert.ok(a.skills.includes('project-root-cause'), `${seat} preloads project-root-cause (frontmatter skills:)`);
+    }
+    for (const kind of ['rules', 'skills', 'agents'])
+        for (const [name, node] of Object.entries(graph[kind]))
+            assert.ok(!(node.plugins || []).includes('superpowers'), `${kind} ${name} still has an edge to superpowers`);
 });
 
 // The core's cross-marketplace companions travel in the catalog, so the walk can say 'carried with
 // the core plugin' instead of 'required by skill x' - which reads like a pick.
-test('the catalog names the plugins every install carries beside the core', () => {
+test('the catalog names the plugins every install carries beside the core, and superpowers is not one', () => {
+    const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
     assert.ok(Array.isArray(graph.catalog.dependencyPlugins), 'catalog.dependencyPlugins is generated');
-    assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['claude-hud', 'superpowers']);
-    // and it stays IN the plugin catalog: 27 skills and agents cite it, and those edges are real.
-    assert.ok(graph.catalog.plugins.includes('superpowers'), 'a dependency plugin is still a catalog plugin');
+    assert.deepStrictEqual(graph.catalog.dependencyPlugins, CORE_DEP_PLUGINS.map((s) => s.split('@')[0]).sort());
+    assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['claude-hud']);
+    assert.ok(!graph.catalog.dependencyPlugins.includes('superpowers'), 'R72: superpowers is an optional pick, not a companion');
+    // and it stays IN the plugin catalog, as an optional pick the walk can offer.
+    assert.ok(graph.catalog.plugins.includes('superpowers'), 'an optional plugin is still a catalog plugin');
 });

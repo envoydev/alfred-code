@@ -318,9 +318,9 @@ Presence, never the value - run this and paste its lines as-is:
 
 ## 8. Plugins
 
-`superpowers` and `claude-hud` show as `dependency` - every install carries both beside the core plugin, so neither can be
-dropped and neither needs an install row (a `claude-hud` the user disabled stays off - updated, never switched back on); the rest of the installed plugins are direct picks (the four optional ones,
-suggested on evidence). Addable from `catalog.plugins`.
+`claude-hud` shows as `dependency` - every install carries it beside the core plugin, so it cannot be
+dropped and needs no install row (a `claude-hud` the user disabled stays off - updated, never switched back on); the rest of the installed plugins are direct picks (the four optional ones,
+suggested on evidence, and `superpowers`, an optional pick since R72 - suggested, never seeded, and kept where installed). Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
