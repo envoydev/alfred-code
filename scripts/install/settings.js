@@ -168,6 +168,17 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, sentryAu
             log(`  settings.json env: ${oldKey} renamed to ${newKey}`);
         }
 
+    // 1b. PREFIX RENAMES - after the exact ones, so a chain of renames finishes in one run.
+    for (const [from, to] of migrations.prefixRenames || [])
+        for (const oldKey of Object.keys(env).filter((k) => k.startsWith(from)))
+        {
+            const newKey = to + oldKey.slice(from.length);
+            if (!(newKey in env) && env[oldKey] !== '') env[newKey] = env[oldKey];
+            delete env[oldKey];
+            changed = true;
+            log(`  settings.json env: ${oldKey} renamed to ${newKey}`);
+        }
+
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
     for (const [key, onlyWhen] of migrations.retired || [])
         if (key in env && (onlyWhen === null || onlyWhen === undefined || env[key] === onlyWhen))

@@ -2928,8 +2928,15 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
     }
 
     // The frozen twins seed each key under its 1.x name, and migrations.json keeps its history's
-    // words: both are read here under the catalog's own name.
-    const current = (key) => key.replace(/^CLAUDE_STACK_/, 'ALFRED_CODE_'); // legacy-name
+    // words: both are read here under the catalog's own name, via the SAME prefix mapping
+    // applyEnv runs at install time (meta/migrations.json is the one source, not a hard-coded regex).
+    const { prefixRenames } = require('./install/env-migrations.js').envMigrations(migrations);
+    const current = (key) =>
+    {
+        for (const [from, to] of prefixRenames)
+            if (key.startsWith(from)) return to + key.slice(from.length);
+        return key;
+    };
     const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => current(m[1])));
     const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => current(m[1])));
     const keys = new Set();

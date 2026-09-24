@@ -88,6 +88,20 @@
    },
    "why": "the DEFAULT tier applies when the context window cannot be read at all, and 250000 sat ABOVE a 200k window entirely, so on that tier the fresh-session gate could never fire and silently did not exist. The seed is absent-only and ctxThreshold() clamps a too-large trigger only when the window is KNOWN - which by definition it is not on this tier - so no other mechanism reaches an install carrying it (measured 2026-09-12: 3 of 3 current-shape installs still on 250000). Reset ONLY where the value is still that seed; a trigger the user chose is theirs and stays",
    "then": "nothing - the next session on an unreadable window is offered the fresh-session resume at 180,000 tokens of carry"
+  },
+  {
+   "id": "alfred-code-settings-prefix",
+   "since": "2.0.0",
+   "detect": {
+    "settings_env_prefix": "CLAUDE_STACK_"
+   },
+   "remove": [],
+   "rename_settings_env_prefix": {
+    "from": "CLAUDE_STACK_",
+    "to": "ALFRED_CODE_"
+   },
+   "why": "the product is Alfred Code from 2.0.0; every setting it owns carries its name",
+   "then": "nothing - each value moves with its key, and the hooks read the old name until this runs"
   }
  ]
 }

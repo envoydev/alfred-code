@@ -104,6 +104,21 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
     assert.ok(!out.includes('from-the-future'), 'a detect kind this release does not know never claims a detection');
 });
 
+test('settings_env_prefix fires on ANY key under that prefix, and reports the prefix rename', () => {
+    const migrations = [{
+        id: 'alfred-code-settings-prefix',
+        detect: { settings_env_prefix: 'CLAUDE_STACK_' },
+        rename_settings_env_prefix: { from: 'CLAUDE_STACK_', to: 'ALFRED_CODE_' },
+    }];
+    const none = scaffold({ migrations, settings: { env: { MY_OWN_APP_KEY: 'x' } } });
+    assert.match(run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile]).out, /^migrations: none detected$/m);
+
+    const seeded = scaffold({ migrations, settings: { env: { CLAUDE_STACK_MONITOR: 'log' } } });
+    const out = run(['--snapshot', seeded.snap, '--root', seeded.install, '--fixture', seeded.fixtureFile]).out;
+    assert.match(out, /^migration: alfred-code-settings-prefix\tsettings_env_prefix$/m);
+    assert.match(out, /^ {2}env-rename-prefix: CLAUDE_STACK_\* -> ALFRED_CODE_\*$/m);
+});
+
 test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', () => {
     const migrations = [{ id: 'unwire-one-matcher', detect: { settings_hook_wired: 'guard-stop-contract.js::AskUserQuestion' } }];
     const wired = { hooks: { AskUserQuestion: [{ hooks: [{ command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js"' }] }] } };
@@ -130,7 +145,7 @@ test('the compare exit codes pass through unchanged, and the preflight still rep
 
 test('the shipped catalog parses under the shipped detect vocabulary - every entry has a known kind', () => {
     const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
-    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_hook_wired']);
+    const known = new Set(['file_exists', 'settings_env_key', 'settings_env_value', 'settings_env_prefix', 'settings_hook_wired']);
     for (const e of catalog.migrations)
     {
         const kinds = Object.keys(e.detect || {});
