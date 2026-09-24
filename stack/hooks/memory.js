@@ -38,6 +38,18 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn } = require('child_process');
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied
+// beside memory-session.js, without hook-prelude.js), so its own copy of envOf is inline rather
+// than required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 function pathForLevel(level, { home, space, projectRoot } = {}) {
   if (level === 'global') return path.join(home, '.memory-mcp', 'memory.db');
   if (level === 'scoped') return path.join(home, '.memory-mcp', `memory_${space || 'default'}.db`);
@@ -129,7 +141,7 @@ function settingsEnvDbPath(projectRoot, home, configDir) {
   for (const file of files) {
     try {
       const data = readJson(file);
-      const value = data && data.env && data.env.ALFRED_CODE_MEMORY_DB;
+      const value = data && data.env && envOf(data.env, 'MEMORY_DB');
       if (typeof value !== 'string' || !value) continue;
       // Same resolution the plugin's own launcher uses (stack/mcp/memory-launch.js): a relative
       // value is the project's, never the reader's cwd, or the two would disagree about the db.
@@ -657,7 +669,7 @@ const SHUTDOWN_WAIT_MS = 5000;
 const PRESENT_QUERY = 'SELECT 1 FROM memories WHERE (content_hash = ? OR content = ?) AND deleted_at IS NULL LIMIT 1';
 
 // Test hook: forces the path a genuinely unavailable node:sqlite takes, on any Node version.
-const storeSqlite = () => (process.env.ALFRED_CODE_MEMORY_IMPORT_FORCE_NO_SQLITE === '1' ? null : nodeSqlite());
+const storeSqlite = () => (envOf(process.env, 'MEMORY_IMPORT_FORCE_NO_SQLITE') === '1' ? null : nodeSqlite());
 
 function openForPrecheck(DatabaseSync, dbPath) {
   try { return new DatabaseSync(dbPath, { readOnly: true }); } catch {}

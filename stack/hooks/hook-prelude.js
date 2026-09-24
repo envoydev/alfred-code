@@ -37,10 +37,21 @@ function baseName(hook)
     return String(hook || '').trim().toLowerCase().replace(/\.js$/, '');
 }
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. A hook runs at 2.0.0 before the
+// project's own update renames its settings, so the old name answers until then.
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 function hookDisabled(hook, env)
 {
     const source = env || process.env;
-    const off = String((source && source.ALFRED_CODE_HOOKS_OFF) || '');
+    const off = String(envOf(source, 'HOOKS_OFF') || '');
     if (!off.trim()) return false;
     const wanted = baseName(hook);
     if (!wanted) return false;
@@ -106,4 +117,4 @@ function standDown(hook, env, argv)
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, standDown, isCliInvocation, COPIED_PREFIX };
+module.exports = { hookDisabled, yieldToCopiedTwin, standDown, isCliInvocation, COPIED_PREFIX, envOf };

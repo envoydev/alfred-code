@@ -9,11 +9,14 @@
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js (the ALFRED_CODE_HOOKS_OFF csv and the migration
-// window where the plugin copy stands down for a copied twin). Fail-open: no prelude runs the hook.
+// window where the plugin copy stands down for a copied twin). Fail-open: no prelude runs the hook -
+// envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('history-session')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('history-session')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 
@@ -44,7 +47,7 @@ function readStdinBounded(timeoutMs) {
 }
 
 async function main() {
-  if (process.env.ALFRED_CODE_HISTORY === '0') return;
+  if (envOf(process.env, 'HISTORY') === '0') return;
   let H;
   try { H = require(path.join(__dirname, 'history.js')); } catch { return; }
   let payload;

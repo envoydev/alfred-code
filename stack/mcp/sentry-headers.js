@@ -44,6 +44,19 @@ function envFrom(file)
     catch { return {}; }
 }
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This helper ships without
+// hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
+// the hooks' copy as env-legacy-fallback (meta/shared-rules.json). SENTRY_ACCESS_TOKEN is not
+// renamed and never runs through this - only the ALFRED_CODE_SENTRY_AUTH mode switch does.
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 function accountDir()
 {
     if (process.env.CLAUDE_CONFIG_DIR) return process.env.CLAUDE_CONFIG_DIR;
@@ -55,16 +68,20 @@ function accountDir()
 // Order: environment, project settings, project local settings, account settings. On the plugin
 // route the environment step never answers for these two names (see the scrubbing note above), so
 // the file steps are the ones that actually run - they are not a fallback there, they are the path.
-function lookup(key, projectDir)
+// `legacySuffix` names the ALFRED_CODE_<suffix> setting's pre-2.0.0 CLAUDE_STACK_<suffix> spelling
+// (envOf above); SENTRY_ACCESS_TOKEN is a plain credential name, never renamed, so it passes none.
+function lookup(key, projectDir, legacySuffix)
 {
-    if (process.env[key]) return process.env[key];
+    const pick = (src) => (legacySuffix ? envOf(src, legacySuffix) : src[key]);
+    const direct = pick(process.env);
+    if (direct) return direct;
     const files = [];
     if (projectDir) files.push(path.join(projectDir, '.claude', 'settings.json'),
         path.join(projectDir, '.claude', 'settings.local.json'));
     files.push(path.join(accountDir(), 'settings.json'));
     for (const file of files)
     {
-        const value = envFrom(file)[key];
+        const value = pick(envFrom(file));
         if (value) return value;
     }
     return '';
@@ -72,7 +89,7 @@ function lookup(key, projectDir)
 
 function headers(projectDir)
 {
-    const mode = (lookup('ALFRED_CODE_SENTRY_AUTH', projectDir) || 'token').toLowerCase();
+    const mode = (lookup('ALFRED_CODE_SENTRY_AUTH', projectDir, 'SENTRY_AUTH') || 'token').toLowerCase();
     if (mode === 'oauth') return {};   // the browser consent flow registers no header at all
     const token = lookup('SENTRY_ACCESS_TOKEN', projectDir);
     if (!token)

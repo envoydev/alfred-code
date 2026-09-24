@@ -95,14 +95,17 @@ if (require.main === module)
 {
   // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook: the
   // ALFRED_CODE_HOOKS_OFF csv, and the migration window where the plugin copy stands down while a
-  // project still wires its copied twin. Fail-open - no prelude leaves this hook running.
+  // project still wires its copied twin. Fail-open - no prelude leaves this hook running, and envOf
+  // falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
+  let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   try
   {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('monitor-session')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('monitor-session')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  const mode = String(process.env.ALFRED_CODE_MONITOR || 'log').trim().toLowerCase();
+  const mode = String(envOf(process.env, 'MONITOR') || 'log').trim().toLowerCase();
   if (mode === '0' || mode === 'off') process.exit(0);
 
   let payload;
@@ -111,9 +114,10 @@ if (require.main === module)
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
 
-  // ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH the pre-0.2.43 spelling, still read.
+  // ALFRED_CODE_DOCS_PATH is the name; envOf also answers CLAUDE_STACK_DOCS_PATH (pre-2.0.0) and
+  // CLAUDE_DOCS_PATH (pre-0.2.43).
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const docs = path.resolve(root, process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
   const sid = String(payload.session_id || 'nosession');
   const stateFile = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
   let state = null;

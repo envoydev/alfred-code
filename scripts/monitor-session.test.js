@@ -19,6 +19,9 @@ const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(T
 for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_MONITOR', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW',
     'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_DEFAULT'])
     delete BASE_ENV[k];
+// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers
+// ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too.
+for (const k of Object.keys(BASE_ENV)) if (k.startsWith('CLAUDE_STACK_')) delete BASE_ENV[k];
 
 let seq = 0;
 function session(env = {})

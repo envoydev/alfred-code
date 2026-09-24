@@ -6,6 +6,9 @@
 // The two copies it replaces were identical, block for block, when they were moved here.
 'use strict';
 const fs = require('fs');
+// Ships beside hook-prelude.js on both routes (never among the three engines copied alone), so the
+// require is unconditional, the same assumption every other cross-file require here already makes.
+const { envOf } = require('./hook-prelude.js');
 
 // The hook's parsed payload - the transcript path and cwd the reads below need. A hook calls
 // use(payload) once, before its first call into this file.
@@ -110,7 +113,7 @@ function tableWindow() {
   return best ? best.n : null;
 }
 function envWindow() {
-  const n = parseInt(process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, 10);
+  const n = parseInt(envOf(process.env, 'DEFAULT_CONTEXT_WINDOW'), 10);
   return n >= 100000 ? n : null;
 }
 let _knownWindow;

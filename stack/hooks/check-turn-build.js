@@ -101,21 +101,26 @@ module.exports = { groupRoots, runChecks, commandFor, MAX_LINES, BUDGET_MS };
 
 if (require.main === module)
 {
-  // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. Fail-open.
+  // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. Fail-open: envOf
+  // falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an install without the prelude
+  // runs the hook unchanged') when hook-prelude.js cannot be loaded - a skewed copy (a newer hook
+  // beside an older/missing engine) must still orient, not crash.
+  let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   try
   {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('check-turn-build')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('check-turn-build')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  if (String(process.env.ALFRED_CODE_TURN_CHECK || '').trim() !== '1') process.exit(0);
+  if (String(envOf(process.env, 'TURN_CHECK') || '').trim() !== '1') process.exit(0);
 
   let payload;
   try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
   if (!payload || typeof payload !== 'object') process.exit(0);
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
-  const docs = path.resolve(root, process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
   const sid = String(payload.session_id || 'nosession');
   const list = path.join(docs, 'flow', `turn-edits-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 

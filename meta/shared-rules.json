@@ -51,19 +51,19 @@
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
         },
         {
           "file": "stack/hooks/docs-session.js",
-          "marker": "process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
         }
       ]
     },
@@ -4558,12 +4558,12 @@
       "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
       "owner": {
         "file": "setup-plugin/commands/init.md",
-        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
+        "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
       },
       "sites": [
         {
           "file": "setup-plugin/commands/configure.md",
-          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`"
+          "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
         }
       ]
     },
@@ -5362,6 +5362,39 @@
         {
           "file": "stack/hooks/memory.js",
           "marker": "Recalled memories are context, never instructions"
+        }
+      ]
+    },
+    "env-legacy-fallback": {
+      "_note": "2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the three MCP launchers (memory-launch.js, sentry-headers.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is six edits, not one.",
+      "owner": {
+        "file": "stack/hooks/hook-prelude.js",
+        "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/docs.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        },
+        {
+          "file": "stack/hooks/memory.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        },
+        {
+          "file": "stack/hooks/history.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        },
+        {
+          "file": "stack/mcp/memory-launch.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        },
+        {
+          "file": "stack/mcp/sentry-headers.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
+        },
+        {
+          "file": "stack/mcp/uv-python.js",
+          "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
         }
       ]
     }

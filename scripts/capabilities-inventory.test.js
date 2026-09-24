@@ -390,6 +390,17 @@ test('report: the docs root is resolved and printed, so `<docs-path>` is never l
     assert.match(out, /COMPARE:\s+no --body yet/);
 });
 
+// 2.0.0 renamed the setting; a 1.x install still carries CLAUDE_STACK_DOCS_PATH until its own
+// update renames it, and this script has no hook-prelude.js to share envOf with - so it needs its
+// own regression proving the legacy spelling alone still resolves.
+test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.x spelling', { skip: posixOnly }, () =>
+{
+    const root = project('docs-root-legacy');
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai-legacy' } }), -100);
+    const { out } = run([], { cwd: root });
+    assert.match(out, /DOCS ROOT: docs\/ai-legacy\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/);
+});
+
 test('report: an unreadable skill frontmatter is reported as unreadable, never filled from memory', { skip: posixOnly }, () =>
 {
     const root = project('unreadable');

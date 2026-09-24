@@ -25,6 +25,18 @@ const { spawn } = require('node:child_process');
 const PYTHON = '3.13';
 const WINDOWS_ARM_PYTHON = 'cpython-3.13-windows-x86_64-none';
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This file ships without
+// hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
+// the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 // An x64 node emulated on ARM reports arch x64 and PROCESSOR_ARCHITECTURE AMD64, so the machine-wide
 // PROCESSOR_IDENTIFIER ('ARMv8 (64-bit) Family 8 ...') is what still tells the truth there.
 function isWindowsArm({ arch, env })
@@ -37,7 +49,7 @@ function isWindowsArm({ arch, env })
 // This machine's file before the shared one, the way Claude Code layers them.
 function overrideFrom({ env, projectDir })
 {
-    const own = (env.ALFRED_CODE_UV_PYTHON || '').trim();
+    const own = String(envOf(env, 'UV_PYTHON') || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     for (const file of [
@@ -48,7 +60,7 @@ function overrideFrom({ env, projectDir })
     {
         try
         {
-            const value = String(((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}).ALFRED_CODE_UV_PYTHON || '').trim();
+            const value = String(envOf((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}, 'UV_PYTHON') || '').trim();
             if (value) return value;
         }
         catch { /* absent, unreadable or malformed: the next file answers */ }

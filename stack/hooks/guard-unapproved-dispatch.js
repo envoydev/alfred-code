@@ -28,10 +28,10 @@
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
 const fs = require('fs');
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 const path = require('path');
 
 // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
@@ -40,10 +40,12 @@ const path = require('path');
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
 // prelude, no project dir or a malformed settings file all leave this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-unapproved-dispatch')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('guard-unapproved-dispatch')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 let payload;

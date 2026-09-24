@@ -32,15 +32,18 @@ const pathMod = require('path');
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
 // prelude, no project dir or a malformed settings file all leave this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-secret-value')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('guard-secret-value')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`

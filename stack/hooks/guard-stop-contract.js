@@ -33,16 +33,18 @@ const fs = require('fs');
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
 // prelude, no project dir or a malformed settings file all leave this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-stop-contract')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -112,7 +114,7 @@ const { FRESH_OFF, ctxThreshold, coldFloor, worthResuming } = fresh;
 // the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
 // override, not a setting, until the block rate says what it should be.
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(process.env.ALFRED_CODE_FRESH_SESSION_AFTER_HOURS);
+  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
   return Number.isNaN(n) || n < 0 ? 2 : n;
 })();
 
@@ -409,7 +411,7 @@ function secretReadAllowed() {
 // again. Judged over the same 256KB tail secretInSession reads, and fail-open like it.
 // ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
-const ROTATE_ASK_ON = process.env.ALFRED_CODE_ROTATE_ASK !== '0';
+const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
 const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
 function rotateAskAnswered() {
   try {
@@ -448,7 +450,7 @@ function blockDetail(branch, matched) {
 }
 function breadcrumb(why) {
   try {
-    const dir = process.env.ALFRED_CODE_HOOK_LOG_DIR || require('os').tmpdir();
+    const dir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
     fs.appendFileSync(`${dir}/guard-stop-contract.log`, `${new Date().toISOString()} ${why}\n`);
   } catch { /* never let logging break the gate */ }
 }
@@ -500,7 +502,7 @@ if (payload.hook_event_name === 'SubagentStop') {
   const reportsBack = tools.some((b) => (b.input && b.input.run_in_background === true) || /^(Agent|Task|Monitor)$/.test(b.name));
   if (reportsBack) process.exit(0);
   const key = String(payload.agent_id || payload.agent_transcript_path).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  const held = `${process.env.ALFRED_CODE_HOOK_LOG_DIR || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
+  const held = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
   if (fs.existsSync(held)) process.exit(0); // held once already - never a loop
   try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
   blockDetail('subagent-wait', claim ? claim[0] : 'ScheduleWakeup');
@@ -724,7 +726,7 @@ function recordBlockCtx(ctx) {
 function blockStateFile() {
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.ALFRED_CODE_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
 }
 
 

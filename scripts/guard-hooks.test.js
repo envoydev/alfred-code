@@ -41,6 +41,11 @@ delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
 delete process.env.ALFRED_CODE_DOCS_PATH;
 delete process.env.CLAUDE_DOCS_PATH;
+// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers
+// ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too
+// (measured here: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 resolved every unproven window in
+// this file as 1M). Strip the whole prefix rather than naming each key by hand.
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k];
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480

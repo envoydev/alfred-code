@@ -23,10 +23,10 @@
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
-// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.ALFRED_CODE_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 const path = require('path');
 const { execSync, execFileSync } = require('child_process');
 
@@ -36,10 +36,12 @@ const { execSync, execFileSync } = require('child_process');
 // while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
 // so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
 // prelude, no project dir or a malformed settings file all leave this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-ungated-commit')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('guard-ungated-commit')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 let payload;
@@ -92,7 +94,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 const command = String((payload.tool_input || {}).command || '');
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review). Any value but "0" leaves it on.
-const PUSH_GATE_ON = process.env.ALFRED_CODE_PUSH_GATE !== '0';
+const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
 // A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
 // merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a
 // full re-author of the same document (~19.8k output + 24.4k cache-write, ~3 minutes), and a

@@ -15,6 +15,14 @@ const ROOT = path.join(__dirname, '..');
 const SEED = path.join(__dirname, 'install', 'alfred-code.js');
 const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub is a shell script' };
 
+// A 1.x install's shell may still export CLAUDE_STACK_* alongside the current ALFRED_CODE_* names -
+// both prefixes are stripped so neither reaches the sandbox, in place, returning the same object.
+function scrubLegacyEnv(env)
+{
+    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_') || k.startsWith('CLAUDE_STACK_')) delete env[k]; // legacy-name
+    return env;
+}
+
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment.
 // `source: null` runs with no --source, so the seed resolves its own snapshot (the plugin cache under the
@@ -42,7 +50,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     // This runner may sit in a session whose account env carries real keys and stack settings - none
     // of them may reach the run, or land in the sandbox.
     for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY']) delete env[k];
-    for (const k of Object.keys(env)) if (k.startsWith('ALFRED_CODE_')) delete env[k];
+    scrubLegacyEnv(env);
     for (const [k, v] of Object.entries(extra)) { if (v === undefined) delete env[k]; else env[k] = v; }
     try
     {
@@ -61,4 +69,4 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { seedRun, POSIX_ONLY };
+module.exports = { seedRun, POSIX_ONLY, scrubLegacyEnv };

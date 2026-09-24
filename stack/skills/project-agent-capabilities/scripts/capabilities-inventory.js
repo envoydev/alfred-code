@@ -347,16 +347,21 @@ function routingRow(name, map)
 
 // ---------------------------------------------------------------- the project, and the live rule
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*; an install not yet updated still
+// carries the 1.x spelling (CLAUDE_STACK_DOCS_PATH), and one from before 0.2.43 the oldest of all
+// (CLAUDE_DOCS_PATH) - this script has no hook-prelude.js to share, so the fallback order is inline.
+const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH']; // legacy-name
+
 function docsRoot(projectRoot)
 {
-    for (const key of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
+    for (const key of DOCS_PATH_KEYS)
     {
         if (process.env[key]) return { value: process.env[key], from: `${key} in the environment` };
     }
     try
     {
         const env = (JSON.parse(readText(path.join(projectRoot, '.claude', 'settings.json')) || '{}') || {}).env || {};
-        for (const key of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH'])
+        for (const key of DOCS_PATH_KEYS)
         {
             if (env[key]) return { value: env[key], from: `${key} in .claude/settings.json env` };
         }
