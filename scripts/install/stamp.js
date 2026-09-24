@@ -200,7 +200,7 @@ function readPicked(file)
 
 // I3 (R47): the `scope:` line alone - what `update` with no `--scope` resolves against, since the
 // stamp is the only record of what the LAST install actually used (args.js leaves the flag '' rather
-// than default it, exactly like docsVersioning/memoryLevel/sentryAuth already do).
+// than default it, exactly like docsVersioning/memoryLevel already do).
 function readStampScope(file)
 {
     let text = '';

@@ -36,7 +36,9 @@ function scrubLegacyEnv(env)
 // array with one entry PER STEP, for a case whose steps need different `--source` snapshots or
 // different flags (only an array of arrays switches `args` to per-step). A per-step entry may be a
 // function of (repo, work), called just before its step runs - for flags built from an earlier step.
-function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null } = {})
+// `failOk` keeps a run that exits non-zero (a refusal) from throwing: the tree still reaches `inspect`,
+// and the last run's exit status and stderr come back as `code` and `err`.
+function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null, failOk = false } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
@@ -68,6 +70,8 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         prepare(repo, work);
         const outs = [];
         const steps = [];
+        let code = 0;
+        let err = '';
         const actions = [].concat(action);
         const sourceAt = (i) => (Array.isArray(source) ? source[i] : source);
         // A step's args may be a function of (repo, work) - a later step built from an earlier one's output.
@@ -76,12 +80,24 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         for (const [i, act] of actions.entries())
         {
             const src = sourceAt(i);
-            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
-                { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+            try
+            {
+                outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
+                    { cwd: repo, env: envAt(i), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
+                code = 0;
+                err = '';
+            }
+            catch (e)
+            {
+                if (!failOk) throw e;
+                outs.push(String(e.stdout || ''));
+                code = e.status ?? 1;
+                err = String(e.stderr || '');
+            }
             steps.push(each(repo, steps.length));
         }
         const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : [];
-        return { calls, out: outs[outs.length - 1], outs, steps, result: inspect(repo) };
+        return { calls, out: outs[outs.length - 1], outs, steps, result: inspect(repo), code, err };
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 }

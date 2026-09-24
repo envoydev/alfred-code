@@ -1674,18 +1674,17 @@ test('seed install on a listing it cannot read: an engine the settings name is u
     assert.match(out, /playwright: the plugin listing could not be read - the stamp or the settings name chrome,firefox as installed \(updated in place\); the rest install as new/);
 });
 
-// NM1 (fix round 3): the route line was written only at the very END of a run, after
-// installHooksAndRules had already pruned the other route's copies - a run that died in between left
-// a STALE route over a folder the prune had already emptied. Driven in-process (the entry's own
-// `main`, per install-args.test.js's precedent) so a genuine fault can be raised from the log sink
-// right after the prune's own log lines - the same effect a real process death would have, caught by
-// main's own outer try/catch exactly as a real crash would be.
-test('seed: a throw right after the hooks prune still leaves the stamp\'s hooks-route in sync, never stale (NM1)', POSIX_ONLY, () =>
+// The in-process sandbox the two hooks-route interruption tests share (NM1, N4): a git project, a
+// recording `claude` stub listing the core and the three locked servers, dead uvx/npx/npm/curl, and
+// the entry's own `main` (per install-args.test.js's precedent), so a genuine fault can be raised
+// mid-run and caught by main's own outer try/catch exactly as a real crash would be.
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+function hooksRouteSandbox(prefix)
 {
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
     const { main } = require('./install/alfred-code.js');
-    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'nm1-'));
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     const repo = path.join(work, 'repo');
     fs.mkdirSync(repo);
     execFileSync('git', ['init', '-q', repo]);
@@ -1699,47 +1698,93 @@ test('seed: a throw right after the hooks prune still leaves the stamp\'s hooks-
     for (const tool of ['uvx', 'npx', 'npm', 'curl']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const selFile = path.join(work, 'sel.txt');
     fs.writeFileSync(selFile, 'skill markdown-style\n');
-    const baseEnv = {
+    const env = {
         HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: path.join(work, 'claude-calls.log'), CLAUDE_STUB_PLUGINS: pluginsFile,
     };
-    const stampFile = path.join(repo, '.claude', 'alfred-code.stamp');
+    const copyEnv = { ...env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
     const hooksDir = path.join(repo, '.claude', 'hooks');
-    const ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+    return {
+        work, repo, env, copyEnv, hooksDir,
+        run: (action, runEnv, out = () => {}) => main([...action, '--selection', selFile, '--source', ROOT], runEnv, { out, err: () => {}, cwd: repo }),
+        stamp: () => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+        onDisk: () => fs.readdirSync(hooksDir).sort(),
+        hooksOff: () =>
+        {
+            const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
+            return String((settings.env && settings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
+        },
+        cleanup: () => fs.rmSync(work, { recursive: true, force: true }),
+    };
+}
+
+// NM1 (fix round 3): the route line was written only at the very END of a run, after
+// installHooksAndRules had already pruned the other route's copies - a run that died in between left
+// a STALE route over a folder the prune had already emptied. The fault is raised from the log sink
+// right after the prune's own log lines - the same effect a real process death would have.
+test('seed: a throw right after the hooks prune still leaves the stamp\'s hooks-route in sync, never stale (NM1)', POSIX_ONLY, () =>
+{
+    const s = hooksRouteSandbox('nm1-');
     try
     {
         // Step 1: install on the COPY route - every stack hook lands on disk, the stamp says 'copy'.
-        const r1 = main(['install', '--selection', selFile, '--source', ROOT],
-            { ...baseEnv, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, { out: () => {}, err: () => {}, cwd: repo });
-        assert.strictEqual(r1, 0, 'the setup install failed');
-        assert.match(fs.readFileSync(stampFile, 'utf8'), /^hooks-route: copy$/m);
-        assert.ok(fs.readdirSync(hooksDir).some((f) => !ENGINES.includes(f)), 'setup did not copy any stack hook');
+        assert.strictEqual(s.run(['install'], s.copyEnv), 0, 'the setup install failed');
+        assert.match(s.stamp(), /^hooks-route: copy$/m);
+        assert.ok(s.onDisk().some((f) => !HOOK_ENGINES.includes(f)), 'setup did not copy any stack hook');
 
         // Step 2: update on the PLUGIN route (default) - interrupted by a thrown fault the instant the
-        // hooks prune's OWN follow-up copy step logs its first line, i.e. strictly after both prune
-        // calls inside installHooksAndRules have already run to completion.
-        const r2 = main(['update', '--selection', selFile, '--source', ROOT, '--installed-only'], baseEnv,
-            {
-                out: (s) => { if (/ hook (current|copied): /.test(s)) throw new Error('FAULT: simulated death right after the hooks prune'); },
-                err: () => {}, cwd: repo,
-            });
+        // hooks prune's OWN follow-up copy step logs its first line ('current:' or 'installed ->',
+        // copy.installFromSource's two), i.e. strictly after both prune calls have run to completion.
+        const r2 = s.run(['update', '--installed-only'], s.env,
+            (line) => { if (/ hook (current: |installed -> )/.test(line)) throw new Error('FAULT: simulated death right after the hooks prune'); });
         assert.strictEqual(r2, 1, 'the interrupted run must fail, not silently finish past the fault');
-        assert.deepStrictEqual(fs.readdirSync(hooksDir).sort(), ENGINES.sort(), 'the prune itself must have completed before the fault fired');
+        assert.deepStrictEqual(s.onDisk(), [...HOOK_ENGINES].sort(), 'the prune itself must have completed before the fault fired');
 
         // The route line the interrupted run left behind must ALREADY say 'plugin' - the folder is
         // empty of stack hooks (this run's own reality), never the previous run's stale 'copy'.
-        assert.match(fs.readFileSync(stampFile, 'utf8'), /^hooks-route: plugin$/m,
+        assert.match(s.stamp(), /^hooks-route: plugin$/m,
             'NM1: an interrupted run left a stale hooks-route over a folder its own prune had emptied');
 
         // Step 3: a genuine copy-route update --installed-only next must read the marker it actually
         // left (plugin/unknown), never mistake the empty folder for a real copy-route None.
         let out3 = '';
-        const r3 = main(['update', '--selection', selFile, '--source', ROOT, '--installed-only'],
-            { ...baseEnv, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, { out: (s) => { out3 += s; }, err: () => {}, cwd: repo });
-        assert.strictEqual(r3, 0, out3);
-        const settings = JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'));
-        const off = String((settings.env && settings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
+        assert.strictEqual(s.run(['update', '--installed-only'], s.copyEnv, (line) => { out3 += line; }), 0, out3);
+        const off = s.hooksOff();
         assert.deepStrictEqual(off, [], `NM1: the interrupted run's stale marker read back as a false None (every hook off): ${off.join(',')}`);
     }
-    finally { fs.rmSync(work, { recursive: true, force: true }); }
+    finally { s.cleanup(); }
+});
+
+// N4 (fix round 4): NM1's mirror. The early mark once wrote 'copy' too, before any hook copy had
+// landed - so a plugin -> copy run that died before its first copy left 'hooks-route: copy' over a
+// folder holding no stack hook, and the next copy-route update read that as the user's own None and
+// switched every hook off. The fault is deterministic: a read-only .claude/hooks makes the first
+// hook copy throw EACCES.
+test('seed: a plugin-to-copy run that dies before the first hook copy never reads back as every hook off (N4)', POSIX_ONLY, () =>
+{
+    const s = hooksRouteSandbox('n4-');
+    try
+    {
+        // Step 1: install on the PLUGIN route - the stamp says 'plugin', only the engines are on disk.
+        assert.strictEqual(s.run(['install'], s.env), 0, 'the setup install failed');
+        assert.match(s.stamp(), /^hooks-route: plugin$/m);
+        assert.deepStrictEqual(s.onDisk(), [...HOOK_ENGINES].sort(), 'the plugin route copies only the engines');
+
+        // Step 2: update on the COPY route, dying at the first hook copy.
+        fs.chmodSync(s.hooksDir, 0o555);
+        let r2;
+        try { r2 = s.run(['update', '--installed-only'], s.copyEnv); }
+        finally { fs.chmodSync(s.hooksDir, 0o755); }
+        assert.strictEqual(r2, 1, 'the interrupted run must fail, not silently finish past the fault');
+        assert.deepStrictEqual(s.onDisk(), [...HOOK_ENGINES].sort(), 'no stack hook may have landed before the fault');
+        assert.match(s.stamp(), /^hooks-route: plugin$/m,
+            'N4: an interrupted run marked the copy route before a single hook copy had landed');
+
+        // Step 3: a genuine copy-route update --installed-only must keep every hook on.
+        let out3 = '';
+        assert.strictEqual(s.run(['update', '--installed-only'], s.copyEnv, (line) => { out3 += line; }), 0, out3);
+        const off = s.hooksOff();
+        assert.deepStrictEqual(off, [], `N4: an interrupted plugin-to-copy run read back as a None (every hook off): ${off.join(',')}`);
+    }
+    finally { s.cleanup(); }
 });

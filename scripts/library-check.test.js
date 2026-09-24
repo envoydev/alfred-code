@@ -264,3 +264,27 @@ test('a traversal name in the project stamp never reaches the shadow check or a 
     assert.doesNotMatch(r.out, /shadowed:/, r.out);
     assert.doesNotMatch(r.out, /rm -rf/, r.out);
 });
+
+// Fix round 4 (security, the re-review's observation): the drift/missing rows validate a stamp name
+// BEFORE the join - `../../../outside` once hashed a whole tree outside the project and echoed the
+// raw name as `drift: skill ../../../outside`. The name is counted, never read or printed.
+test('a traversal name in the drift/missing rows is never joined, hashed or echoed - only counted', () =>
+{
+    const f = fx();
+    const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
+    const text = fs.readFileSync(stamp, 'utf8')
+        .replace(/^library-skills: (.*)$/m, (line, hashes) => `library-skills: ${hashes},../../../outside=deadbeef`)
+        .replace(/^library-rules: (.*)$/m, (line, hashes) => `library-rules: ${hashes},../../../outside-rule=deadbeef`);
+    fs.writeFileSync(stamp, text);
+    // Both targets really exist where the joins land, so a shape-blind loop hashes them and reads drift.
+    fs.mkdirSync(path.join(f.root, 'outside'), { recursive: true });
+    fs.writeFileSync(path.join(f.root, 'outside', 'SECRET.txt'), 'not the stack\'s\n');
+    fs.writeFileSync(path.join(f.root, 'outside-rule.md'), '# not the stack\'s\n');
+    const r = run(f);
+    assert.doesNotMatch(r.out, /outside/, r.out);
+    assert.match(r.out, /^invalid: 2 stamp name\(s\) are not valid item names - skipped, never read$/m, r.out);
+    assert.strictEqual(r.code, 1, 'a corrupted stamp is a finding');
+    const json = JSON.parse(run(f, ['--json']).out);
+    assert.ok(json.rows.every((row) => !row.name.includes('outside')), JSON.stringify(json.rows));
+    assert.strictEqual(json.invalid, 2);
+});

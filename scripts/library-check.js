@@ -79,9 +79,13 @@ function check({ project, source, configDir })
         }
         return hashItem(srcFile);
     };
+    // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,
+    // hashed or printed (the N1 rule, stamp.js validSkillName) - an invalid one is only counted.
+    let invalid = 0;
     for (const kind of ['skills', 'agents', 'rules'])
         for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
         {
+            if (!validSkillName(name, dirs[kind])) { invalid += 1; continue; }
             const file = kind === 'skills' ? path.join(dirs.skills, name) : path.join(dirs[kind], `${name}.md`);
             const have = hashItem(file);
             let state = 'ok';
@@ -121,7 +125,7 @@ function check({ project, source, configDir })
             }
             rows.push(row);
         }
-    return { version: stamp.version, sourceVersion, rows, stale: Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version)) };
+    return { version: stamp.version, sourceVersion, rows, invalid, stale: Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version)) };
 }
 
 function main(argv)
@@ -134,11 +138,12 @@ function main(argv)
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const shadowed = res.rows.filter((r) => r.shadowedByAccount);
-    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length;
+    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length + res.invalid;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
+    if (res.invalid) console.log(`invalid: ${res.invalid} stamp name(s) are not valid item names - skipped, never read`);
     for (const r of res.rows.filter((row) => row.mode && row.mode !== 'on')) console.log(`switched: skill ${r.name} is '${r.mode}' in skillOverrides`);
     for (const r of shadowed)
         console.log(`shadowed: skill ${r.name} - an account copy at ${path.join(configDir, 'skills', r.name)} overrides this project's own `

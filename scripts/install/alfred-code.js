@@ -163,23 +163,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const resolved = source.resolve();
         if (!resolved) return 1;
 
-        // T16/R47 (I4): the migration is a WRITE - it runs for a real `update` only, never on
-        // `--print-plan` (configure.md and validate.md call `update --installed-only --print-plan`
-        // as a run that writes nothing), and only here, inside the try, after the source resolved -
-        // an EACCES from cpSync is caught and reported through `note`, not a raw stack trace.
-        // C1/m1: a failed copy is reported through `note`, exactly as this comment always claimed -
-        // round 1 added the parameter to migrateLegacyGlobal's own signature but never passed it here.
-        if (args.action === 'update' && !args.printPlan) stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log, note });
-        // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
-        let stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
-        // A --print-plan read never migrates, but a not-yet-migrated 1.x global project should still
-        // report its last-known picks before the user commits to a real `update` - the same
-        // account-dir fallback library-check.js uses for the same reason.
-        if (!stampFile && args.printPlan && configDir)
-        {
-            const legacyAcct = path.join(configDir, LEGACY.stamp);
-            if (fs.existsSync(legacyAcct)) { stampFile = legacyAcct; skillsDir = path.join(configDir, 'skills'); }
-        }
+        // What this run READS of the last install: the new stamp, else a 1.x install's under its old name,
+        // else - a 1.x GLOBAL project not yet migrated - the account's own, read IN PLACE until the
+        // refusal below has passed (m4: a refused update moves nothing). A --print-plan never migrates
+        // and reads the account skills too - the same fallback library-check.js uses.
+        const projectStamp = () => stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
+        let stampFile = projectStamp();
+        const legacyAcct = !stampFile && configDir ? path.join(configDir, LEGACY.stamp) : '';
+        const unmigrated = Boolean(legacyAcct) && (args.action === 'update' || args.printPlan) && fs.existsSync(legacyAcct);
+        if (unmigrated) stampFile = legacyAcct;
+        if (unmigrated && args.printPlan) skillsDir = path.join(configDir, 'skills');
 
         // I3 (R47): args.js left '' when neither --scope nor SCOPE was given. `update` takes the
         // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
@@ -191,9 +184,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const stamped = rawStamped.toLowerCase() === 'global' ? 'user' : rawStamped.toLowerCase();
             // m2 (I3 minor): the stamp's `scope:` line reaches the CLI unvalidated otherwise - a
             // hand-edited or corrupted stamp (`scope: bogus`, or un-lowercased `scope: Global`) must
-            // never flow straight into `claude plugin install ... --scope <value>`.
+            // never flow straight into `claude plugin install ... --scope <value>`. m3: nor into this
+            // log, which the model reads as tool output - named by its length only, the N1 rule.
             if (stamped && !ENUMS.scope.values.includes(stamped))
-            { log(`  scope: the stamp's 'scope: ${rawStamped}' is not project|user|local - falling back to project`); }
+            { log(`  scope: the stamp's scope line (${rawStamped.length} chars) is not project|user|local - falling back to project`); }
             args.scope = stamped && ENUMS.scope.values.includes(stamped) ? stamped : 'project';
         }
         const cliScope = args.scope;
@@ -209,12 +203,28 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // that mix is safe. `!plugins.corePluginOn(routes)` is the full copy route - every one of
         // hooks/skills/mcps riding a copy instead of a plugin - exactly what R29's own refusal used
         // to guard, on the ONE route the plugin launcher's per-project re-read cannot cover.
-        if (args.memoryLevel === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
+        // m5: keyed on the RESOLVED level - with no flag, the .mcp.json registration's own path.
+        const level = memory.resolveLevel({
+            flag: args.memoryLevel,
+            registeredPath: registeredMemoryPath(mcpFile),
+            home, space: args.space, projectRoot,
+        });
+        if (level.level === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
         {
-            err('error: --memory-level project is refused at --scope user on the full copy route '
+            const what = level.from === 'flag' ? '--memory-level project' : `the memory level project (read from ${path.basename(mcpFile)})`;
+            err(`error: ${what} is refused at --scope user on the full copy route `
                 + "(ALFRED_CODE_HOOKS_VIA_PLUGIN=false, ALFRED_CODE_SKILLS_VIA_PLUGIN=false and ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
-                + 'the registration bakes one path into every project of the account; use --scope project, drop --memory-level project, or keep any one route on the plugin\n');
+                + 'the registration bakes one path into every project of the account; use --scope project, pass --memory-level global or scoped, or keep any one route on the plugin\n');
             return 1;
+        }
+
+        // T16/R47 (I4): the migration is a WRITE - a real `update` only, never `--print-plan`
+        // (configure and validate call it as a run that writes nothing), inside the try so an EACCES
+        // is reported, and after the refusal above (m4). C1/m1: a failed copy goes through `note`.
+        if (args.action === 'update' && !args.printPlan && unmigrated)
+        {
+            stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log, note });
+            stampFile = projectStamp();
         }
 
         // --- the six lists, narrowed to this project -------------------------------
@@ -334,12 +344,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const pins = args.printPlan
             ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
             : mcp.resolvePins({ pins: readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json')).pins, log });
-
-        const level = memory.resolveLevel({
-            flag: args.memoryLevel,
-            registeredPath: registeredMemoryPath(mcpFile),
-            home, space: args.space, projectRoot,
-        });
 
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
@@ -766,11 +770,11 @@ function installMcps(ctx)
 
 function installHooksAndRules(ctx)
 {
-    // NM1 (fix round 3): patch the route line on the EXISTING stamp - if one exists yet - before the
-    // prune below removes the OTHER route's copies. writeStamp's own full render at the end of the
-    // run is what makes this line authoritative on a clean finish; this call is only insurance
-    // against the run dying in between, so the line on disk never lags what the prune already did.
-    stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), ctx.routes.hooks ? 'plugin' : 'copy');
+    // NM1 (fix round 3): on the PLUGIN route the prune below deletes the copies, so the route line is
+    // patched on the existing stamp FIRST - a run dying after the prune never leaves a stale 'copy'
+    // over an emptied folder. N4: never on the copy route - 'copy' before a single copy has landed
+    // reads back as the user's None; its line is true only once writeStamp records it at the end.
+    if (ctx.routes.hooks) stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'plugin');
     // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
     // release retired goes on either route, file and wiring together.
     const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
