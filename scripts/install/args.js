@@ -177,4 +177,4 @@ function parseArgs(argv, env = {})
     return out;
 }
 
-module.exports = { parseArgs, PW_ENGINES, FLAG_LIST };
+module.exports = { parseArgs, PW_ENGINES, FLAG_LIST, ENUMS };

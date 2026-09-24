@@ -18,7 +18,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { parseArgs, FLAG_LIST } = require('./args.js');
+const { parseArgs, FLAG_LIST, ENUMS } = require('./args.js');
 const { createSource, compareVersions } = require('./source.js');
 const { loadManifest } = require('./manifest.js');
 const selection = require('./selection.js');
@@ -167,7 +167,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // `--print-plan` (configure.md and validate.md call `update --installed-only --print-plan`
         // as a run that writes nothing), and only here, inside the try, after the source resolved -
         // an EACCES from cpSync is caught and reported through `note`, not a raw stack trace.
-        if (args.action === 'update' && !args.printPlan) stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log });
+        // C1/m1: a failed copy is reported through `note`, exactly as this comment always claimed -
+        // round 1 added the parameter to migrateLegacyGlobal's own signature but never passed it here.
+        if (args.action === 'update' && !args.printPlan) stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log, note });
         // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
         let stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
         // A --print-plan read never migrates, but a not-yet-migrated 1.x global project should still
@@ -185,8 +187,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // all to read, defaults to `project` - the floor every scope always had.
         if (!args.scope)
         {
-            const stamped = args.action === 'update' && stampFile ? stampLayer.readStampScope(stampFile) : '';
-            args.scope = stamped === 'global' ? 'user' : (stamped || 'project');
+            const rawStamped = args.action === 'update' && stampFile ? stampLayer.readStampScope(stampFile) : '';
+            const stamped = rawStamped.toLowerCase() === 'global' ? 'user' : rawStamped.toLowerCase();
+            // m2 (I3 minor): the stamp's `scope:` line reaches the CLI unvalidated otherwise - a
+            // hand-edited or corrupted stamp (`scope: bogus`, or un-lowercased `scope: Global`) must
+            // never flow straight into `claude plugin install ... --scope <value>`.
+            if (stamped && !ENUMS.scope.values.includes(stamped))
+            { log(`  scope: the stamp's 'scope: ${rawStamped}' is not project|user|local - falling back to project`); }
+            args.scope = stamped && ENUMS.scope.values.includes(stamped) ? stamped : 'project';
         }
         const cliScope = args.scope;
 
@@ -194,14 +202,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         const manifest = loadManifest(resolved.dir);
         const routes = plugins.pluginRoutes(env);
-        // I5 (R47): the MCP COPY route bakes ONE path into the registration
-        // (`claude mcp add -s user -e MCP_MEMORY_SQLITE_PATH=<path>`), so every project of the
-        // account would open THIS project's db - exactly what R29's own refusal used to guard, on
-        // the ONE route the plugin launcher's per-project re-read cannot cover.
-        if (args.memoryLevel === 'project' && args.scope === 'user' && !routes.mcps)
+        // I5 (R47, fix round 2): memory is a LOCKED server - it bakes ONE path into a user-scope
+        // registration only on the FULL copy route, where the installer registers it itself
+        // (`claude mcp add -s user -e MCP_MEMORY_SQLITE_PATH=<path>`); on the MCP-copy-route-alone
+        // combination memory still rides its own plugin, re-read per project by the launcher, so
+        // that mix is safe. `!plugins.corePluginOn(routes)` is the full copy route - every one of
+        // hooks/skills/mcps riding a copy instead of a plugin - exactly what R29's own refusal used
+        // to guard, on the ONE route the plugin launcher's per-project re-read cannot cover.
+        if (args.memoryLevel === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
         {
-            err("error: --memory-level project is refused at --scope user on the MCP copy route (ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
-                + 'the registration bakes one path into every project of the account; use --scope project, drop --memory-level project, or install through the plugin route instead\n');
+            err('error: --memory-level project is refused at --scope user on the full copy route '
+                + "(ALFRED_CODE_HOOKS_VIA_PLUGIN=false, ALFRED_CODE_SKILLS_VIA_PLUGIN=false and ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
+                + 'the registration bakes one path into every project of the account; use --scope project, drop --memory-level project, or keep any one route on the plugin\n');
             return 1;
         }
 

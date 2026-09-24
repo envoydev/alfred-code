@@ -247,3 +247,20 @@ test('no --config-dir given, or no matching account skill, never reports shadowe
     assert.equal(r.code, 0, r.out);
     assert.doesNotMatch(r.out, /shadowed:/);
 });
+
+// N1 (R58 fix round 2, security): a PROJECT stamp with a traversal name must never reach the shadow
+// check's rm -rf - the re-review's exact probe (`..=h1` resolving to the account dir itself, which
+// really exists, so a shape-blind shadow check reads it as shadowed and prints `rm -rf '<acct>'`).
+test('a traversal name in the project stamp never reaches the shadow check or a printed rm -rf (N1)', () =>
+{
+    const f = fx();
+    const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
+    const text = fs.readFileSync(stamp, 'utf8').replace(/^library-skills: (.*)$/m, (line, hashes) => `library-skills: ${hashes},..=h1`);
+    fs.writeFileSync(stamp, text);
+    // configDir itself is a real directory - exactly what '..' resolves to from configDir/skills/..,
+    // the shape-blind bug the re-review's probe exploited.
+    fs.mkdirSync(f.config, { recursive: true });
+    const r = run(f, ['--config-dir', f.config]);
+    assert.doesNotMatch(r.out, /shadowed:/, r.out);
+    assert.doesNotMatch(r.out, /rm -rf/, r.out);
+});

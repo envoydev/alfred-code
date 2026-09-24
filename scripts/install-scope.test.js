@@ -118,6 +118,33 @@ test('install-scope: a 1.x account-dir stamp is left alone by a plain install - 
     assert.doesNotMatch(out, /were moved from/, 'a bare install must not migrate a 1.x account install');
 });
 
+// C1/m1 (fix round 2): the migration's own comment always claimed a failed copy is 'reported
+// through note' - round 1 added the parameter to migrateLegacyGlobal's signature but never actually
+// passed it at the call site, so a failed copy was silently dropped and never counted.
+test('install-scope: a failed copy during 1.x migration is reported through note, not silently dropped (C1/m1)', POSIX_ONLY, () =>
+{
+    // No 'skill' line - the run's ONLY skill-directory write is the migration's own copy of 'demo',
+    // so making the destination skills/ dir read-only cannot also break an unrelated LATER copy
+    // (the installer treats a regular library copy failure as fatal, unlike the migration's own
+    // fail-soft note() path - conflating the two would test the wrong thing).
+    const { out } = seedRun('update', 'rule markdown-docs\n', {
+        prepare: (repo, work) =>
+        {
+            const acct = path.join(work, 'acct');
+            fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+            fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+            // The project's destination skills dir, made READ-ONLY before the run - cpSync cannot
+            // create the 'demo' entry inside it and fails with EACCES, a normal catchable JS error.
+            fs.mkdirSync(path.join(repo, '.claude', 'skills'), { recursive: true });
+            fs.chmodSync(path.join(repo, '.claude', 'skills'), 0o555);
+        },
+        inspect: (repo) => { fs.chmodSync(path.join(repo, '.claude', 'skills'), 0o755); return null; },
+    });
+    assert.match(out, /!! the account skill demo could not be copied/, out);
+    assert.match(out, /1 step\(s\) reported a failure above/, out);
+});
+
 // R29: the memory db path is resolved PER PROJECT by the launcher, never baked into the
 // registration - `--memory-level project` must ride every scope without refusal.
 test('install-scope: --memory-level project rides --scope user without refusal', POSIX_ONLY, () =>
@@ -163,8 +190,12 @@ test('install-scope: a settings.json that does not parse never aborts update --i
     assert.match(outs[1], /action: update/, 'a malformed settings.json must not abort the run');
 });
 
-// I2 (R47, fix round 1): the read-back reads the raw file, never a filtered/derived view - a
-// hand-added permissions.allow/ask survives a project-scope update --installed-only untouched.
+// I2 (R47, fix round 1): a hand-added permissions.allow/ask survives update --installed-only
+// untouched. NOT an M7 regression proof (verified empirically in fix round 2 by reverting the
+// scope-aware read-back line): writeSettings merges permissions.deny into its OWN fresh read of the
+// TARGET file it is about to write, so allow/ask - which nothing here derives from the read-back's
+// `settings` param at all - survive whichever file that read-back happened to read. The M7 test
+// below is the one that actually discriminates the read-back's own scope-awareness.
 test('install-scope: permissions.allow and permissions.ask survive update --installed-only (I2)', POSIX_ONLY, () =>
 {
     const { result } = seedRun(['install', 'update'], SELECTION, {
@@ -230,18 +261,30 @@ test('install-scope: update --installed-only --print-plan reads a 1.x account st
     assert.strictEqual(result.projectStamp, false, 'a --print-plan run must never write the project its own stamp');
 });
 
-// I5 (R47, fix round 1): the MCP COPY route bakes one path into a user-scope `claude mcp add -s
-// user`, so `--memory-level project` there would open every project of the account onto this one's
-// db - refused on that route and scope only.
-test('install-scope: --memory-level project at --scope user is refused on the MCP copy route (I5)', POSIX_ONLY, () =>
+// I5 (R47, fix round 2): memory is LOCKED - it bakes one path into a user-scope `claude mcp add -s
+// user` only on the FULL copy route, where the installer registers it itself. The MCP-copy-route-
+// ALONE mix is safe (memory still rides its own plugin, re-read per project by the launcher), so
+// the refusal keys on `!corePluginOn(routes)`, never `!routes.mcps` alone.
+test('install-scope: --memory-level project at --scope user is refused on the FULL copy route (I5)', POSIX_ONLY, () =>
 {
     assert.throws(
         () => seedRun('install', SELECTION, {
             args: ['--scope', 'user', '--memory-level', 'project'],
-            env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+            env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
         }),
-        (e) => /--memory-level project is refused at --scope user on the MCP copy route/.test(e.stderr || e.message),
+        (e) => /--memory-level project is refused at --scope user on the full copy route/.test(e.stderr || e.message),
     );
+});
+
+// I5: the MCP copy route ALONE (hooks and skills still riding the plugin) is the safe mix the
+// over-refusal used to block - memory's per-project re-read still covers it, so it must NOT refuse.
+test('install-scope: --memory-level project at --scope user is NOT refused on the MCP-copy-route-alone mix (I5)', POSIX_ONLY, () =>
+{
+    const { out } = seedRun('install', SELECTION, {
+        args: ['--scope', 'user', '--memory-level', 'project'],
+        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+    });
+    assert.match(out, /memory=project \(/, out);
 });
 
 test('install-scope: --memory-level project at --scope project is never refused on the MCP copy route (I5)', POSIX_ONLY, () =>
@@ -251,4 +294,59 @@ test('install-scope: --memory-level project at --scope project is never refused 
         env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
     });
     assert.match(out, /memory=project \(/, out);
+});
+
+// m2 (I3 minor, fix round 2): the stamp's own `scope:` line reaches the CLI unvalidated otherwise -
+// a hand-edited or corrupted stamp must never flow straight into `claude plugin install --scope`.
+test('install-scope: a bogus stamped scope falls back to project, never reaching the CLI unvalidated (m2)', POSIX_ONLY, () =>
+{
+    const { out, calls } = seedRun('update', SELECTION, {
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'),
+                'sha: abc\nscope: bogus\nversion: 1.0.0\npicked-skills: \npicked-agents: \n');
+        },
+    });
+    assert.match(out, /action: update \[scope=project,/, out);
+    assert.ok(calls.every((c) => !c.includes('--scope bogus')), calls.join('\n'));
+});
+
+test('install-scope: a stamped scope of Global (un-lowercased) still maps to user (m2)', POSIX_ONLY, () =>
+{
+    const { out, calls } = seedRun('update', SELECTION, {
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'),
+                'sha: abc\nscope: Global\nversion: 1.0.0\npicked-skills: \npicked-agents: \n');
+        },
+    });
+    assert.match(out, /action: update \[scope=user,/, out);
+    assert.ok(calls.some((c) => c.includes('--scope user')), calls.join('\n'));
+});
+
+// M7: the read-back must go through the SCOPE'S OWN settings file - at local scope that is
+// settings.local.json, which holds no ALFRED_CODE_HOOKS_OFF at all if the read targets settings.json
+// instead (absent at local scope), so every hook the user switched off would come back on.
+test('install-scope: a local-scope update --installed-only keeps the hooks the user already switched off (M7)', POSIX_ONLY, () =>
+{
+    const HOOKS_SEL = 'skill csharp\nrule markdown-docs\nhook guard-protected-force-push\n';
+    let before = null;
+    const { outs, result } = seedRun(['install', 'update'], HOOKS_SEL, {
+        args: [['--scope', 'local'], ['--installed-only']],
+        plugins: JSON.stringify([
+            { id: 'alfred-code@envoydev', version: '1.0.0', scope: 'local', enabled: true },
+            { id: 'alfred-code-hooks@envoydev', version: '1.0.0', scope: 'local', enabled: true },
+        ]),
+        each: (repo, i) =>
+        {
+            if (i === 0) before = json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF;
+            return null;
+        },
+        inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF,
+    });
+    assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
+    assert.ok(before && before.split(',').length === 16, `setup did not switch 16 hooks off: ${before}`);
+    assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });

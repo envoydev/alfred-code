@@ -21,7 +21,7 @@
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readLibrary } = require('./install/stamp.js');
+const { readLibrary, validSkillName } = require('./install/stamp.js');
 const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { resolveDocsRoot } = require('./install/copy.js');
@@ -103,11 +103,20 @@ function check({ project, source, configDir })
                 // run's STAMP source, because the shadow can exist beside an install that was always
                 // project-native too - EXCEPT when dirs.skills already IS configDir/skills (a 1.x
                 // global install not yet migrated): that is the project's own copy, not a shadow.
-                if (configDir && dirs.skills !== path.join(configDir, 'skills'))
+                // N1: a name the PROJECT stamp records is validated before it is ever joined against
+                // the account skills/ dir - a corrupted or hand-edited stamp can never make this
+                // check (or the printed rm -rf below) point outside it. configDir is checked for
+                // truthiness FIRST - path.join throws on a null/undefined first argument, and most
+                // callers pass no --config-dir at all.
+                if (configDir)
                 {
-                    let isDir = false;
-                    try { isDir = fs.statSync(path.join(configDir, 'skills', name)).isDirectory(); } catch { isDir = false; }
-                    if (isDir) row.shadowedByAccount = true;
+                    const acctSkillsDir = path.join(configDir, 'skills');
+                    if (dirs.skills !== acctSkillsDir && validSkillName(name, acctSkillsDir))
+                    {
+                        let isDir = false;
+                        try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
+                        if (isDir) row.shadowedByAccount = true;
+                    }
                 }
             }
             rows.push(row);

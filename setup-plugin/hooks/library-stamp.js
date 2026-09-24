@@ -22,15 +22,19 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary, stampFile;
+    let readLibrary, validSkillName, stampFile;
     try
     {
-        ({ readLibrary } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ readLibrary, validSkillName } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
         ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
     }
     catch { return; }
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const lib = readLibrary(stampFile(path.join(project, '.claude')).read || stampFile(account).read);
+    // N3: which stamp actually answered matters - a project not yet migrated (no stamp of its own)
+    // falls back to the ACCOUNT one, and in that case the account copy is the only one running, not
+    // a shadow of a project copy that does not exist yet.
+    const projectStampFile = stampFile(path.join(project, '.claude')).read;
+    const lib = readLibrary(projectStampFile || stampFile(account).read);
     if (!lib || !lib.version) return;
     let stack = '';
     try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }
@@ -44,12 +48,19 @@ function main()
     // I6 (R47, fix round 1): a personal skill in the ACCOUNT dir overrides a project library copy of
     // the same name (Claude Code runs personal over project) - flagged here too, whether or not the
     // stamp is stale, since library-check.js's own read only runs on demand (validate/status).
-    const shadowed = Object.keys(lib.skills || {}).filter((name) =>
+    // N3: only when the PROJECT itself has migrated - with no project stamp, `lib` came from the
+    // account fallback above, and the account copy IS the project's only copy, not a shadow of one.
+    // N1/N2: a name is validated before it is ever joined against the account skills/ dir - this
+    // line's own comment above promises only a plain name is echoed into the session, and a name
+    // that fails the check is dropped before the isDir probe, never echoed.
+    const acctSkillsDir = path.join(account, 'skills');
+    const shadowed = projectStampFile ? Object.keys(lib.skills || {}).filter((name) =>
     {
+        if (!validSkillName(name, acctSkillsDir)) return false;
         let isDir = false;
-        try { isDir = fs.statSync(path.join(account, 'skills', name)).isDirectory(); } catch { isDir = false; }
+        try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
         return isDir;
-    });
+    }) : [];
     if (!older && !shadowed.length) return;
     const parts = [];
     if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);

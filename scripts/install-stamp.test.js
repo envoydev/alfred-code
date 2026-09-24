@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validSkillName } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -507,4 +507,40 @@ test('readStampScope: reads the scope line back, and empty when the file is abse
     assert.strictEqual(readStampScope(path.join(p.base, 'does-not-exist.stamp')), '');
     fs.writeFileSync(file, 'sha: abc\nversion: 2.0.0\n');
     assert.strictEqual(readStampScope(file), '');
+});
+
+// N1 (R58 fix round 2, security): a name a stamp records is validated before it ever reaches a path
+// join, a copy, or a printed 'rm -rf' - one path segment, the installer's own skill-name shape.
+test('validSkillName: rejects an empty name, .., ../.., ../plugins, an absolute path, and a name with a slash', () =>
+{
+    const dir = path.join(TMP, 'skills-dir');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const bad of ['', '.', '..', '../..', '../plugins', '/etc', 'foo/bar', 'a\\b'])
+        assert.strictEqual(validSkillName(bad, dir), false, `'${bad}' must be rejected`);
+    assert.strictEqual(validSkillName('csharp', dir), true);
+    assert.strictEqual(validSkillName('dotnet-data-access', dir), true);
+});
+
+test('migrateLegacyGlobal (N1): a traversal name in the account stamp never reaches a copy or the printed rm -rf', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
+    // A stamp naming '..' and '../plugins' beside a real, legitimate pick - the exact probe the
+    // re-review ran: '..=h' would rm -rf the whole account skills dir, '../plugins@x' would copy the
+    // account's plugins/ tree into the project.
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo,..,../plugins\n');
+    const logs = [];
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
+    assert.strictEqual(moved, true);
+    assert.ok(fs.existsSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md')), 'the legitimate pick was not copied');
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'plugins')), 'a traversal name reached a copy');
+    const summary = logs.find((m) => /were moved from/.test(m));
+    assert.ok(summary, logs.join(' | '));
+    assert.strictEqual((summary.match(/rm -rf/g) || []).length, 1, 'only ONE rm -rf target (the legitimate pick) may appear');
+    assert.match(summary, /rm -rf '[^']*[/\\]skills[/\\]demo'\s*$/, `the single rm -rf target must be exactly the demo pick: ${summary}`);
+    const skipped = logs.filter((m) => /skill name skipped \(\d+ chars\)/.test(m));
+    assert.strictEqual(skipped.length, 2, 'both bad names must be skipped and logged, by length only');
+    assert.ok(skipped.every((m) => !m.includes('..') && !m.includes('plugins')), 'a bad name must never be echoed verbatim - length only');
 });

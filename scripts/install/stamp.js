@@ -52,6 +52,23 @@ const family = (name) => String(name).replace(/^playwright-.*/, 'playwright');
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
 
+// N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
+// name it records is validated before it ever reaches a path join, a copy, or a printed 'rm -rf' -
+// at all three sites that build one from stamp-recorded names (migrateLegacyGlobal below,
+// library-check.js's shadow row, library-stamp.js's session echo). One path segment, the shape the
+// installer itself gives a skill name (lowercase letters, digits, dot, underscore, hyphen, starting
+// with a letter or digit); never empty, never '.' or '..', no '/' or '\'. The regex alone already
+// excludes a traversal segment, but the containment check is what actually gates behaviour - a name
+// that passes the shape check is checked AGAIN after joining, so a resolved path landing anywhere
+// but directly inside the skills dir it was joined into is rejected too.
+const SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/;
+function validSkillName(name, skillsDir)
+{
+    if (typeof name !== 'string' || name === '.' || name === '..' || !SKILL_NAME.test(name)) return false;
+    const base = path.resolve(skillsDir);
+    return path.dirname(path.resolve(base, name)) === base;
+}
+
 // One entry per hook FILE, in first-seen order, `.js` dropped - the spelling the stamp has always
 // used and the one `--installed-only` matches against.
 function shippedHooks(hooksCatalog)
@@ -284,15 +301,9 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
         fs.mkdirSync(dstSkills, { recursive: true });
         for (const name of names)
         {
-            // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
-            // name it records is validated before it ever reaches a path join, a copy, or a printed 'rm -rf' -
-            // at all three sites that build one from stamp-recorded names (migrateLegacyGlobal below,
-            // library-check.js's shadow row, library-stamp.js's session echo). One path segment, the shape the
-            // installer itself gives a skill name (lowercase letters, digits, dot, underscore, hyphen, starting
-            // with a letter or digit); never empty, never '.' or '..', no '/' or '\\'. The regex alone already
-            // excludes a traversal segment, but the containment check is what actually gates behaviour - a name
-            // that passes the shape check is checked AGAIN after joining, so a resolved path landing anywhere
-            // but directly inside the skills dir it was joined into is rejected too.
+            // N1: a name the account 1.x stamp records is not trusted shape-blind - skipped and
+            // logged by its LENGTH only, never echoed, so a corrupted or hand-edited stamp can never
+            // widen the copy (or the removal command below) past the account's own skills/ dir.
             if (!validSkillName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
             const src = path.join(acctSkills, name);
             let isDir = false;
@@ -318,14 +329,6 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
         + 'over a project one of the same name) - once every project has updated, remove them:'
         + (rmCmd ? ` ${rmCmd}` : ' (nothing was actually copied - no removal needed)'));
     return true;
-}
-
-const SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/;
-function validSkillName(name, skillsDir)
-{
-    if (typeof name !== 'string' || name === '.' || name === '..' || !SKILL_NAME.test(name)) return false;
-    const base = path.resolve(skillsDir);
-    return path.dirname(path.resolve(base, name)) === base;
 }
 
 module.exports = {
