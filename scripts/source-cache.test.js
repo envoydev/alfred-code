@@ -440,13 +440,12 @@ test('the capabilities script and the reviewer protocol resolve to the NEWEST ca
     }
 });
 
-// --- 2.0.0: a 1.x install's cache dir, and the one the rename orphans -------------------------------
-// A 1.x install cached the stack at cache/<key>/claude-stack/<v>. After the rename plus one session the // legacy-name
-// CLI marks that dir `.orphaned_at` but KEEPS its files, and the new cache/<key>/alfred-code/<v> exists
-// only once `plugin update alfred-code@<key>` runs (docs/rebrand-evidence.md S3, S8). So every lookup
-// reads BOTH dirs, newest valid first, and never takes an orphaned one - a stale 1.x copy must never
-// serve a 2.0.0 run. The listing names a pending rename on the OLD row (S9), and the old id fails
-// `not_found` (S2): a renamed row is updated by the new id the note names.
+// --- 2.0.0: a 1.x install's cache dir, and the one a removed id orphans -----------------------------
+// A 1.x install caches the stack at cache/<key>/claude-stack/<v>, and 2.0.0 lists that id as a retired // legacy-name
+// alias, so `plugin update` of it lands the 2.0.0 repo in the same old slot (docs/rebrand-evidence.md
+// S21); cache/<key>/alfred-code/<v> exists once the seed installs the new core. A dir the CLI no longer
+// serves is marked `.orphaned_at` with its files KEPT (S3). So every lookup reads BOTH dirs, newest
+// valid first, and never takes an orphaned one - a stale 1.x copy must never serve a 2.0.0 run.
 const { pluginCache } = require('./install/source.js');
 const LEGACY_DIR = 'claude-stack'; // legacy-name - the 1.x core's cache dir and marketplace key
 
@@ -489,28 +488,28 @@ test('pluginCache skips a version dir marked .orphaned_at - a stale 1.x copy nev
     finally { fs.rmSync(cfg, { recursive: true, force: true }); }
 });
 
-// A recording `claude` for a 1.x account after the catalog refresh: `plugin list` prints the OLD ids
-// with the plugin-renamed note (S9), the old id fails, and `plugin update alfred-code@claude-stack` // legacy-name
-// lands cache/claude-stack/alfred-code/<lands> - what S8 measured. // legacy-name
-const RENAMED_ROWS = JSON.stringify(['claude-stack', 'claude-stack-hooks'].map((name) => ({ // legacy-name
+// A recording `claude` for a 1.x account after the catalog refresh: `plugin update` of the OLD id works
+// and lands the 2.0.0 repo under the old slot, cache/<key>/claude-stack/<lands> (S21), while the new id // legacy-name
+// is not installed, so updating it fails `not_installed` (S19). The rows still carry a rename note - a
+// 2.0.0 catalog prints none, and a snippet that followed one would update the id nothing installed.
+const ROWS_1X = JSON.stringify([LEGACY_DIR, `${LEGACY_DIR}-hooks`].map((name) => ({
     id: `${name}@${LEGACY_DIR}`, version: '1.3.0', scope: 'user', enabled: true,
-    notes: [`Renamed to "${name.replace(LEGACY_DIR, 'alfred-code')}" in the "${LEGACY_DIR}" marketplace`],
     noteDetails: [{ type: 'plugin-renamed', plugin: name, marketplace: LEGACY_DIR, related: name.replace(LEGACY_DIR, 'alfred-code') }],
 })));
-function stubRenamed(home, listing, lands) {
+function stub1x(home, listing, lands) {
     const bin = path.join(home, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(home, 'listing.json'), listing);
-    const land = path.join(home, '.claude', 'plugins', 'cache', LEGACY_DIR, 'alfred-code', lands || 'none');
+    const land = path.join(home, '.claude', 'plugins', 'cache', LEGACY_DIR, LEGACY_DIR, lands || 'none');
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh',
         `printf '%s\\n' "$*" >> ${JSON.stringify(path.join(home, 'claude-calls.log'))}`,
         `if [ "$1 $2" = "plugin list" ]; then cat ${JSON.stringify(path.join(home, 'listing.json'))}; fi`,
-        `if [ "$1 $2 $3" = "plugin update ${LEGACY_DIR}@${LEGACY_DIR}" ]; then exit 1; fi`,
-        lands ? `if [ "$1 $2 $3" = "plugin update alfred-code@${LEGACY_DIR}" ]; then mkdir -p ${JSON.stringify(path.join(land, 'stack', 'skills'))} ${JSON.stringify(path.join(land, 'stack', 'agents'))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(land, 'RELEASE-SOURCE'))}; fi` : '',
+        `if [ "$1 $2 $3" = "plugin update alfred-code@${LEGACY_DIR}" ]; then exit 1; fi`,
+        lands ? `if [ "$1 $2 $3" = "plugin update ${LEGACY_DIR}@${LEGACY_DIR}" ]; then mkdir -p ${JSON.stringify(path.join(land, 'stack', 'skills'))} ${JSON.stringify(path.join(land, 'stack', 'agents'))}; printf 'sha: x\\nref: main\\nversion: ${lands}\\n' > ${JSON.stringify(path.join(land, 'RELEASE-SOURCE'))}; fi` : '',
         'exit 0', ''].join('\n'), { mode: 0o755 });
     return bin + path.delimiter + process.env.PATH;
 }
-const WANT_RENAMED = [`plugin update alfred-code-hooks@${LEGACY_DIR} --scope user -y`, `plugin update alfred-code@${LEGACY_DIR} --scope user -y`];
+const WANT_1X = [`plugin update ${LEGACY_DIR}-hooks@${LEGACY_DIR} --scope user -y`, `plugin update ${LEGACY_DIR}@${LEGACY_DIR} --scope user -y`];
 
 function runBashSnippet(home, PATH, extra = {}) {
     const script = path.join(home, 'resolve.sh');
@@ -525,19 +524,19 @@ function runBashSnippet(home, PATH, extra = {}) {
     return { version: m[2], running: m[3], seed: (out.match(/ seed=(\S+)/) || [])[1], key: (out.match(/ key=(\S+)/) || [])[1] };
 }
 
-test("the protocol's bash snippet updates a renamed 1.x row by its NEW id and takes the entry that lands under the old key", POSIX_STUB, () => {
+test("the protocol's bash snippet updates each 1.x row by its OWN id and takes the 2.0.0 entry that lands under the old name", POSIX_STUB, () => {
     const home = work();
     try
     {
         plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        const r = runBashSnippet(home, stubRenamed(home, RENAMED_ROWS, '2.0.0'));
-        assert.strictEqual(r.version, '2.0.0', 'it read the 1.x entry, not the renamed one the update landed');
+        const r = runBashSnippet(home, stub1x(home, ROWS_1X, '2.0.0'));
+        assert.strictEqual(r.version, '2.0.0', 'it read the 1.3.0 entry, not the 2.0.0 one the update landed');
         assert.strictEqual(r.running, '1.3.0', 'running= names the version this session loaded');
         assert.strictEqual(r.key, LEGACY_DIR, 'key= names the key the core is listed under - the 1.x one here');
         const calls = claudeCalls(home);
         assert.ok(calls.includes(`plugin marketplace update ${LEGACY_DIR}`), `the 1.x key's catalog was never refreshed: ${calls.join(' | ')}`);
-        assert.deepStrictEqual(updatesIn(home), WANT_RENAMED, calls.join(' | '));
-        assert.ok(!calls.some((c) => c.startsWith(`plugin update ${LEGACY_DIR}@`)), 'the old id fails not_found - it is never used');
+        assert.deepStrictEqual(updatesIn(home), WANT_1X, calls.join(' | '));
+        assert.ok(!calls.some((c) => c.startsWith('plugin update alfred-code')), 'the new ids are not installed yet - the seed installs the core');
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
@@ -551,7 +550,7 @@ test("the protocol's bash snippet reports the seed under either setting name, an
         try
         {
             plantBare(path.join(home, '.claude'), 'envoydev', 'alfred-code', '2.0.0');
-            const r = runBashSnippet(home, stubRenamed(home, '[]'), extra);
+            const r = runBashSnippet(home, stub1x(home, '[]'), extra);
             assert.strictEqual(r.seed, want, JSON.stringify(extra));
             assert.strictEqual(r.key, '?', 'no core row, no key to name');
         }
@@ -569,13 +568,13 @@ test("the protocol's bash snippet reads the 1.x dir alone, and skips an orphaned
         try
         {
             plant(path.join(home, '.claude'));
-            assert.strictEqual(runBashSnippet(home, stubRenamed(home, '[]')).version, want);
+            assert.strictEqual(runBashSnippet(home, stub1x(home, '[]')).version, want);
         }
         finally { fs.rmSync(home, { recursive: true, force: true }); }
     }
 });
 
-test("the protocol's PowerShell snippet follows the rename, reads the 1.x dir and skips an orphaned one", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
+test("the protocol's PowerShell snippet updates each 1.x row by its own id, reads the 1.x dir and skips an orphaned one", { skip: skipNoPwsh || POSIX_STUB.skip }, () => {
     const run = (home, PATH) => {
         const script = path.join(home, 'resolve.ps1');
         fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-WAS=$Was"\nWrite-Output "PS-TMP=$TMP"\n`);
@@ -590,23 +589,23 @@ test("the protocol's PowerShell snippet follows the rename, reads the 1.x dir an
     try
     {
         plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        const r = run(home, stubRenamed(home, RENAMED_ROWS, '2.0.0'));
+        const r = run(home, stub1x(home, ROWS_1X, '2.0.0'));
         assert.strictEqual(r.version, '2.0.0', r.out);
         assert.strictEqual(r.was, '1.3.0', r.out);
         assert.strictEqual(r.seed, 'shell', `the 1.x seed setting is reported: ${r.out}`);
         assert.strictEqual(r.key, LEGACY_DIR, `key= names the 1.x key: ${r.out}`);
         assert.ok(claudeCalls(home).includes(`plugin marketplace update ${LEGACY_DIR}`), claudeCalls(home).join(' | '));
-        assert.deepStrictEqual(updatesIn(home), WANT_RENAMED, claudeCalls(home).join(' | '));
+        assert.deepStrictEqual(updatesIn(home), WANT_1X, claudeCalls(home).join(' | '));
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
     home = work();
     try
     {
         plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '1.3.0');
-        assert.strictEqual(run(home, stubRenamed(home, '[]')).version, '1.3.0', 'the 1.x dir alone');
+        assert.strictEqual(run(home, stub1x(home, '[]')).version, '1.3.0', 'the 1.x dir alone');
         plantBare(path.join(home, '.claude'), LEGACY_DIR, LEGACY_DIR, '2.1.0', { orphaned: true });
         plantBare(path.join(home, '.claude'), LEGACY_DIR, 'alfred-code', '2.0.0');
-        assert.strictEqual(run(home, stubRenamed(home, '[]')).version, '2.0.0', 'an orphaned dir newer than a valid one');
+        assert.strictEqual(run(home, stub1x(home, '[]')).version, '2.0.0', 'an orphaned dir newer than a valid one');
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

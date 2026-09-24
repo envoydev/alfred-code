@@ -296,6 +296,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             for (const line of selection.renderPlan(lists)) plain(line);
             plain(`plan answered: hooks=${answered.hooks ? 'yes' : 'no'} agents=${answered.agents ? 'yes' : 'no'}`);
             plain(`plan routes: skills=${routes.skills ? 'plugin' : 'copy'} hooks=${routes.hooks ? 'plugin' : 'copy'} mcps=${routes.mcps ? 'plugin' : 'copy'}`);
+            // A 1.x install's move, as the plugin pass would run it - recorded, never run.
+            if (hasClaude && plugins.corePluginOn(routes))
+            {
+                const raw = rawListing ?? readRaw();
+                const carriers = readRetiredEntries(resolved.dir).map((e) => e.name);
+                const planned = [];
+                plugins.migrateLegacy({
+                    rows: plugins.parsePluginList(raw, projectRoot, { everyScope: true }),
+                    listing: plugins.parsePluginList(raw, projectRoot, { byMarketplace: true }),
+                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...carriers])], carriers, log,
+                    cli: (argv) => { planned.push(`claude ${argv.join(' ')}`); return true; },
+                });
+                for (const step of planned) plain(`plan migrate: ${step}`);
+            }
             if (args.planOut)
             {
                 if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot) : [];
@@ -479,9 +493,11 @@ function installPlugins(ctx)
     if (!ctx.hasClaude) { ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
     // One row per name@marketplace: the set mixes official picks with stack entries, and the official
     // catalog ships names the stack uses too.
-    const readListing = () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot, { byMarketplace: true });
-    const listing = readListing();
-    const set = plugins.pluginSet({
+    const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env });
+    const readListing = () => plugins.parsePluginList(readRaw(), ctx.projectRoot, { byMarketplace: true });
+    const raw = readRaw();
+    const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
+    let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: `${BRAND.hooks}@${ctx.market}`,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
     });
@@ -491,17 +507,28 @@ function installPlugins(ctx)
     // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
     // nothing, so it keeps them all.
     const carriers = readRetiredEntries(ctx.source.dir).map((e) => e.name);
-    // The 1.x core counts as a live home of its seat denies while the listing still carries its old id
-    // (a rename no session has taken yet) - never uninstalled here: it IS the core.
-    const oldCore = listing.some((r) => r.name === LEGACY.core) ? [LEGACY.core] : [];
+    const retired = [...new Set([...ctx.manifest.retired.plugins, ...carriers])];
+    // A 1.x install is moved across first - the new core installed, then the old ids removed - before
+    // the core is installed or updated below (plugins.migrateLegacy).
+    const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
+    const moved = plugins.corePluginOn(ctx.routes)
+        ? plugins.migrateLegacy({ rows, listing, scope: ctx.cliScope, retired, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
+        : { fresh: [], gone: [], removed: [], failed: null };
+    // A failed move leaves the old core carrying the guards; a second install of the new one beside it
+    // would run both, and leave nothing for the next update to move.
+    if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
+    // The 1.x core counts as a live home of its seat denies while any scope still carries its old id.
+    const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
     const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
-    ctx.liveCarriers = installed();
+    ctx.liveCarriers = installed(moved.gone);
     if (ctx.args.action === 'update')
     {
-        const gone = plugins.prunedRetired({ listing, retired: [...new Set([...ctx.manifest.retired.plugins, ...carriers])], carriers, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        // A move that ran pruned the retired entries already; a failed one removes nothing at all.
+        const moving = moved.fresh.length > 0 || moved.failed;
+        const gone = moving ? moved.gone : plugins.prunedRetired({ listing, retired, carriers, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log,
             after: readListing,
         });
         for (const row of ctx.dropEntries || [])
@@ -516,7 +543,7 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
 

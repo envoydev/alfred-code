@@ -419,7 +419,7 @@ test('new items: a 1.x install is read under its old stamp, marketplace key, hoo
     fs.writeFileSync(path.join(install, '.claude', 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n'); // legacy-name
     const listing = path.join(install, 'listing.json');
     fs.writeFileSync(listing, JSON.stringify([
-        { id: 'claude-stack@claude-stack', enabled: true, noteDetails: [{ type: 'plugin-renamed', related: 'alfred-code' }] }, // legacy-name
+        { id: 'claude-stack@claude-stack', enabled: true }, // legacy-name
         { id: 'claude-stack-hooks@claude-stack', enabled: true }, // legacy-name
         { id: 'alfred-code@envoydev', enabled: false },   // another account's leftover: never the stack this project runs
     ]));

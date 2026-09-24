@@ -501,44 +501,51 @@ test('prunedRetired retries a refused uninstall in a second pass', () =>
     assert.deepStrictEqual(calls, ['claude-stack-angular', 'claude-stack-web-angular', 'claude-stack-angular'], 'the refusal is retried once, after the leaf');
 });
 
-// --- 2.0.0: a 1.x account keeps its marketplace KEY ----------------------------------------------------
+// --- 2.0.0: a 1.x account keeps its marketplace KEY and its ids ---------------------------------------
 // A registered marketplace's key never changes, so a 1.x install's stack stays under `claude-stack`, // legacy-name
 // and a forced move (`marketplace remove`) would uninstall it from every project on the machine. The
 // seed reads the key from the listing (the key whose core is installed, under either name) and spells
-// every stack spec with it. Once the catalog is refreshed the listing carries the OLD id with a
-// plugin-renamed note (docs/rebrand-evidence.md S9) and the old id fails `not_found` (S2), so such a
-// row is updated by the NEW id the note names.
+// every stack spec with it. 2.0.0 ships no rename: the two 1.x ids stay listed as RETIRED aliases
+// (docs/rebrand-evidence.md S20-S22), so every row is updated by its own id, and the old core row is a
+// DIFFERENT plugin from the new one - `update` over the new id fails `not_installed` (S19).
 const OLD = 'claude-stack'; // legacy-name
-const renamedRow = (name, scope, extra = {}) => ({
-    id: `${name}@${OLD}`, version: '1.3.0', scope, enabled: true,
-    noteDetails: [{ type: 'plugin-renamed', plugin: name, marketplace: OLD, related: name.replace(OLD, 'alfred-code') }], ...extra,
-});
+const OLD_HOOKS = `${OLD}-hooks`;
+const row1x = (name, scope, extra = {}) => ({ name, marketplace: OLD, version: '1.3.0', scope, enabled: true, ...extra });
+const NEW_CORE = (scope, extra = {}) => ({ name: 'alfred-code', marketplace: OLD, version: '2.0.0', scope, enabled: true, ...extra });
 
-test('plugin-list: a plugin-renamed note is read as the row\'s new name, and the row is found by it', () =>
+test('plugin-list: a 1.x row is its own plugin - no rename note is read, and the new core never matches the old id', () =>
 {
-    const listing = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user'), { id: `serena@${OLD}`, version: '1.3.0', scope: 'user' }]), '/repo', { byMarketplace: true });
-    assert.deepStrictEqual(listing.map((r) => [r.name, r.renamed]), [[OLD, 'alfred-code'], ['serena', undefined]]);
-    assert.strictEqual(P.fieldOf(listing, `alfred-code@${OLD}`, 'scope'), 'user', 'the renamed row IS the new id\'s row');
-    assert.strictEqual(P.fieldOf([{ name: OLD, marketplace: OLD, version: '1.3.0', scope: 'project', enabled: true }], `alfred-code@${OLD}`, 'version'), '1.3.0', 'a 1.x core row with no note yet is the core too');
-    assert.strictEqual(P.fieldOf([{ name: 'alfred-code', marketplace: OLD, version: '2.0.0' }], `${OLD}@${OLD}`, 'version'), undefined, 'never the other way round');
+    const note = [{ type: 'plugin-renamed', plugin: OLD, marketplace: OLD, related: 'alfred-code' }];
+    const listing = P.parsePluginList(JSON.stringify([{ id: `${OLD}@${OLD}`, version: '1.3.0', scope: 'user', noteDetails: note }]), '/repo', { byMarketplace: true });
+    assert.deepStrictEqual(listing, [row1x(OLD, 'user')], 'the row carries no `renamed` field');
+    assert.strictEqual(P.fieldOf(listing, `alfred-code@${OLD}`, 'version'), undefined, 'the old core row is not the new core');
+    assert.strictEqual(P.fieldOf(listing, 'alfred-code', 'version'), undefined, 'not by the bare name either');
+    assert.strictEqual(P.fieldOf([row1x(OLD_HOOKS, 'user')], `alfred-code-hooks@${OLD}`, 'version'), undefined, 'nor the hooks alias the new hooks entry');
+    assert.strictEqual(P.fieldOf(listing, `${OLD}@${OLD}`, 'version'), '1.3.0', 'the old id still finds its own row');
 });
 
-test('source: a 1.x account - the old key is refreshed, the listing READ AGAIN after it, and a renamed row updated by its new id', () =>
+test('plugin-list: everyScope keeps one row per name@marketplace@scope, so a core at two scopes is two rows', () =>
+{
+    const rows = P.parsePluginList(JSON.stringify([
+        { id: `${OLD}@${OLD}`, version: '1.3.0', scope: 'user' },
+        { id: `${OLD}@${OLD}`, version: '1.3.0', scope: 'project', projectPath: '/repo' },
+        { id: `${OLD}@${OLD}`, version: '1.3.0', scope: 'project', projectPath: '/other' },
+    ]), '/repo', { everyScope: true });
+    assert.deepStrictEqual(rows.map((r) => r.scope).sort(), ['project', 'user'], 'another project\'s row is still dropped');
+});
+
+test('source: a 1.x account - the old key is refreshed and every row updated by its OWN id', () =>
 {
     const run = cli();
-    let reads = 0;
-    // Before the refresh the rows carry no note; the catalog refresh is what marks them (S9).
-    const before = [{ name: OLD, marketplace: OLD, version: '1.3.0', scope: 'user', enabled: true }];
-    const after = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user'), renamedRow(`${OLD}-hooks`, 'project'), { id: `serena@${OLD}`, version: '1.3.0', scope: 'project' }]), '/repo', { byMarketplace: true });
-    const key = P.refreshStackSource({ listing: () => (reads++ ? after : before), cli: run });
+    const listing = [row1x(OLD, 'user'), row1x(OLD_HOOKS, 'project'), row1x('serena', 'project')];
+    const key = P.refreshStackSource({ listing, cli: run });
     assert.strictEqual(key, OLD);
     assert.deepStrictEqual(run.calls, [
         `plugin marketplace update ${OLD}`,
-        `plugin update alfred-code@${OLD} --scope user -y`,
-        `plugin update alfred-code-hooks@${OLD} --scope project -y`,
+        `plugin update ${OLD}@${OLD} --scope user -y`,
+        `plugin update ${OLD_HOOKS}@${OLD} --scope project -y`,
         `plugin update serena@${OLD} --scope project -y`,
-    ], 'no second registration of the new slug, and never the old id');
-    assert.strictEqual(reads, 2);
+    ], 'no second registration of the new slug, and no new id - the retired alias lands 2.0.0 under the old name (S21)');
 });
 
 test('source: a fresh account registers the stack and takes the key the add produced', () =>
@@ -553,7 +560,7 @@ test('source: both keys registered - the one carrying the installed core is used
 {
     const run = cli();
     const marketplaces = [{ name: OLD, source: 'github', repo: `envoydev/${OLD}` }, { name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }];
-    const key = P.refreshStackSource({ listing: [{ name: 'alfred-code', marketplace: OLD, version: '2.0.0', scope: 'user', enabled: true }], marketplaces, cli: run });
+    const key = P.refreshStackSource({ listing: [NEW_CORE('user')], marketplaces, cli: run });
     assert.strictEqual(key, OLD);
     assert.ok(!run.calls.some((c) => / envoydev(\/|$)/.test(c)), run.calls.join(' | '));
 });
@@ -564,24 +571,171 @@ test('set: the locked servers ride the run\'s marketplace key', () =>
     assert.deepStrictEqual(set, [`alfred-code-hooks@${OLD}`, `alfred-code@${OLD}`, ...LOCKED.map((n) => `${n}@${OLD}`), ...CORE_DEPS]);
 });
 
-test('update: a renamed 1.x row is UPDATED at its own scope by the new id - never installed beside itself', () =>
+// --- 2.0.0: the migration (ruling R24) ------------------------------------------------------------------
+// The new core is INSTALLED at the old core's scope and key - never `update`d, it was never installed
+// under any name (S19) - and only once that took, the retired per-stack entries go (leaves first), then
+// the hooks alias, then the core alias (S22). A failed install removes nothing: the old core is the one
+// thing still carrying the guards.
+const LEAVES = [`${OLD}-web-angular`, `${OLD}-angular`];
+function migrate(rows, { scope = 'project', fails = [], carriers = LEAVES } = {})
 {
-    const run = cli();
-    const before = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user')]), '/repo', { byMarketplace: true });
-    P.updatePlugins({ plugins: [`alfred-code@${OLD}`], scope: 'project', before, after: before, cli: run });
-    assert.deepStrictEqual(run.matching(/^plugin (install|enable|update) /), [`plugin update alfred-code@${OLD} --scope user -y`]);
+    const run = cli(fails);
+    const logs = [];
+    const notes = [];
+    const out = P.migrateLegacy({ rows, listing: rows, scope, retired: carriers, carriers, cli: run, log: (m) => logs.push(m), note: (m) => notes.push(m) });
+    return { out, run, logs, notes, moves: run.matching(/^plugin (install|uninstall|update|enable) /) };
+}
+
+test('migrate: a 1.x core at this scope - the new core is installed FIRST, then the leaves, the hooks alias and the core alias go', () =>
+{
+    const { out, moves } = migrate([row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(`${OLD}-angular`, 'project'), row1x(`${OLD}-web-angular`, 'project')]);
+    assert.deepStrictEqual(moves, [
+        `plugin install alfred-code@${OLD} --scope project -y`,
+        `plugin uninstall ${OLD}-web-angular --scope project -y`,
+        `plugin uninstall ${OLD}-angular --scope project -y`,
+        `plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
+        `plugin uninstall ${OLD}@${OLD} --scope project -y`,
+    ]);
+    assert.deepStrictEqual(out.fresh, [`alfred-code@${OLD}`], 'the install outcome is what counts it enabled');
+    assert.deepStrictEqual(out.gone, LEAVES);
 });
 
-test('seed update: a 1.x account keeps its key - every stack spec is @claude-stack, and nothing registers the new slug', POSIX_ONLY, () => // legacy-name
+test('migrate: the new core takes the OLD ROW\'s key - a user-scope run moves the user-scope core', () =>
 {
-    const listing = JSON.stringify([renamedRow(OLD, 'user'), renamedRow(`${OLD}-hooks`, 'user')]);
-    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing });
+    const { moves } = migrate([{ ...row1x(OLD, 'user'), marketplace: 'envoydev' }, row1x(OLD, 'project')], { scope: 'user', carriers: [] });
+    assert.deepStrictEqual(moves, [
+        'plugin install alfred-code@envoydev --scope user -y',
+        `plugin uninstall ${OLD}@envoydev --scope user -y`,
+    ], 'the project-scope row belongs to that project\'s own run');
+});
+
+test('migrate: a 1.x core at ANOTHER scope is kept and logged with its uninstall command - nothing installed', () =>
+{
+    const { out, moves, logs } = migrate([row1x(OLD, 'user'), row1x(OLD_HOOKS, 'user')]);
+    assert.deepStrictEqual(moves, []);
+    assert.deepStrictEqual(out.fresh, []);
+    assert.ok(logs.some((m) => /installed at user scope/.test(m) && m.includes(`claude plugin uninstall ${OLD}@${OLD} --scope user`)), logs.join(' | '));
+});
+
+test('migrate: a moved project still names the 1.x core another scope carries', () =>
+{
+    const { moves, logs } = migrate([row1x(OLD, 'project'), row1x(OLD, 'user')], { carriers: [] });
+    assert.deepStrictEqual(moves, [`plugin install alfred-code@${OLD} --scope project -y`, `plugin uninstall ${OLD}@${OLD} --scope project -y`]);
+    assert.ok(logs.some((m) => m.includes(`claude plugin uninstall ${OLD}@${OLD} --scope user`)), logs.join(' | '));
+});
+
+test('migrate: the old and the new core both at this scope, or no old core at all - nothing to move', () =>
+{
+    for (const rows of [[row1x(OLD, 'project'), NEW_CORE('project')], [NEW_CORE('project')], []])
+    {
+        const { out, moves } = migrate(rows);
+        assert.deepStrictEqual(moves, [], JSON.stringify(rows));
+        assert.deepStrictEqual(out.fresh, []);
+    }
+    // The new core at ANOTHER scope does not cover this one.
+    assert.deepStrictEqual(migrate([row1x(OLD, 'project'), NEW_CORE('user')], { carriers: [] }).moves[0], `plugin install alfred-code@${OLD} --scope project -y`);
+});
+
+test('migrate: a failed install removes NOTHING and names the exact install command', () =>
+{
+    const { out, moves, notes } = migrate([row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(`${OLD}-angular`, 'project')], { fails: ['plugin install alfred-code'] });
+    assert.deepStrictEqual(moves, [`plugin install alfred-code@${OLD} --scope project -y`]);
+    assert.deepStrictEqual(out.fresh, []);
+    assert.strictEqual(out.failed, `alfred-code@${OLD}`);
+    assert.ok(notes.some((m) => m.includes(`claude plugin install alfred-code@${OLD} --scope project -y`)), notes.join(' | '));
+});
+
+test('update: a plugin this run installed is not installed, enabled or updated again, and a stale flag never reads it parked (S22)', () =>
+{
+    const run = cli();
+    const after = [NEW_CORE('project', { enabled: false })];
+    const report = P.updatePlugins({ plugins: [`alfred-code@${OLD}`], scope: 'project', before: [], after, fresh: [`alfred-code@${OLD}`], cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin (install|enable|update) /), []);
+    assert.ok(!/DISABLED|NOT installed/.test(report[0]), report[0]);
+    assert.match(report[0], /plugin alfred-code: 2\.0\.0 \(installed this run\)/);
+});
+
+test('install: a plugin this run installed is not installed again', () =>
+{
+    const run = cli();
+    P.installPlugins({ plugins: [`alfred-code@${OLD}`, `serena@${OLD}`], scope: 'project', fresh: [`alfred-code@${OLD}`], cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin install /), [`plugin install serena@${OLD} --scope project -y`]);
+});
+
+// The seed end to end: a 1.x project listing drives the install and the removals in order.
+const LISTING_1X = JSON.stringify([OLD, OLD_HOOKS, `${OLD}-web-angular`, `${OLD}-angular`].map((n) => ({ id: `${n}@${OLD}`, version: '1.3.0', scope: 'project', enabled: true })));
+const stackMoves = (calls) => calls.filter((c) => /^plugin (install|uninstall|update|enable) /.test(c) && (c.includes(OLD) || / alfred-code/.test(c)));
+
+test('seed update: a 1.x project install is moved across - alfred-code installed under the old key, then the old ids removed, leaves first', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: LISTING_1X });
+    const at = (c) => calls.indexOf(c);
+    const install = at(`plugin install alfred-code@${OLD} --scope project -y`);
+    const order = [
+        install,
+        at(`plugin uninstall ${OLD}-web-angular --scope project -y`),
+        at(`plugin uninstall ${OLD}-angular --scope project -y`),
+        at(`plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`),
+        at(`plugin uninstall ${OLD}@${OLD} --scope project -y`),
+    ];
+    assert.ok(order.every((i, n) => i >= 0 && (n === 0 || i > order[n - 1])), `out of order:\n${stackMoves(calls).join('\n')}`);
+    assert.ok(!calls.some((c) => c.startsWith(`plugin update alfred-code@${OLD}`)), 'the new core is installed, never updated (S19)');
+    assert.strictEqual(calls.filter((c) => c.startsWith('plugin install alfred-code@')).length, 1, 'installed once');
     const specs = calls.filter((c) => /^plugin (install|update|enable) /.test(c)).map((c) => c.split(' ')[2]);
-    assert.ok(specs.includes(`alfred-code-hooks@${OLD}`) && specs.includes(`alfred-code@${OLD}`) && specs.includes(`serena@${OLD}`), specs.join('\n'));
-    assert.ok(!specs.some((s) => /@envoydev$/.test(s)), `a stack spec under the new key:\n${specs.join('\n')}`);
-    assert.ok(!specs.some((s) => s.startsWith(`${OLD}@`) || s.startsWith(`${OLD}-hooks@`)), 'the old id fails not_found - never used');
+    assert.ok(!specs.some((s) => /^(alfred-code|serena|context7|memory)(-hooks)?@envoydev$/.test(s)), `a stack spec under the new key:\n${specs.join('\n')}`);
     assert.ok(!calls.includes('plugin marketplace add envoydev/alfred-code'), calls.join('\n'));
-    assert.ok(!calls.some((c) => /^plugin install alfred-code(-hooks)?@/.test(c)), `the renamed core was installed beside itself:\n${calls.join('\n')}`);
+});
+
+test('seed update: the moved core is counted enabled from its install - the listing\'s stale project-scope flag is never read (S22)', POSIX_ONLY, () =>
+{
+    const after = JSON.stringify([{ id: `alfred-code@${OLD}`, version: '2.0.0', scope: 'project', enabled: false }]);
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: LISTING_1X,
+        tools: {
+            claude: [
+                'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+                `if [ "$1 $2 $3" = "plugin install alfred-code@${OLD}" ]; then printf '%s' '${after}' > "$CLAUDE_STUB_PLUGINS"; fi`,
+                'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
+                'exit 0',
+            ].join('\n'),
+        },
+    });
+    assert.ok(calls.includes(`plugin install alfred-code@${OLD} --scope project -y`), calls.join('\n'));
+    assert.ok(!calls.some((c) => c.startsWith(`plugin enable alfred-code@${OLD}`)), `the fresh install was read back as parked:\n${stackMoves(calls).join('\n')}`);
+    assert.ok(!/plugin alfred-code: .*DISABLED/.test(out), out);
+    assert.match(out, /plugin alfred-code: 2\.0\.0 \(installed this run\)/);
+});
+
+test('seed update: a failed install of the new core removes nothing and prints the command to run', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: LISTING_1X,
+        tools: {
+            claude: [
+                'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+                'if [ "$1 $2" = "plugin install" ] && [ "${3%%@*}" = "alfred-code" ]; then exit 1; fi',
+                'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
+                'exit 0',
+            ].join('\n'),
+        },
+    });
+    assert.deepStrictEqual(calls.filter((c) => c.startsWith('plugin uninstall ')), [], 'nothing is removed while the old core carries the guards');
+    assert.strictEqual(calls.filter((c) => c.startsWith('plugin install alfred-code@')).length, 1, 'no second attempt beside the old core');
+    assert.ok(out.includes(`claude plugin install alfred-code@${OLD} --scope project -y`), out);
+});
+
+test('seed plan: --print-plan lists the move as planned and changes no plugin', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: LISTING_1X, args: ['--print-plan'] });
+    assert.deepStrictEqual(calls.filter((c) => /^plugin (install|uninstall|update|enable) /.test(c)), [], calls.join('\n'));
+    const planned = out.split('\n').filter((l) => l.startsWith('plan migrate: '));
+    assert.deepStrictEqual(planned, [
+        `plan migrate: claude plugin install alfred-code@${OLD} --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD}-web-angular --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD}-angular --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD_HOOKS}@${OLD} --scope project -y`,
+        `plan migrate: claude plugin uninstall ${OLD}@${OLD} --scope project -y`,
+    ], out);
 });
 
 // The configure / validate read-back on a 1.x install: `--installed-only` under the key the stack was

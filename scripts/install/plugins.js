@@ -21,7 +21,7 @@
 //     its old version under a project install.
 //   - VERSIONS ARE READ BACK. `claude plugin update` reports success whether or not anything moved.
 const path = require('node:path');
-const { BRAND, currentName, marketOf, marketKey } = require('./brand.js');
+const { BRAND, LEGACY, marketOf, marketKey } = require('./brand.js');
 
 // claude-hud is a statusline HUD: a project-scoped install plus the global statusline enable
 // mismatch, so every OTHER project warns 'plugin not cached'. It is user scope, always.
@@ -56,9 +56,9 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes
 // BEFORE the per-name pick: the official marketplace ships plugins named like stack entries
 // (`serena`, `sentry`, `playwright`), and a name-only read took theirs for ours. `byMarketplace`
 // keeps one row per name@marketplace instead, for a pass whose specs come from several, read through
-// `fieldOf` with the full spec. `renamed` is the NEW name a refreshed catalog gave the row (a
-// `plugin-renamed` note on the old id, docs/rebrand-evidence.md S9) - the id `plugin update` takes.
-function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false } = {})
+// `fieldOf` with the full spec. `everyScope` keeps one per name@marketplace@scope: the same plugin at
+// the account and in this project is two installs, and the 1.x migration moves only its own scope's.
+function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false, everyScope = false } = {})
 {
     let data;
     try { data = typeof json === 'string' ? JSON.parse(json) : json; }
@@ -75,16 +75,14 @@ function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false
         const pp = row.projectPath;
         if (pp && path.resolve(String(pp)) !== here) continue;
         const rank = pp ? 0 : 1;                      // this project first, then the account rows
-        const key = byMarketplace ? `${name}@${market}` : name;
+        const key = everyScope ? `${name}@${market}@${row.scope ?? ''}` : byMarketplace ? `${name}@${market}` : name;
         const prev = best.get(key);
         if (prev && prev.rank <= rank) continue;
-        const note = (Array.isArray(row.noteDetails) ? row.noteDetails : []).find((n) => n && n.type === 'plugin-renamed' && n.related);
         best.set(key, {
             rank, name, marketplace: market,
             version: String(row.version ?? '?'),
             scope: String(row.scope ?? ''),
             enabled: row.enabled !== false,
-            ...(note ? { renamed: String(note.related) } : {}),
         });
     }
     return [...best.values()].map(({ rank, ...row }) => row);
@@ -92,13 +90,13 @@ function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false
 
 // `name` alone, or a full `name@marketplace` spec - which never matches another marketplace's row of
 // the same name (the official `serena`, `sentry`, `playwright`). A row that names no marketplace
-// matches either way. A 1.x row is found by the name it goes by now - its rename note, or the old core
-// and hooks names - so a renamed plugin is updated in place, never installed beside itself.
+// matches either way. A 1.x row answers only to its OWN id: 2.0.0 lists the old ids as retired
+// aliases, a different plugin from the new core (docs/rebrand-evidence.md S20) - read as the core, it
+// would have the run `update` a core never installed, which fails `not_installed` (S19).
 const fieldOf = (listing, name, key) =>
 {
     const [bare, market] = String(name).split('@');
-    const named = (r) => r.name === bare || r.renamed === bare || currentName(r.name) === bare;
-    const row = (listing || []).find((r) => named(r) && (!market || !r.marketplace || r.marketplace === market));
+    const row = (listing || []).find((r) => r.name === bare && (!market || !r.marketplace || r.marketplace === market));
     return row ? row[key] : undefined;
 };
 
@@ -215,29 +213,29 @@ function stackMarket({ listing = [], marketplaces = [], readMarketplaces, cli, e
 // step that would update it. Each at its OWN scope, because `plugin update --scope <other>` is a
 // silent no-op.
 //
-// `listing` may be a function: it is read again AFTER the catalog refresh, because only a refreshed
-// catalog marks a renamed row, and the old id then fails `not_found` (docs/rebrand-evidence.md S2,
-// S9) - such a row is updated by the new id its note names, which also lands the renamed cache dir
-// (S8). Returns the marketplace key the run uses.
+// Each row by its OWN id, a 1.x one included: 2.0.0 lists the old ids as retired aliases carrying the
+// 2.0.0 core, so updating one lands 2.0.0 in the cache under the old name (docs/rebrand-evidence.md
+// S21), and the plugin pass moves the install across. `listing` may be a function, read once.
+// Returns the marketplace key the run uses.
 function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces, cli, refreshed = new Set(), log = () => {}, env = {} })
 {
-    const read = () => (typeof listing === 'function' ? listing() : listing) || [];
-    const market = stackMarket({ listing: read(), marketplaces, readMarketplaces, cli, env });
+    const rows = (typeof listing === 'function' ? listing() : listing) || [];
+    const market = stackMarket({ listing: rows, marketplaces, readMarketplaces, cli, env });
     refreshMarketplaces({ plugins: [`${BRAND.core}@${market}`], cli, refreshed });
-    for (const row of read())
+    for (const row of rows)
     {
         if (row.marketplace !== market || !row.version || !row.scope) continue;
-        const name = row.renamed || row.name;
-        log(`plugin update [${row.scope}]: ${name}@${market} (before the snapshot is read)`);
-        cli(['plugin', 'update', `${name}@${market}`, '--scope', row.scope, '-y'], { quiet: true });
+        log(`plugin update [${row.scope}]: ${row.name}@${market} (before the snapshot is read)`);
+        cli(['plugin', 'update', `${row.name}@${market}`, '--scope', row.scope, '-y'], { quiet: true });
     }
     return market;
 }
 
 // INSTALL: register the marketplaces, refresh them, then install each plugin at its scope - and
 // update one the listing already carries, which `install` leaves where it was. A failure is noted
-// and the run continues - fail-soft, like every other layer.
-function installPlugins({ plugins, scope, marketplaces = [], before = [], refreshed = new Set(), cli, log = () => {}, note = () => {} })
+// and the run continues - fail-soft, like every other layer. `fresh` names what this run installed
+// already (the 1.x migration): nothing is left to do for it.
+function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh = [], refreshed = new Set(), cli, log = () => {}, note = () => {} })
 {
     cli(['plugin', 'marketplace', 'add', OFFICIAL_MARKETPLACE], { quiet: true });
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
@@ -247,6 +245,7 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], refres
 
     for (const spec of plugins)
     {
+        if (fresh.includes(spec)) continue;
         const pscope = USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : scope;
         log(`plugin [${pscope}]: ${spec}`);
         // -y: the marketplace-command consent prompt cannot be answered when stdin is not a TTY,
@@ -298,6 +297,49 @@ function prunedRetired({ listing, retired = [], carriers = [], scope, cli, log =
     return gone;
 }
 
+// THE 1.x MOVE. 2.0.0 ships no rename: the 1.x ids stay listed as RETIRED aliases - the core's alias
+// carries the 2.0.0 core under its old name, the hooks alias nothing (docs/rebrand-evidence.md S20) -
+// so the install is moved here, at the old core's own scope and key. The new core is INSTALLED, never
+// `update`d (it was never installed under any name, S19), and only once that took, the retired
+// per-stack entries go the `prunedRetired` way, then the hooks alias, then the core alias - the order
+// their dependencies allow (S22). A failed install removes NOTHING, since the old core is what still
+// carries the guards; an old core at another scope is every other project's install too, so it stays
+// and is named. `rows` keeps every scope (`parsePluginList` everyScope), `listing` is what
+// `prunedRetired` reads.
+function migrateLegacy({ rows = [], listing = rows, scope, retired = [], carriers = [], cli, log = () => {}, note = () => {} })
+{
+    const out = { fresh: [], gone: [], removed: [], failed: null };
+    const named = (name, key) => rows.filter((r) => r.name === name && (!key || r.marketplace === key));
+    const kept = (r) => log(`  ${r.name}@${r.marketplace} is installed at ${r.scope} scope, not this run's - kept for the projects that use it; the update run at that scope moves it across: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope}`);
+    for (const r of named(LEGACY.core).filter((x) => x.scope !== scope)) kept(r);
+    const core = named(LEGACY.core).find((r) => r.scope === scope
+        && !rows.some((n) => n.name === BRAND.core && n.marketplace === r.marketplace && n.scope === scope));
+    if (!core) return out;
+
+    const key = core.marketplace;
+    const spec = `${BRAND.core}@${key}`;
+    const install = ['plugin', 'install', spec, '--scope', scope, '-y'];
+    log(`plugin [${scope}]: ${spec} (moves the 1.x install across - installed before its old ids go)`);
+    if (!cli(install))
+    {
+        out.failed = spec;
+        note(`the 1.x install was not moved - 'claude ${install.join(' ')}' failed, so nothing was removed and the old core keeps the guards running; run it by hand, then update again`);
+        return out;
+    }
+    out.fresh.push(spec);
+    out.gone = prunedRetired({ listing, retired, carriers, scope, cli, log });
+    for (const name of [LEGACY.hooks, LEGACY.core])
+        for (const r of named(name, key))
+        {
+            if (r.scope !== scope) { if (name === LEGACY.hooks) kept(r); continue; }
+            const id = `${name}@${key}`;
+            if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true }))
+            { log(`  plugin removed (a 1.x id, now a retired alias) [${scope}]: ${id}`); out.removed.push(r); }
+            else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes: claude plugin uninstall ${id} --scope ${scope}`);
+        }
+    return out;
+}
+
 // The third-party marketplaces THIS run needs registered: the source each installed plugin's
 // manifest row names. A source for a plugin the run does not install is never added to the account.
 function extraMarketplaces(rows, set)
@@ -306,13 +348,17 @@ function extraMarketplaces(rows, set)
 }
 
 // UPDATE: adopt, enable, update, then READ THE VERSIONS BACK. An absent plugin is INSTALLED here, so
-// its marketplace is registered first, exactly as the install pass does.
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, refreshed = new Set(), cli, log = () => {} })
+// its marketplace is registered first, exactly as the install pass does. `fresh` names what this run
+// installed already (the 1.x migration): it is not touched again, and it is ENABLED - its install
+// said so, while the listing's own flag can read a fresh project-scope install as disabled
+// (docs/rebrand-evidence.md S22).
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), cli, log = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
     for (const spec of plugins)
     {
+        if (fresh.includes(spec)) continue;
         const pscope = scopeFor(spec, scope, before);
         if (!fieldOf(before, spec, 'version'))
         {
@@ -336,7 +382,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
         const was = fieldOf(before, spec, 'version');
         const is = fieldOf(now, spec, 'version');
         let line;
-        if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
+        if (fresh.includes(spec)) line = `  plugin ${name}: ${is ? `${is} (installed this run)` : 'installed this run'}`;
+        else if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
         else if (fieldOf(now, spec, 'enabled') === false) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
         else if (was && was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
         else line = `  plugin ${name}: ${is} (already newest)`;
@@ -355,7 +402,7 @@ function parseMarketplaces(json)
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, CORE_DEP_PLUGINS,
-    pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor,
+    pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces,
 };

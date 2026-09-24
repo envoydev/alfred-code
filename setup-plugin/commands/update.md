@@ -22,20 +22,22 @@ context re-send - so fold reads together rather than trimming what each one retu
 
 ## Upgrading a 1.x install to 2.0.0
 
-`claude plugin update claude-stack@claude-stack` fails `not_found` once the marketplace catalog carries the 2.0.0 rename. <!-- legacy-name -->
-The CLI will not resolve the old plugin id against an already-renamed catalog, so the 1.x update
-command cannot pull the new release by itself. Three steps, in order, fix it:
+A 1.x install upgrades through its OWN update command - `/claude-stack:update`, or <!-- legacy-name -->
+`/alfred-code:update` where the session lists that one. Nothing is run by hand:
 
-1. Refresh the marketplace: `claude plugin marketplace update claude-stack`. <!-- legacy-name -->
-2. Restart Claude Code once - it moves `claude-stack` -> `alfred-code` and `claude-stack-hooks` ->
-   `alfred-code-hooks` in `enabledPlugins` at the next session start, not at the refresh itself.
-3. Run `/alfred-code:update` - now resolvable under the new name, it renames every
-   `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces
-   `claude-stack.stamp` with `alfred-code.stamp`.
+1. The refresh lands 2.0.0 under the old names: 2.0.0 lists `claude-stack` and `claude-stack-hooks` <!-- legacy-name -->
+   as retired aliases, so `plugin update` of each old id takes the new release into the cache.
+2. The 2.0.0 installer installs `alfred-code` at the old core's scope and marketplace key, and only
+   once that took, removes the old entries - the retired per-stack ones first, then both aliases. It
+   also renames every `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces <!-- legacy-name -->
+   `claude-stack.stamp` with `alfred-code.stamp`. <!-- legacy-name -->
+3. Restart Claude Code once: the commands are `/alfred-code:*` from then on.
 
-The install stays registered under the marketplace key `claude-stack` - renaming the catalog's own
-`name` never moves that key, so this is expected, not broken; its plugin ids read
-`alfred-code@claude-stack` after step 2. From there, continue with the steps below as any update.
+A failed install of the new core removes nothing - the old core keeps running - and the run prints
+the exact `claude plugin install` command to run before updating again. A 1.x core at another scope
+is kept for the projects that use it, with its uninstall command printed. The install keeps its
+marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
+`alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
 
 ## 0. Where to run it
 

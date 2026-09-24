@@ -32,13 +32,11 @@ stops at a question never reaches the apply step that would update it. They reme
 version from before (`running=` / `$Was`) - the one this session loaded, whatever the cache now
 holds. No `claude` CLI, or no stack row: nothing to update, and the pick runs as it always did.
 
-**A 1.x install keeps its old names** until an update rewrites them: its marketplace key stays
-`claude-stack` (a registered key never changes), so both keys are refreshed and both keys' rows <!-- legacy-name -->
-updated. Once the catalog is refreshed, `claude plugin list --json` still prints the OLD id with a
-`noteDetails` entry of type `plugin-renamed`, and `plugin update` over the old id fails `not_found` -
-so such a row is updated by the NEW id the note names, at its own scope (docs/rebrand-evidence.md
-S2, S9). The cache follows the same way: the 1.x dir `cache/<key>/claude-stack/<version>` counts <!-- legacy-name -->
-until the CLI marks it `.orphaned_at` after the rename, and an orphaned dir is never taken (S3, S8).
+**A 1.x install keeps its key and its old ids**, which 2.0.0 lists as retired aliases carrying the
+2.0.0 core, so a refresh plus `plugin update` of every row lands 2.0.0 in the cache under the old
+name, and the seed moves the install across (docs/rebrand-evidence.md S20-S22). That is why both
+keys are refreshed, and why the 1.x dir `cache/<key>/claude-stack/<version>` counts until the CLI <!-- legacy-name -->
+marks it `.orphaned_at` - an orphaned dir is never taken (S3).
 
 Pick the NEWEST valid version directory across marketplaces - the directory names ARE the release
 versions the CLI writes, so they sort as versions - and count a directory only when it carries both
@@ -73,8 +71,8 @@ WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, an
 KEY=""        # the marketplace key the core is listed under - a 1.x install keeps its own
 if command -v claude >/dev/null 2>&1; then
   for K in envoydev claude-stack; do claude plugin marketplace update "$K" >/dev/null 2>&1; done   # legacy-name: a 1.x install keeps its key
-  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>" - a row the catalog renamed by its NEW id
-  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a){const r=(x.noteDetails||[]).find(n=>n&&n.type==="plugin-renamed"&&n.related);console.log(x.scope+" "+(r?r.related+"@"+x.id.split("@")[1]:x.id)+" "+x.version)}}catch{}})')   # legacy-name
+  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>", each by its own id
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')   # legacy-name
   WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{n=$3;exit} $2~/^claude-stack@/&&o==""{o=$3} END{print (n!=""?n:o)}')   # legacy-name
   KEY=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
@@ -128,9 +126,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
   $Old = ''; $OldKey = ''
   foreach ($r in $rows) {
-    # a row the catalog renamed is updated by its NEW id - the old one no longer resolves
-    $n = @($r.noteDetails | Where-Object { $_ -and $_.type -eq 'plugin-renamed' -and $_.related }) | Select-Object -First 1
-    $id = if ($n) { "$($n.related)@$(("$($r.id)" -split '@')[1])" } else { "$($r.id)" }
+    $id = "$($r.id)"   # each row by its own id - a 1.x one lands 2.0.0 under its old name
     if ($id -like 'alfred-code@*') { if (-not $Was) { $Was = $r.version; $Key = ($id -split '@')[1] } }
     elseif ($id -like 'claude-stack@*' -and -not $Old) { $Old = $r.version; $OldKey = ($id -split '@')[1] }   # legacy-name
     claude plugin update $id --scope $r.scope -y *> $null
