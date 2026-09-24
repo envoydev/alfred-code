@@ -33,9 +33,9 @@ change (see the invariants below).
   module per layer beside it (`source`, `manifest`, `selection`, `copy`, `settings`, `plugins`,
   `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`, `stamp`, `runtime`). One `node` command on
   every OS - node is already a hard prerequisite, every hook runs it - so there is no OS branch left
-  in the command bodies. `scripts/os/claude-stack.{sh,ps1}` - the FROZEN shell and PowerShell
-  twins Phase 7 kept for one release behind `ALFRED_CODE_SEED=shell` - are DELETED (Phase 7b, R33,
-  2.0.0); that env var now REFUSES instead of routing anywhere (the D1 check in
+  in the command bodies. `scripts/os/claude-stack.{sh,ps1}` <!-- legacy-name --> - the FROZEN shell
+  and PowerShell twins Phase 7 kept for one release behind `ALFRED_CODE_SEED=shell` - are DELETED
+  (Phase 7b, R33, 2.0.0); that env var now REFUSES instead of routing anywhere (the D1 check in
   `setup-plugin/references/source-protocol.md`). `meta/stack-manifest.json` (hand-edited directly -
   `scripts/build-manifest.js`, which generated it FROM the sh twin, is deleted with it) is the one
   source the seed reads its six lists from. `docs/alfred-code.html` is the browser inventory.

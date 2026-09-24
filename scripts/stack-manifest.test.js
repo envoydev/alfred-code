@@ -94,8 +94,18 @@ test('stack-manifest: scripts/os/ is gone, and no script or test names it withou
     assert.ok(!fs.existsSync(path.join(ROOT, 'scripts', 'os')), 'scripts/os/ still exists - the frozen twins were supposed to be deleted'); // legacy-name
 
     const SCAN_DIRS = ['scripts', 'stack', 'setup-plugin', 'meta'];
+    // The repo root is never walked (only its named directories are), so a root file - CLAUDE.md's
+    // own installer-layout prose named the deleted twins unmarked and the sweep missed it - is
+    // checked explicitly by name instead.
+    const SCAN_FILES = ['CLAUDE.md'];
     const TWIN_PATTERN = /scripts\/os\/|claude-stack\.sh|claude-stack\.ps1/;
     const offenders = [];
+    const check = (full) =>
+    {
+        const text = fs.readFileSync(full, 'utf8');
+        const unmarked = text.split('\n').some((l) => TWIN_PATTERN.test(l) && !/legacy-name/.test(l));
+        if (unmarked) offenders.push(path.relative(ROOT, full));
+    };
     const walk = (dir) =>
     {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true }))
@@ -103,12 +113,13 @@ test('stack-manifest: scripts/os/ is gone, and no script or test names it withou
             if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) { walk(full); continue; }
-            if (!/\.(js|md|json)$/.test(entry.name)) continue;
-            const text = fs.readFileSync(full, 'utf8');
-            const unmarked = text.split('\n').some((l) => TWIN_PATTERN.test(l) && !/legacy-name/.test(l));
-            if (unmarked) offenders.push(path.relative(ROOT, full));
+            // .ps1 joined the filter after fix-serena-ts-windows.ps1's relocated header named the
+            // deleted twin unmarked and slipped through the old js|md|json-only filter.
+            if (!/\.(js|md|json|ps1)$/.test(entry.name)) continue;
+            check(full);
         }
     };
     for (const d of SCAN_DIRS) walk(path.join(ROOT, d));
+    for (const f of SCAN_FILES) check(path.join(ROOT, f));
     assert.deepStrictEqual(offenders, [], `these files name the deleted twins on an unmarked line: ${offenders.join(', ')}`);
 });

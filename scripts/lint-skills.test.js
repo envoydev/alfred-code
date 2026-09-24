@@ -747,3 +747,84 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });
+
+// Check 27. Task 12 rewrote lintEnvironmentCatalog from a twin-diff to a seed-literal-name diff
+// (settings.js's `written:true` rows plus the two special-cased decision keys), and shipped it with
+// no committed regression test (review, Minor: "a future edit to this function has nothing pinning
+// its negative-case behavior"). Pin every mismatch shape the function actually checks, plus one
+// clean pass, the way check 51's test does.
+test('check 27: lintEnvironmentCatalog catches catalog/seed/command/migration drift, and a clean set passes', () => {
+    const { lintEnvironmentCatalog } = require('./lint-skills.js');
+
+    const commandSrcOk = { init: 'reads meta/environment.json here', configure: 'meta/environment.json', validate: 'meta/environment.json' };
+    const baseRows = () => ([
+        { key: 'ALFRED_CODE_FOO', default: 'bar', what: 'does foo', written: true },
+        { key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'docs versioning' },
+        { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'hooks off csv' },
+    ]);
+    const seedSrcOk = 'ALFRED_CODE_FOO ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF';
+    const migrationsOk = { migrations: [] };
+
+    // Clean pass: consistent catalog, seed, commands and migrations report nothing.
+    assert.deepStrictEqual(
+        lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsOk, commandSrcOk),
+        [], 'a fully consistent catalog/seed/migrations/commands set is clean');
+
+    // A guided command that never reads the catalog.
+    const badCommandSrc = { ...commandSrcOk, status: 'no catalog mention here' };
+    assert.match(
+        lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsOk, badCommandSrc).find((f) => /^status/.test(f)),
+        /status does not read meta\/environment\.json/);
+
+    // `env` is not an array at all.
+    assert.deepStrictEqual(
+        lintEnvironmentCatalog({ env: 'nope' }, seedSrcOk, migrationsOk, commandSrcOk),
+        ['environment.json has no `env` array - the guided commands would read an empty environment layer']);
+
+    // A row with no `key`.
+    assert.ok(lintEnvironmentCatalog({ env: [...baseRows(), { default: 'x', what: 'y' }] }, seedSrcOk, migrationsOk, commandSrcOk)
+        .includes('environment.json has a row with no `key`'));
+
+    // The same key listed twice.
+    assert.ok(lintEnvironmentCatalog({ env: [...baseRows(), { key: 'ALFRED_CODE_FOO', default: 'x', what: 'y' }] }, seedSrcOk, migrationsOk, commandSrcOk)
+        .includes('environment.json lists ALFRED_CODE_FOO twice'));
+
+    // No string `default`.
+    const noDefault = baseRows().map((r) => (r.key === 'ALFRED_CODE_FOO' ? { key: r.key, what: r.what, written: r.written } : r));
+    assert.ok(lintEnvironmentCatalog({ env: noDefault }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO has no string `default`/.test(f)));
+
+    // No `what`.
+    const noWhat = baseRows().map((r) => (r.key === 'ALFRED_CODE_FOO' ? { key: r.key, default: r.default, written: r.written } : r));
+    assert.ok(lintEnvironmentCatalog({ env: noWhat }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO has no `what`/.test(f)));
+
+    // written:true but the seed's own source never names the key literally.
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO is marked written, but scripts\/install\/settings\.js never names it literally/.test(f)));
+
+    // A decision key missing from the catalog.
+    const noDocsVersioningRow = baseRows().filter((r) => r.key !== 'ALFRED_CODE_DOCS_VERSIONING');
+    assert.ok(lintEnvironmentCatalog({ env: noDocsVersioningRow }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /settings\.js special-cases ALFRED_CODE_DOCS_VERSIONING, which environment\.json does not list/.test(f)));
+
+    // A decision key missing from the seed's own source.
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, 'ALFRED_CODE_FOO ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_DOCS_VERSIONING is a catalog row, but scripts\/install\/settings\.js does not name it/.test(f)));
+
+    // More than 4 `ask: true` rows blows the AskUserQuestion cap.
+    const askRows = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ key: `ALFRED_CODE_${n}`, default: '', what: n, ask: true }))
+        .concat([{ key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'x' }, { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'y' }]);
+    assert.ok(lintEnvironmentCatalog({ env: askRows }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /asks 5 questions on setup's environment screen/.test(f)));
+
+    // A migration renaming to a key the catalog does not list.
+    const migrationsMissing = { migrations: [{ id: 'm1', rename_settings_env: { from: 'OLD_KEY', to: 'ALFRED_CODE_MISSING' } }] };
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMissing, commandSrcOk)
+        .some((f) => /migrations\.json 'm1' renames OLD_KEY to ALFRED_CODE_MISSING, which environment\.json does not list/.test(f)));
+
+    // A migration landing on a real key whose row disagrees on `renamed_from`.
+    const migrationsMismatch = { migrations: [{ id: 'm2', rename_settings_env: { from: 'OLD_FOO', to: 'ALFRED_CODE_FOO' } }] };
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMismatch, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
+});

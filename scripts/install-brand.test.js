@@ -134,3 +134,14 @@ test('the shell seed is refused under either setting name, with one line and exi
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// The seed's own top-of-file comment described the PRE-D1 behavior (twins reachable behind the
+// flag for one release) and was left stale when Phase 7b made the flag a hard refusal - the exact
+// file and lines the D1 change itself sits in. Pin the header to what the code now does.
+test('the seed header comment describes the D1 refusal, not the retired R1 fallback', () =>
+{
+    const header = fs.readFileSync(SEED, 'utf8').split('\n', 20).join('\n');
+    assert.doesNotMatch(header, /stay reachable/, 'the header still claims the twins are reachable behind the flag');
+    assert.doesNotMatch(header, /for one release \(R1\)/, 'the header still describes the retired R1 fallback window');
+    assert.match(header, /removed in 2\.0\.0/, 'the header does not say the installers were removed');
+});
