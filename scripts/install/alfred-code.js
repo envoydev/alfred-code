@@ -766,6 +766,11 @@ function installMcps(ctx)
 
 function installHooksAndRules(ctx)
 {
+    // NM1 (fix round 3): patch the route line on the EXISTING stamp - if one exists yet - before the
+    // prune below removes the OTHER route's copies. writeStamp's own full render at the end of the
+    // run is what makes this line authoritative on a clean finish; this call is only insurance
+    // against the run dying in between, so the line on disk never lags what the prune already did.
+    stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), ctx.routes.hooks ? 'plugin' : 'copy');
     // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
     // release retired goes on either route, file and wiring together.
     const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];

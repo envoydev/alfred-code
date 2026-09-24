@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validSkillName } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validSkillName } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -246,6 +246,30 @@ test('install-stamp: playwright-enabled records the enabled engines beside the i
     assert.strictEqual(readPlaywrightEnabled(path.join(p.base, 'absent.stamp')), null);
     fs.writeFileSync(file, 'playwright-enabled: webkit,safari, Chrome\n');
     assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome', 'webkit']);
+});
+
+// NM1 (fix round 3): markHooksRoute patches ONLY the route line, in place, before the hooks layer
+// prunes anything - so a run that dies right after never leaves a stale value behind.
+test('install-stamp: markHooksRoute patches only the hooks-route line, leaving every other line untouched', () =>
+{
+    const p = project();
+    const { dest, text: original } = write(p, { hooksRoute: 'copy', action: 'update' });
+    assert.ok(markHooksRoute(dest, 'plugin'));
+    const patched = fs.readFileSync(dest, 'utf8');
+    assert.match(patched, /^hooks-route: plugin$/m);
+    assert.strictEqual(patched.replace(/^hooks-route: .*$/m, ''), original.replace(/^hooks-route: .*$/m, ''),
+        'every other line must be byte-identical - this is a targeted patch, never a re-render');
+
+    // No existing hooks-route line: one is appended right after shipped-hooks, never guessed at a
+    // second position, and never invented when there is no stamp to patch at all.
+    const p2 = project();
+    const { dest: dest2 } = write(p2, { hooksRoute: undefined });
+    assert.doesNotMatch(fs.readFileSync(dest2, 'utf8'), /^hooks-route:/m);
+    assert.ok(markHooksRoute(dest2, 'copy'));
+    assert.match(fs.readFileSync(dest2, 'utf8'), /^shipped-hooks: .*\nhooks-route: copy$/m);
+
+    assert.strictEqual(markHooksRoute(null, 'copy'), false, 'no file to patch - a fresh install with no prior stamp');
+    assert.strictEqual(markHooksRoute(path.join(p.base, 'absent.stamp'), 'copy'), false, 'a missing file is reported, never crashed on');
 });
 
 test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as null - never as an empty pick', () =>

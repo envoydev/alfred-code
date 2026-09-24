@@ -37,8 +37,8 @@ for (const [scope, wantCliScope] of [['project', 'project'], ['user', 'user'], [
         assert.ok(result.rule, 'the rule did not land in the project');
         assert.ok(result.stamp, 'the stamp did not land in the project');
         assert.match(result.stampText, new RegExp(`^scope: ${wantCliScope}$`, 'm'));
+        // Task 11b: the hooks ride the core entry itself now (no separate alfred-code-hooks plugin).
         assert.ok(calls.includes(`plugin install alfred-code@envoydev --scope ${wantCliScope} -y`), calls.join('\n'));
-        assert.ok(calls.includes(`plugin install alfred-code-hooks@envoydev --scope ${wantCliScope} -y`), calls.join('\n'));
     });
 }
 
@@ -349,4 +349,80 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
     assert.ok(before && before.split(',').length === 16, `setup did not switch 16 hooks off: ${before}`);
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
+});
+
+// NI1 (fix round 3): under Task 11b alone, a global/user-scope stamp lived in ONE shared account
+// file - a DIFFERENT project's copy-route run (a real None) could overwrite that shared file, and
+// this project's own next copy-route read would then see it and think IT kept no hook, switching
+// every one of its own off. T16 keeps every scope's stamp in the PROJECT (stamp.js's stampDir reads
+// only projectRoot, never scope or configDir) - this proves two --scope user projects sharing one
+// account never cross-read each other's hooks-route, even when project A's None runs AFTER project
+// B's own install.
+test('install-scope: a user-scope project reads only its OWN stamp for the hooks route, never a sibling project sharing the same account (NI1)', POSIX_ONLY, () =>
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const ROOT = path.join(__dirname, '..');
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'ni1-'));
+    const acct = path.join(work, 'acct');
+    const bin = path.join(work, 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    const pluginsFile = path.join(work, 'plugins.json');
+    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'serena', 'context7', 'memory']
+        .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'user', enabled: true }))));
+    fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+        'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
+    for (const tool of ['uvx', 'npx', 'npm', 'curl']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const selA = path.join(work, 'sel-a.txt');
+    const selB = path.join(work, 'sel-b.txt');
+    fs.writeFileSync(selA, 'skill csharp\nrule markdown-docs\nhook none\n');
+    fs.writeFileSync(selB, 'skill csharp\nrule markdown-docs\n');
+    const runOn = (repo, sel, args, extraEnv) =>
+    {
+        execFileSync(process.execPath, [path.join(__dirname, 'install', 'alfred-code.js'), ...args, '--selection', sel, '--source', ROOT],
+            {
+                cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+                env: {
+                    HOME: work, CLAUDE_CONFIG_DIR: acct, PATH: bin + path.delimiter + process.env.PATH,
+                    CLAUDE_STUB_LOG: path.join(work, `${path.basename(repo)}.log`), CLAUDE_STUB_PLUGINS: pluginsFile,
+                    ...extraEnv,
+                },
+            });
+    };
+    try
+    {
+        const projectA = path.join(work, 'project-a');
+        const projectB = path.join(work, 'project-b');
+        fs.mkdirSync(projectA);
+        fs.mkdirSync(projectB);
+        execFileSync('git', ['init', '-q', projectA]);
+        execFileSync('git', ['init', '-q', projectB]);
+
+        // Project B installs FIRST, on the plugin route - its own stamp says 'plugin', no stack hook
+        // ever lands on its disk.
+        runOn(projectB, selB, ['install', '--scope', 'user']);
+        // Project A installs SECOND (same account), on the copy route, with an explicit None - its
+        // own stamp says 'copy' and its own ALFRED_CODE_HOOKS_OFF names all 17.
+        runOn(projectA, selA, ['install', '--scope', 'user'], { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
+
+        const stampOf = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+        assert.match(stampOf(projectA), /^hooks-route: copy$/m, 'project A did not record its own copy route');
+        assert.match(stampOf(projectB), /^hooks-route: plugin$/m, 'project B did not record its own plugin route');
+        assert.ok(!fs.existsSync(path.join(acct, 'alfred-code.stamp')), 'no stamp was ever written to the shared account dir');
+
+        // Project B's own next update SWITCHES to the copy route - the one branch that actually reads
+        // `lastHooksRoute`. If B's read ever fell back to a shared account file, it would see A's
+        // 'copy' + None and wrongly switch every one of B's own hooks off too.
+        runOn(projectB, selB, ['update', '--scope', 'user', '--installed-only'], { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
+        const bSettings = JSON.parse(fs.readFileSync(path.join(projectB, '.claude', 'settings.json'), 'utf8'));
+        const bOff = String((bSettings.env && bSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
+        assert.deepStrictEqual(bOff, [], `NI1: project B read a sibling project's hooks-route and switched hooks off: ${bOff.join(',')}`);
+        assert.match(stampOf(projectB), /^hooks-route: copy$/m, 'project B now correctly records its OWN new copy route');
+
+        // Project A is untouched by B's later run - still its own real None.
+        const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.json'), 'utf8'));
+        const aOff = String((aSettings.env && aSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
+        assert.strictEqual(aOff.length, 17, `project A's own None must stay 17, unaffected by B: ${aOff.join(',')}`);
+    }
+    finally { fs.rmSync(work, { recursive: true, force: true }); }
 });

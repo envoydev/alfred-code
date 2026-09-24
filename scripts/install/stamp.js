@@ -259,6 +259,29 @@ function readPlaywright(file, line = 'playwright-browsers')
     return PW_ORDER.filter((e) => named.includes(e));
 }
 const readPlaywrightEnabled = (file) => readPlaywright(file, 'playwright-enabled');
+// NM1 (fix round 3): the full stamp - including this same `hooks-route:` line - is only written once,
+// at the very END of a run, after installHooksAndRules has already pruned the OTHER route's copies.
+// A run that dies in between (the process killed, a later fail-soft step's uncaught error) leaves the
+// route line at whatever the PREVIOUS run wrote, while the files on disk already reflect the NEW
+// route - so a copy-route None afterward is read from a folder the interrupted plugin-route run just
+// emptied, and every hook goes off. This targeted, best-effort patch of the line ALONE - never the
+// whole stamp, whose other fields (picks, library hashes) are not known yet this early - runs BEFORE
+// that prune, so an interruption anywhere after it still leaves the route line in sync with the
+// prune that is about to happen (or has already happened): a later full writeStamp overwrites it the
+// normal way when the run completes cleanly. A run with no stamp yet (a fresh install) has nothing to
+// patch - and nothing a prune could make stale either, since there is no PREVIOUS route recorded.
+function markHooksRoute(file, route)
+{
+    if (!file) return false;
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+    const line = `hooks-route: ${route}`;
+    const next = /^hooks-route: .*$/m.test(text) ? text.replace(/^hooks-route: .*$/m, line)
+        : /^shipped-hooks: .*$/m.test(text) ? text.replace(/^(shipped-hooks: .*)$/m, `$1\n${line}`)
+            : `${text.replace(/\n+$/, '')}\n${line}\n`;
+    if (next === text) return true;
+    try { fs.writeFileSync(file, next); return true; } catch { return false; }
+}
 
 // T16 (R29): a 1.x GLOBAL install put its stamp AND its skills in the account dir. A project that
 // still shows no stamp of its own (a native project/user/local install already writes one - this
@@ -333,5 +356,5 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readStampScope, readHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
+    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
 };
