@@ -26,6 +26,7 @@
 // and a stamp that only read the file would record an install with none of the locked three.
 const fs = require('node:fs');
 const path = require('node:path');
+const { stampFile } = require('./brand.js');
 
 // A playwright engine server and the context7 local transport both belong to their FAMILY: the
 // always-list names `playwright` and `context7`, and an install carrying `playwright-firefox` or
@@ -90,10 +91,16 @@ function renderStamp(fields)
 
 // At user scope the stamp belongs in the account dir; otherwise beside whatever this run installed,
 // which is the repo root when there is one.
-function stampPath({ scope, configDir, projectRoot })
+const stampDir = ({ scope, configDir, projectRoot }) => (scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude'));
+
+function stampPath(at) { return stampFile(stampDir(at)).write; }
+
+// What a run READS: the new stamp, else a 1.x install's under its old name (null when neither is
+// there). Every reader of the last install goes through this; only writeStamp writes.
+function stampFiles(at)
 {
-    const dir = scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude');
-    return path.join(dir, 'alfred-code.stamp');
+    const { read, write } = stampFile(stampDir(at));
+    return { read, write };
 }
 
 function writeStamp(opts)
@@ -132,6 +139,11 @@ function writeStamp(opts)
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
 
+    // The 1.x stamp goes only once the new one is on disk - until then it is the only record.
+    const { legacy } = stampFile(dir);
+    try { if (fs.existsSync(legacy)) { fs.rmSync(legacy, { force: true }); log(`  stamp: ${path.basename(legacy)} removed - ${path.basename(dest)} replaces it`); } }
+    catch (err) { note(`the old stamp ${legacy} could not be removed (${err.message}) - the new one is read first either way`); }
+
     log(`  stamp: ${dest} @ ${source.sha.slice(0, 12)}`);
     return dest;
 }
@@ -159,4 +171,4 @@ function readLibrary(file)
     return { version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(), skills: map('library-skills'), agents: map('library-agents') };
 }
 
-module.exports = { writeStamp, stampPath, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary };
+module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary };

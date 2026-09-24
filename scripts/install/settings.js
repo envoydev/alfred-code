@@ -27,6 +27,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
+const { BRAND, LEGACY } = require('./brand.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -275,17 +276,25 @@ function writeSettings(opts)
     // spelling goes only once that entry is uninstalled: Claude Code matches the exact home name, so
     // while the entry still loads (another scope, a refused uninstall, a listing this run could not
     // read) it is the spelling that keeps the seat off. `liveEntries` absent = cannot say = kept.
-    const live = liveEntries || retiredEntries;
+    //
+    // The 1.x CORE is one more row: 2.0.0 renamed it, so `Agent(claude-stack:<seat>)` is re-spelled // legacy-name
+    // too, keeping the settings in one spelling. Its old spelling stays only while the listing still
+    // shows the old core (a rename no session has taken yet); a listing that cannot say does not
+    // keep it, because every session from 2.0.0 on runs the renamed core, and the new spelling is the
+    // one that blocks it (docs/rebrand-evidence.md S6).
+    const live = (home) => (liveEntries || (home === LEGACY.core ? [] : retiredEntries)).includes(home);
+    const homes = [...retiredEntries, LEGACY.core];
     for (const entry of [...deny])
     {
         const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-        if (!m || !retiredEntries.includes(m[1])) continue;
-        const core = `Agent(alfred-code:${m[2]})`;
-        if (!deny.includes(core)) { deny.push(core); changed = true; log(`  settings.json: ${entry} also denied as ${core} (its entry retired)`); }
-        if (live.includes(m[1])) continue;
+        if (!m || !homes.includes(m[1])) continue;
+        const core = `Agent(${BRAND.core}:${m[2]})`;
+        const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
+        if (!deny.includes(core)) { deny.push(core); changed = true; log(`  settings.json: ${entry} also denied as ${core} (${why})`); }
+        if (live(m[1])) continue;
         deny.splice(deny.indexOf(entry), 1);
         changed = true;
-        log(`  settings.json: ${entry} dropped - its entry is uninstalled, ${core} keeps the seat off`);
+        log(`  settings.json: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
     }
 
     // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on

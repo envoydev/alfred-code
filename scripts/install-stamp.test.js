@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, stampPath } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, stampPath, stampFiles } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -228,4 +228,46 @@ test('install-stamp: stampPath is where writeStamp writes, per scope', () =>
     assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), path.join(p.base, '.claude', 'alfred-code.stamp'));
     assert.strictEqual(stampPath({ scope: 'global', configDir: acct, projectRoot: p.base }), path.join(acct, 'alfred-code.stamp'));
     assert.strictEqual(write(p).dest, stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }));
+});
+
+// 2.0.0: a 1.x install's stamp is `claude-stack.stamp`. It is READ until the first 2.0.0 run writes // legacy-name
+// `alfred-code.stamp`, and that run removes the old file, so the two can never disagree later.
+const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
+
+test('install-stamp: writeStamp deletes the 1.x stamp after writing the new one, at either scope', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    for (const dir of [path.join(p.base, '.claude'), acct]) fs.writeFileSync(path.join(dir, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
+    const dest = write(p).dest;
+    assert.strictEqual(dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
+    assert.ok(fs.existsSync(dest), 'the new stamp was not written');
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)), 'the 1.x stamp is still beside the new one');
+    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'a project run touched the account stamp');
+    write(p, { scope: 'global', configDir: acct });
+    assert.ok(!fs.existsSync(path.join(acct, OLD_STAMP)), 'the global run left the 1.x account stamp');
+    assert.ok(fs.existsSync(path.join(acct, 'alfred-code.stamp')));
+});
+
+test('install-stamp: a run with no revision leaves the 1.x stamp where it is - it is still the only record', () =>
+{
+    const p = project();
+    const old = path.join(p.base, '.claude', OLD_STAMP);
+    fs.writeFileSync(old, 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
+    assert.strictEqual(write(p, { source: null }).dest, null);
+    assert.ok(fs.existsSync(old));
+});
+
+test('install-stamp: stampFiles reads the new stamp, else the 1.x one, and always writes the new one', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    const at = { scope: 'project', configDir: acct, projectRoot: p.base };
+    assert.deepStrictEqual(stampFiles(at), { read: null, write: stampPath(at) });
+    fs.writeFileSync(path.join(p.base, '.claude', OLD_STAMP), 'sha: abc\npicked-skills: csharp@claude-stack\npicked-agents: \n'); // legacy-name
+    assert.strictEqual(stampFiles(at).read, path.join(p.base, '.claude', OLD_STAMP));
+    assert.deepStrictEqual(readPicked(stampFiles(at).read), { skills: ['csharp@claude-stack'], agents: [] }); // legacy-name
+    write(p);
+    assert.strictEqual(stampFiles(at).read, stampPath(at));
 });

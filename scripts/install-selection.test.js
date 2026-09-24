@@ -221,12 +221,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [] } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], marketplace } = {})
 {
     const claudeDir = target({ rules: ['baseline-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks, always: {}, stampPicked,
+        stampHooks, always: {}, stampPicked, marketplace,
     });
 }
 
@@ -506,4 +506,30 @@ test('deriveFromDisk: a global install reads its skills from the account dir, th
         assert.ok(lines.includes('skill csharp') && lines.includes('rule baseline-git'), lines.join(','));
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// 2.0.0: a 1.x install keeps its marketplace KEY `claude-stack`, its listing may still name the core // legacy-name
+// and the hooks entry by their 1.x names (the catalog refreshed, no session since - evidence S9), and
+// its stamp homes a core pick `@claude-stack`. The seed hands readBack the key it resolved; the rows // legacy-name
+// under it are the same install, and the picks carry through the first 2.0.0 update.
+const OLD = 'claude-stack'; // legacy-name
+
+test('read-back: a 1.x install - the old key, the core still named claude-stack - is the same install, and its stamp picks are kept', () => // legacy-name
+{
+    const stampPicked = { skills: [`project-solve-cross-task@${OLD}`], agents: [`security-auditor@${OLD}`] };
+    const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('serena@envoydev')], stampPicked, settings });
+    for (const listing of [
+        [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`serena@${OLD}`)],
+        [row(`alfred-code@${OLD}`), row(`alfred-code-hooks@${OLD}`), row(`serena@${OLD}`)],
+    ])
+    {
+        const r = readBackCase({ listing, stampPicked, settings, marketplace: OLD });
+        assert.deepStrictEqual(r.answered, { hooks: true, agents: true }, listing[0].name);
+        assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the 1.x deny honoured');
+        assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
+        assert.ok(r.closeFrom.includes('skill project-solve-cross-task') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
+        assert.strictEqual(r.blind, false);
+        assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as the renamed install');
+    }
 });

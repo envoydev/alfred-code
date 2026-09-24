@@ -40,17 +40,21 @@ const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plu
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { pluginRoutes } = require('./install/plugins.js');
+const { BRAND, LEGACY, currentName } = require('./install/brand.js');
 
 const REPO = path.resolve(__dirname, '..');
 
 // The scoped identifier - the address S1's dispatch finding and S3's deny measurement both used.
 // `Tool(param:value)` rules exist too, but only for a direct field of the tool's input ('Match by
 // input parameter', code.claude.com/docs/en/permissions) - so a plugin named like an Agent field
-// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code`.
+// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code` - or, written
+// by a 1.x release, the old core name (brand.js LEGACY).
 const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
 
-// The seat a stack deny names, under ANY stack entry's spelling - null for a user's own entry.
-const stackSeat = (spec) => (/^Agent\(alfred-code[a-z0-9-]*:([A-Za-z0-9_-]+)\)$/.exec(String(spec)) || [])[1] || null;
+// The seat a stack deny names, under ANY stack entry's spelling, 1.x ones included - null for a
+// user's own entry.
+const SEAT_DENY = new RegExp(`^Agent\\((?:${BRAND.core}|${LEGACY.core})[a-z0-9-]*:([A-Za-z0-9_-]+)\\)$`);
+const stackSeat = (spec) => (SEAT_DENY.exec(String(spec)) || [])[1] || null;
 
 // Which plugin carries each agent - the deny spelling needs the home, not just the name.
 function agentHomes(place)
@@ -127,7 +131,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
 }
 
 // The hooks entry and the two MCP families that fan one catalog row out into several plugins.
-const HOOKS_ENTRY = 'alfred-code-hooks';
+const HOOKS_ENTRY = BRAND.hooks;
 const catalogServer = (name) => String(name)
     .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
     .replace(/^context7-local$/, 'context7');
@@ -143,7 +147,8 @@ const catalogServer = (name) => String(name)
 // is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
 function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO } = {})
 {
-    const names = [...new Set(plugins.map((p) => String(p).split('@')[0]))];
+    // A 1.x listing's core and hooks entry are the same entries under their old names.
+    const names = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])))];
     const lines = [];
     if (routes.skills)
     {
@@ -203,15 +208,17 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
 {
     if (!routes.skills) return [];
     const place = placement();
-    const on = new Set(enabled);
-    const off = new Set(parked);
+    const on = new Set(enabled.map(currentName));
+    const off = new Set(parked.map(currentName));
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const retiredNames = new Set(readRetiredEntries().map((e) => e.name));
     const lines = [];
     for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
         for (const entry of stamp[kind] || [])
         {
-            const { name, home: was } = splitPick(entry);
+            // A 1.x stamp homes a core pick `@claude-stack`: the same entry, never a moved-from one. // legacy-name
+            const { name, home: stamped } = splitPick(entry);
+            const was = stamped && currentName(stamped);
             const home = homeOf(place, kind, name);
             // Homed in a retired entry that is still enabled, library now: carried as a pick.
             if (was && retiredNames.has(was) && on.has(was) && !home)
@@ -269,8 +276,8 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         rule: new Set(manifest.rules.map((e) => String(e).replace(/\.md$/, ''))),
         hook: new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, ''))),
     };
-    const enabled = plugins === null ? null : new Set(plugins.map((p) => String(p).split('@')[0]));
-    const off = new Set(parked);
+    const enabled = plugins === null ? null : new Set(plugins.map((p) => currentName(String(p).split('@')[0])));
+    const off = new Set(parked.map(currentName));
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const hookOff = (h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') });
     const rows = [];
@@ -349,7 +356,7 @@ const manualOnly = (skill) =>
 function floor({ plugins = [], deny = [] } = {})
 {
     const place = placement();
-    const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
+    const named = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])).filter(Boolean))];
     // A retired entry still enabled here loads what it carried every session until update removes it.
     const retired = readRetiredEntries().filter((e) => named.includes(e.name));
     const entries = named.filter((n) => place.plugins[n] || retired.some((e) => e.name === n)).sort();
@@ -360,7 +367,9 @@ function floor({ plugins = [], deny = [] } = {})
     const homes = agentHomes(place);
     for (const e of retired) for (const a of e.agents) if (!homes.has(a)) homes.set(a, e.name);
     const specs = new Set(Array.isArray(deny) ? deny.map(String) : []);
-    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))));
+    // A core seat's 1.x spelling still hides it after the rename (docs/rebrand-evidence.md S6).
+    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))
+        || (!homes.has(a) || homes.get(a) === CORE) && specs.has(denySpec(a, LEGACY.core))));
     const skills = carried.skills.filter((s) => !manualOnly(s));
     const seats = carried.agents.filter((a) => !denied.has(a));
     const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);

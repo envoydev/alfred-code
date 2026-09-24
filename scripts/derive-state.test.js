@@ -682,3 +682,41 @@ test('a picked library seat clears its deny, so a seat switched off in 1.2.0 com
     assert.ok(state.agents.allow.includes('Agent(alfred-code:angular-test-resolver)'), state.agents.allow.join(','));
     assert.ok(!state.agents.deny.includes('Agent(alfred-code:angular-test-resolver)'));
 });
+
+// --- 2.0.0: a 1.x install under its old names ------------------------------------------------------
+// The core and the hooks entry were renamed; a 1.x listing can still carry them as `claude-stack` / // legacy-name
+// `claude-stack-hooks` (the catalog refreshed, no session since - docs/rebrand-evidence.md S9), a // legacy-name
+// 1.x stamp homes its core picks `@claude-stack`, and a 1.x seat deny is `Agent(claude-stack:<seat>)`, // legacy-name
+// which still blocks the renamed seat (S6). Each reads as the core it is.
+const OLD = 'claude-stack'; // legacy-name
+
+test('readInstalled: the core and the hooks entry under their 1.x names read back as the renamed ones', () =>
+{
+    const now = readInstalled({ plugins: ['alfred-code@envoydev', 'alfred-code-hooks@envoydev'], deny: ['Agent(alfred-code:security-auditor)'], hooksOff: 'guard-answer-length', routes: ALL_ROUTES, sourceDir: ROOT });
+    const old = readInstalled({ plugins: [`${OLD}@${OLD}`, `${OLD}-hooks@${OLD}`], deny: [`Agent(${OLD}:security-auditor)`], hooksOff: 'guard-answer-length', routes: ALL_ROUTES, sourceDir: ROOT });
+    assert.ok(now.includes('agent evidence-gatherer') && !now.includes('agent security-auditor'), 'the fixture reads core seats');
+    assert.deepStrictEqual(old, now);
+});
+
+test('stampCarried: a 1.x stamp homed `@claude-stack` is homed in the core - no move, whichever name the listing uses', () => // legacy-name
+{
+    const stamp = { skills: [`project-solve-cross-task@${OLD}`], agents: [`security-auditor@${OLD}`] };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: [OLD], routes: ALL_ROUTES }), [], 'the old core name is the same entry, not a moved-from one');
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), []);
+});
+
+test('floor: the 1.x core entry counts as the core, and its 1.x seat deny still hides the seat (S6)', () =>
+{
+    const now = floor({ plugins: ['alfred-code@envoydev'], deny: ['Agent(alfred-code:security-auditor)'] });
+    const old = floor({ plugins: [`${OLD}@${OLD}`], deny: [`Agent(${OLD}:security-auditor)`] });
+    assert.deepStrictEqual(now.agents.denied, ['security-auditor'], 'the fixture denies a core seat');
+    assert.deepStrictEqual(old, now);
+});
+
+test('classifyNew: an item the 1.x-named core carries arrives, and a 1.x seat deny keeps it off', () =>
+{
+    const added = [{ category: 'skill', name: 'markdown-style' }, { category: 'agent', name: 'code-style-analyzer' }, { category: 'hook', name: 'docs-session' }];
+    const rows = classifyNew({ added, plugins: [OLD, `${OLD}-hooks`], deny: [`Agent(${OLD}:code-style-analyzer)`], routes: ALL_ROUTES, sourceDir: ROOT });
+    const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r.verdict]));
+    assert.deepStrictEqual(by, { 'skill markdown-style': 'arrives', 'agent code-style-analyzer': 'off', 'hook docs-session': 'arrives' });
+});

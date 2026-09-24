@@ -370,9 +370,13 @@ function docsRoot(projectRoot)
     return { value: '.claude/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
 }
 
+// The stamp's two names: a 1.x install keeps `claude-stack.stamp` until an update rewrites it. This // legacy-name
+// script ships inside a skill with no installer module beside it, so it names the old file itself.
+const STAMPS = ['.claude/alfred-code.stamp', '.claude/claude-stack.stamp']; // legacy-name
+
 function installStamp(projectRoot)
 {
-    const text = readText(path.join(projectRoot, '.claude', 'alfred-code.stamp'));
+    const text = STAMPS.map((f) => readText(path.join(projectRoot, f))).find((t) => t !== null) ?? null;
     if (text === null) return null;
     const pick = (k) => (new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(text) || [])[1];
     const sha = (pick('sha') || '').trim();
@@ -404,7 +408,7 @@ function precheck(projectRoot, rulePath)
         if (!st.isFile() || skipName(path.basename(p)) || path.resolve(p) === path.resolve(rulePath)) return;
         if (st.mtimeMs > ruleStat.mtimeMs) hits.push({ path: relTo(projectRoot, p), mtime: st.mtimeMs });
     };
-    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', '.claude/alfred-code.stamp'])
+    for (const src of ['.claude/skills', '.claude/agents', '.claude/rules', '.mcp.json', ...STAMPS])
     {
         visit(path.join(projectRoot, src), 0);
     }

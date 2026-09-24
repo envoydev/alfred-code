@@ -346,3 +346,33 @@ test('settings-writer: a seat that moved home loses its OLD stack spelling, whic
     });
     assert.deepStrictEqual(data.permissions.deny, ['Agent(my-own:security-auditor)', 'Agent(alfred-code:security-auditor)']);
 });
+
+// 2.0.0 renamed the core. A 1.x seat deny `Agent(claude-stack:<seat>)` still blocks the renamed seat // legacy-name
+// (docs/rebrand-evidence.md S6), but the settings stay in ONE spelling (ruling R7): the old core is
+// the retired home whose new spelling is the core, one more row of the retired-entry re-spell.
+const OLD_CORE = 'claude-stack'; // legacy-name
+
+test('settings-writer: a 1.x core seat deny is re-spelled to the new core, and a hand-written foreign home is left alone', () =>
+{
+    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`, 'Agent(other:seat-a)', 'Read(./.env)'] } });
+    const { data, logs } = write(file);
+    assert.deepStrictEqual(data.permissions.deny.slice().sort(), ['Agent(alfred-code:seat-a)', 'Agent(other:seat-a)', 'Read(./.env)']);
+    assert.ok(logs.some((m) => m.includes(`Agent(${OLD_CORE}:seat-a)`) && m.includes('Agent(alfred-code:seat-a)')), logs.join('\n'));
+    assert.strictEqual(write(file).result.written, false, 'a second run changes nothing');
+});
+
+test('settings-writer: while the listing still shows the 1.x core (a rename no session has taken yet), both spellings stay', () =>
+{
+    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`] } });
+    const pending = write(file, { liveEntries: [OLD_CORE] });
+    assert.deepStrictEqual(pending.data.permissions.deny.slice().sort(), ['Agent(alfred-code:seat-a)', `Agent(${OLD_CORE}:seat-a)`]);
+    const renamed = write(file, { liveEntries: [] });
+    assert.deepStrictEqual(renamed.data.permissions.deny, ['Agent(alfred-code:seat-a)']);
+});
+
+test('settings-writer: a 1.x seat deny the selection now KEEPS is cleared under either spelling', () =>
+{
+    const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`, `Agent(${OLD_CORE}:seat-b)`] } });
+    const { data } = write(file, { agentDeny: ['Agent(alfred-code:seat-b)'], agentAllow: ['Agent(alfred-code:seat-a)'] });
+    assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:seat-b)']);
+});

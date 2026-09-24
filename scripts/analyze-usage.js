@@ -463,11 +463,13 @@ const CATALOG_DIR = path.join(__dirname, '..', 'stack');
 // 22 agents / 15 rules installed, because a later install on the same path was read back as if it
 // had been there. Two more bundles carried a rule and an MCP name the session's own listing did
 // not have.
+// A 1.x install's stamp keeps its old name until an update rewrites it; the new one wins when both exist.
 function readInstallStamp(claudeDir) {
+  const file = require('./install/brand.js').stampFile(claudeDir).read;
   let txt;
-  try { txt = fs.readFileSync(path.join(claudeDir, 'alfred-code.stamp'), 'utf8'); } catch { return null; }
+  try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
   const val = (k) => { const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(txt); return m ? m[1].trim() : null; };
-  return { version: val('version'), sha: val('sha'), installed: val('installed'), file: path.join(claudeDir, 'alfred-code.stamp') };
+  return { version: val('version'), sha: val('sha'), installed: val('installed'), file };
 }
 
 // The install's skills and agents have TWO homes: copied under `.claude/`, or served by the
@@ -768,8 +770,9 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   // plugin-scoped name (`alfred-code:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
-  // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item.
-  const houseBare = (name) => String(name || '').replace(/^alfred-code(?:-[a-z0-9-]+)?:/, '');
+  // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session
+  // recorded before 2.0.0 names the same items under the 1.x plugin names.
+  const houseBare = (name) => String(name || '').replace(/^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/, ''); // legacy-name
 
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence

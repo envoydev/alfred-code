@@ -16,6 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { readLibrary } = require('./install/stamp.js');
+const { stampFile } = require('./install/brand.js');
 const { hashItem } = require('./install/library.js');
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
@@ -30,7 +31,8 @@ const newer = (a, b) =>
 function check({ project, source, scope = 'project', configDir })
 {
     const base = (scope === 'global' || scope === 'user') && configDir ? configDir : path.join(project, '.claude');
-    const stamp = readLibrary(path.join(base, 'alfred-code.stamp'));
+    // A 1.x project's stamp keeps its old name until the next update rewrites it.
+    const stamp = readLibrary(stampFile(base).read);
     if (!stamp) return null;
     const overrides = (file) => { const o = readJson(file).skillOverrides; return o && typeof o === 'object' ? o : {}; };
     const settings = overrides(path.join(project, '.claude', 'settings.json'));

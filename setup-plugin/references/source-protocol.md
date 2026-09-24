@@ -32,6 +32,14 @@ stops at a question never reaches the apply step that would update it. They reme
 version from before (`running=` / `$Was`) - the one this session loaded, whatever the cache now
 holds. No `claude` CLI, or no stack row: nothing to update, and the pick runs as it always did.
 
+**A 1.x install keeps its old names** until an update rewrites them: its marketplace key stays
+`claude-stack` (a registered key never changes), so both keys are refreshed and both keys' rows <!-- legacy-name -->
+updated. Once the catalog is refreshed, `claude plugin list --json` still prints the OLD id with a
+`noteDetails` entry of type `plugin-renamed`, and `plugin update` over the old id fails `not_found` -
+so such a row is updated by the NEW id the note names, at its own scope (docs/rebrand-evidence.md
+S2, S9). The cache follows the same way: the 1.x dir `cache/<key>/claude-stack/<version>` counts <!-- legacy-name -->
+until the CLI marks it `.orphaned_at` after the rename, and an orphaned dir is never taken (S3, S8).
+
 Pick the NEWEST valid version directory across marketplaces - the directory names ARE the release
 versions the CLI writes, so they sort as versions - and count a directory only when it carries both
 `stack/skills` and `stack/agents`, so a half-written entry is rejected rather than half-installed.
@@ -63,14 +71,14 @@ CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d)
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 if command -v claude >/dev/null 2>&1; then
-  claude plugin marketplace update envoydev >/dev/null 2>&1
-  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>"
-  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@envoydev$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')
-  WAS=$(printf '%s\n' "$ROWS" | awk '$2=="alfred-code@envoydev"{print $3; exit}')
+  for K in envoydev claude-stack; do claude plugin marketplace update "$K" >/dev/null 2>&1; done   # legacy-name: a 1.x install keeps its key
+  # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>" - a row the catalog renamed by its NEW id
+  ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a){const r=(x.noteDetails||[]).find(n=>n&&n.type==="plugin-renamed"&&n.related);console.log(x.scope+" "+(r?r.related+"@"+x.id.split("@")[1]:x.id)+" "+x.version)}}catch{}})')   # legacy-name
+  WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{n=$3;exit} $2~/^claude-stack@/&&o==""{o=$3} END{print (n!=""?n:o)}')   # legacy-name
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
-SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/*; do            # newest valid entry, any marketplace
-  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
+  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 if [ -n "$SRC" ]; then
   cp -R "$SRC" "$TMP/repo"; rm -rf "$TMP/repo/.git"     # the CLI already fetched it: nothing is downloaded
@@ -106,32 +114,42 @@ $RepoUrl = 'https://github.com/envoydev/alfred-code'
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 $Was = ''     # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-  claude plugin marketplace update envoydev *> $null
+  foreach ($k in 'envoydev', 'claude-stack') { claude plugin marketplace update $k *> $null }   # legacy-name: a 1.x install keeps its key
   $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
   # PSObject, never `$list.installed`: over a bare array that is one $null per row - truthy, and no rows
   if ($list -and ($list.PSObject.Properties.Name -contains 'installed')) { $list = $list.installed }
   # every stack entry installed for THIS project or the account, this project's rows first
   $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
-  $rows = @($list | Where-Object { "$($_.id)" -like '*@envoydev' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })
+  $rows = @($list | Where-Object { "$($_.id)" -match '@(envoydev|claude-stack)$' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })   # legacy-name
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
-  $core = $rows | Where-Object { $_.id -eq 'alfred-code@envoydev' } | Select-Object -First 1
-  if ($core) { $Was = $core.version }
-  foreach ($r in $rows) { claude plugin update $r.id --scope $r.scope -y *> $null }
+  $Old = ''
+  foreach ($r in $rows) {
+    # a row the catalog renamed is updated by its NEW id - the old one no longer resolves
+    $n = @($r.noteDetails | Where-Object { $_ -and $_.type -eq 'plugin-renamed' -and $_.related }) | Select-Object -First 1
+    $id = if ($n) { "$($n.related)@$(("$($r.id)" -split '@')[1])" } else { "$($r.id)" }
+    if ($id -like 'alfred-code@*') { if (-not $Was) { $Was = $r.version } }
+    elseif ($id -like 'claude-stack@*' -and -not $Old) { $Old = $r.version }   # legacy-name
+    claude plugin update $id --scope $r.scope -y *> $null
+  }
+  if (-not $Was) { $Was = $Old }
 }
 $Src = ''
 $BestVer = $null
 $Base = Join-Path $ConfigDir 'plugins/cache'
 if (Test-Path -LiteralPath $Base -PathType Container) {
   foreach ($mkt in (Get-ChildItem -LiteralPath $Base -Directory -ErrorAction SilentlyContinue)) {
-    $entry = Join-Path $mkt.FullName 'alfred-code'
-    if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
-    foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
-      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
-      if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/agents'))) { continue }
-      $v = $null
-      [void][System.Version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)
-      if (-not $Src -or ($v -and $BestVer -and $v -gt $BestVer) -or ($v -and -not $BestVer)) {
-        $Src = $d.FullName; $BestVer = $v
+    foreach ($core in 'alfred-code', 'claude-stack') {   # legacy-name: a 1.x dir counts until the rename orphans it
+      $entry = Join-Path $mkt.FullName $core
+      if (-not (Test-Path -LiteralPath $entry -PathType Container)) { continue }
+      foreach ($d in (Get-ChildItem -LiteralPath $entry -Directory -ErrorAction SilentlyContinue)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/skills'))) { continue }
+        if (-not (Test-Path -LiteralPath (Join-Path $d.FullName 'stack/agents'))) { continue }
+        if (Test-Path -LiteralPath (Join-Path $d.FullName '.orphaned_at')) { continue }
+        $v = $null
+        [void][System.Version]::TryParse(($d.Name -replace '[^0-9.].*$', ''), [ref]$v)
+        if (-not $Src -or ($v -and $BestVer -and $v -gt $BestVer) -or ($v -and -not $BestVer)) {
+          $Src = $d.FullName; $BestVer = $v
+        }
       }
     }
   }

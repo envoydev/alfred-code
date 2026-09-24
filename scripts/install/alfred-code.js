@@ -38,6 +38,8 @@ const stampLayer = require('./stamp.js');
 const library = require('./library.js');
 const runtime = require('./runtime.js');
 const { envMigrations } = require('./env-migrations.js');
+const { BRAND, LEGACY, marketOf } = require('./brand.js');
+const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 const USAGE = `alfred-code - install or update the Claude Code stack into a project.
 
@@ -52,10 +54,12 @@ Named flags (any order, each optional): ${FLAG_LIST}
 Every flag means exactly what it means on scripts/os/claude-stack.sh - this is a rewrite, not a
 redesign. Run \`bash scripts/os/claude-stack.sh --help\` for what each one does.`;
 
-const HOOKS_PLUGIN = 'alfred-code-hooks@envoydev';
-const STACK_MARKET_NAME = HOOKS_PLUGIN.split('@')[1];
-const { STACK_MARKETPLACE } = plugins;
+// The fresh-install spelling. A 1.x install keeps its own marketplace key, so every stack spec of a
+// run is spelled with the key it resolved (`ctx.market`), never with this constant.
+const HOOKS_PLUGIN = `${BRAND.hooks}@${BRAND.marketplace}`;
 const { CORE_DEP_PLUGINS } = plugins;
+// D1: the frozen twins hardcode the 1.x names, which a 2.0.0 registration cannot resolve.
+const SHELL_SEED_RETIRED = 'the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
 const SENTRY_URL = 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}';
 const SENTRY_HEADER = 'Authorization: Sentry-Bearer ${SENTRY_ACCESS_TOKEN}';
 // permissions.deny, the Read-tool half of the credential gate: it reaches the Read TOOL ONLY (a
@@ -72,9 +76,10 @@ const RETIRED_DENY = [
 // points at `node .claude/hooks/history.js rulings`.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
 
-function main(argv, env, io)
+function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) })
 {
     const { out, err } = io;
+    if (envOf(env, 'SEED') === 'shell') { err(`${SHELL_SEED_RETIRED}\n`); return 1; }
     const cwd = io.cwd || process.cwd();
     const rt = io.runtime || runtime;
 
@@ -98,7 +103,8 @@ function main(argv, env, io)
     const cliScope = args.scope === 'global' ? 'user' : 'project';
     const claudeDir = path.join(projectRoot, '.claude');
     const skillsDir = args.scope === 'global' ? path.join(configDir, 'skills') : path.join(projectRoot, '.claude', 'skills');
-    const stampFile = stampLayer.stampPath({ scope: args.scope, configDir, projectRoot });
+    // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
+    const stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');
 
@@ -121,6 +127,15 @@ function main(argv, env, io)
     // The marketplaces this run already refreshed, so no later pass pays the round trip twice.
     const refreshed = new Set();
 
+    // THE MARKETPLACE KEY every stack spec of this run is spelled with: the key whose core is installed
+    // (a 1.x install keeps `claude-stack`), else a registration of the stack's repo, else the current // legacy-name
+    // name - read from the listings, never assumed (brand.js marketOf).
+    const readRaw = () => (hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '');
+    const readMarkets = () => (hasClaude ? plugins.parseMarketplaces(rt.capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot, env })) : []);
+    let market = BRAND.marketplace;
+    let marketSeen = { listing: [], marketplaces: [] };
+    let rawListing = null;
+
     try
     {
         // With no --source the snapshot is the newest core entry in the plugin cache - so the core is
@@ -129,11 +144,20 @@ function main(argv, env, io)
         // A plan is read-only: it changes no plugin, so it reads the cache as it stands.
         if (!args.source && !args.printPlan && hasClaude && plugins.corePluginOn(plugins.pluginRoutes(env)))
         {
-            plugins.refreshStackSource({
-                listing: plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot, { marketplace: STACK_MARKET_NAME }),
-                cli, refreshed, log,
+            market = plugins.refreshStackSource({
+                listing: () => plugins.parsePluginList(readRaw(), projectRoot, { byMarketplace: true }),
+                marketplaces: readMarkets(), readMarketplaces: readMarkets,
+                cli, refreshed, log, env,
             });
+            marketSeen = null;          // registered and refreshed already - bootstrapSource has nothing to add
         }
+        else if (hasClaude)
+        {
+            rawListing = readRaw();
+            marketSeen = { listing: plugins.parsePluginList(rawListing, projectRoot, { byMarketplace: true }), marketplaces: readMarkets() };
+            market = marketOf({ ...marketSeen, env }).key;
+        }
+        if (market !== BRAND.marketplace) log(`marketplace: ${market} (the key this install was registered under)`);
         const resolved = source.resolve();
         if (!resolved) return 1;
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
@@ -167,9 +191,9 @@ function main(argv, env, io)
         let answered = { hooks: true, agents: true };
         if (args.installedOnly)
         {
-            const raw = hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '';
+            const raw = rawListing ?? readRaw();
             listing = plugins.parsePluginList(raw, projectRoot);
-            const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: STACK_MARKET_NAME });
+            const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: market });
             const lastPicked = stampLayer.readPicked(stampFile);
             const back = selection.readBack({
                 claudeDir, skillsDir,
@@ -179,7 +203,7 @@ function main(argv, env, io)
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 stampPicked: lastPicked,
-                always, marketplace: STACK_MARKET_NAME, log,
+                always, marketplace: market, log,
             });
             if (!back.installed)
             {
@@ -212,7 +236,7 @@ function main(argv, env, io)
             for (const l of drops.filter((d) => closed.includes(d)))
                 log(`installed-only: --drop ${l} not applied - something kept requires it (named in the required line above)`);
             if (args.dropApplied.length)
-                dropEntries = droppedByDrop({ kept: close(withAdds, [...back.closeFrom, ...args.add], () => {}), closed, stackListing, sourceDir: resolved.dir, drop: args.dropApplied, routes, log });
+                dropEntries = droppedByDrop({ kept: close(withAdds, [...back.closeFrom, ...args.add], () => {}), closed, stackListing, sourceDir: resolved.dir, drop: args.dropApplied, routes, market, log });
             stampPicks = new Set(closed.filter((l) => back.closeFrom.includes(l) || args.add.includes(l) || !withDrops.includes(l)));
             // A blind read keeps every pick the last stamp recorded and this run cannot see, verbatim
             // with its home, so the next update with a readable listing still carries it across.
@@ -303,6 +327,7 @@ function main(argv, env, io)
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
+            market, marketSeen, readMarkets,
         };
 
         const pinSnapshot = args.keepPins
@@ -370,11 +395,16 @@ function runLayers(ctx)
 
 // A first run with no plugin cache installs the core entry FIRST, so its cache can serve the same
 // run - which is what makes the common run download nothing at all.
+//
+// The registration goes through the plugin layer's one rule: a 1.x key is registered already (a second
+// registration of the new slug would list the stack twice), and a fresh account's key is whatever the
+// add produced - read back here, before the first spec is spelled with it.
 function bootstrapSource(ctx)
 {
     if (!ctx.hasClaude || !plugins.corePluginOn(ctx.routes)) return;
-    ctx.cli(['plugin', 'marketplace', 'add', STACK_MARKETPLACE], { quiet: true });
-    plugins.refreshMarketplaces({ plugins: [plugins.CORE_SPEC], cli: ctx.cli, refreshed: ctx.refreshed });
+    if (ctx.marketSeen)
+        ctx.market = plugins.stackMarket({ ...ctx.marketSeen, readMarketplaces: ctx.readMarkets, cli: ctx.cli, env: ctx.env });
+    plugins.refreshMarketplaces({ plugins: [`${BRAND.core}@${ctx.market}`], cli: ctx.cli, refreshed: ctx.refreshed });
 }
 
 // Remove each named copy the stack itself shipped. A file no list names is the project's own and is
@@ -452,8 +482,8 @@ function installPlugins(ctx)
     const readListing = () => plugins.parsePluginList(ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env }), ctx.projectRoot, { byMarketplace: true });
     const listing = readListing();
     const set = plugins.pluginSet({
-        routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: HOOKS_PLUGIN,
-        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED,
+        routes: ctx.routes, thirdParty: ctx.lists.plugins, hooksPlugin: `${BRAND.hooks}@${ctx.market}`,
+        stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
     // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
@@ -461,7 +491,10 @@ function installPlugins(ctx)
     // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
     // nothing, so it keeps them all.
     const carriers = readRetiredEntries(ctx.source.dir).map((e) => e.name);
-    const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)) : null);
+    // The 1.x core counts as a live home of its seat denies while the listing still carries its old id
+    // (a rename no session has taken yet) - never uninstalled here: it IS the core.
+    const oldCore = listing.some((r) => r.name === LEGACY.core) ? [LEGACY.core] : [];
+    const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
     ctx.liveCarriers = installed();
     if (ctx.args.action === 'update')
     {
@@ -674,7 +707,7 @@ function releaseVersion(sourceDir)
 // What a --drop did to the plugin set: the entries it took out (disabled later, dependents first),
 // and every dropped skill an entry the project still needs goes on carrying - reported, since no
 // setting can unload a plugin skill (spike S2).
-function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, log })
+function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, market, log })
 {
     const place = placement();
     // Only the entries a PLUGIN route put there: on the skills copy route no stack entry carries this
@@ -689,7 +722,7 @@ function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, lo
         if (routes.skills && category === 'skill' && after.skills.carried.includes(name))
             log(`installed-only: skill ${name} stays loaded - ${homeOf(place, 'skills', name)} carries it and a kept item needs that entry`);
     }
-    return selection.droppedEntries({ before: setOf(kept), after: setOf(closed), listing: stackListing, deps, marketplace: STACK_MARKET_NAME });
+    return selection.droppedEntries({ before: setOf(kept), after: setOf(closed), listing: stackListing, deps, marketplace: market });
 }
 
 const registeredMemoryPath = (mcpFile) =>
@@ -720,9 +753,9 @@ function runSelectionPlugins(ctx)
     });
     const file = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'stack-sel-')), 'selection.txt');
     fs.writeFileSync(file, `${lines.join('\n')}\n`);
-    const entries = ctx.rt.runNode(script, ['--selection', file], { cwd: ctx.projectRoot, env: ctx.env });
+    const entries = ctx.rt.runNode(script, ['--selection', file, '--marketplace', ctx.market], { cwd: ctx.projectRoot, env: ctx.env });
     if (!entries.ok) throw new Error(`plugin set not computed (${entries.stderr.split('\n')[0]})`);
-    const copyList = ctx.rt.runNode(script, ['--selection', file, '--copy'], { cwd: ctx.projectRoot, env: ctx.env });
+    const copyList = ctx.rt.runNode(script, ['--selection', file, '--copy', '--marketplace', ctx.market], { cwd: ctx.projectRoot, env: ctx.env });
     fs.rmSync(path.dirname(file), { recursive: true, force: true });
     return { entries: ctx.rt.lines(entries.stdout), copy: ctx.rt.lines(copyList.stdout) };
 }

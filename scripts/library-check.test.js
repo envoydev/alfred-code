@@ -11,6 +11,7 @@ const { copyLibrary } = require('./install/library.js');
 const { renderStamp } = require('./install/stamp.js');
 
 const SCRIPT = path.join(__dirname, 'library-check.js');
+const OLD_STAMP = 'claude-stack.stamp'; // legacy-name - what a 1.x release wrote
 const roots = [];
 test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
 
@@ -100,9 +101,25 @@ test('no stamp, or a stamp without library lines, reads as nothing to check', ()
     const r = run(fx({ noStamp: true }));
     assert.equal(r.code, 0);
     assert.match(r.out, /no library stamp/);
+    // A 1.2.0 project: its stamp still carries the 1.x name and no library lines.
     const f = fx();
-    fs.writeFileSync(path.join(f.project, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
+    fs.rmSync(path.join(f.project, '.claude', 'alfred-code.stamp'));
+    const old = path.join(f.project, '.claude', OLD_STAMP);
+    fs.writeFileSync(old, 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n');
     assert.match(run(f).out, /no library stamp/);
+    assert.equal(fs.readFileSync(old, 'utf8'), 'sha: abc\nversion: 1.2.0\npicked-skills: demo\n', 'a read-only check leaves the 1.x stamp as it was');
+});
+
+test('a 1.3.0 stamp under its 1.x name is checked like the new one - the new name wins when both exist', () =>
+{
+    const f = fx();
+    const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
+    fs.renameSync(stamp, path.join(f.project, '.claude', OLD_STAMP));
+    const r = run(f);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /library: clean \(2 copies\)/);
+    fs.writeFileSync(stamp, 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
+    assert.match(run(f).out, /no library stamp/, 'the new stamp is read first, even beside a 1.x one');
 });
 
 test('a malformed settings file does not crash the check', () =>

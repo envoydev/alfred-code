@@ -125,7 +125,8 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
         fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
-        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'),
+        // A 1.2.0 project: the stamp carries the name that release wrote.
+        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), // legacy-name
             'version: 1.2.0\nsha: 0000000\npicked-skills: angular-conventions@claude-stack-angular,angular-testing@claude-stack-angular\npicked-agents: \n');
     };
     const { steps } = seedRun(['update', 'update'], SELECTION, {
@@ -134,10 +135,15 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
         {
             if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), healthy);
             const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
-            return { picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '', copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')) };
+            return {
+                picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '',
+                copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')),
+                oldStamp: fs.existsSync(path.join(repo, '.claude', 'claude-stack.stamp')), // legacy-name
+            };
         },
     });
     assert.match(steps[0].picks, /angular-conventions/, 'the blind run forgot the pick');
+    assert.equal(steps[0].oldStamp, false, 'the 1.x stamp is left beside the new one');
     assert.ok(steps[1].copied, `the healthy run did not copy the pick (stamp picks: ${steps[1].picks})`);
 });
 

@@ -6,7 +6,8 @@
 // not trust a copy's content as current). Silent in every other case, and never fails a session.
 //
 // The project's own stamp first; a global install keeps its stamp in the account dir, so a project
-// with none of its own reads that one.
+// with none of its own reads that one. Each under either name: a project the 1.x release installed
+// holds the old stamp until its first update (brand.js stampFile - the new name wins).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -18,11 +19,15 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary;
-    try { ({ readLibrary } = require(path.join(root, 'scripts', 'install', 'stamp.js'))); } catch { return; }
+    let readLibrary, stampFile;
+    try
+    {
+        ({ readLibrary } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
+    }
+    catch { return; }
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const own = path.join(project, '.claude', 'alfred-code.stamp');
-    const lib = readLibrary(fs.existsSync(own) ? own : path.join(account, 'alfred-code.stamp'));
+    const lib = readLibrary(stampFile(path.join(project, '.claude')).read || stampFile(account).read);
     if (!lib || !lib.version) return;
     let stack = '';
     try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }

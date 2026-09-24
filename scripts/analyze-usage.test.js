@@ -1700,3 +1700,27 @@ test('MCP failures: a session with no MCP call says so', () => {
   assert.match(txt, /MCP failures\s+no MCP call/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// A session recorded before 2.0.0 names the stack's items under the 1.x plugin names, and the
+// project it ran in may still hold the 1.x stamp: both are the house's own, read like the new ones.
+test('a 1.x session: its claude-stack scoped names join the bare inventory, and its stamp is the vintage', () => { // legacy-name
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'sha: abcdef1234567890\nversion: 1.3.0\ninstalled: 2026-07-01T00:00:00Z\n'); // legacy-name
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file, [
+    line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
+    line(invAsst('m1', '2026-07-15T07:00:10.000Z', [use('t1', 'Skill', { skill: 'claude-stack:alpha-skill' })])), // legacy-name
+    line({ type: 'user', timestamp: '2026-07-15T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    line(invAsst('m2', '2026-07-15T07:01:00.000Z', [use('t2', 'Task', { subagent_type: 'claude-stack-web-angular:demo-implementer', description: 'build one task' })])), // legacy-name
+    line({ type: 'user', timestamp: '2026-07-15T07:01:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'done' }] } }),
+  ].join(''));
+  const { inventory } = run([file, '--inventory', claude, '--plugins', pluginsFile]);
+  assert.deepStrictEqual(invRow(inventory.skills, 'alpha-skill').how, ['Skill call x1']);
+  assert.strictEqual(invRow(inventory.skills, 'claude-stack:alpha-skill'), undefined, 'the row did not split in two'); // legacy-name
+  assert.deepStrictEqual(invRow(inventory.agents, 'demo-implementer').how, ['dispatched x1']);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| Stack install \| v1\.3\.0 .*installed before this session ran \|/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

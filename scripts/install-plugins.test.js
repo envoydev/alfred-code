@@ -500,3 +500,86 @@ test('prunedRetired retries a refused uninstall in a second pass', () =>
     assert.deepStrictEqual(gone.sort(), ['claude-stack-angular', 'claude-stack-web-angular']);
     assert.deepStrictEqual(calls, ['claude-stack-angular', 'claude-stack-web-angular', 'claude-stack-angular'], 'the refusal is retried once, after the leaf');
 });
+
+// --- 2.0.0: a 1.x account keeps its marketplace KEY ----------------------------------------------------
+// A registered marketplace's key never changes, so a 1.x install's stack stays under `claude-stack`, // legacy-name
+// and a forced move (`marketplace remove`) would uninstall it from every project on the machine. The
+// seed reads the key from the listing (the key whose core is installed, under either name) and spells
+// every stack spec with it. Once the catalog is refreshed the listing carries the OLD id with a
+// plugin-renamed note (docs/rebrand-evidence.md S9) and the old id fails `not_found` (S2), so such a
+// row is updated by the NEW id the note names.
+const OLD = 'claude-stack'; // legacy-name
+const renamedRow = (name, scope, extra = {}) => ({
+    id: `${name}@${OLD}`, version: '1.3.0', scope, enabled: true,
+    noteDetails: [{ type: 'plugin-renamed', plugin: name, marketplace: OLD, related: name.replace(OLD, 'alfred-code') }], ...extra,
+});
+
+test('plugin-list: a plugin-renamed note is read as the row\'s new name, and the row is found by it', () =>
+{
+    const listing = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user'), { id: `serena@${OLD}`, version: '1.3.0', scope: 'user' }]), '/repo', { byMarketplace: true });
+    assert.deepStrictEqual(listing.map((r) => [r.name, r.renamed]), [[OLD, 'alfred-code'], ['serena', undefined]]);
+    assert.strictEqual(P.fieldOf(listing, `alfred-code@${OLD}`, 'scope'), 'user', 'the renamed row IS the new id\'s row');
+    assert.strictEqual(P.fieldOf([{ name: OLD, marketplace: OLD, version: '1.3.0', scope: 'project', enabled: true }], `alfred-code@${OLD}`, 'version'), '1.3.0', 'a 1.x core row with no note yet is the core too');
+    assert.strictEqual(P.fieldOf([{ name: 'alfred-code', marketplace: OLD, version: '2.0.0' }], `${OLD}@${OLD}`, 'version'), undefined, 'never the other way round');
+});
+
+test('source: a 1.x account - the old key is refreshed, the listing READ AGAIN after it, and a renamed row updated by its new id', () =>
+{
+    const run = cli();
+    let reads = 0;
+    // Before the refresh the rows carry no note; the catalog refresh is what marks them (S9).
+    const before = [{ name: OLD, marketplace: OLD, version: '1.3.0', scope: 'user', enabled: true }];
+    const after = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user'), renamedRow(`${OLD}-hooks`, 'project'), { id: `serena@${OLD}`, version: '1.3.0', scope: 'project' }]), '/repo', { byMarketplace: true });
+    const key = P.refreshStackSource({ listing: () => (reads++ ? after : before), cli: run });
+    assert.strictEqual(key, OLD);
+    assert.deepStrictEqual(run.calls, [
+        `plugin marketplace update ${OLD}`,
+        `plugin update alfred-code@${OLD} --scope user -y`,
+        `plugin update alfred-code-hooks@${OLD} --scope project -y`,
+        `plugin update serena@${OLD} --scope project -y`,
+    ], 'no second registration of the new slug, and never the old id');
+    assert.strictEqual(reads, 2);
+});
+
+test('source: a fresh account registers the stack and takes the key the add produced', () =>
+{
+    const run = cli();
+    const key = P.refreshStackSource({ listing: [], marketplaces: [], readMarketplaces: () => [{ name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }], cli: run });
+    assert.strictEqual(key, 'envoydev');
+    assert.deepStrictEqual(run.calls, ['plugin marketplace add envoydev/alfred-code', 'plugin marketplace update envoydev']);
+});
+
+test('source: both keys registered - the one carrying the installed core is used, the other left alone', () =>
+{
+    const run = cli();
+    const marketplaces = [{ name: OLD, source: 'github', repo: `envoydev/${OLD}` }, { name: 'envoydev', source: 'github', repo: 'envoydev/alfred-code' }];
+    const key = P.refreshStackSource({ listing: [{ name: 'alfred-code', marketplace: OLD, version: '2.0.0', scope: 'user', enabled: true }], marketplaces, cli: run });
+    assert.strictEqual(key, OLD);
+    assert.ok(!run.calls.some((c) => / envoydev(\/|$)/.test(c)), run.calls.join(' | '));
+});
+
+test('set: the locked servers ride the run\'s marketplace key', () =>
+{
+    const set = P.pluginSet({ routes: ROUTES({ mcps: false }), hooksPlugin: `alfred-code-hooks@${OLD}`, stackEntries: [`alfred-code@${OLD}`], coreDeps: CORE_DEPS, locked: LOCKED, market: OLD });
+    assert.deepStrictEqual(set, [`alfred-code-hooks@${OLD}`, `alfred-code@${OLD}`, ...LOCKED.map((n) => `${n}@${OLD}`), ...CORE_DEPS]);
+});
+
+test('update: a renamed 1.x row is UPDATED at its own scope by the new id - never installed beside itself', () =>
+{
+    const run = cli();
+    const before = P.parsePluginList(JSON.stringify([renamedRow(OLD, 'user')]), '/repo', { byMarketplace: true });
+    P.updatePlugins({ plugins: [`alfred-code@${OLD}`], scope: 'project', before, after: before, cli: run });
+    assert.deepStrictEqual(run.matching(/^plugin (install|enable|update) /), [`plugin update alfred-code@${OLD} --scope user -y`]);
+});
+
+test('seed update: a 1.x account keeps its key - every stack spec is @claude-stack, and nothing registers the new slug', POSIX_ONLY, () => // legacy-name
+{
+    const listing = JSON.stringify([renamedRow(OLD, 'user'), renamedRow(`${OLD}-hooks`, 'user')]);
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing });
+    const specs = calls.filter((c) => /^plugin (install|update|enable) /.test(c)).map((c) => c.split(' ')[2]);
+    assert.ok(specs.includes(`alfred-code-hooks@${OLD}`) && specs.includes(`alfred-code@${OLD}`) && specs.includes(`serena@${OLD}`), specs.join('\n'));
+    assert.ok(!specs.some((s) => /@envoydev$/.test(s)), `a stack spec under the new key:\n${specs.join('\n')}`);
+    assert.ok(!specs.some((s) => s.startsWith(`${OLD}@`) || s.startsWith(`${OLD}-hooks@`)), 'the old id fails not_found - never used');
+    assert.ok(!calls.includes('plugin marketplace add envoydev/alfred-code'), calls.join('\n'));
+    assert.ok(!calls.some((c) => /^plugin install alfred-code(-hooks)?@/.test(c)), `the renamed core was installed beside itself:\n${calls.join('\n')}`);
+});

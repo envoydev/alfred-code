@@ -43,6 +43,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { isHooks, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
 function arg(name, fallback)
 {
@@ -188,7 +189,8 @@ function libraryCopies(claudeDir)
 
 // The stack's rows of `claude plugin list --json`, or null when it cannot be read - a verdict on a
 // listing nobody read would offer items the project already carries. `--listing <file>` stands in
-// for the CLI (tests, or a listing the caller already captured).
+// for the CLI (tests, or a listing the caller already captured). With no `--marketplace` the key is
+// the one the installed core lives under - a 1.x install keeps its old key.
 function readListing(root, marketplace)
 {
     const { parsePluginList } = require('./install/plugins.js');
@@ -200,8 +202,10 @@ function readListing(root, marketplace)
         const r = spawnSync('claude', ['plugin', 'list', '--json'], { cwd: root, encoding: 'utf8', timeout: 60000 });
         text = r.status === 0 ? String(r.stdout || '') : null;
     }
-    try { JSON.parse(text); } catch { return null; }
-    return parsePluginList(text, root, { marketplace });
+    let raw;
+    try { raw = JSON.parse(text); } catch { return null; }
+    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.installed) ? raw.installed : []);
+    return parsePluginList(text, root, { marketplace: marketplace || marketKey({ listing: rows }) });
 }
 
 function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines })
@@ -214,7 +218,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     const shipped = new Set(classifyNew({ added: found, routes: {} }).map((r) => `${r.category} ${r.name}`));
     const added = found.filter((a) => shipped.has(`${a.category} ${a.name}`));
     if (!added.length) return ['new: none'];
-    const listing = readListing(root, arg('--marketplace', 'envoydev'));
+    const listing = readListing(root, arg('--marketplace'));
     const s = settings && typeof settings === 'object' ? settings : {};
     const env = s.env && typeof s.env === 'object' ? s.env : {};
     const hooksDir = path.join(claudeDir, 'hooks');
@@ -226,7 +230,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
     // The installer holds None only while the hooks entry is enabled (it enables that entry
     // regardless, and writes no hook none without it) - so the verdict holds it only then too.
-    const hooksEntryOn = Boolean(listing && listing.some((r) => r.name === 'alfred-code-hooks' && r.enabled));
+    const hooksEntryOn = Boolean(listing && listing.some((r) => isHooks(r.name) && r.enabled));
     const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }));
     const rows = classifyNew({
         added, noneBefore,
@@ -294,10 +298,11 @@ function main()
     // Global mode passes the ACCOUNT dir as the root, which holds the stamp and settings.json itself.
     // An account dir set through CLAUDE_CONFIG_DIR can have any name - it is recognised by holding the
     // stamp itself and no `.claude/` of its own.
+    // A 1.x install's stamp keeps its old name until this update rewrites it; either one counts.
     const accountDir = /^\.claude(-.+)?$/.test(path.basename(path.resolve(root)))
-        || (!fs.existsSync(path.join(root, '.claude')) && fs.existsSync(path.join(root, 'alfred-code.stamp')));
+        || (!fs.existsSync(path.join(root, '.claude')) && Boolean(stampIn(root).read));
     const claudeDir = accountDir ? path.resolve(root) : path.join(root, '.claude');
-    const stampFile = arg('--stamp', path.join(claudeDir, 'alfred-code.stamp'));
+    const stampFile = arg('--stamp', stampIn(claudeDir).read || stampIn(claudeDir).write);
     const settingsFile = arg('--settings', path.join(claudeDir, 'settings.json'));
 
     const compareArgs = [path.join(snapshot, 'scripts', 'stamp-compare.js'), '--snapshot', snapshot, '--stamp', stampFile];

@@ -23,9 +23,9 @@ resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the p
 
 ```bash
 CAPS=.claude/skills/project-agent-capabilities/scripts/capabilities-inventory.js
-[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+[ -f "$CAPS" ] || CAPS=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/* "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do   # legacy-name: a 1.x dir until orphaned
   f="$d/stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js"
-  [ -f "$f" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
+  [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 node "$CAPS"
 ```

@@ -32,6 +32,7 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
     fs.mkdirSync(path.join(snap, 'meta'), { recursive: true });
     fs.copyFileSync(path.join(__dirname, 'stamp-compare.js'), path.join(snap, 'scripts', 'stamp-compare.js'));
     fs.copyFileSync(path.join(__dirname, 'install', 'source.js'), path.join(snap, 'scripts', 'install', 'source.js'));
+    fs.copyFileSync(path.join(__dirname, 'install', 'brand.js'), path.join(snap, 'scripts', 'install', 'brand.js'));
     fs.writeFileSync(path.join(snap, 'RELEASE-SOURCE'), 'sha: bbb222\nversion: 0.2.70\n');
     fs.writeFileSync(path.join(snap, 'meta', 'migrations.json'), JSON.stringify({ _comment: 'x'.repeat(2000), migrations }));
 
@@ -403,4 +404,46 @@ test('new items: an arriving rename still names its old copy for the prune; None
     fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: false }]));
     const parked = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]).out;
     assert.match(parked, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, 'the installer enables the hooks entry and writes no hook none there - the hook arrives');
+});
+
+// A 1.x install as 2.0.0's update first meets it: the stamp under its old name, every stack row
+// under the old marketplace KEY (a registered key never changes), the hooks entry and the seat deny
+// under the old names. The preflight must read all four, or it reports no stamp, reads the listing
+// as empty, and offers items the project already carries.
+test('new items: a 1.x install is read under its old stamp, marketplace key, hooks entry and deny', () => {
+    const { snap, install, fixtureFile } = scaffold({
+        stamp: null,
+        fixture: NEW_FIXTURE,
+        settings: { permissions: { deny: ['Agent(claude-stack:code-style-analyzer)'] } }, // legacy-name
+    });
+    fs.writeFileSync(path.join(install, '.claude', 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n'); // legacy-name
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([
+        { id: 'claude-stack@claude-stack', enabled: true, noteDetails: [{ type: 'plugin-renamed', related: 'alfred-code' }] }, // legacy-name
+        { id: 'claude-stack-hooks@claude-stack', enabled: true }, // legacy-name
+        { id: 'alfred-code@envoydev', enabled: false },   // another account's leftover: never the stack this project runs
+    ]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m, 'the 1.x stamp is the compare base');
+    const rows = out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule '));
+    assert.deepStrictEqual(rows, [
+        'new: skill markdown-style\tarrives\talfred-code',
+        'new: skill dotnet-web-backend\toffer\t-\tleave',
+        'new: agent code-style-analyzer\toff\talfred-code',
+        'new: hook docs-session\tarrives\talfred-code-hooks',
+    ]);
+    // an explicit --marketplace still wins over what the listing says
+    const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'envoydev']).out;
+    assert.match(forced, /^new: skill markdown-style\toff\talfred-code$/m, forced);
+});
+
+test('global mode: an account dir holding only the 1.x stamp is still the account dir', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: null, fixture: { files: [] } });
+    const acct = path.join(path.dirname(install), 'acct-any-name');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\n'); // legacy-name
+    const { out, code } = run(['--snapshot', snap, '--root', acct, '--fixture', fixtureFile]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m);
 });

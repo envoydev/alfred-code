@@ -23,6 +23,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { versionTag } = require('./install/source.js');
+const { BRAND, stampFile: stampIn } = require('./install/brand.js');
 
 const STACK_PATHS = /^(stack|skills|agents|rules|hooks|templates)\//;
 
@@ -69,7 +70,12 @@ async function compareFiles(repo, base, head)
 
 async function main()
 {
-    const stampFile = arg('--stamp') || '.claude/alfred-code.stamp';
+    // A 1.x project's stamp keeps its old name until the next update rewrites it: a missing
+    // alfred-code.stamp - named, or the default - is read as the 1.x one beside it.
+    const named = arg('--stamp');
+    const stampFile = named && (path.basename(named) !== BRAND.stamp || fs.existsSync(named))
+        ? named
+        : stampIn(named ? path.dirname(named) : '.claude').read || named || path.join('.claude', BRAND.stamp);
     const snapshot = arg('--snapshot');
     if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(1); }
     const repo = arg('--repo') || 'envoydev/alfred-code';

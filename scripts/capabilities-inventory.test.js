@@ -70,7 +70,7 @@ function project(name, opts = {})
     write(path.join(root, '.claude', 'rules', 'baseline-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
     write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'appium-mcp': {} } }, null, 2), -100);
-    write(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
+    write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
 }
@@ -399,6 +399,19 @@ test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.
     write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai-legacy' } }), -100);
     const { out } = run([], { cwd: root });
     assert.match(out, /DOCS ROOT: docs\/ai-legacy\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/);
+});
+
+// A 1.x install's stamp keeps its old name until an update rewrites it: it is still the install's
+// revision, and an update that rewrites it is still drift. This script ships inside a skill, with
+// no installer module beside it, so it names the old file itself.
+test('report + precheck: a 1.x stamp is the install revision, and a touched one is drift', { skip: posixOnly }, () =>
+{
+    const root = project('legacy-stamp', { stampName: 'claude-stack.stamp' }); // legacy-name
+    const { out } = run([], { cwd: root });
+    assert.match(out, /CAPTURED:\s+\d{4}-\d{2}-\d{2} from 0\.2\.79@abcdef1/);
+    assert.match(out, /PRECHECK:\s+empty/);
+    touch(path.join(root, '.claude', 'claude-stack.stamp'), 300); // legacy-name
+    assert.match(run([], { cwd: root }).out, /PRECHECK:\s+drift - 1 file\(s\) newer than the rule[\s\S]*claude-stack\.stamp/); // legacy-name
 });
 
 test('report: an unreadable skill frontmatter is reported as unreadable, never filled from memory', { skip: posixOnly }, () =>

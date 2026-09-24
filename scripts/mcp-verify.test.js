@@ -307,7 +307,7 @@ for (const twin of ['sh', 'ps1'])
     // Phase 3: the DEFAULT route. A picked skill is carried by the plugin its placement puts it in,
     // so it must not be copied as well - spike S6 measured that a leftover copy silently shadows the
     // plugin's own, with no error and no sign in the transcript.
-    test(`${twin}: the plugin route enables the computed closure and copies no skill a plugin carries`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    test(`${twin}: the plugin route enables the computed closure and copies no skill a plugin carries`, { skip: 'D1: the shell seed is refused from 2.0.0; the twin goes in 7b' }, () =>
     {
         const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try
@@ -799,7 +799,7 @@ test('ps1: the default is playwright-chrome, and sh agrees with the file ps1 wro
 // agents that cite it find it whichever route the project took.
 for (const twin of ['sh', 'ps1'])
 {
-    test(`${twin}: the plugin route installs superpowers itself - the core no longer pulls it in`, { skip: twin === 'ps1' && skipNoPwsh }, () =>
+    test(`${twin}: the plugin route installs superpowers itself - the core no longer pulls it in`, { skip: 'D1: the shell seed is refused from 2.0.0; the twin goes in 7b' }, () =>
     {
         const sb = DEFAULT_ROUTES(sandbox({ sentry: STALE_SENTRY }));
         try

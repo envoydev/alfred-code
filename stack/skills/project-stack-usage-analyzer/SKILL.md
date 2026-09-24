@@ -46,8 +46,8 @@ It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADIN
 ```bash
 TMP=$(mktemp -d)
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/*; do
-  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: a 1.x dir until orphaned
+  [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
 ```
 
