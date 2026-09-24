@@ -268,8 +268,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
                 listing, stackListing,
-                // I2 / N5: the file this run writes, or at local scope the merged view Claude Code
-                // resolves (settings.js readBackSettings).
+                // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
+                // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
                 settings: settings.readBackSettings(claudeDir, args.scope),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),

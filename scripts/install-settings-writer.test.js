@@ -401,7 +401,7 @@ test('settingsTarget: local scope targets settings.local.json, every other scope
 });
 
 // N5 (fix round 5): the read-back reads only the written file at project and user scope (I2), and at
-// local scope the view Claude Code resolves - settings.json with settings.local.json laid over it.
+// local scope settings.local.json laid over settings.json for the two keys it reads, `env` and `deny`.
 test('readBackSettings: the target alone at project and user scope, the local overlay at local scope', () =>
 {
     const dir = path.join(TMP, `readback-${seq++}`, '.claude');

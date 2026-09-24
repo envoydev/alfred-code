@@ -347,8 +347,11 @@ const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'loc
 // What the --installed-only read-back reads, fail-soft (an unreadable file reads as empty). At project
 // and user scope, only the file this run writes (I2: a merge there could carry a personal
 // settings.local.json entry into the shared file). At local scope the write lands in the personal file,
-// so the read is the view Claude Code resolves (N5): settings.json with settings.local.json laid over
-// it, `env` key by key with local winning, `permissions.deny` combined - lists merge across files.
+// so settings.local.json is laid over settings.json (N5) for the two keys the read-back uses: `env` key
+// by key with local winning, and `permissions.deny` combined. Every other key is the local file's whole
+// where it has one - `permissions.allow` / `ask` / `additionalDirectories`, `enabledPlugins`, `hooks`
+// included - so this is NOT the view Claude Code resolves, which combines every list across files: a
+// caller that reads more than `env` and `deny` needs its own merge.
 function readBackSettings(claudeDir, scope)
 {
     const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
