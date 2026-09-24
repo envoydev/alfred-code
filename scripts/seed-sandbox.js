@@ -28,8 +28,12 @@ function scrubLegacyEnv(env)
 // `source: null` runs with no --source, so the seed resolves its own snapshot (the plugin cache under the
 // sandbox account, which `prepare(repo, work)` can lay out). `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), replacing the default 'no', for a case
 // that needs a registry lookup to answer one fixed way. `action` may be a list - the runs share one sandbox, in order, and
-// `each(repo, i)` reads the tree after run `i` (its answers come back as `steps`); `out` is the last
-// run's output, `outs` every run's. `args` are appended to every run's command line.
+// `each(repo, i)` reads (or, like the 1.2.0-stamp prune test above, mutates) the tree after run `i`
+// (its answers come back as `steps`); `out` is the last run's output, `outs` every run's. `args` are
+// appended to every run's command line. `source` and `args` are each either ONE value shared by
+// every step (the common case - a bare array of flag strings for `args` still means that), or an
+// array with one entry PER STEP, for a case whose steps need different `--source` snapshots or
+// different flags (only an array of arrays switches `args` to per-step).
 function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
@@ -57,9 +61,13 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         prepare(repo, work);
         const outs = [];
         const steps = [];
-        for (const act of [].concat(action))
+        const actions = [].concat(action);
+        const sourceAt = (i) => (Array.isArray(source) ? source[i] : source);
+        const argsAt = (i) => (Array.isArray(args) && Array.isArray(args[0]) ? args[i] : args);
+        for (const [i, act] of actions.entries())
         {
-            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(source ? ['--source', source] : []), ...args],
+            const src = sourceAt(i);
+            outs.push(execFileSync(process.execPath, [SEED, act, '--selection', path.join(work, 'sel.txt'), ...(src ? ['--source', src] : []), ...argsAt(i)],
                 { cwd: repo, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
             steps.push(each(repo, steps.length));
         }
