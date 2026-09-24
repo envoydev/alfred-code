@@ -56,8 +56,8 @@ change (see the invariants below).
   leaving files out. The three gates live in `hook-prelude.js`, never inlined in every hook: the csv
   opt-out; the migration window where the plugin copy stands down while a project still wires its
   copied twin; and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
-  while the project or account settings enable `alfred-code@*`, so a 1.x core never double-fires
-  beside the 2.x one (fail-open - a hook that cannot read a settings file runs).
+  while settings enable an `alfred-code@*` its `installed_plugins.json` row can load, so the two
+  never double-fire (S26). All fail open - an unreadable file runs the hook.
   The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
   home too: `fresh-session.js`, an engine the two fresh-session hooks and the session monitor require
   from their own directory, copied with the hooks on the copy route; a hook that runs before it lands

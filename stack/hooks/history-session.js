@@ -8,9 +8,9 @@
 'use strict';
 const path = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js (the ALFRED_CODE_HOOKS_OFF csv and the migration
-// window where the plugin copy stands down for a copied twin). Fail-open: no prelude runs the hook -
-// envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open: no prelude runs the hook - envOf falls back to the bare ALFRED_CODE_ read
+// (pre-2.0.0 behaviour) the same way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {

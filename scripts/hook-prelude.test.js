@@ -111,7 +111,9 @@ test('a --flag invocation is never gated, however the env reads', () => {
 const ALIAS_ROOT = path.join('/cfg', 'plugins', 'cache', 'claude-stack', 'claude-stack', '2.0.0'); // legacy-name
 const CORE_ROOT = path.join('/cfg', 'plugins', 'cache', 'claude-stack', 'alfred-code', '2.0.0'); // legacy-name
 
-function scopes({ project, local, account } = {})
+// `core` installs plugins the way the CLI records them: a row in `<config>/plugins/installed_plugins.json`
+// and a cache directory at its installPath. A bare id is a project-scope install for this repo.
+function scopes({ project, local, account, core = [] } = {})
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-alias-'));
     const repo = path.join(dir, 'repo');
@@ -122,62 +124,23 @@ function scopes({ project, local, account } = {})
     put(path.join(repo, '.claude', 'settings.json'), project);
     put(path.join(repo, '.claude', 'settings.local.json'), local);
     put(path.join(acct, 'settings.json'), account);
-    return { dir, env: (root = ALIAS_ROOT) => ({ CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: repo, CLAUDE_CONFIG_DIR: acct }) };
+    const s = { dir, repo, acct, env: (root = ALIAS_ROOT) => ({ CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: repo, CLAUDE_CONFIG_DIR: acct }) };
+    for (const spec of core) install(s, typeof spec === 'string' ? { id: spec } : spec);
+    return s;
+}
+function install(s, { id, scope = 'project', projectPath = s.repo, dir = true })
+{
+    const [name, market] = id.split('@');
+    const installPath = path.join(s.acct, 'plugins', 'cache', market, name, '2.0.0');
+    if (dir) fs.mkdirSync(installPath, { recursive: true });
+    const file = path.join(s.acct, 'plugins', 'installed_plugins.json');
+    const data = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { version: 2, plugins: {} };
+    (data.plugins[id] ||= []).push({ scope, ...(scope === 'user' ? {} : { projectPath }), installPath, version: '2.0.0' });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data));
 }
 const on = (id, value = true) => ({ enabledPlugins: { [id]: value } });
-
-test('the alias yields when the project, its local file or the account enables alfred-code', () => {
-    for (const where of ['project', 'local', 'account'])
-    {
-        const s = scopes({ [where]: on('alfred-code@envoydev') });
-        assert.strictEqual(aliasYieldsToCore(s.env()), true, `alfred-code enabled in the ${where} settings`);
-        assert.strictEqual(standDown('guard-secret-value', s.env(), ['node', 'x.js']), true, 'standDown carries the gate');
-        fs.rmSync(s.dir, { recursive: true, force: true });
-    }
-    const key = scopes({ project: on('alfred-code@claude-stack') }); // legacy-name - a 1.x account keeps its key
-    assert.strictEqual(aliasYieldsToCore(key.env()), true, 'any marketplace key counts');
-    fs.rmSync(key.dir, { recursive: true, force: true });
-});
-
-test('the alias runs when alfred-code is absent, switched off, or switched off by a higher scope', () => {
-    const none = scopes({ project: on('claude-stack@claude-stack') }); // legacy-name
-    assert.strictEqual(aliasYieldsToCore(none.env()), false, 'only the alias enabled: it is the one carrying the guards');
-    fs.rmSync(none.dir, { recursive: true, force: true });
-    const off = scopes({ project: on('alfred-code@envoydev', false) });
-    assert.strictEqual(aliasYieldsToCore(off.env()), false, 'enabled: false is not enabled');
-    fs.rmSync(off.dir, { recursive: true, force: true });
-    const over = scopes({ account: on('alfred-code@envoydev'), local: on('alfred-code@envoydev', false) });
-    assert.strictEqual(aliasYieldsToCore(over.env()), false, 'the local file wins over the account');
-    fs.rmSync(over.dir, { recursive: true, force: true });
-    const prefix = scopes({ project: on('alfred-code-hooks@envoydev') });
-    assert.strictEqual(aliasYieldsToCore(prefix.env()), false, 'another plugin whose name starts alfred-code is not the core');
-    fs.rmSync(prefix.dir, { recursive: true, force: true });
-});
-
-test('only a hook launched from the alias root yields - the core, a copied hook and a Windows path are read right', () => {
-    const s = scopes({ project: on('alfred-code@envoydev') });
-    assert.strictEqual(aliasYieldsToCore(s.env(CORE_ROOT)), false, 'the core itself never yields - its marketplace key may be claude-stack'); // legacy-name
-    assert.strictEqual(aliasYieldsToCore({ ...s.env(), CLAUDE_PLUGIN_ROOT: undefined }), false, 'no plugin root is a copied hook');
-    assert.strictEqual(aliasYieldsToCore(s.env(ALIAS_ROOT + path.sep)), true, 'a trailing separator is the same root');
-    assert.strictEqual(aliasYieldsToCore(s.env('C:\\Users\\u\\.claude\\plugins\\cache\\k\\claude-stack\\2.0.0')), true, 'a Windows root'); // legacy-name
-    fs.rmSync(s.dir, { recursive: true, force: true });
-});
-
-test('the alias gate FAILS OPEN - a junk or unreadable settings file, or no project dir, runs the hook', () => {
-    for (const junk of ['{', 'null', '[]', '{"enabledPlugins": 7}'])
-    {
-        const s = scopes({ account: on('alfred-code@envoydev'), project: junk });
-        assert.doesNotThrow(() => aliasYieldsToCore(s.env()));
-        const expected = junk === '{' ? false : true;
-        assert.strictEqual(aliasYieldsToCore(s.env()), expected, `project body ${junk}: ${expected ? 'no enabledPlugins to read, the account decides' : 'unparseable - run'}`);
-        fs.rmSync(s.dir, { recursive: true, force: true });
-    }
-    const dirAsFile = scopes({ account: on('alfred-code@envoydev') });
-    fs.mkdirSync(path.join(dirAsFile.env().CLAUDE_PROJECT_DIR, '.claude', 'settings.json'));
-    assert.strictEqual(aliasYieldsToCore(dirAsFile.env()), false, 'a settings file that cannot be read - run');
-    fs.rmSync(dirAsFile.dir, { recursive: true, force: true });
-    assert.strictEqual(aliasYieldsToCore({ CLAUDE_PLUGIN_ROOT: ALIAS_ROOT }), false, 'no project dir - run');
-});
+const CORE = 'alfred-code@envoydev';
 
 // A real hook, run the way the entry launches it: the file the core's command names, under a plugin
 // root. guard-protected-force-push denies (exit 2) a force-push to main.
@@ -191,8 +154,134 @@ function fire(file, env)
     });
 }
 
+test('the alias yields when the project, its local file or the account enables an installed alfred-code', () => {
+    for (const where of ['project', 'local', 'account'])
+    {
+        const s = scopes({ [where]: on(CORE), core: [CORE] });
+        assert.strictEqual(aliasYieldsToCore(s.env()), true, `alfred-code enabled in the ${where} settings`);
+        assert.strictEqual(standDown('guard-secret-value', s.env(), ['node', 'x.js']), true, 'standDown carries the gate');
+        fs.rmSync(s.dir, { recursive: true, force: true });
+    }
+    const key = scopes({ project: on('alfred-code@claude-stack'), core: ['alfred-code@claude-stack'] }); // legacy-name - a 1.x account keeps its key
+    assert.strictEqual(aliasYieldsToCore(key.env()), true, 'any marketplace key counts');
+    fs.rmSync(key.dir, { recursive: true, force: true });
+});
+
+test('the alias runs when alfred-code is absent, switched off, or switched off by a higher scope', () => {
+    const none = scopes({ project: on('claude-stack@claude-stack') }); // legacy-name
+    assert.strictEqual(aliasYieldsToCore(none.env()), false, 'only the alias enabled: it is the one carrying the guards');
+    fs.rmSync(none.dir, { recursive: true, force: true });
+    const off = scopes({ project: on(CORE, false), core: [CORE] });
+    assert.strictEqual(aliasYieldsToCore(off.env()), false, 'enabled: false is not enabled, installed or not');
+    fs.rmSync(off.dir, { recursive: true, force: true });
+    const over = scopes({ account: on(CORE), local: on(CORE, false), core: [CORE] });
+    assert.strictEqual(aliasYieldsToCore(over.env()), false, 'the local file wins over the account');
+    fs.rmSync(over.dir, { recursive: true, force: true });
+    const prefix = scopes({ project: on('alfred-code-hooks@envoydev'), core: ['alfred-code-hooks@envoydev'] });
+    assert.strictEqual(aliasYieldsToCore(prefix.env()), false, 'another plugin whose name starts alfred-code is not the core');
+    fs.rmSync(prefix.dir, { recursive: true, force: true });
+});
+
+// Review I1: a committed settings file can name `alfred-code@envoydev` for a teammate whose core never
+// loads - no marketplace, a declined trust prompt. Yielding on the key alone left that session with
+// no guard at all, the one outcome the gate exists to prevent.
+test('the alias runs while the named core cannot load - enabled but never installed, its cache gone, another project or key', () => {
+    const named = scopes({ project: on(CORE) });
+    assert.strictEqual(aliasYieldsToCore(named.env()), false, 'the settings key alone, no core installed anywhere');
+    const denied = fire('guard-protected-force-push.js', named.env());
+    assert.strictEqual(denied.status, 2, `the alias still denies: ${denied.stderr}`);
+    fs.rmSync(named.dir, { recursive: true, force: true });
+    for (const [spec, why] of [
+        [{ id: CORE, dir: false }, 'an installed row whose cache directory is gone'],
+        [{ id: CORE, projectPath: path.join(os.tmpdir(), 'another-project') }, 'installed for another project only'],
+        [{ id: 'alfred-code@other' }, 'installed under another marketplace key than the one enabled'],
+    ])
+    {
+        const s = scopes({ project: on(CORE), core: [spec] });
+        assert.strictEqual(aliasYieldsToCore(s.env()), false, why);
+        fs.rmSync(s.dir, { recursive: true, force: true });
+    }
+});
+
+test('the alias yields to a core installed at user scope, or for this project by its real path', () => {
+    const user = scopes({ account: on(CORE), core: [{ id: CORE, scope: 'user' }] });
+    assert.strictEqual(aliasYieldsToCore(user.env()), true, 'a user-scope core loads in every project');
+    fs.rmSync(user.dir, { recursive: true, force: true });
+    const real = scopes({ project: on(CORE) });
+    install(real, { id: CORE, projectPath: fs.realpathSync(real.repo) });
+    assert.strictEqual(aliasYieldsToCore(real.env()), true, 'the row records the real path, the env may not');
+    fs.rmSync(real.dir, { recursive: true, force: true });
+    const local = scopes({ local: on(CORE), core: [{ id: CORE, scope: 'local' }] });
+    assert.strictEqual(aliasYieldsToCore(local.env()), true, 'a local-scope core for this project');
+    fs.rmSync(local.dir, { recursive: true, force: true });
+});
+
+test('an unreadable installed_plugins.json runs the alias', () => {
+    for (const body of ['{', 'null', '[]', '{"plugins": 7}', '{"plugins": {"alfred-code@envoydev": 7}}'])
+    {
+        const s = scopes({ project: on(CORE) });
+        fs.mkdirSync(path.join(s.acct, 'plugins', 'cache', 'envoydev', 'alfred-code', '2.0.0'), { recursive: true });
+        fs.writeFileSync(path.join(s.acct, 'plugins', 'installed_plugins.json'), body);
+        assert.doesNotThrow(() => aliasYieldsToCore(s.env()));
+        assert.strictEqual(aliasYieldsToCore(s.env()), false, `installed_plugins.json body ${body}`);
+        fs.rmSync(s.dir, { recursive: true, force: true });
+    }
+    const dirAsFile = scopes({ project: on(CORE) });
+    fs.mkdirSync(path.join(dirAsFile.acct, 'plugins', 'installed_plugins.json'), { recursive: true });
+    assert.strictEqual(aliasYieldsToCore(dirAsFile.env()), false, 'a directory in place of the file');
+    fs.rmSync(dirAsFile.dir, { recursive: true, force: true });
+});
+
+// Review M4: the prelude runs from `.claude/hooks/` with no `scripts/install/` beside it, so it retypes
+// both names - this is what keeps them the installer's.
+test('the two plugin names the prelude retypes are the ones brand.js owns', () => {
+    const { BRAND, LEGACY } = require('./install/brand.js');
+    const prelude = require(PRELUDE);
+    assert.strictEqual(prelude.CORE_PLUGIN, BRAND.core);
+    assert.strictEqual(prelude.ALIAS_PLUGIN, LEGACY.core);
+});
+
+// Review M2: a hook's header points at the prelude's, so a new gate cannot leave seventeen stale lists.
+test('every hook points at the prelude header for its gates instead of listing them', () => {
+    const dir = path.dirname(PRELUDE);
+    assert.ok((fs.readFileSync(PRELUDE, 'utf8').match(/^\/\/ GATE \d+ - /gm) || []).length >= 3, 'the prelude header lists the gates');
+    const hooks = fs.readdirSync(dir).filter((f) => f.endsWith('.js') && fs.readFileSync(path.join(dir, f), 'utf8').includes('STACK HOOK GATES'));
+    assert.ok(hooks.length >= 17, `every wired hook carries the marker: ${hooks.length}`);
+    for (const file of hooks)
+    {
+        const text = fs.readFileSync(path.join(dir, file), 'utf8');
+        assert.match(text, /STACK HOOK GATES - they live in hook-prelude\.js, whose header lists them/, file);
+        assert.doesNotMatch(text, /both live in hook-prelude|migration window|ALFRED_CODE_HOOKS_OFF/, `${file} lists the gates itself`);
+    }
+});
+
+test('only a hook launched from the alias root yields - the core, a copied hook and a Windows path are read right', () => {
+    const s = scopes({ project: on(CORE), core: [CORE] });
+    assert.strictEqual(aliasYieldsToCore(s.env(CORE_ROOT)), false, 'the core itself never yields - its marketplace key may be claude-stack'); // legacy-name
+    assert.strictEqual(aliasYieldsToCore({ ...s.env(), CLAUDE_PLUGIN_ROOT: undefined }), false, 'no plugin root is a copied hook');
+    assert.strictEqual(aliasYieldsToCore(s.env(ALIAS_ROOT + path.sep)), true, 'a trailing separator is the same root');
+    assert.strictEqual(aliasYieldsToCore(s.env('C:\\Users\\u\\.claude\\plugins\\cache\\k\\claude-stack\\2.0.0')), true, 'a Windows root'); // legacy-name
+    fs.rmSync(s.dir, { recursive: true, force: true });
+});
+
+test('the alias gate FAILS OPEN - a junk or unreadable settings file, or no project dir, runs the hook', () => {
+    for (const junk of ['{', 'null', '[]', '{"enabledPlugins": 7}'])
+    {
+        const s = scopes({ account: on(CORE), project: junk, core: [{ id: CORE, scope: 'user' }] });
+        assert.doesNotThrow(() => aliasYieldsToCore(s.env()));
+        const expected = junk === '{' ? false : true;
+        assert.strictEqual(aliasYieldsToCore(s.env()), expected, `project body ${junk}: ${expected ? 'no enabledPlugins to read, the account decides' : 'unparseable - run'}`);
+        fs.rmSync(s.dir, { recursive: true, force: true });
+    }
+    const dirAsFile = scopes({ account: on(CORE), core: [{ id: CORE, scope: 'user' }] });
+    fs.mkdirSync(path.join(dirAsFile.env().CLAUDE_PROJECT_DIR, '.claude', 'settings.json'));
+    assert.strictEqual(aliasYieldsToCore(dirAsFile.env()), false, 'a settings file that cannot be read - run');
+    fs.rmSync(dirAsFile.dir, { recursive: true, force: true });
+    assert.strictEqual(aliasYieldsToCore({ CLAUDE_PLUGIN_ROOT: ALIAS_ROOT }), false, 'no project dir - run');
+});
+
 test('a hook run from the alias root exits silently while alfred-code is enabled, and denies without it', () => {
-    const s = scopes({ project: on('alfred-code@envoydev') });
+    const s = scopes({ project: on(CORE), core: [CORE] });
     const quiet = fire('guard-protected-force-push.js', s.env());
     assert.strictEqual(quiet.status, 0, quiet.stderr);
     assert.strictEqual(quiet.stdout + quiet.stderr, '', 'nothing printed');

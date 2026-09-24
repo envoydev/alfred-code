@@ -101,10 +101,10 @@ module.exports = { groupRoots, runChecks, commandFor, MAX_LINES, BUDGET_MS };
 
 if (require.main === module)
 {
-  // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. Fail-open: envOf
-  // falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an install without the prelude
-  // runs the hook unchanged') when hook-prelude.js cannot be loaded - a skewed copy (a newer hook
-  // beside an older/missing engine) must still orient, not crash.
+  // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in
+  // every hook. Fail-open: envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an
+  // install without the prelude runs the hook unchanged') when hook-prelude.js cannot be loaded - a
+  // skewed copy (a newer hook beside an older/missing engine) must still orient, not crash.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   try
   {

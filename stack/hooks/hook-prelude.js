@@ -23,8 +23,9 @@
 // GATE 3 - the 1.x alias. 2.0.0 lists the 1.x core id as a RETIRED alias carrying the 2.0.0 core,
 // hooks included (docs/rebrand-evidence.md S20), and an installed alias refreshes into that content
 // at the next session (S21). A 1.x core left at user scope, seen from a project the seed already
-// moved onto `alfred-code`, would fire every guard twice (S23) - so the ALIAS's copy steps aside
-// whenever the project or the account enables the new core.
+// moved onto `alfred-code`, would fire every guard twice (S23, and S26: two plugins carrying the
+// byte-identical command both run) - so the ALIAS's copy steps aside whenever the project or the
+// account enables the new core AND that core is installed where it can load.
 //
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
@@ -126,6 +127,31 @@ function enabledIn(file)
     return new Map(map && typeof map === 'object' && !Array.isArray(map) ? Object.entries(map) : []);
 }
 
+const realOf = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+const samePath = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+const isDir = (p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+
+// A settings key is not a loaded plugin: a committed settings file names `alfred-code@<key>` for a
+// teammate whose core never installed (no marketplace, a declined trust prompt), and yielding then
+// leaves that session with no guard at all. So the named core counts only with its row in the CLI's
+// own `<config>/plugins/installed_plugins.json` - at user scope, or for THIS project - and that row's
+// cache directory on disk. Anything unreadable is not installed: the alias runs.
+function coreInstalled(account, root, ids)
+{
+    let plugins;
+    try { plugins = JSON.parse(fs.readFileSync(path.join(account, 'plugins', 'installed_plugins.json'), 'utf8')).plugins; }
+    catch { return false; }
+    if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) return false;
+    const here = realOf(root);
+    for (const id of ids)
+        for (const row of [].concat(plugins[id] || []))
+        {
+            if (!row || typeof row !== 'object' || typeof row.installPath !== 'string' || !isDir(row.installPath)) continue;
+            if (row.scope === 'user' || (typeof row.projectPath === 'string' && samePath(realOf(row.projectPath), here))) return true;
+        }
+    return false;
+}
+
 function aliasYieldsToCore(env)
 {
     const source = env || process.env;
@@ -141,8 +167,8 @@ function aliasYieldsToCore(env)
         if (!enabled) return false;
         for (const [id, value] of enabled) merged.set(id, value);
     }
-    for (const [id, value] of merged) if (value === true && String(id).split('@')[0] === CORE_PLUGIN) return true;
-    return false;
+    const cores = [...merged].filter(([id, value]) => value === true && String(id).split('@')[0] === CORE_PLUGIN).map(([id]) => id);
+    return cores.length > 0 && coreInstalled(account, root, cores);
 }
 
 // Three of these files are also CLIs the model and the commands run by hand -
@@ -166,4 +192,4 @@ function standDown(hook, env, argv)
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, isCliInvocation, COPIED_PREFIX, envOf };
+module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

@@ -93,10 +93,9 @@ module.exports = { step, REPEAT_AT, SCOPE_OVER, CONTEXT_SHARE };
 
 if (require.main === module)
 {
-  // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook: the
-  // ALFRED_CODE_HOOKS_OFF csv, and the migration window where the plugin copy stands down while a
-  // project still wires its copied twin. Fail-open - no prelude leaves this hook running, and envOf
-  // falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
+  // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in
+  // every hook. Fail-open - no prelude leaves this hook running, and envOf falls back to the bare
+  // ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
   try
   {

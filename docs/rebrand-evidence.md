@@ -185,3 +185,15 @@ And separately, at the catalog level: keep both `claude-stack` and `claude-stack
 retired aliases in every 2.x release until there is positive evidence (a version-floor check) that no
 install still resolves through them - S25 shows dropping them early is indistinguishable from S13's
 original blackout for any straggler who never ran step 2-3 above.
+
+## S26 - two plugins, one byte-identical hook command (2026-09-24, same CLI 2.1.281)
+
+The 2.0.0 alias is `{ ...coreEntry() }` under the 1.x name, so every hook command it declares is
+byte-identical to the core's, `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>"`. S23 measured the
+double-fire with two DIFFERENT commands. If Claude Code deduplicated identical commands before the
+placeholder is substituted, only one copy would run - and if that one were the alias, the prelude's
+alias gate would stand it down beside a core whose copy was dropped. Same kit, same isolation.
+
+| Spike | Command | Verbatim result (trimmed) | Conclusion |
+|---|---|---|---|
+| S26 | A toy marketplace `toy` over the kit's smart-HTTP git server: two plugins `p-one` and `p-two` from one root, each declaring the byte-identical `SessionStart` and `UserPromptSubmit` command `node "${CLAUDE_PLUGIN_ROOT}/h.js"`, where `h.js` appends its own `CLAUDE_PLUGIN_ROOT`, the event, the session id and its pid to one log. Three projects, one `claude -p 'say ok' --max-turns 1` session each against the stub API: (A) both installed at project scope, `p-one` first; (B) the same, `p-two` first; (C) `p-one` at user scope and `p-two` at project scope - the shape of a kept 1.x alias beside a moved project. | The cached marketplace declares `"node \"${CLAUDE_PLUGIN_ROOT}/h.js\""` for both entries.<br>(A) four new lines: `<cache>/toy/p-one/1.0.0 SessionStart <id> pid=68426`, `<cache>/toy/p-two/1.0.0 SessionStart <id> pid=68427`, and the same pair for `UserPromptSubmit` - one process per plugin per event.<br>(B) the same four lines; the order inside an event varies run to run, not with install order.<br>(C) the same four lines, with `enabledPlugins` split `{"p-one@toy":true}` (user) and `{"p-two@toy":true}` (project). | **No dedup across plugins.** Each plugin's hook runs under its own `CLAUDE_PLUGIN_ROOT` even when the declared command is byte-identical, in either install order and across user and project scope. So the alias and the core both fire - the S23 double-fire the prelude's alias gate exists for - and the gate cannot leave a session unguarded through dedup: the alias copy that stands down never takes the core's copy with it. |

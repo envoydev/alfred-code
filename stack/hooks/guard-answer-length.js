@@ -24,13 +24,10 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// ALFRED_CODE_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running - envOf falls
-// back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same way.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
+// way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
