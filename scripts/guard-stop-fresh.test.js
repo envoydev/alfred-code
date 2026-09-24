@@ -272,8 +272,8 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
     cmd('project-solve-task'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
-  // `init` is the guided install's name from Phase 8 (`setup` stays as its alias for a release):
-  // both are the same multi-phase walk, so both take the offer.
+  // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
+  // multi-phase runs, so both take the offer.
   for (const walk of ['alfred-code:init', 'alfred-code:setup'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
       cmd('project-architecture-analyzer'),

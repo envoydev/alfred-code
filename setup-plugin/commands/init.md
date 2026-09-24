@@ -1,11 +1,22 @@
 ---
-description: "FRESH install of Alfred Code, from scratch - ask scope + profile up front, then detect the OS + analyse the project and walk the selection in six dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs -> plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then one selection round - Recommended / All / None, or typed numbers to add and drop. Prerequisite check, install, an OFFERED (never forced) CLAUDE.md fill-in, and a next-steps card (git-hygiene suggestions, the capture sequence in order, a per-language serena note) close the run. In a project, the selection is decided FROM the project (detected stacks seed the recommendations); outside any project it falls back to a global install seeded from the recommended set, stacks chosen by the user. NOT for an existing install - a plain refresh is the sibling update command, choosing what to add or drop is configure."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked playwright browsers, the serena index - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
-# Initialize Alfred Code - fresh install
+# Initialize Alfred Code - the one-time bootstrap
 
-You are bootstrapping Alfred Code FROM SCRATCH. If the stack is already installed here (a populated `.claude/skills` + `.claude/agents`, or the global account equivalents in no-project mode), stop and route to a sibling command: `/alfred-code:update` for a plain refresh, `/alfred-code:configure` to adjust the selection - updates are their job. NAME the command for the USER to type and end the turn: both siblings are `disable-model-invocation`, so a Skill call from this run is denied (measured: a run asked WHICH sibling, then tried to invoke it and took the denial), and the sibling is better off in a FRESH session anyway - this command's own body, ~9.4k tokens of it, stays in the cached prefix of every message the re-routed run then sends. Work the ladder in order and drive it interactively; the deterministic work is done by `stack-select.js`, you orchestrate. Two modes, detected silently before the first question: **project mode** (the normal case - cwd is a project root in a git repo; the selection is decided from the project itself) and **no-project mode** (anything else - a global install seeded from the recommended set).
+You are bootstrapping an install `/alfred-code:setup` laid down, in a session started AFTER its
+restart - the plugins, servers and seats it installed load at session start, and this run uses
+them. Three checks come first, in order, each one line:
+
+- **Nothing installed** - no install record in the project's `.claude/` (`alfred-code.stamp`, the
+  1.x `claude-stack.stamp`, or a copied `hooks/docs.js`): stop and name `/alfred-code:setup` for the
+  USER to type, then end the turn. It is `disable-model-invocation`, so a Skill call from this run is
+  denied, and it belongs in its own session.
+- **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
+  session. What setup installed is on disk but not loaded here.
+- **Run before** - go on: every step below reads what is already in place and skips it
+  (`present`, `done`), so a second run only finishes what the first left.
 
 **This run needs NO conversation context - so it is worth MOVING, but only out of a session that
 is actually loaded.** Measure before you ask: this session's own per-message context is `input +
@@ -14,133 +25,60 @@ figure is past the same trigger `guard-fresh-session-start.js` uses - the tier's
 trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or `ALFRED_CODE_FRESH_SESSION_1M`
 (default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT` (default 180,000) when the window is
 neither of those two sizes or cannot be read at all - which one applies comes from the session
-model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` (a FIRST setup has neither yet: take
-the window this session's own model line states - '1M context' is 1,000,000 - and the DEFAULT trigger only when it states none) - or when that hook has already
-injected the ask into this turn. Below the
-trigger, or when the figure cannot be read at all, SKIP the ask silently and start step 1: an ask
-with no measurement behind it is the failure this replaced (measured: it fired on the FIRST message
-of a brand-new session, twice in one run, and could quote no number when the user challenged it).
-Never author the decision in prose either way.
+model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or
+when that hook has already injected the ask into this turn. Below the trigger, or when the figure
+cannot be read at all, SKIP the ask silently and start step 1. When it fires, put it through
+AskUserQuestion: run here anyway, or run in a fresh session (recommended), quoting the figure you
+measured; fresh session -> give the paste-ready one-liner and end the turn.
 
-When it does fire, put it through AskUserQuestion: run here anyway, or run in a fresh session
-(recommended), quoting the figure you measured - never one measured in some other session. Every
-answer names its next action: fresh session -> give the paste-ready one-liner and end the turn;
-run here -> start step 1 now; not now -> say what is owed and end the turn. If a redirect displaces
-the ask, re-offer it ONCE. Measured: this command's siblings entered at 131,345 and 168,516 tokens
-per message with no ask at all, and one of them authored its own prose decision that was never put
-to the user.
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
 
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo` - copied from the newest valid plugin-cache entry, downloaded only when there is none (the reference owns the fallback), use every tool from that snapshot, hand it to the installer with `--source` in step 11, and remove `$TMP` per the 'Clean up' section on every exit path. The protocol's 'Narrate, don't trace' section governs every tool call in this run: one quiet call per recompute, no pasted tool output except the decision tables, one narration line between steps.
-
-**Table before question - no exceptions.** Any table or report the user decides from (every layer's `stack-select.js --table` catalog, the `plugin-settings.js` report) is pasted into YOUR message, byte-for-byte in a fenced block, BEFORE the AskUserQuestion that asks about it - never after, never only in the ask's preview panel, never replaced by 'shown above' or a prose summary. A tool result is collapsed in the UI, so a table you only ran is a table the user never saw (measured: agents and skills asks answered 'I do not see any table'). This is the one sanctioned exception to 'no pasted tool output', and the plugin's `guard-layer-table.js` hook denies an ask whose table is missing.
-
-**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks were skipped in live runs while tool-shaped asks were answered every time). A plain-text option list is the fallback only where the harness lacks the tool.
+**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
-dashes, never em-dashes, and single quotes in prose. A fresh or refreshed install may have no
-`.claude/rules/baseline-interaction.md` loaded at all, so this command's own text is the only place
-the voice can come from (measured: a first-run narration line opened with an em-dash, on the one
-surface where the rule forbidding it cannot yet exist).
+dashes, never em-dashes, and single quotes in prose.
 
-## The ladder - announce every step
+Six steps, one banner line before each: `[step n/6 - <name>] <what> · next: <name>` - 1 read the
+install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 CLAUDE.md.
 
-Twelve user-facing steps; the machinery between them runs silently. Before EVERY question, one banner line so the user always knows where they are, what is being decided, and what comes next:
+## 1. Read the install
 
-```
-[step 4/12 - rules] choose the rule set · next: agents
-```
+One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1` - the installer's own read-back (skills, agents, plugins, `left_out`, `playwright`), under the scope the stamp records. `--installed-only found nothing installed` means there is no install: route to `/alfred-code:setup` as above.
 
-1 install choices · 2 permission mode · 3 project analysis · 4 rules · 5 agents · 6 skills · 7 hooks · 8 MCPs · 9 plugins · 10 prerequisite check · 11 install · 12 CLAUDE.md (optional)
+**`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
-**The skeleton is INVARIANT - the stability contract.** Every run prints all 12 banners, in this
-order, exactly once each. A step that does not apply THIS run still prints its banner followed by
-ONE line naming why it is a no-op (`[step 3/12 - project analysis] skipped - no-project mode,
-stacks chosen by hand`, `[step 12/12 - CLAUDE.md] skipped - global install, no project file`),
-then moves on - a step never silently vanishes, and steps are never merged, reordered,
-renumbered, or invented. Two runs must be comparable banner by banner; the content varies, the
-skeleton never does. The closing next-steps card (Post-check below) is part of the skeleton too -
-every run ends with it.
+## 2. The plan - a script states it, never you
 
-## 1. Install choices
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
 
-Detect silently first - the OS (the installer itself is one `node` command on every OS now; the OS decides the PowerShell spelling of the snippets below, and nothing else: the frozen OS twins no longer run - `ALFRED_CODE_SEED=shell` stops the run at the installer step) and the mode (project root in a git repo -> project mode; anything else -> no-project mode). ONE call answers both, and this is the command - the same copy-ready shape steps 2-3 already give, because improvised probing cost one run three Bash calls where the third re-asked what the first two had already returned (36, 30 and 143 chars of answer for 36% of that run's tokens):
+- `machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why>` -
+  uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the playwright
+  engines Playwright downloads (firefox, webkit - chrome and msedge run the installed browser), the
+  serena index. The command is the exact one to run.
+- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
+  captures in their fixed order, each only when the install lists its skill AND its seat.
 
-```bash
-printf 'os=%s\n' "$(uname -s 2>/dev/null || echo Windows)"; git rev-parse --show-toplevel 2>/dev/null || echo 'mode=no-project'
-```
+Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
 
-Denied by the permission classifier? ASK, do not re-probe. Re-issuing the same detection under different syntax reads as working around the denial, and the measured run got two declines and an interrupt for it. Put the two facts through one AskUserQuestion instead ('which OS?' / 'install into this project or the account?') with the likely answer marked - the user knows both without a probe. Then ask TWO AskUserQuestion screens (the tool caps four questions per call; each default marked Recommended). **Screen A - the install itself:** scope (`project` default / `global`; in no-project mode this question becomes the no-project-mode confirmation instead - a `global` install into the account `~/.claude` - since there is no project to scope to), profile (the optional `--space` account name, default none), and the one conditional extra: 'install the GitHub CLI?', asked ONLY when `gh` is not already on PATH and skipped entirely when it is. **Screen B - the environment:** one question per `ask: true` row of the snapshot's `$TMP/repo/meta/environment.json`, which is the ONE list of the values the install writes into the scope's settings.json `env` - never a list typed from memory here, or a variable a release adds would silently stop being asked. Each question shows the row's `default` and its `what` in plain words; free text via Other. A row carrying `group_off` is ONE question for the whole FEATURE it owns - it and every row naming it in `asked_with`: name each key with its own default in the question text, and give three answers - use these values (recommended), set your own (Other: one number per key, in the catalog's own order), or do not use the feature (which writes the row's `group_off` value to every key in the group, never a blank). Only a row carrying `group_off` gets an off answer; never invent one for a row without it. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The catalog is the whole list: Claude Code's own `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is not in it and is never asked about or written - the stack used to seed 40 into every project, a value nobody chose. Brownfield: when the target settings.json already carries a value, present THAT as the default - never silently override a pinned choice. Everything else moved to where it belongs: `--keep-pins` is a configure/update question - a fresh install has no local pin edits to keep, so never ask it here.
+## 3. Machine installs - ONE ask
 
-## 2. Permission mode
+No `missing` line: one narration line, next step. Otherwise ONE AskUserQuestion, multi-select, one
+option per `missing` / `missing after uv` line - the label names the item, the description carries
+its exact command - every one pre-selected, 'install the selected' recommended (the servers that need
+them cannot start without them). A `blocked` line is not an option: name its fix once (the .NET SDK
+for csharp-ls) - the user installs it; never attempt one.
 
-Read the target scope's settings.json `permissions.defaultMode` - the account file (`~/.claude/settings.json`, or the `--space` profile's) for a `global` install, the project's own `.claude/settings.json` for a `project` install if it already carries one - and report the current value in one line (`unset` if the key is absent). Ask ONE AskUserQuestion: **keep it as it is** (recommended - write nothing here; confirmed by Claude Code's own documented settings precedence, user -> project -> local, later overrides earlier, so the project reads whatever the target file already has, or Claude Code's own default when the key is absent) or **set the default for this project** (write `permissions.defaultMode` into THIS project's `.claude/settings.json` only, pre-filled with the value just reported, editable via Other to any of `default` / `plan` / `acceptEdits` / `bypassPermissions` / `auto` / `dontAsk`). No-project mode: skip - there is no project to scope a default to. Applied at step 11 (Install), the same merge-only-this-key discipline as screen B's environment choices - every other key in `permissions` (`allow` / `deny` / `ask` / `additionalDirectories`) and the rest of the file stay exactly as the installer left them.
+Run the picked commands in plan order, uv first - the `after uv` ones need it. A fresh uv lands in a
+directory the running shell may not have on PATH yet: its installer prints where, and the next
+command uses that path when `uv` is not found. The serena index and a browser download take minutes:
+start them in the background and go on to step 4, collecting each result before step 5's
+architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
+error line quoted) or skipped by the answer. A server this session started before its runtime existed
+connects only after a restart - the close names it.
 
-## 3. Project analysis - the stacks
+## 4. Memory - the level, then the notes import
 
-Project mode - detect stacks by artifact and record which apply (this detection IS the recommendation input; decide from the project, not from a generic default):
-
-- `*.csproj` / `*.sln` -> .NET. Split by content, per project: a `Microsoft.NET.Sdk.Web` project -> `aspnet`; `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a `Microsoft.Extensions.Hosting.WindowsServices` reference (or a `ServiceBase` inheritor) -> `windows-service`; an EXECUTABLE carrying none of those markers (`<OutputType>Exe</OutputType>`, or `Microsoft.NET.Sdk.Worker`) -> `console`. A class LIBRARY is never its own stack: `Microsoft.NET.Sdk` with no `OutputType` (library is the default) - and a test project - is a surface of the app that references it, so a WPF solution's own libraries stay `wpf` and add NO `console` (measured mis-detection: libraries inside a WPF app pulled in the console agents + skills). When every .NET project in the repo is a library, ask which surface they serve instead of defaulting to `console`.
-- `angular.json` -> `web-angular`; `ionic.config.json` / `capacitor.config.*` -> `ionic-angular`. An Ionic app matches `angular.json` too - when `ionic-angular` detects, do NOT also report `web-angular` for the same app; report both only when the workspace holds a second, distinct Angular app with no Ionic shell.
-- a `manifest.json` carrying `"manifest_version"` (or a wxt/crxjs config) -> `browser-extension`.
-- `Dockerfile` / `.github/workflows/` -> `devops`; `*.sql` / a migrations folder -> `data`.
-- `tsconfig.json` / `jsconfig.json` -> `typescript` (the language-level seed - conventions rules + LSP plugin + ts-js-testing). A TS framework stack claims its own surface: when `web-angular` / `ionic-angular` / `browser-extension` detects, do NOT also report `typescript` for the same app - the framework seeds already carry the rules + LSP, and testing is `angular-testing`'s there (browser-extension seeds ts-js-testing itself); report both only when the repo holds a genuine non-framework TS surface too (Node tooling, a published library, scripts with their own tests).
-- `package.json` with `.js` sources and NO `tsconfig.json`/`jsconfig.json` -> `javascript` (the plain-JS seed - the javascript-conventions rule + typescript-lsp, which serves JS too, + ts-js-testing, the shared TS/JS testing hub). One-way suppression: when `typescript` detects it covers JS as well - do NOT also report `javascript`; the framework stacks suppress it the same way (they carry javascript-conventions themselves).
-
-Alongside the stack scan, run the EVIDENCE scan quietly - one call, one narration line:
-`node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - a deterministic read of the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses; the conclusions are computed from THIS project's files, never assumed.
-
-A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (confirm as detected - recommended; adjust via Other, naming stacks to add or drop) - the walk starts IMMEDIATELY after this answer, no other question in between:
-
-```
-[step 3/12 - project analysis] confirm the detected stacks · next: rules
-Detected: aspnet (src/Api/Api.csproj - Microsoft.NET.Sdk.Web), web-angular (angular.json), devops (Dockerfile + .github/workflows/)
-```
-
-Stack names are the catalog keys of `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - `--stacks` takes exactly those, and the tool names an unknown one on stderr (`unknown-stack`) instead of silently seeding nothing.
-
-No-project mode, and a repo with NO recognizable artifacts (greenfield): skip the artifact detection and instead present the stacks available in `$TMP/repo/meta/recommendations.json` as a multi-pick ('which stacks do you work with?' / 'what will this project be?'); picking none installs just the `always` baseline. Every later step applies unchanged.
-
-## The walk - steps 4-9, one layer at a time
-
-The layer order follows the dependency graph's arrows: rules pull agents + skills, agents pull skills, everything pulls MCPs and plugins, and hooks stand alone - dependencies only point FORWARD through the walk, so an earlier answer is never invalidated by a later one. Hold ONE running `raw.json` (in the temp dir) of the user's DIRECT picks per category (`rules`, `agents`, `skills`, `hooks`, `mcps`, `plugins`); locked items never enter it - the closure re-adds them at emit time.
-
-Per layer, the SAME three-beat shape:
-
-1. **Recompute quietly** - one call: fold the previous layer's picks into `raw.json`, run `node stack-select.js --selection raw.json`, parse the category-tagged `required: <category> <name> - <why>` lines yourself. The current layer's lines are its **locked** set.
-2. **Show ONE numbered table of the layer's ENTIRE catalog** - every item the release ships, so nothing is ever offered later or out-of-band. The TOOL renders it, never you: `node stack-select.js --selection raw.json --table <layer> --recs <recommendations.json> --stacks <confirmed,csv> --found "$TMP/found.json"` - **never redirect that to a file**. The table comes back IN the tool result; paste those exact lines into your message inside a fenced code block. (Measured: the old form redirected to `$TMP/table.txt` and told you to paste the file - the tool result was then empty, the read-back was a step nobody took, and one real run asked all six layer questions with no table shown at all. If you want a copy on disk, `| tee "$TMP/table.txt"` - the pipe keeps the output visible.) **The layer turn has ONE fixed shape, in order: (1) the `[step n/12 - <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte, (3) the step-3 selection question - a layer turn missing the fenced table is invalid: render the table and re-send.** The plugin's `guard-layer-table.js` hook denies the ask (up to three times) when no `total: N <layer>` footer follows the table call in your text. Self-check before you send the question: your own message must carry the `total: N <layer>` footer line. It is not there unless you pasted the table. A prose grouping that feels equivalent (`Locked (5): ...` / `Recommended (12): ...` lines) is the exact failure this shape exists to prevent, and the run's narrate-don't-trace rule does not reach this paste - it is the rule's one sanctioned exception (the step-1 recompute already honored the quiet part). The paste is pre-padded by the tool, so it stays aligned at any length; a hand-written markdown table shears when the renderer flushes it in segments. The table ends in a `total: N <layer>` footer - part of the paste and the user's truncation check: fewer visible rows than the footer names (or a missing footer) means the display was cut down - re-paste in full, and never summarize rows into prose; the user decides from the whole catalog, not from a shortlist. Row numbers come from the tool and are stable across rounds. The tool labels each row: `required` (closure-locked, reason in the last column), `evidence` (the scan matched a signal - PRE-SELECTED, the matched signal shown as the reason, droppable like any seed), `recommended` / `stack:<name>` (seeded, droppable), `added` (the user's own pick), `-` (not selected). Recommended = the union of `always` + each confirmed stack in `$TMP/repo/meta/recommendations.json`, pre-selected:
-
-```
-[step 5/12 - agents] adjust the agent roster · next: skills
- # | agent                       | selected     | required by
----+-----------------------------+--------------+---------------------------
- 1 | ci-failure-diagnoser        | recommended  | -
- 2 | dotnet-build-error-resolver | stack:aspnet | rule dotnet-repair-agents
- 3 | wpf-implementer             | -            | -
-```
-
-3. **One selection round - quick options + numbers.** Ask with the question tool, options in this order: **Recommended** (keep the table exactly as shown - the default), **All** (select every row in the layer's catalog), **None** (keep only the locked rows), and typed adjustments through the free-text answer - `add 3 7 12`, `drop 5`, or both (bare numbers mean add). A drop naming a LOCKED row is refused with its reason shown ('#2 stays - required by rule dotnet-repair-agents; drop that rule first (reopening step 4) or keep it'), never silently honored or silently ignored. Restate the outcome in one line (added N, dropped M), fold it into `raw.json`, and narrate the handoff to the next layer. An `unknown:` line from the recompute is a typo or a retired name - surface it, never pass it through.
-
-## 4. Rules
-
-Nothing in the graph depends on a rule, so this layer never has locked rows - it is the one fully free pick, which is why it goes first: the rules chosen here decide what later layers must keep.
-
-## 5. Agents
-
-Locked = agents the kept rules require (the repair-loop rules pin their resolvers, e.g. `required by rule dotnet-repair-agents`).
-
-## 6. Skills
-
-The full release catalog in one table - the generator `project-*` skills and every other house skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included) never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. A skill an agent's body merely names as a conditional load ('load X when...') gets NO row of its own: an artifact naming a skill must never put it into an install - a need is proven, not suggested. Rows the step-3 evidence scan backed arrive labeled `evidence` and PRE-SELECTED, the matched signal in the reason column ('MassTransit in src/Api/Api.csproj') - droppable like any seed. The scan IS the evidence mechanism: never hand-propose add-candidates beyond what the table already shows. The user adds or drops by number - and the NAMES go back in your next message before anything is written ('adding: markdown-style, ts-js-testing; dropping: wpf-conventions'). An index the user typed is an index YOU resolved, and an off-by-one silently installs the neighbouring row (measured: a five-number edit applied with no name read-back at all - correct that time, unverifiable to the user). The only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator plus the manual `project-*` method skills (the inline execution twins, the capture/loop generators, the upgrade planner), all pre-selected `recommended` and droppable; their need is 'the stack is installed', not anything a project manifest could prove, which is why they are seeded rather than evidence-scanned. The ONE deliberate exception is `project-build-from-scratch` - greenfield-only by its own description, dead weight on an existing project, so it is never seeded; offer it as an unselected row like any other, and only in a greenfield/no-project run is picking it natural. Beyond the seed set, selected = locked + whatever the user adds.
-
-## 7. Hooks
-
-Hooks are leaf picks - nothing requires them, they require nothing, so every row is free. Recommended = all seventeen: the eleven always-on guards, the session monitor (`monitor-session` - never denies; seeded to log its notes, not inject them), the three session engines (`docs-session` - the docs start block and finish ask - `memory-session` - the shared-memory slice at session start - and `history-session` - what the last sessions on this branch did and ruled), the turn-end build check (`check-turn-build` - wired, but inert until `ALFRED_CODE_TURN_CHECK` flips to `1`, seeded `0`), plus the env-gated `instrument-tool-usage` (wired like the guards, but inert until `ALFRED_CODE_INSTRUMENT` flips to `1` - so keeping it costs nothing idle, and dropping it leaves the install unable to record a measured run without a manual re-wire). The whole set now ships together inside the core `alfred-code` plugin, so nothing is copied and nothing is wired per project: this answer is written as `ALFRED_CODE_HOOKS_OFF` in the project's `.claude/settings.json` env - the rows you DROP are the ones named there, and **None** names all sixteen (the emitted selection carries `hook none` for it; `--hooks-answered` at step 10 is what writes it) - and it can be changed later by editing that value, no reinstall.
-
-## 8. MCPs
-
-Locked = the servers the kept selection pulls (`serena` via `baseline-navigation`, `context7` via `baseline-quality-gates`, `memory` via `baseline-memory` - required in every install now, the same way serena and context7 are); recommended = `playwright`, seeded on the web Angular, Ionic and browser-extension stacks and pre-selected elsewhere only when the evidence scan matched it. Those four are the whole catalog - there is no other server to offer.
-
-After the round, and ALWAYS - `memory` is locked, so this fires on every run, not only when the user picks it - ask the shared memory level. Paste this table first, table-before-question like every other decision in this run. At `--scope global` (screen A's scope answer), drop the `project` row entirely - the installer refuses `project` at global scope, since an account-wide install has no single project root to own the database - and show only the first two rows:
+The shared memory database the `memory` server reads. Paste this table first:
 
 ```
 | level | database | who shares it |
@@ -150,175 +88,75 @@ After the round, and ALWAYS - `memory` is locked, so this fires on every run, no
 | project | <project>/.memory-mcp/memory.db, gitignored | this project only, from any account |
 ```
 
-Then ONE AskUserQuestion carrying exactly the options just shown (two at global scope, three at
-project scope), `global` marked Recommended - the
-default for a fresh install, the whole point of shared memory. Picking `project` while this
-project's related-projects domain already names sibling repos
-(`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-`baseline-project-related-context.md`) means those projects' memories will not be visible from
-this one - say so in the closing card, not here. Pass the answer to the installer as
-`--memory-level <value>` at step 11; the installer registers the memory MCP at that level's
-database, imports this project's existing notes into it once, and (only when that import
-succeeds) switches Claude's own memory off - read its log for what actually happened and report
-that, never assert it from the answer alone.
+Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
+shared memory. Picking `project` while this project's related-projects domain names sibling repos
+(`.claude/rules/baseline-project-related-context.md`) means their memories are not visible from
+here - one caveat line in the close.
 
-Only if playwright stayed selected, ask two AskUserQuestions, in order. First which browsers to INSTALL (multi-select, pre-selected: the browsers the stamp's `playwright-browsers:` line names when a stamp exists - `.claude/alfred-code.stamp`, or the account's for a global install - since a run uninstalls one the answer leaves out; else `chrome`. `chrome` = the machine's Google Chrome, `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are Playwright's own builds the installer downloads at the release's pinned `@playwright/mcp`). Then which of THOSE to ENABLE (multi-select over the installed ones only, every one pre-selected), the question naming the cost in one line: each enabled browser adds its own ~25 tools (about 18.7k characters of schema) to every session. Each installed browser is its own plugin (`playwright-chrome`, `playwright-firefox`, ...); any number can be enabled together, and one left unticked is installed, then disabled. `/plugin` toggles them later (on the MCP copy route they are `.mcp.json` servers, toggled with `/mcp`).
+Apply it with the init-only entry point - no reinstall, nothing else under `.claude/` touched:
+`node "$TMP/repo/scripts/install/memory.js" init --project-root . --level <answer> [--space <name>]`
+(`--space` when this session's account dir is `~/.claude-<name>`). It writes the level into the
+`ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
+writes `.memory-mcp/.gitignore` at `project` level, imports this project's old `MEMORY.md` /
+`memory/*.md` notes into THAT database once through the memory service, and - only when the import
+succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`). Report its lines: the
+level, the import count or WHY it stopped (no `uvx` is the usual one - step 3 skipped uv), and
+whether the switch-off happened; never claim it from the answer alone. A failed import leaves Claude's
+own memory ON, and the old note files are never deleted. It refuses a copy-route `.mcp.json`
+registration at another path - name its `/alfred-code:update --memory-level <level>` line. The server
+this session runs still opens the database setup pointed it at until a restart - when the level is
+not `global`, the close names the restart.
 
-## 9. Plugins
+## 5. Captures - each SKILL.md followed inline
 
-`claude-hud` shows as `dependency`: every install carries it beside the core plugin (at user scope - its status line is account-wide) and the installer puts it back on every run, so it cannot be dropped - do not offer it as a pick (a `claude-hud` the user disabled stays off: updated, never switched back on). `superpowers` is an OPTIONAL pick (R72): suggested, never seeded or pre-selected, so its row shows `-` and its why column names its cost and what the core already carries (the `general.notes` line in `recommendations.json`) - freely addable. The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
+For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` and follow it
+inline, start to finish - never a Skill call: the captures are manual-only, and a model's Skill call
+on one is denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
+its relative `references/` and `scripts/` paths resolve from the SKILL.md's own directory, and a
+plugin-root placeholder in it arrives unexpanded - read it as the plugin root the plan's path
+carries. Its seat is installed (the plan checked), so a dispatch it names is made as written. A
+`done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
+here.
 
-**Plugin settings - part of this layer's turn.** After the selection question, for every kept
-plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which
-every install carries, whose config file is ACCOUNT-level - it rides beside the core, so no emitted
-selection names it and the csv below always does), report the delta and ASK
-here - the answer is applied at the install step, exactly like screen B's environment choices:
+`project-related-context` takes its sibling list as arguments: ONE AskUserQuestion first - type the
+siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
+by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
+capture. `project-agent-capabilities` runs LAST, so its generated rule reflects everything the
+captures above added; its own precheck decides whether the rule needs regenerating.
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv, claude-hud always in it>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
-2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
+## 6. CLAUDE.md - the user's call
 
-No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
-plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
-itself as `skipped` rather than inventing it - say so once, and point at `/claude-hud:setup`.
+Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
+recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
+`stack/CLAUDE.template.md` when the project had none - that file is the target; a pre-existing
+CLAUDE.md (root or `.claude/`) is NEVER overwritten - the offer becomes a reconcile against
+`$TMP/repo/stack/CLAUDE.template.md` instead (add the sections it lacks, leave the project's own
+prose untouched), with the changes shown before writing. On a yes: follow the template's own
+authoring-outline comment - the project top (what it is, its structure, the real build and test
+commands), the outline's inventories, and the rules table trimmed to the rules this install carries.
+The captures just run are what the top cites for structure. Never offer skill, agent or MCP changes
+here - that is `/alfred-code:configure`.
 
-## 10. Prerequisite check
+## Close - one card
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check [--playwright-browsers <csv>] [--github-cli] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the step-8 kept browsers whenever playwright is kept - a kept `msedge` warns when Edge is not installed; `--config-dir` only under a `--space` profile, so the env probe reads THAT account's settings.json instead of `~/.claude`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
-
-- Blockers: list each with its fix, then AskUserQuestion: fix them now and continue (recommended), or drop the affected items (reopen the owning layer's table, re-run, re-emit). Never install past a blocker.
-- Warnings: list them and proceed.
-- **Convention-conflict warnings (brownfield only).** When the project already carries stated conventions - a root or `.claude/` CLAUDE.md, `<docs-path>/architecture/` docs - check the user's TYPED ADDS from the walk (never the closure-locked rows, never the stack/evidence seeds - those are signal-backed) against them: an add whose PURPOSE conflicts with a stated convention gets ONE warning line quoting the rule verbatim (`warning: skill dotnet-architecture conflicts with CLAUDE.md: 'NOT Clean Architecture / DDD / VSA'`) and one keep-or-drop consent. No citable conflict, no warning - unused-looking is not a conflict; no project docs, skip silently. A conflict warning never blocks the install - the user's keep is final.
-
-## 11. Install
-
-**First, report what the selection means - from the derivation, never in your own words.** Run
-`node "$TMP/repo/scripts/derive-state.js" --selection "$TMP/selection.txt" --source "$TMP/repo" >
-"$TMP/state.json"` and render four lines from it, nothing added:
-
-- skill and agent plugins - when `routes.skills` is true, `skill and agent plugins: <n> - <names>`
-  from `plugins`; otherwise `skill and agent plugins: copy route - copied into .claude/`. The hooks
-  entry, the MCP entries and the plugins-layer picks are not in this list - their own layers named
-  them.
-- `seats switched off:` the seat names in `written.agentDeny` (`permissions.deny` entries -
-  configure brings one back), or `none`.
-- `hooks switched off:` the names in `written.hooksOff` (`ALFRED_CODE_HOOKS_OFF`), or `none` - on
-  the hooks copy route a hook not picked is simply not copied.
-- `carried but not picked:` `written.undroppable`, or `none` - a plugin skill cannot be dropped on
-  its own; say so once when the list is not empty.
-
-`written` is the installer's own rule applied to the routes this environment runs, so it IS what
-the install writes.
-
-Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
-
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--playwright-browsers <csv> --playwright-enabled <csv|none>] [--docs-versioning git|local] [--github-cli] [--memory-level global|scoped|project]`
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
-
-`--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
-
-`--memory-level` carries step 8's answer: the installer registers the memory MCP at that level's
-database, imports this project's existing notes into it once, and - ONLY when that import
-succeeds - switches off Claude's own auto-memory in THIS repo's own `.claude/settings.json`,
-even at global scope (never the account file, which would silence every other project's memory
-too). A failed import leaves Claude's own memory ON and is reported as such rather than retried
-into a false success; the old `MEMORY.md` / `memory/*.md` files are never deleted either way. Read
-the installer's own log for what it actually did and report that verbatim in the close-out; never
-claim the switch-off happened because the level was asked.
-
-`--source` is what makes the guided run take ONE download. The installer owns nothing here: it copies out of `$TMP/repo` and leaves it for you to remove at cleanup. It writes `.claude/alfred-code.stamp` recording the commit it installed (read from the snapshot's `RELEASE-SOURCE`) - that is what a later `/alfred-code:configure` diffs against.
-
-The context7 key is ACCOUNT-level, not project-level: when `CONTEXT7_API_KEY` is exported in the shell the installer runs in, the run writes it into the account `settings.json` env (at project scope too - never through the chat). The key is optional - the hosted server answers without one at a lower rate limit.
-
-Presence, never the value - run this and paste its lines as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
-(the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
-
-Then apply the step-1 environment choices where they differ from what the installer left: a merge on the scope's settings.json touching ONLY the chosen keys - every key screen B asked about (the catalog's rows, `env.` prefixed) (plus `autoCompactEnabled: false` when the user chose 'off'; delete the pct override in that case rather than writing a dead value) - everything else in the file preserved. The installer seeds these only when absent, so the values written here are the user's and survive every later update untouched. An accepted default needs no write only where the FILE already holds that value, so read the block back after the install and compare: one row's seed is DETECTED from the repo rather than constant (its `what` says so), and there the catalog default and the seeded value can differ.
-
-When the applied `ALFRED_CODE_DOCS_PATH` differs from what the installer stamped (the installer ran before this merge), re-stamp the deployed rule - run `node $TMP/repo/scripts/stamp-docs-root.js <project root>` (a global install: `--claude-dir <account dir>` instead - the dir holding `rules/` + `settings.json`): it rewrites the 'This install's root:' line in `.claude/rules/baseline-docs-root.md` from settings.json, so the always-on awareness matches the env; every later update re-stamps it too. Add `--reprobe-versioning <value>` to that same command when THIS run's install printed a seed line for the docs-versioning key, passing the value that line named (`git` or `local`): that seed was probed against the docs path the install ran with, and the flag re-reads it at the path just written. The script REFUSES when the file no longer holds that value, so a decision an earlier install wrote, or one the user chose on screen B and this step just applied, is never re-probed - pass the seeded value and let the check answer, rather than judging it here.
-
-On a step-2 'set the default for this project' answer, merge `permissions.defaultMode: <value>` into the PROJECT's `.claude/settings.json` - never the account file - touching ONLY that key inside `permissions` (`allow` / `deny` / `ask` / `additionalDirectories` and everything else in the file untouched). A 'keep it as it is' answer writes nothing.
-
-### 11a. Plugin settings - apply the step-9 answer
-
-The plugin is on disk only now, so this is where the answer lands: re-run the tool with `--apply`
-(plus `--replace` when they chose to overwrite differing values) and paste the closing `applied:`
-line. 'Skip' writes nothing and is not re-asked. Never hand-edit either file - the tool merges, so
-keys outside the catalog and the plugin's own settings survive.
-
-## 12. CLAUDE.md - the user's call (project mode)
-
-Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in - recommended / skip); a 'no' ends the run cleanly (a later `/alfred-code:configure` can always reconcile it). The location: the installer seeded `.claude/CLAUDE.md` from the snapshot's `stack/CLAUDE.template.md` when the project had none - that file, in this project, is the target; a pre-existing CLAUDE.md (root or `.claude/`) is NEVER overwritten - the offer becomes a reconcile against the fetched template instead (add the sections it lacks, leave the project's own prose untouched), with the changes shown before writing. On a yes: follow the template's own authoring-outline comment - write the project top (what the project is, structure, the real build/test commands), cover the outline's inventories (stack, commands, secrets/config globs), and trim its rules table to the rules this selection actually installed. Never offer skill/agent/MCP additions here - the walk owned the selection. Skip in no-project mode (a global install seeds no project file).
-
-## Post-check + next steps - close every run with this card
-
-**The card restates the OUTCOME of every step that took a decision** - one line each, in step
-order, naming what was chosen and what it did ('git hygiene: `.git/info/exclude` - `.claude/` and
-`.serena/` ignored locally, nothing committed'). A decision the user made mid-run and the card
-leaves out is a decision they ask about again (measured: a git-hygiene answer was stated once
-mid-run, omitted from the close, and re-asked twice over four extra messages).
-
-**The run closes on a suggestion card, never on a question.** The steps below that are the
-USER's to run - the session reload, the account-file credential line, the capture sequence,
-the serena index - are listed as suggestions, the one everything depends on first and each with
-the one reason it matters, SCOPED to what actually needs it ('Reload the session - the MCP servers
-connect at launch, and skills, agents and the always-on rules are inventoried then'). Do not say
-nothing is live until the reload: hooks and the `settings.json` env are read per invocation and are
-live on the next tool call, which `meta/environment.json`'s own comment states and a measured run
-proved twice in one session (a hook installed at 08:12:53 fired at 08:21:15; an env flip produced
-its first ledger row 7.9 s later and covered 17 of 17 following calls). A claim about the stack's
-own behaviour that overshoots is the same defect as one the stack never states - the model invents
-the rest. No AskUserQuestion over them: the walk's asks end
-with the installer, and the closing ask over follow-ups was dropped as friction - the user's
-call, made knowing a prose next step was ignored 3 of 3 in one audited session, which is why the
-reason rides beside every step. The gitignore write in item 1 keeps its own consent ask - it is
-a write, not a suggestion. Close the card with this line, verbatim: 'Nothing is pending on this
-run - these are yours to run when you choose.' The stop-contract guard reads that sentence as a
-finished close; without it a 'done + next step' card is blocked as a stall and the guard demands
-the very ask this paragraph removes.
-The line is CONDITIONAL: print it only when the card carries nothing OWED. A still-required user
-action - revoke the old token, fill in a credential, run a rotation - IS pending, so name it and
-put the close through the ask instead (measured: one close stated 'Still owed: revoke the old
-token in Sentry's dashboard' and this line in the same message).
-
-Report what still needs a hand: LSP tools (`csharp-ls` via `dotnet tool install -g csharp-ls` on a .NET setup), the `/claude-hud:setup` statusline step, the playwright browsers left unticked (installed but disabled - `/plugin` turns one on; on the MCP copy route the answer is not applied, every browser is a live `.mcp.json` server and `/mcp` switches it), and that the first `claude plugin install` may prompt to trust. Then, AFTER the summary, print the next-steps card - built from what THIS run actually installed, never naming a command whose skill is absent. The card opens with the one step everything else depends on - reload the session (MCP servers connect and skills/agents/rules are inventoried at launch; hooks and the settings.json env need no reload - they are live on the next tool call), and name the one command that CONFIRMS it - `claude mcp list` after the restart, where every row should read connected (measured: two stack-seeded stdio servers timed out at 30s and the session ran without them, unreported) - and closes by naming `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy the user can re-read later (it adds the serena setup prompt and the gitignore semantics):
-
-1. **Git hygiene (project mode).** Suggest ignoring the machine-local artifacts this install creates - only entries that apply to the selection and are not already covered by the project's ignore rules: `.claude/` (the install + stamp + the default docs root), `.serena/` (LSP cache + project memories - when serena is selected), `.mcp.json` (installer-regenerated on every run - fix the template, never this file), plus runtime dirs when present in the tree (`.playwright/`, `.slopwatch/`). Show the exact lines first, then one AskUserQuestion with BOTH homes as options: the committed `.gitignore` (recommended), `.git/info/exclude` for a local-only ignore that touches no committed file, or skip; write only on consent.
-
-2. **Shared memory.** Name the level chosen at step 8 and the database it points at, and whether
-   the one-time import of the old `MEMORY.md` notes succeeded (the installer's own log names both -
-   read it, never assert). A failed import means Claude's own memory is STILL ON - say that plainly
-   rather than implying the switch happened because the question was asked. When `project` was
-   chosen and this project's related-projects domain names sibling repos
-   (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated
-   `baseline-project-related-context.md`), add the one-line caveat here: those projects' memories
-   will not be visible from this one - the project-level database holds only this project.
-
-3. **The capture sequence** - the deliberate captures that turn a fresh install into an oriented one, in dependency order. Every one of them is the USER's to type: all but the two analyzers (`project-architecture-analyzer`, `project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so a Skill call from this run is denied by `guard-fresh-session-start.js` - name them, never attempt one and never narrate that you cannot. List each ONLY when its skill is installed AND its output is missing or stale for this install (the check beside each item) - a capture whose output already exists and still holds is not suggested at all; an uninstalled one gets a single line ('project-code-style-analyzer not installed - add via `/alfred-code:configure`') instead of a dead command:
-   1. `/project-architecture-analyzer` - only when `<docs-path>/architecture/ARCHITECTURE.md` does not exist: writes the durable architecture docs every seat reads to orient.
-   2. `/project-code-style-analyzer` - only when `<docs-path>/code-style/CODE-STYLE.md` does not exist: captures the project's real code style and generates the path-scoped project-code-style rule.
-   3. `/project-related-context <sibling> ...` - OPTIONAL, and only when this project actually has sibling repos and `.claude/rules/baseline-project-related-context.md` does not exist yet: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`, `backend - ../server`); it never scans on its own. A standalone repo skips it - not a gap. The skill is opt-in, so when it is absent say so in one conditional line ('sibling repos? add `project-related-context` via `/alfred-code:configure`') rather than the flat not-installed line the other captures get.
-   4. `/project-agent-capabilities` - LAST, and only when this run installed or removed anything (the rule then lists an inventory that no longer exists, or is absent): the generated usage-policy rule reflects the final inventory including anything the captures above added.
-
-4. **serena - one index step, then the honesty note.** The installer already seeded
-`.serena/project.yml` (detected `language_servers`, plus `ignored_paths` for `.serena` / `.claude` / `.playwright` -
-without which serena's own 327MB language-server directory gets indexed as if it were source:
-measured 126 files attempted, 112 failed, all inside `.serena/home`). Tell the user to build the
-index ONCE - `SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - serena hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`) - and that it
-is worth re-running after a large refactor or a branch switch that moves many files. Then state
-which case THIS project is, in one line: on TypeScript / Angular / mixed web, serena IS the nav
-tool; on C#, nav depends on the Roslyn server starting (the seeded language_servers entry is what
-makes it start at all), and where it still stalls on a large solution the `csharp-lsp` plugin owns
-navigation - serena stays either way as the per-project memory bus.
+**The card restates the OUTCOME of every step** - one line each, in step order: each machine item
+(installed, failed with its reason, skipped, blocked with its fix), the memory level and database and
+whether the import and the switch-off happened, each capture (ran and what it wrote, done, skipped
+and why), CLAUDE.md (filled, reconciled or skipped). Then the user's own next steps as suggestions,
+each with its one reason: a restart when step 3 installed a runtime a server needed or step 4 chose
+a level other than `global`; `claude mcp list` after it, where every row should read connected;
+`${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
+with this line, verbatim: 'Nothing is pending on this run - these are yours to run when you choose.'
+The line is CONDITIONAL: print it only when the card carries nothing OWED - a blocked item the
+servers need, or a failed import, IS owed: name it and put the close through the ask instead.
 
 ## Clean up the temp dir - ALWAYS
 
-Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of THIS command: after a successful install, after an abort, and after a blocker or a user 'no' that stops the run early. Then confirm the project tree holds only installed artifacts.
+Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of THIS command.
 
 ## Do not
 
-- Do not install the full set - always go through the walk, and never present a layer question without its `[step n/12 - <name>] ... · next: <name>` banner or without the full-catalog table (a partial table hides choices; a later 'want these too?' question is the failure this shape exists to prevent).
-- Do not deselect a locked row on the user's behalf, and never drop one silently - the reason column is the answer, the reopen offer is the remedy.
-- Do not paste tool output other than the decision tables, or run chatty per-file commands - the 'Narrate, don't trace' contract holds for the whole run.
-- Do not call a skill this run just installed. Skills are inventoried at session start, so one written to disk seconds ago is not in the running registry and the call returns `Unknown skill: <name>` (measured) - a wasted round trip the reload item in the closing card already accounts for. Read its `SKILL.md` from the snapshot if you need its content now; otherwise name it in the card and let the user run it after the reload.
-- Do not skip a layer, the selection round, or the prerequisite gate. Do not write the archive, the extracted repo, or the working files into the project tree, and do not leave `$TMP` behind on any exit path. Do not commit anything on the user's behalf.
+- Do not install anything the plan did not name, or run a machine command the answer did not pick.
+- Do not call a capture skill - read its SKILL.md and follow it; do not re-run a `done` capture.
+- Do not reinstall or re-select - no `install`, no `--selection`, no `--add` / `--drop`: that is `/alfred-code:setup` and `/alfred-code:configure`.
+- Do not write the snapshot or working files into the project tree, and do not commit anything on the user's behalf.

@@ -332,16 +332,19 @@ function routingMap()
     return map;
 }
 
+// Every row here is for a server REGISTERED in .mcp.json (every add-back line of the 2.0.0 cut lands
+// there), and a registration's tools are `mcp__<name>__<tool>`. The catalog rows name the plugin
+// spelling, `mcp__plugin_<name>_<name>__<tool>`, which finds nothing for a registration - so a row is
+// re-spelled to the bare form before it is printed (R63).
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function routingRow(name, map)
 {
     const key = routingKey(name);
     const hit = map.get(key);
-    // A plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, and the stack ships one
-    // plugin per server under the same name - so both halves are this one name.
-    if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__plugin_${name}_${name}__*\` names the session's own listing shows.`;
+    if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__${name}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, name);
     if (key !== name) row = row.replace(`\`${key}\``, `\`${name}\``);
-    return row;
+    return row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`);
 }
 
 // ---------------------------------------------------------------- the project, and the live rule

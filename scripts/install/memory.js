@@ -159,4 +159,114 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
     return { switchedOff: writeSwitchOff(settingsFile, { log }), imported: true };
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes };
+// --- /alfred-code:init's memory step --------------------------------------------
+//
+//   node scripts/install/memory.js init --project-root <root> --level <global|scoped|project>
+//        [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]
+//
+// setup installs with no level (the import waits); init asks it and lands it HERE - the settings key
+// the plugin's launcher reads, the project database's own .gitignore, then the gated import and the
+// switch-off above. No reinstall: nothing else under .claude/ is touched. A copy-route registration
+// in .mcp.json is the installer's to re-point, so a different path there is refused, never edited.
+// Exit 0: imported, already off, or nothing to import. 1: a refusal or a failed import. 2: usage.
+const USAGE = 'usage: memory.js init --project-root <root> --level <global|scoped|project> [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]';
+
+function readObject(file)
+{
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); }
+    catch (err) { return err.code === 'ENOENT' ? { data: null } : { error: `${file} cannot be read` }; }
+    try
+    {
+        const data = raw.trim() ? JSON.parse(raw) : {};
+        return data && typeof data === 'object' && !Array.isArray(data) ? { data } : { error: `${file} top level is not an object` };
+    }
+    catch { return { error: `${file} is not valid JSON` }; }
+}
+
+// The `scope:` line of this project's stamp (2.x, else the 1.x name), '' when there is none.
+function stampScope(claudeDir)
+{
+    for (const name of ['alfred-code.stamp', 'claude-stack.stamp']) // legacy-name
+    {
+        try { return (/^scope: *(\S+)/m.exec(fs.readFileSync(path.join(claudeDir, name), 'utf8')) || [])[1] || ''; }
+        catch { /* absent: the next name */ }
+    }
+    return '';
+}
+
+function initMemory(argv, { which, runNode, homedir, log = console.log, err = console.error })
+{
+    const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+    const level = String(flag('--level') || '').toLowerCase();
+    const root = flag('--project-root');
+    if (!root || !['global', 'scoped', 'project'].includes(level))
+    {
+        err(`memory init: ${root ? '--level must be global, scoped or project' : '--project-root is required'}\n${USAGE}`);
+        return 2;
+    }
+    const projectRoot = path.resolve(root);
+    const home = homedir();
+    const dbPath = pathForLevel(level, { home, space: flag('--space'), projectRoot });
+    const claudeDir = path.join(projectRoot, '.claude');
+
+    const registered = (readObject(path.join(projectRoot, '.mcp.json')).data || {}).mcpServers?.memory?.env?.MCP_MEMORY_SQLITE_PATH;
+    if (registered && path.normalize(registered) !== path.normalize(dbPath))
+    {
+        log(`  !! memory: .mcp.json registers memory at ${registered} - the copy route re-points it through the installer: /alfred-code:update --memory-level ${level}`);
+        return 1;
+    }
+
+    // The key, and the switch-off after it, go to the file this install's other settings writes use
+    // (R47): the stamp's scope names it; with no readable stamp, the file that already holds the key.
+    const local = path.join(claudeDir, 'settings.local.json');
+    const localRead = readObject(local);
+    const scope = stampScope(claudeDir);
+    const target = scope ? require('./settings.js').settingsTarget(claudeDir, scope)
+        : (localRead.data && localRead.data.env && localRead.data.env.ALFRED_CODE_MEMORY_DB !== undefined ? local : path.join(claudeDir, 'settings.json'));
+    const read = target === local ? localRead : readObject(target);
+    if (read.error)
+    {
+        log(`  !! ${read.error} - the memory level was not written; fix it and run /alfred-code:init again`);
+        return 1;
+    }
+    const data = read.data || {};
+    data.env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
+    if (data.env.ALFRED_CODE_MEMORY_DB !== dbPath)
+    {
+        data.env.ALFRED_CODE_MEMORY_DB = dbPath;
+        fs.mkdirSync(claudeDir, { recursive: true });
+        fs.writeFileSync(target, `${JSON.stringify(data, null, 2)}\n`);
+    }
+    log(`memory: level ${level} -> ${dbPath} (${path.basename(target)} env ALFRED_CODE_MEMORY_DB)`);
+    if (level === 'project')
+    {
+        const ignore = path.join(projectRoot, MEMORY_DIR, '.gitignore');
+        if (!fs.existsSync(ignore)) { fs.mkdirSync(path.dirname(ignore), { recursive: true }); fs.writeFileSync(ignore, '*\n'); }
+    }
+
+    const settingsFile = target;
+    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });
+    const importer = path.join(__dirname, '..', 'memory-import.js');
+    const pass = ['--config-dir', '--memory-dir'].flatMap((name) => (flag(name) ? [name, flag(name)] : []));
+    const out = importNotes({
+        gate, importer, settingsFile, log,
+        runImport: () =>
+        {
+            const r = runNode(importer, ['--project-root', projectRoot, ...pass], { cwd: projectRoot, env: process.env });
+            return { ok: r.ok, output: `${r.stdout}\n${r.stderr}` };
+        },
+    });
+    if (gate.already) log("memory: Claude's own memory is already off - nothing to import again");
+    return out.switchedOff ? 0 : 1;
+}
+
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, initMemory };
+
+if (require.main === module)
+{
+    const argv = process.argv.slice(2);
+    if (argv[0] !== 'init') { console.error(USAGE); process.exit(2); }
+    const { which, runNode } = require('./runtime.js');
+    process.exit(initMemory(argv.slice(1), { which, runNode, homedir: require('node:os').homedir }));
+}

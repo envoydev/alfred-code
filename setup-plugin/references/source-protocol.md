@@ -1,8 +1,9 @@
-# The one-download protocol - shared by the init, update, configure, and validate commands
+# The one-download protocol - shared by the setup, init, update, configure, and validate commands
 
-The four downloading commands (`/alfred-code:init` - fresh install, `/alfred-code:update` -
-refresh + prune, `/alfred-code:configure` - adjust the selection, `/alfred-code:validate` -
-reconcile to the project; `status` never downloads) drive their whole run from ONE
+The five downloading commands (`/alfred-code:setup` - fresh install, `/alfred-code:init` - the
+one-time bootstrap after it, `/alfred-code:update` - refresh + prune, `/alfred-code:configure` -
+adjust the selection, `/alfred-code:validate` - reconcile to the project; `status` never
+downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
 apply it, this file says WHAT holds. It lives at `setup-plugin/references/` under the plugin root -
 every entry ships from the repo root, so that is where the cache holds it - and the commands cite it

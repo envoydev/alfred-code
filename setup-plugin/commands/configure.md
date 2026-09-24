@@ -80,7 +80,7 @@ comparable banner by banner; the content varies, the skeleton never does.
 - **Find the install.** Project mode: cwd is a project root with a populated `.claude/`
   (skills/agents/rules dirs, or `.mcp.json`). Global mode: no project here, but the account
   (`~/.claude`, or `~/.claude-<space>`) carries installed skills. Nothing installed in either
-  place -> stop and route to the sibling `/alfred-code:init` command; there is nothing to
+  place -> stop and route to the sibling `/alfred-code:setup` command; there is nothing to
   configure yet.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched
@@ -100,7 +100,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
   as selection lines; the walk leaves it off unless the user picks it. Three signals in
   `$TMP/plan.out`, none printed to the user: `error: --installed-only found nothing installed` means
-  there is nothing to configure - route to `/alfred-code:init`; `plan routes: skills=<plugin|copy>
+  there is nothing to configure - route to `/alfred-code:setup`; `plan routes: skills=<plugin|copy>
   hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered: hooks=<yes|no>
   agents=<yes|no>` says which off-states the read found evidence of. `agents=no` with
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and

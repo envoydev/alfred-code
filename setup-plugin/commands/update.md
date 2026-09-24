@@ -106,7 +106,7 @@ machinery, no pasted output, one narration line between steps.
 Project mode: cwd has a populated `.claude/` (skills/agents/rules/hooks present). Global mode:
 the account dir holds the skills (the installer lays agents/rules/hooks only into a git repo's
 `.claude/`, whatever the scope - a global refresh is skills-only). Nothing installed in either place -> stop and route to the
-sibling `/alfred-code:init` command. The user names items to add or drop -> that is the
+sibling `/alfred-code:setup` command. The user names items to add or drop -> that is the
 sibling `/alfred-code:configure` command, not this one. OS: `darwin`/`linux` -> the sh
 installer; Windows -> the ps1 (via `pwsh`).
 

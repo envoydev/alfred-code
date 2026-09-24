@@ -17,7 +17,7 @@ Project mode when the working tree has a populated `.claude/` (skills or agents 
 otherwise global mode against the account's config dir (skills, plugins and user-scope MCPs live
 there; agents/rules/hooks are project-level by construction - the installer lays them only into a git
 repo's `.claude/` - so those areas read `none installed` at global scope). Nothing installed in either place ->
-say so and route to `/alfred-code:init`. Open with one line naming mode and root:
+say so and route to `/alfred-code:setup`. Open with one line naming mode and root:
 `status: project install at <root>/.claude` (or `global install at <path>`).
 
 ## 2. One question - what to show

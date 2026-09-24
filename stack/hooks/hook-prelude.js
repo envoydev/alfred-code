@@ -27,6 +27,13 @@
 // byte-identical command both run) - so the ALIAS's copy steps aside whenever the project or the
 // account enables the new core AND that core is installed where it can load.
 //
+// GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
+// opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
+// so a plugin-launched hook there does nothing and writes nothing (no `.claude/docs/` ledger or
+// history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`:
+// the stamp (2.x, or the 1.x name), or a copied engine (a 1.x global install kept its stamp in the
+// account dir, never its engines). A copied hook is set up by definition.
+//
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
 'use strict';
@@ -171,6 +178,17 @@ function aliasYieldsToCore(env)
     return cores.length > 0 && coreInstalled(account, root, cores);
 }
 
+const INSTALL_RECORDS = [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]; // legacy-name
+
+function neverSetUp(env)
+{
+    const source = env || process.env;
+    if (!source || !source.CLAUDE_PLUGIN_ROOT) return false;   // a copied hook: the project wired it
+    const root = source.CLAUDE_PROJECT_DIR;
+    if (!root) return false;
+    return !INSTALL_RECORDS.some((record) => fs.existsSync(path.join(root, '.claude', ...record)));
+}
+
 // Three of these files are also CLIs the model and the commands run by hand -
 // `guard-secret-value.js --presence <file> KEY ...`, `--redacted`, `--redacted-env`. A hook
 // invocation never carries an argument (every catalog row's args field is empty), so a leading
@@ -187,9 +205,9 @@ function standDown(hook, env, argv)
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env);
+        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env) || neverSetUp(env);
     }
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, INSTALL_RECORDS, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

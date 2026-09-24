@@ -1,7 +1,9 @@
 # After the install - first session checklist
 
 The install laid files down; none of them are live yet. Work this list top to bottom - each step
-depends on the one before it.
+depends on the one before it. `/alfred-code:init`, typed in the session after the restart, does
+steps 3 to 5 for you (the machine installs through one ask first); this page is what it does, and
+how to redo any of it by hand later.
 
 ## 1. Reload the session
 
@@ -77,12 +79,12 @@ touches no committed file). The lines, minus anything the project already covers
 ## 3. Check the shared memory landed
 
 The memory MCP is required in every install, at the level chosen during init (`global`,
-`scoped`, or `project` - `/alfred-code:status` names it and the database file). The install also
+`scoped`, or `project` - `/alfred-code:status` names it and the database file). Init also
 imported this project's old `MEMORY.md` notes into that database once, and switched off Claude's
 own memory ONLY if that import succeeded - a failed import leaves it on rather than risk losing a
 note. Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
-`false` means done, `true` or absent means the import has not completed - read the install log for
-why (a missing `uvx` or Python is the usual cause) and fix that before running the install again.
+`false` means done, `true` or absent means the import has not completed - read init's memory line for
+why (a missing `uvx` or Python is the usual cause), fix that, and run `/alfred-code:init` again.
 `baseline-memory.md` (always-on) names what belongs in the store and when to search it before
 asking or reading - nothing further to configure.
 
@@ -98,7 +100,7 @@ detected from your files, and `ignored_paths` for `.serena` / `.claude` / `.play
 serena answers symbol questions from an LSP cache, and until it is built the first lookup in a
 session pays for the whole workspace load.
 
-Run it once from the project root (the first run also downloads the language server - ~327MB for
+Init builds it once; by hand, run it from the project root (the first run also downloads the language server - ~327MB for
 C# Roslyn, which needs .NET 10+; serena installs the runtime itself if it is missing):
 
 ```bash
@@ -129,20 +131,20 @@ the `csharp-lsp` plugin; serena keeps its seat either way as the per-project mem
 
 ## 5. Run the captures - in this order
 
-The deliberate captures turn a fresh install into an oriented one. Run each only if its skill is
-installed (`/alfred-code:configure` adds a missing one). The order is dependency order - do not
-shuffle it. These are yours to type: all but the two analyzers (`project-architecture-analyzer`,
-`project-test-coverage-analyzer`) are manual-only (`disable-model-invocation`), so the assistant
-cannot invoke one on your behalf:
+The deliberate captures turn a fresh install into an oriented one. Init runs each whose skill AND
+seat are installed, in this order, by following its SKILL.md (`/alfred-code:configure` adds a
+missing one); do not shuffle it. A later re-run is yours to type: all but the two analyzers
+(`project-architecture-analyzer`, `project-test-coverage-analyzer`) are manual-only
+(`disable-model-invocation`), so the assistant cannot invoke one on your behalf:
 
-1. `/project-architecture-analyzer` - writes the durable architecture docs every seat reads to
-   orient. Runs after the serena index above, because the capture navigates by symbol.
-2. `/project-code-style-analyzer` - captures how the codebase really writes each language and
-   generates the path-scoped project-code-style rule.
-3. `/project-related-context <name - path> ...` - OPTIONAL, only when this project has sibling
+1. `/project-related-context <name - path> ...` - OPTIONAL, only when this project has sibling
    repos: sibling-repo awareness, args only (local paths or git URLs, e.g. `frontend - ../client`);
    it never scans on its own. A standalone repo skips it and installs neither the skill nor the
    `related-project-analyzer` seat - both are opt-in adds via `/alfred-code:configure`.
+2. `/project-architecture-analyzer` - writes the durable architecture docs every seat reads to
+   orient. Runs after the serena index above, because the capture navigates by symbol.
+3. `/project-code-style-analyzer` - captures how the codebase really writes each language and
+   generates the path-scoped project-code-style rule.
 4. `/project-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 

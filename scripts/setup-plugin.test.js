@@ -16,7 +16,7 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'alfred-code');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided walks ship from the core - init and its setup alias among them');
+    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided commands ship from the core - setup and init among them');
     assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && core.commands.includes('./setup-plugin/commands/setup.md'));
     for (const p of mp.plugins)
     {
@@ -47,17 +47,127 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     assert.ok(!fs.existsSync(path.join(PLUGIN_DIR, 'commands', 'alfred-code.md')), 'no router COMMAND - a command named like the plugin displays as the /alfred-code:alfred-code stutter');
 });
 
-test('init is the walk and setup its thin alias - both manual-only, the alias naming init', () => {
-    // Phase 8 R3: a new name, not a new walk. The alias keeps /alfred-code:setup working for one
-    // release; a copy of the walk under two names would drift the first time either is edited.
-    const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-    const init = read('init');
-    const alias = read('setup');
-    for (const [name, body] of [['init', init], ['setup', alias]])
+// Task 18a: setup is the walk (the selection and the install) and init the one-time bootstrap the
+// user types in the session after setup's restart. Two jobs, two bodies - never one pointing at the other.
+const cmdBody = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+const flat = (text) => text.replace(/\s+/g, ' ');
+
+test('setup is the walk and init the bootstrap - both manual-only, neither a pointer to the other', () => {
+    const setup = cmdBody('setup');
+    const init = cmdBody('init');
+    for (const [name, body] of [['setup', setup], ['init', init]])
         assert.match(body, /^---\n[\s\S]*?^disable-model-invocation: true$[\s\S]*?^---$/m, `${name} stays manual-only`);
-    assert.match(alias, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/commands\/init\.md/, 'the alias reads the walk from the installed layout');
-    assert.ok(alias.split('\n').length < 20, `the alias is a pointer, not a second walk (${alias.split('\n').length} lines)`);
-    assert.match(init, /^## 11\. Install$/m, 'the walk itself lives in init');
+    assert.match(setup, /^## 11\. Install$/m, 'the walk lives in setup');
+    assert.ok(!/^## \d+\. Install$/m.test(init), 'init never installs');
+    assert.ok(!/commands\/(init|setup)\.md/.test(setup + init), 'neither reads the other as its instructions');
+    // Over an existing install setup routes to configure; with none, init routes to setup.
+    assert.match(flat(setup), /If the stack is already installed here - an install record .*stop and route to `\/alfred-code:configure`/);
+    assert.match(flat(init), /\*\*Nothing installed\*\* - no install record in the project's `\.claude\/` .*stop and name `\/alfred-code:setup`/);
+    assert.match(flat(init), /\*\*Setup ran in THIS session\*\* - stop: name the restart/);
+});
+
+// setup shows what the project needs, and why, BEFORE the walk: validate's two checks in their
+// fresh-install mode (no --installed), plus the evidence scan's labels in the tables.
+test('setup: the suggestions are validate\'s checks in fresh-install mode, pasted with their reasons', () => {
+    const setup = cmdBody('setup');
+    const at = setup.indexOf('### 3a. Suggestions');
+    assert.ok(at > setup.indexOf('## 3. Project analysis') && at < setup.indexOf('## The walk'), 'the suggestions close step 3, before the walk');
+    const block = setup.slice(at, setup.indexOf('## The walk'));
+    assert.match(block, /stack-select\.js" --missing --recs "\$TMP\/repo\/meta\/recommendations\.json" --stacks <confirmed,csv>/);
+    assert.match(block, /stack-select\.js" --evidence-gaps --found "\$TMP\/found\.json" --catalog "\$TMP\/repo\/meta\/evidence\.json"/);
+    const call = block.split('\n').find((l) => l.includes('stack-select.js" --missing'));
+    assert.ok(call && !/--installed/.test(call), 'fresh-install mode: no inventory to diff against');
+    assert.match(flat(block), /each already carries its reason/);
+    assert.match(setup, /--found "\$TMP\/found\.json"/, 'the tables still carry the scan\'s evidence labels');
+});
+
+test('setup: no memory level, the init prerequisites deferred, and a close that ends on the restart and init', () => {
+    const setup = cmdBody('setup');
+    const install = setup.slice(setup.indexOf('## 11. Install'), setup.indexOf('## Post-check'));
+    assert.match(install, /install\/alfred-code\.js" install --source "\$TMP\/repo" --scope <scope>/);
+    assert.ok(!/--memory-level/.test(install.split('\n').find((l) => l.includes('- **Any OS:**'))), 'the level is init\'s question');
+    assert.match(setup, /--check --defer-init/, 'uv and csharp-ls are init\'s to install, never setup\'s blockers');
+    const close = setup.slice(setup.indexOf('## Post-check'));
+    assert.match(flat(close), /\*\*Restart, then `\/alfred-code:init`\*\*/);
+    assert.match(flat(close), /Nothing is pending on this run - these are yours to run when you choose\./);
+    assert.ok(!/## \d+\. CLAUDE\.md/.test(setup) && /## 6\. CLAUDE\.md/.test(cmdBody('init')), 'the CLAUDE.md fill moved to init');
+});
+
+// R77: the ENABLE question pre-selects the LIVE state (plan-out) whenever a stamp exists - never the
+// stamp's own line - and every installed engine only on a first install.
+test('setup: the playwright ENABLE pre-selection reads plan-out\'s live state when a stamp exists (R77)', () => {
+    const mcps = flat(cmdBody('setup').slice(cmdBody('setup').indexOf('## 8. MCPs'), cmdBody('setup').indexOf('## 9. Plugins')));
+    assert.match(mcps, /whenever a stamp exists/);
+    assert.match(mcps, /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
+    assert.match(mcps, /jq -c '\.playwright' "\$TMP\/installed\.json"/);
+    assert.match(mcps, /pre-selected: `enabled` plus any newly added one when a stamp exists - never the stamp's own `playwright-enabled:` line/);
+    assert.match(mcps, /every one only on a first install/);
+    assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
+});
+
+test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, CLAUDE.md; no sentry', () => {
+    const init = cmdBody('init');
+    const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
+    assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
+    assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
+    assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
+    assert.match(init, /scripts\/install\/memory\.js" init --project-root \. --level <answer>/);
+    assert.match(flat(init), /ONE AskUserQuestion, multi-select, one option per `missing`/);
+    assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
+    // The four captures, in the brief's order, are the SCRIPT's table - the body cites the script.
+    const { CAPTURES } = require('./init-plan.js');
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['project-related-context', 'project-architecture-analyzer', 'project-code-style-analyzer', 'project-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null]);
+    assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
+    assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
+});
+
+// The router's three states, each read from a file rather than inferred.
+test('the router: nothing installed -> setup, installed but never initialised -> init, initialised -> no bootstrap', () => {
+    const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
+    assert.match(router, /\*\*Installed\*\* = an install record: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
+    assert.match(router, /\*\*Initialised\*\* = `autoMemoryEnabled: false` in `settings\.json` or `settings\.local\.json`/);
+    assert.match(router, /Not installed -> `\/alfred-code:setup`/);
+    assert.match(router, /Installed, never initialised -> `\/alfred-code:init`/);
+    assert.match(router, /Initialised -> no bootstrap/);
+    // The same record list the hook gate and init read - one definition of 'set up'.
+    const { INSTALL_RECORDS } = require('../stack/hooks/hook-prelude.js');
+    assert.deepStrictEqual(INSTALL_RECORDS.map((r) => r.join('/')), ['alfred-code.stamp', 'claude-stack.stamp', 'hooks/docs.js']); // legacy-name
+});
+
+// `claude plugin eval` has no offline mode, so the checks it would run before billing are run here:
+// every case parses, every grader compiles, and the two routing cases grade the command the body names.
+test('the plugin evals pass their offline checks, and the routing graders match the bodies they grade', () => {
+    const dir = path.join(PLUGIN_DIR, 'evals');
+    const cases = fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'results').map((e) => e.name);
+    const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+    const front = (text) => (/^---\n([\s\S]*?)\n---\n/.exec(text) || [])[1];
+    for (const name of cases)
+    {
+        assert.ok(readme.includes(`\`${name}\``), `the README table names ${name}`);
+        const prompt = fs.readFileSync(path.join(dir, name, 'prompt.md'), 'utf8');
+        assert.match(front(prompt) || '', /^max_turns: \d+$/m, `${name}/prompt.md has max_turns`);
+        assert.ok(prompt.split(/\n---\n/).slice(1).join('').trim(), `${name}/prompt.md has a user turn`);
+        const graders = fs.readdirSync(path.join(dir, name, 'graders')).filter((f) => f.endsWith('.md'));
+        assert.ok(graders.length, `${name} has graders`);
+        for (const g of graders)
+        {
+            const fm = front(fs.readFileSync(path.join(dir, name, 'graders', g), 'utf8'));
+            assert.ok(fm, `${name}/${g} has frontmatter`);
+            const type = (/^type: (\S+)$/m.exec(fm) || [])[1];
+            assert.ok(['regex', 'llm', 'tool_used'].includes(type), `${name}/${g}: type ${type}`);
+            if (type === 'tool_used') assert.match(fm, /^tool: \S+$/m, `${name}/${g}: tool_used names its tool`);
+            if (type !== 'regex') continue;
+            assert.match(fm, /^target: (last_message|files)$/m, `${name}/${g}: a target the CLI accepts`);
+            const pattern = JSON.parse((/^pattern: (".*")$/m.exec(fm) || [])[1]);
+            assert.doesNotThrow(() => new RegExp(pattern), `${name}/${g}: the pattern compiles`);
+        }
+    }
+    const pattern = (c, g) => JSON.parse(/^pattern: (".*")$/m.exec(fs.readFileSync(path.join(dir, c, 'graders', g), 'utf8'))[1]);
+    assert.strictEqual(pattern('status-no-install', 'routes-to-setup.md'), '/alfred-code:setup');
+    assert.match(flat(cmdBody('status')), /Nothing installed in either place -> say so and route to `\/alfred-code:setup`/);
+    assert.strictEqual(pattern('router-hands-back-one-command', 'names-the-command.md'), '/alfred-code:setup');
+    assert.match(flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8')), /Not installed -> `\/alfred-code:setup`/);
 });
 
 test('no tracked plugin file leaks an email address', () => {
@@ -172,7 +282,7 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // so pasting it needed a read-back step the prescribed command never contained, and all six layer
 // questions were asked with no catalog on screen. The table must come back in the tool result.
 test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
-    for (const name of ['init', 'configure'])
+    for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
@@ -192,7 +302,7 @@ test('the layer table is never redirected to a file - the tool result is what ge
 // by NAME and tied together by the apply subsection's own number: the ladders renumber whenever a
 // step is inserted, and what this pins is where the two halves sit, not what they are numbered.
 test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
-    for (const name of ['init', 'configure'])
+    for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         const pluginsAt = body.search(/^## \d+\. Plugins$/m);
@@ -332,7 +442,7 @@ for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'
 // edits any more; one that drops the switch's line strands the user who set it without a word.
 // The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
 test('every command that runs the installer runs the SEED, and names the shell switch', () => {
-    for (const name of ['init', 'update', 'configure', 'validate'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update)/,
@@ -351,7 +461,7 @@ test('every command that runs the installer runs the SEED, and names the shell s
 // release. Every body names the refusal line the seed itself prints, and runs no twin.
 const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
 test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
-    for (const file of ['commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'references/source-protocol.md'])
+    for (const file of ['commands/setup.md', 'commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'references/source-protocol.md'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
         assert.ok(body.includes(D1), `${file} does not print the D1 refusal`);
@@ -383,7 +493,7 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
 });
 
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
-    for (const name of ['init', 'configure', 'validate'])
+    for (const name of ['setup', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, `${name} walks the layers in dependency order`);
@@ -397,7 +507,7 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
 // project's stated conventions gets a quote-gated, non-blocking warning at the prereq step.
 test('setup and configure carry the brownfield convention-conflict warning gate', () => {
-    for (const name of ['init', 'configure'])
+    for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /Convention-conflict warnings/, `${name} has the conflict-warning gate`);
@@ -458,14 +568,14 @@ test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in th
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
-    for (const name of ['init', 'update', 'configure'])
+    for (const name of ['setup', 'init', 'update', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
     const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8');
     assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*alfred-code/, 'router skill named like the plugin -> displays bare /alfred-code');
-    for (const name of ['init', 'update', 'configure'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status'])
     {
         assert.match(router, new RegExp('/alfred-code:' + name), `/alfred-code routes to /alfred-code:${name}`);
     }
@@ -476,7 +586,7 @@ test('the walk and status REPORT the derivation - they never restate what the in
     // and not the fourth. init shows the derived off-state before installing; status takes the
     // stack's share of the floor, seats included, from the same script.
     const read = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-    assert.match(read('init'), /scripts\/derive-state\.js" --selection "\$TMP\/selection\.txt" --source "\$TMP\/repo"/);
+    assert.match(read('setup'), /scripts\/derive-state\.js" --selection "\$TMP\/selection\.txt" --source "\$TMP\/repo"/);
     assert.match(read('status'), /scripts\/derive-state\.js" --floor --plugins /);
     assert.ok(fs.existsSync(path.join(ROOT, 'scripts', 'derive-state.js')), 'the script both cite ships in the snapshot');
 });

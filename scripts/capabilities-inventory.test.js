@@ -159,7 +159,24 @@ test('inventory: a playwright browser server gets the catalog row with its own r
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
     assert.match(out, /playwright-chrome\s+registered .*routing: playwright/);
     assert.match(out, /- `playwright-chrome` - drive a browser/);
-    assert.match(out, /mcp__plugin_playwright-chrome_playwright-chrome__browser_snapshot/);
+    // A .mcp.json server's tools are `mcp__<name>__<tool>` - the plugin spelling finds nothing there
+    // (R63). The bare name is assembled here so lint check 54 never reads it as shipped text.
+    const bare = `mcp_${'_playwright-chrome__'}`;
+    assert.ok(out.includes(`${bare}browser_snapshot`), 'the catalog row is re-spelled for the registration');
+    assert.doesNotMatch(out, /mcp__plugin_playwright-chrome_playwright-chrome__/);
+});
+
+// Every add-back line of the 2.0.0 MCP cut registers into .mcp.json, and those servers carry no
+// catalog row - the fallback row is the one they get, so it must name the tools they really have.
+test('inventory: a registered server with no catalog row gets its first call in the registration spelling', { skip: posixOnly }, () =>
+{
+    const root = project('addback');
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'angular-cli': {} } }), -100);
+    const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'addback-cli')) });
+    const row = out.split('\n').find((l) => /- `angular-cli` - routing: see project docs/.test(l));
+    assert.ok(row, `no fallback row for angular-cli in:\n${out}`);
+    assert.match(row, /first call: `ToolSearch select:` plus the `mcp__angular-cli__\*` names/);
+    assert.doesNotMatch(row, /mcp__plugin_/);
 });
 
 test('inventory: a CLI that is not on PATH is `CLI absent`, never an empty plugin list', { skip: posixOnly }, () =>

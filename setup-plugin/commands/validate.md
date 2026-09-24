@@ -95,7 +95,7 @@ and a validate run four minutes apart, and both runs reported nothing to do); `p
 its catalog part. `left_out` lists what the user switched off - a denied seat, an item of a parked
 retired entry - as selection lines, which `--missing` counts as present: never proposed back. Three
 signals in `$TMP/plan.out`, never printed to the user: `error: --installed-only found nothing
-installed` means there is no install - route to `/alfred-code:init`; `plan routes:
+installed` means there is no install - route to `/alfred-code:setup`; `plan routes:
 skills=<plugin|copy> hooks=<plugin|copy> mcps=<plugin|copy>` names the routes; `plan answered:
 hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of - `agents=no` with
 `skills=plugin` means the plugin listing could not be read or the core entry is parked: stop and

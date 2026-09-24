@@ -53,9 +53,9 @@ change (see the invariants below).
   `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the core still carries the
   hooks: its copies stand down for the wired ones, `ALFRED_CODE_HOOKS_OFF` names the unpicked), and
   the walk's hooks layer now writes the rows it did NOT pick into `ALFRED_CODE_HOOKS_OFF` instead of
-  leaving files out. The three gates live in `hook-prelude.js`, never inlined in every hook: the csv
-  opt-out; the migration window where the plugin copy stands down while a project still wires its
-  copied twin; and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
+  leaving files out. The four gates live in `hook-prelude.js`, never inlined in every hook: the csv
+  opt-out; the plugin copy standing down while a project still wires its copied twin; a repo never
+  set up (R54); and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
   while settings enable an `alfred-code@*` its `installed_plugins.json` row can load, so the two
   never double-fire (S26). All fail open - an unreadable file runs the hook.
   The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
@@ -188,8 +188,8 @@ change (see the invariants below).
     three records of the SAME branch in at most 600 chars, framed as history, never instructions, and
     prunes past 200 records or 180 days. No model call, fail-open, `ALFRED_CODE_HISTORY=0` off.
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
-  no `hook` lines keeps every hook on; init's None emits `hook none` through `stack-select.js
-  --hooks-answered`, init only, which switches every hook off).
+  no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
+  --hooks-answered`, setup only, which switches every hook off).
 - `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
@@ -214,7 +214,7 @@ change (see the invariants below).
 - `stack/rules/` - nineteen single-job rules copied into `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
   `project-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
-  installers stamp its value over `__DOCS_ROOT__` on every install/update, init/configure re-stamp),
+  installers stamp its value over `__DOCS_ROOT__` on every install/update, setup/configure re-stamp),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks serena).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
@@ -223,9 +223,9 @@ change (see the invariants below).
   house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
 - `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
-  - `/alfred-code:init` (fresh install; reports `derive-state.js`'s `written` block, the one derivation
-    of what the project switches off, before installing), `/alfred-code:setup` (init's alias, kept for
-    one release), `/alfred-code:update` (refresh + prune from the stamp compare; its ONE ask offers
+  - `/alfred-code:setup` (fresh install; reports `derive-state.js`'s `written` block before
+    installing, ends on a restart), `/alfred-code:init` (the bootstrap after it: `init-plan.js`,
+    `memory.js init`), `/alfred-code:update` (refresh + prune from the stamp compare; its ONE ask offers
     what the release ADDED - `update-preflight.js`'s `new:` lines, classified by
     `derive-state.classifyNew` - and a yes is `--add '<category> <name>'` on `--installed-only`),
     `/alfred-code:configure` (add or drop), `/alfred-code:status` (read-only tables plus the install's
@@ -362,7 +362,7 @@ mirrored there in the same sitting.
     entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
-    session. Init/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
+    session. Setup/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
     on at install, none flipped by update); the stamp's two lines are the record, and a stamped engine a
     run drops is uninstalled. A legacy `playwright` server migrates. The playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from

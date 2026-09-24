@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const PRELUDE = path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js');
-const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown } = require(PRELUDE);
+const { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, standDown, neverSetUp } = require(PRELUDE);
 const { spawnSync } = require('node:child_process');
 const { coreEntry } = require('./build-marketplace.js');
 
@@ -119,6 +119,8 @@ function scopes({ project, local, account, core = [] } = {})
     const repo = path.join(dir, 'repo');
     const acct = path.join(dir, 'acct');
     fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    // A project the stack was set up in - the never-set-up gate is its own case below.
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
     fs.mkdirSync(acct);
     const put = (file, body) => { if (body !== undefined) fs.writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body)); };
     put(path.join(repo, '.claude', 'settings.json'), project);
@@ -303,4 +305,32 @@ test('a core-carried hook stands down while the project wires its copied twin (t
     const plugin = scopes({});
     assert.strictEqual(fire('guard-protected-force-push.js', plugin.env(CORE_ROOT)).status, 2, 'the plugin route: the core copy is the guard');
     fs.rmSync(plugin.dir, { recursive: true, force: true });
+});
+
+// GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
+// opens; one with no install record gets nothing written and nothing enforced (R54, Task 16 review
+// M8). A copied hook (no plugin root) is set up by definition - the project wired it.
+test('a plugin-launched hook stands down in a project with no install record, and only there', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-unset-'));
+    const env = { CLAUDE_PLUGIN_ROOT: '/cfg/plugins/cache/envoydev/alfred-code/2.0.0', CLAUDE_PROJECT_DIR: dir };
+    try
+    {
+        assert.strictEqual(neverSetUp(env), true, 'no .claude at all');
+        assert.strictEqual(standDown('history-session', env, ['node', 'x.js']), true, 'standDown carries the gate');
+        fs.mkdirSync(path.join(dir, '.claude', 'docs'), { recursive: true });
+        assert.strictEqual(neverSetUp(env), true, 'a .claude/ of the user\'s own is no install record');
+        for (const record of [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]) // legacy-name - a 1.x stamp is a record too
+        {
+            const file = path.join(dir, '.claude', ...record);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, '');
+            assert.strictEqual(neverSetUp(env), false, `${record.join('/')} marks the project set up`);
+            assert.strictEqual(standDown('history-session', env, ['node', 'x.js']), false);
+            fs.rmSync(file);
+        }
+        assert.strictEqual(neverSetUp({ CLAUDE_PROJECT_DIR: dir }), false, 'a copied hook is set up by definition');
+        assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: env.CLAUDE_PLUGIN_ROOT }), false, 'no project dir - run');
+        assert.strictEqual(standDown('guard-secret-value', env, ['node', 'guard-secret-value.js', '--presence', '/tmp/f']), false, 'a CLI is never gated');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

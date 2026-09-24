@@ -1006,3 +1006,76 @@ test('findStackMissing: a parked MCP entry is that server switched off here, nev
     const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
     assert.ok(!names.has('mcp playwright'), 'the parked engine entry folds onto its catalog row');
 });
+
+// Task 18a: setup suggests what to install BEFORE anything is installed, with validate's own two
+// passes - so there is no --installed inventory yet. Left out, both passes read an empty install:
+// every seed and every matched signal is a suggestion, each line carrying its reason.
+test('CLI --missing and --evidence-gaps run in a fresh-install mode when --installed is left out', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-fresh-'));
+    try
+    {
+        const foundFile = path.join(dir, 'found.json');
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-data-access': 'Npgsql in src/Api.csproj' }, mcps: {}, plugins: {} } }));
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const graphArgs = ['--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')];
+        const cli = (args) => spawnSyncNode([path.join(__dirname, 'stack-select.js'), ...args, ...graphArgs]);
+
+        const missing = cli(['--missing', '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.strictEqual(missing.status, 0, missing.stderr);
+        assert.match(missing.stdout, /^missing: rule baseline-security - needed by baseline, not installed$/m, 'the baseline is suggested, with its reason');
+        assert.match(missing.stdout, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m, 'a detected stack seed is suggested, with its reason');
+
+        const gaps = cli(['--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'meta', 'evidence.json'), '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.strictEqual(gaps.status, 0, gaps.stderr);
+        assert.match(gaps.stdout, /^evidence-missing: skill dotnet-grpc - Grpc\.AspNetCore in src\/Api\.csproj, not installed$/m, 'a matched signal is suggested with the manifest that proved it');
+        assert.ok(!/no-evidence:/.test(gaps.stdout), 'nothing is installed, so nothing is unevidenced');
+        assert.ok(!/evidence-missing: skill dotnet-data-access/.test(gaps.stdout), 'what --missing already suggests (the aspnet seed) is not suggested twice');
+        assert.match(missing.stdout, /^missing: skill dotnet-data-access - needed by aspnet, not installed$/m, '... because --missing carries it');
+
+        const noRecs = cli(['--missing']);
+        assert.strictEqual(noRecs.status, 2, 'the recommendations are still required');
+        assert.match(noRecs.stderr, /--missing needs --recs/);
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+function spawnSyncNode(args)
+{
+    return require('node:child_process').spawnSync(process.execPath, args, { encoding: 'utf8' });
+}
+
+// Task 18a: /alfred-code:init installs uv and csharp-ls in the session after setup, so setup's
+// prerequisite check must not refuse the install over them - it names them as init's instead.
+// Every other caller (configure, validate) keeps them as blockers.
+test('--defer-init moves what init installs out of the blockers, and names it', () => {
+    const selection = { skills: [], mcps: ['serena'], plugins: ['csharp-lsp'] };
+    const bins = { node: true, git: true, claude: true, uvx: false, 'csharp-ls': false };
+    const plain = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
+    assert.deepStrictEqual(plain.blockers.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)'], 'without the flag both still block');
+    const deferred = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, { deferInit: true });
+    assert.deepStrictEqual(deferred.blockers, [], 'with it neither blocks');
+    assert.deepStrictEqual(deferred.deferred.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)']);
+    assert.strictEqual(deferred.ok, true);
+    const hard = evaluatePrereqs(selection, { bins: { ...bins, git: false }, envs: {} }, { deferInit: true });
+    assert.deepStrictEqual(hard.blockers.map(b => b.need), ['git'], 'what init does NOT install still blocks');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-defer-'));
+    try
+    {
+        const sel = path.join(dir, 'raw.json');
+        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: ['serena'], plugins: [], hooks: [] }));
+        // An empty PATH: every binary reads as absent, so uvx is deferred and node/git/claude block.
+        const r = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--check', '--defer-init'],
+            { encoding: 'utf8', env: { PATH: dir, HOME: dir } });
+        assert.match(r.stdout, /^init: uv \(uvx\) -> \/alfred-code:init installs it in the next session$/m);
+        assert.ok(!/BLOCKER: uv/.test(r.stdout), 'uv is not a blocker here');
+        assert.match(r.stdout, /^prereqs: BLOCKED - \d+ blocker\(s\), \d+ warning\(s\), 1 left to \/alfred-code:init$/m);
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});

@@ -1606,7 +1606,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "- **Any OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" install --source"
         },
         {
@@ -1735,7 +1735,7 @@
       ]
     },
     "capabilities-refresh-user-run": {
-      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except project-architecture-analyzer and project-architecture-quality-analyzer carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by project-agent-capabilities' usage policy.",
+      "_note": "The manual-only captures are the USER's to type, never invoked from a guided run: all of them except project-architecture-analyzer and project-architecture-quality-analyzer carry disable-model-invocation, and a model's own Skill call on one is DENIED by guard-fresh-session-start.js, which reads that flag from the skill's own frontmatter. The HARNESS is not the gate - measured both ways, one update run's call was refused and one slipped through (the user had typed the command with a leading space, so no command marker fired), which is why the stack stopped asserting harness behaviour and wired its own. So every command NAMES them in its report or next-steps card as the user's next step and never attempts one - except /alfred-code:init (R30), which runs the captures the install lists by READING each SKILL.md and following it inline: still never a Skill call. One statement per command because each runs standalone; the behavioural half of the rule - never attempt, never narrate the attempt - is stamped into every project by project-agent-capabilities' usage policy.",
       "owner": {
         "file": "setup-plugin/commands/update.md",
         "marker": "Never invoke it from this run - the skill is manual-only"
@@ -1751,7 +1751,7 @@
         },
         {
           "file": "setup-plugin/commands/init.md",
-          "marker": "never attempt one and never narrate that you cannot"
+          "marker": "follow it inline, start to finish - never a Skill call"
         },
         {
           "file": "setup-plugin/references/post-install.md",
@@ -1787,7 +1787,7 @@
           "marker": "offer the resolver through AskUserQuestion"
         },
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         },
         {
@@ -1796,6 +1796,10 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
+          "marker": "Every ask in this run goes through the AskUserQuestion tool"
+        },
+        {
+          "file": "setup-plugin/commands/init.md",
           "marker": "Every ask in this run goes through the AskUserQuestion tool"
         }
       ]
@@ -2748,7 +2752,7 @@
     "guided-layer-table-shape": {
       "_note": "The setup/configure fenced layer-table contract - identical by design, since either command may be the only one a run loads.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "a layer turn missing the fenced table is invalid"
       },
       "sites": [
@@ -2761,7 +2765,7 @@
     "guided-stack-detection": {
       "_note": "The artifact-scan stack-detection list setup and validate must share (javascript, the framework-suppresses-typescript rule included) - the copies drifted twice before this pin.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "`tsconfig.json` / `jsconfig.json` -> `typescript`"
       },
       "sites": [
@@ -3272,7 +3276,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "or when that hook has already injected the ask into this turn"
         },
         {
@@ -3286,18 +3290,22 @@
         {
           "file": "setup-plugin/commands/update.md",
           "marker": "or when that hook has already injected the ask into this turn"
+        },
+        {
+          "file": "setup-plugin/commands/init.md",
+          "marker": "or when that hook has already injected the ask into this turn"
         }
       ]
     },
     "suggestion-close-nothing-pending": {
-      "_note": "The four guided commands close on a suggestion card, not an ask, and end it with ONE verbatim line that the stop-contract guard's NOTHING_PENDING_RE reads as a finished close - without it a 'done + next step' card is the measured stall shape and the guard demands the ask the commands removed. The hook owns the sentence (its regex is the contract); the commands carry the copy the model prints. Change the wording in all five or the guard starts blocking every walk's close. The ask-carries-the-recommendation rule this replaced stays canonical in the interaction baseline; the commands no longer ask at the close, so they no longer restate it. CONDITIONAL, and that is part of the rule: the line is printed only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so the close names it and goes through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and the pinned line in the same message).",
+      "_note": "The guided commands close on a suggestion card, not an ask, and end it with ONE verbatim line that the stop-contract guard's NOTHING_PENDING_RE reads as a finished close - without it a 'done + next step' card is the measured stall shape and the guard demands the ask the commands removed. The hook owns the sentence (its regex is the contract); the commands carry the copy the model prints. Change the wording in every copy or the guard starts blocking every walk's close. The ask-carries-the-recommendation rule this replaced stays canonical in the interaction baseline; the commands no longer ask at the close, so they no longer restate it. CONDITIONAL, and that is part of the rule: the line is printed only when the card carries nothing OWED. A still-required user action - revoke the old token, fill in a credential, run a rotation - IS pending, so the close names it and goes through the ask instead (measured: one close stated 'Still owed: revoke the old token in Sentry's dashboard' and the pinned line in the same message).",
       "owner": {
         "file": "stack/hooks/guard-stop-contract.js",
         "marker": "Nothing is pending on this run - these are yours to run when you choose."
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         },
         {
@@ -3310,6 +3318,10 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
+          "marker": "Nothing is pending on this run - these are yours to run when you choose."
+        },
+        {
+          "file": "setup-plugin/commands/init.md",
           "marker": "Nothing is pending on this run - these are yours to run when you choose."
         }
       ]
@@ -3410,7 +3422,7 @@
     "guided-narration-voice": {
       "_note": "The guided walks carry the house voice themselves (single dashes, single quotes) - a fresh or refreshed install may have no baseline-interaction rule loaded, so the command text is the only source (measured: a first-run narration line opened with an em-dash).",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "House voice in every line this run emits"
       },
       "sites": [
@@ -3424,6 +3436,10 @@
         },
         {
           "file": "setup-plugin/commands/update.md",
+          "marker": "House voice in every line this run emits"
+        },
+        {
+          "file": "setup-plugin/commands/init.md",
           "marker": "House voice in every line this run emits"
         }
       ]
@@ -4436,7 +4452,7 @@
     "guided-one-snapshot-preamble": {
       "_note": "The four source-reading commands open with the same one-snapshot contract paragraph - resolve once into $TMP/repo (the plugin cache first, a download only when there is none), every tool from it, --source to the installer, $TMP removed on every exit path. The protocol file owns the mechanics; this pins the paragraph the commands carry, since command bodies do not co-load.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
       },
       "sites": [
@@ -4451,6 +4467,10 @@
         {
           "file": "setup-plugin/commands/validate.md",
           "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
+        },
+        {
+          "file": "setup-plugin/commands/init.md",
+          "marker": "THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing"
         }
       ]
     },
@@ -4462,7 +4482,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "Presence, never the value"
         },
         {
@@ -4491,7 +4511,7 @@
       },
       "sites": [
         {
-          "file": "setup-plugin/commands/init.md",
+          "file": "setup-plugin/commands/setup.md",
           "marker": "Never print, echo back, or ask for a credential VALUE"
         },
         {
@@ -4507,7 +4527,7 @@
     "guided-skeleton-invariant": {
       "_note": "Every run prints every numbered banner exactly once in order; a step that does not apply prints its banner plus one no-op line. setup and configure carry the paragraph verbatim (12 and 13 steps).",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "The skeleton is INVARIANT - the stability contract"
       },
       "sites": [
@@ -4520,7 +4540,7 @@
     "guided-plugin-settings-turn": {
       "_note": "The plugin-settings delta is reported and asked inside the plugins layer turn (plugin-settings.js output pasted, one three-option ask) and applied after the installer has put the plugin on disk. setup and configure carry the block verbatim.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "Plugin settings - part of this layer's turn"
       },
       "sites": [
@@ -4533,7 +4553,7 @@
     "guided-prereq-report-shape": {
       "_note": "The prerequisite check output has one fixed three-block shape: the verdict line, the closed selection by category, the blocker/warning lists. setup and configure carry it verbatim.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "Fixed shape, three blocks:** (1) one verdict line - `blockers: N \u00b7 warnings: N`"
       },
       "sites": [
@@ -5229,7 +5249,7 @@
     "table-before-question": {
       "_note": "A table or report the user decides from is pasted into the message BEFORE the ask about it. Measured twice in one setup run (agents, skills): the table ran, its tool result was collapsed in the UI, and the ask went out with no table on screen. The narrate-dont-trace protocol banned pasted tool output, so the exception is stated where that ban lives; guard-layer-table.js in the plugin enforces it.",
       "owner": {
-        "file": "setup-plugin/commands/init.md",
+        "file": "setup-plugin/commands/setup.md",
         "marker": "Table before question - no exceptions."
       },
       "sites": [

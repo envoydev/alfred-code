@@ -52,7 +52,7 @@ Action (one is REQUIRED, positional):
 
 Named flags (any order, each optional): ${FLAG_LIST}
 
-What each flag does is documented where it is set: the guided /alfred-code:init, :update,
+What each flag does is documented where it is set: the guided /alfred-code:setup, :update,
 :configure and :validate commands (setup-plugin/commands/) name every flag they pass inline, and
 the repo's CLAUDE.md covers the install surface end to end.`;
 
@@ -206,12 +206,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // m5: keyed on the RESOLVED level - with no flag, the .mcp.json registration's own path.
         const level = memory.resolveLevel({
             flag: args.memoryLevel,
-            registeredPath: registeredMemoryPath(mcpFile),
+            registeredPath: registeredMemoryPath(mcpFile, claudeDir),
             home, space: args.space, projectRoot,
         });
         if (level.level === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
         {
-            const what = level.from === 'flag' ? '--memory-level project' : `the memory level project (read from ${path.basename(mcpFile)})`;
+            const what = level.from === 'flag' ? '--memory-level project' : `the memory level project (read from ${registeredMemoryPath(mcpFile) ? path.basename(mcpFile) : 'the settings env'})`;
             err(`error: ${what} is refused at --scope user on the full copy route `
                 + "(ALFRED_CODE_HOOKS_VIA_PLUGIN=false, ALFRED_CODE_SKILLS_VIA_PLUGIN=false and ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
                 + 'the registration bakes one path into every project of the account; use --scope project, pass --memory-level global or scoped, or keep any one route on the plugin\n');
@@ -279,7 +279,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             });
             if (!back.installed)
             {
-                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:init) first\n`);
+                err(`error: --installed-only found nothing installed under ${claudeDir} - run 'install' (or /alfred-code:setup) first\n`);
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
@@ -859,6 +859,14 @@ function installHooksAndRules(ctx)
 
 function importMemory(ctx)
 {
+    // setup installs with no level - it is init's question, asked in the session after the restart,
+    // and init imports through `memory.js init`. Importing now would file the notes under a
+    // database the user has not chosen yet.
+    if (ctx.args.action === 'install' && !ctx.args.memoryLevel)
+    {
+        ctx.log("memory: the notes import waits for /alfred-code:init, which asks the level first - Claude's own memory stays on until then");
+        return;
+    }
     // I1 (R47): the switch-off is one of THIS run's own settings writes, so it follows the same
     // scope target as installHooksAndRules' own write - a local-scope install's `autoMemoryEnabled`
     // now lands in settings.local.json, never the shared file every teammate reads.
@@ -967,11 +975,21 @@ function droppedByDrop({ kept, closed, stackListing, sourceDir, drop, routes, ma
     return selection.droppedEntries({ before: setOf(kept), after: setOf(closed), listing: stackListing, deps, marketplace: market });
 }
 
-const registeredMemoryPath = (mcpFile) =>
+// The level this project already has: a copy-route registration, else the settings key the plugin
+// route's launcher reads (memory-launch.js, same file order: the local file first) - without it an
+// update with no --memory-level reset a level init had set to the global default.
+const registeredMemoryPath = (mcpFile, claudeDir) =>
 {
     const entry = readJson(mcpFile).mcpServers?.memory;
     const p = entry && entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
-    return typeof p === 'string' && p ? p : '';
+    if (typeof p === 'string' && p) return p;
+    for (const file of claudeDir ? ['settings.local.json', 'settings.json'] : [])
+    {
+        const env = readJson(path.join(claudeDir, file)).env || {};
+        const v = env.ALFRED_CODE_MEMORY_DB || env.CLAUDE_STACK_MEMORY_DB; // legacy-name
+        if (typeof v === 'string' && path.isAbsolute(v)) return v;
+    }
+    return '';
 };
 
 const registeredEngines = (mcpFile) => Object.keys(readJson(mcpFile).mcpServers || {})

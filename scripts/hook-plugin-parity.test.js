@@ -29,6 +29,8 @@ function fixture(wiredHook)
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-'));
     fs.mkdirSync(path.join(dir, '.claude'));
+    // Set up: a project with no install record is gate 4's case (the last test here), not these.
+    fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({
         hooks: {
             PreToolUse: [{
@@ -130,4 +132,44 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
     }
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+// R54 / Task 16 review M8: under a user-scope core every hook runs in every repo the user opens. A repo
+// never set up gets nothing written - no .claude/docs/ ledger, history, state or compact file - from
+// any of them, whatever the event. Each payload is one the hook acts on in a set-up project.
+test('in a never-set-up project every plugin-launched hook writes nothing and prints nothing', () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-unset-'));
+    execFileSync('git', ['init', '-q', repo]);
+    fs.writeFileSync(path.join(repo, 'big.js'), 'x'.repeat(200000));
+    const events = [
+        { hook_event_name: 'SessionStart', source: 'startup' },
+        { hook_event_name: 'UserPromptSubmit', prompt: 'hello' },
+        { hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: path.join(repo, 'big.js') } },
+        { hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf /' } },
+        { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(repo, 'a.ts') } },
+        { hook_event_name: 'PreCompact', trigger: 'auto' },
+        { hook_event_name: 'Stop', stop_hook_active: false, last_assistant_message: 'Done \u2014 all good.' },
+    ];
+    try
+    {
+        for (const hook of WIRED)
+            for (const event of events)
+            {
+                let out = '';
+                let status = 0;
+                try
+                {
+                    out = execFileSync(process.execPath, [path.join(HOOKS_DIR, hook + '.js')], {
+                        input: JSON.stringify({ session_id: 'unset-test', cwd: repo, ...event }), encoding: 'utf8', timeout: 20000,
+                        stdio: ['pipe', 'pipe', 'pipe'],
+                        env: { ...process.env, CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: '/cfg/plugins/cache/envoydev/alfred-code/2.0.0', ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_INSTRUMENT: '1', ALFRED_CODE_TURN_CHECK: '1' },
+                    });
+                }
+                catch (err) { status = err.status; out = String(err.stdout || '') + String(err.stderr || ''); }
+                assert.strictEqual(status, 0, `${hook} on ${event.hook_event_name} must stand down, got ${status}: ${out.slice(0, 200)}`);
+                assert.strictEqual(out.trim(), '', `${hook} on ${event.hook_event_name} printed: ${out.slice(0, 200)}`);
+                assert.ok(!fs.existsSync(path.join(repo, '.claude')), `${hook} on ${event.hook_event_name} wrote .claude/ into a repo never set up`);
+            }
+    }
+    finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });

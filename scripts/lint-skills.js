@@ -2086,7 +2086,7 @@ function main()
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
         const commandSrc = {};
-        for (const cmd of ['init.md', 'configure.md', 'validate.md'])
+        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
         {
             commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
         }

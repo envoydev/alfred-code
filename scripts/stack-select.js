@@ -75,13 +75,13 @@ const HARD_PREREQS = [
     { bin: 'node', need: 'Node.js', how: 'install Node.js (https://nodejs.org)' },
     { bin: 'git', need: 'git', how: 'install git' },
     { bin: 'claude', need: 'Claude Code CLI', how: 'npm install -g @anthropic-ai/claude-code' },
-    { bin: 'uvx', need: 'uv (uvx)', how: 'install uv (https://docs.astral.sh/uv/)' },
+    { bin: 'uvx', need: 'uv (uvx)', how: 'install uv (https://docs.astral.sh/uv/)', init: true },
 ];
 
 // Phase 2 - only checked when 'when' matches the closed selection / options.
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
-    { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
+    { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls', init: true },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     // The one kept playwright engine that needs a browser the machine must already carry and no platform
@@ -117,6 +117,9 @@ function evaluatePrereqs(selection, env, options)
 
     const blockers = [];
     const warnings = [];
+    // `init: true` rows are what /alfred-code:init installs in the session after setup: with
+    // options.deferInit (setup's own check) they are named as init's, never a blocker to fix first.
+    const deferred = [];
     const seen = new Set();
     const add = (bucket, p) =>
     {
@@ -128,7 +131,7 @@ function evaluatePrereqs(selection, env, options)
 
     for (const p of HARD_PREREQS)
     {
-        if (!bins[p.bin]) add(blockers, p);
+        if (!bins[p.bin]) add(p.init && options.deferInit ? deferred : blockers, p);
     }
 
     for (const p of SCOPED_PREREQS)
@@ -136,10 +139,10 @@ function evaluatePrereqs(selection, env, options)
         if (!matches(p.when)) continue;
         const present = p.env ? envs[p.env] : bins[p.bin];
         if (present) continue;
-        add(p.severity === 'blocker' ? blockers : warnings, p);
+        add(p.init && options.deferInit ? deferred : p.severity === 'blocker' ? blockers : warnings, p);
     }
 
-    return { blockers, warnings, ok: blockers.length === 0 };
+    return { blockers, warnings, deferred, ok: blockers.length === 0 };
 }
 
 // Cross-platform "is this command on PATH": walk PATH with fs directly instead of
@@ -655,6 +658,11 @@ function main(argv)
         return;
     }
 
+    // --missing and --evidence-gaps without --installed are the FRESH-INSTALL mode setup's
+    // suggestions use: nothing is installed yet, so every seed and every matched signal is a line.
+    // A given --installed that cannot be read still fails - an empty inventory is never a fallback.
+    const installedOrFresh = () => (has('--installed') ? readJson('--installed', arg('--installed')) : {});
+
     // --evidence-gaps: both evidence directions for the guided commands. With --recs +
     // --stacks, evidence-missing lines that stack/baseline-missing already lists are dropped
     // (the closure reason wins - one line per artifact, not two).
@@ -662,8 +670,8 @@ function main(argv)
     {
         const foundFile = readJson('--found', arg('--found'));
         const catalog = readJson('--catalog', arg('--catalog'));
-        const installed = readJson('--installed', arg('--installed'));
-        if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json>, --catalog <evidence.json> and --installed <inventory.json>'); process.exit(2); }
+        const installed = installedOrFresh();
+        if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json> and --catalog <evidence.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const gaps = findEvidenceGaps(catalog, foundFile.found || foundFile, installed);
         const covered = new Set();
         const recs = readJson('--recs', arg('--recs'));
@@ -691,9 +699,9 @@ function main(argv)
     // --missing: the ADD side of validate - detected-stack + baseline items not installed here.
     if (has('--missing'))
     {
-        const installed = readJson('--installed', arg('--installed'));
+        const installed = installedOrFresh();
         const recs = readJson('--recs', arg('--recs'));
-        if (!installed || !recs) { console.error('stack-select: --missing needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
+        if (!installed || !recs) { console.error('stack-select: --missing needs --recs <recommendations.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const detected = parseStacks(recs);
         for (const m of findStackMissing(graph, recs, installed, detected))
             console.log(`missing: ${m.category} ${m.name} - needed by ${m.neededBy}, not installed`);
@@ -701,7 +709,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -757,16 +765,18 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli'), deferInit: has('--defer-init') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
+        for (const d of report.deferred) console.log(`init: ${d.need} -> /alfred-code:init installs it in the next session`);
+        const later = report.deferred.length ? `, ${report.deferred.length} left to /alfred-code:init` : '';
         // A clean check printed NOTHING, and silence is the one result a caller cannot tell from a
         // call that never ran - the guided walks report the prerequisite verdict to the user, and
         // an empty tool result made them narrate 'no blockers' from the exit code alone. Always
         // name the verdict; the exit code stays the machine-readable half.
         console.log(report.ok
-            ? `prereqs: ok - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`
-            : `prereqs: BLOCKED - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`);
+            ? `prereqs: ok - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)${later}`
+            : `prereqs: BLOCKED - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)${later}`);
         if (!report.ok) process.exit(1);
     }
 }

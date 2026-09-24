@@ -19,7 +19,7 @@ install to change.
 
 | case | prompt | what it proves |
 |---|---|---|
-| `status-no-install` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:init` instead of rendering its fixed table shapes from the command body |
+| `status-no-install` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:setup` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
 | `size-first-trivial` | `/project-solve-task fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
 | `size-first-small` | `/project-solve-task the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
@@ -40,7 +40,8 @@ cases live in `meta/evals/library/`, run through the eval bundle).
 | `router-hands-back-one-command` | 1.00 | 0.00 | +1.00 |
 | `status-no-install` | 1.00 | 0.33 | +0.67 |
 
-Mean delta +0.83 over 12 runs, 112s, $0.84. The without-arm's one passing grader is
+Mean delta +0.83 over 12 runs, 112s, $0.84. Both cases then graded `/alfred-code:init`; 2.0.0 routes
+a project with nothing installed to `/alfred-code:setup`, so this table predates the current graders. The without-arm's one passing grader is
 `no-invented-tables`, which a session with no plugin passes for free - it has no tables to invent.
 Re-record this table whenever a command body changes; a delta that falls is the command losing its
 own contract, and a `with` score under 1.00 is the command failing it outright.

@@ -160,8 +160,10 @@ test('install-scope: --memory-level project rides --scope user without refusal',
 test('install-scope: at local scope a memory import that actually runs lands autoMemoryEnabled in settings.local.json, never settings.json', POSIX_ONLY, () =>
 {
     const SEL = 'skill csharp\nrule markdown-docs\nrule baseline-memory\nmcp memory\n';
+    // A NAMED level: a bare install leaves the import to /alfred-code:init (Task 18a), which writes
+    // to the same scope target through memory.js init.
     const { out, result } = seedRun('install', SEL, {
-        args: ['--scope', 'local'],
+        args: ['--scope', 'local', '--memory-level', 'global'],
         inspect: (repo) => ({
             hasShared: exists(repo, '.claude', 'settings.json'),
             local: exists(repo, '.claude', 'settings.local.json') ? json(repo, path.join('.claude', 'settings.local.json')) : null,

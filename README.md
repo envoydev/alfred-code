@@ -85,15 +85,16 @@ The first line makes the official marketplace known: the optional third-party pi
 `superpowers` among them (suggested, no longer installed by default - the stack carries its own
 done gate, plan format and root-cause loop).
 
-Then `/alfred-code:init` runs a fresh install (in a project it decides the selection FROM the
-project; outside one it offers a global install from the recommended set; `/alfred-code:setup`
-stays as its alias for one release),
+Then `/alfred-code:setup` runs a fresh install (it decides the selection FROM the project, with
+what the project needs and why shown first) and ends on a restart; `/alfred-code:init`, typed in the
+new session, bootstraps it once (the services the MCP servers need, the memory level, the captures,
+the CLAUDE.md fill),
 `/alfred-code:update` refreshes an existing one to the newest release and prunes what the stack
 removed upstream, `/alfred-code:configure` adjusts it (add or drop items), and
 `/alfred-code:validate` reconciles an install against THIS project - prunes what its frameworks do
 not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only); and
 `/alfred-code:status` shows the install read-only, one table per area.
-Init and configure walk the selection one layer at a time (rules ->
+Setup and configure walk the selection one layer at a time (rules ->
 agents -> skills -> hooks -> MCPs -> plugins) as numbered full-catalog tables, locking only what
 something kept still requires - always with the reason shown. A deterministic evidence scan of
 the project's package manifests (csproj / package.json) pre-selects the specialist skills the

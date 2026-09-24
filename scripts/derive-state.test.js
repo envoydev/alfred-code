@@ -412,7 +412,7 @@ test('floor: the CLI reads the entries and the project settings file', () =>
     assert.deepStrictEqual(noDeny.agents.denied, [], 'an unreadable settings file denies nothing');
 });
 
-// T2 review: init reports the derivation BEFORE the install, so the derivation must decide what the
+// T2 review: setup reports the derivation BEFORE the install, so the derivation must decide what the
 // installer decides - route switches and the no-hook-lines rule included - or the report lies.
 test('derive-state: a selection with NO hook lines switches no hook off - every hook runs, as on disk', () =>
 {
@@ -448,17 +448,17 @@ test('derive-state CLI: `written` is what THIS route writes - the full copy rout
     assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff, full.written.undroppable], [[], [], []]);
 });
 
-test('init reports only keys the derivation prints', () =>
+test('setup reports only keys the derivation prints', () =>
 {
     // A renamed key would leave the walk quoting a field that no longer exists.
-    const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', 'init.md'), 'utf8');
+    const init = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', 'setup.md'), 'utf8');
     const step = init.slice(init.indexOf('## 11. Install'));
     const cited = [...step.slice(0, step.indexOf('Then run the installer')).matchAll(/`((?:routes|written|plugins|skills|agents|hooks)(?:\.[A-Za-z]+)*)`/g)].map((m) => m[1]);
-    assert.ok(cited.length >= 4, `init names the fields it reports, found ${cited.join(',')}`);
+    assert.ok(cited.length >= 4, `setup names the fields it reports, found ${cited.join(',')}`);
     const { execFileSync } = require('node:child_process');
     const out = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', realSelection()], { encoding: 'utf8' }));
     for (const key of cited)
-        assert.notStrictEqual(key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), out), undefined, `init cites ${key}, which the derivation does not print`);
+        assert.notStrictEqual(key.split('.').reduce((o, k) => (o == null ? undefined : o[k]), out), undefined, `setup cites ${key}, which the derivation does not print`);
 });
 
 test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>

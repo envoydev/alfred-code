@@ -30,8 +30,8 @@ and the `first call:` line is the row's load-bearing half. Copy each one VERBATI
 its `MCP ROUTING rows` block is the paste source, and `--verify` fails the rule when a row reached
 it without a `first call:`. The map below is what the script reads; `<server>` in a row is
 substituted with the registered name (`playwright` ships as one plugin, and one server, per kept
-browser). A plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>` and the stack names
-each plugin after its one server, so both halves take the same substituted name.
+browser). The map names the plugin spelling, `mcp__plugin_<server>_<server>__<tool>`; a `.mcp.json`
+registration answers `mcp__<server>__<tool>`, so the script prints every row in that form.
 
 The routing map (only for servers actually present):
 - `serena` - default symbol navigator + symbol-level editor; `find_symbol` / `find_referencing_symbols` before any whole-file Read; also holds the per-project handoff memory (`.serena/memories/`). first call: `ToolSearch select:mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols,mcp__plugin_serena_serena__get_symbols_overview` (add `,mcp__plugin_serena_serena__write_memory,mcp__plugin_serena_serena__read_memory,mcp__plugin_serena_serena__list_memories` for a seat handoff).
