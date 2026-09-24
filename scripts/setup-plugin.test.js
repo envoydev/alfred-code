@@ -244,13 +244,13 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     assert.ok((evidence.mcps || {}).playwright, 'and an evidence signal for any other stack that actually uses it');
 });
 
-test('every shipped plugin is reachable from a seed closure - validate cannot flag what nothing seeds', () => {
+test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
-    // active:false rows are the core's own dependencies (superpowers) - never a pick, so never part
-    // of the selectable catalog a seed closure has to reach.
+    // active:false rows are the plugins every install carries beside the core (superpowers,
+    // claude-hud) - never a pick, so never part of the selectable catalog a suggestion has to reach.
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     const shipped = manifest.plugins.filter((r) => r.active !== false).map((r) => r.id.split('@')[0]).sort();
-    assert.ok(shipped.length >= 5, 'the manifest lists the shipped plugins');
+    assert.ok(shipped.length >= 4, 'the manifest lists the shipped plugins');
 
     // findStackMissing sources are the always baseline plus each DETECTED stack, both run through
     // the closure - so a plugin no seed reaches is invisible to validate's ADD side on every
@@ -266,7 +266,12 @@ test('every shipped plugin is reachable from a seed closure - validate cannot fl
     // this list to be one. claude-md-management moved here at 1 use in 115 sessions.
     const general = new Set((recs.general || {}).plugins || []);
     for (const name of general) assert.ok(shipped.includes(name), `${name} is on the general list but the installer does not ship it`);
-    for (const name of shipped) assert.ok(reachable.has(name) || general.has(name), `${name} is reachable from a seed closure, or deliberately on the general opt-in list`);
+    // R27: the optional plugins are suggested on EVIDENCE - each one carries a meta/evidence.json row,
+    // which validate's --evidence-gaps pass reads as MISSING when the scan matched and it is absent.
+    const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8')).plugins || {};
+    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
+        assert.ok(shipped.includes(name) && evidence[name], `${name} is an optional pick with no evidence row`);
+    for (const name of shipped) assert.ok(reachable.has(name) || general.has(name) || evidence[name], `${name} is reachable from a seed closure, suggested on evidence, or deliberately on the general opt-in list`);
 });
 
 test('every C# vertical closure carries the dotnet router its csharp baseline routes through', () => {

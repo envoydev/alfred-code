@@ -882,7 +882,8 @@
     },
     {
       "id": "claude-hud@claude-hud",
-      "note": "statusline HUD (global/user scope)",
+      "active": false,
+      "note": "statusline HUD - required, installed beside the core on every run at user scope (its status line is account-wide)",
       "marketplace": "jarrodwatts/claude-hud"
     }
   ],

@@ -86,7 +86,7 @@ test('ci-failure-diagnoser plugins edge resolves from a namespaced plugin:skill 
 // the core plugin' instead of 'required by skill x' - which reads like a pick.
 test('the catalog names the plugins every install carries beside the core', () => {
     assert.ok(Array.isArray(graph.catalog.dependencyPlugins), 'catalog.dependencyPlugins is generated');
-    assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['superpowers']);
+    assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['claude-hud', 'superpowers']);
     // and it stays IN the plugin catalog: 27 skills and agents cite it, and those edges are real.
     assert.ok(graph.catalog.plugins.includes('superpowers'), 'a dependency plugin is still a catalog plugin');
 });

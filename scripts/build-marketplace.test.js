@@ -229,9 +229,9 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
         'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
 });
 
-test('superpowers is the one plugin the installer adds from another marketplace, on every run', () => {
+test('superpowers and claude-hud are the plugins the installer adds from other marketplaces, on every run', () => {
     assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);
-    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['superpowers@claude-plugins-official']);
+    assert.deepStrictEqual(CORE_DEP_PLUGINS, ['superpowers@claude-plugins-official', 'claude-hud@claude-hud']);
 });
 
 // The three servers a project can never drop ship as standalone entries the installer installs beside

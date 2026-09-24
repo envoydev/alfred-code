@@ -646,7 +646,8 @@ test('CLI: plugins written as {name,scope} - the shape validate step 1 mandates 
         const missing = run('--missing');
         assert.ok(!/missing: plugin csharp-lsp/.test(missing), 'a disabled stack plugin is not missing');
         assert.ok(!/missing: plugin superpowers/.test(missing), 'a disabled baseline plugin is not missing');
-        assert.match(missing, /missing: plugin security-guidance/, 'an absent plugin still is');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [], plugins_disabled: ['superpowers'] }));
+        assert.match(run('--missing'), /missing: plugin csharp-lsp/, 'an absent plugin still is');
     }
     finally
     {
@@ -879,6 +880,27 @@ test('a plugin the core entry depends on gets its own row status, in both table 
     assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
     assert.ok(/carried by alfred-code@envoydev/.test(irow), `installed mode still says where it came from, got: ${irow}`);
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// R27: claude-hud is required like superpowers - a `dependency` row, never a pick - and no plugin is an
+// always-baseline SEED any more: the optional four are suggested on evidence instead.
+test('claude-hud gets the dependency row too, and no plugin is seeded into every install', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-hud-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: [], plugins: [], hooks: [] }));
+    const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins', '--recs', recsPath,
+        '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
+    fs.rmSync(dir, { recursive: true, force: true });
+    const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
+    assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped/, `claude-hud row: ${rowOf('claude-hud')}`);
+    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
+        assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
+    const recs = require('../meta/recommendations.json');
+    assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');
 });
 
 test('superpowers is no longer a SEED, and the baseline closure still reaches it', () => {

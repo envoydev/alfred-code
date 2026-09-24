@@ -252,10 +252,13 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   v0.2.17 had no guided route to the instrument hook until this entry existed). On the PLUGIN route
   an accepted add is not an install at all: the name is removed from `ALFRED_CODE_HOOKS_OFF` in the
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
-- **MCPs / plugins** - an LSP plugin shows MISSING when its stack is detected but it was dropped.
-  The two always-baseline plugins (`security-guidance`, `claude-hud`) show
-  MISSING on any install that lacks them, whatever the stack. `claude-md-management` is in the
-  `general` opt-in list - offered, never seeded, and never flagged missing or redundant.
+- **MCPs / plugins** - no plugin is always-baseline: `superpowers` and `claude-hud` ride beside the
+  core, so neither is ever REDUNDANT and the next update puts back whichever is gone (`superpowers`
+  still shows MISSING on an install that lost it - the baseline closure reaches it). The four optional ones (`security-guidance`, `claude-md-management`, `csharp-lsp`,
+  `typescript-lsp`) show MISSING only on evidence - an `evidence-missing:` line naming the matched
+  manifest - or, for an LSP plugin, when its stack is detected but it was dropped; one installed
+  without a signal is a `no-evidence:` advisory, never a removal. `claude-md-management` is also in
+  the `general` opt-in list, so it is never flagged redundant.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a

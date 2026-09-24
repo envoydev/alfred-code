@@ -115,6 +115,22 @@ function safeRegex(source, where)
     catch (e) { console.error(`scan-evidence: skipping ${where} - invalid regex /${source}/ (${e.message})`); return null; }
 }
 
+// `tracked` signals: a file counts only when git tracks it - an untracked copy is one person's note,
+// not the project's. The candidates are the walk's own, so the skip-list holds (the installer seeds
+// `.claude/CLAUDE.md` into every project, which must never read as evidence), and one `git ls-files`
+// answers for all of them. Outside git, or with git absent, nothing is tracked.
+function trackedOf(root, candidates)
+{
+    if (!candidates.length) return new Set();
+    try
+    {
+        const out = execFileSync('git', ['--literal-pathspecs', '-C', root, 'ls-files', '-z', '--', ...candidates.map(f => relPosix(root, f))],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        return new Set(out.split('\0').filter(Boolean));
+    }
+    catch { return new Set(); }
+}
+
 function scan(root, catalog)
 {
     const files = walk(root);
@@ -136,6 +152,12 @@ function scan(root, catalog)
             {
                 const f = files.find(x => basenameMatches(glob, x));
                 if (f) { hit = `${relPosix(root, f)} present`; break; }
+            }
+            if (!hit) for (const glob of entry.tracked || [])
+            {
+                const tracked = trackedOf(root, files.filter(x => basenameMatches(glob, x)));
+                const f = files.find(x => tracked.has(relPosix(root, x)));
+                if (f) { hit = `${relPosix(root, f)} tracked`; break; }
             }
             if (!hit) for (const c of entry.csprojContent || [])
             {

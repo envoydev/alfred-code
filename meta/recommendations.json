@@ -25,10 +25,7 @@
    "context7",
    "memory"
   ],
-  "plugins": [
-   "security-guidance",
-   "claude-hud"
-  ],
+  "plugins": [],
   "hooks": [
    "guard-protected-force-push",
    "guard-catastrophic-rm",

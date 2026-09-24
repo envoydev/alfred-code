@@ -33,10 +33,11 @@ const STACK_MARKETPLACE = BRAND.slug;
 // (brand.js marketKey) and spells every stack spec with - never this constant.
 const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
 
-// The plugin every install carries beside the core from ANOTHER marketplace. It is not a dependency
-// of the core: `claude plugin update` over an older core installs none a release adds, and a plugin
-// missing one is disabled at load, its commands with it (measured on 2.1.280) - so the run installs it.
-const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official'];
+// The plugins every install carries beside the core from OTHER marketplaces - required, never a pick
+// (R27). Neither is a dependency of the core: `claude plugin update` over an older core installs none
+// a release adds, and a plugin missing one is disabled at load, its commands with it (measured on
+// 2.1.280) - so the run installs them. claude-hud keeps its user-scope pin above.
+const CORE_DEP_PLUGINS = ['superpowers@claude-plugins-official', 'claude-hud@claude-hud'];
 
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
@@ -413,7 +414,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
         if (fresh.includes(spec)) line = `  plugin ${name}: ${is ? `${is} (installed this run)` : 'installed this run'}`;
         else if (!is) line = `  plugin ${name}: NOT installed - the install above did not take (is the marketplace reachable?)`;
         else if (fieldOf(now, spec, 'enabled') === false && !alwaysOn(name)) line = `  plugin ${name}: ${is} but DISABLED - 'claude plugin enable ${spec}' turns it back on`;
-        else if (was && was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
+        else if (!was) line = `  plugin ${name}: ${is} (installed this run)`;
+        else if (was !== is) line = `  plugin ${name}: ${was} -> ${is}`;
         else line = `  plugin ${name}: ${is} (already newest)`;
         log(line);
         report.push(line);

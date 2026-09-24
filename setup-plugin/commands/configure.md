@@ -312,9 +312,9 @@ Presence, never the value - run this and paste its lines as-is:
 
 ## 8. Plugins
 
-Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure;
-`superpowers` shows as `dependency` - every install carries it beside the core plugin, so it cannot be dropped and needs no install row); the rest of the
-installed plugins are direct picks. Addable from `catalog.plugins`.
+`superpowers` and `claude-hud` show as `dependency` - every install carries both beside the core plugin, so neither can be
+dropped and neither needs an install row; the rest of the installed plugins are direct picks (the four optional ones,
+suggested on evidence). Addable from `catalog.plugins`.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,

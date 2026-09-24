@@ -1119,6 +1119,7 @@
       "typescript-lsp"
     ],
     "dependencyPlugins": [
+      "claude-hud",
       "superpowers"
     ],
     "hooks": [

@@ -166,11 +166,11 @@ Only if playwright stayed selected, ask in ONE AskUserQuestion screen TWO questi
 
 ## 9. Plugins
 
-Locked = the plugins the kept selection pulls (an LSP plugin rides its stack's closure). `superpowers` shows as `dependency`: every install carries it beside the core plugin and the installer puts it back on every run, so it cannot be dropped - do not offer it as a pick. Recommended = the always-baseline plugin set (`security-guidance`, `claude-hud` - the two that belong in every install regardless of stack) plus the confirmed stacks' plugin seeds. The rest of `catalog.plugins` is freely addable.
+`superpowers` and `claude-hud` show as `dependency`: every install carries both beside the core plugin (`claude-hud` at user scope - its status line is account-wide) and the installer puts them back on every run, so neither can be dropped - do not offer them as picks. The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
-plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`,
-whose config file is ACCOUNT-level whichever scope it is installed at), report the delta and ASK
+plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which
+every install carries, whose config file is ACCOUNT-level), report the delta and ASK
 here - the answer is applied at the install step, exactly like screen B's environment choices:
 
 1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.

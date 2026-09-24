@@ -1,5 +1,5 @@
 {
- "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts, or process skills with no artifact trace.",
+ "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), tracked (path basenames git tracks - an untracked copy is no evidence), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts (the optional plugins excepted - suggested on evidence whatever the stack), or process skills with no artifact trace.",
  "skills": {
   "dotnet-windows-service": {
    "packages": [
@@ -264,5 +264,67 @@
    ]
   }
  },
- "plugins": {}
+ "plugins": {
+  "csharp-lsp": {
+   "files": [
+    "*.csproj",
+    "*.sln"
+   ]
+  },
+  "typescript-lsp": {
+   "packages": [
+    "typescript"
+   ],
+   "files": [
+    "tsconfig.json"
+   ]
+  },
+  "security-guidance": {
+   "packages": [
+    "Microsoft.AspNetCore.Authentication.",
+    "Microsoft.AspNetCore.Identity.",
+    "Microsoft.Identity.Web",
+    "Microsoft.Identity.Client",
+    "System.IdentityModel.Tokens.Jwt",
+    "Microsoft.IdentityModel.Tokens",
+    "Microsoft.IdentityModel.JsonWebTokens",
+    "Duende.IdentityServer",
+    "OpenIddict",
+    "OpenIddict.",
+    "BCrypt.Net-Next",
+    "Stripe.net",
+    "Braintree",
+    "Adyen",
+    "jsonwebtoken",
+    "jose",
+    "passport",
+    "express-jwt",
+    "next-auth",
+    "@auth/",
+    "@auth0/",
+    "@azure/msal-browser",
+    "@azure/msal-node",
+    "@azure/msal-angular",
+    "angular-oauth2-oidc",
+    "oidc-client-ts",
+    "keycloak-js",
+    "@okta/",
+    "@clerk/",
+    "bcrypt",
+    "bcryptjs",
+    "argon2",
+    "stripe",
+    "@stripe/",
+    "braintree",
+    "braintree-web",
+    "@paypal/",
+    "@adyen/"
+   ]
+  },
+  "claude-md-management": {
+   "tracked": [
+    "CLAUDE.md"
+   ]
+  }
+ }
 }

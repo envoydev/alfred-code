@@ -442,7 +442,9 @@ test('update: the listing is read AFTER the loop, never before it', () =>
         after: () => { asked += 1; return [{ name: 'absent', version: '1.0.0', scope: 'project', enabled: true }]; },
     });
     assert.strictEqual(asked, 1);
-    assert.match(report[0], /plugin absent: 1\.0\.0 \(already newest\)/);
+    // Absent before the loop, there after it: this run installed it (claude-hud on a pre-R27 install),
+    // which 'already newest' would hide.
+    assert.match(report[0], /plugin absent: 1\.0\.0 \(installed this run\)/);
 });
 
 test('update: a third-party marketplace is registered before an absent plugin from it is installed', () =>
@@ -526,10 +528,60 @@ test('seed plan: --print-plan with no --source changes no plugin - it reads the 
     assert.deepStrictEqual(calls.filter((c) => /^plugin (update|install|enable|marketplace (add|update)) /.test(c)), [], calls.join('\n'));
 });
 
-test('seed install: a run that installs no claude-hud registers no marketplace for it', POSIX_ONLY, () =>
+// R27: claude-hud is required - installed on every run beside superpowers, never a pick, and still at
+// user scope (its status line is account-wide). The other four third-party plugins are optional picks:
+// a selection naming none of them installs none of them.
+const OPTIONAL = ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'];
+
+test('seed install: a selection naming no plugin still installs claude-hud at user scope, its marketplace first, and none of the optional four', POSIX_ONLY, () =>
 {
     const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n');
-    assert.ok(!calls.some((c) => /marketplace add jarrodwatts\/claude-hud/.test(c)), calls.join('\n'));
+    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+    const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
+    assert.ok(inst >= 0, `claude-hud was not installed at user scope:\n${calls.join('\n')}`);
+    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+    assert.ok(calls.includes('plugin install superpowers@claude-plugins-official --scope project -y'), calls.join('\n'));
+    for (const name of OPTIONAL)
+        assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} is optional, yet a selection naming no plugin installed it:\n${calls.join('\n')}`);
+});
+
+test('seed install: a selection that still names claude-hud installs it once, and an optional pick it names is installed', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('install', `${HUD_SELECTION}plugin security-guidance\n`);
+    assert.strictEqual(calls.filter((c) => /^plugin install claude-hud@/.test(c)).length, 1, calls.join('\n'));
+    assert.ok(calls.includes('plugin install security-guidance@claude-plugins-official --scope project -y'), calls.join('\n'));
+});
+
+// An install from before R27 carries whichever of the four its walk picked, and may lack claude-hud:
+// optional is not retired, so the read-back keeps each one it finds, and the required one is added.
+test('seed update --installed-only: an older install keeps its optional plugins and gains claude-hud', POSIX_ONLY, () =>
+{
+    const row = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
+    const listing = JSON.stringify([
+        row(`${OLD}@${OLD}`, { version: '1.3.0' }),
+        ...['serena', 'context7', 'memory'].map((n) => row(`${n}@${OLD}`, { version: '1.3.0' })),
+        row('superpowers@claude-plugins-official', { scope: 'user' }),
+        row('security-guidance@claude-plugins-official'),
+        row('csharp-lsp@claude-plugins-official'),
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'version: 1.3.0\nsha: 0000000\n'); // legacy-name
+    };
+    const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare });
+    for (const name of ['security-guidance', 'csharp-lsp'])
+    {
+        assert.ok(calls.includes(`plugin update ${name}@claude-plugins-official --scope project -y`), `${name} was not kept:\n${calls.join('\n')}`);
+        assert.ok(!calls.some((c) => c.startsWith(`plugin uninstall ${name}@`) || c.startsWith(`plugin disable ${name}@`)), `${name} was taken out:\n${calls.join('\n')}`);
+    }
+    for (const name of ['claude-md-management', 'typescript-lsp'])
+        assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} was never picked, yet the update installed it:\n${calls.join('\n')}`);
+    const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
+    const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
+    assert.ok(inst >= 0, `the update did not add claude-hud:\n${calls.join('\n')}`);
+    assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
 });
 
 test('seed update: an absent claude-hud gets its marketplace before the install', POSIX_ONLY, () =>

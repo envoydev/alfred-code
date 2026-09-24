@@ -67,6 +67,8 @@ test('stack-manifest: a plugin from a third-party marketplace names the source i
     const claudeHud = m.plugins.find((r) => r.id === 'claude-hud@claude-hud');
     assert.ok(claudeHud, 'the claude-hud plugin row is missing');
     assert.strictEqual(claudeHud.marketplace, 'jarrodwatts/claude-hud');
+    // R27: required, so parked like superpowers - the seed's CORE_DEP_PLUGINS installs it on every run.
+    assert.strictEqual(claudeHud.active, false, 'claude-hud is a core companion, not a pick');
 });
 
 // The seed (scripts/install/manifest.js) is the ONE Node reader of the six lists - this proves it
