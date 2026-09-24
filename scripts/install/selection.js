@@ -210,10 +210,10 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    // The playwright engines the last install PICKED (the stamp's `playwright-browsers:`) install
-    // switched off (R29), so a disabled row of one is its normal state, never the user's parked
-    // off-state - and the listing's flag is no evidence either way (S22). Plugin route only: on the
-    // copy route a registration is the record.
+    // The playwright engines the last install INSTALLED (the stamp's `playwright-browsers:`): a
+    // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
+    // a parked entry - and the listing's flag is no evidence either way (S22). Plugin route only: on
+    // the copy route a registration is the record.
     const pickedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : [];
     const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(r.name))).map((r) => currentName(r.name));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
@@ -293,7 +293,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     if (pickedEngines.length && !lines.includes('mcp playwright'))
     {
         lines.push('mcp playwright');
-        log(`installed-only: keeping mcp playwright - the last install picked ${pickedEngines.join(',')} (installed switched off)`);
+        log(`installed-only: keeping mcp playwright - the last install installed ${pickedEngines.join(',')} (on or off, still installed)`);
     }
     // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
     // is the whole answer already - a hook it does not name is on, a new release's included - and
@@ -414,7 +414,7 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
         mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        // A picked engine installs switched off (R29): disabled is its normal state, not a parked one.
+        // A kept engine the user left off (R67) is their choice, not a parked entry to switch back on.
         plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name) && !(engineOf(r.name) && pickedMcps.has(r.name))).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,

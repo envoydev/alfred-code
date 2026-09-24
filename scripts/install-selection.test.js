@@ -288,9 +288,9 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
     assert.deepStrictEqual(r.engines, ['webkit']);
 });
 
-// R29: the picked engines install SWITCHED OFF, so a disabled engine row is their normal state. The
-// stamp's `playwright-browsers:` says what was picked - the listing flag never does (S22) - and only an
-// engine it does not name is the user's parked off-state.
+// R67: an engine the user left off is still installed. The stamp's `playwright-browsers:` says what
+// was installed - the listing flag never does (S22) - and only an engine it does not name is the
+// user's parked off-state.
 test('read-back: an engine the stamp picked stays picked while disabled; one it does not name stays parked', () =>
 {
     const listing = [
@@ -576,10 +576,10 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
     assert.deepStrictEqual(inv.answered, { hooks: true, agents: false });
 });
 
-test('planInventory: a picked engine installed switched off is no DISABLED plugin - an unpicked disabled one still is', () =>
+test('planInventory: a kept engine the user left off is no DISABLED plugin - an unkept disabled one still is', () =>
 {
     // validate turns every plugins_disabled name into a DISABLED row whose accept is `claude plugin
-    // enable` - for a picked engine that would undo the switched-off install (R29).
+    // enable` - for a kept engine that would undo the user's choice to leave it off (R67).
     const inv = sel.planInventory({
         lists: { mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'] },
         listing: [

@@ -25,7 +25,7 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 
 const VALUED = new Map([
     ['--space', 'space'], ['--scope', 'scope'],
-    ['--playwright-browsers', 'playwrightBrowsersRaw'],
+    ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
@@ -44,14 +44,7 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
-// The flags 2.0.0 took out whose run still makes sense without them: one notice line and the flag
-// (with its value) ignored. `--playwright-enabled` picked the one engine left on; the picked engines
-// now install switched off and the user enables one from /plugin (R29), so it has nothing left to say.
-const IGNORED = new Map([
-    ['--playwright-enabled', 'the picked browsers install switched off, enable one from /plugin'],
-]);
-
-const FLAG_LIST = '--space, --scope, --memory-level, --playwright-browsers, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -69,10 +62,10 @@ function parseArgs(argv, env = {})
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', docsVersioning: '', memoryLevel: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
-        add: [], drop: [], notices: [],
+        add: [], drop: [],
     };
 
     for (let i = 0; i < argv.length; i++)
@@ -83,14 +76,6 @@ function parseArgs(argv, env = {})
 
         if (REMOVED.has(name)) fail(`${name} was removed in 2.0.0 - ${REMOVED.get(name)}; drop the flag`);
         if (BOOLEAN.has(name) && name === arg) { out[BOOLEAN.get(name)] = true; continue; }
-        if (IGNORED.has(name))
-        {
-            // Its value goes with it - read as the action, it would fail a run the notice says is fine.
-            if (name === arg && argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')
-                && !['install', 'update'].includes(argv[i + 1])) i += 1;
-            out.notices.push(`${name} was removed in 2.0.0 - ignored: ${IGNORED.get(name)}`);
-            continue;
-        }
 
         // Repeatable: each --add is an item the user said yes to, each --drop one they switched off,
         // on top of what the install reads back.
@@ -157,6 +142,28 @@ function parseArgs(argv, env = {})
             fail('--playwright-browsers needs at least one of chrome, msedge, firefox, webkit');
     }
     delete out.playwrightBrowsersRaw;
+
+    // Which of the installed engines to ENABLE (R67): a csv, `all` or `none`. Absent is null - 'not
+    // asked', which the run reads as every engine on for a fresh install and no flip on an update.
+    out.playwrightEnabled = null;
+    if (out.playwrightEnabledRaw)
+    {
+        const want = lower(out.playwrightEnabledRaw).split(',').map((s) => s.trim()).filter(Boolean);
+        const word = want.filter((w) => w === 'all' || w === 'none');
+        if (word.length && want.length > 1) fail('--playwright-enabled takes all or none ALONE, never beside an engine');
+        if (!want.length) fail('--playwright-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit');
+        for (const engine of want)
+            if (!word.length && !PW_ENGINES.includes(engine))
+                fail(`--playwright-enabled takes all, none, or chrome, msedge, firefox, webkit (got '${engine}')`);
+        out.playwrightEnabled = word[0] === 'all' ? 'all' : PW_ENGINES.filter((e) => want.includes(e));
+        // Beside an explicit install set it is checked here; without one, the run checks it against
+        // the set it resolves, before anything is written.
+        const outside = Array.isArray(out.playwrightEnabled) && out.playwrightBrowsers.length
+            ? out.playwrightEnabled.filter((e) => !out.playwrightBrowsers.includes(e)) : [];
+        if (outside.length)
+            fail(`--playwright-enabled names ${outside.join(',')}, which --playwright-browsers does not install (${out.playwrightBrowsers.join(',')}) - enable only an engine being installed`);
+    }
+    delete out.playwrightEnabledRaw;
 
     return out;
 }

@@ -360,10 +360,10 @@ mirrored there in the same sitting.
   - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
-    release pin). One plugin per engine, not one declaring four: one kept browser would otherwise load four
-    copies of its tool schemas every session. `--playwright-browsers <csv>` (init/configure ask it); each
-    installs SWITCHED OFF, `/plugin` turns one on, and update reads the stamp's `playwright-browsers:`,
-    never the listing flag. A legacy `playwright` server migrates. The four playwright agents grant all four.
+    release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
+    session. Init/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
+    on at install, none flipped by update); the stamp's two lines are the record, and a stamped engine a
+    run drops is uninstalled. A legacy `playwright` server migrates. The playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`).

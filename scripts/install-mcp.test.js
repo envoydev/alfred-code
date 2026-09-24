@@ -256,12 +256,42 @@ test('playwright: the one manifest row becomes one entry per kept engine, each w
 test('playwright: with no flag the kept set is what is REGISTERED, else chrome', () =>
 {
     assert.deepStrictEqual(mcp.playwrightKept({ registered: ['webkit', 'chrome'] }), ['chrome', 'webkit']);
-    // The caller unions the stamp's picked engines into `registered` - a picked engine installed
-    // switched off is still kept.
+    // The caller unions the stamp's engines into `registered` - an installed engine the user left
+    // disabled is still kept.
     assert.deepStrictEqual(mcp.playwrightKept({ registered: ['msedge'] }), ['msedge']);
     assert.deepStrictEqual(mcp.playwrightKept({}), ['chrome']);
     // An explicit set always wins over what is on the machine.
     assert.deepStrictEqual(mcp.playwrightKept({ browsers: ['firefox'], registered: ['chrome'] }), ['firefox']);
+});
+
+// --- which engines are ENABLED (R67) -----------------------------------------
+// Two choices, both the user's: the engines to install, and which of those to enable. The flag is the
+// user's answer; with no answer, an engine keeps the choice the stamp recorded for it, and one it
+// recorded nothing for - a new engine, a stamp from before the line - is enabled.
+
+test('playwright enabled: no flag and no record - every kept engine is enabled, and nothing is applied', () =>
+{
+    const r = mcp.playwrightEnabled({ kept: ['chrome', 'firefox'], flag: null, prior: { browsers: null, enabled: null } });
+    assert.deepStrictEqual(r, { enabled: ['chrome', 'firefox'], off: [], apply: false, outside: [] });
+    // A stamp that names the engines but predates the enabled line recorded no choice either.
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: ['chrome', 'firefox'], flag: null, prior: { browsers: ['chrome', 'firefox'], enabled: null } }).off, []);
+});
+
+test('playwright enabled: no flag - a recorded engine keeps its last choice, a new one is enabled', () =>
+{
+    const r = mcp.playwrightEnabled({ kept: ['chrome', 'firefox', 'webkit'], flag: null, prior: { browsers: ['chrome', 'firefox'], enabled: ['chrome'] } });
+    assert.deepStrictEqual(r, { enabled: ['chrome', 'webkit'], off: ['firefox'], apply: false, outside: [] });
+});
+
+test('playwright enabled: the flag is the answer - all, none or a set, always applied; an engine outside the kept set is named', () =>
+{
+    const prior = { browsers: ['chrome', 'firefox'], enabled: ['chrome'] };
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: ['chrome', 'firefox'], flag: 'all', prior }), { enabled: ['chrome', 'firefox'], off: [], apply: true, outside: [] });
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: ['chrome', 'firefox'], flag: [], prior }), { enabled: [], off: ['chrome', 'firefox'], apply: true, outside: [] });
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: ['chrome', 'firefox'], flag: ['firefox'], prior }), { enabled: ['firefox'], off: ['chrome'], apply: true, outside: [] });
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: ['chrome'], flag: ['chrome', 'webkit'], prior }).outside, ['webkit']);
+    // No engine kept (a selection without playwright): nothing to enable, and all or none is no error.
+    assert.deepStrictEqual(mcp.playwrightEnabled({ kept: [], flag: 'all', prior }), { enabled: [], off: [], apply: true, outside: [] });
 });
 
 test('playwright: a selection without playwright is left exactly as it is', () =>
@@ -296,16 +326,12 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
 {
     // It sits INSIDE the extras brackets - `mcp-memory-service[sqlite]==<ver>` - where an @ would
     // not parse.
-    const pins = mcp.resolvePins({ pins: JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins });
     const rel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
+    const pins = mcp.resolvePins({ pins: rel });
     assert.strictEqual(pins.MEMORY_PIN, `==${rel.memory.version}`);
     assert.strictEqual(pins.SERENA_PIN, `@${rel.serena.version}`);
     assert.strictEqual(pins.PW_PIN, `@${rel.playwright.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
-    // No registry function is taken any more: one handed in is never called.
-    let asked = 0;
-    mcp.resolvePins({ pins: rel, npmLatest: () => { asked += 1; return '9.9.9'; }, pypiLatest: () => { asked += 1; return '9.9.9'; } });
-    assert.strictEqual(asked, 0, 'the seed still asked a registry for a version');
 });
 
 // 2.0.0 cut the local npx transport (R32): the manifest ships context7 as the hosted remote row, which

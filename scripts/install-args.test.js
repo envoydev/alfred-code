@@ -146,28 +146,30 @@ test('install-args: a playwright value naming no engine is a typo, never "no fla
     fails(['install', '--playwright-browsers='], /--playwright-browsers.*needs a value/);
 });
 
-test('install-args: --playwright-enabled was removed in 2.0.0 - one notice, and the flag and its value are ignored', () =>
+test('install-args: --playwright-enabled takes the engines to ENABLE - a csv, all or none; absent is null, never a choice', () =>
 {
-    // The picked engines install switched off (R29) and the user enables one from /plugin, so the flag
-    // names nothing the run honours. A command body that still passes it must not fail the run.
-    const NOTICE = /^--playwright-enabled was removed in 2\.0\.0 - ignored: the picked browsers install switched off, enable one from \/plugin$/;
-    for (const argv of [
-        ['install', '--playwright-enabled', 'firefox'],
-        ['install', '--playwright-enabled=webkit'],
-        ['install', '--playwright-enabled', 'safari'],
-        ['install', '--playwright-enabled'],
-    ])
-    {
-        const p = ok(argv);
-        assert.strictEqual(p.notices.length, 1, JSON.stringify(argv));
-        assert.match(p.notices[0], NOTICE);
-        assert.ok(!('playwrightEnabled' in p), 'the removed flag still reaches the run');
-    }
-    // Its value is consumed, never read as the action, and it no longer constrains the kept set.
-    assert.strictEqual(ok(['--playwright-enabled', 'chrome', 'update']).action, 'update');
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'chrome', '--playwright-enabled', 'webkit']).playwrightBrowsers, ['chrome']);
-    assert.deepStrictEqual(ok(['install']).notices, []);
-    assert.ok(!require('./install/args.js').FLAG_LIST.includes('--playwright-enabled'), 'the usage still lists the removed flag');
+    // Two choices, both the user's (R67): which engines to install, and which of those to enable.
+    // Absent means 'not asked' - a fresh install enables every engine, an update flips nothing.
+    assert.strictEqual(ok(['install']).playwrightEnabled, null);
+    assert.deepStrictEqual(ok(['install', '--playwright-enabled', 'webkit,Chrome']).playwrightEnabled, ['chrome', 'webkit'],
+        'the enabled set depends on how the flag was typed');
+    assert.deepStrictEqual(ok(['install', '--playwright-enabled=firefox']).playwrightEnabled, ['firefox']);
+    assert.strictEqual(ok(['install', '--playwright-enabled', 'ALL']).playwrightEnabled, 'all');
+    assert.deepStrictEqual(ok(['install', '--playwright-enabled', 'none']).playwrightEnabled, [], 'none is an empty set, not an absent flag');
+    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'firefox']).playwrightEnabled, ['firefox']);
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--playwright-enabled'), 'the usage does not list the flag');
+});
+
+test('install-args: --playwright-enabled refuses an engine it cannot enable, in one line', () =>
+{
+    fails(['install', '--playwright-enabled', 'safari'], /--playwright-enabled takes all, none, or chrome, msedge, firefox, webkit \(got 'safari'\)/);
+    fails(['install', '--playwright-enabled', ','], /--playwright-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit/);
+    fails(['install', '--playwright-enabled', 'all,chrome'], /--playwright-enabled takes all or none ALONE/);
+    fails(['install', '--playwright-enabled', 'none,firefox'], /--playwright-enabled takes all or none ALONE/);
+    fails(['install', '--playwright-enabled'], /--playwright-enabled needs a value/);
+    // Beside an explicit install set, an engine outside it is refused - it would never be installed.
+    fails(['install', '--playwright-browsers', 'chrome', '--playwright-enabled', 'chrome,webkit'],
+        /^--playwright-enabled names webkit, which --playwright-browsers does not install \(chrome\) - enable only an engine being installed$/);
 });
 
 // ------------------------------------------------------------------ the entry point
@@ -213,13 +215,16 @@ test('install-entry: --print-plan prints the six resolved lists and exits 0, wri
     assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
 });
 
-test('install-entry: --playwright-enabled prints its removed-in-2.0.0 notice once and changes nothing the run does', () =>
+test('install-entry: --playwright-enabled naming an engine this run does not install is refused before anything is written', () =>
 {
+    // No --playwright-browsers: the kept set is chrome (the default), so firefox is not being installed.
     const r = run(['install', '--source', ROOT, '--print-plan', '--playwright-enabled', 'firefox']);
-    assert.strictEqual(r.code, 0, `the removed flag failed the run: ${r.err}`);
-    assert.strictEqual((r.out.match(/--playwright-enabled was removed in 2\.0\.0/g) || []).length, 1, r.out.slice(0, 400));
-    assert.match(r.out, /^plan mcps: .*playwright-chrome/m);
-    assert.ok(!/^plan mcps: .*playwright-firefox/m.test(r.out), 'the ignored flag still added its engine to the kept set');
+    assert.strictEqual(r.code, 1, r.out.slice(0, 400));
+    assert.match(r.err, /--playwright-enabled names firefox, which this run does not install \(installs: chrome\) - enable only an engine being installed/);
+    assert.ok(!/^plan /m.test(r.out), 'the refused run still printed a plan');
+    const all = run(['install', '--source', ROOT, '--print-plan', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'all']);
+    assert.strictEqual(all.code, 0, all.err);
+    assert.match(all.out, /^plan mcps: .*playwright-chrome.*playwright-firefox/m);
 });
 
 test('install-entry: --print-plan resolves NO runtime versions - a dry run makes no network call', () =>

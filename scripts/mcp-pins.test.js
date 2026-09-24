@@ -53,7 +53,11 @@ test('the seed takes each pin from the release, never from a registry', () =>
     const release = JSON.parse(read('meta/mcp-pins.json')).pins;
     const found = mcp.resolvePins({ pins: release });
     assert.strictEqual(found.PW_PIN, `@${release.playwright.version}`);
-    assert.ok(!/npmLatest|pypiLatest|npm', \['view'|pypi\.org/.test(read('scripts/install/alfred-code.js')), 'the seed still carries a registry lookup');
+    // Every module of the seed, not only its entry: a lookup moved into a layer is the same lookup.
+    const modules = fs.readdirSync(path.join(ROOT, 'scripts', 'install')).filter((f) => f.endsWith('.js'));
+    assert.ok(modules.includes('alfred-code.js') && modules.includes('mcp.js'), `the seed's modules were not found: ${modules.join(',')}`);
+    for (const file of modules)
+        assert.ok(!/npmLatest|pypiLatest|npm', \['view'|pypi\.org/.test(read(`scripts/install/${file}`)), `scripts/install/${file} still carries a registry lookup`);
 });
 
 // End to end on the MCP copy route: the manifest row's placeholder must reach .mcp.json as the

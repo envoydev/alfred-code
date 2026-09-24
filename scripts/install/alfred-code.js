@@ -48,7 +48,7 @@ Usage: node ${path.basename(__filename)} <install|update> [flags]
 
 Action (one is REQUIRED, positional):
   install   first-time provision; wires .claude/settings.json
-  update    refresh hooks/agents/rules and re-resolve the runtimes; idempotent
+  update    refresh hooks/agents/rules and the runtimes at the release pins; idempotent
 
 Named flags (any order, each optional): ${FLAG_LIST}
 
@@ -94,7 +94,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let args;
     try { args = parseArgs(argv, env); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
-    for (const notice of args.notices) log(notice);
 
     const home = env.HOME || env.USERPROFILE || '';
     const configDir = env.CLAUDE_CONFIG_DIR
@@ -174,10 +173,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             hooks: manifest.hooks, plugins: manifest.plugins, mcps: manifest.mcps,
         };
         const routes = plugins.pluginRoutes(env);
-        // The playwright engines the last install PICKED - the stamp's word, never the listing's flag: a
-        // picked engine installs switched off (R29), and a project-scope flag can read a stale false (S22).
-        // Plugin route only; on the copy route the registrations in .mcp.json are the record.
-        const stampEngines = routes.mcps ? (stampLayer.readPlaywright(stampFile) || []) : [];
+        // The playwright engines the last install INSTALLED, and the ones the user chose to enable (R67) -
+        // the stamp's word, never the listing's flag: an engine left off is still installed, and a
+        // project-scope flag can read a stale false (S22). Kept on the plugin route only; on the copy
+        // route the registrations in .mcp.json are the record.
+        const priorPw = { browsers: stampLayer.readPlaywright(stampFile), enabled: stampLayer.readPlaywrightEnabled(stampFile) };
+        const stampEngines = routes.mcps ? (priorPw.browsers || []) : [];
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -292,6 +293,15 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines, ...stampEngines])],
         });
         lists.mcps = pw.mcps;
+        // Which of them are ENABLED: the user's answer when given, else each keeps its last recorded
+        // choice and a new one is on. An answer naming an engine this run does not install is refused
+        // here, before anything is written.
+        const pwOn = mcp.playwrightEnabled({ kept: pw.browsers, flag: args.playwrightEnabled, prior: priorPw });
+        if (pwOn.outside.length)
+        {
+            err(`error: --playwright-enabled names ${pwOn.outside.join(',')}, which this run does not install (installs: ${pw.browsers.join(',') || 'none'}) - enable only an engine being installed\n`);
+            return 1;
+        }
 
         if (args.printPlan)
         {
@@ -351,8 +361,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets, retiredMcpsDue,
+            market, marketSeen, readMarkets, retiredMcpsDue, pw: { prior: priorPw, ...pwOn },
         };
+        if (!routes.mcps && pwOn.apply && pw.browsers.length)
+            log('playwright: --playwright-enabled is recorded but not applied on the MCP copy route - the engines are .mcp.json servers, /mcp switches them');
 
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -383,7 +395,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
-            picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx),
+            picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
         });
 
@@ -524,16 +536,8 @@ function installPlugins(ctx)
     const readListing = () => plugins.parsePluginList(readRaw(), ctx.projectRoot, { byMarketplace: true });
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
-    // The picked playwright engines install SWITCHED OFF (R29): each one this run installs is disabled
-    // at the same scope, and update never touches their flag - the user enables one from /plugin when
-    // a session needs a browser. Only on a listing the run could READ: blind, every engine reads as
-    // absent, and the disable after a no-op install would switch off one the user had enabled.
-    const engineSpecs = ctx.routes.mcps ? pwEngines(ctx).map((e) => `playwright-${e}@${ctx.market}`) : [];
-    const switchedOff = listingRead(raw) ? engineSpecs : [];
-    if (engineSpecs.length && !switchedOff.length)
-        ctx.log('  !! the plugin listing could not be read - the playwright engines keep whatever on/off state they have (/plugin switches them)');
-    else if (engineSpecs.length)
-        ctx.log(`playwright: ${pwEngines(ctx).join(',')} picked - a new one installs switched off, enable one from /plugin when a session needs a browser`);
+    const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
+    const engines = playwrightMoves(ctx, { blind: !listingRead(raw), rows });
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -550,7 +554,6 @@ function installPlugins(ctx)
     const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])];
     // A 1.x install is moved across first - the new core installed, then the old ids removed - before
     // the core is installed or updated below (plugins.migrateLegacy).
-    const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const moved = plugins.corePluginOn(ctx.routes)
         ? plugins.migrateLegacy({ rows, scope: ctx.cliScope, retired, retiredRows, carriers, cli: ctx.cli, log: ctx.log, note: ctx.note })
         : { fresh: [], gone: [], removed: [], failed: null, ran: false };
@@ -568,12 +571,13 @@ function installPlugins(ctx)
         const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, switchedOff, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;
+            if (engines.uninstalled.includes(spec)) continue;
             // An entry enabled at ANOTHER scope belongs to that scope's install too - an account-wide
             // entry a project run disabled would vanish from every other project. Said, not done.
             if (row.scope !== ctx.cliScope) { ctx.log(`  ${spec} is enabled at ${row.scope} scope, not this run's - if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`); continue; }
@@ -583,9 +587,51 @@ function installPlugins(ctx)
         return;
     }
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, switchedOff, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
 }
+
+// THE PLAYWRIGHT ENGINES for the plugin pass (R67): installed and enabled as the user picked. First an
+// engine the last install installed and this run no longer keeps is UNINSTALLED - left installed it
+// reads back as listed and the next update keeps it again. Then the moves for the kept ones
+// (plugins.js `engines`). A listing the run could not read shows every engine as absent, so the STAMP
+// says which are installed already: only a new engine is installed, and switched off only when the
+// user chose it off - a 1.x stamp names none, so each is installed, as before the line.
+function playwrightMoves(ctx, { blind, rows })
+{
+    const none = { specs: [], present: [], off: [], on: null, isOn: () => undefined, uninstalled: [] };
+    if (!ctx.routes.mcps) return none;
+    const kept = pwEngines(ctx);
+    const specOf = (e) => `playwright-${e}@${ctx.market}`;
+    const prior = ctx.pw.prior.browsers || [];
+    const uninstalled = plugins.uninstallEngines({
+        specs: prior.filter((e) => !kept.includes(e)).map(specOf), rows, blind, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note,
+    });
+    if (!kept.length) return { ...none, uninstalled };
+    const known = blind ? prior.filter((e) => kept.includes(e)) : [];
+    if (blind)
+        ctx.log(known.length
+            ? `playwright: the plugin listing could not be read - the stamp names ${known.join(',')} as installed (updated in place); the rest install as new`
+            : 'playwright: the plugin listing could not be read and no stamp names an installed engine - each installs as new');
+    const { enabled, off, apply } = ctx.pw;
+    ctx.log(apply
+        ? `playwright: installs ${kept.join(',')}; enabled as picked: ${enabled.join(',') || 'none'} (/plugin toggles them)`
+        : `playwright: installs ${kept.join(',')}; no enable answer given - one already installed keeps its on/off, one installed now arrives on${off.length ? `, except ${off.join(',')} (last left off)` : ''} (/plugin toggles them)`);
+    return {
+        specs: kept.map(specOf), present: known.map(specOf), off: off.map(specOf),
+        on: apply ? enabled.map(specOf) : null, isOn: engineOn(ctx), uninstalled,
+    };
+}
+
+// The settings file's word on a plugin at one scope - true, false, or undefined when it says nothing.
+// It is the file the CLI writes an enable or disable to, and the listing's own flag can be stale (S22).
+const engineOn = (ctx) => (spec, scope) =>
+{
+    const file = scope === 'user' ? path.join(ctx.configDir, 'settings.json')
+        : path.join(ctx.claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
+    const on = (readJson(file).enabledPlugins || {})[spec];
+    return typeof on === 'boolean' ? on : undefined;
+};
 
 // `claude plugin list --json` answered with a listing - an array, or `{installed: [...]}` - rather than
 // nothing or garbage, which parsePluginList reads as an empty listing either way.

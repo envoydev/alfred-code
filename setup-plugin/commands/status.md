@@ -150,8 +150,8 @@ plugin route the `target` column is the plugin, not a registration:
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... |
 
 `target` is the command or URL, middle-truncated to keep the row one line. Playwright has one server per
-kept browser (`playwright-<browser>`), each installed switched off; which of them is on is the user's `/plugin` toggle, not
-something this table reads. Never print env
+installed browser (`playwright-<browser>`), and any number can be on together; which are on is the user's `/plugin` toggle (the
+stamp's `playwright-enabled:` is their last answer, not the live state), not something this table reads. Never print env
 values embedded in a registration - show `${VAR}` literally as written.
 
 `memory` is locked like `serena` and `context7` (every install carries it). Add ONE line under

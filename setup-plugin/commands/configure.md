@@ -293,17 +293,22 @@ stores nothing) - and runs neither itself. Pass the answer to the installer as
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
 
-Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
-read the same ROUTE-decided way as the rest: a `playwright-<browser>@<key>` entry (under the resolve line's `key=`) in the plugins
-listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
-`playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
-run - and ask in
-the same turn which browsers to keep (multi-select: `chrome` = the machine's Google Chrome,
-`msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are
-Playwright's own builds, downloaded by the installer). Pass it at step 12 as `--playwright-browsers <csv>`;
-a dropped browser's server is removed by the run. Keeping everything as it is passes nothing. Which browser
-is ON is the user's: a newly kept one installs switched off, an installed one keeps its state, and the
-next-steps card says to switch one on from the `/plugin` toggle when a session needs it - no configure run.
+Whenever playwright is PRESENT after this round, name the browsers installed today and the ones
+enabled - both from the stamp: `grep -E '^playwright-(browsers|enabled):' .claude/alfred-code.stamp`
+(the account's for a global install). A stamp without those lines (1.x, or no stamp) falls back to
+the ROUTE-decided read: a `playwright-<browser>@<key>` entry (under the resolve line's `key=`) in the
+plugins listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`), each counted
+as enabled; a legacy single `playwright` server counts as its `--browser` value, `chrome` when it has
+none, and is migrated by the run. Then ask two AskUserQuestions, in order: which browsers to INSTALL
+(multi-select, today's pre-selected: `chrome` = the machine's Google Chrome, `msedge` = the machine's
+Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are Playwright's own builds,
+downloaded by the installer), then which of those to ENABLE (multi-select over the installed ones,
+today's enabled pre-selected, a newly added one too), the question naming the cost in one line: each
+enabled browser adds its own ~25 tools (about 18.7k characters of schema) to every session. Pass a
+changed install set at step 12 as `--playwright-browsers <csv>` - a browser left out is uninstalled
+by the run - and a changed enabled set as `--playwright-enabled <csv|none>`, which the run applies with
+`claude plugin enable` / `disable`. An unchanged answer passes nothing: a plain update switches no
+browser, since the user may have toggled one in `/plugin` since.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
@@ -429,7 +434,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--playwright-browsers <csv>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--playwright-browsers <csv>] [--playwright-enabled <csv|none>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

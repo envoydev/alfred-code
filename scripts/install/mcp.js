@@ -315,9 +315,29 @@ function expandPlaywright({ mcps = [], browsers = [], registered = [] })
     return { mcps: out, browsers: kept };
 }
 
+// Which of the kept engines are ENABLED (R67). `flag` is the user's answer - `all`, a set, or [] for
+// none - and is APPLIED to engines already installed. With no answer (null) nothing is applied: an
+// engine the stamp recorded keeps its last choice, one it recorded nothing for is enabled. `off` is
+// what an engine this run installs is switched to right after; `outside` names what the flag asks to
+// enable but this run does not install, which the caller refuses.
+function playwrightEnabled({ kept = [], flag = null, prior = {} })
+{
+    const recorded = (e) => Array.isArray(prior.browsers) && Array.isArray(prior.enabled) && prior.browsers.includes(e);
+    let enabled;
+    if (flag === 'all') enabled = [...kept];
+    else if (Array.isArray(flag)) enabled = kept.filter((e) => flag.includes(e));
+    else enabled = kept.filter((e) => !recorded(e) || prior.enabled.includes(e));
+    return {
+        enabled,
+        off: kept.filter((e) => !enabled.includes(e)),
+        apply: flag !== null,
+        outside: Array.isArray(flag) ? flag.filter((e) => !kept.includes(e)) : [],
+    };
+}
+
 // The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine.
-// Nothing on the plugin route: the engines are one plugin each and the user keeps one enabled, so
-// there is no per-engine registration to drop.
+// Nothing on the plugin route: the engines are one plugin each, and one the run no longer keeps is
+// uninstalled by the plugin layer - there is no per-engine registration to drop.
 function playwrightDrop({ routes, browsers = [] })
 {
     if (routes.mcps) return [];
@@ -371,5 +391,5 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright,
+    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled,
 };
