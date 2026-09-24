@@ -550,8 +550,9 @@ update re-run pins a stack server) or 'Leave them'. A row on a server, hook or g
 by hand is reported with its line and never edited; a credential row is the rotate ask
 `baseline-security.md` owns, never a fix here.
 
-Then check the LIBRARY copies - every skill and seat outside the core plugin is a project copy, and
-the stamp holds the hash of what the last install wrote:
+Then check the LIBRARY copies - every skill and seat outside the core plugin, and every RULE (no
+plugin ever carries one), is a project copy, and the stamp holds the hash of what the last install
+wrote:
 
 ```bash
 node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo"

@@ -17,7 +17,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { readLibrary } = require('./install/stamp.js');
 const { stampFile } = require('./install/brand.js');
-const { hashItem } = require('./install/library.js');
+const { hashItem, hashBuffer } = require('./install/library.js');
+const { resolveDocsRoot } = require('./install/copy.js');
+
+// baseline-docs-root.md is never byte-identical between the pristine SOURCE (which ships the
+// `__DOCS_ROOT__` placeholder) and the PROJECT copy (which the installer substitutes the resolved
+// path into, then hashes) - so a raw source-vs-stamp hash compare would read it as permanently
+// 'behind'. Restore the placeholder's CURRENT resolved value into the source content before
+// hashing, so the normalised comparison matches what an up-to-date copy actually holds.
+const DOCS_ROOT_RULE = 'baseline-docs-root';
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { return {}; } };
 const newer = (a, b) =>
@@ -39,19 +47,34 @@ function check({ project, source, scope = 'project', configDir })
     const local = overrides(path.join(project, '.claude', 'settings.local.json'));
     const sourceVersion = source ? (readJson(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json')).version || '') : '';
     const rows = [];
-    // A global install keeps its skills in the account dir and its agents in the project.
-    const dirs = { skills: path.join(base, 'skills'), agents: path.join(project, '.claude', 'agents') };
-    for (const kind of ['skills', 'agents'])
-        for (const [name, hash] of Object.entries(stamp[kind]).sort())
+    // A global install keeps its skills in the account dir; agents and rules stay in the project at
+    // every scope - no plugin ever carries a rule, so a rule is always a project copy.
+    const dirs = { skills: path.join(base, 'skills'), agents: path.join(project, '.claude', 'agents'), rules: path.join(project, '.claude', 'rules') };
+    const docsRoot = resolveDocsRoot(project);
+    // The pristine SOURCE hash for one item - normalised for baseline-docs-root.md, whose source
+    // content never matches an up-to-date project copy byte for byte (see the constant's comment).
+    const upHash = (kind, name) =>
+    {
+        const srcFile = kind === 'skills' ? path.join(source, 'stack', 'skills', name) : path.join(source, 'stack', kind, `${name}.md`);
+        if (kind === 'rules' && name === DOCS_ROOT_RULE)
         {
-            const file = kind === 'skills' ? path.join(dirs.skills, name) : path.join(dirs.agents, `${name}.md`);
+            let body;
+            try { body = fs.readFileSync(srcFile, 'utf8'); } catch { return null; }
+            return hashBuffer(`${name}.md`, Buffer.from(body.split('__DOCS_ROOT__').join(docsRoot)));
+        }
+        return hashItem(srcFile);
+    };
+    for (const kind of ['skills', 'agents', 'rules'])
+        for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
+        {
+            const file = kind === 'skills' ? path.join(dirs.skills, name) : path.join(dirs[kind], `${name}.md`);
             const have = hashItem(file);
             let state = 'ok';
             if (!have) state = 'missing';
             else if (have !== hash) state = 'drift';
             else if (source)
             {
-                const up = hashItem(kind === 'skills' ? path.join(source, 'stack', 'skills', name) : path.join(source, 'stack', 'agents', `${name}.md`));
+                const up = upHash(kind, name);
                 if (up && up !== hash) state = 'behind';
             }
             const row = { kind: kind.slice(0, -1), name, state };

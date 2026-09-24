@@ -108,7 +108,8 @@ otherwise, `user-authored` when clearly neither.
 
 **Skills and agents** - skills and agents = the ROUTE decides too: with the core `alfred-code` entry (or a `claude-stack-<stack>` entry an older release installed and update has not removed yet) in the plugins listing, the installed set is what those plugins CARRY - `node "$TMP/repo/scripts/selection-plugins.js" --items <their names, comma-separated>` prints one `skill <name>` / `agent <name>` line each - UNIONED with what is on disk, which on that route is the LIBRARY copies (every item outside the core, copied per pick); without any such entry the disk is the whole set. A row the plugins carry reads `plugin` in its `origin` column; a library copy reads `library`. A carried seat named in `permissions.deny` (any scope) as `Agent(<entry>:<name>)` is switched OFF - it stays in the table with `denied` in its `origin` column, since the plugin still ships it and configure can bring it back.
 
-The library copies get one more table, from the stamp's hashes:
+The library copies - skills, agents AND rules alike, since no plugin ever carries a rule - get one
+more table, from the stamp's hashes:
 
 ```bash
 node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo" --json
@@ -119,8 +120,9 @@ node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo" --jso
 | name | kind | state | mode |
 |---|---|---|---|
 
-`state` is `ok`, `drift` (edited in the project), `missing` or `behind` (the running stack ships a
-newer one); `mode` is the skill's `skillOverrides` value, `on` when unset. When `stale` is true, put
+`kind` is `skill`, `agent` or `rule`; `state` is `ok`, `drift` (edited in the project), `missing` or
+`behind` (the running stack ships a newer one); `mode` is the skill's `skillOverrides` value (absent
+for an agent or a rule row), `on` when unset. When `stale` is true, put
 one line under the table: 'the project copies are from `<version>`, the stack is `<sourceVersion>` -
 /alfred-code:update takes them'. `library: no library stamp` prints instead of JSON on an install
 older than the library route - say so in one line and skip the table.

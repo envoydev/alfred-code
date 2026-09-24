@@ -15,7 +15,10 @@ const OLD_STAMP = 'claude-stack.stamp'; // legacy-name - what a 1.x release wrot
 const roots = [];
 test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
 
-function fx({ sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, scope = 'project' } = {})
+function fx({
+    sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, scope = 'project',
+    ruleEdit = false, docsRoot,
+} = {})
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'libcheck-'));
     roots.push(root);
@@ -24,16 +27,35 @@ function fx({ sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawS
     fs.writeFileSync(path.join(src, 'stack/skills/demo/SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
     fs.mkdirSync(path.join(src, 'stack/agents'), { recursive: true });
     fs.writeFileSync(path.join(src, 'stack/agents/seat.md'), '---\nname: seat\ndescription: s\n---\nbody\n');
+    fs.mkdirSync(path.join(src, 'stack/rules'), { recursive: true });
+    fs.writeFileSync(path.join(src, 'stack/rules/baseline-git.md'), '# git\n');
+    // A pristine copy of the placeholder rule, exactly as `stack/rules/baseline-docs-root.md` ships
+    // it - the one rule whose PROJECT copy never matches its source byte for byte (the source holds
+    // `__DOCS_ROOT__`, the project a substituted path), so `behind` needs the normalised comparison.
+    fs.writeFileSync(path.join(src, 'stack/rules/baseline-docs-root.md'), "This install's root: `__DOCS_ROOT__`\n");
     fs.mkdirSync(path.join(src, 'setup-plugin/.claude-plugin'), { recursive: true });
     fs.writeFileSync(path.join(src, 'setup-plugin/.claude-plugin/plugin.json'), JSON.stringify({ name: 'alfred-code', version: sourceVersion }));
 
     const project = path.join(root, 'proj');
     const config = path.join(root, 'config');
     const claudeDir = path.join(project, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
     const base = scope === 'global' ? config : claudeDir;
     const skills = path.join(base, 'skills');
     const agents = path.join(claudeDir, 'agents');
-    const library = copyLibrary({ sourceDir: src, skillsDir: skills, agentsDir: agents, skills: ['demo'], agents: ['seat'], stamped: null });
+    const rules = path.join(claudeDir, 'rules');
+    if (settings) fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings));
+    if (rawSettings) fs.writeFileSync(path.join(claudeDir, 'settings.json'), rawSettings);
+    if (docsRoot) fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: docsRoot } }));
+    const library = copyLibrary({
+        sourceDir: src, skillsDir: skills, agentsDir: agents, rulesDir: rules,
+        skills: ['demo'], agents: ['seat'], rules: ['baseline-git', 'baseline-docs-root'], stamped: null,
+    });
+    // Simulate the installer's own docs-root stamp: substitute the placeholder, then hash AFTER the
+    // rewrite - exactly what alfred-code.js must do for the recorded hash to mean anything.
+    const docsRootFile = path.join(rules, 'baseline-docs-root.md');
+    fs.writeFileSync(docsRootFile, fs.readFileSync(docsRootFile, 'utf8').replace('__DOCS_ROOT__', docsRoot || '.claude/docs'));
+    library.rules['baseline-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
     if (!noStamp)
     {
         fs.writeFileSync(path.join(base, 'alfred-code.stamp'), renderStamp({
@@ -41,11 +63,10 @@ function fx({ sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawS
             action: 'install', scope, hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
         }));
     }
-    if (settings) fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings));
-    if (rawSettings) fs.writeFileSync(path.join(claudeDir, 'settings.json'), rawSettings);
     if (local) fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(local));
     if (sourceEdit) fs.appendFileSync(path.join(src, 'stack/skills/demo/SKILL.md'), 'newer\n');
-    return { root, src, project, config, skills, agents };
+    if (ruleEdit) fs.appendFileSync(path.join(src, 'stack/rules/baseline-git.md'), 'newer\n');
+    return { root, src, project, config, skills, agents, rules };
 }
 
 function run(f, extra = [])
@@ -58,7 +79,7 @@ test('clean install reads clean', () =>
 {
     const r = run(fx());
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /library: clean \(2 copies\)/);
+    assert.match(r.out, /library: clean \(4 copies\)/);
 });
 
 test('a hand edit is drift', () =>
@@ -85,6 +106,64 @@ test('a newer source is behind and the stamp stale', () =>
     assert.match(out, /stale stamp: the project copies are from 1\.3\.0, the stack is 9\.9\.9/);
     assert.match(out, /behind: skill demo/);
     assert.doesNotMatch(out, /behind: agent seat/, 'an unchanged source item is not behind');
+});
+
+// R29: rules are a third kind, checked exactly like skills and agents - drift, missing, behind.
+test('a hand-edited rule is drift', () =>
+{
+    const f = fx();
+    fs.appendFileSync(path.join(f.rules, 'baseline-git.md'), 'x');
+    const r = run(f);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /drift: rule baseline-git/);
+});
+
+test('a deleted rule copy is missing', () =>
+{
+    const f = fx();
+    fs.rmSync(path.join(f.rules, 'baseline-git.md'));
+    const r = run(f);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /missing: rule baseline-git/);
+});
+
+test('a newer source rule is behind', () =>
+{
+    const out = run(fx({ sourceVersion: '9.9.9', ruleEdit: true })).out;
+    assert.match(out, /behind: rule baseline-git/);
+});
+
+// baseline-docs-root.md is never byte-identical between the pristine source (which holds the
+// __DOCS_ROOT__ placeholder) and the project copy (which the installer substitutes) - a raw
+// hashItem-vs-hashItem compare would read it as permanently 'behind'. The normalised comparison
+// restores the placeholder's resolved value into the SOURCE content before hashing, so an
+// up-to-date copy reads clean, and only a REAL upstream change to the rule (beyond the
+// placeholder line) reads as behind.
+test('baseline-docs-root is compared normalised - the placeholder never reads as behind by itself', () =>
+{
+    const clean = run(fx({ docsRoot: 'team/docs' }));
+    assert.equal(clean.code, 0, clean.out);
+    assert.doesNotMatch(clean.out, /behind: rule baseline-docs-root/, 'an up-to-date, substituted copy is not behind just because the source still holds the placeholder');
+
+    const f = fx({ sourceVersion: '9.9.9' });
+    fs.appendFileSync(path.join(f.src, 'stack/rules/baseline-docs-root.md'), 'a real upstream change\n');
+    const out = run(f).out;
+    assert.match(out, /behind: rule baseline-docs-root/, 'a genuine content change past the placeholder still reads as behind');
+});
+
+// R29: a stamp written before rules joined the library (skills/agents present, no library-rules
+// line at all) must never report every rule as drift or missing on the first check after the
+// upgrade - there is nothing recorded yet to compare against, so there is nothing to report.
+test('a stamp with no library-rules line reports no rule rows - never false drift', () =>
+{
+    const f = fx();
+    const stamp = path.join(f.project, '.claude', 'alfred-code.stamp');
+    const text = fs.readFileSync(stamp, 'utf8').replace(/^library-rules: .*$/m, 'library-rules: ');
+    // Simulate the pre-R29 shape exactly: the line is ABSENT, not merely empty.
+    fs.writeFileSync(stamp, text.split('\n').filter((l) => !l.startsWith('library-rules:')).join('\n'));
+    const got = JSON.parse(run(f, ['--json']).out);
+    assert.ok(!got.rows.some((r) => r.kind === 'rule'), 'no rule rows at all when the stamp never recorded any');
+    assert.ok(got.rows.some((r) => r.kind === 'skill'), 'skills/agents are still checked normally');
 });
 
 test('skillOverrides is reported per skill, local over project', () =>
@@ -117,7 +196,7 @@ test('a 1.3.0 stamp under its 1.x name is checked like the new one - the new nam
     fs.renameSync(stamp, path.join(f.project, '.claude', OLD_STAMP));
     const r = run(f);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /library: clean \(2 copies\)/);
+    assert.match(r.out, /library: clean \(4 copies\)/);
     fs.writeFileSync(stamp, 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
     assert.match(run(f).out, /no library stamp/, 'the new stamp is read first, even beside a 1.x one');
 });
@@ -133,6 +212,6 @@ test('global scope reads the account dir', () =>
     const f = fx({ scope: 'global' });
     const r = run(f, ['--scope', 'global', '--config-dir', f.config]);
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /library: clean \(2 copies\)/);
+    assert.match(r.out, /library: clean \(4 copies\)/);
     assert.match(run(f).out, /no library stamp/, 'read at project scope, the account stamp is not found');
 });

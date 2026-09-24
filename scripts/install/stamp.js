@@ -85,6 +85,7 @@ function renderStamp(fields)
         `picked-agents: ${(picked.agents || []).join(',')}`,
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
+        `library-rules: ${hashes(library.rules)}`,
         '',
     ].join('\n');
 }
@@ -160,15 +161,21 @@ function readPicked(file)
 }
 
 // The library hashes of a stamp - what each copy held when this install wrote it. Null when the
-// stamp has no library lines (an older release, the shell twin, no stamp): nothing to compare.
+// stamp has no library lines at all (an older release, the shell twin, no stamp): nothing to
+// compare. A stamp with skills/agents but no `library-rules:` line (a pre-R29 release) still reads
+// as a stamp - rules just come back empty, so the first update after this release records fresh
+// hashes instead of every rule reading as missing or drift.
 function readLibrary(file)
 {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
-    if (!/^library-(skills|agents):/m.test(text)) return null;
+    if (!/^library-(skills|agents|rules):/m.test(text)) return null;
     const map = (key) => Object.fromEntries(((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '')
         .split(',').map((s) => s.trim()).filter((s) => s.includes('=')).map((s) => [s.slice(0, s.indexOf('=')), s.slice(s.indexOf('=') + 1)]));
-    return { version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(), skills: map('library-skills'), agents: map('library-agents') };
+    return {
+        version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(),
+        skills: map('library-skills'), agents: map('library-agents'), rules: map('library-rules'),
+    };
 }
 
 module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary };

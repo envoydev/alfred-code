@@ -205,7 +205,8 @@ test('install-stamp: the stamp records library hashes and reads them back', () =
     const { dest, text } = write(p, { library: { skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' } } });
     assert.match(text, /^library-skills: demo=aa,other=cc$/m);
     assert.match(text, /^library-agents: seat=bb$/m);
-    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' } });
+    assert.match(text, /^library-rules: $/m, 'no rules given is an empty line, like the other two');
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' }, rules: {} });
 });
 
 test('install-stamp: a stamp without library lines, or no stamp, reads as null; recorded empty is an answer', () =>
@@ -216,9 +217,30 @@ test('install-stamp: a stamp without library lines, or no stamp, reads as null; 
     assert.strictEqual(readLibrary(file), null);
     assert.strictEqual(readLibrary(path.join(p.base, 'absent.stamp')), null);
     fs.writeFileSync(file, 'sha: abc\nversion: 1.3.0\nlibrary-skills: \nlibrary-agents: garbage,x=\n');
-    assert.deepStrictEqual(readLibrary(file), { version: '1.3.0', skills: {}, agents: { x: '' } }, 'a malformed pair is skipped, never a crash');
+    assert.deepStrictEqual(readLibrary(file), { version: '1.3.0', skills: {}, agents: { x: '' }, rules: {} }, 'a malformed pair is skipped, never a crash');
     const { text } = write(project());
     assert.match(text, /^library-skills: $/m, 'no library given is an empty line');
+});
+
+// R29: rules are a third `library` kind, same as skills and agents.
+test('install-stamp: the stamp records rule hashes alongside skills and agents', () =>
+{
+    const p = project();
+    const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } } });
+    assert.match(text, /^library-rules: baseline-git=cc$/m);
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } });
+});
+
+// R29: a stamp a 1.x (pre-rules) release wrote carries library-skills/library-agents but no
+// library-rules line at all. It must read as a STAMP (skills/agents drift checking must keep
+// working), with an empty rules map - never null, and never a crash - so the first update after
+// this release records fresh hashes instead of reporting every rule as drift.
+test('install-stamp: a stamp with library-skills/agents but no library-rules line reads rules as empty, not null', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'old.stamp');
+    fs.writeFileSync(file, 'sha: abc\nversion: 1.4.0\nlibrary-skills: demo=aa\nlibrary-agents: seat=bb\n');
+    assert.deepStrictEqual(readLibrary(file), { version: '1.4.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: {} });
 });
 
 test('install-stamp: stampPath is where writeStamp writes, per scope', () =>

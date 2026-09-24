@@ -5,9 +5,23 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { hashItem } = require('./install/library.js');
+const { renderStamp } = require('./install/stamp.js');
 
 const SCRIPT = path.join(__dirname, 'stamp-docs-root.js');
 const SOURCE_RULE = path.join(__dirname, '..', 'stack', 'rules', 'baseline-docs-root.md');
+
+// A minimal install stamp naming ONE library rule hash, so a test can assert whether this script
+// re-records it after it rewrites the rule the stamp is naming.
+function writeStamp(claudeDir, rulesHash)
+{
+    fs.writeFileSync(path.join(claudeDir, 'alfred-code.stamp'), renderStamp({
+        repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'a'.repeat(40), version: '1.0.0', installed: '2026-09-24T00:00:00Z',
+        action: 'install', scope: 'project', hooks: [], alwaysRules: [], alwaysMcps: [], picked: {},
+        library: { skills: {}, agents: {}, rules: rulesHash },
+    }));
+}
+const libraryRulesLine = (claudeDir) => (/^library-rules: (.*)$/m.exec(fs.readFileSync(path.join(claudeDir, 'alfred-code.stamp'), 'utf8')) || [])[1];
 
 function makeProject(settings)
 {
@@ -49,6 +63,59 @@ test('missing rule file is a fail-soft no-op with exit 0', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'stamp-'));
     const out = run(root);
     assert.match(out, /nothing to stamp/);
+});
+
+// R29: the installer hashes baseline-docs-root.md AFTER it substitutes the placeholder - this
+// script does the same substitution again, LATER (init's step 11, a re-stamp after the walk
+// applied a different docs root than the install ran with), so it must re-record the hash too, or
+// the very next library check reads the rule as drift for a rewrite the installer's own protocol
+// asked for.
+test('re-records the stamp\'s library-rules hash for baseline-docs-root when it re-stamps the rule', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    const claudeDir = path.join(root, '.claude');
+    const rulePath = path.join(claudeDir, 'rules', 'baseline-docs-root.md');
+    try
+    {
+        run(root);
+        writeStamp(claudeDir, { 'baseline-docs-root': hashItem(rulePath) });
+        // The applied docs root differs from what the install ran with - init's own trigger.
+        fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
+        run(root);
+        assert.match(stampLine(root), /This install's root: `team\/docs`/, 'the rule itself was re-stamped');
+        assert.strictEqual(libraryRulesLine(claudeDir), `baseline-docs-root=${hashItem(rulePath)}`,
+            'the stamp must carry the hash of the rule AS RE-STAMPED, not the value recorded before this run touched it');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a stamp naming no other rule, or none at all, is left alone beyond the one key it owns', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    const claudeDir = path.join(root, '.claude');
+    try
+    {
+        run(root);
+        writeStamp(claudeDir, { 'baseline-docs-root': 'deadbeef', 'baseline-git': 'cafef00d' });
+        fs.writeFileSync(path.join(claudeDir, 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
+        run(root);
+        assert.match(libraryRulesLine(claudeDir), /baseline-git=cafef00d/, 'a sibling rule\'s recorded hash is untouched');
+        assert.doesNotMatch(libraryRulesLine(claudeDir), /baseline-docs-root=deadbeef/, 'the owned key was updated');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('no stamp, or a stamp with no library-rules line, is left alone - nothing to correct yet', () => {
+    const root = makeProject('{"env":{"ALFRED_CODE_DOCS_PATH":"docs"}}');
+    try
+    {
+        run(root); // no stamp on disk at all
+        assert.ok(!fs.existsSync(path.join(root, '.claude', 'alfred-code.stamp')));
+        fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.0.0\npicked-skills: demo\n');
+        const before = fs.readFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'utf8');
+        fs.writeFileSync(path.join(root, '.claude', 'settings.json'), '{"env":{"ALFRED_CODE_DOCS_PATH":"team/docs"}}');
+        run(root);
+        assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'utf8'), before, 'a stamp with nothing to correct is byte-for-byte untouched');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 // --reprobe-versioning: the docs-versioning seed is probed at the path the file held when the INSTALL ran, and on

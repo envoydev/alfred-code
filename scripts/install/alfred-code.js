@@ -75,6 +75,9 @@ const RETIRED_DENY = [
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+// The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
+// bare name, matching a copyLibrary/stamp key (no .md).
+const DOCS_ROOT_RULE = 'baseline-docs-root';
 
 function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s), err: (s) => process.stderr.write(s) })
 {
@@ -360,13 +363,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         });
         runLayers(ctx);
 
-        if (pinSnapshot) pinsLayer.restorePins({ snapshot: pinSnapshot, files: pinFiles(ctx), log });
+        if (pinSnapshot)
+        {
+            pinsLayer.restorePins({ snapshot: pinSnapshot, files: pinFiles(ctx), log });
+            // A restored pin value lands AFTER copyLibrary already hashed the agent it edited, so the
+            // recorded hash is stale - re-hash what --keep-pins just touched, or the next check reads
+            // a kept pin as drift.
+            rehashKind(ctx.library && ctx.library.agents, path.join(claudeDir, 'agents'));
+        }
 
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
             hooksCatalog: manifest.catalogs.hooks, version: releaseVersion(resolved.dir), log, note,
             picked: stampPickLists(lists, stampPicks, carriedPicks),
-            library: ctx.library || { skills: {}, agents: {} },
+            library: ctx.library || { skills: {}, agents: {}, rules: {} },
         });
 
         summarise(ctx, failures);
@@ -419,6 +429,15 @@ function bootstrapSource(ctx)
     if (ctx.marketSeen)
         ctx.market = plugins.stackMarket({ ...ctx.marketSeen, readMarketplaces: ctx.readMarkets, cli: ctx.cli, env: ctx.env });
     plugins.refreshMarketplaces({ plugins: [`${BRAND.core}@${ctx.market}`], cli: ctx.cli, refreshed: ctx.refreshed });
+}
+
+// Re-hash every currently-tracked library item of one kind after something OUTSIDE copyLibrary
+// rewrote its file: the docs-root stamp, the copy-route MCP tool-name re-spelling, a restored
+// --keep-pins value. A dozen files at most - cheap, and correctness here is what keeps `drift` from
+// firing on content the installer itself just wrote.
+function rehashKind(map, dir)
+{
+    for (const name of Object.keys(map || {})) map[name] = library.hashItem(path.join(dir, `${name}.md`));
 }
 
 // Remove each named copy the stack itself shipped. A file no list names is the project's own and is
@@ -609,11 +628,21 @@ function installHooksAndRules(ctx)
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,
     });
-    copy.installFromSource({
-        sourceDir: ctx.source.dir, subdir: path.join('stack', 'rules'), label: 'rule',
-        destDir: path.join(ctx.claudeDir, 'rules'), files: ctx.lists.rules, log: ctx.log, note: ctx.note,
+    // No plugin ever carries a rule, so every rule is a LIBRARY copy on every route - the hash lands
+    // in the stamp beside the skills and agents one. `ctx.library` may already carry skills/agents
+    // from the plugin route above; on the copy route this is its first write.
+    ctx.library = ctx.library || { skills: {}, agents: {} };
+    const rulesLibrary = library.copyLibrary({
+        sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
+        rules: ctx.lists.rules.map((f) => f.replace(/\.md$/, '')),
+        stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
     });
+    ctx.library.rules = rulesLibrary.rules;
     copy.stampDocsRoot(ctx.projectRoot, { log: ctx.log, note: ctx.note });
+    // stampDocsRoot rewrites baseline-docs-root.md IN PLACE, after copyLibrary already hashed it -
+    // re-hash the one file it touches, or `drift` fires on every check from here on.
+    if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
+        ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(path.join(ctx.claudeDir, 'rules', `${DOCS_ROOT_RULE}.md`));
 
     const catalog = readJson(path.join(ctx.source.dir, 'meta', 'environment.json')).env || [];
     const migrations = envMigrations(readJson(path.join(ctx.source.dir, 'meta', 'migrations.json')));
@@ -681,10 +710,13 @@ function downconvert(ctx)
         ctx.log(`  !! these servers are registered under their bare names but the skills and agents come from the plugins, which name the plugin spelling: ${bare.join(' ')} - set ALFRED_CODE_SKILLS_VIA_PLUGIN=false too, or leave them on the plugin route`);
         return;
     }
-    mcp.downconvertToolNames({
+    const changed = mcp.downconvertToolNames({
         roots: [ctx.skillsDir, path.join(ctx.claudeDir, 'agents'), path.join(ctx.claudeDir, 'rules'), path.join(ctx.claudeDir, 'hooks')],
         bare, log: ctx.log,
     });
+    // The re-spelling can rewrite any rule's content in place, after copyLibrary already hashed it -
+    // re-hash every tracked rule (a dozen files at most) rather than tracking which ones changed.
+    if (changed) rehashKind(ctx.library && ctx.library.rules, path.join(ctx.claudeDir, 'rules'));
 }
 
 function summarise(ctx, failures)

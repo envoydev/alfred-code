@@ -42,6 +42,34 @@ function resolveDocsRoot(settingsFile)
     }
 }
 
+// The installer hashes baseline-docs-root.md AFTER it substitutes the placeholder (R29) - this
+// script does the SAME substitution again, later, so a re-stamp here is the same kind of rewrite
+// and must re-record the same hash, or the very next library check reads the rule as drift for a
+// change this script's own protocol asked for. Owns exactly one key: a sibling rule's recorded
+// hash, and everything else in the stamp, is left untouched. A 1.x install's stamp keeps its old
+// name until the next update writes the new one; read whichever exists, same as every other reader.
+function restampLibraryHash(claudeDir, ruleFile)
+{
+    let stampFile, hashItem;
+    try
+    {
+        ({ stampFile } = require('./install/brand.js'));
+        ({ hashItem } = require('./install/library.js'));
+    }
+    catch { return; }
+    const target = stampFile(claudeDir).read;
+    if (!target) return;
+    let text;
+    try { text = fs.readFileSync(target, 'utf8'); } catch { return; }
+    const line = /^library-rules: (.*)$/m.exec(text);
+    if (!line || !/(^|,)baseline-docs-root=/.test(line[1])) return;
+    const hash = hashItem(ruleFile);
+    if (!hash) return;
+    const updated = line[1].replace(/(^|,)baseline-docs-root=[^,]*/, `$1baseline-docs-root=${hash}`);
+    if (updated === line[1]) return;
+    fs.writeFileSync(target, text.replace(line[0], `library-rules: ${updated}`));
+}
+
 // claudeDir holds rules/ + settings.json: <project>/.claude for a project install, the account dir
 // (~/.claude, ~/.claude-<space>) for a global one.
 function stampDir(claudeDir)
@@ -61,6 +89,7 @@ function stampDir(claudeDir)
     }
     fs.writeFileSync(ruleFile, text.replace(STAMP_RE, `$1${val}$2`));
     console.log(`stamp-docs-root: stamped '${val}' into ${ruleFile}`);
+    restampLibraryHash(claudeDir, ruleFile);
 }
 
 function stamp(root)

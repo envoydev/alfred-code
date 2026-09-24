@@ -42,12 +42,24 @@ function hashItem(p)
     return h.digest('hex');
 }
 
-function copyLibrary({ sourceDir, skillsDir, agentsDir, skills = [], agents = [], stamped = null, log = () => {}, note = () => {} })
+// hashItem's single-file formula, over content already in memory - for a NORMALISED comparison
+// (library-check.js restores the docs-root placeholder before hashing) where writing a probe file
+// to disk just to hash it would be wasted work.
+function hashBuffer(name, buf)
 {
-    const out = { skills: {}, agents: {} };
+    const h = crypto.createHash('sha256');
+    return h.update(`${name}\0${buf.length}\0`).update(buf).digest('hex');
+}
+
+// Rules are a third kind, same shape as agents: no plugin ever carries one (there is no plugin
+// route for a rule), so every rule is always a library copy, on every route.
+function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, log = () => {}, note = () => {} })
+{
+    const out = { skills: {}, agents: {}, rules: {} };
     const plan = [
         ...skills.map((name) => ({ kind: 'skills', label: 'skill', name, src: path.join(sourceDir, 'stack', 'skills', name), dst: path.join(skillsDir, name) })),
         ...agents.map((name) => ({ kind: 'agents', label: 'agent', name, src: path.join(sourceDir, 'stack', 'agents', `${name}.md`), dst: path.join(agentsDir, `${name}.md`) })),
+        ...rules.map((name) => ({ kind: 'rules', label: 'rule', name, src: path.join(sourceDir, 'stack', 'rules', `${name}.md`), dst: path.join(rulesDir, `${name}.md`) })),
     ];
     for (const item of plan)
     {
@@ -66,4 +78,4 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, skills = [], agents = []
     return out;
 }
 
-module.exports = { hashItem, copyLibrary };
+module.exports = { hashItem, hashBuffer, copyLibrary };
