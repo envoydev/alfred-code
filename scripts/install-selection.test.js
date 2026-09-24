@@ -541,23 +541,27 @@ test('read-back: a copy-route install that kept no hook reads back `hook none` o
 // m8 (fix round 5): stack hooks on disk under a stamp that says 'plugin' are a copy-route switch that
 // died part way - the plugin route prunes every copy - so they are set aside for the stored list. Under
 // 'copy' or an unknown route the disk is the record, as before.
+// m12 (Task 16b): on the mixed route and the full copy route alike.
 test('read-back: a partial hook folder under a plugin stamp is no pick - the stored list decides, the disk only under copy or an unknown route', () =>
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const partial = shipped.slice(0, 5);
     const core = row('alfred-code@envoydev');
-    const copy = { hooks: false, skills: true, mcps: true };
     const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook ')).sort();
-    const bare = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin' });
-    assert.deepStrictEqual(hookLines(bare), [], 'nothing stored: every hook stays on');
-    assert.ok(!bare.closeFrom.some((l) => l.startsWith('hook ')), 'a set-aside file never reaches the closure');
-    const stored = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin',
-        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
-    assert.deepStrictEqual(hookLines(stored), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort());
-    for (const lastHooksRoute of ['copy', null])
+    for (const copy of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
     {
-        const disk = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute });
-        assert.deepStrictEqual(hookLines(disk), partial.map((h) => `hook ${h}`).sort(), `${lastHooksRoute}: the disk is the record`);
+        const route = copy.skills ? 'mixed' : 'full copy';
+        const bare = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin' });
+        assert.deepStrictEqual(hookLines(bare), [], `${route}, nothing stored: every hook stays on`);
+        assert.ok(!bare.closeFrom.some((l) => l.startsWith('hook ')), `${route}: a set-aside file never reaches the closure`);
+        const stored = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin',
+            settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+        assert.deepStrictEqual(hookLines(stored), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort(), `${route}: the stored list`);
+        for (const lastHooksRoute of ['copy', null])
+        {
+            const disk = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute });
+            assert.deepStrictEqual(hookLines(disk), partial.map((h) => `hook ${h}`).sort(), `${route}, ${lastHooksRoute}: the disk is the record`);
+        }
     }
 });
 

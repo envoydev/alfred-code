@@ -1787,39 +1787,47 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 // m8 (fix round 5): a plugin -> copy run that dies after SOME hook copies leaves a partial folder under
 // a stamp that still says 'plugin'. The next copy-route read took those files as the user's picks and
 // switched the rest off (12 of 17 in the reviewer's probe). Until a copy run finishes they are no
-// record: the stored ALFRED_CODE_HOOKS_OFF is read instead (R55), else every hook is on.
+// record: the stored ALFRED_CODE_HOOKS_OFF is read instead (R55), else every hook is on. m12 (Task 16b):
+// on both copy routes - the full one records its picks as the copies alone, so there the disk says it.
 test('seed: a plugin-to-copy run that dies after some hook copies never reads the partial folder as picks (m8)', POSIX_ONLY, () =>
 {
     const OFF = ['guard-answer-length', 'instrument-tool-usage'];
     const { loadManifest } = require('./install/manifest.js');
-    const kept = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))].filter((h) => !OFF.includes(h));
-    for (const [label, selection, wantOff] of [
-        ['nothing stored', 'skill markdown-style\n', []],
-        ['two stored off', `skill markdown-style\n${kept.map((h) => `hook ${h}\n`).join('')}`, OFF],
-    ])
-    {
-        const s = hooksRouteSandbox('m8-', selection);
-        try
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))];
+    const kept = shipped.filter((h) => !OFF.includes(h));
+    for (const route of ['mixed', 'full copy'])
+        for (const [label, selection, wantOff] of [
+            ['nothing stored', 'skill markdown-style\n', []],
+            ['two stored off', `skill markdown-style\n${kept.map((h) => `hook ${h}\n`).join('')}`, OFF],
+        ])
         {
-            // Step 1: install on the PLUGIN route - the stamp says 'plugin', the off list is stored.
-            assert.strictEqual(s.run(['install'], s.env), 0, `${label}: the setup install failed`);
-            assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `${label}: setup`);
+            const s = hooksRouteSandbox('m8-', selection);
+            const copyEnv = route === 'mixed' ? s.copyEnv : { ...s.copyEnv, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+            const offOnDisk = () => shipped.filter((h) => !s.onDisk().includes(`${h}.js`)).sort();
+            const what = `${route}, ${label}`;
+            try
+            {
+                // Step 1: install on the PLUGIN route - the stamp says 'plugin', the off list is stored.
+                assert.strictEqual(s.run(['install'], s.env), 0, `${what}: the setup install failed`);
+                assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `${what}: setup`);
 
-            // Step 2: a copy-route update that dies right after its fifth hook copy lands.
-            let copies = 0;
-            const r2 = s.run(['update', '--installed-only'], s.copyEnv,
-                (line) => { if (/ hook installed -> /.test(line) && ++copies === 5) throw new Error('FAULT: simulated death after five hook copies'); });
-            assert.strictEqual(r2, 1, `${label}: the interrupted run must fail`);
-            assert.strictEqual(s.onDisk().filter((f) => !HOOK_ENGINES.includes(f)).length, 5, `${label}: five hook copies must have landed`);
-            assert.match(s.stamp(), /^hooks-route: plugin$/m);
+                // Step 2: a copy-route update that dies right after its fifth hook copy lands.
+                let copies = 0;
+                const r2 = s.run(['update', '--installed-only'], copyEnv,
+                    (line) => { if (/ hook installed -> /.test(line) && ++copies === 5) throw new Error('FAULT: simulated death after five hook copies'); });
+                assert.strictEqual(r2, 1, `${what}: the interrupted run must fail`);
+                assert.strictEqual(s.onDisk().filter((f) => !HOOK_ENGINES.includes(f)).length, 5, `${what}: five hook copies must have landed`);
+                assert.match(s.stamp(), /^hooks-route: plugin$/m);
 
-            // Step 3: a genuine copy-route update --installed-only keeps exactly the stored off list.
-            let out3 = '';
-            assert.strictEqual(s.run(['update', '--installed-only'], s.copyEnv, (line) => { out3 += line; }), 0, out3);
-            assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `m8 (${label}): the partial copy was read as the user's picks`);
+                // Step 3: a genuine copy-route update --installed-only keeps exactly the stored off list -
+                // in the stored list on the mixed route, in the copies on the full one.
+                let out3 = '';
+                assert.strictEqual(s.run(['update', '--installed-only'], copyEnv, (line) => { out3 += line; }), 0, out3);
+                assert.deepStrictEqual(offOnDisk(), [...wantOff].sort(), `m8 (${what}): the partial copy was read as the user's picks`);
+                if (route === 'mixed') assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `m8 (${what}): the stored list`);
+            }
+            finally { s.cleanup(); }
         }
-        finally { s.cleanup(); }
-    }
 });
 
 // N7 (Task 16b): the full copy route writes ALFRED_CODE_HOOKS_OFF '' at the end of the hooks layer (no
