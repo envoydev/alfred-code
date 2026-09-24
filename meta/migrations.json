@@ -114,7 +114,7 @@
     "key": "ALFRED_CODE_SENTRY_AUTH"
    },
    "why": "2.0.0 cut the sentry MCP server from the stack (R26), and with it the headers helper this key told which auth mode to send - nothing reads it any more, and a dead key in the env block reads as a knob that still works. The account file's SENTRY_SLUG and SENTRY_ACCESS_TOKEN are the user's credentials and are left exactly where they are",
-   "then": "nothing - to keep a Sentry server, add it yourself: claude mcp add --transport http --scope project sentry https://mcp.sentry.dev/mcp"
+   "then": "nothing - to keep a Sentry server, add it yourself at the scope the install uses: claude mcp add --transport http --scope project sentry https://mcp.sentry.dev/mcp on a project install, or the same line with --scope user on a global one"
   }
  ]
 }

@@ -1103,3 +1103,16 @@ test('seed update --installed-only: a 1.x plugin-route project with a leftover p
     assert.deepStrictEqual(one.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), 'the 1.x off list is kept');
     assert.deepStrictEqual(one.off, ['guard-answer-length']);
 });
+
+// configure and validate SHOW the --print-plan output. A plan records the uninstalls, it never runs
+// them, so it must never print the outcome lines a run prints after one - a 'plugin pruned' or an
+// 'add it back:' there reads as done. The notes that describe what the run would do stay, marked.
+test('seed plan: --print-plan over a 1.x project with cut plugins prints no removal outcome - nothing ran', POSIX_ONLY, () =>
+{
+    const key = 'claude-stack'; // legacy-name
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: cutListing(key, key), args: ['--print-plan'] });
+    assert.deepStrictEqual(calls.filter((c) => /^plugin (install|uninstall|update|enable) /.test(c)), [], calls.join('\n'));
+    assert.ok(out.includes(`plan migrate: claude plugin uninstall sentry@${key} --scope project -y`), out);
+    assert.ok(!/plugin pruned|add it back:|plugin removed/.test(out), out.split('\n').filter((l) => /plugin pruned|add it back:|plugin removed/.test(l)).join('\n'));
+    assert.match(out, new RegExp(`^plan note: angular-cli@${key} is installed at user scope, not this run's - kept`, 'm'));
+});

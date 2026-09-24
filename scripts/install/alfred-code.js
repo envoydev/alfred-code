@@ -301,9 +301,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const carriers = readRetiredEntries(resolved.dir).map((e) => e.name);
                 const retiredRows = readRetiredPlugins(resolved.dir);
                 const planned = [];
+                // The recording cli answers every call as done, so the lines a run prints AFTER a
+                // removal would claim one that never ran: a plan keeps only what describes the move.
+                const OUTCOME = /plugin pruned|add it back:|plugin removed/;
+                const planLog = (m) => { if (!OUTCOME.test(m)) plain(`plan note: ${String(m).trim()}`); };
                 plugins.migrateLegacy({
                     rows: plugins.parsePluginList(raw, projectRoot, { everyScope: true }),
-                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])], retiredRows, carriers, log,
+                    scope: cliScope, retired: [...new Set([...manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])], retiredRows, carriers, log: planLog,
                     cli: (argv) => { planned.push(`claude ${argv.join(' ')}`); return true; },
                 });
                 for (const step of planned) plain(`plan migrate: ${step}`);

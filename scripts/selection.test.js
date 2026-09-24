@@ -35,7 +35,7 @@ test('environment catalog: every row is askable, seeded and shaped', () =>
         assert.ok(TYPES.has(row.validate.type), `${row.key} has a validate shape the walks can check`);
         // A WRITTEN row mirrors a choice the run just made into the file a plugin launcher reads, so
         // it is never asked on the environment screen - the question that owns it is elsewhere
-        // (--memory-level, --sentry-auth), and asking twice would let the two answers disagree.
+        // (--memory-level), and asking twice would let the two answers disagree.
         if (row.written) { assert.strictEqual(row.ask, false, `${row.key} is written by the install, so it is not asked`); }
         if (row.validate.type === 'enum') { assert.ok(row.validate.values.includes(row.default), `${row.key} default is one of its own values`); }
         if (row.validate.type === 'percent')

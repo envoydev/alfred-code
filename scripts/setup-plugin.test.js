@@ -529,3 +529,57 @@ test('a hand-edited library copy is reported before an apply overwrites it, and 
         assert.ok(filters.some((l) => /overwriting a hand-edited copy/.test(l)), `${name}: no report filter shows the overwrite`);
     }
 });
+
+// update.md's ONE post-install grep is all the close-out ever reads of the installer log, so every
+// retirement line the installer writes - the removal, its add-back line, and a row KEPT at another
+// scope or parked, each with the uninstall command the user runs - must pass that pattern. The lines
+// come from a real seed run, so a reworded log line or a narrowed pattern turns this red.
+test('update: the post-install grep passes every retirement line the installer writes', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    const m = body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/);
+    assert.ok(m, 'update.md carries no post-install grep');
+    const pattern = new RegExp(m[1]);
+    const listing = JSON.stringify([
+        { id: 'alfred-code@envoydev', version: '1.3.0', scope: 'project', enabled: true },
+        { id: 'sentry@envoydev', version: '1.3.0', scope: 'project', enabled: true },
+        { id: 'angular-cli@envoydev', version: '1.3.0', scope: 'user', enabled: true },
+        { id: 'claude-stack-aspnet@envoydev', version: '1.3.0', scope: 'project', enabled: false }, // legacy-name
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'source: test\nversion: 1.3.0\n');
+        fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { 'angular-cli': { type: 'stdio', command: 'npx', args: ['-y', '@angular/cli', 'mcp'], env: {} } } }, null, 2)}\n`);
+    };
+    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing, prepare });
+    const kinds = {
+        'plugin removal': /plugin pruned \(retired upstream\)/,
+        'registration removal': /mcp pruned: /,
+        'add-back line': /add it back: claude mcp add /,
+        'kept at another scope': /is installed at user scope, not this run's - kept/,
+        'kept parked': /is parked here - kept/,
+    };
+    for (const [kind, re] of Object.entries(kinds))
+    {
+        const lines = out.split('\n').filter((l) => re.test(l));
+        assert.ok(lines.length > 0, `the seed run wrote no ${kind} line - the fixture or the log wording moved:\n${out}`);
+        for (const line of lines) assert.match(line, pattern, `update.md's grep drops the ${kind} line`);
+    }
+});
+
+// The way back from the 2.0.0 cut is printed text the user runs as-is, at whatever scope the install
+// has. A retired-plugins row's add-back is substituted per run; a migration's `then` is not, so one
+// naming a project scope names the global install's user scope beside it. A local-mode context7 user
+// who ran the old `/mcp disable context7` line is told how to switch the hosted one back on.
+test('the 2.0.0 add-back lines fit every install scope', () =>
+{
+    const rows = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'retired-plugins.json'), 'utf8')).plugins;
+    for (const row of rows.filter((r) => r.retiredIn === '2.0.0'))
+        assert.match(row.addBack || '', /--scope <scope>/, `${row.name}'s add-back is not substituted per scope`);
+    assert.match(rows.find((r) => r.name === 'context7-local').why, /\/mcp enable context7\b/);
+    const migrations = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')).migrations;
+    for (const m of migrations.filter((x) => /claude mcp add /.test(x.then || '') && /--scope project\b/.test(x.then)))
+        assert.match(m.then, /--scope user\b/, `${m.id}'s add-back names only the project scope - a global install registers at user scope`);
+});

@@ -257,8 +257,8 @@ update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
 each one as `x -> y` or `already newest` instead of asserting a refresh. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
-scope are kept and logged - and each removal prints its `add it back:` line; pass those lines through
-verbatim in the close-out. Playwright keeps its browsers the same
+scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
+line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. Playwright keeps its browsers the same
 way: every `playwright-<browser>` server is read back and re-registered (a legacy single `playwright` server
 migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone.
@@ -269,11 +269,12 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
-registrations, each retired server's removal and its `add it back:` line, each plugin's `x -> y` or `already newest`, the dependencies the new release
+registrations, each retired server's removal and its `add it back:` line, each retired row kept at another scope
+or parked, with its uninstall command, each plugin's `x -> y` or `already newest`, the dependencies the new release
 pulled in, every env key the run renamed / removed / seeded / set (the installer prints one line each -
 so the ENVIRONMENT line is READ, never asserted), each capture doc moved onto its domain folder and each
 moved folder switched on as a domain (`docs migration` / `docs domain:` - report them as they read), the

@@ -34,7 +34,7 @@
     {
       "name": "context7-local",
       "retiredIn": "2.0.0",
-      "why": "the MCP cut (R32) - context7 is the hosted server only; the local npx transport doubled its tool schemas beside it",
+      "why": "the MCP cut (R32) - context7 is the hosted server only; the local npx transport doubled its tool schemas beside it. A local-mode install printed a `/mcp disable context7` line: whoever ran it runs `/mcp enable context7` to switch the hosted one back on",
       "addBack": "claude mcp add --scope <scope> context7-local -- npx -y @upstash/context7-mcp"
     }
   ]
