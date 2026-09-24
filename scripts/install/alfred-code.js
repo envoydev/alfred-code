@@ -268,11 +268,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
                 listing, stackListing,
-                // I2 (R47): read back from the file THIS run WRITES (settingsTarget, I1's helper),
-                // fail-soft - never a merge across settings.json/settings.local.json, which could
-                // read a personal settings.local.json entry as this project's state and write it
-                // straight into the shared file below.
-                settings: readJson(settings.settingsTarget(claudeDir, args.scope)),
+                // I2 / N5: the file this run writes, or at local scope the merged view Claude Code
+                // resolves (settings.js readBackSettings).
+                settings: settings.readBackSettings(claudeDir, args.scope),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
@@ -774,10 +772,13 @@ function installHooksAndRules(ctx)
     // patched on the existing stamp FIRST - a run dying after the prune never leaves a stale 'copy'
     // over an emptied folder. N4: never on the copy route - 'copy' before a single copy has landed
     // reads back as the user's None; its line is true only once writeStamp records it at the end.
-    if (ctx.routes.hooks) stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'plugin');
+    // m9: and only when a stack hook copy is there to prune - with none (a copy-route None) the prune
+    // destroys no evidence, and an early 'plugin' would read that None back as every hook on.
+    const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
+    if (ctx.routes.hooks && catalogHooks.some((f) => fs.existsSync(path.join(ctx.claudeDir, 'hooks', f))))
+        stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'plugin');
     // On the plugin route a copied hook is dead weight once unwired, so its file goes too; what a
     // release retired goes on either route, file and wiring together.
-    const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
     pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), ctx.manifest.retired.hooks, 'hook', 'retired upstream');
     if (ctx.routes.hooks) pruneCopies(ctx, path.join(ctx.claudeDir, 'hooks'), catalogHooks.concat(HOOK_MODULES), 'hook', 'now carried by a plugin');
     pruneCopies(ctx, path.join(ctx.claudeDir, 'rules'), ctx.manifest.retired.rules, 'rule', 'retired upstream');

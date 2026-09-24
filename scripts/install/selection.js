@@ -281,7 +281,18 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // as a `hook` line too, and taken as a pick it had adoptHooks count every stack hook as dropped -
     // so beside one, 'every hook' is spelled out.
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
-    if (!routes.hooks && !lines.some((l) => l.startsWith('hook ') && shipped.includes(l.slice(5))))
+    const stackHook = (l) => l.startsWith('hook ') && shipped.includes(l.slice(5));
+    // m8: a stamp that says 'plugin' means the last FINISHED run left no stack hook here - the plugin
+    // route prunes every copy - so one on disk now is a switch to the copy route that died part way,
+    // never a pick. Its files are set aside and the rule above reads the stored list instead. An
+    // unknown route (1.x, 2.0.0 before the line) keeps the disk: its copies were the picks.
+    if (!routes.hooks && lastHooksRoute === 'plugin' && lines.some(stackHook))
+    {
+        lines = lines.filter((l) => !stackHook(l));
+        for (let i = closeFrom.length - 1; i >= 0; i--) if (stackHook(closeFrom[i])) closeFrom.splice(i, 1);
+        log('installed-only: the hooks copied here are an unfinished switch to the copy route, not a pick - reading ALFRED_CODE_HOOKS_OFF instead');
+    }
+    if (!routes.hooks && !lines.some(stackHook))
     {
         const keptNone = lastHooksRoute === 'copy';
         const off = String(envOf(env, 'HOOKS_OFF') || '');

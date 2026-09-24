@@ -422,6 +422,32 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });
 
+// N5 (fix round 5): an update that moves a project install to LOCAL scope must read the hooks the
+// user switched off in settings.json - Claude Code lays settings.local.json over it, so an empty local
+// list would switch them back on - and must write only the personal file.
+test('install-scope: update --scope local --installed-only keeps the hooks settings.json switched off, and writes nothing there (N5)', POSIX_ONLY, () =>
+{
+    const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+    const { loadManifest } = require('./install/manifest.js');
+    const kept = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))]
+        .filter((h) => !OFF.includes(h));
+    const offOf = (text) => String(JSON.parse(text).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort();
+    let sharedBefore = '';
+    const { outs, result } = seedRun(['install', 'update'], `skill csharp\nrule markdown-docs\n${kept.map((h) => `hook ${h}\n`).join('')}`, {
+        args: [['--scope', 'project'], ['--scope', 'local', '--installed-only']],
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '1.0.0', scope: 'project', enabled: true }]),
+        each: (repo, i) => { if (i === 0) sharedBefore = fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'); return null; },
+        inspect: (repo) => ({
+            shared: fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'),
+            local: fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8'),
+        }),
+    });
+    assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
+    assert.deepStrictEqual(offOf(sharedBefore), [...OFF].sort(), 'setup did not switch the two hooks off in settings.json');
+    assert.deepStrictEqual(offOf(result.local), [...OFF].sort(), 'N5: the local-scope read-back switched hooks back on');
+    assert.strictEqual(result.shared, sharedBefore, 'a local-scope run must write nothing to settings.json');
+});
+
 // NI1 (fix round 3): under Task 11b alone, a global/user-scope stamp lived in ONE shared account
 // file - a DIFFERENT project's copy-route run (a real None) could overwrite that shared file, and
 // this project's own next copy-route read would then see it and think IT kept no hook, switching

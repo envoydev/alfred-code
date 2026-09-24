@@ -1679,7 +1679,7 @@ test('seed install on a listing it cannot read: an engine the settings name is u
 // the entry's own `main` (per install-args.test.js's precedent), so a genuine fault can be raised
 // mid-run and caught by main's own outer try/catch exactly as a real crash would be.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
-function hooksRouteSandbox(prefix)
+function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
 {
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
@@ -1697,7 +1697,7 @@ function hooksRouteSandbox(prefix)
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
     for (const tool of ['uvx', 'npx', 'npm', 'curl']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const selFile = path.join(work, 'sel.txt');
-    fs.writeFileSync(selFile, 'skill markdown-style\n');
+    fs.writeFileSync(selFile, selection);
     const env = {
         HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: bin + path.delimiter + process.env.PATH,
         CLAUDE_STUB_LOG: path.join(work, 'claude-calls.log'), CLAUDE_STUB_PLUGINS: pluginsFile,
@@ -1753,6 +1753,73 @@ test('seed: a throw right after the hooks prune still leaves the stamp\'s hooks-
         assert.deepStrictEqual(off, [], `NM1: the interrupted run's stale marker read back as a false None (every hook off): ${off.join(',')}`);
     }
     finally { s.cleanup(); }
+});
+
+// m9 (fix round 5): the plugin route's early mark stands in for the prune's evidence, so it is written
+// only when a stack hook copy is there to prune. A full-copy-route None has none: marking 'plugin' over
+// it, then dying, made the next copy-route read switch every hook back on.
+test('seed: a copy-route None survives a plugin-route run that dies after the mark point (m9)', POSIX_ONLY, () =>
+{
+    const s = hooksRouteSandbox('m9-', 'skill markdown-style\nhook none\n');
+    const fullCopy = { ...s.env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js'].includes(f));
+    try
+    {
+        // Step 1: the full copy route with the user's None - the stamp says 'copy', no stack hook copied.
+        assert.strictEqual(s.run(['install'], fullCopy), 0, 'the setup install failed');
+        assert.match(s.stamp(), /^hooks-route: copy$/m);
+        assert.deepStrictEqual(stackHooks(), [], 'the None copied a hook');
+
+        // Step 2: a plugin-route update that dies at its first engine copy - past the mark point.
+        const r2 = s.run(['update', '--installed-only'], s.env,
+            (line) => { if (/ hook (current: |installed -> )/.test(line)) throw new Error('FAULT: simulated death after the mark point'); });
+        assert.strictEqual(r2, 1, 'the interrupted run must fail');
+        assert.match(s.stamp(), /^hooks-route: copy$/m, 'm9: the mark overwrote a None that had no copy to prune');
+
+        // Step 3: back on the full copy route, the None holds.
+        let out3 = '';
+        assert.strictEqual(s.run(['update', '--installed-only'], fullCopy, (line) => { out3 += line; }), 0, out3);
+        assert.deepStrictEqual(stackHooks(), [], `m9: the None came back as every hook on: ${stackHooks().join(',')}`);
+    }
+    finally { s.cleanup(); }
+});
+
+// m8 (fix round 5): a plugin -> copy run that dies after SOME hook copies leaves a partial folder under
+// a stamp that still says 'plugin'. The next copy-route read took those files as the user's picks and
+// switched the rest off (12 of 17 in the reviewer's probe). Until a copy run finishes they are no
+// record: the stored ALFRED_CODE_HOOKS_OFF is read instead (R55), else every hook is on.
+test('seed: a plugin-to-copy run that dies after some hook copies never reads the partial folder as picks (m8)', POSIX_ONLY, () =>
+{
+    const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+    const { loadManifest } = require('./install/manifest.js');
+    const kept = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))].filter((h) => !OFF.includes(h));
+    for (const [label, selection, wantOff] of [
+        ['nothing stored', 'skill markdown-style\n', []],
+        ['two stored off', `skill markdown-style\n${kept.map((h) => `hook ${h}\n`).join('')}`, OFF],
+    ])
+    {
+        const s = hooksRouteSandbox('m8-', selection);
+        try
+        {
+            // Step 1: install on the PLUGIN route - the stamp says 'plugin', the off list is stored.
+            assert.strictEqual(s.run(['install'], s.env), 0, `${label}: the setup install failed`);
+            assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `${label}: setup`);
+
+            // Step 2: a copy-route update that dies right after its fifth hook copy lands.
+            let copies = 0;
+            const r2 = s.run(['update', '--installed-only'], s.copyEnv,
+                (line) => { if (/ hook installed -> /.test(line) && ++copies === 5) throw new Error('FAULT: simulated death after five hook copies'); });
+            assert.strictEqual(r2, 1, `${label}: the interrupted run must fail`);
+            assert.strictEqual(s.onDisk().filter((f) => !HOOK_ENGINES.includes(f)).length, 5, `${label}: five hook copies must have landed`);
+            assert.match(s.stamp(), /^hooks-route: plugin$/m);
+
+            // Step 3: a genuine copy-route update --installed-only keeps exactly the stored off list.
+            let out3 = '';
+            assert.strictEqual(s.run(['update', '--installed-only'], s.copyEnv, (line) => { out3 += line; }), 0, out3);
+            assert.deepStrictEqual(s.hooksOff().sort(), [...wantOff].sort(), `m8 (${label}): the partial copy was read as the user's picks`);
+        }
+        finally { s.cleanup(); }
+    }
 });
 
 // N4 (fix round 4): NM1's mirror. The early mark once wrote 'copy' too, before any hook copy had

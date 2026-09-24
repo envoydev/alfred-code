@@ -337,9 +337,26 @@ function writeSettings(opts)
 // machine-personal, so they go to settings.local.json; every other scope keeps the shared file. Every
 // write site names this helper instead of its own ternary, so the three call sites (writeSettings'
 // own target, the memory import gate/switch-off, the --installed-only read-back) cannot drift apart.
-// I2 dropped `readMergedSettings`: a READ-BACK belongs to the file THIS run WRITES, through the
-// fail-soft `readJson` a caller already has - never a merge that could copy a personal
-// settings.local.json entry into the shared settings.json a later write touches.
 const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
 
-module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+// What the --installed-only read-back reads, fail-soft (an unreadable file reads as empty). At project
+// and user scope, only the file this run writes (I2: a merge there could carry a personal
+// settings.local.json entry into the shared file). At local scope the write lands in the personal file,
+// so the read is the view Claude Code resolves (N5): settings.json with settings.local.json laid over
+// it, `env` key by key with local winning, `permissions.deny` combined - lists merge across files.
+function readBackSettings(claudeDir, scope)
+{
+    const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+    const read = (name) => { try { return obj(JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8'))); } catch { return {}; } };
+    if (scope !== 'local') return read('settings.json');
+    const shared = read('settings.json');
+    const local = read('settings.local.json');
+    const deny = (s) => (Array.isArray(obj(s.permissions).deny) ? obj(s.permissions).deny : []);
+    return {
+        ...shared, ...local,
+        env: { ...obj(shared.env), ...obj(local.env) },
+        permissions: { ...obj(shared.permissions), ...obj(local.permissions), deny: [...new Set([...deny(shared), ...deny(local)])] },
+    };
+}
+
+module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT, settingsTarget } = require('./install/settings.js');
+const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT, settingsTarget, readBackSettings } = require('./install/settings.js');
 const { envMigrations } = require('./install/env-migrations.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-settings-'));
@@ -389,11 +389,7 @@ test('settings-writer: a 1.x seat deny the selection now KEEPS is cleared under 
     assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:seat-b)']);
 });
 
-// I1/I2 (R47, fix round 1): readMergedSettings is gone - a personal settings.local.json override
-// merged into an --installed-only read-back was exactly what leaked a local choice into the shared
-// settings.json (I2). The read-back now reads ONLY the scope's own target file, through the
-// fail-soft readJson in alfred-code.js - settingsTarget is the one place that decides which file
-// that is, for every write AND every read-back site alike.
+// I1/I2 (R47, fix round 1): settingsTarget is the one place that decides which file a run WRITES.
 test('settingsTarget: local scope targets settings.local.json, every other scope targets settings.json', () =>
 {
     const dir = path.join(TMP, `target-${seq++}`, '.claude');
@@ -402,4 +398,32 @@ test('settingsTarget: local scope targets settings.local.json, every other scope
     assert.strictEqual(settingsTarget(dir, 'user'), path.join(dir, 'settings.json'));
     // An unresolved/empty scope is never 'local' by accident - it lands on the shared file.
     assert.strictEqual(settingsTarget(dir, ''), path.join(dir, 'settings.json'));
+});
+
+// N5 (fix round 5): the read-back reads only the written file at project and user scope (I2), and at
+// local scope the view Claude Code resolves - settings.json with settings.local.json laid over it.
+test('readBackSettings: the target alone at project and user scope, the local overlay at local scope', () =>
+{
+    const dir = path.join(TMP, `readback-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'shared' },
+        permissions: { deny: ['Agent(alfred-code:a)'], allow: ['Bash(ls:*)'] },
+    }));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
+        env: { BOTH: 'local', LOCAL_ONLY: '1' }, permissions: { deny: ['Agent(alfred-code:b)', 'Agent(alfred-code:a)'] },
+    }));
+    for (const scope of ['project', 'user'])
+        assert.deepStrictEqual(readBackSettings(dir, scope).env, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'shared' });
+    const merged = readBackSettings(dir, 'local');
+    assert.deepStrictEqual(merged.env, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1' });
+    assert.deepStrictEqual(merged.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)']);
+    assert.deepStrictEqual(merged.permissions.allow, ['Bash(ls:*)']);
+    // A local key wins even when it is the empty list - Claude Code reads it the same way.
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: '' } }));
+    assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
+    // Fail-soft: garbage in either file reads as empty, never a throw.
+    fs.writeFileSync(path.join(dir, 'settings.json'), '{ not json');
+    assert.deepStrictEqual(readBackSettings(dir, 'project'), {});
+    assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
 });

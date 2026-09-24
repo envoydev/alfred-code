@@ -133,11 +133,11 @@ function parseArgs(argv, env = {})
 
     // R29 (T16) / I5 (R47): the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
     // reads the CURRENT project's settings.json/settings.local.json at launch, never a value baked
-    // into the registration) - so `--memory-level project` is safe at every CLI scope on that route.
-    // The MCP COPY route (ALFRED_CODE_MCPS_VIA_PLUGIN=false) has no such launcher - it bakes ONE path
-    // into `claude mcp add -s user`, which every project of the account would then share - so that
-    // combination is still refused, narrowed to user scope on that one route, in alfred-code.js once
-    // `routes` is known (this file resolves flags, not plugin routes, so it cannot see that yet).
+    // into the registration) - so `--memory-level project` is safe at every CLI scope while memory
+    // rides its plugin. Only the FULL copy route (hooks, skills and mcps all off the plugin) registers
+    // memory itself, baking ONE path into `claude mcp add -s user` for every project of the account -
+    // so alfred-code.js refuses a project level at user scope there, once `routes` and the resolved
+    // level are known (this file resolves flags, not plugin routes, so it cannot see either yet).
     out.playwrightBrowsers = [];
     if (out.playwrightBrowsersRaw)
     {
