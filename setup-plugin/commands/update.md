@@ -1,9 +1,9 @@
 ---
-description: "FAST refresh of an existing alfred-code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is init."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is init."
 disable-model-invocation: true
 ---
 
-# Update the Claude stack - refresh everything, prune what upstream removed
+# Update Alfred Code - refresh everything, prune what upstream removed
 
 You are refreshing an existing install to the newest release, unchanged in shape: the same
 items, new content - including the MOVING parts: the installer re-resolves every pinned MCP
@@ -19,6 +19,23 @@ not the characters.** The fast path is 5-6 Bash calls and nothing else. Content 
 small half of the bill: one audited run read 11.1k of file content and cost 886.8k, because every
 message re-sends the whole carried session. An extra grep is not 200 tokens, it is another full
 context re-send - so fold reads together rather than trimming what each one returns.
+
+## Upgrading a 1.x install to 2.0.0
+
+`claude plugin update claude-stack@claude-stack` fails `not_found` once the marketplace catalog carries the 2.0.0 rename. <!-- legacy-name -->
+The CLI will not resolve the old plugin id against an already-renamed catalog, so the 1.x update
+command cannot pull the new release by itself. Three steps, in order, fix it:
+
+1. Refresh the marketplace: `claude plugin marketplace update claude-stack`. <!-- legacy-name -->
+2. Restart Claude Code once - it moves `claude-stack` -> `alfred-code` and `claude-stack-hooks` ->
+   `alfred-code-hooks` in `enabledPlugins` at the next session start, not at the refresh itself.
+3. Run `/alfred-code:update` - now resolvable under the new name, it renames every
+   `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces
+   `claude-stack.stamp` with `alfred-code.stamp`.
+
+The install stays registered under the marketplace key `claude-stack` - renaming the catalog's own
+`name` never moves that key, so this is expected, not broken; its plugin ids read
+`alfred-code@claude-stack` after step 2. From there, continue with the steps below as any update.
 
 ## 0. Where to run it
 
@@ -118,8 +135,8 @@ It prints, in order:
   `/project-agent-capabilities` suggestion; the installer's log tail counts every file it
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
-  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` / `env-reset:` /
-  `env-remove:` lines - everything you act on. A detected entry joins the prune list labeled
+  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
+  `env-rename-prefix:` / `env-reset:` / `env-remove:` lines - everything you act on. A detected entry joins the prune list labeled
   `(migration: <why>)`. Do not open the catalog for any of it: an entry that did not fire prints
   nothing, and reading 'just that one entry by id' still pulls the whole file in (measured: 2,182
   of a 5,180-char read is the maintainer `_comment`, 42%, paid on every update of every project).
@@ -144,14 +161,17 @@ It prints, in order:
 
 **Environment migrations are the exception: they never join the prune list.** They act on the
 scope's settings.json `env`, and none of them can lose anything the user chose: `rename_settings_env`
-changes a KEY and carries the value across, and `remove_settings_env` drops a key this stack
+changes a KEY and carries the value across, `rename_settings_env_prefix` does the same for every key
+sharing an old PREFIX in one entry (the 2.0.0 rebrand's `CLAUDE_STACK_* -> ALFRED_CODE_*` is the only
+one shipped so far), and `remove_settings_env` drops a key this stack
 RETIRED - one nothing reads any more, and where the key still means something outside this stack it
 carries the exact seeded value it is dropped at, so a hand-set value stays. The installer's env pass
 applies them during the refresh in both step 3 and step 4
 (renames, then removals, then the absent-only seeds, so a value set under the old name is never
 overwritten by the new key's default).
 Your job is to detect them before the run and NAME them in the report: `env: <old> renamed to <new>
-(value kept)`, `env: <key> removed (retired)`. New variables the release introduces need no
+(value kept)` for a single key, `env: <old-prefix>* renamed to <new-prefix>* (values kept)` for a
+prefix entry, `env: <key> removed (retired)`. New variables the release introduces need no
 catalog entry at all - the same pass seeds them absent-only - but report those too, as
 `env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
 

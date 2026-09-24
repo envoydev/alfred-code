@@ -1,4 +1,4 @@
-# CLAUDE.md - alfred-code repo
+# CLAUDE.md - Alfred Code repo
 
 ## What this repo is
 
@@ -219,7 +219,7 @@ change (see the invariants below).
   `angular-repair-agents.md`) and nine convention rules, each glob-attaching ONE file family to its
   house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
-- `setup-plugin/` - the alfred-code plugin: six COMMANDS and one router SKILL.
+- `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
   - `/alfred-code:init` (fresh install; reports `derive-state.js`'s `written` block, the one derivation
     of what the project switches off, before installing), `/alfred-code:setup` (init's alias, kept for
     one release), `/alfred-code:update` (refresh + prune from the stamp compare; its ONE ask offers
@@ -480,6 +480,13 @@ mirrored there in the same sitting.
   equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
+- **The 1.x name is retired, never reused.** `claude-stack` spellings (`CLAUDE_STACK_*`, the older
+  `CLAUDE_DOCS_PATH`, `claude-stack.stamp`, the marketplace key, the plugin cache dir,
+  `Agent(claude-stack:<seat>)`) are READ for the whole 2.x line by dedicated legacy readers - the new
+  `ALFRED_CODE_*` / `alfred-code` spelling wins whenever both exist. Lint check 55 keeps every other
+  spot on the new name; a line that must still carry the old one marks it `<!-- legacy-name -->`
+  (`// legacy-name` in code) so the check skips it. Never spend `claude-stack` on anything NEW - a
+  fresh flag, key, file or entry name is `alfred-code` / `ALFRED_CODE_` from day one.
 - **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root

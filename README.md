@@ -1,4 +1,4 @@
-# alfred-code
+# Alfred Code
 
 The Claude Code half of a coding-agent setup - an installable stack of house skills,
 subagents, always-on and path-scoped rules, hooks, MCP servers, and plugins that gets applied to

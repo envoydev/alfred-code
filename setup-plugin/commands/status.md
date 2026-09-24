@@ -1,11 +1,11 @@
 ---
-description: "SHOW what is installed from the alfred-code in THIS project (or the global install) - read-only, no download, no changes: one table per area (skills, agents, rules, hooks, MCPs, plugins, environment, generated docs & data with their capture dates), the user picks which areas or all. NOT for changing anything - adding/dropping is configure, refreshing is update, project reconcile is validate."
+description: "SHOW what is installed from Alfred Code in THIS project (or the global install) - read-only, no download, no changes: one table per area (skills, agents, rules, hooks, MCPs, plugins, environment, generated docs & data with their capture dates), the user picks which areas or all. NOT for changing anything - adding/dropping is configure, refreshing is update, project reconcile is validate."
 disable-model-invocation: true
 ---
 
 # Show the installed stack - read-only, per-area tables
 
-You are showing what an alfred-code install holds, nothing else. This command touches the
+You are showing what an Alfred Code install holds, nothing else. This command touches the
 network never and the disk read-only: no source download, no `$TMP`, no writes, no deltas
 computed. Quiet machinery - read the files, render the tables, one narration line per area at
 most. Anything the user wants CHANGED routes to the sibling commands (`configure` to add/drop,

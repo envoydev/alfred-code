@@ -1,6 +1,6 @@
 ---
 name: alfred-code
-description: "Route to the right alfred-code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:init (fresh install from scratch), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed). Trigger by invoking /alfred-code."
+description: "Route to the right Alfred Code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:init (fresh install from scratch), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed). Trigger by invoking /alfred-code."
 disable-model-invocation: true
 ---
 

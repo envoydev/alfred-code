@@ -1,9 +1,9 @@
 ---
-description: "Alias of /alfred-code:init, kept for one release - the same FRESH install of the alfred-code into a project (or globally), guided layer by layer."
+description: "Alias of /alfred-code:init, kept for one release - the same FRESH install of Alfred Code into a project (or globally), guided layer by layer."
 disable-model-invocation: true
 ---
 
-# Set up the Claude stack - alias of init
+# Set up Alfred Code - alias of init
 
 `/alfred-code:setup` was renamed to `/alfred-code:init`. Read
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/commands/init.md` and follow it as THIS command's instructions,

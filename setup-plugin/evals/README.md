@@ -1,4 +1,4 @@
-# alfred-code plugin evals
+# Alfred Code plugin evals
 
 `claude plugin eval` runs these cases against the plugin and again WITHOUT it, and reports the
 delta. Every run is a real, billed model call on your own account.

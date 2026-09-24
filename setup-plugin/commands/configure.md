@@ -1,11 +1,11 @@
 ---
-description: "ADJUST an existing alfred-code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the two settings.json env values (auto-compact trigger, generated-docs root) on the same consent. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling init command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
-# Configure the Claude stack - adjust an existing install
+# Configure Alfred Code - adjust an existing install
 
-You are adjusting an alfred-code install that already exists. Same discipline as `init`: drive
+You are adjusting an Alfred Code install that already exists. Same discipline as `init`: drive
 it interactively, walk the selection one layer at a time, always show the prerequisite report
 before running, never run past an unmet blocker. `stack-select.js` does the deterministic work;
 you orchestrate. Two differences from `init`: the baseline selection is what is INSTALLED, not
