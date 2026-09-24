@@ -34,7 +34,8 @@ function scrubLegacyEnv(env)
 // appended to every run's command line. `source` and `args` are each either ONE value shared by
 // every step (the common case - a bare array of flag strings for `args` still means that), or an
 // array with one entry PER STEP, for a case whose steps need different `--source` snapshots or
-// different flags (only an array of arrays switches `args` to per-step).
+// different flags (only an array of arrays switches `args` to per-step). A per-step entry may be a
+// function of (repo, work), called just before its step runs - for flags built from an earlier step.
 function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {}, source = ROOT, args = [], prepare = () => {}, inspect = () => null, each = () => null } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
@@ -69,7 +70,9 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
         const steps = [];
         const actions = [].concat(action);
         const sourceAt = (i) => (Array.isArray(source) ? source[i] : source);
-        const argsAt = (i) => (Array.isArray(args) && Array.isArray(args[0]) ? args[i] : args);
+        // A step's args may be a function of (repo, work) - a later step built from an earlier one's output.
+        const perStep = Array.isArray(args) && (Array.isArray(args[0]) || typeof args[0] === 'function');
+        const argsAt = (i) => { const a = perStep ? args[i] : args; return typeof a === 'function' ? a(repo, work) : a; };
         for (const [i, act] of actions.entries())
         {
             const src = sourceAt(i);

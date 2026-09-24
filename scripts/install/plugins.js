@@ -239,10 +239,11 @@ function refreshStackSource({ listing = [], marketplaces = [], readMarketplaces,
 
 // THE PLAYWRIGHT ENGINES (R67): which to install and which of those to enable are both the user's
 // answers. `engines` carries them for one run: `specs` (the engines in the set), `present` (the ones
-// the stamp names as installed, for a listing the run could not read), `off` (the ones an install this
+// the stamp or the settings name as installed, for a listing the run could not read, with
+// `presentScope` naming where each lives when that is not this run's scope), `off` (the ones an install this
 // run makes is switched off after), `on` (the user's answer to APPLY to engines already installed, or
 // null - no answer, nothing flipped) and `isOn(spec, scope)` (the settings file's word, or undefined).
-const NO_ENGINES = { specs: [], present: [], off: [], on: null, isOn: () => undefined };
+const NO_ENGINES = { specs: [], present: [], presentScope: {}, off: [], on: null, isOn: () => undefined };
 const enginePresent = (spec, before, engines) => engines.specs.includes(spec)
     && Boolean(fieldOf(before, spec, 'version') || engines.present.includes(spec));
 
@@ -261,7 +262,7 @@ function switchOff(spec, scope, { cli, log, note })
 // already made is skipped: a no-op enable or disable exits 1 (S28), which would read as a failure.
 function engineInPlace(spec, { scope, before, engines, cli, log, note })
 {
-    const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before) : scope;
+    const at = fieldOf(before, spec, 'version') ? scopeFor(spec, scope, before) : ((engines.presentScope || {})[spec] || scope);
     log(`plugin update [${at}]: ${spec}`);
     cli(['plugin', 'update', spec, '--scope', at, '-y']);
     if (!engines.on) return;

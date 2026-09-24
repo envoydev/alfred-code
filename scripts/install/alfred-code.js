@@ -178,7 +178,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // project-scope flag can read a stale false (S22). Kept on the plugin route only; on the copy
         // route the registrations in .mcp.json are the record.
         const priorPw = { browsers: stampLayer.readPlaywright(stampFile), enabled: stampLayer.readPlaywrightEnabled(stampFile) };
-        const stampEngines = routes.mcps ? (priorPw.browsers || []) : [];
+        // null when the stamp has no such line (1.x, no stamp): nothing recorded, and the listing speaks.
+        const stampEngines = routes.mcps ? priorPw.browsers : null;
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -290,7 +291,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
             browsers: args.playwrightBrowsers,
-            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines, ...stampEngines])],
+            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines, ...(stampEngines || [])])],
         });
         lists.mcps = pw.mcps;
         // Which of them are ENABLED: the user's answer when given, else each keeps its last recorded
@@ -331,6 +332,15 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot) : [];
                 const inv = selection.planInventory({
                     lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
+                });
+                // What configure's walk pre-selects for playwright: the kept engines, and of them the ones
+                // ON NOW - the settings file where each is installed, which a /plugin toggle writes; the
+                // stamp's last answer only where that file names nothing. Plugin route only.
+                const isOn = engineOn({ configDir, claudeDir });
+                const specOf = (e) => `playwright-${e}@${market}`;
+                inv.playwright = mcp.playwrightLive({
+                    kept: pw.browsers, prior: priorPw,
+                    live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : undefined),
                 });
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
@@ -599,7 +609,7 @@ function installPlugins(ctx)
 // user chose it off - a 1.x stamp names none, so each is installed, as before the line.
 function playwrightMoves(ctx, { blind, rows })
 {
-    const none = { specs: [], present: [], off: [], on: null, isOn: () => undefined, uninstalled: [] };
+    const none = { specs: [], present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, uninstalled: [] };
     if (!ctx.routes.mcps) return none;
     const kept = pwEngines(ctx);
     const specOf = (e) => `playwright-${e}@${ctx.market}`;
@@ -608,27 +618,36 @@ function playwrightMoves(ctx, { blind, rows })
         specs: prior.filter((e) => !kept.includes(e)).map(specOf), rows, blind, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     if (!kept.length) return { ...none, uninstalled };
-    const known = blind ? prior.filter((e) => kept.includes(e)) : [];
+    // Blind, an engine is present when the stamp names it, or when a settings file carries its key -
+    // install writes the key and uninstall removes it (S28) - at the scope whose file names it.
+    const isOn = engineOn(ctx);
+    const presentScope = {};
+    const known = !blind ? [] : kept.filter((e) =>
+    {
+        const at = [ctx.cliScope, 'user'].find((s) => isOn(specOf(e), s) !== undefined);
+        if (at && at !== ctx.cliScope) presentScope[specOf(e)] = at;
+        return Boolean(at) || prior.includes(e);
+    });
     if (blind)
         ctx.log(known.length
-            ? `playwright: the plugin listing could not be read - the stamp names ${known.join(',')} as installed (updated in place); the rest install as new`
-            : 'playwright: the plugin listing could not be read and no stamp names an installed engine - each installs as new');
+            ? `playwright: the plugin listing could not be read - the stamp or the settings name ${known.join(',')} as installed (updated in place); the rest install as new`
+            : 'playwright: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new');
     const { enabled, off, apply } = ctx.pw;
     ctx.log(apply
         ? `playwright: installs ${kept.join(',')}; enabled as picked: ${enabled.join(',') || 'none'} (/plugin toggles them)`
         : `playwright: installs ${kept.join(',')}; no enable answer given - one already installed keeps its on/off, one installed now arrives on${off.length ? `, except ${off.join(',')} (last left off)` : ''} (/plugin toggles them)`);
     return {
-        specs: kept.map(specOf), present: known.map(specOf), off: off.map(specOf),
-        on: apply ? enabled.map(specOf) : null, isOn: engineOn(ctx), uninstalled,
+        specs: kept.map(specOf), present: known.map(specOf), presentScope, off: off.map(specOf),
+        on: apply ? enabled.map(specOf) : null, isOn, uninstalled,
     };
 }
 
 // The settings file's word on a plugin at one scope - true, false, or undefined when it says nothing.
 // It is the file the CLI writes an enable or disable to, and the listing's own flag can be stale (S22).
-const engineOn = (ctx) => (spec, scope) =>
+const engineOn = ({ configDir, claudeDir }) => (spec, scope) =>
 {
-    const file = scope === 'user' ? path.join(ctx.configDir, 'settings.json')
-        : path.join(ctx.claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
+    const file = scope === 'user' ? path.join(configDir, 'settings.json')
+        : path.join(claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
     const on = (readJson(file).enabledPlugins || {})[spec];
     return typeof on === 'boolean' ? on : undefined;
 };

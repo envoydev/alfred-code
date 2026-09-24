@@ -335,6 +335,19 @@ function playwrightEnabled({ kept = [], flag = null, prior = {} })
     };
 }
 
+// The two sets configure's walk pre-selects (the --plan-out `playwright` field): the kept engines,
+// and of them the ones ON NOW. `live(engine)` is the install scope's settings file - the file a /plugin
+// toggle writes, so an unchanged answer equals the live state and switches nothing. Only an engine that
+// file does not name falls back to the stamp's last answer, and one with no record to on.
+function playwrightLive({ kept = [], prior = {}, live = () => undefined })
+{
+    const recorded = playwrightEnabled({ kept, flag: null, prior }).enabled;
+    return {
+        installed: [...kept],
+        enabled: kept.filter((e) => { const on = live(e); return on === undefined ? recorded.includes(e) : on; }),
+    };
+}
+
 // The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine.
 // Nothing on the plugin route: the engines are one plugin each, and one the run no longer keeps is
 // uninstalled by the plugin layer - there is no per-engine registration to drop.
@@ -391,5 +404,5 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled,
+    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive,
 };

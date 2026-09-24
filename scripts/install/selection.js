@@ -206,7 +206,14 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const closeFrom = [...lines];
     // A 1.x listing can still name the core by its old name: the same entry. The hooks ride the core
     // (2.0.0), so the 1.x hooks id says nothing a core row does not.
-    const names = ours.filter(rowOn).map((r) => currentName(r.name));
+    // With the stamp's record of the installed engines, an engine it does not name is not kept: a drop
+    // whose uninstall failed, was refused, or sits at another scope is still listed, and read back here
+    // it was written into the stamp again. It is left as it is and named with its command.
+    const recordedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : null;
+    const unrecorded = (r) => recordedEngines !== null && engineOf(r.name) && !recordedEngines.includes(engineOf(r.name));
+    for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
+        log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
+    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(r.name));
     const stored = settings && typeof settings === 'object' ? settings : {};
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];

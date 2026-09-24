@@ -294,6 +294,19 @@ test('playwright enabled: the flag is the answer - all, none or a set, always ap
     assert.deepStrictEqual(mcp.playwrightEnabled({ kept: [], flag: 'all', prior }), { enabled: [], off: [], apply: true, outside: [] });
 });
 
+// Round 2: configure pre-selects the enable question from the LIVE state - the install scope's
+// settings file, which a /plugin toggle writes - so an unchanged answer switches nothing. The stamp's
+// last answer only speaks for an engine that file does not name.
+test('playwright live: the enabled set is the settings file\'s word, the stamp only where it says nothing', () =>
+{
+    const prior = { browsers: ['chrome', 'firefox'], enabled: ['chrome', 'firefox'] };
+    const live = (e) => ({ chrome: true, firefox: false })[e];
+    assert.deepStrictEqual(mcp.playwrightLive({ kept: ['chrome', 'firefox', 'webkit'], prior, live }),
+        { installed: ['chrome', 'firefox', 'webkit'], enabled: ['chrome', 'webkit'] }, 'the stamp re-enabled a /plugin switch-off, or a new engine read off');
+    assert.deepStrictEqual(mcp.playwrightLive({ kept: ['chrome', 'firefox'], prior: { browsers: ['chrome', 'firefox'], enabled: ['chrome'] }, live: () => undefined }).enabled, ['chrome']);
+    assert.deepStrictEqual(mcp.playwrightLive({ kept: [], prior, live }), { installed: [], enabled: [] });
+});
+
 test('playwright: a selection without playwright is left exactly as it is', () =>
 {
     const mcps = ['serena|-- uvx serena'];

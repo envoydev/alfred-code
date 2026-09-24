@@ -293,22 +293,24 @@ stores nothing) - and runs neither itself. Pass the answer to the installer as
 `memory` dropped this round entirely (its holding rule dropped too): ask nothing, the MCP layer's
 own drop handling applies like any other server.
 
-Whenever playwright is PRESENT after this round, name the browsers installed today and the ones
-enabled - both from the stamp: `grep -E '^playwright-(browsers|enabled):' .claude/alfred-code.stamp`
-(the account's for a global install). A stamp without those lines (1.x, or no stamp) falls back to
-the ROUTE-decided read: a `playwright-<browser>@<key>` entry (under the resolve line's `key=`) in the
-plugins listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`), each counted
-as enabled; a legacy single `playwright` server counts as its `--browser` value, `chrome` when it has
-none, and is migrated by the run. Then ask two AskUserQuestions, in order: which browsers to INSTALL
-(multi-select, today's pre-selected: `chrome` = the machine's Google Chrome, `msedge` = the machine's
-Microsoft Edge, `firefox`, `webkit` = Safari's engine; the last two are Playwright's own builds,
-downloaded by the installer), then which of those to ENABLE (multi-select over the installed ones,
-today's enabled pre-selected, a newly added one too), the question naming the cost in one line: each
-enabled browser adds its own ~25 tools (about 18.7k characters of schema) to every session. Pass a
-changed install set at step 12 as `--playwright-browsers <csv>` - a browser left out is uninstalled
-by the run - and a changed enabled set as `--playwright-enabled <csv|none>`, which the run applies with
-`claude plugin enable` / `disable`. An unchanged answer passes nothing: a plain update switches no
-browser, since the user may have toggled one in `/plugin` since.
+Whenever playwright is PRESENT after this round, read both sets from the step-1 plan, never by hand:
+`jq -c '.playwright' "$TMP/installed.json"` prints `{"installed": [...], "enabled": [...]}`.
+`installed` is the kept browsers (the stamp's record; for a 1.x install, what the listing or
+`.mcp.json` carries - a legacy single `playwright` server is migrated by the run). `enabled` is the
+ones ON NOW: the settings file each is installed in, which a `/plugin` toggle writes, with the stamp's
+last answer only where that file names nothing. Never pre-select from the stamp's `playwright-enabled:`
+- it is the last answer, and a toggle made since would be reverted. Then ask two AskUserQuestions, in
+order: which browsers to INSTALL (multi-select, `installed` pre-selected: `chrome` = the machine's
+Google Chrome, `msedge` = the machine's Microsoft Edge, `firefox`, `webkit` = Safari's engine; the
+last two are Playwright's own builds, downloaded by the installer), then which of those to ENABLE
+(multi-select over the installed ones, `enabled` pre-selected plus any newly added one), the question
+naming the cost in one line: each enabled browser adds its own ~25 tools (about 18.7k characters of
+schema) to every session. Pass a changed install set at step 12 as `--playwright-browsers <csv>` - a
+browser left out is uninstalled by the run - and an enabled answer that differs from `enabled` as
+`--playwright-enabled <csv|none>`; the run switches only an engine whose live state the answer
+changes. An unchanged answer passes nothing. Later toggles: `/plugin` on the plugin route; on the MCP
+copy route the browsers are `.mcp.json` servers, `/mcp` switches them, and the enable answer is
+recorded but not applied.
 
 Presence, never the value - run this and paste its lines as-is:
 `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`

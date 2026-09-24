@@ -496,7 +496,7 @@ test('update: a third-party marketplace is registered before an absent plugin fr
 // settings file shows already made is skipped, since a no-op enable or disable exits 1 (S28).
 
 const PW = ['playwright-chrome@envoydev', 'playwright-firefox@envoydev'];
-const ENG = (over = {}) => ({ specs: PW, present: [], off: [], on: null, isOn: () => undefined, ...over });
+const ENG = (over = {}) => ({ specs: PW, present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, ...over });
 const PW_MOVES = /^plugin (install|disable|enable|update|uninstall) playwright-/;
 
 test('install: a new engine is installed, and disabled right after only when the user chose it off', () =>
@@ -534,6 +534,18 @@ test('install: on a listing it could not read, an engine the stamp names is pres
         'plugin install playwright-firefox@envoydev --scope project -y',
         'plugin disable playwright-firefox@envoydev --scope project',
     ], 'a present engine was installed over or disabled - off is for an engine this run installs');
+});
+
+// Round 2, minor 2: blind, the settings file is a presence signal too - install writes the engine's
+// enabledPlugins key and uninstall removes it (S28) - so an engine it names is updated where it lives.
+test('install: on a listing it could not read, an engine present at user scope is updated there, never installed', () =>
+{
+    const run = cli();
+    P.installPlugins({ plugins: PW, scope: 'project', engines: ENG({ present: PW, presentScope: { 'playwright-firefox@envoydev': 'user' } }), cli: run });
+    assert.deepStrictEqual(run.matching(PW_MOVES), [
+        'plugin update playwright-chrome@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope user -y',
+    ]);
 });
 
 test('install: the user\'s answer is applied to the installed engines - a switch already made is skipped, one at another scope is named', () =>
@@ -1557,7 +1569,7 @@ test('seed install on a listing it cannot read: the stamp says which engines are
         'plugin install playwright-firefox@envoydev --scope project -y',
         'plugin disable playwright-firefox@envoydev --scope project',
     ], 'no stamp: every engine is new, and the one chosen off must be disabled');
-    assert.match(fresh.out, /playwright: the plugin listing could not be read and no stamp names an installed engine - each installs as new/);
+    assert.match(fresh.out, /playwright: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new/);
     const noAnswer = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome'] });
     assert.deepStrictEqual(pwMoves(noAnswer.calls), ['plugin install playwright-chrome@envoydev --scope project -y'], 'no answer: nothing is disabled');
     const stamped = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'],
@@ -1567,7 +1579,7 @@ test('seed install on a listing it cannot read: the stamp says which engines are
         'plugin install playwright-firefox@envoydev --scope project -y',
         'plugin disable playwright-firefox@envoydev --scope project',
     ], 'the stamped engine was installed over, or the new one was left on');
-    assert.match(stamped.out, /playwright: the plugin listing could not be read - the stamp names chrome as installed \(updated in place\); the rest install as new/);
+    assert.match(stamped.out, /playwright: the plugin listing could not be read - the stamp or the settings name chrome as installed \(updated in place\); the rest install as new/);
     // A 1.x stamp has no engine line: nothing is known, so each is installed, and with no answer none is disabled.
     const old = seedRun('install', PW_SELECTION, { plugins: 'not json', args: ['--playwright-browsers', 'chrome'], prepare: installedProject('') });
     assert.deepStrictEqual(pwMoves(old.calls), ['plugin install playwright-chrome@envoydev --scope project -y']);
@@ -1580,4 +1592,84 @@ test('seed install on the MCP copy route: --playwright-enabled is recorded, and 
     assert.deepStrictEqual(pwMoves(calls), [], 'the copy route installed or switched an engine plugin');
     assert.match(out, /playwright: --playwright-enabled is recorded but not applied on the MCP copy route - the engines are \.mcp\.json servers, \/mcp switches them/);
     assert.match(result, /^playwright-browsers: chrome,firefox\nplaywright-enabled: chrome$/m);
+});
+
+// --- round 2 ---------------------------------------------------------------------------------------
+// Important 1, the reviewer's probe P1: the stamp says chrome and firefox are enabled, the user has
+// since switched firefox off in /plugin, and configure adds webkit. The walk pre-selects the enable
+// question from the plan's LIVE set, so the answer it passes leaves firefox off - no enable call.
+test('seed configure: the enable question is pre-selected from the LIVE state - a /plugin switch-off survives adding webkit', POSIX_ONLY, () =>
+{
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('playwright-chrome@envoydev'), ROW('playwright-firefox@envoydev')]);
+    const planFile = (work) => path.join(work, 'plan.json');
+    const plan = (work) => JSON.parse(fs.readFileSync(planFile(work), 'utf8')).playwright;
+    // What configure does with the plan: today's sets pre-selected, webkit added and left ticked.
+    const walk = (repo, work) => ['--installed-only', '--playwright-browsers', [...plan(work).installed, 'webkit'].join(','),
+        '--playwright-enabled', [...plan(work).enabled, 'webkit'].join(',')];
+    const { calls, steps, result } = seedRun(['update', 'update'], PW_SELECTION, {
+        plugins,
+        args: [(repo, work) => ['--installed-only', '--print-plan', '--plan-out', planFile(work)], walk],
+        prepare: installedProject('playwright-browsers: chrome,firefox\nplaywright-enabled: chrome,firefox\n',
+            { 'playwright-chrome@envoydev': true, 'playwright-firefox@envoydev': false }),
+        each: (repo, i) => (i === 0 ? plan(path.dirname(repo)) : null),
+        inspect: stampOf,
+    });
+    assert.deepStrictEqual(steps[0], { installed: ['chrome', 'firefox'], enabled: ['chrome'] }, 'the plan took the stamp over the settings file');
+    assert.deepStrictEqual(pwMoves(calls), [
+        'plugin update playwright-chrome@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope project -y',
+        'plugin install playwright-webkit@envoydev --scope project -y',
+        'plugin update playwright-webkit@envoydev --scope project -y',
+    ], 'an engine whose live state the answer did not change was switched');
+    assert.match(result, /^playwright-browsers: chrome,firefox,webkit\nplaywright-enabled: chrome,webkit$/m);
+});
+
+test('seed plan: an engine the settings file does not name falls back to the stamp\'s last answer', POSIX_ONLY, () =>
+{
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('playwright-chrome@envoydev'), ROW('playwright-firefox@envoydev')]);
+    const { result } = seedRun('update', PW_SELECTION, {
+        plugins, args: [(repo, work) => ['--installed-only', '--print-plan', '--plan-out', path.join(work, 'plan.json')]],
+        prepare: installedProject('playwright-browsers: chrome,firefox\nplaywright-enabled: chrome\n', { 'playwright-chrome@envoydev': true }),
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'plan.json'), 'utf8')).playwright,
+    });
+    assert.deepStrictEqual(result, { installed: ['chrome', 'firefox'], enabled: ['chrome'] }, 'firefox, off in the stamp and unnamed in settings, read as on');
+});
+
+// Minor 1: a dropped engine whose uninstall did not happen is still listed, and enabled. The next
+// plain update must not read it back as kept - the stamp stays the user's choice.
+test('seed update: a dropped engine still installed is never kept again - the stamp holds, and the log names its uninstall', POSIX_ONLY, () =>
+{
+    const plugins = JSON.stringify([...CORE_ROWS, ROW('playwright-chrome@envoydev'), ROW('playwright-firefox@envoydev')]);
+    const { calls, out, result } = seedRun('update', PW_SELECTION, { plugins, args: ['--installed-only'],
+        prepare: installedProject('playwright-browsers: chrome\nplaywright-enabled: chrome\n'), inspect: stampOf });
+    assert.deepStrictEqual(pwMoves(calls).filter((c) => /firefox/.test(c)), [], 'the dropped engine was touched');
+    assert.match(result, /^playwright-browsers: chrome\nplaywright-enabled: chrome$/m, 'the leftover was written back as kept');
+    assert.match(out, /playwright-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall playwright-firefox@envoydev --scope project/);
+    // Every engine dropped, one left over: nothing is kept, and chrome is never installed as a default.
+    const all = seedRun('update', PW_SELECTION, { plugins: JSON.stringify([...CORE_ROWS, ROW('playwright-chrome@envoydev')]), args: ['--installed-only'],
+        prepare: installedProject('playwright-browsers: \nplaywright-enabled: \n'), inspect: stampOf });
+    assert.deepStrictEqual(pwMoves(all.calls), []);
+    assert.match(all.result, /^playwright-browsers: $/m);
+});
+
+// Minor 2: blind, an engine the settings file names is present - at the scope whose file names it -
+// and gets `update`, never the install verb that would turn it back on (S28).
+test('seed install on a listing it cannot read: an engine the settings name is updated where it lives, never installed', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('install', PW_SELECTION, {
+        plugins: 'not json', args: ['--playwright-browsers', 'chrome,firefox,webkit'],
+        prepare: (repo, work) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'playwright-chrome@envoydev': false } }));
+            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
+            fs.writeFileSync(path.join(work, 'acct', 'settings.json'), JSON.stringify({ enabledPlugins: { 'playwright-firefox@envoydev': true } }));
+        },
+    });
+    assert.deepStrictEqual(pwMoves(calls), [
+        'plugin update playwright-chrome@envoydev --scope project -y',
+        'plugin update playwright-firefox@envoydev --scope user -y',
+        'plugin install playwright-webkit@envoydev --scope project -y',
+    ], 'an engine the settings show installed got the install verb');
+    assert.match(out, /playwright: the plugin listing could not be read - the stamp or the settings name chrome,firefox as installed \(updated in place\); the rest install as new/);
 });

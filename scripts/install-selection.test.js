@@ -221,12 +221,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, stampEngines, marketplace } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, stampEngines, marketplace, log } = {})
 {
     const claudeDir = target({ rules: ['baseline-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks, lastHooksRoute, always: {}, stampPicked, stampEngines, marketplace,
+        stampHooks, lastHooksRoute, always: {}, stampPicked, stampEngines, marketplace, log,
     });
 }
 
@@ -302,9 +302,9 @@ test('read-back: an engine the stamp picked stays picked while disabled; one it 
     assert.deepStrictEqual(r.engines, ['chrome', 'firefox']);
     assert.ok(r.lines.includes('mcp playwright') && r.closeFrom.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
     assert.deepStrictEqual(r.parked.filter((n) => n.startsWith('playwright-')), ['playwright-webkit'], 'a picked engine read as parked');
-    // One the user enabled joins the picked ones, as an enabled engine always did.
+    // With a record, an enabled engine it does not name is NOT kept: the record is the user's choice.
     const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('playwright-msedge@envoydev'), row('playwright-firefox@envoydev', { enabled: false })], stampEngines: ['firefox'] });
-    assert.deepStrictEqual(mixed.engines, ['msedge', 'firefox']);
+    assert.deepStrictEqual(mixed.engines, ['firefox']);
     // Nothing recorded (an older stamp, no stamp): the listing alone speaks, as before.
     for (const stampEngines of [undefined, null, []])
     {
@@ -321,6 +321,30 @@ test('read-back: an engine the stamp picked stays picked while disabled; one it 
     const copy = readBackCase({ listing, stampEngines: ['chrome'], routes: { ...ALL, mcps: false } });
     assert.deepStrictEqual(copy.engines, []);
     assert.ok(!copy.lines.includes('mcp playwright'));
+});
+
+// Round 2, minor 1: a dropped engine whose uninstall failed, was refused, or sits at another scope is
+// still listed. Read back as kept, the next update wrote it into the stamp again, undoing the drop. The
+// stamp's record is the user's choice; what it does not name is left alone, and named with its command.
+test('read-back: with the stamp\'s record, an engine it does not name is never read back as kept - the log names its uninstall', () =>
+{
+    const logs = [];
+    const listing = [
+        row('alfred-code@envoydev'), row('playwright-chrome@envoydev'), row('playwright-firefox@envoydev'),
+        row('playwright-webkit@envoydev', { scope: 'user' }),
+    ];
+    const r = readBackCase({ listing, stampEngines: ['chrome'], log: (m) => logs.push(m) });
+    assert.deepStrictEqual(r.engines, ['chrome']);
+    assert.ok(r.lines.includes('mcp playwright'));
+    assert.ok(logs.some((m) => /playwright-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall playwright-firefox@envoydev --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /playwright-webkit@envoydev is installed but not among .*claude plugin uninstall playwright-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
+    // Every engine dropped (--drop mcp playwright) but one still listed: no playwright is kept at all,
+    // or the kept set would fall back to chrome and install it again.
+    const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('playwright-chrome@envoydev')], stampEngines: [] });
+    assert.deepStrictEqual(dropped.engines, []);
+    assert.ok(!dropped.lines.includes('mcp playwright'), dropped.lines.filter((l) => l.startsWith('mcp ')).join(','));
+    // No record (1.x, no stamp): the listing speaks, as before.
+    assert.deepStrictEqual(readBackCase({ listing, stampEngines: null }).engines, ['chrome', 'firefox', 'webkit']);
 });
 
 test('read-back: the core reads as enabled whatever the listing flag says (S22) - only an item\'s own off-switch holds', () =>
