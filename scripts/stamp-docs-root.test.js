@@ -266,3 +266,19 @@ test('--claude-dir stamps a global install from the account dir itself', () => {
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// A 1.x settings file spells both keys CLAUDE_STACK_* until the installer's env pass renames them. // legacy-name
+// The root is read under that spelling, and a decision stored under it is a decision: seeding the
+// new key beside it would make the rename keep the seed and drop the user's value.
+test('a 1.x settings file: the root and a stored versioning decision are read under the old spelling', () => {
+    const root = makeProject('{"env":{"CLAUDE_STACK_DOCS_PATH":"docs/legacy","CLAUDE_STACK_DOCS_VERSIONING":"local"}}'); // legacy-name
+    const before = fs.readFileSync(path.join(root, '.claude', 'settings.json'));
+    try
+    {
+        run(root);
+        assert.match(stampLine(root), /This install's root: `docs\/legacy`/);
+        assert.match(seed(root), /already 'local' - nothing seeded/);
+        assert.deepStrictEqual(fs.readFileSync(path.join(root, '.claude', 'settings.json')), before, 'the 1.x decision is left for the rename');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

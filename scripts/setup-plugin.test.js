@@ -313,23 +313,59 @@ for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'
     });
 }
 
-// Phase 7, T5: the installer is ONE node command on every OS, and the frozen twins are the
-// one-release fallback behind ALFRED_CODE_SEED=shell. A body still typing the twin as its default
-// installs from a script nobody edits any more; one that drops the fallback line strands the user
-// who set the switch. The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
-test('every command that runs the installer runs the SEED, with the shell route named as the fallback', () => {
+// Phase 7, T5: the installer is ONE node command on every OS. From 2.0.0 ALFRED_CODE_SEED=shell is
+// refused (D1, below): a body still typing the twin as its default installs from a script nobody
+// edits any more; one that drops the switch's line strands the user who set it without a word.
+// The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
+test('every command that runs the installer runs the SEED, and names the shell switch', () => {
     for (const name of ['init', 'update', 'configure', 'validate'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update)/,
             `${name} does not run the Node seed`);
-        assert.match(body, /ALFRED_CODE_SEED=shell/, `${name} does not name the shell fallback`);
+        assert.match(body, /ALFRED_CODE_SEED=shell/, `${name} does not name the shell switch`);
         assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/alfred-code\.sh"/.test(body),
             `${name} still offers the twin as a first-class route`);
     }
     // status runs no installer at all, so it names neither.
     const status = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'status.md'), 'utf8');
     assert.ok(!/alfred-code\.(sh|ps1)|install\/alfred-code\.js/.test(status), 'status must stay read-only');
+});
+
+// D1: from 2.0.0 the shell seed is refused. The frozen twin hardcodes the 1.x names a 2.0.0
+// registration cannot resolve, so a body that still RUNS it on `seed=shell` installs a broken
+// release. Every body names the refusal line the seed itself prints, and runs no twin.
+const D1 = 'the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
+test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
+    for (const file of ['commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'references/source-protocol.md'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
+        assert.ok(body.includes(D1), `${file} does not print the D1 refusal`);
+        assert.ok(!/(bash|pwsh -File) "\$TMP\/repo\/scripts\/os\/claude-stack\.(sh|ps1)"/.test(body), `${file} still runs the frozen twin`); // legacy-name
+    }
+});
+
+// A 1.x install keeps its marketplace key (`claude-stack`) for the whole 2.x line, so a body that // legacy-name
+// READS the user's install never spells a stack entry `@envoydev`: it names the key the core is
+// listed under - the resolve line's `key=`.
+test('the command bodies read stack entries under the key the core is listed under, never a literal @envoydev', () => {
+    const files = ['references/source-protocol.md', ...fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((f) => `commands/${f}`)];
+    for (const file of files)
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
+        assert.ok(!/@envoydev\b/.test(body), `${file} spells a stack entry @envoydev: ${(/.{0,60}@envoydev.{0,20}/.exec(body) || [''])[0]}`);
+    }
+    const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
+    assert.match(protocol, /key=\$\{KEY:-\?\}/, 'the bash resolve line names the key');
+});
+
+// A 1.x install's stamp keeps its old name until its first 2.0.0 update, so a manual read names both.
+test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
+    for (const name of ['status', 'configure'])
+    {
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.ok(body.includes('claude-stack.stamp'), `${name} names only alfred-code.stamp`); // legacy-name
+    }
 });
 
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
@@ -363,7 +399,7 @@ test('validate reconciles both ways (--redundant + --missing), walks layers, is 
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
     assert.match(body, /project mode only/i, 'validate refuses outside a project');
     assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
-    assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the one-release shell fallback');
+    assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the shell switch it refuses');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
     assert.match(body, /JUDGMENT-DROP/, 'the judgment step exists with its labeled verdict');

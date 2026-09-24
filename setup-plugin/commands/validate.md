@@ -459,10 +459,9 @@ profile), output to `$TMP/select.out` - then:
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
-  and it stamps every carried item as a pick. `ALFRED_CODE_SEED=shell` runs the frozen twin
-  instead, which has no `--add` / `--drop` and takes the whole selection: Unix
-  `bash "$TMP/repo/scripts/os/claude-stack.sh" install --source "$TMP/repo" --scope project --selection "$TMP/selection.txt" [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] 2>&1 | tee "$TMP/install.log"`;
-  Windows `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" install -Source "$TMP/repo" -Scope project -Selection "$TMP/selection.txt" [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] 2>&1 | tee "$TMP/install.log"`. Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
+  and it stamps every carried item as a pick. On `ALFRED_CODE_SEED=shell` (or the 1.x
+  `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
+  Playwright among the ADDS: ask which browsers to keep (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`) and which one stays enabled, and pass both; an installed playwright passes nothing
   (the installer reads its `playwright-<browser>` servers back and keeps them). Sentry environment plan: whenever sentry is installed or among the adds, read the
   ACCOUNT `settings.json` env (`~/.claude/settings.json`, or the space's) - `SENTRY_SLUG` missing -> ask
@@ -487,10 +486,7 @@ profile), output to `$TMP/select.out` - then:
   install carries beside the core - never propose removing one: the installer puts it back on every
   run, so the removal would only be undone. The removal ask that proposed it
   NAMES that scope ('enabled at USER scope - removing it removes it for every
-  project'), since account-wide and project-local are different consents. Under the shell seed
-  the twin deletes nothing, so every accepted removal is also deleted here: the skill directory /
-  agent file / rule file; a hook loses BOTH its `.claude/hooks/` file and its
-  `.claude/settings.json` wiring.
+  project'), since account-wide and project-local are different consents.
 - **Check the generated rule's stamped policy against this release, mechanically.** The usage-policy
   block inside `.claude/rules/baseline-project-agent-capabilities.md` ships verbatim from the skill
   and is never re-fetched, so a project can carry a two-release-old policy with nothing to notice it.

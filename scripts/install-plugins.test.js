@@ -583,3 +583,44 @@ test('seed update: a 1.x account keeps its key - every stack spec is @claude-sta
     assert.ok(!calls.includes('plugin marketplace add envoydev/alfred-code'), calls.join('\n'));
     assert.ok(!calls.some((c) => /^plugin install alfred-code(-hooks)?@/.test(c)), `the renamed core was installed beside itself:\n${calls.join('\n')}`);
 });
+
+// The configure / validate read-back on a 1.x install: `--installed-only` under the key the stack was
+// registered with, a 1.x stamp whose picks are homed in the 1.x core, a 1.x seat deny and a 1.x
+// switch-off. The read-back must be the same install - the picks rehomed, the deny in one spelling,
+// the hooks the user switched off still off - or the first 2.0.0 update turns them back on.
+test('seed update --installed-only: a 1.x install under its old key keeps its picks, its deny and its hooks-off', POSIX_ONLY, () =>
+{
+    const row = (id) => ({ id, version: '2.0.0', scope: 'user', enabled: true });
+    const listing = JSON.stringify(['alfred-code', 'alfred-code-hooks', 'serena', 'context7', 'memory'].map((n) => row(`${n}@${OLD}`)));
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), // legacy-name
+            `version: 1.3.0\nsha: 0000000\npicked-skills: markdown-style@${OLD}\npicked-agents: security-auditor@${OLD}\n`);
+        fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({
+            permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] },
+            env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' }, // legacy-name
+        }, null, 2));
+    };
+    const { result, out } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare,
+        inspect: (repo) =>
+        {
+            const claude = path.join(repo, '.claude');
+            const stamp = fs.existsSync(path.join(claude, 'alfred-code.stamp')) ? fs.readFileSync(path.join(claude, 'alfred-code.stamp'), 'utf8') : '';
+            const settings = JSON.parse(fs.readFileSync(path.join(claude, 'settings.json'), 'utf8'));
+            return {
+                picks: [(/^picked-skills: (.*)$/m.exec(stamp) || [])[1], (/^picked-agents: (.*)$/m.exec(stamp) || [])[1]],
+                oldStamp: fs.existsSync(path.join(claude, 'claude-stack.stamp')), // legacy-name
+                deny: settings.permissions.deny.filter((d) => d.includes('code-style-analyzer')),
+                env: settings.env,
+            };
+        } });
+    assert.ok(/marketplace: claude-stack/.test(out), out); // legacy-name
+    assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style@alfred-code'), `skills: ${result.picks[0]}`);
+    assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor@alfred-code'), `agents: ${result.picks[1]}`);
+    assert.strictEqual(result.oldStamp, false, 'the 1.x stamp is left beside the new one');
+    assert.deepStrictEqual(result.deny, ['Agent(alfred-code:code-style-analyzer)'], 'the deny in one spelling');
+    assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the hooks the user switched off stay off');
+    assert.ok(!('CLAUDE_STACK_HOOKS_OFF' in result.env), 'the 1.x key is renamed, not left beside the new one'); // legacy-name
+});

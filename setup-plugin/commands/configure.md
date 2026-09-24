@@ -111,8 +111,9 @@ comparable banner by banner; the content varies, the skeleton never does.
   "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - so the walk's
   tables can label what the project provably uses (`--found`); skip it in global mode (no
   project to scan).
-- **Report what changed since the install.** `.claude/alfred-code.stamp` (or the account's)
-  records the commit every artifact of the current install was copied from - the stack versions
+- **Report what changed since the install.** `.claude/alfred-code.stamp` (or the account's; a 1.x
+  install has `claude-stack.stamp` until its first 2.0.0 update, which `stamp-compare.js` reads <!-- legacy-name -->
+  when the new one is absent) records the commit every artifact of the current install was copied from - the stack versions
   the INSTALL, not the file. Use it to tell the user what an update would actually bring, BEFORE
   they choose:
 
@@ -302,7 +303,7 @@ line and ask nothing. An existing registration needs no auth flag: `update` read
 its mode (an old plain-`Bearer` header migrates to the fixed `Sentry-Bearer` one).
 
 Whenever playwright is PRESENT after this round, name the browsers installed today - one per browser,
-read the same ROUTE-decided way as the rest: a `playwright-<browser>@envoydev` entry in the plugins
+read the same ROUTE-decided way as the rest: a `playwright-<browser>@<key>` entry (under the resolve line's `key=`) in the plugins
 listing, else `playwright-<browser>` in `.mcp.json` (global: `claude mcp list`); a legacy single
 `playwright` server counts as its `--browser` value, `chrome` when it has none, and is migrated by the
 run - and ask in
@@ -440,7 +441,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead, and it has no `--add` / `--drop`: it takes the whole selection. Unix: `bash "$TMP/repo/scripts/os/claude-stack.sh" update --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [same optional flags] 2>&1 | tee "$TMP/install.log"`. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-KeepPins] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"`. The twin writes no seat deny - say so in the report.
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
   value in one line. A value changed at step 9 is already in the file, and the installer never re-seeds a
@@ -484,10 +485,7 @@ route (playwright = every `playwright-<browser>` server);
 except one the table showed as `dependency`, which is never proposed for removal at all: every
 install carries it beside the core, and the next run installs it again - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
-`--scope` fails with `not installed in project scope`. Under the shell seed the twin deletes
-nothing it did not select, so every dropped copy is deleted here as well: the skill directory, agent
-file or rule file, and a hook's `.claude/hooks/` file plus its `.claude/settings.json` wiring (show
-that edit too - step 6's promise). 'removals: none' when nothing was dropped;
+`--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
 (3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,

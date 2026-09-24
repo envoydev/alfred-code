@@ -202,10 +202,11 @@ function readListing(root, marketplace)
         const r = spawnSync('claude', ['plugin', 'list', '--json'], { cwd: root, encoding: 'utf8', timeout: 60000 });
         text = r.status === 0 ? String(r.stdout || '') : null;
     }
-    let raw;
-    try { raw = JSON.parse(text); } catch { return null; }
-    const rows = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.installed) ? raw.installed : []);
-    return parsePluginList(text, root, { marketplace: marketplace || marketKey({ listing: rows }) });
+    try { JSON.parse(text); } catch { return null; }
+    // THIS project's rows and the account's, as the seed reads them: the listing also prints other
+    // projects' project-scope rows, which may carry the other key.
+    const ours = parsePluginList(text, root, { byMarketplace: true });
+    return parsePluginList(text, root, { marketplace: marketplace || marketKey({ listing: ours }) });
 }
 
 function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines })
@@ -225,19 +226,22 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     let hasHooks = false;
     try { hasHooks = fs.readdirSync(hooksDir).some((f) => /^(guard-|docs-session|memory-session|instrument-).*\.js$/.test(f)); } catch { hasHooks = false; }
     // The walk's None held across a release: every hook the LAST release shipped is switched off.
-    const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
+    // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until the installer's env pass // legacy-name
+    // renames it, which runs after this preflight.
+    const { hookDisabled, envOf } = require('../stack/hooks/hook-prelude.js');
+    const hooksOff = String(envOf(env, 'HOOKS_OFF') || '');
     let shippedBefore = [];
     try { shippedBefore = ((/^shipped-hooks: (.*)$/m.exec(fs.readFileSync(stampFile, 'utf8')) || [])[1] || '').split(',').filter(Boolean); } catch { shippedBefore = []; }
     // The installer holds None only while the hooks entry is enabled (it enables that entry
     // regardless, and writes no hook none without it) - so the verdict holds it only then too.
     const hooksEntryOn = Boolean(listing && listing.some((r) => isHooks(r.name) && r.enabled));
-    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }));
+    const noneBefore = hooksEntryOn && shippedBefore.length > 0 && shippedBefore.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: hooksOff }));
     const rows = classifyNew({
         added, noneBefore,
         plugins: listing && listing.filter((r) => r.enabled).map((r) => r.name),
         parked: listing ? listing.filter((r) => !r.enabled).map((r) => r.name) : [],
         deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
-        hooksOff: env.ALFRED_CODE_HOOKS_OFF,
+        hooksOff,
         routes: pluginRoutes(process.env),
         always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
         hasHooks,

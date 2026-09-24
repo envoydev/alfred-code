@@ -259,6 +259,20 @@ test('install-stamp: a run with no revision leaves the 1.x stamp where it is - i
     assert.ok(fs.existsSync(old));
 });
 
+// The order is the guarantee: the 1.x stamp goes only once the new one is on disk. A write that fails
+// (here a directory standing where the new stamp goes) must leave the 1.x stamp as the only record.
+test('install-stamp: a failed write of the new stamp leaves the 1.x stamp where it is', () =>
+{
+    const p = project();
+    const old = path.join(p.base, '.claude', OLD_STAMP);
+    fs.writeFileSync(old, 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
+    fs.mkdirSync(path.join(p.base, '.claude', 'alfred-code.stamp'));
+    const r = write(p);
+    assert.strictEqual(r.dest, null, 'the write was reported as done');
+    assert.ok(fs.existsSync(old), 'the 1.x stamp was removed although the new one never landed');
+    assert.strictEqual(fs.readFileSync(old, 'utf8'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
+});
+
 test('install-stamp: stampFiles reads the new stamp, else the 1.x one, and always writes the new one', () =>
 {
     const p = project();

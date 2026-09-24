@@ -772,7 +772,9 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
   // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session
   // recorded before 2.0.0 names the same items under the 1.x plugin names.
-  const houseBare = (name) => String(name || '').replace(/^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/, ''); // legacy-name
+  const { BRAND, LEGACY } = require('./install/brand.js');
+  const houseScope = new RegExp(`^(?:${BRAND.core}|${LEGACY.core})(?:-[a-z0-9-]+)?:`);
+  const houseBare = (name) => String(name || '').replace(houseScope, '');
 
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence

@@ -415,6 +415,9 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
     assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none']);
     const some = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { ALFRED_CODE_HOOKS_OFF: before.slice(1).join(',') } }, stampHooks: before });
     assert.ok(some.lines.includes(`hook ${shipped[0]}`), 'only a full None holds - a partial switch-off lets a new hook arrive');
+    // A 1.x settings file still spells the switch-off CLAUDE_STACK_HOOKS_OFF: the same None. // legacy-name
+    const old = readBackCase({ listing: [row('alfred-code-hooks@envoydev')], settings: { env: { CLAUDE_STACK_HOOKS_OFF: before.join(',') } }, stampHooks: before }); // legacy-name
+    assert.deepStrictEqual(old.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'the 1.x spelling of the None');
 });
 
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
@@ -517,8 +520,10 @@ const OLD = 'claude-stack'; // legacy-name
 test('read-back: a 1.x install - the old key, the core still named claude-stack - is the same install, and its stamp picks are kept', () => // legacy-name
 {
     const stampPicked = { skills: [`project-solve-cross-task@${OLD}`], agents: [`security-auditor@${OLD}`] };
-    const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
-    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('serena@envoydev')], stampPicked, settings });
+    // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
+    const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
+    const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
+    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('alfred-code-hooks@envoydev'), row('serena@envoydev')], stampPicked, settings: renamed });
     for (const listing of [
         [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`serena@${OLD}`)],
         [row(`alfred-code@${OLD}`), row(`alfred-code-hooks@${OLD}`), row(`serena@${OLD}`)],

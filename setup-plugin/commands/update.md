@@ -198,8 +198,6 @@ take. Each taken offer becomes one `--add "<category> <name>"` on the installer 
 path runs, and so does every `renamed` row, unasked; every `was-off` row becomes one
 `--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh.
-Under `ALFRED_CODE_SEED=shell` there is no `--add` to take an answer, so there is no ask either:
-the offers go in the report, routed to `configure`.
 
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through
@@ -210,7 +208,7 @@ post-install read below has a file that was actually written (the shared contrac
 `source-protocol.md`'s 'Capture the installer's own output'):
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"` The twin does NOT migrate the per-stack entries retired in 1.3.0: it cannot copy their picks, so it leaves them installed and working until a Node-seed update copies the picks and removes them - say so when one is enabled.
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
@@ -329,9 +327,7 @@ and that is their decision to make, not one to leave unsaid. Then:
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and the step-2 `new:` lines: one line naming what `arrives`,
   one naming what stays `off` (the user's own switch - say where it lives), the offers taken and
-  left, and any `unknown` (the listing could not be read - `configure` can take them). Under
-  `ALFRED_CODE_SEED=shell` there is no `--add`: name the taken offers and route them to
-  `configure`.
+  left, and any `unknown` (the listing could not be read - `configure` can take them).
 - Hooks on the COPY route - and the installer does most of it for you. Hooks are an
   all-or-nothing layer on the `--installed-only` path: an install that HAS hooks receives every
   hook the release ships, and the run logs `installed-only: adopting hook <name>` for each one.
@@ -353,14 +349,7 @@ and that is their decision to make, not one to leave unsaid. Then:
 
 ## 4. Pruning path - confirm once, then refresh + prune
 The installer reads the install back itself (`--installed-only`), so the ask below needs only the
-compare. Under `ALFRED_CODE_SEED=shell` - and only there - inventory the CURRENT selection from
-disk exactly as the sibling `configure` command's step 1
-(`${CLAUDE_PLUGIN_ROOT}/setup-plugin/commands/configure.md` - read it only on THIS path; command bodies do
-not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
-`baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
-GENERATED legacy `inject-code-style.js`), mcps = the ROUTE decides: with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`, plugins fail-soft and
-filtered to entries enabled for THIS project (the listing is machine-global; an unfiltered read
-re-submits a sibling repo's plugin to this project's refresh - measured) - never from memory.
+compare.
 
 Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
 included, with their why). Ask ONE question through AskUserQuestion: proceed with refresh +
@@ -378,18 +367,13 @@ it) and every offer the step-2 ask took. A removed name needs no flag - this rel
 does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
-read-back exists for exactly that). Under `ALFRED_CODE_SEED=shell` the frozen twin takes no
-`--add` and writes no seat deny, so it keeps the old route: selection = installed, minus the
-confirmed prune list, plus the new names of renames; write `raw.json`, run `stack-select.js
---selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check`. A `required:` line (a dependency the new release introduced) is auto-kept and
+read-back exists for exactly that). A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
 and an MCP server added by hand, print exactly that way, and the installer leaves every one of
 them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never
 touched). It is excluded from the emitted selection and nothing more - list it in the report as
 `kept - not a stack item`. Only the compare list and the migrations prune. Blockers stop the run with their fixes -
-never update past one; warnings are listed and passed. Then run the twin as in step 3 but
-with `--selection "$TMP/selection.txt"` / `-Selection "$TMP/selection.txt"` in place of the installed-only
-flag.
+never update past one; warnings are listed and passed.
 
 ## 5. Prune
 Delete each item on the confirmed list, showing every command before running it. A deleted hook

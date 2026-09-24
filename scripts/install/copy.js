@@ -18,6 +18,7 @@
 //   - THE DESTINATION DIRECTORY IS MADE ON THE WAY, including for a nested path.
 const fs = require('node:fs');
 const path = require('node:path');
+const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 const DOCS_ROOT_DEFAULT = '.claude/docs';
 const DOCS_ROOT_RULE = 'baseline-docs-root.md';
@@ -68,14 +69,16 @@ function installFromSource({ sourceDir, subdir, label, destDir, files, exec = fa
 }
 
 // The docs root, resolved exactly as the shell resolves it: the project settings.json, then the
-// pre-0.2.43 key an older install stamped, then the default. A malformed or absent file is not a
+// pre-0.2.43 key an older install stamped, then the default. A 1.x install spells the key
+// CLAUDE_STACK_DOCS_PATH until the settings layer's env pass renames it, and this runs before that // legacy-name
+// pass - envOf reads all three spellings. A malformed or absent file is not a
 // failure - it means 'no value here', which is what the default is for.
 function resolveDocsRoot(projectRoot)
 {
     try
     {
         const env = JSON.parse(fs.readFileSync(path.join(projectRoot, '.claude', 'settings.json'), 'utf8')).env || {};
-        return env.ALFRED_CODE_DOCS_PATH || env.CLAUDE_DOCS_PATH || DOCS_ROOT_DEFAULT;
+        return envOf(env, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
     }
     catch { return DOCS_ROOT_DEFAULT; }
 }

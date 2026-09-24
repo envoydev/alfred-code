@@ -20,6 +20,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+// ALFRED_CODE_<key>, else a 1.x install's CLAUDE_STACK_<key> the installer's env pass has not renamed // legacy-name
+// yet (and, for DOCS_PATH, the pre-0.2.43 CLAUDE_DOCS_PATH).
+const { envOf } = require('../stack/hooks/hook-prelude.js');
 
 const DEFAULT_ROOT = '.claude/docs';
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
@@ -31,7 +34,7 @@ function resolveDocsRoot(settingsFile)
         const env = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).env || {};
         // CLAUDE_DOCS_PATH is the pre-0.2.43 spelling - still read, so an install whose settings
         // the rename has not reached yet stamps its own root rather than the default.
-        return env.ALFRED_CODE_DOCS_PATH || env.CLAUDE_DOCS_PATH || DEFAULT_ROOT;
+        return envOf(env, 'DOCS_PATH') || DEFAULT_ROOT;
     }
     catch
     {
@@ -113,14 +116,15 @@ function reprobeVersioning(root, seeded)
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - docs versioning left as it is`); return; }
-    if (!data || typeof data !== 'object' || !data.env || !data.env.ALFRED_CODE_DOCS_VERSIONING)
+    const stored = data && typeof data === 'object' && data.env ? envOf(data.env, 'DOCS_VERSIONING') : undefined;
+    if (!stored)
     {
         console.log('stamp-docs-root: no ALFRED_CODE_DOCS_VERSIONING in the env block - nothing to re-probe');
         return;
     }
-    if (data.env.ALFRED_CODE_DOCS_VERSIONING !== seeded)
+    if (stored !== seeded)
     {
-        console.log(`stamp-docs-root: the env block holds '${data.env.ALFRED_CODE_DOCS_VERSIONING}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
+        console.log(`stamp-docs-root: the env block holds '${stored}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
     const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
@@ -130,7 +134,7 @@ function reprobeVersioning(root, seeded)
         return;
     }
     const value = probeVersioning(root, docs);
-    if (data.env.ALFRED_CODE_DOCS_VERSIONING === value)
+    if (stored === value)
     {
         console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
         return;
@@ -164,9 +168,10 @@ function seedVersioning(root)
         console.log(`stamp-docs-root: ${settingsFile} has an env that is not a JSON object - nothing seeded`);
         return;
     }
-    if (data.env && data.env.ALFRED_CODE_DOCS_VERSIONING)
+    const decided = data.env ? envOf(data.env, 'DOCS_VERSIONING') : undefined;
+    if (decided)
     {
-        console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${data.env.ALFRED_CODE_DOCS_VERSIONING}' - nothing seeded`);
+        console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${decided}' - nothing seeded`);
         return;
     }
     const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');

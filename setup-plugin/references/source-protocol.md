@@ -64,17 +64,19 @@ platform, pre-set env var or not:
 ```bash
 MARK="/tmp/alfred-code-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
-  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-node}"   # a valid marker from an earlier call
+  TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}}"   # a valid marker from an earlier call; legacy-name: the 1.x setting too
 else
 REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d)
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
+KEY=""        # the marketplace key the core is listed under - a 1.x install keeps its own
 if command -v claude >/dev/null 2>&1; then
   for K in envoydev claude-stack; do claude plugin marketplace update "$K" >/dev/null 2>&1; done   # legacy-name: a 1.x install keeps its key
   # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>" - a row the catalog renamed by its NEW id
   ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a){const r=(x.noteDetails||[]).find(n=>n&&n.type==="plugin-renamed"&&n.related);console.log(x.scope+" "+(r?r.related+"@"+x.id.split("@")[1]:x.id)+" "+x.version)}}catch{}})')   # legacy-name
   WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{n=$3;exit} $2~/^claude-stack@/&&o==""{o=$3} END{print (n!=""?n:o)}')   # legacy-name
+  KEY=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
 SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
@@ -87,7 +89,7 @@ else
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-node} running=${WAS:-?}"
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}} running=${WAS:-?} key=${KEY:-?}"   # legacy-name
 fi
 ```
 
@@ -113,6 +115,8 @@ New-Item -ItemType Directory -Path $TMP -Force | Out-Null
 $RepoUrl = 'https://github.com/envoydev/alfred-code'
 $ConfigDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
 $Was = ''     # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
+$Key = ''     # the marketplace key the core is listed under - a 1.x install keeps its own
+$Seed = if ($env:ALFRED_CODE_SEED) { $env:ALFRED_CODE_SEED } elseif ($env:CLAUDE_STACK_SEED) { $env:CLAUDE_STACK_SEED } else { 'node' }   # legacy-name
 if (Get-Command claude -ErrorAction SilentlyContinue) {
   foreach ($k in 'envoydev', 'claude-stack') { claude plugin marketplace update $k *> $null }   # legacy-name: a 1.x install keeps its key
   $list = try { claude plugin list --json 2>$null | Out-String | ConvertFrom-Json } catch { $null }
@@ -122,16 +126,16 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   $Here = (Get-Item -LiteralPath (Get-Location).Path).FullName
   $rows = @($list | Where-Object { "$($_.id)" -match '@(envoydev|claude-stack)$' -and $_.scope -and (-not $_.projectPath -or [System.IO.Path]::GetFullPath("$($_.projectPath)").TrimEnd('\', '/') -eq $Here.TrimEnd('\', '/')) })   # legacy-name
   $rows = @(@($rows | Where-Object { $_.projectPath }) + @($rows | Where-Object { -not $_.projectPath }))
-  $Old = ''
+  $Old = ''; $OldKey = ''
   foreach ($r in $rows) {
     # a row the catalog renamed is updated by its NEW id - the old one no longer resolves
     $n = @($r.noteDetails | Where-Object { $_ -and $_.type -eq 'plugin-renamed' -and $_.related }) | Select-Object -First 1
     $id = if ($n) { "$($n.related)@$(("$($r.id)" -split '@')[1])" } else { "$($r.id)" }
-    if ($id -like 'alfred-code@*') { if (-not $Was) { $Was = $r.version } }
-    elseif ($id -like 'claude-stack@*' -and -not $Old) { $Old = $r.version }   # legacy-name
+    if ($id -like 'alfred-code@*') { if (-not $Was) { $Was = $r.version; $Key = ($id -split '@')[1] } }
+    elseif ($id -like 'claude-stack@*' -and -not $Old) { $Old = $r.version; $OldKey = ($id -split '@')[1] }   # legacy-name
     claude plugin update $id --scope $r.scope -y *> $null
   }
-  if (-not $Was) { $Was = $Old }
+  if (-not $Was) { $Was = $Old; $Key = $OldKey }
 }
 $Src = ''
 $BestVer = $null
@@ -162,6 +166,8 @@ if ($Src) {
   Expand-Archive -LiteralPath "$TMP/alfred-code.zip" -DestinationPath "$TMP/repo"
 }
 $Ver = ((Get-Content "$TMP/repo/RELEASE-SOURCE" -ErrorAction SilentlyContinue | Where-Object { $_ -match '^version: ' }) -replace '^version: ', '').Trim()
+$Show = { param($v) if ($v) { $v } else { '?' } }
+Write-Output "RESOLVED TMP=$TMP $(& $Show $Ver) seed=$Seed running=$(& $Show $Was) key=$(& $Show $Key)"
 ```
 
 Both installer twins resolve this same plugin cache from `stack_src` / `Get-StackSrc`, in the same
@@ -254,7 +260,7 @@ numbered steps lag it by one release (measured: a run that asked instead spent 5
 meta-asks and ended telling the user to restart, with zero reconciliation done). A MULTI-release
 gap is worth the ask: say so, recommend a restart (the resolve already installed the newest, so the
 next session loads its steps), and offer to continue anyway. The plugin cache is keyed by version
-(`~/.claude/plugins/cache/envoydev/alfred-code/<version>/`), so after an update the old
+(`~/.claude/plugins/cache/<key>/alfred-code/<version>/`), so after an update the old
 version dirs are stale leftovers. **Do not offer to delete them, and never delete one yourself.**
 Claude Code marks the previous version orphaned on an update or uninstall and sweeps it in a
 background pass roughly 14 days later; the grace period is deliberate, so that a concurrent session
@@ -266,8 +272,9 @@ ONE version dir, say so in ONE close-out line - the count and the keeper - and s
 clears the rest itself.
 And if an update ever does NOT change the running content (a same-version re-release - the trap
 every release now avoids by bumping), the hard reset is `claude plugin uninstall alfred-code`
-then `claude plugin install alfred-code@envoydev`, which rebuilds the cache from the
-marketplace.
+then `claude plugin install alfred-code@<key>`, which rebuilds the cache from the
+marketplace - `<key>` is the resolve line's `key=`, the key the core is listed under (a 1.x
+install keeps its own; an account with only that key has no `envoydev` to install from).
 
 ## Narrate, don't trace
 
@@ -311,8 +318,8 @@ Final rule set: the 10 recommended (customize round confirmed no changes). Foldi
 
 Everything comes out of `$TMP/repo`:
 - the installer - `scripts/install/alfred-code.js`, run with `node` and the same command on every
-  OS. The OS twins (`scripts/os/claude-stack.sh`, `scripts/os/claude-stack.ps1` via `pwsh`) are the
-  one-release fallback, taken ONLY when the resolve line above reported `seed=shell`. `node` is
+  OS. The frozen OS twins no longer run: a resolve line reporting `seed=shell` stops the run (the
+  refusal is below). `node` is
   already a hard prerequisite of the stack - every hook and every selection step runs it - so the
   default route needs nothing the project does not already have
 - `scripts/stack-select.js` and `meta/stack-graph.json` (selection closure + prerequisite check)
@@ -341,12 +348,12 @@ roughly 882k tokens between them. So:
 
 **ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/alfred-code.js" <install|update>
 [flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
-program now and not two. The OS twins ship for one more release and are taken ONLY when the resolve
-line reported `seed=shell`, which is `ALFRED_CODE_SEED=shell` in the environment this session
-started in: then it is `bash "$TMP/repo/scripts/os/claude-stack.sh"` on `darwin`/`linux` and `pwsh
--File "$TMP/repo/scripts/os/claude-stack.ps1"` on Windows, with the PowerShell spellings (`-Source`,
-`-Scope`, `-Selection`). Never cross the two: a `-Scope` handed to the Node seed is an unknown flag,
-and it refuses before the run writes anything.
+program now and not two. A resolve line reporting `seed=shell` - `ALFRED_CODE_SEED=shell`, or a
+1.x `CLAUDE_STACK_SEED=shell`, in the environment this session started in - is refused: the frozen <!-- legacy-name -->
+twins name the 1.x marketplace and entries a 2.0.0 registration cannot resolve, so print
+`the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop, the <!-- legacy-name -->
+same line the seed itself prints and exits 1 on. Never hand the Node seed a PowerShell spelling: a
+`-Scope` is an unknown flag, and it refuses before the run writes anything.
 
 Pass `--source "$TMP/repo"` (`-Source` on Windows) when running the installer's action. That is
 what keeps a guided run at ONE download instead of two, and it guarantees the run lands the same

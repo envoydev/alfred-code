@@ -512,15 +512,17 @@ function stubRenamed(home, listing, lands) {
 }
 const WANT_RENAMED = [`plugin update alfred-code-hooks@${LEGACY_DIR} --scope user -y`, `plugin update alfred-code@${LEGACY_DIR} --scope user -y`];
 
-function runBashSnippet(home, PATH) {
+function runBashSnippet(home, PATH, extra = {}) {
     const script = path.join(home, 'resolve.sh');
     fs.writeFileSync(script, protocolSnippet('bash', 0));
-    const out = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH } });
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, ...extra };
+    for (const k of ['ALFRED_CODE_SEED', 'CLAUDE_STACK_SEED']) if (!(k in extra)) delete env[k]; // legacy-name
+    const out = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
     const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
     assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
     const mark = `/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
     for (const p of [nativePath(m[1]), mark]) fs.rmSync(p, { recursive: true, force: true });
-    return { version: m[2], running: m[3] };
+    return { version: m[2], running: m[3], seed: (out.match(/ seed=(\S+)/) || [])[1], key: (out.match(/ key=(\S+)/) || [])[1] };
 }
 
 test("the protocol's bash snippet updates a renamed 1.x row by its NEW id and takes the entry that lands under the old key", POSIX_STUB, () => {
@@ -531,12 +533,30 @@ test("the protocol's bash snippet updates a renamed 1.x row by its NEW id and ta
         const r = runBashSnippet(home, stubRenamed(home, RENAMED_ROWS, '2.0.0'));
         assert.strictEqual(r.version, '2.0.0', 'it read the 1.x entry, not the renamed one the update landed');
         assert.strictEqual(r.running, '1.3.0', 'running= names the version this session loaded');
+        assert.strictEqual(r.key, LEGACY_DIR, 'key= names the key the core is listed under - the 1.x one here');
         const calls = claudeCalls(home);
         assert.ok(calls.includes(`plugin marketplace update ${LEGACY_DIR}`), `the 1.x key's catalog was never refreshed: ${calls.join(' | ')}`);
         assert.deepStrictEqual(updatesIn(home), WANT_RENAMED, calls.join(' | '));
         assert.ok(!calls.some((c) => c.startsWith(`plugin update ${LEGACY_DIR}@`)), 'the old id fails not_found - it is never used');
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// D1: the shell seed is refused from 2.0.0, under either spelling of the setting - so the resolve
+// line reports either one, and the command bodies stop on it. No listing: key= is the fresh one.
+test("the protocol's bash snippet reports the seed under either setting name, and key= with no core listed", POSIX_STUB, () => {
+    for (const [extra, want] of [[{}, 'node'], [{ ALFRED_CODE_SEED: 'shell' }, 'shell'], [{ CLAUDE_STACK_SEED: 'shell' }, 'shell']]) // legacy-name
+    {
+        const home = work();
+        try
+        {
+            plantBare(path.join(home, '.claude'), 'envoydev', 'alfred-code', '2.0.0');
+            const r = runBashSnippet(home, stubRenamed(home, '[]'), extra);
+            assert.strictEqual(r.seed, want, JSON.stringify(extra));
+            assert.strictEqual(r.key, '?', 'no core row, no key to name');
+        }
+        finally { fs.rmSync(home, { recursive: true, force: true }); }
+    }
 });
 
 test("the protocol's bash snippet reads the 1.x dir alone, and skips an orphaned dir newer than a valid one", POSIX_STUB, () => {
@@ -559,9 +579,12 @@ test("the protocol's PowerShell snippet follows the rename, reads the 1.x dir an
     const run = (home, PATH) => {
         const script = path.join(home, 'resolve.ps1');
         fs.writeFileSync(script, `${protocolSnippet('powershell', 0)}\nWrite-Output "PS-VER=$Ver"\nWrite-Output "PS-WAS=$Was"\nWrite-Output "PS-TMP=$TMP"\n`);
-        const out = execFileSync('pwsh', ['-NoProfile', '-File', script], { cwd: home, encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH } });
+        const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH, CLAUDE_STACK_SEED: 'shell' }; // legacy-name
+        delete env.ALFRED_CODE_SEED;
+        const out = execFileSync('pwsh', ['-NoProfile', '-File', script], { cwd: home, encoding: 'utf8', env });
         fs.rmSync(out.match(/PS-TMP=(.+)/)[1].trim(), { recursive: true, force: true });
-        return { version: (out.match(/PS-VER=(\S*)/) || [])[1], was: (out.match(/PS-WAS=(\S*)/) || [])[1], out };
+        const resolved = /RESOLVED TMP=\S+ \S* seed=(\S+) running=\S+ key=(\S+)/.exec(out) || [];
+        return { version: (out.match(/PS-VER=(\S*)/) || [])[1], was: (out.match(/PS-WAS=(\S*)/) || [])[1], seed: resolved[1], key: resolved[2], out };
     };
     let home = work();
     try
@@ -570,6 +593,8 @@ test("the protocol's PowerShell snippet follows the rename, reads the 1.x dir an
         const r = run(home, stubRenamed(home, RENAMED_ROWS, '2.0.0'));
         assert.strictEqual(r.version, '2.0.0', r.out);
         assert.strictEqual(r.was, '1.3.0', r.out);
+        assert.strictEqual(r.seed, 'shell', `the 1.x seed setting is reported: ${r.out}`);
+        assert.strictEqual(r.key, LEGACY_DIR, `key= names the 1.x key: ${r.out}`);
         assert.ok(claudeCalls(home).includes(`plugin marketplace update ${LEGACY_DIR}`), claudeCalls(home).join(' | '));
         assert.deepStrictEqual(updatesIn(home), WANT_RENAMED, claudeCalls(home).join(' | '));
     }

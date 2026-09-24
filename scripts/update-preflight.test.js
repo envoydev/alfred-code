@@ -447,3 +447,36 @@ test('global mode: an account dir holding only the 1.x stamp is still the accoun
     assert.strictEqual(code, 0, out);
     assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m);
 });
+
+// A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until the installer's env pass // legacy-name
+// renames it - which runs AFTER this preflight. The walk's None, and a hook named off, hold under it.
+test('new items: a 1.x CLAUDE_STACK_HOOKS_OFF is the switch-off - the None holds, a named hook is off', () => { // legacy-name
+    const fixture = { files: [{ status: 'added', filename: 'stack/hooks/docs-session.js' }] };
+    const none = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file\n', fixture,
+        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'guard-read-whole-file' } } }); // legacy-name
+    const listing = path.join(none.install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }, { id: 'alfred-code-hooks@envoydev', enabled: true }]));
+    const held = run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile, '--listing', listing]).out;
+    assert.match(held, /^new: hook docs-session\toff\talfred-code-hooks$/m, `the None held: ${held}`);
+    const named = scaffold({ stamp: 'sha: aaa111\nversion: 1.3.0\nshipped-hooks: guard-read-whole-file,other-hook\n', fixture,
+        settings: { env: { CLAUDE_STACK_HOOKS_OFF: 'docs-session' } } }); // legacy-name
+    fs.writeFileSync(path.join(named.install, 'listing.json'), fs.readFileSync(listing));
+    const off = run(['--snapshot', named.snap, '--root', named.install, '--fixture', named.fixtureFile, '--listing', path.join(named.install, 'listing.json')]).out;
+    assert.match(off, /^new: hook docs-session\toff\talfred-code-hooks$/m, `the named hook is off: ${off}`);
+});
+
+// `claude plugin list --json` prints every project's project-scope rows. Another project on the same
+// account may run the core under the other key - the key is this project's, read from its own rows.
+test('new items: the key comes from THIS project\'s rows, never another project\'s', () => {
+    const { snap, install, fixtureFile } = scaffold({ fixture: NEW_FIXTURE });
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([
+        { id: 'alfred-code@envoydev', enabled: true, scope: 'project', projectPath: path.join(path.dirname(install), 'other-project') },
+        { id: 'alfred-code@claude-stack', enabled: true, scope: 'project', projectPath: install }, // legacy-name
+        { id: 'alfred-code-hooks@claude-stack', enabled: true, scope: 'project', projectPath: install }, // legacy-name
+    ]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^new: skill markdown-style\tarrives\talfred-code$/m, out);
+    assert.match(out, /^new: hook docs-session\tarrives\talfred-code-hooks$/m, out);
+});

@@ -1615,7 +1615,7 @@
       ]
     },
     "seed-route-selection": {
-      "_note": "The seed route: the installer is ONE `node scripts/install/alfred-code.js` command on every OS, and the frozen `scripts/os` twins run only when the run's environment sets ALFRED_CODE_SEED=shell (the snapshot resolve line reports it as `seed=<value>`). Phase 7 ships the Node seed as the default and keeps the twins for one release; the flag spellings never cross - Unix spellings for node and the sh twin, PowerShell spellings for the ps1. The protocol file owns the rule; each command body carries the copy-ready call for its own action.",
+      "_note": "The seed route: the installer is ONE `node scripts/install/alfred-code.js` command on every OS, and from 2.0.0 the frozen `scripts/os` twins no longer run: a run whose environment sets ALFRED_CODE_SEED (or its 1.x spelling) to shell - the snapshot resolve line reports it as `seed=<value>` - prints the D1 refusal and stops, as the seed itself does. The protocol file owns the rule; each command body carries the copy-ready call for its own action.",
       "owner": {
         "file": "setup-plugin/references/source-protocol.md",
         "marker": "**ONE seed, one command on every OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" <install|update>"
@@ -5285,19 +5285,6 @@
         {
           "file": "setup-plugin/commands/configure.md",
           "marker": "every install carries it beside the core, and the next run installs it again"
-        }
-      ]
-    },
-    "mcps-inventory-route": {
-      "_note": "How an installed MCP SET is read back, once the servers ship as plugins: the route decides, and status's table and update's refresh state it (configure and validate read the install back through the installer since Phase 8 T4 - inventory-read-back). A .mcp.json-only rule reports ZERO mcps on every plugin-route install, which reads as a stack that dropped them.",
-      "owner": {
-        "file": "setup-plugin/commands/status.md",
-        "marker": "with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/update.md",
-          "marker": "with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog"
         }
       ]
     },

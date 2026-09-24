@@ -63,7 +63,7 @@ every run ends with it.
 
 ## 1. Install choices
 
-Detect silently first - the OS (the installer itself is one `node` command on every OS now; the OS decides the PowerShell spelling of the snippets below, and which twin runs on the `ALFRED_CODE_SEED=shell` fallback - `darwin`/`linux` -> `claude-stack.sh`, Windows -> `claude-stack.ps1` via `pwsh`) and the mode (project root in a git repo -> project mode; anything else -> no-project mode). ONE call answers both, and this is the command - the same copy-ready shape steps 2-3 already give, because improvised probing cost one run three Bash calls where the third re-asked what the first two had already returned (36, 30 and 143 chars of answer for 36% of that run's tokens):
+Detect silently first - the OS (the installer itself is one `node` command on every OS now; the OS decides the PowerShell spelling of the snippets below, and nothing else: the frozen OS twins no longer run - `ALFRED_CODE_SEED=shell` stops the run at the installer step) and the mode (project root in a git repo -> project mode; anything else -> no-project mode). ONE call answers both, and this is the command - the same copy-ready shape steps 2-3 already give, because improvised probing cost one run three Bash calls where the third re-asked what the first two had already returned (36, 30 and 143 chars of answer for 36% of that run's tokens):
 
 ```bash
 printf 'os=%s\n' "$(uname -s 2>/dev/null || echo Windows)"; git rev-parse --show-toplevel 2>/dev/null || echo 'mode=no-project'
@@ -212,13 +212,12 @@ Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.tx
   its own; say so once when the list is not empty.
 
 `written` is the installer's own rule applied to the routes this environment runs, so it IS what
-the install writes. Under `ALFRED_CODE_SEED=shell` the frozen twin writes no seat deny: print
-`seats switched off: not on the shell route` instead.
+the install writes.
 
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
 - **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--context7 local|remote] [--sentry-slug <slug>] [--sentry-auth token|oauth] [--playwright-browsers <csv> --playwright-enabled <browser>] [--docs-versioning git|local] [--github-cli] [--memory-level global|scoped|project]`
-- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" install -Source "$TMP/repo" -Scope <scope> -Selection "$TMP/selection.txt" [-Space <name>] [-Context7 local|remote] [-SentrySlug <slug>] [-SentryAuth token|oauth] [-PlaywrightBrowsers <csv> -PlaywrightEnabled <browser>] [-DocsVersioning git|local] [-GitHubCli] [-MemoryLevel global|scoped|project]` - the ps1 handles the serena/TypeScript-on-Windows patch itself.
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell seed was retired in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.
 

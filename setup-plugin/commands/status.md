@@ -82,8 +82,11 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
-machine). The stack's OWN entries are counted by one script, never by hand: `node
-"$TMP/repo/scripts/derive-state.js" --floor --plugins <the enabled @envoydev entries,
+machine). `<key>` is the marketplace key the core is listed under in `claude plugin list --json` - the part
+after `@` of the `alfred-code` row; a 1.x install keeps its own key for the whole 2.x line, and
+its row can still read `claude-stack@claude-stack` until its first 2.0.0 update. <!-- legacy-name -->
+The stack's OWN entries are counted by one script, never by hand: `node
+"$TMP/repo/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries,
 comma-separated> --settings <account settings.json> --settings .claude/settings.json --settings
 .claude/settings.local.json` (deny rules merge across scopes, so pass every one that exists; the
 account file alone in global mode) prints the skill descriptions they carry (a
@@ -122,7 +125,7 @@ one line under the table: 'the project copies are from `<version>`, the stack is
 /alfred-code:update takes them'. `library: no library stamp` prints instead of JSON on an install
 older than the library route - say so in one line and skip the table.
 
-**Hooks** - hooks = the ROUTE decides: with `alfred-code-hooks@envoydev` in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `ALFRED_CODE_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`, `fresh-session`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
+**Hooks** - hooks = the ROUTE decides: with the hooks entry (`alfred-code-hooks@<key>`) in the plugins listing the installed set is the release's whole hook catalog MINUS the names in `ALFRED_CODE_HOOKS_OFF`; without it, `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`, `fresh-session`), the shared `hook-prelude`, and the generated legacy `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
 matcher comes from the release catalog; a row named in `ALFRED_CODE_HOOKS_OFF` reads `off (env)`.
 On the copy route the set is joined against `settings.json` as before:
 
@@ -131,7 +134,7 @@ On the copy route the set is joined against `settings.json` as before:
 | guard-catastrophic-rm.js | yes | Bash |
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
-**MCPs** - mcps = the ROUTE decides: with a `<server>@envoydev` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
+**MCPs** - mcps = the ROUTE decides: with a `<server>@<key>` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json` (project mode; global: the account's user-scope
 registrations - the installer's `--scope global` registers them with `--scope user`, so read
 `claude mcp list`, fail-soft without the CLI: banner + `claude CLI unavailable - skipped`). On the
 plugin route the `target` column is the plugin, not a registration:
@@ -196,8 +199,8 @@ is how a commit-time security gate sat off through two runs that both reported n
 | SENTRY_ACCESS_TOKEN (account env) | set / not set - only when sentry is installed and its registration carries a header |
 | CONTEXT7_API_KEY (account env) | set / not set - only when context7 is installed remote; not set = the keyless free tier |
 
-Stamp from `alfred-code.stamp` (`no stamp - source never resolved at install time` when
-absent); env values from `settings.json` `env`, marking `(default)` when the key is absent and
+Stamp from `alfred-code.stamp` - a 1.x install has `claude-stack.stamp` until its first 2.0.0 update, <!-- legacy-name -->
+read the same way (`no stamp - source never resolved at install time` when neither is there); env values from `settings.json` `env`, marking `(default)` when the key is absent and
 a house default applies. `autoMemoryEnabled` is the one exception - a TOP-LEVEL settings.json key,
 not under `env`, written by the memory import: read it from THIS repo's own project
 `.claude/settings.json` ALWAYS, even for a global-scope install (the switch-off never touches the

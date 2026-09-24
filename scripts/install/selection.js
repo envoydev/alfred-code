@@ -24,7 +24,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
-const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
+const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
 const { BRAND, currentName } = require('./brand.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
@@ -205,11 +205,12 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     const parked = ours.filter((r) => !r.enabled).map((r) => currentName(r.name));
-    const installed = readInstalled({ plugins: names, deny, hooksOff: env.ALFRED_CODE_HOOKS_OFF, routes, sourceDir });
+    // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
+    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes(BRAND.hooks) && stampHooks.length > 0
-        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(env.ALFRED_CODE_HOOKS_OFF || '') }));
+        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
     // A retired entry carries its whole stack, picked or not, and the library copies what the
     // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
     // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
