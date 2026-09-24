@@ -80,7 +80,12 @@
   ],
   "plugins": [
    "superpowers"
-  ]
+  ],
+  "notes": {
+   "plugins": {
+    "superpowers": "optional - 5.7k always-on chars a session; the core already carries its plan, test-first, root-cause and done-gate steps"
+   }
+  }
  },
  "stacks": {
   "aspnet": {

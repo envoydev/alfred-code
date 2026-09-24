@@ -110,11 +110,13 @@ runs the step off stale framing and freezes cost attribution on the wrong skill.
 a capture named in a close-out line (step 6) is a POINTER for the user to type, never a call this
 run makes.
 
-1. **DESIGN** - run `project-solution-design`. It writes the plan to the plans folder above; the
-   file, not the chat, is the artifact - and that skill's design rules are settled IN it (every seam
-   passes the decision-level rules, every task card carries its `log_points`, the `## Decisions`
-   ledger holds every judgment call with its precedent or an explicit none), so step 5 reviews the
-   built code against a plan that already decided all three. *Stop.*
+1. **DESIGN** - run `project-solution-design`, after clarifying an ask with more than one reading:
+   one AskUserQuestion at a time, 2-3 concrete options with the recommended one marked, until one
+   reading is left - the requirement, never the implementation. It writes the plan to the plans
+   folder above; the file, not the chat, is the artifact - and that skill's design rules are settled
+   IN it (every seam passes the decision-level rules, every task card carries its `log_points`, the
+   `## Decisions` ledger holds every judgment call with its precedent or an explicit none), so step 5
+   reviews the built code against a plan that already decided all three. *Stop.*
 2. **GATE** - run `project-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
    same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -

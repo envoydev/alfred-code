@@ -91,6 +91,10 @@ test('every recommendation name resolves in the dependency graph', () => {
         const hookCatalog = new Set(graph.catalog.hooks);
         for (const h of seed.hooks || []) assert.ok(hookCatalog.has(h), `recommendation hook '${h}' not in catalog`);
     }
+    // a walk-row note never outlives its opt-in item
+    for (const [layer, notes] of Object.entries((recs.general || {}).notes || {}))
+        for (const name of Object.keys(notes))
+            assert.ok(((recs.general || {})[layer] || []).includes(name), `general.notes.${layer}.${name} names no general ${layer} item`);
 });
 
 test('the aspnet seed installs the csharp LSP plugin', () => {

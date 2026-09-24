@@ -33,7 +33,9 @@
 //   matcher   'Tool' | {tool?, input_match?, field?, text_match?, text_not_match?} | {any: [...]}
 //             | {all: [...]} | {ref: '<name in the file's matchers>'}. `text_match` runs over the
 //             input's RAW string values (or one `field`), with the m flag; a string or a list, all
-//             must match. No `tool` matches any event. An MCP tool matches in both spellings - the
+//             must match. No `tool` matches any event. `succeeded: true` (beside any of them) skips
+//             a call whose result came back an error - a rejected Edit, a hook deny changed nothing;
+//             left out, such a call still counts, so a denied commit is still an attempt in order. An MCP tool matches in both spellings - the
 //             plugin route's `mcp__plugin_<n>_<n>__<tool>` and the registration route's bare one.
 //   @text     each assistant text block is an event named `@text` in the same ordered trace, so a
 //             line the skill says must come first ('Size: ...') is ordered like a tool call.
@@ -45,12 +47,20 @@
 //   x_each    EVERY `tool` call has a `preceded_by` event since the call before it (or the start) and
 //             a `followed_by` event before the call after it (or the end); either may be left out,
 //             not both, and a `tool` never called fails - one hypothesis, one change, one re-run.
+//             A `tool` call that errored is no call of the set (its retry is the same change); a
+//             `preceded_by` / `followed_by` event counts either way, since a red test run is a run.
 //
 //   node scripts/skill-comply.js check [<skill>...]
 //   node scripts/skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level <l>] [--json]
 //   node scripts/skill-comply.js replay --dry-run [--skill a,b] [--level a,b] [--source <dir>] [--out <dir>]
 //                                   [--model <m>] [--max-budget-usd <n>] [--claude <bin>]
 //   node scripts/skill-comply.js replay --live ...      (billed - never without the user's word)
+//   node scripts/skill-comply.js compare <before-out> <after-out> [--skill a,b] [--level a,b]
+//
+// COMPARE grades both arms' transcripts (<out>/<skill>/<level>/transcript.jsonl) with THIS tree's
+// expectation files and applies the A/B ship rule per step: after no worse than before. A step that
+// fails on BOTH arms is INCONCLUSIVE, never 'not worse' - a grader blind to what the run did passes
+// every comparison by default. The rule HOLDS only with no step worse, inconclusive or not run.
 //
 // The replay installs on the full COPY route, from a clean export: the copied skills are this
 // working tree's text byte for byte, where the plugin route would resolve the released marketplace.
@@ -169,6 +179,7 @@ function resolve(m, refs)
 function matches(ev, raw, refs)
 {
     const m = resolve(raw, refs);
+    if (m.succeeded === true && ev.isError) return false;
     if (Array.isArray(m.any)) return m.any.some((x) => matches(ev, x, refs));
     if (Array.isArray(m.all)) return m.all.every((x) => matches(ev, x, refs));
     if (m.tool !== undefined && canonical(ev.tool) !== canonical(m.tool)) return false;
@@ -202,7 +213,7 @@ function inlineMatcher(g)
 {
     if (g.match !== undefined) return g.match;
     const m = {};
-    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref']) if (g[k] !== undefined) m[k] = g[k];
+    for (const k of ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all', 'ref', 'succeeded']) if (g[k] !== undefined) m[k] = g[k];
     return m;
 }
 
@@ -258,7 +269,7 @@ function runGrader(g, run, refs)
         }
         case 'x_each':
         {
-            const at = ev.map((e, i) => (matches(e, g.tool, refs) ? i : -1)).filter((i) => i !== -1);
+            const at = ev.map((e, i) => (!e.isError && matches(e, g.tool, refs) ? i : -1)).filter((i) => i !== -1);
             if (!at.length) return pass(false, `${label(g.tool, refs)} never called`);
             const has = (m, lo, hi) => ev.some((e, i) => i > lo && i < hi && matches(e, m, refs));
             const bad = [];
@@ -330,6 +341,64 @@ function grade(expect, transcriptText, { level } = {})
     };
 }
 
+// The A/B ship rule over two arms' grades, keyed '<skill>/<level>' (null = no usable transcript).
+// `stepIds` names each skill's steps, so a level NEITHER arm ran still reports every step NOT RUN.
+function compareArms(before, after, stepIds = {})
+{
+    const rows = [];
+    for (const key of [...new Set([...Object.keys(before), ...Object.keys(after)])])
+    {
+        const [skill, level] = key.split('/');
+        const b = before[key] || null;
+        const a = after[key] || null;
+        const ids = (a || b) ? (a || b).steps.map((s) => s.id) : (stepIds[skill] || []);
+        for (const step of ids)
+        {
+            const vb = b ? b.steps.find((s) => s.id === step)?.verdict ?? '-' : '-';
+            const va = a ? a.steps.find((s) => s.id === step)?.verdict ?? '-' : '-';
+            let outcome;
+            if (!b || !a || vb === '-' || va === '-') outcome = 'NOT RUN';
+            else if (vb === 'SKIP' || va === 'SKIP') outcome = 'skip';
+            else if (vb === 'PASS' && va === 'FAIL') outcome = 'WORSE';
+            else if (vb === 'FAIL' && va === 'PASS') outcome = 'better';
+            else if (vb === 'FAIL') outcome = 'INCONCLUSIVE';
+            else outcome = 'same';
+            rows.push({ skill, level, step, before: vb, after: va, outcome });
+        }
+    }
+    const count = (o) => rows.filter((r) => r.outcome === o).length;
+    const worse = count('WORSE');
+    const inconclusive = count('INCONCLUSIVE');
+    const notRun = count('NOT RUN');
+    const verdict = worse ? 'NOT MET' : inconclusive || notRun || !rows.length ? 'NOT PROVEN' : 'HOLDS';
+    return { rows, worse, inconclusive, notRun, verdict };
+}
+
+function formatCompare(c)
+{
+    const out = c.rows.map((r) => `  ${r.skill} ${r.level} ${r.step}: before ${r.before}, after ${r.after} -> ${r.outcome}`);
+    out.push(`ship rule: ${c.verdict} - ${c.worse} worse, ${c.inconclusive} inconclusive, ${c.notRun} not run`);
+    return out.join('\n');
+}
+
+// One arm's grades from a replay --out dir; a missing or empty transcript is no grade.
+function gradeArm(dir, skills, levels)
+{
+    const grades = {};
+    for (const skill of skills)
+    {
+        const exp = loadExpectation(skill).data;
+        for (const level of levels)
+        {
+            const f = path.join(dir, skill, level, 'transcript.jsonl');
+            let r = null;
+            if (fs.existsSync(f)) r = grade(exp, fs.readFileSync(f, 'utf8'), { level });
+            grades[`${skill}/${level}`] = r && r.events > 0 ? r : null;
+        }
+    }
+    return grades;
+}
+
 function formatGrade(r)
 {
     const out = [`skill-comply: ${r.skill}${r.level ? ` (level ${r.level})` : ''} - ${r.passed} of ${r.graded} graded steps followed${r.skipped ? `, ${r.skipped} skipped offline` : ''}`];
@@ -386,6 +455,7 @@ function checkMatcher(m, refs, where, problems, depth = 0)
             if (!Array.isArray(m[k]) || !m[k].length) problems.push(`${where}: '${k}' must be a non-empty list`);
             else m[k].forEach((x, i) => checkMatcher(x, refs, `${where}.${k}[${i}]`, problems, depth + 1));
         }
+    if (m.succeeded !== undefined && typeof m.succeeded !== 'boolean') problems.push(`${where}: 'succeeded' must be true or false`);
     if (m.input_match !== undefined) compiles(m.input_match, '', where, problems);
     for (const p of [...list(m.text_match), ...list(m.text_not_match)]) compiles(p, 'm', where, problems);
     const keys = ['tool', 'input_match', 'field', 'text_match', 'text_not_match', 'any', 'all'];
@@ -601,7 +671,8 @@ const USAGE = `usage:
   skill-comply.js check [<skill>...]
   skill-comply.js grade <skill|expect.json> <transcript.jsonl> [--level explicit|plain|adverse] [--json]
   skill-comply.js replay --dry-run [--skill a,b] [--level a,b] [--source <dir>] [--out <dir>] [--model <m>] [--max-budget-usd <n>] [--claude <bin>]
-  skill-comply.js replay --live    (same flags - starts billed nested sessions)`;
+  skill-comply.js replay --live    (same flags - starts billed nested sessions)
+  skill-comply.js compare <before-out> <after-out> [--skill a,b] [--level a,b]`;
 
 function main(argv)
 {
@@ -647,6 +718,24 @@ function main(argv)
         return 0;
     }
 
+    if (mode === 'compare')
+    {
+        if (pos.length !== 2) { console.error(USAGE); return 2; }
+        const skills = flags.skill ? String(flags.skill).split(',').filter(Boolean) : listSkills();
+        const levels = flags.level ? String(flags.level).split(',').filter(Boolean) : LEVELS;
+        const unknownLevel = levels.find((l) => !LEVELS.includes(l));
+        if (unknownLevel) { console.error(`skill-comply: unknown level '${unknownLevel}' (${LEVELS.join(', ')})`); return 2; }
+        let c;
+        try
+        {
+            const stepIds = Object.fromEntries(skills.map((s) => [s, loadExpectation(s).data.steps.map((x) => x.id)]));
+            c = compareArms(gradeArm(pos[0], skills, levels), gradeArm(pos[1], skills, levels), stepIds);
+        }
+        catch (err) { console.error(`skill-comply: ${err.message}`); return 1; }
+        console.log(formatCompare(c));
+        return c.verdict === 'HOLDS' ? 0 : 1;
+    }
+
     if (mode === 'replay')
     {
         if (!flags['dry-run'] && !flags.live)
@@ -690,4 +779,4 @@ function main(argv)
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { parseTranscript, grade, formatGrade, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR };
+module.exports = { parseTranscript, grade, formatGrade, compareArms, formatCompare, checkExpectation, loadExpectation, listSkills, replayPlan, formatPlan, canonical, matches, main, LEVELS, EXPECT_DIR };

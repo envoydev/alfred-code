@@ -16,7 +16,8 @@ description: "House baseline - quality gates: code quality and the done-claim ga
 ### The done gate
 
 Before typing 'done', 'fixed', 'passing', 'works', or 'ready' about your own change: STOP and
-satisfy this gate: build + relevant tests run, output quoted.
+satisfy this gate: build + relevant tests run after the last edit, output quoted - an earlier run
+proves the earlier code.
 Bound that output: a GREEN run needs the summary line, not `--verbose` - tail long runs to the
 verdict; a RED run is the opposite case - its stack traces and parse errors are the diagnosis,
 earned cost, never trimmed to the verdict line. While iterating on a failure, run the ONE failing

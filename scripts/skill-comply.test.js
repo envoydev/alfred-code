@@ -228,15 +228,23 @@ test('csharp: a plugin-namespaced skill name matches; an edit before the load an
 
 const RC_ROOT = '/work/project/src/money.js';
 const RC_SYMPTOM = '/work/project/src/cart.js';
-function rootCauseRun({ repro = true, hypothesis = true, target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false } = {})
+// `rejected` adds a write that errored ('String to replace not found', a hook deny) and so changed
+// nothing: 'retry' before its own retry, 'early' before the repro, 'symptom' as a guard in cart.js.
+function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.',
+    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null } = {})
 {
     const rows = [user('npm test is failing on the cart total - fix it.')];
+    const reject = (file) => { const e = tool('Edit', { file_path: file, old_string: 'parseFloat(price )', new_string: 'x' }); rows.push(e, denied(e)); };
+    if (rejected === 'early') reject(RC_ROOT);
     if (repro) rows.push(tool('Bash', { command: 'npm test' }));
     rows.push(tool('Read', { file_path: RC_SYMPTOM }), tool('Read', { file_path: RC_ROOT }));
-    if (hypothesis) rows.push(say('The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.'));
+    if (hypothesis) rows.push(say(cause));
+    if (rejected === 'retry') reject(target);
+    if (rejected === 'symptom') reject(RC_SYMPTOM);
     rows.push(tool('Edit', { file_path: target, old_string: 'parseFloat(price)', new_string: "parseFloat(String(price).replace(/,/g, ''))" }));
     if (twoChanges) rows.push(tool('Edit', { file_path: target, old_string: 'Math.round(', new_string: 'Math.trunc(' }));
     if (weaken) rows.push(tool('Edit', { file_path: '/work/project/test/cart.test.js', old_string: "test('a thousand-priced", new_string: "test.skip('a thousand-priced" }));
+    if (rebaseline) rows.push(tool('Edit', { file_path: '/work/project/test/cart.test.js', old_string: '}]), 130000);', new_string: '}]), 200);' }));
     if (rerun) rows.push(tool('Bash', { command: 'node --test test/cart.test.js' }));
     rows.push(say(quoted ? 'Fixed in toCents, where the comma was dropped. `npm test`: ℹ tests 3, ℹ pass 3, ℹ fail 0.' : 'Fixed in toCents - the tests are green now.'));
     return jsonl(rows);
@@ -257,9 +265,85 @@ test('root-cause: each skipped part of the loop fails its own step', () =>
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ twoChanges: true }))), ['one-hypothesis-per-change']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ target: RC_SYMPTOM }))), ['fix-at-root']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ weaken: true }))), ['no-weakened-test']);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rebaseline: true }))), ['no-weakened-test'], 'rewriting the 130000 expectation re-baselines the test');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ quoted: false }))), ['verification-quoted']);
     // no run after the only change: that change was never checked, and the close verified nothing
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rerun: false }))), ['one-hypothesis-per-change', 'verified-after-last-change']);
+});
+
+test('root-cause: a write that errored changed nothing - its retry is the same change, not a second one', () =>
+{
+    const exp = expectOf('project-root-cause');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'retry' }))), []);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'early' }))), [], 'a rejected write before the repro is no source write yet');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'symptom' }))), [], 'a rejected guard in cart.js is no symptom fix');
+});
+
+test('root-cause: the cause stated in the shapes a run really uses counts; narration does not', () =>
+{
+    const exp = expectOf('project-root-cause');
+    for (const cause of [
+        'The bug is in toCents: parseFloat stops at the comma in 1,299.00.',
+        'Root cause: toCents hands 1,299.00 to parseFloat, which reads only 1.',
+        'The issue is the comma - parseFloat returns 1 for 1,299.00.',
+        'The problem is upstream of cartTotal, in toCents.',
+    ])
+        assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ cause }))), [], cause);
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ cause: 'Let me look at the money helper next.' }))), ['one-hypothesis-per-change']);
+});
+
+test('compare: a step failing on both arms is INCONCLUSIVE, never not-worse; the ship rule holds only on a clean sheet', () =>
+{
+    const exp = expectOf('project-root-cause');
+    const g = (o) => sc.grade(exp, rootCauseRun(o), { level: 'plain' });
+    const key = 'project-root-cause/plain';
+    const outcome = (c, step) => c.rows.find((r) => r.step === step).outcome;
+
+    const blind = sc.compareArms({ [key]: g({ hypothesis: false }) }, { [key]: g({ hypothesis: false }) });
+    assert.strictEqual(outcome(blind, 'one-hypothesis-per-change'), 'INCONCLUSIVE');
+    assert.strictEqual(outcome(blind, 'reproduce-first'), 'same');
+    assert.strictEqual(blind.verdict, 'NOT PROVEN');
+
+    const worse = sc.compareArms({ [key]: g({}) }, { [key]: g({ quoted: false }) });
+    assert.strictEqual(outcome(worse, 'verification-quoted'), 'WORSE');
+    assert.strictEqual(worse.verdict, 'NOT MET');
+
+    const better = sc.compareArms({ [key]: g({ repro: false }) }, { [key]: g({}) });
+    assert.strictEqual(outcome(better, 'reproduce-first'), 'better');
+    assert.strictEqual(better.verdict, 'HOLDS');
+
+    const missing = sc.compareArms({ [key]: g({}) }, { [key]: null });
+    assert.ok(missing.rows.every((r) => r.outcome === 'NOT RUN'));
+    assert.strictEqual(missing.verdict, 'NOT PROVEN');
+});
+
+test('compare CLI: grades both arms\' transcripts with this tree\'s expectation and exits 1 unless the rule holds', () =>
+{
+    const dir = tmp('skill-comply-ab-');
+    try
+    {
+        const put = (arm, level, text) =>
+        {
+            const d = path.join(dir, arm, 'project-root-cause', level);
+            fs.mkdirSync(d, { recursive: true });
+            fs.writeFileSync(path.join(d, 'transcript.jsonl'), text);
+        };
+        put('before', 'plain', rootCauseRun({ hypothesis: false }));
+        put('after', 'plain', rootCauseRun({ hypothesis: false }));
+        const args = ['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'project-root-cause'];
+        const r = cli([...args, '--level', 'plain']);
+        assert.strictEqual(r.code, 1, r.out + r.err);
+        assert.match(r.out, /project-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
+        assert.match(r.out, /^ship rule: NOT PROVEN - 0 worse, 1 inconclusive, 0 not run$/m);
+        const all = cli(args);
+        assert.match(all.out, /project-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
+        put('after', 'plain', rootCauseRun());
+        const ok = cli([...args, '--level', 'plain']);
+        assert.strictEqual(ok.code, 0, ok.out + ok.err);
+        assert.match(ok.out, /^ship rule: HOLDS/m);
+        assert.strictEqual(cli(['compare', path.join(dir, 'before')]).code, 2);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('x_each: every call needs its own preceding and following event, and a call never made fails', () =>
@@ -276,6 +360,22 @@ test('x_each: every call needs its own preceding and following event, and a call
     assert.match(second.results[0].explanation, /@3 has no @text \/because\/ since the one before/);
     assert.match(run(say('x because y'), edit(), edit(), tool('Bash', { command: 't' })).results[0].explanation, /@1 has no Bash before the next/);
     assert.match(run(tool('Bash', { command: 't' })).results[0].explanation, /Edit never called/);
+    // a call that errored changed nothing: it is no call of the set, but a red run still follows one
+    const failed = edit();
+    assert.strictEqual(run(say('x because y'), failed, denied(failed), edit(), tool('Bash', { command: 't' })).verdict, 'PASS');
+    const red = tool('Bash', { command: 't' });
+    assert.strictEqual(run(say('x because y'), edit(), red, denied(red)).verdict, 'PASS');
+});
+
+test('a matcher marked succeeded skips a call that errored or was denied; an unmarked one still counts it', () =>
+{
+    const e = tool('Edit', { file_path: 'a.js' });
+    const [ev] = sc.parseTranscript(jsonl([e, denied(e)])).events;
+    assert.strictEqual(sc.matches(ev, { tool: 'Edit' }), true, 'a denied commit still counts in tool_order');
+    assert.strictEqual(sc.matches(ev, { tool: 'Edit', succeeded: true }), false);
+    assert.strictEqual(sc.matches(ev, { any: [{ tool: 'Edit' }], succeeded: true }), false);
+    const [ok] = sc.parseTranscript(jsonl([tool('Edit', { file_path: 'a.js' })])).events;
+    assert.strictEqual(sc.matches(ok, { any: [{ tool: 'Edit' }], succeeded: true }), true);
 });
 
 // --- the transcript reader ------------------------------------------------------------------------
@@ -360,6 +460,7 @@ test('check: a quote the skill no longer says, a broken regex and an unknown gra
         exp.run.selection.skills.push('no-such-skill');
         exp.run.stacks = ['cobol'];
         exp.steps[3].graders.push({ type: 'x_each', tool: 'Edit' });
+        exp.steps[3].graders.push({ type: 'tool_used', tool: 'Edit', succeeded: 'yes' });
         const file = path.join(dir, 'expect.json');
         fs.writeFileSync(file, JSON.stringify(exp));
         const problems = sc.checkExpectation(sc.loadExpectation(file));
@@ -371,6 +472,7 @@ test('check: a quote the skill no longer says, a broken regex and an unknown gra
         assert.match(text, /scaffold\.sh is missing/);
         assert.match(text, /run\.stacks 'cobol' is not a stack/);
         assert.match(text, /x_each needs preceded_by or followed_by/);
+        assert.match(text, /'succeeded' must be true or false/);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

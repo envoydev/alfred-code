@@ -358,6 +358,10 @@ function emitTable(graph, layer, opts)
     const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
     const dependencyWhy = (name) => `installed beside alfred-code@envoydev on every run - cannot be dropped${USER_OFF_WINS.includes(name) ? '; one you disable stays off' : ''}`;
 
+    // An opt-in item nothing selects shows '-', so its row says what a pick buys and costs - the
+    // general list's own note (meta/recommendations.json general.notes), the moment it is offered.
+    const noteOf = (name) => ((((opts.recs || {}).general || {}).notes || {})[layer] || {})[name];
+
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
     const orphanWhy = {};
@@ -377,7 +381,7 @@ function emitTable(graph, layer, opts)
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
             why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
                 : dependencyPlugins.has(name) ? dependencyWhy(name)
-                : reasons[name] || evidence || '-';
+                : reasons[name] || evidence || noteOf(name) || '-';
         }
         else if (dependencyPlugins.has(name)) { status = 'dependency'; why = dependencyWhy(name); }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
@@ -390,8 +394,8 @@ function emitTable(graph, layer, opts)
             const seed = seedOf(name);
             if (evidence) { status = 'evidence'; why = evidence; }
             else if (seed) { status = seed; why = '-'; }
-            else if (direct.has(name)) { status = 'added'; why = '-'; }
-            else { status = '-'; why = '-'; }
+            else if (direct.has(name)) { status = 'added'; why = noteOf(name) || '-'; }
+            else { status = '-'; why = noteOf(name) || '-'; }
         }
 
         rows.push([String(i + 1), name, status, why.replace(/^required by /, '')]);

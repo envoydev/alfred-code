@@ -99,6 +99,35 @@ test('both diagnosers preload the house root-cause skill, and nothing cites supe
             assert.ok(!(node.plugins || []).includes('superpowers'), `${kind} ${name} still has an edge to superpowers`);
 });
 
+// The seats cite the root-cause loop BY NUMBER - diagnosers 'its steps 1-5', resolvers 'its steps
+// 1-5 plus the one fix of step 6' - so a step inserted, dropped or reordered silently re-points every
+// cite. This pins the numbering to what the cites mean: 1-5 find and test the cause without the fix,
+// 6 is the fix, 7 is the stop.
+test('the root-cause loop keeps the step numbers its seats cite', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.join(__dirname, '..');
+    const body = fs.readFileSync(path.join(root, 'stack', 'skills', 'project-root-cause', 'SKILL.md'), 'utf8');
+    const loop = body.slice(body.indexOf('## The loop'), body.indexOf('## Where a seat'));
+    const steps = [...loop.matchAll(/^(\d+)\. \*\*([^*]+)\*\*/gm)].map((m) => [Number(m[1]), m[2]]);
+    assert.deepStrictEqual(steps.map(([n]) => n), [1, 2, 3, 4, 5, 6, 7], 'seven numbered steps, in order');
+    const title = (n) => steps[n - 1][1];
+    assert.match(title(1), /^Read the whole failure/);
+    assert.match(title(2), /^Make it fail on demand/);
+    assert.match(title(3), /^Localize/);
+    assert.match(title(4), /^Compare with a case that works/);
+    assert.match(title(5), /^One hypothesis, one change/);
+    assert.match(title(6), /^Fix at the root/);
+    assert.match(title(7), /stop\.$/);
+    assert.match(body, /runs steps 1-5, adds no instrumentation/, 'the diagnoser scope line');
+    assert.match(body, /runs steps 1-5, the one fix of step 6 without its failing test, and step 7/, 'the resolver scope line');
+    const agent = (n) => fs.readFileSync(path.join(root, 'stack', 'agents', `${n}.md`), 'utf8');
+    for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver'])
+        assert.match(agent(seat), /`project-root-cause`[^\n]*its steps 1-5 plus the one fix of step 6/, `${seat} cites steps 1-5 and step 6`);
+    for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
+        assert.match(agent(seat), /`project-root-cause`[^\n]*steps 1-5/, `${seat} cites steps 1-5`);
+});
+
 // The core's cross-marketplace companions travel in the catalog, so the walk can say 'carried with
 // the core plugin' instead of 'required by skill x' - which reads like a pick.
 test('the catalog names the plugins every install carries beside the core, and superpowers is not one', () => {

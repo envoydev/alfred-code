@@ -31,9 +31,9 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means this root.
 - To move the docs, change that env value and nothing else - forward slashes on every OS. Existing
   docs do not move with it: they stay under the old root until moved by hand or re-captured.
-- Superpowers writes its implementation plans and design specs under this same
-  root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`, never its own
-  default location.
+- Where the superpowers plugin is installed, it writes its implementation plans and design specs
+  under this same root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`,
+  never its own default location.
 - Reading a capture doc: every one opens with `Captured: <branch>@<short-sha>, <date>` (`+dirty` =
   the tree held uncommitted work), and every capture's docs follow the checked-out branch through the docs hook
   (`docs.js status` says how), so the stamp says which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -

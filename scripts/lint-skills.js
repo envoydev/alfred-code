@@ -878,7 +878,7 @@ function lintOptionalCites(file, text, optional, opts = {})
 // nothing at all - the 2026-09-12 agent audits found 10 verifiers plus security-auditor resting the
 // whole done gate on a bare `superpowers:verification-before-completion`, and 4 resolvers resting
 // their whole method on a bare `superpowers:systematic-debugging`. The house form pairs the name
-// with what it CONTAINS in the same sentence, as baseline-quality-gates.md already does: 'satisfy
+// with what it CONTAINS in the same sentence, as baseline-quality-gates.md did until R72: 'satisfy
 // `superpowers:verification-before-completion` - build + relevant tests run, output quoted'. A
 // content clause is a dash, colon or parenthetical clause opening straight after the token, or a
 // dash clause closing straight before it. The namespaces come from the installers' own PLUGINS

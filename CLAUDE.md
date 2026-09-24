@@ -288,7 +288,8 @@ change (see the invariants below).
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the two installer seeds (lint-checked).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
-    `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added).
+    `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added); its
+    `notes` give an opt-in row nothing selects its walk-table why (superpowers: the cost).
   - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
     arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
@@ -306,7 +307,7 @@ change (see the invariants below).
   it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. `scripts/scan-evidence.js` - deterministic manifest-only
-  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `project-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed. `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
+  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `project-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
 
@@ -522,7 +523,7 @@ mirrored there in the same sitting.
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (112,516 on 2026-09-25: pathless rules 37,430, agent descriptions 28,530, skill descriptions 46,556; an optional superpowers adds 5,707 outside it). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (112,611 on 2026-09-25: pathless rules 37,525, agent descriptions 28,530, skill descriptions 46,556; an optional superpowers adds 5,707 outside it). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

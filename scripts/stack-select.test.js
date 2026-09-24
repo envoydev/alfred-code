@@ -954,7 +954,8 @@ test('superpowers is an optional pick: suggested, in no seed, reached by no clos
         '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
     fs.rmSync(dir, { recursive: true, force: true });
     const row = out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === 'superpowers');
-    assert.match(row, /\|\s*-\s*\|\s*-\s*$/, `the recommended walk leaves it unselected, with nothing requiring it: ${row}`);
+    // unselected, nothing requiring it - and the row says what a pick costs and why it is optional
+    assert.match(row, /\|\s*-\s*\|\s*optional - .*5\.7k always-on chars.*core/, `the recommended walk leaves it unselected and names its cost: ${row}`);
 });
 
 // R72, validate's side: an install that has superpowers keeps it. The redundant pass never proposes

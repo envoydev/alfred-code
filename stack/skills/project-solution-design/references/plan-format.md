@@ -53,8 +53,9 @@ Resume: next task 1
 The design writes the header, the fit, the cards at `status: TODO` and the ledger. The rest is
 stamped later by the flow that owns it, never pre-filled:
 
-- `Gated: <verdict>` from the plan review, then `Approved: <date> - mode <session|agents>`, under
-  the header.
+- `Gated: <verdict>` from the plan review, then ONE `Approved:` line under the header, in either of
+  two shapes: `Approved: <date> - mode <session|agents>` from `project-solve-task`'s approval ask, or
+  `Approved: <date> - "<the user's words, verbatim>"` when `project-implementer` runs on its own.
 - Each card's status: `IN_PROGRESS` before its code; `DONE (<the acceptance command's quoted
   result>)` after its gate; `IN_PROGRESS` plus `needs: <the run>` while a run it depends on has not
   happened; `FAILED` plus the ask.

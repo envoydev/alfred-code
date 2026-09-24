@@ -38,7 +38,8 @@ implementer inherits the answer.
 7. **Patterns are refactored TOWARD, never started from** - absent a trigger already in the code, the simpler structure wins.
 
 `references/design-rules.md` carries all seven in full, each with the failure shape it prevents,
-plus the observability spec below - Read it at method step 4, before the decomposition is written.
+plus the observability spec below - Read it at method step 4, with `references/plan-format.md` (the
+plan file's shape), before the decomposition is written.
 
 SOLID stays review VOCABULARY - 'this violates Liskov' is a precise, fast comment - never the
 justification on a task card: a design decision whose only support is a letter of the acronym, with
