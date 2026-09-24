@@ -13,6 +13,8 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', 
 const MAX_DEPTH = 6;
 const MAX_CONTENT_BYTES = 512 * 1024;
 const LAYERS = ['skills', 'mcps', 'plugins'];
+// Every signal kind an entry may carry, in the order the scan tries them - the lint rejects any other.
+const SIGNAL_KINDS = ['packages', 'files', 'tracked', 'csprojContent', 'content'];
 
 function walk(root)
 {
@@ -447,6 +449,6 @@ function main(argv)
     else process.stdout.write(result + '\n');
 }
 
-module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL };
+module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
 
 if (require.main === module) main(process.argv.slice(2));

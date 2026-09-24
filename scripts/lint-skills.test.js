@@ -47,6 +47,20 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.ok(findings.some(f => f.includes('content signal without a label')));
 });
 
+test('lintEvidenceCatalog flags a signal kind the scanner does not read - a typo never matches', () => {
+    const { lintEvidenceCatalog } = require('./lint-skills.js');
+    const { SIGNAL_KINDS } = require('./scan-evidence.js');
+    assert.deepStrictEqual([...SIGNAL_KINDS].sort(), ['content', 'csprojContent', 'files', 'packages', 'tracked']);
+    const rosters = { skills: new Set(), mcps: new Set(), plugins: new Set(['claude-md-management', 'csharp-lsp']) };
+    const every = { plugins: { 'csharp-lsp': Object.fromEntries(SIGNAL_KINDS.map((k) => [k, /content/i.test(k) ? [{ glob: 'a', regex: 'b', label: 'c' }] : ['x']])) } };
+    assert.deepStrictEqual(lintEvidenceCatalog(every, rosters), [], 'every kind the scanner reads passes');
+    const typo = { plugins: { 'claude-md-management': { trackd: ['CLAUDE.md'] }, 'csharp-lsp': { file: ['*.csproj'], _note: 'x' } } };
+    const findings = lintEvidenceCatalog(typo, rosters);
+    assert.strictEqual(findings.length, 2, findings.join('\n'));
+    assert.ok(findings.some(f => f.includes("plugin 'claude-md-management' has unknown signal kind 'trackd'")), findings.join('\n'));
+    assert.ok(findings.some(f => f.includes("plugin 'csharp-lsp' has unknown signal kind 'file'")), findings.join('\n'));
+});
+
 test('lintPreloadClaims flags body-claimed preloads missing from frontmatter skills:', () => {
     const { lintPreloadClaims } = require('./lint-skills.js');
     const skillDirs = new Set(['typescript', 'angular-conventions', 'ionic', 'angular-styling']);

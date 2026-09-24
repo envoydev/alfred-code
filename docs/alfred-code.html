@@ -712,7 +712,7 @@
         </div></div>
         <div class="row"><span class="rl">Quality &amp; security</span><div class="chips">
           <span class="chip">project-quality-loop</span><span class="chip">dotnet-code-quality</span>
-          <span class="chip plugin">security-guidance</span>
+          <span class="chip plugin">security-guidance · where installed</span>
         </div></div>
         <div class="row"><span class="rl">Process</span><div class="chips">
           <span class="chip">project-build-from-scratch</span>
@@ -956,7 +956,7 @@ function shortSource(url) {
 const pluginMeta = {
   "superpowers":          { kind: "workflow",        provides: "skills",   blurb: "Required - installed beside the core on every run, never a pick. Anthropic's engineering-discipline pack: brainstorming, TDD, systematic debugging, plan writing/execution, code review, git worktrees, and subagent dispatch - the process skills the house flow builds on." },
   "claude-md-management": { kind: "project memory",   provides: "commands", blurb: "Optional pick, suggested on a tracked CLAUDE.md. Keeps CLAUDE.md honest - an audit-and-improve pass plus a session-learning revision command." },
-  "claude-hud":           { kind: "statusline",       provides: "commands", blurb: "Required - installed beside the core on every run, at user scope (its status line is account-wide). A live session heads-up display for the statusline - configure layout, presets, and manual overrides." },
+  "claude-hud":           { kind: "statusline",       provides: "commands", blurb: "Required - installed beside the core on every run, at user scope (its status line is account-wide); one you disable stays off. A live session heads-up display for the statusline - configure layout, presets, and manual overrides." },
   "csharp-lsp":           { kind: "C# / diagnostics", blurb: "Optional pick, suggested on a *.csproj or *.sln. Roslyn language server - inline diagnostics after each edit without a full dotnet build round-trip. Complements serena (navigation)." },
   "typescript-lsp":       { kind: "TS / diagnostics", blurb: "Optional pick, suggested on a tsconfig.json or a typescript dependency. TypeScript language server - inline diagnostics on edit for Angular/TS work." },
   "security-guidance":    { kind: "security / hooks", provides: "hooks", blurb: "Optional pick, suggested on an auth, token or payment dependency. Security review for Claude-generated code - warns on risky edits, reviews the diff on Stop, and reviews the commit. No skills or commands; it runs as hooks.", items: [

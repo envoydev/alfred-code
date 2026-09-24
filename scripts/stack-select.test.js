@@ -682,6 +682,32 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
     }
 });
 
+test('CLI --redundant --found: a plugin the scan matched is never redundant, so validate does not flip it back and forth', () => {
+    // A .NET library repo confirmed as data only: csharp-lsp is stack-owned (aspnet, console, ...) but
+    // no owner is detected, while --evidence-gaps would flag it evidence-missing the moment it is gone.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-redundant-found-'));
+    try
+    {
+        const invFile = path.join(dir, 'installed.json');
+        const foundFile = path.join(dir, 'found.json');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [{ name: 'csharp-lsp', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }] }));
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: {}, mcps: {}, plugins: { 'csharp-lsp': 'src/Lib/Lib.csproj present' } } }));
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const base = [path.join(__dirname, 'stack-select.js'), '--redundant', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--stacks', 'data'];
+        const withFound = execFileSync('node', [...base, '--found', foundFile], { encoding: 'utf8' });
+        assert.ok(!/redundant: plugin csharp-lsp/.test(withFound), `evidence proves use, like a detected owner:\n${withFound}`);
+        assert.match(withFound, /^redundant: plugin typescript-lsp - owned by /m, 'no signal and no owner detected: still redundant');
+        const without = execFileSync('node', base, { encoding: 'utf8' });
+        assert.match(without, /^redundant: plugin csharp-lsp - owned by /m, 'no --found: the owner rule alone, as before');
+        const unreadable = execFileSync('node', [...base, '--found', path.join(dir, 'absent.json')], { encoding: 'utf8' });
+        assert.match(unreadable, /^redundant: plugin csharp-lsp - owned by /m, 'an unreadable --found is no evidence, never an error');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
 test('CLI --redundant prints per-category redundant lines from an installed inventory', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-redundant-'));
     try
@@ -878,7 +904,8 @@ test('a plugin the core entry depends on gets its own row status, in both table 
     const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
     const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
     assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
-    assert.ok(/carried by alfred-code@envoydev/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    assert.ok(/installed beside alfred-code@envoydev on every run/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    assert.ok(!/carried by/.test(row + irow), 'the core carries no plugin - the installer adds it beside the core');
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -896,7 +923,8 @@ test('claude-hud gets the dependency row too, and no plugin is seeded into every
         '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
     fs.rmSync(dir, { recursive: true, force: true });
     const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
-    assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped/, `claude-hud row: ${rowOf('claude-hud')}`);
+    assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
+    assert.ok(!/stays off/.test(rowOf('superpowers')), `superpowers is enabled back on every run: ${rowOf('superpowers')}`);
     for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
         assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');

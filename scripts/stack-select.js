@@ -19,6 +19,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     : _readFileSync(p, o));
 
 const path = require('path');
+const { USER_OFF_WINS } = require('./install/plugins.js');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
@@ -355,6 +356,7 @@ function emitTable(graph, layer, opts)
     // but it is neither droppable nor a pick: the installer puts it back on every run. Calling that
     // row 'required by skill x' reads like a pick the user still has to make, so it gets its own status.
     const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
+    const dependencyWhy = (name) => `installed beside alfred-code@envoydev on every run - cannot be dropped${USER_OFF_WINS.includes(name) ? '; one you disable stays off' : ''}`;
 
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
@@ -374,10 +376,10 @@ function emitTable(graph, layer, opts)
             // src/Api.csproj' tells the user the project uses what the install lacks.
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
             why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
-                : dependencyPlugins.has(name) ? 'carried by alfred-code@envoydev - cannot be dropped'
+                : dependencyPlugins.has(name) ? dependencyWhy(name)
                 : reasons[name] || evidence || '-';
         }
-        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by alfred-code@envoydev - cannot be dropped'; }
+        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = dependencyWhy(name); }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {
@@ -457,8 +459,11 @@ function emitSelectionFile(closure, { hooksAnswered = false } = {})
 // stack is absent from the detected project. Ownership is derived - run each stack's
 // recommended set through the closure and record what it pulls; exclude the always-baseline
 // closure up front (never redundant). Shared items (an owner is detected) and non-stack
-// deliberate extras (owned by nothing) survive. Returns [{category, name, ownedBy}].
-function findStackRedundant(graph, recs, installed, detected)
+// deliberate extras (owned by nothing) survive, and so does anything the evidence scan matched
+// (`found`, scan-evidence's per-layer map): evidence proves use the way a detected owner does, or
+// the --evidence-gaps pass would flag the removal back as evidence-missing on the next run.
+// Returns [{category, name, ownedBy}].
+function findStackRedundant(graph, recs, installed, detected, found = null)
 {
     const detectedSet = new Set(detected || []);
     const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
@@ -486,6 +491,7 @@ function findStackRedundant(graph, recs, installed, detected)
             const own = owners[l][name];
             if (!own || own.size === 0) continue;                       // deliberate extra: kept
             if ([...own].some(st => detectedSet.has(st))) continue;     // an owner is present: kept
+            if (((found && found[l]) || {})[name]) continue;           // the scan matched it: kept
             out.push({ category: singular[l], name, ownedBy: [...own].sort().join(',') });
         }
     }
@@ -619,14 +625,16 @@ function main(argv)
     catch (e) { console.error(`stack-select: cannot read graph ${graphPath}: ${e.code || e.message}`); process.exit(1); }
 
     // --redundant: project-relative audit for the validate command. Uses --installed (the
-    // inventory from disk) + --recs + the detected --stacks; needs no --selection.
+    // inventory from disk) + --recs + the detected --stacks; needs no --selection. An optional
+    // --found (the evidence scan's output) keeps every matched name; unreadable, it is no evidence.
     if (has('--redundant'))
     {
         const installed = readJson('--installed', arg('--installed'));
         const recs = readJson('--recs', arg('--recs'));
         if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
         const detected = parseStacks(recs);
-        for (const r of findStackRedundant(graph, recs, installed, detected))
+        const foundFile = readJsonSoft('--found', arg('--found'));
+        for (const r of findStackRedundant(graph, recs, installed, detected, foundFile ? (foundFile.found || foundFile) : null))
             console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
         return;
     }

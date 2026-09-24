@@ -432,6 +432,38 @@ test('update: the version is READ BACK, and each outcome gets its own line', () 
     assert.match(report[3], /plugin gone: NOT installed - the install above did not take/);
 });
 
+// R70 (review I1): claude-hud is required, but its status line is account-wide, so a user who disabled
+// it keeps it off. Measured on Claude Code 2.1.282: `plugin update` over a user-disabled claude-hud leaves
+// `enabledPlugins` false, while `plugin install --scope user -y` flips it back to true - so update never
+// enables it and install never re-installs it; both still update it, and an absent one is still installed.
+const HUD_OFF = { name: 'claude-hud', marketplace: 'claude-hud', version: '0.8.0', scope: 'user', enabled: false };
+const SP_OFF = { name: 'superpowers', marketplace: 'claude-plugins-official', version: '6.4.1', scope: 'user', enabled: false };
+
+test('update: a claude-hud the user disabled stays off - updated, never enabled - while superpowers is enabled', () =>
+{
+    const run = cli();
+    const report = P.updatePlugins({
+        plugins: ['superpowers@claude-plugins-official', 'claude-hud@claude-hud'], scope: 'project', before: [SP_OFF, HUD_OFF],
+        after: [SP_OFF, HUD_OFF].map((r) => (r.name === 'superpowers' ? { ...r, enabled: true } : r)), cli: run,
+    });
+    assert.deepStrictEqual(run.matching(/claude-hud@/), ['plugin update claude-hud@claude-hud --scope user -y'], run.calls.join('\n'));
+    assert.ok(run.calls.includes('plugin enable superpowers@claude-plugins-official --scope user'), run.calls.join('\n'));
+    assert.match(report.find((l) => /claude-hud/.test(l)), /plugin claude-hud: 0\.8\.0 but DISABLED - 'claude plugin enable claude-hud@claude-hud'/);
+});
+
+test('install: a claude-hud the user disabled is updated, never re-installed (install would enable it); an absent one is installed', () =>
+{
+    const off = cli();
+    P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', before: [HUD_OFF], cli: off });
+    assert.deepStrictEqual(off.matching(/claude-hud@/), ['plugin update claude-hud@claude-hud --scope user -y'], off.calls.join('\n'));
+    const on = cli();
+    P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', before: [{ ...HUD_OFF, enabled: true }], cli: on });
+    assert.deepStrictEqual(on.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope user -y', 'plugin update claude-hud@claude-hud --scope user -y']);
+    const absent = cli();
+    P.installPlugins({ plugins: ['claude-hud@claude-hud'], scope: 'project', before: [], cli: absent });
+    assert.deepStrictEqual(absent.matching(/claude-hud@/), ['plugin install claude-hud@claude-hud --scope user -y']);
+});
+
 test('update: the listing is read AFTER the loop, never before it', () =>
 {
     // `claude plugin update` reports success whether or not anything moved, so a report built from
@@ -582,6 +614,29 @@ test('seed update --installed-only: an older install keeps its optional plugins 
     const inst = calls.indexOf('plugin install claude-hud@claude-hud --scope user -y');
     assert.ok(inst >= 0, `the update did not add claude-hud:\n${calls.join('\n')}`);
     assert.ok(add >= 0 && add < inst, `its marketplace was not registered first:\n${calls.join('\n')}`);
+});
+
+// configure's keep-parked line for a disabled claude-hud reaches the installer as a --drop: the run
+// keeps it off, and an install (which re-enables, measured) or an enable never touches it.
+test('seed update --installed-only: a claude-hud the user disabled stays off, with or without configure\'s keep-parked --drop', POSIX_ONLY, () =>
+{
+    const row = (id, extra = {}) => ({ id, version: '2.0.0', scope: 'project', enabled: true, ...extra });
+    const listing = JSON.stringify([
+        ...['alfred-code', 'serena', 'context7', 'memory'].map((n) => row(`${n}@envoydev`)),
+        row('superpowers@claude-plugins-official', { version: '6.4.1', scope: 'user' }),
+        row('claude-hud@claude-hud', { version: '0.8.0', scope: 'user', enabled: false }),
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
+    };
+    for (const args of [['--installed-only'], ['--installed-only', '--drop', 'plugin claude-hud']])
+    {
+        const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args, prepare });
+        const hud = calls.filter((c) => /^plugin (install|enable|update|uninstall|disable) claude-hud@/.test(c));
+        assert.deepStrictEqual(hud, ['plugin update claude-hud@claude-hud --scope user -y'], `${args.join(' ')}:\n${calls.join('\n')}`);
+    }
 });
 
 test('seed update: an absent claude-hud gets its marketplace before the install', POSIX_ONLY, () =>

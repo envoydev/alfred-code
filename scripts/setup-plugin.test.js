@@ -263,12 +263,15 @@ test('every shipped plugin is suggested somewhere - validate cannot flag what no
     // zero measured use: offered in the plugins table, never pre-selected, and never flagged
     // missing OR redundant by validate (stack-select.js skips a general name in both directions).
     // So a general plugin is not invisible by accident - it is a decision, and it has to be in
-    // this list to be one. claude-md-management moved here at 1 use in 115 sessions.
+    // this list to be one.
     const general = new Set((recs.general || {}).plugins || []);
     for (const name of general) assert.ok(shipped.includes(name), `${name} is on the general list but the installer does not ship it`);
     // R27: the optional plugins are suggested on EVIDENCE - each one carries a meta/evidence.json row,
     // which validate's --evidence-gaps pass reads as MISSING when the scan matched and it is absent.
+    // An evidence row pre-selects and flags, so a plugin carrying one leaves the general list, whose
+    // contract is the opposite (claude-md-management left it for its tracked-CLAUDE.md row).
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8')).plugins || {};
+    for (const name of Object.keys(evidence)) assert.ok(!general.has(name), `${name} has an evidence row and sits on the never-pre-selected general list`);
     for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
         assert.ok(shipped.includes(name) && evidence[name], `${name} is an optional pick with no evidence row`);
     for (const name of shipped) assert.ok(reachable.has(name) || general.has(name) || evidence[name], `${name} is reachable from a seed closure, suggested on evidence, or deliberately on the general opt-in list`);

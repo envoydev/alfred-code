@@ -166,14 +166,15 @@ Only if playwright stayed selected, ask in ONE AskUserQuestion screen TWO questi
 
 ## 9. Plugins
 
-`superpowers` and `claude-hud` show as `dependency`: every install carries both beside the core plugin (`claude-hud` at user scope - its status line is account-wide) and the installer puts them back on every run, so neither can be dropped - do not offer them as picks. The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
+`superpowers` and `claude-hud` show as `dependency`: every install carries both beside the core plugin (`claude-hud` at user scope - its status line is account-wide) and the installer puts them back on every run, so neither can be dropped - do not offer them as picks (a `claude-hud` the user disabled stays off: updated, never switched back on). The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which
-every install carries, whose config file is ACCOUNT-level), report the delta and ASK
+every install carries, whose config file is ACCOUNT-level - it rides beside the core, so no emitted
+selection names it and the csv below always does), report the delta and ASK
 here - the answer is applied at the install step, exactly like screen B's environment choices:
 
-1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
+1. `node "$TMP/repo/scripts/plugin-settings.js" --catalog "$TMP/repo/meta/plugin-settings.json" --config-dir <account dir> --installed <kept plugins csv, claude-hud always in it>` - paste its output verbatim in a fenced block. Each line reads `missing` (would be added), `differs` (the user already chose something else) or `match`; `--config-dir` is `~/.claude`, or `~/.claude-<space>` under a profile.
 2. ONE AskUserQuestion carrying those counts: **Apply recommended** (Recommended - adds only the missing keys, every value already chosen is kept), **Apply and replace differing** (overwrite those too), **Skip** (change nothing).
 
 No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the

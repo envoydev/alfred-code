@@ -68,6 +68,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const yaml = require('js-yaml');
+const { SIGNAL_KINDS } = require('./scan-evidence.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
@@ -239,6 +240,14 @@ function lintEvidenceCatalog(catalog, rosters)
             if (!rosters[layer].has(name))
             {
                 out.push(`evidence.json names ${singular} '${name}' which is not in the ${layer} roster - the signal would silently never match`);
+            }
+
+            for (const kind of Object.keys(entry))
+            {
+                if (!kind.startsWith('_') && !SIGNAL_KINDS.includes(kind))
+                {
+                    out.push(`evidence.json ${singular} '${name}' has unknown signal kind '${kind}' - the scan reads only ${SIGNAL_KINDS.join('/')}, so it would silently never match`);
+                }
             }
 
             for (const kind of ['csprojContent', 'content'])

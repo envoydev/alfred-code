@@ -57,9 +57,10 @@ the run did not install.
 
 ### Under managed settings
 
-An organisation enforcing `strictKnownMarketplaces` needs three `extraKnownMarketplaces` rows -
-`envoydev` and `claude-hud` - since only `claude-plugins-official` is known by
-default, plus the seven `enabledPlugins` keys (the six above and `alfred-code` itself). And
+An organisation enforcing `strictKnownMarketplaces` needs two `extraKnownMarketplaces` rows -
+`envoydev` and `claude-hud`, both on every run since `claude-hud` is required - because only
+`claude-plugins-official` is known by default, plus an `enabledPlugins` key for each plugin above the
+project keeps (`alfred-code`, `superpowers` and `claude-hud` always). And
 `allowManagedHooksOnly` silently disables all seventeen house hooks: the plugin still installs and
 enables, but no guard ever fires, so the stack's deterministic gates are gone with nothing reporting
 it. `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off. Decide that one before rolling the stack out under a managed

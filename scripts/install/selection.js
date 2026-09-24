@@ -26,6 +26,7 @@ const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
 const { BRAND, currentName, rowOn } = require('./brand.js');
+const { USER_OFF_WINS } = require('./plugins.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -385,6 +386,8 @@ const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name);
 // enabled one is installed whatever the selection says (every run installs superpowers), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
+// A disabled claude-hud is parked but gets no DISABLED row: that row's accept action is an enable,
+// and the user's off wins for it (plugins.js USER_OFF_WINS).
 function planInventory({ lists, listing = [], answered, pluginCatalog = [], leftOut = [] })
 {
     const uniq = (xs) => [...new Set(xs)];
@@ -397,7 +400,7 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
         mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        plugins_disabled: listing.filter((r) => !rowOn(r)).map((r) => r.name),
+        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name)).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
         answered,

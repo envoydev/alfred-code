@@ -281,6 +281,7 @@
   },
   "security-guidance": {
    "packages": [
+    "Microsoft.AspNetCore.Authentication",
     "Microsoft.AspNetCore.Authentication.",
     "Microsoft.AspNetCore.Identity.",
     "Microsoft.Identity.Web",
@@ -289,6 +290,7 @@
     "Microsoft.IdentityModel.Tokens",
     "Microsoft.IdentityModel.JsonWebTokens",
     "Duende.IdentityServer",
+    "Duende.IdentityServer.",
     "OpenIddict",
     "OpenIddict.",
     "BCrypt.Net-Next",
@@ -298,6 +300,8 @@
     "jsonwebtoken",
     "jose",
     "passport",
+    "@nestjs/jwt",
+    "@nestjs/passport",
     "express-jwt",
     "next-auth",
     "@auth/",
@@ -306,6 +310,7 @@
     "@azure/msal-node",
     "@azure/msal-angular",
     "angular-oauth2-oidc",
+    "angular-auth-oidc-client",
     "oidc-client-ts",
     "keycloak-js",
     "@okta/",

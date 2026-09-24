@@ -26,6 +26,12 @@ const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
 // claude-hud is a statusline HUD: a project-scoped install plus the global statusline enable
 // mismatch, so every OTHER project warns 'plugin not cached'. It is user scope, always.
 const USER_SCOPE_PLUGINS = ['claude-hud'];
+// ...and required, but the user's OFF wins: its status line is account-wide, so a user who disabled it
+// keeps it off in every project. Measured on Claude Code 2.1.282: `plugin update` over a user-disabled
+// claude-hud leaves `enabledPlugins` false, `plugin install --scope user -y` flips it back to true - so
+// a listed, disabled one is only ever updated, never enabled or re-installed. An absent one is installed.
+const USER_OFF_WINS = ['claude-hud'];
+const offByUser = (spec, listing) => USER_OFF_WINS.includes(bareName(spec)) && fieldOf(listing, spec, 'enabled') === false;
 
 const OFFICIAL_MARKETPLACE = 'anthropics/claude-plugins-official';
 const STACK_MARKETPLACE = BRAND.slug;
@@ -247,6 +253,12 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
     {
         if (fresh.includes(spec)) continue;
         const pscope = USER_SCOPE_PLUGINS.includes(bareName(spec)) ? 'user' : scope;
+        if (offByUser(spec, before))
+        {
+            log(`plugin [${pscope}]: ${spec} is disabled - kept off, updated only`);
+            cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
+            continue;
+        }
         log(`plugin [${pscope}]: ${spec}`);
         // -y: the marketplace-command consent prompt cannot be answered when stdin is not a TTY,
         // which is every guided run.
@@ -393,8 +405,9 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
             log(`plugin install [${pscope}]: ${spec}`);
             cli(['plugin', 'install', spec, '--scope', pscope, '-y']);
         }
-        // The core is locked on (brand.js alwaysOn): its flag is no reason to act.
-        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)))
+        // The core is locked on (brand.js alwaysOn): its flag is no reason to act. A user-disabled
+        // claude-hud stays off (USER_OFF_WINS).
+        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
             cli(['plugin', 'enable', spec, '--scope', pscope]);
@@ -431,7 +444,7 @@ function parseMarketplaces(json)
 }
 
 module.exports = {
-    OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, CORE_DEP_PLUGINS,
+    OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
     pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces,

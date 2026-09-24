@@ -156,6 +156,13 @@ test('the plugins layer suggests each optional plugin on its own evidence, namin
         ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { jsonwebtoken: '^9.0.0' } }) }, /jsonwebtoken in api\/package\.json/],
         ['security-guidance', { 'shop/package.json': JSON.stringify({ dependencies: { stripe: '^14.0.0' } }) }, /stripe in shop\/package\.json/],
         ['security-guidance', { 'Pay/Pay.csproj': '<Project><ItemGroup><PackageReference Include="Stripe.net" Version="43.0.0" /></ItemGroup></Project>' }, /Stripe\.net in Pay\/Pay\.csproj/],
+        ['security-guidance', { 'web/package.json': JSON.stringify({ dependencies: { 'angular-auth-oidc-client': '^19.0.0' } }) }, /angular-auth-oidc-client in web\/package\.json/],
+        ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { '@nestjs/jwt': '^11.0.0' } }) }, /@nestjs\/jwt in api\/package\.json/],
+        ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { '@nestjs/passport': '^11.0.0' } }) }, /@nestjs\/passport in api\/package\.json/],
+        ['security-guidance', { 'Old/Old.csproj': '<Project><ItemGroup><PackageReference Include="Microsoft.AspNetCore.Authentication" Version="2.3.0" /></ItemGroup></Project>' },
+            /Microsoft\.AspNetCore\.Authentication in Old\/Old\.csproj/],
+        ['security-guidance', { 'Idp/Idp.csproj': '<Project><ItemGroup><PackageReference Include="Duende.IdentityServer.EntityFramework" Version="7.0.0" /></ItemGroup></Project>' },
+            /Duende\.IdentityServer\.EntityFramework in Idp\/Idp\.csproj/],
     ];
     for (const [plugin, files, want] of cases)
     {

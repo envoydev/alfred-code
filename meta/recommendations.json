@@ -77,9 +77,7 @@
   "agents": [
    "related-project-analyzer"
   ],
-  "plugins": [
-   "claude-md-management"
-  ]
+  "plugins": []
  },
  "stacks": {
   "aspnet": {

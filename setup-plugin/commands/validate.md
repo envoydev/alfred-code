@@ -164,14 +164,15 @@ MCPs and plugins included - is answered from the four files this prints, never b
 answered with 8 ad hoc catalog reads before this block's own pass had even run):
 
 ```
+node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
+  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --redundant --installed "$TMP/installed.json" \
+  --found "$TMP/found.json" \
   --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/redundant.out"
 node "$TMP/repo/scripts/stack-select.js" --missing   --installed "$TMP/installed.json" \
   --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
   --stacks "<detected,csv>" > "$TMP/missing.out"
-node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" \
-  --judgment "$TMP/repo/meta/judgment.json" --out "$TMP/found.json"
 node "$TMP/repo/scripts/stack-select.js" --evidence-gaps --found "$TMP/found.json" \
   --catalog "$TMP/repo/meta/evidence.json" --installed "$TMP/installed.json" \
   --recs "$TMP/repo/meta/recommendations.json" --graph "$TMP/repo/meta/stack-graph.json" \
@@ -180,7 +181,7 @@ node "$TMP/repo/scripts/stack-select.js" --judgment "$TMP/repo/meta/judgment.jso
   --installed "$TMP/installed.json" > "$TMP/judgment.out"
 ```
 
-`redundant:` lines = installed, whole owning stack absent (remove candidates). `missing:` lines =
+`redundant:` lines = installed, whole owning stack absent, no evidence signal (remove candidates). `missing:` lines =
 detected-stack + baseline closure not installed (add candidates), each with `needed by <stack|baseline>`.
 `evidence-missing:` lines = the scan found a signal for an artifact that is not installed (add
 candidates, the signal as the reason - already deduped against the `missing:` lines by the tool).
@@ -188,7 +189,7 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 `overlap:` / `dormant:` lines (judgment.out) + the scan's `judgment.versionConflicts` rows
 (found.json) = step 10's precomputed candidates - carried there, never acted on in the walk.
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
-and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
+anything the scan matched, and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
 applicability no manifest can prove, e.g. the `project-related-context` / `related-project-analyzer`
 pair, which apply only where the project has sibling repos) - present its output as printed above.
@@ -254,11 +255,13 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   scope's `settings.json` env, and the apply step reports it as that edit, not as a copied file.
 - **MCPs / plugins** - no plugin is always-baseline: `superpowers` and `claude-hud` ride beside the
   core, so neither is ever REDUNDANT and the next update puts back whichever is gone (`superpowers`
-  still shows MISSING on an install that lost it - the baseline closure reaches it). The four optional ones (`security-guidance`, `claude-md-management`, `csharp-lsp`,
+  still shows MISSING on an install that lost it - the baseline closure reaches it). One exception:
+  a `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed
+  for an enable. The four optional ones (`security-guidance`, `claude-md-management`, `csharp-lsp`,
   `typescript-lsp`) show MISSING only on evidence - an `evidence-missing:` line naming the matched
-  manifest - or, for an LSP plugin, when its stack is detected but it was dropped; one installed
-  without a signal is a `no-evidence:` advisory, never a removal. `claude-md-management` is also in
-  the `general` opt-in list, so it is never flagged redundant.
+  manifest - or, for an LSP plugin, when its stack is detected but it was dropped. An LSP plugin
+  with neither a signal nor a detected owning stack is REDUNDANT; any other optional plugin without
+  a signal is a `no-evidence:` advisory, never a removal.
   Every name in `plugins_disabled` gets its own **DISABLED** row in the plugins table - reason
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a

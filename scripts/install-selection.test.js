@@ -304,8 +304,17 @@ test('read-back: the core reads as enabled whatever the listing flag says (S22) 
     assert.ok(!r.lines.includes(`agent ${seat}`), 'the denied seat stays off');
     assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'), 'HOOKS_OFF still holds');
     assert.deepStrictEqual(sel.leftOut({ parked: r.parked, deny: r.deny }), [`agent ${seat}`], 'only the denied seat is left out - no core item for the flag');
-    const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('claude-hud@claude-hud', stale)], answered: r.answered, pluginCatalog: ['claude-hud'] });
-    assert.deepStrictEqual(inv.plugins_disabled, ['claude-hud'], 'validate shows no DISABLED row for the core');
+    const inv = sel.planInventory({ lists: {}, listing: [row('alfred-code@envoydev', stale), row('csharp-lsp@claude-plugins-official', stale)], answered: r.answered, pluginCatalog: ['csharp-lsp'] });
+    assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp'], 'validate shows no DISABLED row for the core');
+});
+
+test('read-back: a claude-hud the user disabled stays parked for configure, and validate proposes no enable for it', () =>
+{
+    const off = { enabled: false };
+    const inv = sel.planInventory({ lists: {}, listing: [row('claude-hud@claude-hud', off), row('csharp-lsp@claude-plugins-official', off)], answered: {}, pluginCatalog: ['claude-hud', 'csharp-lsp'] });
+    assert.deepStrictEqual(inv.plugins_disabled, ['csharp-lsp'], 'no DISABLED row - its accept action would be an enable');
+    assert.deepStrictEqual(inv.parked_plugins, ['claude-hud', 'csharp-lsp'], 'configure keeps it parked (derive-state keep-parked)');
+    assert.ok(!inv.plugins.some((p) => p.name === 'claude-hud'), 'never read back as installed');
 });
 
 test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>
