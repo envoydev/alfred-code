@@ -770,8 +770,8 @@ function installHooksAndRules(ctx)
 {
     // NM1 (fix round 3): on the PLUGIN route the prune below deletes the copies, so the route line is
     // patched on the existing stamp FIRST - a run dying after the prune never leaves a stale 'copy'
-    // over an emptied folder. N4: never on the copy route - 'copy' before a single copy has landed
-    // reads back as the user's None; its line is true only once writeStamp records it at the end.
+    // over an emptied folder. N4: the copy route never marks here - 'copy' before a single copy has
+    // landed reads back as the user's None; it marks once the copies are in (N7, below).
     // m9: and only when a stack hook copy is there to prune - with none (a copy-route None) the prune
     // destroys no evidence, and an early 'plugin' would read that None back as every hook on.
     const catalogHooks = [...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))];
@@ -791,6 +791,10 @@ function installHooksAndRules(ctx)
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,
     });
+    // N7: a copy error throws, so here every hook copy has landed - the copies are the record now, and
+    // the line says so before the settings write below blanks the stored list on the full copy route. A
+    // 'plugin' line over stack copies then only ever means a copy run that died part way (m8).
+    if (!ctx.routes.hooks) stampLayer.markHooksRoute(stampLayer.stampPath({ projectRoot: ctx.projectRoot }), 'copy');
     // No plugin ever carries a rule, so every rule is a LIBRARY copy on every route - the hash lands
     // in the stamp beside the skills and agents one. `ctx.library` may already carry skills/agents
     // from the plugin route above; on the copy route this is its first write.

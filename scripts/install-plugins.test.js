@@ -1822,6 +1822,43 @@ test('seed: a plugin-to-copy run that dies after some hook copies never reads th
     }
 });
 
+// N7 (Task 16b): the full copy route writes ALFRED_CODE_HOOKS_OFF '' at the end of the hooks layer (no
+// core, the copies are the record), while its `hooks-route: copy` line waited for the final stamp. A
+// run that died in between left FINISHED copies under a stale 'plugin' line, and m8's set-aside then read
+// the blanked list: every hook back on. The line is now patched as soon as the hook copies land. Both
+// copy routes, dying on the memory import's line - the first step after the hooks layer.
+test('seed: a copy-route run that dies after the hooks layer keeps the user\'s hook picks, never every hook (N7)', POSIX_ONLY, () =>
+{
+    const OFF = ['guard-answer-length', 'instrument-tool-usage'];
+    const { loadManifest } = require('./install/manifest.js');
+    const kept = [...new Set(loadManifest(ROOT).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))].filter((h) => !OFF.includes(h));
+    for (const route of ['full copy', 'mixed'])
+    {
+        const s = hooksRouteSandbox('n7-', `skill markdown-style\n${kept.map((h) => `hook ${h}\n`).join('')}`);
+        const copyEnv = route === 'mixed' ? s.copyEnv : { ...s.copyEnv, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+        const hooksOnDisk = () => s.onDisk().filter((f) => f.endsWith('.js') && kept.concat(OFF).includes(f.replace(/\.js$/, ''))).map((f) => f.replace(/\.js$/, '')).sort();
+        try
+        {
+            assert.strictEqual(s.run(['install'], s.env), 0, `${route}: the setup install failed`);
+            assert.deepStrictEqual(s.hooksOff().sort(), [...OFF].sort(), `${route}: setup`);
+
+            // Step 2: every hook copy and the settings write land, then the run dies.
+            const r2 = s.run(['update', '--installed-only'], copyEnv,
+                (line) => { if (/memory notes import|notes import was skipped|^memory: /.test(line)) throw new Error('FAULT: simulated death after the hooks layer'); });
+            assert.strictEqual(r2, 1, `${route}: the interrupted run must fail`);
+            assert.deepStrictEqual(hooksOnDisk(), [...kept].sort(), `${route}: the hooks layer did not finish`);
+            if (route === 'full copy') assert.deepStrictEqual(s.hooksOff(), [], 'the full copy route blanks the stored list - the precondition');
+            assert.match(s.stamp(), /^hooks-route: copy$/m, `N7 (${route}): the finished copies were left under a stale route line`);
+
+            // Step 3: the next copy-route update keeps exactly the 15 the user picked.
+            let out3 = '';
+            assert.strictEqual(s.run(['update', '--installed-only'], copyEnv, (line) => { out3 += line; }), 0, out3);
+            assert.deepStrictEqual(hooksOnDisk(), [...kept].sort(), `N7 (${route}): the two hooks the user switched off came back`);
+        }
+        finally { s.cleanup(); }
+    }
+});
+
 // N4 (fix round 4): NM1's mirror. The early mark once wrote 'copy' too, before any hook copy had
 // landed - so a plugin -> copy run that died before its first copy left 'hooks-route: copy' over a
 // folder holding no stack hook, and the next copy-route update read that as the user's own None and
