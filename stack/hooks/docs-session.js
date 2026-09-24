@@ -224,7 +224,11 @@ function main() {
   if (!event) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
-  const docs = require('./docs.js');
+  // A never-set-up project under a user-scope core has hooks but no copied engine beside them (T16,
+  // R29) - exit silently, like every other fail-open path here, rather than the outer wrapper's
+  // stderr line, which is for a genuine bug in a PRESENT engine.
+  let docs;
+  try { docs = require('./docs.js'); } catch { return; }
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
   // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the

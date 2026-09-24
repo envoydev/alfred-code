@@ -99,13 +99,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const configDir = env.CLAUDE_CONFIG_DIR
         || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
     const projectRoot = rt.gitRoot(cwd) || cwd;
-    // The flag says project|global; the claude CLI says project|user. A global install puts the
-    // skills and the stamp in the account dir and makes every plugin / MCP call user-scoped; the
-    // rules, agents, hooks and settings.json stay in the project, exactly as on the twin - the
-    // bodies run `node .claude/hooks/docs.js` from the project, and the docs-root rule is stamped there.
-    const cliScope = args.scope === 'global' ? 'user' : 'project';
+    // T16, R29: args.js already normalised 'global' to 'user', so the flag IS the CLI scope -
+    // project|user|local pass straight through to every `claude plugin` / `claude mcp` call. Only
+    // the plugins (and claude-hud, pinned to user regardless) follow the scope now: the library
+    // copies, the rules, the hook engines, settings.json and the stamp live in the project's
+    // `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the project, and
+    // the docs-root rule is stamped there.
+    const cliScope = args.scope;
     const claudeDir = path.join(projectRoot, '.claude');
-    const skillsDir = args.scope === 'global' ? path.join(configDir, 'skills') : path.join(projectRoot, '.claude', 'skills');
+    const skillsDir = path.join(projectRoot, '.claude', 'skills');
+    // A 1.x GLOBAL install's stamp and skills sat in the account dir; the first 2.x update copies
+    // both into the project once (idempotent - a project that already has its own stamp is left
+    // alone), so every read below finds them where every scope now keeps them. The account copies
+    // are never removed - other projects on this machine may still be reading them.
+    if (args.action === 'update') stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log });
     // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
     const stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
     const mcpFile = path.join(projectRoot, '.mcp.json');
@@ -209,7 +216,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
                 listing, stackListing,
-                settings: readJson(path.join(claudeDir, 'settings.json')),
+                // Merged: a local-scope run wrote settings.local.json, never settings.json - the
+                // read-back needs the EFFECTIVE state, whichever file carries it.
+                settings: settings.readMergedSettings(claudeDir),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
@@ -761,8 +770,10 @@ function installHooksAndRules(ctx)
         wired: ctx.routes.hooks ? null : [...new Set(ctx.lists.hooks.map(hookName))],
         shipped: [...new Set(ctx.manifest.catalogs.hooks.map(hookName))],
     });
+    // T16 (R29): at `local` scope the stack's own settings writes are machine-personal - they go to
+    // settings.local.json, never the shared settings.json; every other scope keeps the shared file.
     settings.writeSettings({
-        file: path.join(ctx.claudeDir, 'settings.json'),
+        file: path.join(ctx.claudeDir, ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json'),
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
         retiredEntries: readRetiredEntries(ctx.source.dir).map((e) => e.name), liveEntries: ctx.liveCarriers || null,

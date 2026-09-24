@@ -15,7 +15,7 @@
 // overwrite a project's own answer on every update.
 
 const ENUMS = {
-    scope: { values: ['project', 'global'], text: "--scope must be 'project' or 'global'" },
+    scope: { values: ['project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
     memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
 };
@@ -117,18 +117,19 @@ function parseArgs(argv, env = {})
     // The flag wins, else the environment, else the default. The two enums are lower-cased so a
     // non-canonical casing like 'Global' is accepted the same as on the case-insensitive twin.
     out.scope = lower(out.scope || env.SCOPE || 'project');
+    // 'global' is the 2.x name for the CLI's own 'user' scope - a 1.x command body still passes it,
+    // and it is aliased here so nothing downstream ever sees a fourth spelling.
+    if (out.scope === 'global') out.scope = 'user';
     out.docsVersioning = lower(out.docsVersioning);
     out.memoryLevel = lower(out.memoryLevel);
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
 
-    // A global install registers ONE memory server for every project of the account, so its db
-    // cannot live inside one repo: every other project would share that file, and it would go when
-    // the repo goes.
-    if (out.memoryLevel === 'project' && out.scope === 'global')
-        fail('--memory-level project cannot be used with --scope global - a global install shares one db across every project of the account; pick global or scoped');
-
+    // R29 (T16): the memory db path is resolved PER PROJECT by the launcher itself (it reads the
+    // CURRENT project's settings.json/settings.local.json at launch, never a value baked into the
+    // plugin registration) - so `--memory-level project` is safe at every CLI scope, user and local
+    // included, and nothing here refuses it any more.
     out.playwrightBrowsers = [];
     if (out.playwrightBrowsersRaw)
     {

@@ -16,7 +16,7 @@ const roots = [];
 test.after(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true }); });
 
 function fx({
-    sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, scope = 'project',
+    sourceVersion = '1.3.0', sourceEdit = false, settings, local, rawSettings, noStamp = false, legacy = false,
     ruleEdit = false, docsRoot,
 } = {})
 {
@@ -40,7 +40,10 @@ function fx({
     const config = path.join(root, 'config');
     const claudeDir = path.join(project, '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
-    const base = scope === 'global' ? config : claudeDir;
+    // `legacy` simulates a 1.x GLOBAL install this project has not yet run an `update` over - its
+    // own stamp and skills still sit under the ACCOUNT dir, under the 1.x stamp NAME (a 2.x install
+    // never writes either there again, at any scope).
+    const base = legacy ? config : claudeDir;
     const skills = path.join(base, 'skills');
     const agents = path.join(claudeDir, 'agents');
     const rules = path.join(claudeDir, 'rules');
@@ -58,9 +61,9 @@ function fx({
     library.rules['baseline-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
     if (!noStamp)
     {
-        fs.writeFileSync(path.join(base, 'alfred-code.stamp'), renderStamp({
+        fs.writeFileSync(path.join(base, legacy ? OLD_STAMP : 'alfred-code.stamp'), renderStamp({
             repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'a'.repeat(40), version: '1.3.0', installed: '2026-09-24T00:00:00Z',
-            action: 'install', scope, hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
+            action: 'install', scope: legacy ? 'global' : 'project', hooks: [], alwaysRules: [], alwaysMcps: [], picked: { skills: ['demo'], agents: ['seat'] }, library,
         }));
     }
     if (local) fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify(local));
@@ -207,11 +210,14 @@ test('a malformed settings file does not crash the check', () =>
     assert.equal(r.code, 0, r.out);
 });
 
-test('global scope reads the account dir', () =>
+// T16, R29: every 2.x install keeps its stamp and its skills in the PROJECT, whatever scope it was
+// made at - only a 1.x GLOBAL install this project has never run an `update` over still has them in
+// the account dir, and `--config-dir` is the legacy fallback that still finds them there.
+test('a 1.x global install not yet migrated is still found through --config-dir', () =>
 {
-    const f = fx({ scope: 'global' });
-    const r = run(f, ['--scope', 'global', '--config-dir', f.config]);
+    const f = fx({ legacy: true });
+    const r = run(f, ['--config-dir', f.config]);
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /library: clean \(4 copies\)/);
-    assert.match(run(f).out, /no library stamp/, 'read at project scope, the account stamp is not found');
+    assert.match(run(f).out, /no library stamp/, 'without --config-dir the project alone has nothing yet');
 });

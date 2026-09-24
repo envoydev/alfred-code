@@ -3,7 +3,7 @@
 // What the project's LIBRARY copies look like against the stamp that wrote them and the stack
 // that is running now. Read-only; validate and status paste its rows, the stale line is theirs too.
 //
-//   node scripts/library-check.js --project <root> [--source <dir>] [--scope project|global] [--config-dir <dir>] [--json]
+//   node scripts/library-check.js --project <root> [--source <dir>] [--config-dir <dir>] [--json]
 //
 //   drift   - the copy differs from the hash the stamp recorded: edited in the project
 //   missing - the stamp lists it, the project has no copy
@@ -11,12 +11,18 @@
 //   stale   - the stamp's release is older than the running stack's (plugins update themselves,
 //             library copies only move on /alfred-code:update)
 //
+// T16 (R29): every scope's stamp and library copies live in the PROJECT now - `--config-dir` is a
+// LEGACY fallback only, for a 1.x global install this project has not yet run an `update` over (the
+// installer's own migrateLegacyGlobal moves it on that first update; until then this is how
+// validate/status still find it). `--scope` is gone - a 2.x install never puts either in the
+// account dir again, whatever scope it was made at.
+//
 // Exit 1 on any finding, 0 when clean - and 0 with 'no library stamp' when the stamp has no library
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
 const { readLibrary } = require('./install/stamp.js');
-const { stampFile } = require('./install/brand.js');
+const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { resolveDocsRoot } = require('./install/copy.js');
 
@@ -36,19 +42,28 @@ const newer = (a, b) =>
     return false;
 };
 
-function check({ project, source, scope = 'project', configDir })
+function check({ project, source, configDir })
 {
-    const base = (scope === 'global' || scope === 'user') && configDir ? configDir : path.join(project, '.claude');
-    // A 1.x project's stamp keeps its old name until the next update rewrites it.
-    const stamp = readLibrary(stampFile(base).read);
+    const claudeDir = path.join(project, '.claude');
+    let base = claudeDir;
+    // A 1.x project's own stamp keeps its old name until the next update rewrites it.
+    let stamp = readLibrary(stampFile(claudeDir).read);
+    if (!stamp && configDir)
+    {
+        // A 1.x GLOBAL install left its stamp (and its skills) in the account dir, not yet migrated
+        // by an update - read it there too, once, so validate/status still report it.
+        const legacy = path.join(configDir, LEGACY.stamp);
+        if (fs.existsSync(legacy)) { stamp = readLibrary(legacy); base = configDir; }
+    }
     if (!stamp) return null;
     const overrides = (file) => { const o = readJson(file).skillOverrides; return o && typeof o === 'object' ? o : {}; };
     const settings = overrides(path.join(project, '.claude', 'settings.json'));
     const local = overrides(path.join(project, '.claude', 'settings.local.json'));
     const sourceVersion = source ? (readJson(path.join(source, 'setup-plugin', '.claude-plugin', 'plugin.json')).version || '') : '';
     const rows = [];
-    // A global install keeps its skills in the account dir; agents and rules stay in the project at
-    // every scope - no plugin ever carries a rule, so a rule is always a project copy.
+    // `base` is the project at every scope now - only a not-yet-migrated 1.x global install's
+    // legacy read still points `skills` at the account dir. Agents and rules were always project-
+    // only - no plugin ever carries a rule, so a rule is always a project copy.
     const dirs = { skills: path.join(base, 'skills'), agents: path.join(project, '.claude', 'agents'), rules: path.join(project, '.claude', 'rules') };
     const docsRoot = resolveDocsRoot(project);
     // The pristine SOURCE hash for one item - normalised for baseline-docs-root.md, whose source
@@ -89,7 +104,7 @@ function main(argv)
     const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
     const project = path.resolve(arg('--project') || '.');
     const source = arg('--source');
-    const res = check({ project, source: source ? path.resolve(source) : null, scope: arg('--scope') || 'project', configDir: arg('--config-dir') });
+    const res = check({ project, source: source ? path.resolve(source) : null, configDir: arg('--config-dir') });
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
     const findings = bad.length + (res.stale ? 1 : 0);

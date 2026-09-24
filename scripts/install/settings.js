@@ -332,4 +332,27 @@ function writeSettings(opts)
     return { written: true, refused: false };
 }
 
-module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+// T16 (R29): the MERGED view of settings.json + settings.local.json, the shape Claude Code itself
+// runs a session with - local extends/overrides the shared file. A `local`-scope run WRITES only
+// the local file (writeSettings' own `file` argument decides that), so a reader that only opened
+// settings.json would see nothing of a local-scope install; this is read-only, for a reader like
+// `selection.readBack` that needs the effective state whichever file it lives in.
+function readMergedSettings(claudeDir)
+{
+    const base = readSettings(path.join(claudeDir, 'settings.json')).data;
+    let local;
+    try { ({ data: local } = readSettings(path.join(claudeDir, 'settings.local.json'))); }
+    catch { local = {}; }
+    if (!local || typeof local !== 'object') local = {};
+    const out = { ...base, ...local };
+    out.env = { ...(base.env || {}), ...(local.env || {}) };
+    out.permissions = { deny: [...new Set([...((base.permissions || {}).deny || []), ...((local.permissions || {}).deny || [])])] };
+    out.enabledMcpjsonServers = [...new Set([...(base.enabledMcpjsonServers || []), ...(local.enabledMcpjsonServers || [])])];
+    out.skillOverrides = { ...(base.skillOverrides || {}), ...(local.skillOverrides || {}) };
+    const hooks = { ...(base.hooks || {}) };
+    for (const [event, entries] of Object.entries(local.hooks || {})) hooks[event] = [...(hooks[event] || []), ...(entries || [])];
+    out.hooks = hooks;
+    return out;
+}
+
+module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, readMergedSettings, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

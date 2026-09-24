@@ -5,9 +5,12 @@
 // running, say so once per session - to the user (who runs the update) and to the model (so it does
 // not trust a copy's content as current). Silent in every other case, and never fails a session.
 //
-// The project's own stamp first; a global install keeps its stamp in the account dir, so a project
-// with none of its own reads that one. Each under either name: a project the 1.x release installed
-// holds the old stamp until its first update (brand.js stampFile - the new name wins).
+// The project's own stamp first; a project with none of its own falls back to the account dir - a
+// 1.x GLOBAL install kept its stamp there, and this project has not yet run the `update` that moves
+// it (migrateLegacyGlobal, stamp.js). Every 2.x install writes its stamp into the project at every
+// scope, so this fallback only ever fires in that migration window. Each under either name: a
+// project the 1.x release installed holds the old stamp until its first update (brand.js stampFile -
+// the new name wins).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');

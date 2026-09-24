@@ -184,6 +184,27 @@ test('no docs folder, garbage stdin, unknown event: silent and exit 0', () => {
   } finally { r.rm(); }
 });
 
+// T16, R29: a never-set-up project under a user-scope core carries the wired hook but no COPIED
+// engine beside it (docs.js is copied, not shipped through the plugin) - the hook must exit
+// silently, never the outer wrapper's stderr line, which is for a bug in a PRESENT engine.
+test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const path = require('node:path');
+  const os = require('node:os');
+  const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-lone-'));
+  try {
+    const { HOOKS } = require('./docs-fixture');
+    fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(lone, 'docs-session.js'));
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(lone, 'docs-session.js')], {
+      cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root },
+    });
+    assert.strictEqual(out.status, 0);
+    assert.strictEqual(out.stdout, '');
+    assert.strictEqual(out.stderr, '');
+  } finally { r.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
+});
+
 const pre = (tool, input, session) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input });
 const denied = (out) => /"permissionDecision":"deny"/.test(out.stdout);
 

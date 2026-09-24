@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT } = require('./install/settings.js');
+const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT, readMergedSettings } = require('./install/settings.js');
 const { envMigrations } = require('./install/env-migrations.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-settings-'));
@@ -387,4 +387,49 @@ test('settings-writer: a 1.x seat deny the selection now KEEPS is cleared under 
     const file = settingsFile({ permissions: { deny: [`Agent(${OLD_CORE}:seat-a)`, `Agent(${OLD_CORE}:seat-b)`] } });
     const { data } = write(file, { agentDeny: ['Agent(alfred-code:seat-b)'], agentAllow: ['Agent(alfred-code:seat-a)'] });
     assert.deepStrictEqual(data.permissions.deny, ['Agent(alfred-code:seat-b)']);
+});
+
+// T16 (R29): a `local`-scope run writes settings.local.json, never settings.json - a reader that
+// needs the EFFECTIVE state (--installed-only's read-back) has to see both.
+test('readMergedSettings: local extends/overrides the shared file - the shape a local-scope install actually runs with', () =>
+{
+    const dir = path.join(TMP, `merge-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
+        env: { ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_HOOKS_OFF: '' },
+        permissions: { deny: ['Read(.env)'] },
+        enabledMcpjsonServers: ['memory'],
+        skillOverrides: { csharp: 'off' },
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'a' }] }] },
+    }));
+    const merged = readMergedSettings(dir);
+    // Nothing local yet - the merge is just the shared file.
+    assert.deepStrictEqual(merged.env, { ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_HOOKS_OFF: '' });
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-a' },
+        permissions: { deny: ['Read(.env.local)'] },
+        enabledMcpjsonServers: ['serena'],
+        skillOverrides: { csharp: 'name-only' },
+        hooks: { PreToolUse: [{ matcher: 'Read', hooks: [{ type: 'command', command: 'b' }] }] },
+    }));
+    const both = readMergedSettings(dir);
+    // env: local's value wins per key, the project's own untouched keys survive.
+    assert.deepStrictEqual(both.env, { ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_HOOKS_OFF: 'guard-a' });
+    // permissions.deny and enabledMcpjsonServers: UNION, not replace.
+    assert.deepStrictEqual(both.permissions.deny.sort(), ['Read(.env)', 'Read(.env.local)']);
+    assert.deepStrictEqual(both.enabledMcpjsonServers.sort(), ['memory', 'serena']);
+    // skillOverrides: local wins per key.
+    assert.deepStrictEqual(both.skillOverrides, { csharp: 'name-only' });
+    // hooks: each event's OWN entries union, project's kept.
+    assert.strictEqual(both.hooks.PreToolUse.length, 2);
+});
+
+test('readMergedSettings: no local file at all reads exactly like settings.json alone, and a malformed local file is skipped, not a crash', () =>
+{
+    const dir = path.join(TMP, `merge-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { A: '1' } }));
+    assert.deepStrictEqual(readMergedSettings(dir).env, { A: '1' });
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '{ not json');
+    assert.deepStrictEqual(readMergedSettings(dir).env, { A: '1' }, 'a local file that does not parse is skipped, never a crash');
 });

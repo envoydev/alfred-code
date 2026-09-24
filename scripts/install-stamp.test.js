@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -91,12 +91,14 @@ test('install-stamp: the stamp carries the revision, the action and the scope', 
     assert.match(text, /compare\/f{40}\.\.\.main/, 'the compare line is what configure tells a user to open');
 });
 
-test('install-stamp: project scope writes beside the install, global scope writes to the account', () =>
+test('install-stamp: every scope writes the stamp into the project - T16, R29', () =>
 {
     const p = project();
-    assert.strictEqual(write(p).dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
     const acct = path.join(p.base, 'acct');
-    assert.strictEqual(write(p, { scope: 'global', configDir: acct }).dest, path.join(acct, 'alfred-code.stamp'));
+    assert.strictEqual(write(p, { scope: 'project' }).dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
+    assert.strictEqual(write(p, { scope: 'user', configDir: acct }).dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
+    assert.strictEqual(write(p, { scope: 'local', configDir: acct }).dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
+    assert.ok(!fs.existsSync(path.join(acct, 'alfred-code.stamp')), 'a user/local-scope write never touches the account dir');
 });
 
 test('install-stamp: shipped-hooks is one entry per FILE, not per matcher', () =>
@@ -305,33 +307,32 @@ test('install-stamp: a stamp with library-skills/agents but no library-rules lin
     assert.deepStrictEqual(readLibrary(file), { version: '1.4.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: {} });
 });
 
-test('install-stamp: stampPath is where writeStamp writes, per scope', () =>
+test('install-stamp: stampPath is where writeStamp writes - the project, whatever scope or configDir is handed in', () =>
 {
     const p = project();
     const acct = path.join(p.base, 'acct');
-    assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), path.join(p.base, '.claude', 'alfred-code.stamp'));
-    assert.strictEqual(stampPath({ scope: 'global', configDir: acct, projectRoot: p.base }), path.join(acct, 'alfred-code.stamp'));
-    assert.strictEqual(write(p).dest, stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }));
+    const want = path.join(p.base, '.claude', 'alfred-code.stamp');
+    assert.strictEqual(stampPath({ scope: 'project', configDir: acct, projectRoot: p.base }), want);
+    assert.strictEqual(stampPath({ scope: 'user', configDir: acct, projectRoot: p.base }), want);
+    assert.strictEqual(stampPath({ scope: 'local', configDir: acct, projectRoot: p.base }), want);
+    assert.strictEqual(write(p).dest, want);
 });
 
 // 2.0.0: a 1.x install's stamp is `claude-stack.stamp`. It is READ until the first 2.0.0 run writes // legacy-name
 // `alfred-code.stamp`, and that run removes the old file, so the two can never disagree later.
 const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
 
-test('install-stamp: writeStamp deletes the 1.x stamp after writing the new one, at either scope', () =>
+test('install-stamp: writeStamp deletes the PROJECT 1.x stamp after writing the new one, at every scope - and never touches the account dir', () =>
 {
     const p = project();
     const acct = path.join(p.base, 'acct');
     fs.mkdirSync(acct, { recursive: true });
     for (const dir of [path.join(p.base, '.claude'), acct]) fs.writeFileSync(path.join(dir, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
-    const dest = write(p).dest;
+    const dest = write(p, { scope: 'user', configDir: acct }).dest;
     assert.strictEqual(dest, path.join(p.base, '.claude', 'alfred-code.stamp'));
     assert.ok(fs.existsSync(dest), 'the new stamp was not written');
-    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)), 'the 1.x stamp is still beside the new one');
-    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'a project run touched the account stamp');
-    write(p, { scope: 'global', configDir: acct });
-    assert.ok(!fs.existsSync(path.join(acct, OLD_STAMP)), 'the global run left the 1.x account stamp');
-    assert.ok(fs.existsSync(path.join(acct, 'alfred-code.stamp')));
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)), 'the project 1.x stamp is still beside the new one');
+    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'writeStamp touched the account 1.x stamp - that is migrateLegacyGlobal\'s job, never this one\'s');
 });
 
 test('install-stamp: a run with no revision leaves the 1.x stamp where it is - it is still the only record', () =>
@@ -357,15 +358,68 @@ test('install-stamp: a failed write of the new stamp leaves the 1.x stamp where 
     assert.strictEqual(fs.readFileSync(old, 'utf8'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp@claude-stack\n'); // legacy-name
 });
 
-test('install-stamp: stampFiles reads the new stamp, else the 1.x one, and always writes the new one', () =>
+test('install-stamp: stampFiles reads the new stamp, else the 1.x one, from the PROJECT whatever scope/configDir is handed in', () =>
 {
     const p = project();
     const acct = path.join(p.base, 'acct');
-    const at = { scope: 'project', configDir: acct, projectRoot: p.base };
+    const at = { scope: 'user', configDir: acct, projectRoot: p.base };
     assert.deepStrictEqual(stampFiles(at), { read: null, write: stampPath(at) });
     fs.writeFileSync(path.join(p.base, '.claude', OLD_STAMP), 'sha: abc\npicked-skills: csharp@claude-stack\npicked-agents: \n'); // legacy-name
     assert.strictEqual(stampFiles(at).read, path.join(p.base, '.claude', OLD_STAMP));
     assert.deepStrictEqual(readPicked(stampFiles(at).read), { skills: ['csharp@claude-stack'], agents: [] }); // legacy-name
-    write(p);
+    write(p, { scope: 'user', configDir: acct });
     assert.strictEqual(stampFiles(at).read, stampPath(at));
+});
+
+// T16, R29: a 1.x GLOBAL install's stamp and skills sat in the account dir. migrateLegacyGlobal is
+// the one-time reader that copies both into the project on the first 2.x update.
+test('migrateLegacyGlobal: copies a 1.x account stamp and its skills into the project, leaving the account copies in place', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+    const logs = [];
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
+    assert.strictEqual(moved, true);
+    // The project now carries the 1.x stamp under its OWN name - stampFiles' existing read-new-else-
+    // legacy logic finds it unchanged.
+    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', OLD_STAMP), 'utf8'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf8'), '---\nname: demo\n---\nbody\n');
+    // The account copies are LEFT IN PLACE - other projects on the same machine may still read them.
+    assert.ok(fs.existsSync(path.join(acct, OLD_STAMP)), 'the account stamp was deleted, not left for other projects');
+    assert.ok(fs.existsSync(path.join(acct, 'skills', 'demo', 'SKILL.md')), 'the account skill was deleted, not left for other projects');
+    assert.ok(logs.some((m) => /1 skill\(s\) were moved from/.test(m) && m.includes(acct)), logs.join(' | '));
+});
+
+test('migrateLegacyGlobal: nothing to migrate - no account stamp at all - is a silent no-op', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    assert.strictEqual(migrateLegacyGlobal({ configDir: acct, projectRoot: p.base }), false);
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)));
+});
+
+test('migrateLegacyGlobal: runs only ONCE - a project that already has its own stamp is left alone', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
+    // A native run already wrote this project's own (new-name) stamp.
+    write(p);
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base });
+    assert.strictEqual(moved, false, 'a project with its own stamp must never be overwritten by an unrelated account one');
+});
+
+test('migrateLegacyGlobal: an account stamp with no skills folder still migrates - zero skills, no crash', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\n');
+    assert.strictEqual(migrateLegacyGlobal({ configDir: acct, projectRoot: p.base }), true);
+    assert.ok(fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)));
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills')));
 });

@@ -37,7 +37,7 @@
 // and a stamp that only read the file would record an install with none of the locked three.
 const fs = require('node:fs');
 const path = require('node:path');
-const { stampFile } = require('./brand.js');
+const { stampFile, LEGACY } = require('./brand.js');
 
 // A playwright engine server belongs to its FAMILY: the always-list names `playwright`, and an
 // install carrying `playwright-firefox` is carrying it.
@@ -103,9 +103,10 @@ function renderStamp(fields)
     ].join('\n');
 }
 
-// At user scope the stamp belongs in the account dir; otherwise beside whatever this run installed,
-// which is the repo root when there is one.
-const stampDir = ({ scope, configDir, projectRoot }) => (scope === 'global' || scope === 'user' ? configDir : path.join(projectRoot, '.claude'));
+// T16 (R29): every scope's stamp lives in the PROJECT now - a 1.x GLOBAL install's account-dir
+// stamp is a LEGACY read only (migrateLegacyGlobal below moves it into the project on the first
+// 2.x update; the account copy is left in place for other projects that still read it).
+const stampDir = ({ projectRoot }) => path.join(projectRoot, '.claude');
 
 function stampPath(at) { return stampFile(stampDir(at)).write; }
 
@@ -225,4 +226,59 @@ function readPlaywright(file, line = 'playwright-browsers')
 }
 const readPlaywrightEnabled = (file) => readPlaywright(file, 'playwright-enabled');
 
-module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion };
+// T16 (R29): a 1.x GLOBAL install put its stamp AND its skills in the account dir. A project that
+// still shows no stamp of its own (a native project/user/local install already writes one - this
+// never runs twice) is READ from there ONCE, on the first 'update' after 2.0.0, and copied into the
+// project: the stamp under its OWN (1.x) name, so the existing read-new-else-legacy logic above
+// picks it up unchanged, and the skills tree beside it. The ACCOUNT copies are never touched - other
+// projects on the same machine may still be reading them.
+function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = () => {} })
+{
+    if (!configDir || !projectRoot) return false;
+    const acctLegacy = path.join(configDir, LEGACY.stamp);
+    if (!fs.existsSync(acctLegacy)) return false;
+    const claudeDir = path.join(projectRoot, '.claude');
+    if (stampFile(claudeDir).read) return false;   // this project already has its own stamp - nothing to migrate
+
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.copyFileSync(acctLegacy, path.join(claudeDir, LEGACY.stamp));
+
+    let moved = 0;
+    const acctSkills = path.join(configDir, 'skills');
+    if (fs.existsSync(acctSkills))
+    {
+        const dstSkills = path.join(claudeDir, 'skills');
+        fs.mkdirSync(dstSkills, { recursive: true });
+        for (const name of fs.readdirSync(acctSkills))
+        {
+            // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
+            // name it records is validated before it ever reaches a path join, a copy, or a printed 'rm -rf' -
+            // at all three sites that build one from stamp-recorded names (migrateLegacyGlobal below,
+            // library-check.js's shadow row, library-stamp.js's session echo). One path segment, the shape the
+            // installer itself gives a skill name (lowercase letters, digits, dot, underscore, hyphen, starting
+            // with a letter or digit); never empty, never '.' or '..', no '/' or '\'. The regex alone already
+            // excludes a traversal segment, but the containment check is what actually gates behaviour - a name
+            // that passes the shape check is checked AGAIN after joining, so a resolved path landing anywhere
+            // but directly inside the skills dir it was joined into is rejected too.
+            if (!validSkillName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
+            try { fs.cpSync(path.join(acctSkills, name), path.join(dstSkills, name), { recursive: true }); moved += 1; }
+            catch (err) { note(`the account skill ${name} could not be copied (${err.message})`); }
+        }
+    }
+    log(`  a 1.x global install's stamp and ${moved} skill(s) were moved from ${configDir} into the project - `
+        + 'the account copies stay in place (other projects on this machine may still read them)');
+    return true;
+}
+
+const SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/;
+function validSkillName(name, skillsDir)
+{
+    if (typeof name !== 'string' || name === '.' || name === '..' || !SKILL_NAME.test(name)) return false;
+    const base = path.resolve(skillsDir);
+    return path.dirname(path.resolve(base, name)) === base;
+}
+
+module.exports = {
+    writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
+    readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
+};

@@ -43,7 +43,7 @@ test('install-args: both spellings of every valued flag mean the same thing', ()
 {
     for (const [flag, value, key] of [
         ['--space', 'work', 'space'],
-        ['--scope', 'global', 'scope'],
+        ['--scope', 'local', 'scope'],
         ['--docs-versioning', 'local', 'docsVersioning'],
         ['--memory-level', 'scoped', 'memoryLevel'],
         ['--selection', '/tmp/sel.txt', 'selection'],
@@ -82,7 +82,7 @@ test('install-args: an unknown argument is refused and the message NAMES the fla
 
 test('install-args: the enums are lower-cased, so PowerShell casing works on both seeds', () =>
 {
-    assert.strictEqual(ok(['install', '--scope', 'Global']).scope, 'global');
+    assert.strictEqual(ok(['install', '--scope', 'Local']).scope, 'local');
     assert.strictEqual(ok(['install', '--docs-versioning', 'Git']).docsVersioning, 'git');
     assert.strictEqual(ok(['install', '--memory-level', 'Scoped']).memoryLevel, 'scoped');
 });
@@ -99,7 +99,7 @@ test('install-args: --space is baked into a PATH, so its characters are checked'
 
 test('install-args: every enum refuses a value outside its set', () =>
 {
-    fails(['install', '--scope', 'repo'], /--scope must be 'project' or 'global'/);
+    fails(['install', '--scope', 'repo'], /--scope must be 'project', 'user' or 'local'/);
     fails(['install', '--docs-versioning', 'svn'], /--docs-versioning must be 'git' or 'local'/);
     fails(['install', '--memory-level', 'account'], /--memory-level must be/);
 });
@@ -116,17 +116,23 @@ test('install-args: the defaults are project scope, and nothing else decided', (
 
 test('install-args: the flag beats the environment, and the environment beats the default', () =>
 {
-    assert.strictEqual(ok(['install'], { SCOPE: 'global' }).scope, 'global');
-    assert.strictEqual(ok(['install', '--scope', 'project'], { SCOPE: 'global' }).scope, 'project');
+    assert.strictEqual(ok(['install'], { SCOPE: 'user' }).scope, 'user');
+    assert.strictEqual(ok(['install', '--scope', 'project'], { SCOPE: 'user' }).scope, 'project');
 });
 
-test('install-args: --memory-level project cannot ride a global install', () =>
+test("install-args: 'global' is accepted as an alias of 'user' - a 1.x command body still passes it", () =>
 {
-    // A global install registers ONE memory server for every project of the account, so its db
-    // cannot live inside one repo: every other project would share that file, and it would go
-    // when the repo goes.
-    fails(['install', '--memory-level', 'project', '--scope', 'global'], /--memory-level project cannot be used with --scope global/);
+    assert.strictEqual(ok(['install', '--scope', 'global']).scope, 'user');
+    assert.strictEqual(ok(['install', '--scope', 'GLOBAL']).scope, 'user');
+    assert.strictEqual(ok(['install'], { SCOPE: 'global' }).scope, 'user');
+});
+
+test('install-args: --memory-level project rides every scope - the db path is resolved per project, not baked into the registration', () =>
+{
     assert.strictEqual(ok(['install', '--memory-level', 'project']).memoryLevel, 'project');
+    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'user']).memoryLevel, 'project');
+    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'local']).memoryLevel, 'project');
+    assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'global']).memoryLevel, 'project');
 });
 
 test('install-args: the playwright engines come back in ONE canonical order, however they were typed', () =>
@@ -197,7 +203,7 @@ test('install-entry: a bad flag prints the usage and exits 1 - nothing is resolv
 {
     const r = run(['install', '--scope', 'repo']);
     assert.strictEqual(r.code, 1);
-    assert.match(r.err, /--scope must be 'project' or 'global'/);
+    assert.match(r.err, /--scope must be 'project', 'user' or 'local'/);
     assert.match(r.err, /Usage:/, 'the refusal printed no usage');
     assert.strictEqual(r.out, '', 'a refused run still resolved a source');
 });

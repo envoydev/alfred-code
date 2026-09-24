@@ -178,6 +178,25 @@ test('no memory server registered for the project is silent', () => {
   } finally { p.rm(); }
 });
 
+// T16, R29: a never-set-up project under a user-scope core carries the wired hook but no COPIED
+// engine beside it - memory.js is copied, not shipped through the plugin.
+test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
+  const p = fixtureProject();
+  const lone = tmpDir('memory-lone-');
+  try {
+    fs.copyFileSync(HOOK, path.join(lone, 'memory-session.js'));
+    const r = spawnSync(process.execPath, [path.join(lone, 'memory-session.js')], {
+      cwd: p.root,
+      input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's-lone', cwd: p.root }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: p.root, CLAUDE_CONFIG_DIR: tmpDir('memory-lone-config-') },
+    });
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+    assert.strictEqual(r.stderr, '');
+  } finally { p.rm(); rmDir(lone); }
+});
+
 test('garbage stdin is silent, exit 0', () => {
   const p = fixtureProject();
   try {
