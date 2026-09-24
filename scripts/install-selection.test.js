@@ -221,12 +221,12 @@ const MANIFEST = loadManifest(ROOT_DIR);
 const ALL = { skills: true, hooks: true, mcps: true };
 const row = (id, extra = {}) => ({ name: id.split('@')[0], marketplace: id.split('@')[1] || '', scope: 'project', version: '1', enabled: true, ...extra });
 
-function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], marketplace } = {})
+function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], stampPicked, stampHooks = [], lastHooksRoute = null, marketplace } = {})
 {
     const claudeDir = target({ rules: ['baseline-security'], hooks });
     return sel.readBack({
         claudeDir, mcpServers: [], listing, settings, routes, manifest: MANIFEST, sourceDir: ROOT_DIR,
-        stampHooks, always: {}, stampPicked, marketplace,
+        stampHooks, lastHooksRoute, always: {}, stampPicked, marketplace,
     });
 }
 
@@ -446,25 +446,32 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
 
 // Review M3: a copy-route install whose user dropped EVERY hook has none on disk, and the read-back
 // took that for 'every hook' - the update copied and wired all of them back (measured at b825638 too).
-// The copy route's own prelude on disk, with a stamp that shipped hooks, says the None was a choice.
-test('read-back: a copy-route install that kept no hook reads back `hook none`, never every hook', () =>
+// Ruling R55: only the stamp's `hooks-route: copy` says the None was a choice. A leftover prelude is no
+// evidence - a 1.x plugin-route stint, or one before 2.0.0 pruned it, leaves it behind.
+test('read-back: a copy-route install that kept no hook reads back `hook none` only when its stamp says the copy route ran last', () =>
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const core = row('alfred-code@envoydev');
+    const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook '));
     for (const routes of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
     {
-        const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped });
-        assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none'], JSON.stringify(routes));
+        const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: 'copy' });
+        assert.deepStrictEqual(hookLines(r), ['hook none'], JSON.stringify(routes));
         assert.strictEqual(r.answered.hooks, true);
-        const newer = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped.slice(1) });
-        assert.deepStrictEqual(newer.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'a hook this release added stays off with the rest');
+        const newer = readBackCase({ listing: [core], routes, stampHooks: shipped.slice(1), lastHooksRoute: 'copy' });
+        assert.deepStrictEqual(hookLines(newer), ['hook none'], 'a hook this release added stays off with the rest');
     }
     const copy = { hooks: false, skills: true, mcps: true };
-    const flipped = readBackCase({ listing: [core], routes: copy, stampHooks: shipped });
-    assert.ok(!flipped.lines.some((l) => l.startsWith('hook ')), 'no prelude on disk: the plugin route installed it, and a flip to copies takes every hook as before');
-    const unstamped = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude'] });
-    assert.ok(!unstamped.lines.some((l) => l.startsWith('hook ')), 'a stamp naming no shipped hook cannot tell a drop from a hook it never knew');
-    const plugin = readBackCase({ listing: [core], hooks: ['hook-prelude'], stampHooks: shipped });
+    for (const lastHooksRoute of [null, 'plugin'])
+    {
+        const bare = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude', 'fresh-session'], stampHooks: shipped, lastHooksRoute });
+        assert.deepStrictEqual(hookLines(bare), [], `${lastHooksRoute}: a leftover prelude is no None - nothing stored, every hook stays on`);
+        const stored = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute,
+            settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+        assert.deepStrictEqual(hookLines(stored).sort(), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort(),
+            `${lastHooksRoute}: the stored off list is kept`);
+    }
+    const plugin = readBackCase({ listing: [core], hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: 'copy' });
     assert.ok(!plugin.lines.includes('hook none'), 'the plugin route reads its hooks from the core and ALFRED_CODE_HOOKS_OFF');
 });
 

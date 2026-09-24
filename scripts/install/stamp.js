@@ -15,6 +15,11 @@
 // hook that did not exist when this install was made look identical; only the second may be
 // adopted, and this line is the only thing that can tell them apart.
 //
+// `hooks-route` is `copy` or `plugin`: how THIS run delivered the hooks. On the copy route no stack
+// hook on disk means the user kept none only if the copy route made that disk - a plugin-route stint
+// leaves the same empty folder - so the None is read back from this line alone. A stamp without it (1.x,
+// or 2.0.0 before it) is an unknown route, never a None.
+//
 // `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
 // `--installed-only` reads the plugin state back through THAT release's placement, so an item a
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
@@ -63,7 +68,7 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, hooks, alwaysRules, alwaysMcps, picked = {}, library = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, library = {} } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -79,6 +84,7 @@ function renderStamp(fields)
         `action: ${action}`,
         `scope: ${scope}`,
         `shipped-hooks: ${hooks.join(',')}`,
+        ...(hooksRoute ? [`hooks-route: ${hooksRoute}`] : []),
         `installed-always-rules: ${alwaysRules.join(',')}`,
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
@@ -107,7 +113,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, picked, library,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, library,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
 
@@ -134,7 +140,7 @@ function writeStamp(opts)
             repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope,
-            hooks: shippedHooks(hooksCatalog),
+            hooks: shippedHooks(hooksCatalog), hooksRoute,
             alwaysRules: always.rules, alwaysMcps: always.mcps, picked, library,
         }));
     }
@@ -178,4 +184,14 @@ function readLibrary(file)
     };
 }
 
-module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary };
+// The route the last run delivered the hooks by - `copy` or `plugin`, else null (no stamp, no line, or
+// a value this release does not write).
+function readHooksRoute(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const route = ((/^hooks-route: (.*)$/m.exec(text) || [])[1] || '').trim();
+    return route === 'copy' || route === 'plugin' ? route : null;
+}
+
+module.exports = { writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute };

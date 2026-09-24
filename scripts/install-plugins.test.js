@@ -861,15 +861,15 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     // `off`: a plugin-route install flipped to the copies - no prelude, no hook on disk, the off-state
-    // in ALFRED_CODE_HOOKS_OFF.
-    const layout = (kept, off) => (repo) =>
+    // in ALFRED_CODE_HOOKS_OFF. `route`: the stamp's `hooks-route:` line, which a pre-11b stamp lacks.
+    const layout = (kept, off, route) => (repo) =>
     {
         const claude = path.join(repo, '.claude');
         fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
         fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
         fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
         for (const f of [...(off ? [] : ['hook-prelude']), ...kept]) fs.writeFileSync(path.join(claude, 'hooks', `${f}.js`), '// x\n');
-        fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`);
+        fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n${route ? `hooks-route: ${route}\n` : ''}`);
         fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({
             hooks: { PreToolUse: kept.map((h) => ({ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${h}.js"`, timeout: 10 }] })) },
             env: { ALFRED_CODE_HOOKS_OFF: (off || []).join(',') },
@@ -879,17 +879,22 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
         onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
         off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF).split(',').filter(Boolean).sort(),
     });
-    const run = (kept, off) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'], prepare: layout(kept, off), inspect }).result;
+    const run = (kept, off, route) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'], prepare: layout(kept, off, route), inspect }).result;
     const kept = ['guard-protected-force-push', 'guard-secret-value'];
     const two = run(kept);
     assert.deepStrictEqual(two.onDisk, kept.map((h) => `${h}.js`), 'the picked hooks stay copied');
     assert.deepStrictEqual(two.off, shipped.filter((h) => !kept.includes(h)).sort(), 'every hook the project does not wire is named off');
-    const none = run([]);
+    const none = run([], undefined, 'copy');
     assert.deepStrictEqual(none.onDisk, [], 'the None holds: nothing is copied back');
     assert.deepStrictEqual(none.off, [...shipped].sort(), 'and the core keeps every hook quiet');
-    const noneOwn = run(['my-hook']);
+    const noneOwn = run(['my-hook'], undefined, 'copy');
     assert.deepStrictEqual(noneOwn.onDisk, [], 'the None holds beside the user\'s own hook file too');
     assert.deepStrictEqual(noneOwn.off, [...shipped].sort());
+    // Ruling R55: without the stamp's route the None cannot be told from a plugin-route leftover, and
+    // every guard silent is the worse mistake - a pre-11b None comes back as every hook.
+    const unknown = run([]);
+    assert.deepStrictEqual(unknown.onDisk, shipped.map((h) => `${h}.js`).sort(), 'no hooks-route line: every hook is copied');
+    assert.deepStrictEqual(unknown.off, [], 'and none is named off');
     const flip = run([], kept);
     assert.deepStrictEqual(flip.onDisk, shipped.filter((h) => !kept.includes(h)).map((h) => `${h}.js`).sort(), 'a flip copies the hooks the plugin route ran');
     assert.deepStrictEqual(flip.off, [...kept].sort(), 'and keeps the ones it had named off');
@@ -929,6 +934,16 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     assert.deepStrictEqual(hooksIn(all.steps[2]), shipped.map((h) => `${h}.js`).sort(), 'every hook the plugin route ran is copied back');
     assert.deepStrictEqual(all.steps[2].off, [], 'and none is named off');
 
+    // A real copy-route None holds across an update, and across a plugin-route stint too - there the
+    // core carries it as every hook named off.
+    for (const [actions, env] of [[['install', 'update'], [copies, copies]], [['install', 'update', 'update'], [copies, {}, copies]]])
+    {
+        const none = seedRun(actions, 'skill markdown-style\nhook none\n', { plugins: listing, env, args: actions.map((a) => (a === 'install' ? [] : ['--installed-only'])), each: read });
+        const last = none.steps[none.steps.length - 1];
+        assert.deepStrictEqual(hooksIn(last), [], `${env.length} steps: the None holds`);
+        assert.deepStrictEqual(last.off, [...shipped].sort(), `${env.length} steps: every hook named off`);
+    }
+
     for (const [selection, want] of [[`skill markdown-style\n${kept.map((h) => `hook ${h}`).join('\n')}\n`, kept], ['skill markdown-style\n', shipped]])
     {
         const mine = trip(selection, ownHook);
@@ -962,4 +977,37 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
         assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
         assert.ok(!/Cannot find module/.test(run.stderr), `${run.file}: ${run.stderr}`);
     }
+});
+
+// Ruling R55: a 1.x plugin-route project kept the copy route's prelude from an earlier copy-route
+// stint (1.x pruned only the catalog hooks), and its stamp has no `hooks-route:` line. Its first 2.0.0
+// run on the copy route must not read that leftover as the user's None.
+test('seed update --installed-only: a 1.x plugin-route project with a leftover prelude keeps its hooks on the copy route', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const prepare = (off) => (repo) =>
+    {
+        const claude = path.join(repo, '.claude');
+        fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
+        fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+        for (const f of ['hook-prelude.js', 'fresh-session.js', 'docs.js', 'memory.js']) fs.writeFileSync(path.join(claude, 'hooks', f), '// x\n');
+        fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`); // legacy-name
+        fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_HOOKS_OFF: off } }, null, 2)); // legacy-name
+    };
+    const inspect = (repo) => ({
+        onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
+        off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
+        route: (/^hooks-route: (.*)$/m.exec(fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8')) || [])[1],
+    });
+    const run = (off) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: LISTING_1X,
+        args: ['--installed-only'], prepare: prepare(off), inspect }).result;
+    const all = run('');
+    assert.deepStrictEqual(all.onDisk, shipped.map((h) => `${h}.js`).sort(), 'every hook is copied, never a None');
+    assert.deepStrictEqual(all.off, []);
+    assert.strictEqual(all.route, 'copy', 'and the stamp now records the route');
+    const one = run('guard-answer-length');
+    assert.deepStrictEqual(one.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), 'the 1.x off list is kept');
+    assert.deepStrictEqual(one.off, ['guard-answer-length']);
 });

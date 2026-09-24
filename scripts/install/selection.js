@@ -186,7 +186,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = BRAND.marketplace, log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, always = {}, marketplace = BRAND.marketplace, log = () => {} })
 {
     let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
@@ -258,17 +258,17 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     }
 
     // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
-    // back. Two installs leave none there, told apart by the copy route's own prelude: beside a stamp
-    // that shipped hooks, the user kept NONE; without it (the plugin route removes it - HOOK_MODULES)
-    // that route made this install, and the flip carries its ALFRED_CODE_HOOKS_OFF across, read the
-    // way that route reads it. Neither: every hook, as a selection that predates the hooks layer
-    // always meant. Only a STACK hook is evidence: the user's own file there reads back as a `hook`
-    // line too, and taken as a pick it had adoptHooks count every stack hook as dropped - so beside
-    // one, 'every hook' is spelled out.
+    // back. Two installs leave none there, told apart ONLY by the stamp's `hooks-route:` (ruling R55 -
+    // a leftover prelude is no evidence): the copy route ran last, so the user kept NONE; otherwise the
+    // plugin route made this install, or the route is unknown (1.x, 2.0.0 before the line), and its
+    // ALFRED_CODE_HOOKS_OFF is carried across, read the way that route reads it - nothing stored is
+    // every hook, never a None. Only a STACK hook is evidence: the user's own file there reads back
+    // as a `hook` line too, and taken as a pick it had adoptHooks count every stack hook as dropped -
+    // so beside one, 'every hook' is spelled out.
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     if (!routes.hooks && !lines.some((l) => l.startsWith('hook ') && shipped.includes(l.slice(5))))
     {
-        const keptNone = stampHooks.length > 0 && fs.existsSync(path.join(claudeDir, 'hooks', 'hook-prelude.js'));
+        const keptNone = lastHooksRoute === 'copy';
         const off = String(envOf(env, 'HOOKS_OFF') || '');
         const own = lines.some((l) => l.startsWith('hook '));
         const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : own ? shipped : null;

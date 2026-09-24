@@ -75,8 +75,7 @@ const RETIRED_DENY = [
 // points at `node .claude/hooks/history.js rulings`.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
-// from its own root - so the copy route ships them and the plugin route removes them. A leftover
-// prelude is also the copy route's None signal (`selection.readBack`), so it must not outlive the route.
+// from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
@@ -208,6 +207,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 settings: readJson(path.join(claudeDir, 'settings.json')),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
+                lastHooksRoute: stampLayer.readHooksRoute(stampFile),
                 stampPicked: lastPicked,
                 always, marketplace: market, log,
             });
@@ -377,7 +377,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
-            hooksCatalog: manifest.catalogs.hooks, version: releaseVersion(resolved.dir), log, note,
+            hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy',
+            version: releaseVersion(resolved.dir), log, note,
             picked: stampPickLists(lists, stampPicks, carriedPicks),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
         });

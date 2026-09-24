@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, stampPath, stampFiles } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, stampPath, stampFiles } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -50,6 +50,7 @@ function write(p, opts = {})
         hooksCatalog: opts.hooksCatalog || [],
         picked: opts.picked,
         library: opts.library,
+        hooksRoute: opts.hooksRoute,
         version: opts.version || '1.0.0',
         now: new Date('2026-09-22T10:00:00.000Z'),
         log: (m) => logs.push(m), note: (m) => logs.push(m),
@@ -182,6 +183,27 @@ test('install-stamp: picked-skills / picked-agents record what this run installe
     assert.match(text, /^picked-skills: csharp,dotnet$/m);
     assert.match(text, /^picked-agents: evidence-gatherer$/m);
     assert.deepStrictEqual(readPicked(dest), { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'] });
+});
+
+// Ruling R55: the copy route's None is read back only when the LAST run was the copy route, and the
+// stamp is the one record of that - a leftover prelude on disk is not.
+test('install-stamp: hooks-route records the route the hooks took, and a stamp without it reads as unknown', () =>
+{
+    for (const route of ['copy', 'plugin'])
+    {
+        const { dest, text } = write(project(), { hooksRoute: route });
+        assert.match(text, new RegExp(`^hooks-route: ${route}$`, 'm'));
+        assert.strictEqual(readHooksRoute(dest), route);
+    }
+    const p = project();
+    const file = path.join(p.base, 'old.stamp');
+    for (const body of ['sha: abc\nshipped-hooks: a,b\n', 'hooks-route: \n', 'hooks-route: both\n', 'hooks-route: copyish\n'])
+    {
+        fs.writeFileSync(file, body);
+        assert.strictEqual(readHooksRoute(file), null, JSON.stringify(body));
+    }
+    assert.strictEqual(readHooksRoute(path.join(p.base, 'absent.stamp')), null);
+    assert.doesNotMatch(write(project()).text, /^hooks-route:/m, 'no route given records none - never a guess');
 });
 
 test('install-stamp: a stamp without the picked lines (an older install, the shell twin) reads as null - never as an empty pick', () =>
