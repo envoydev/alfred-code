@@ -652,7 +652,12 @@ function installHooksAndRules(ctx)
     // as it was - and only for the surfaces the read found evidence of (`writable`). No selection
     // at all (a bare install) writes no off-state.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
-    const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, { routes: ctx.routes, answered: ctx.answered });
+    const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
+    const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
+        routes: ctx.routes, answered: ctx.answered,
+        wired: ctx.routes.hooks ? null : [...new Set(ctx.lists.hooks.map(hookName))],
+        shipped: [...new Set(ctx.manifest.catalogs.hooks.map(hookName))],
+    });
     settings.writeSettings({
         file: path.join(ctx.claudeDir, 'settings.json'),
         catalog, migrations, hookSpecs: wired,

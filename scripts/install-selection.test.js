@@ -444,6 +444,47 @@ test('read-back: after the walk\'s None, a hook a new release adds stays off too
     assert.deepStrictEqual(old.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'the 1.x spelling of the None');
 });
 
+// Review M3: a copy-route install whose user dropped EVERY hook has none on disk, and the read-back
+// took that for 'every hook' - the update copied and wired all of them back (measured at b825638 too).
+// The copy route's own prelude on disk, with a stamp that shipped hooks, says the None was a choice.
+test('read-back: a copy-route install that kept no hook reads back `hook none`, never every hook', () =>
+{
+    const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const core = row('alfred-code@envoydev');
+    for (const routes of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
+    {
+        const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped });
+        assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')), ['hook none'], JSON.stringify(routes));
+        assert.strictEqual(r.answered.hooks, true);
+        const newer = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped.slice(1) });
+        assert.deepStrictEqual(newer.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'a hook this release added stays off with the rest');
+    }
+    const copy = { hooks: false, skills: true, mcps: true };
+    const flipped = readBackCase({ listing: [core], routes: copy, stampHooks: shipped });
+    assert.ok(!flipped.lines.some((l) => l.startsWith('hook ')), 'no prelude on disk: the plugin route installed it, and a flip to copies takes every hook as before');
+    const unstamped = readBackCase({ listing: [core], routes: copy, hooks: ['hook-prelude'] });
+    assert.ok(!unstamped.lines.some((l) => l.startsWith('hook ')), 'a stamp naming no shipped hook cannot tell a drop from a hook it never knew');
+    const plugin = readBackCase({ listing: [core], hooks: ['hook-prelude'], stampHooks: shipped });
+    assert.ok(!plugin.lines.includes('hook none'), 'the plugin route reads its hooks from the core and ALFRED_CODE_HOOKS_OFF');
+});
+
+// A flip from the plugin route to the copies leaves no hook on disk and the off-state in
+// ALFRED_CODE_HOOKS_OFF - read back as the plugin route reads it, or every hook is copied and the
+// run writes the value empty.
+test('read-back: a flip to the hooks copy route carries the plugin route\'s ALFRED_CODE_HOOKS_OFF across', () =>
+{
+    const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const copy = { hooks: false, skills: true, mcps: true };
+    const off = shipped.slice(0, 2);
+    const r = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copy, stampHooks: shipped, settings: { env: { ALFRED_CODE_HOOKS_OFF: off.join(',') } } });
+    assert.deepStrictEqual(r.lines.filter((l) => l.startsWith('hook ')).sort(), shipped.slice(2).map((h) => `hook ${h}`).sort());
+    assert.strictEqual(r.answered.hooks, true);
+    const all = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copy, stampHooks: shipped, settings: { env: { ALFRED_CODE_HOOKS_OFF: shipped.join(',') } } });
+    assert.deepStrictEqual(all.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'every hook named off is a None');
+    const unset = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copy, stampHooks: shipped, settings: { env: { ALFRED_CODE_HOOKS_OFF: '' } } });
+    assert.ok(!unset.lines.some((l) => l.startsWith('hook ')), 'nothing named off: every hook, as before');
+});
+
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
 {
     const rule = GRAPH.rules['csharp-conventions'];

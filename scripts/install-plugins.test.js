@@ -851,3 +851,43 @@ test('seed update --installed-only: a 1.x install under its old key keeps its pi
     assert.strictEqual(result.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the hooks the user switched off stay off');
     assert.ok(!('CLAUDE_STACK_HOOKS_OFF' in result.env), 'the 1.x key is renamed, not left beside the new one'); // legacy-name
 });
+
+// Review M3: a hooks-copy-route install made before the hooks rode the core never wrote
+// ALFRED_CODE_HOOKS_OFF - absence on disk was the off-state. Once the core carries every hook, the
+// first update must name each hook the project does not wire, and a None must not come back.
+test('seed update --installed-only: a pre-11b hooks-copy-route install - its picks stay wired, the rest are named off, a None holds', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    // `off`: a plugin-route install flipped to the copies - no prelude, no hook on disk, the off-state
+    // in ALFRED_CODE_HOOKS_OFF.
+    const layout = (kept, off) => (repo) =>
+    {
+        const claude = path.join(repo, '.claude');
+        fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
+        fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
+        fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+        for (const f of [...(off ? [] : ['hook-prelude']), ...kept]) fs.writeFileSync(path.join(claude, 'hooks', `${f}.js`), '// x\n');
+        fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`);
+        fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({
+            hooks: { PreToolUse: kept.map((h) => ({ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${h}.js"`, timeout: 10 }] })) },
+            env: { ALFRED_CODE_HOOKS_OFF: (off || []).join(',') },
+        }, null, 2));
+    };
+    const inspect = (repo) => ({
+        onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
+        off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF).split(',').filter(Boolean).sort(),
+    });
+    const run = (kept, off) => seedRun('update', 'skill markdown-style\n', { env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'], prepare: layout(kept, off), inspect }).result;
+    const kept = ['guard-protected-force-push', 'guard-secret-value'];
+    const two = run(kept);
+    assert.deepStrictEqual(two.onDisk, kept.map((h) => `${h}.js`), 'the picked hooks stay copied');
+    assert.deepStrictEqual(two.off, shipped.filter((h) => !kept.includes(h)).sort(), 'every hook the project does not wire is named off');
+    const none = run([]);
+    assert.deepStrictEqual(none.onDisk, [], 'the None holds: nothing is copied back');
+    assert.deepStrictEqual(none.off, [...shipped].sort(), 'and the core keeps every hook quiet');
+    const flip = run([], kept);
+    assert.deepStrictEqual(flip.onDisk, shipped.filter((h) => !kept.includes(h)).map((h) => `${h}.js`).sort(), 'a flip copies the hooks the plugin route ran');
+    assert.deepStrictEqual(flip.off, [...kept].sort(), 'and keeps the ones it had named off');
+});

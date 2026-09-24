@@ -341,6 +341,25 @@ test('writable: the hooks copy route with the core on still names the unpicked h
     assert.deepStrictEqual(fullCopy.hooksOff, [], 'no core on the full copy route - absence is off');
 });
 
+// Review M3: on that route the off-list is the complement of what the run WIRES, whatever the
+// read-back answered - a pre-11b copy-route install never wrote it, and a run with no selection to
+// derive from (a bare install) still wires a known set. The core must not fire what the project dropped.
+test('writable: on the hooks copy route with the core on, every shipped hook the run does not wire is named off', () =>
+{
+    const { writable } = require('./derive-state.js');
+    const shipped = ['guard-a', 'guard-b', 'guard-c'];
+    const core = { hooks: false, skills: true, mcps: true };
+    const none = writable(null, { routes: core, answered: { hooks: false, agents: false }, wired: [], shipped });
+    assert.deepStrictEqual([none.hooksOff, none.hooksAnswered], [shipped, true], 'nothing wired: every hook off, and written with no evidence read');
+    const some = writable(null, { routes: core, answered: { hooks: false, agents: true }, wired: ['guard-b'], shipped });
+    assert.deepStrictEqual(some.hooksOff, ['guard-a', 'guard-c']);
+    assert.deepStrictEqual(writable(null, { routes: core, wired: shipped, shipped }).hooksOff, [], 'every hook wired: each core copy stands down for its twin');
+    const full = writable(null, { routes: {}, wired: [], shipped });
+    assert.deepStrictEqual([full.hooksOff, full.hooksAnswered], [[], false], 'no core on the full copy route');
+    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
+    assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, wired: [], shipped }).hooksOff, state.hooks.off, 'the plugin route reads the selection, never the copies');
+});
+
 // THE FLOOR - status's plugin line counted skill and command descriptions and left the SEATS out,
 // though every enabled seat's description rides the Agent tool's listing on every message. A seat
 // `permissions.deny` switches off costs nothing (spike S3), and a `disable-model-invocation` skill's

@@ -13,7 +13,7 @@
 //
 //   - A SELECTION WITH NO `hook` LINES INSTALLS EVERY HOOK. Hooks joined the walk later, so a file
 //     written before that layer must keep its install-everything behaviour. `--installed-only`
-//     answers this by emptying the hook list itself when the disk carries none.
+//     reads back `hook none` itself when the copy route ran here and kept none (`readBack`).
 //   - A HOOK THIS RELEASE ADDED REACHES AN EXISTING INSTALL ONLY HERE, so hooks are all-or-nothing
 //     on the derived path: an install that HAS hooks gets every shipped one. The exception is a
 //     DELIBERATE DROP - a hook named in the previous stamp and absent now was removed through
@@ -144,7 +144,8 @@ const hasInstall = (lines) => lines.some((l) => /^(skill|agent|rule|hook) /.test
 // Hooks: adopt every shipped one, except a name the PREVIOUS stamp shipped and disk no longer has.
 function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
 {
-    if (!lines.some((l) => l.startsWith('hook '))) return lines;
+    // A None adopts nothing either: a hook this release added stays off with the rest.
+    if (!lines.some((l) => l.startsWith('hook ')) || lines.includes('hook none')) return lines;
     const have = new Set(lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5)));
     const dropped = new Set(shippedBefore);
     const out = [...lines];
@@ -256,6 +257,24 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         if (adopted.length) log(`installed-only: the stamp predates recorded picks - ${adopted.length} skills and seats the enabled entries carry are recorded as picked`);
     }
 
+    // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
+    // back. Two installs leave none there, told apart by the copy route's own prelude: beside a stamp
+    // that shipped hooks, the user kept NONE; without it the plugin route made this install, and the
+    // flip carries its ALFRED_CODE_HOOKS_OFF across, read the way that route reads it. Neither: every
+    // hook, as a selection that predates the hooks layer always meant.
+    if (!routes.hooks && !lines.some((l) => l.startsWith('hook ')))
+    {
+        const keptNone = stampHooks.length > 0 && fs.existsSync(path.join(claudeDir, 'hooks', 'hook-prelude.js'));
+        const off = String(envOf(env, 'HOOKS_OFF') || '');
+        const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
+        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
+        if (on)
+        {
+            lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));
+            log(keptNone ? 'installed-only: the copy route kept no hook here - none is copied back'
+                : `installed-only: no hook is copied here yet - copying the ${on.length} ALFRED_CODE_HOOKS_OFF does not name`);
+        }
+    }
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
     const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
     const context7Local = Boolean(routes.mcps) && names.includes('context7-local');

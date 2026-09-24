@@ -260,7 +260,7 @@ cascade never reaches here. The set ships together inside the core `alfred-code`
 a row copies and unwires nothing: it is named in `ALFRED_CODE_HOOKS_OFF` in the scope's
 `settings.json` env, and re-adding a row removes its name from that value. The environment area is
 where the same value can also be edited by hand. An install still on the copy route (`ALFRED_CODE_HOOKS_VIA_PLUGIN=false`) keeps the
-old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit) - and, while the core is on for the skills or the MCP servers, names it in `ALFRED_CODE_HOOKS_OFF` too, since the core carries every hook.
+old behaviour - dropping a hook removes its file and its wiring (step 12 shows that edit) - and, while the core is on for the skills or the MCP servers, names it in `ALFRED_CODE_HOOKS_OFF` too, since the core carries every hook - on that route every run rewrites the value as the hooks the project does not wire, so a hand edit there does not hold.
 
 ## 7. MCPs
 

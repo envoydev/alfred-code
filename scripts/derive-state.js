@@ -328,16 +328,22 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
 // answers only what it found evidence of (`answered`), so a failed `claude plugin list` writes
 // nothing instead of switching every hook and seat off. The off-lists exist only on the routes
 // that load through a plugin: on the copy routes absence from disk is the off-state.
-function writable(state, { routes = {}, answered = { hooks: true, agents: true } } = {})
+// `wired` / `shipped`: the hook names this run copies and wires, and every hook the release ships -
+// the installer passes both on the hooks copy route.
+function writable(state, { routes = {}, answered = { hooks: true, agents: true }, wired = null, shipped = [] } = {})
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     const agents = Boolean(state && answered.agents && routes.skills);
+    // The hooks copy route with the core on: the core carries every hook, and a hook the project does
+    // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
+    // complement of what the run WIRES, whatever the read-back answered - a pre-11b install never
+    // wrote one, absence on disk being its off-state.
+    const besideCore = !routes.hooks && corePluginOn(routes) && Array.isArray(wired);
     return {
-        // Written whenever the CORE is on, whatever the hooks route: the core carries every hook, so
-        // on the hooks copy route an unpicked one - no wired twin to stand down for - is kept quiet
-        // by this name alone. On the full copy route there is no core, and absence is off.
-        hooksOff: hooks && corePluginOn(routes) ? state.hooks.off : [],
-        hooksAnswered: hooks,
+        // Otherwise written whenever the CORE is on; on the full copy route there is no core, and
+        // absence is off.
+        hooksOff: besideCore ? shipped.filter((h) => !wired.includes(h)) : hooks && corePluginOn(routes) ? state.hooks.off : [],
+        hooksAnswered: besideCore || hooks,
         agentDeny: agents ? state.agents.deny : [],
         agentAllow: agents ? state.agents.allow : [],
         // Carried without a pick only where a plugin carries skills; the copy route copies the picks.
