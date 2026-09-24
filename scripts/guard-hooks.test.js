@@ -698,6 +698,10 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   // Gating this one would block a tool the user chose with a message about a flow it has no part
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
+  // A hyphenated foreign plugin name, carrying a REAL house seat name after the colon, is still
+  // judged by its PREFIX, not by whether the seat name happens to match - the legacy claude-stack
+  // spelling must not widen HOUSE_PREFIX into matching any hyphenated home.
+  assert.equal(disp('someone-else:wpf-implementer'), 0, 'a hyphenated FOREIGN plugin is still foreign');
   assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');

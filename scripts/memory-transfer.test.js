@@ -270,6 +270,41 @@ test('serviceEntry: another project\'s plugin row, a foreign marketplace and a g
     sb.done();
 });
 
+// Requirement 5 (task-5c): a 1.x install's marketplace KEY never migrates on rename
+// (docs/rebrand-evidence.md S4/S9), so its installed_plugins.json row still keys the server
+// `memory@claude-stack` for the whole 2.x line. The lookup reads the current key first, then falls
+// back to the legacy one, and the current key's row wins when both exist.
+test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and memory@envoydev wins when both exist', { skip: skipNoSqlite }, () =>
+{
+    const sb = sandbox();
+    const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
+    const row = { scope: 'project', projectPath: sb.root, installPath: sb.pluginRoot, version: '1.0.0' };
+    // legacy-name - a 1.x install's plugin id still ends @claude-stack; the marketplace key never moves.
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [row] } }));
+    const viaLegacy = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
+    assert.ok(viaLegacy, 'the memory@claude-stack row alone still resolves an installPath');
+    assert.strictEqual(viaLegacy.command, process.execPath);
+
+    const newRoot = path.join(sb.work, 'plugin-cache', 'memory-new', '2.0.0');
+    fs.mkdirSync(path.join(newRoot, '.claude-plugin'), { recursive: true });
+    fs.copyFileSync(FAKE_SERVER, path.join(newRoot, 'fake-memory-server.js'));
+    fs.writeFileSync(path.join(newRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({
+        name: 'envoydev',
+        plugins: [{ name: 'memory', mcpServers: { memory: {
+            command: process.execPath,
+            args: ['${CLAUDE_PLUGIN_ROOT}/fake-memory-server.js', '--new-key'],
+            env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec' },
+        } } }],
+    }, null, 2));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: {
+        'memory@claude-stack': [row],
+        'memory@envoydev': [{ ...row, installPath: newRoot }],
+    } }));
+    const viaBoth = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
+    assert.ok(viaBoth.args.includes('--new-key'), 'memory@envoydev wins when both rows exist');
+    sb.done();
+});
+
 test('the installer\'s notes import finds the plugin route\'s server too (1.0.0 found none and left Claude\'s own memory on)', { skip: skipNoSqlite }, () =>
 {
     const sb = sandbox();

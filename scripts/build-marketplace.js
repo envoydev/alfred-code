@@ -105,6 +105,25 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
+// The 1.x -> 2.x plugin rename, ONE constant: Claude Code reads it from the marketplace's own
+// top-level `renames` key to move an existing install's `enabledPlugins` entries at the next
+// session start (`claude-stack@claude-stack` -> `alfred-code@claude-stack`; the marketplace KEY
+// itself never migrates - docs/rebrand-evidence.md S1/S4/S9). The frozen `meta/retired-entries.json`
+// still spells its own dependency on the core in the same 1.x names, so this map does double duty:
+// `applyRenames` writes it into the live file, and `retiredMarketplaceEntries` below translates a
+// retired entry's `claude-stack` / `claude-stack-hooks` dependency through the same pairs - every
+// other dependency is another retired entry's own frozen name and is left alone.
+const MARKETPLACE_RENAMES = { 'claude-stack': 'alfred-code', 'claude-stack-hooks': 'alfred-code-hooks' }; // legacy-name
+
+// Writes the `renames` map onto the live marketplace, in place. Never a null value for either key -
+// a null DROPS the key at startup, before the seed can copy a retired entry's picks (plan decision
+// D2) - so this always writes the full two-pair object, never a partial or emptied one.
+function applyRenames(mkt, renames = MARKETPLACE_RENAMES)
+{
+    mkt.renames = { ...renames };
+    return mkt;
+}
+
 // The retired per-stack entries, listed for their last release under a RETIRED description. The
 // shape is the one 1.2.0 shipped, so an installed entry resolves the same files until update
 // removes it.
@@ -124,7 +143,7 @@ function retiredMarketplaceEntries(options = {})
         };
         if (row.skills.length) entry.skills = row.skills.map((s) => `./stack/skills/${s}`);
         if (row.agents.length) entry.agents = row.agents.map((a) => `./stack/agents/${a}.md`);
-        entry.dependencies = row.dependencies;
+        entry.dependencies = row.dependencies.map((d) => MARKETPLACE_RENAMES[d] || d);
         return entry;
     });
 }
@@ -500,7 +519,8 @@ function main(argv)
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const { loadManifest } = require('./install/manifest.js');
         const listed = entries.concat(retiredMarketplaceEntries());
-        const after = JSON.stringify(applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins }), null, 2) + '\n';
+        const applied = applyRenames(applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins }));
+        const after = JSON.stringify(applied, null, 2) + '\n';
         if (before === after) { console.log(`marketplace current: ${listed.length} entries`); return 0; }
         fs.writeFileSync(file, after);
         console.log(`marketplace written: ${listed.length} entries -> ${path.relative(REPO, file)}`);
@@ -522,4 +542,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, retiredMarketplaceEntries, serialize, applyToMarketplace, applyHooksPlugin, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, retiredMarketplaceEntries, serialize, applyToMarketplace, applyHooksPlugin, applyMcpPlugins, applyRenames, MARKETPLACE_RENAMES, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, PINS_FILE };

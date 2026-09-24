@@ -32,6 +32,11 @@ jobs:
           printf 'sha: %s\nref: main\nversion: %s\nbuilt: %s\n' "$GITHUB_SHA" "${{ steps.ver.outputs.version }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > RELEASE-SOURCE
           git archive --format=tar.gz --add-file=RELEASE-SOURCE -o alfred-code.tar.gz HEAD
           git archive --format=zip    --add-file=RELEASE-SOURCE -o alfred-code.zip    HEAD
+          # legacy-name - a 1.x install's archive fallback still asks for releases/latest/download/claude-stack.{tar.gz,zip}
+          # (the marketplace key it resolved through GitHub's own repo redirect never renames). Same bytes, second name -
+          # a copy, not a second `git archive` - so that fallback does not 404 for the whole 2.x line. Drop these two once 2.x ends.
+          cp alfred-code.tar.gz claude-stack.tar.gz
+          cp alfred-code.zip    claude-stack.zip
 
       - name: Recreate the release for this version
         env:
@@ -40,6 +45,6 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
           gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
-          gh release create "v$VERSION" alfred-code.tar.gz alfred-code.zip \
+          gh release create "v$VERSION" alfred-code.tar.gz alfred-code.zip claude-stack.tar.gz claude-stack.zip \
             --latest --title "v$VERSION" \
-            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."
+            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download. claude-stack.tar.gz/.zip are the same bytes under the pre-rebrand name, kept for a 1.x install's archive fallback for the 2.x line."

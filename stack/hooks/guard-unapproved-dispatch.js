@@ -107,11 +107,13 @@ const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
 const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
 // name returns 'Agent type not found'), so from the release that ships the seats as plugins every
-// house dispatch arrives prefixed. Two spellings are therefore the same seat - bare, which is the
-// copy route and cursor-stack, and `alfred-code[-<group>]:<seat>`. A FOREIGN plugin's
-// `x-implementer` is not this flow's seat: it has no APPROVAL convention behind it, so gating it
-// would block a tool the user chose with a message about a flow that does not apply to it.
-const HOUSE_PREFIX = /^alfred-code(?:-[a-z0-9-]+)?:/;
+// house dispatch arrives prefixed. Three spellings are therefore the same seat - bare, which is the
+// copy route and cursor-stack, `alfred-code[-<group>]:<seat>`, and a 1.x install's
+// `claude-stack[-<group>]:<seat>` (the marketplace KEY never migrates - docs/rebrand-evidence.md -
+// so a 1.x install's home names stay `claude-stack`-prefixed for the whole 2.x line). A FOREIGN
+// plugin's `x-implementer` is not this flow's seat: it has no APPROVAL convention behind it, so
+// gating it would block a tool the user chose with a message about a flow that does not apply to it.
+const HOUSE_PREFIX = /^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/; // legacy-name
 const houseSeat = !seat.includes(':') ? seat : (HOUSE_PREFIX.test(seat) ? seat.slice(seat.indexOf(':') + 1) : null);
 const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, applyToMarketplace, retiredMarketplaceEntries } = require('./build-marketplace.js');
+const { buildEntries, applyToMarketplace, retiredMarketplaceEntries, applyRenames, MARKETPLACE_RENAMES } = require('./build-marketplace.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
 
@@ -197,6 +197,34 @@ test('a retired name missing from the frozen file is dropped from the marketplac
     const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-gone', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['claude-stack-gone'] });
     assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-gone'), undefined);
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
+});
+
+// Requirement 2 (task-5c): the frozen meta/retired-entries.json still spells its own dependency on
+// the core in 1.x names - build-marketplace.js is what translates it, so a retired entry keeps
+// reaching the core through the renamed marketplace shape (build-marketplace.test.js:125, legacy
+// failure 1 of Task 2's report).
+test('retiredMarketplaceEntries translates the frozen claude-stack / claude-stack-hooks dependency, keeps every other one', () => {
+    const list = retiredMarketplaceEntries();
+    const retiredByName = Object.fromEntries(list.map((e) => [e.name, e]));
+    // A terminal entry named the frozen core name directly.
+    assert.deepStrictEqual(retiredByName['claude-stack-csharp'].dependencies, ['alfred-code']);
+    assert.deepStrictEqual(retiredByName['claude-stack-aspnet-data'].dependencies, ['alfred-code']);
+    // A non-terminal entry still names another retired entry by its own frozen name - untouched.
+    assert.deepStrictEqual(retiredByName['claude-stack-aspnet'].dependencies, ['claude-stack-aspnet-data', 'claude-stack-csharp', 'claude-stack-dotnet']);
+    for (const e of list) assert.ok(!e.dependencies.includes('claude-stack') && !e.dependencies.includes('claude-stack-hooks'), `${e.name} still names an unrenamed core dependency`);
+});
+
+// Requirement 1 (task-5c): the top-level `renames` map Claude Code reads to move a 1.x install's
+// `enabledPlugins` keys at startup (docs/rebrand-evidence.md S1/S4/S9) - ONE constant, never a null
+// value (plan decision D2: a null drops the key before the seed can copy a retired entry's picks).
+test('applyRenames writes the 1.x -> 2.x plugin map onto the live marketplace, never a null value', () => {
+    const mkt = applyRenames({ plugins: [] });
+    assert.deepStrictEqual(mkt.renames, { 'claude-stack': 'alfred-code', 'claude-stack-hooks': 'alfred-code-hooks' });
+    for (const [from, to] of Object.entries(MARKETPLACE_RENAMES))
+    {
+        assert.notStrictEqual(to, null, `${from} must never rename to null`);
+        assert.strictEqual(typeof to, 'string');
+    }
 });
 
 test('the core entry wires the library-stamp line at session start, startup only, with a timeout', () =>

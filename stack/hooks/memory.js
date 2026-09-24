@@ -604,6 +604,10 @@ const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), 
 const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
 const STACK_MEMORY_PLUGIN = 'memory@envoydev';
+// A 1.x install's plugin id: the marketplace KEY never migrates (docs/rebrand-evidence.md S4/S9), so
+// its installed_plugins.json row still keys the server this way for the whole 2.x line - read only
+// when the current key carries no row.
+const STACK_MEMORY_PLUGIN_LEGACY = 'memory@claude-stack'; // legacy-name
 
 // A registration the copy route (or a pre-1.0.0 install) wrote: the project's .mcp.json, then the
 // account file's user-scope and project-scope entries - the files registeredDbPath reads.
@@ -621,15 +625,22 @@ function registrationEntry(projectRoot, home, configDir) {
   return withCommand(proj && proj.mcpServers && proj.mcpServers.memory);
 }
 
-// From 1.0.0 the server rides the memory@envoydev PLUGIN, and no registration exists to read. The
-// plugin's install directory is the whole stack repo (every marketplace entry is sourced from its
-// root), so its own marketplace.json declares the server exactly as Claude Code launches it. This
-// project's install first, then an account-level one; another project's install, or a `memory`
-// plugin from any other marketplace, is never used.
+// From 1.0.0 the server rides a `memory@<marketplace key>` PLUGIN, and no registration exists to
+// read. The plugin's install directory is the whole stack repo (every marketplace entry is sourced
+// from its root), so its own marketplace.json declares the server exactly as Claude Code launches
+// it. The key is the marketplace's REGISTERED name, not a constant one: a fresh install adds the
+// marketplace as `envoydev`, but a 1.x install's marketplace key never migrates on rename
+// (docs/rebrand-evidence.md S4/S9), so its row still keys `memory@claude-stack` for the whole 2.x
+// line - read only as a fallback, and the current key's row wins when both exist. This project's
+// install first, then an account-level one; another project's install, or a `memory` plugin from
+// any other marketplace, is never used.
 function installedPluginRoots(projectRoot, home, configDir) {
   const dir = configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
   const data = readJson(path.join(dir, 'plugins', 'installed_plugins.json'));
-  const rows = data && data.plugins && Array.isArray(data.plugins[STACK_MEMORY_PLUGIN]) ? data.plugins[STACK_MEMORY_PLUGIN] : [];
+  const plugins = data && data.plugins ? data.plugins : {};
+  const current = Array.isArray(plugins[STACK_MEMORY_PLUGIN]) ? plugins[STACK_MEMORY_PLUGIN] : [];
+  const legacy = Array.isArray(plugins[STACK_MEMORY_PLUGIN_LEGACY]) ? plugins[STACK_MEMORY_PLUGIN_LEGACY] : []; // legacy-name
+  const rows = current.length ? current : legacy;
   const here = new Set([projectRoot, mainCheckoutRoot(projectRoot)].map(dirKey));
   const valid = rows.filter((r) => r && typeof r.installPath === 'string' && r.installPath);
   const mine = valid.filter((r) => r.projectPath && here.has(dirKey(String(r.projectPath))));
