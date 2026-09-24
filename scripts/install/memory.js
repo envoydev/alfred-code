@@ -15,8 +15,10 @@
 //   - THE REPLACEMENT MUST BE COMPLETE: the memory server in this run's MCP set AND
 //     `baseline-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
 //     Without either, the notes stay where Claude reads them.
-//   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S settings.json, always - even at global scope.
-//     The account file would silence every other project's memory too.
+//   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S OWN settings file, never the account one (that
+//     would silence every other project's memory too) - and, per R47, to the SAME file this run's
+//     other settings writes use: settings.local.json at local scope, settings.json otherwise
+//     (settingsTarget in settings.js is the one place that decides which).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -101,7 +103,7 @@ function writeSwitchOff(settingsFile, { log = () => {} } = {})
     data.autoMemoryEnabled = false;
     fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    log(`  settings.json: autoMemoryEnabled set to false (${settingsFile})`);
+    log(`  ${path.basename(settingsFile)}: autoMemoryEnabled set to false (${settingsFile})`);
     return true;
 }
 

@@ -125,3 +125,130 @@ test('install-scope: --memory-level project rides --scope user without refusal',
     const { out } = seedRun('install', SELECTION, { args: ['--scope', 'user', '--memory-level', 'project'] });
     assert.match(out, /memory=project \(/, out);
 });
+
+// I1 (R47, fix round 1): a local-scope import whose GATE actually opens (memory + baseline-memory
+// picked, so the gate's mcps/rules checks pass; the sandbox's uvx stub is enough - `which` only
+// checks presence, and the importer's own 'nothing to import' exit is success without a real
+// server) writes the switch-off to settings.local.json, never the shared settings.json.
+test('install-scope: at local scope a memory import that actually runs lands autoMemoryEnabled in settings.local.json, never settings.json', POSIX_ONLY, () =>
+{
+    const SEL = 'skill csharp\nrule markdown-docs\nrule baseline-memory\nmcp memory\n';
+    const { out, result } = seedRun('install', SEL, {
+        args: ['--scope', 'local'],
+        inspect: (repo) => ({
+            hasShared: exists(repo, '.claude', 'settings.json'),
+            local: exists(repo, '.claude', 'settings.local.json') ? json(repo, path.join('.claude', 'settings.local.json')) : null,
+        }),
+    });
+    assert.match(out, /settings\.local\.json: autoMemoryEnabled set to false/, out);
+    assert.strictEqual(result.hasShared, false, 'the switch-off must not create the shared settings.json');
+    assert.strictEqual(result.local.autoMemoryEnabled, false);
+});
+
+// I2 (R47, fix round 1): --installed-only's read-back now goes through readJson (fail-soft) against
+// the scope's OWN settings file, never the old readSettings-based merge - a settings.json that does
+// not parse must never abort the whole run (before this fix it threw and the run exited 1).
+test('install-scope: a settings.json that does not parse never aborts update --installed-only (I2)', POSIX_ONLY, () =>
+{
+    const { outs } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const f = path.join(repo, '.claude', 'settings.json');
+            fs.writeFileSync(f, `${fs.readFileSync(f, 'utf8')}{garbage`);
+            return null;
+        },
+    });
+    assert.match(outs[1], /action: update/, 'a malformed settings.json must not abort the run');
+});
+
+// I2 (R47, fix round 1): the read-back reads the raw file, never a filtered/derived view - a
+// hand-added permissions.allow/ask survives a project-scope update --installed-only untouched.
+test('install-scope: permissions.allow and permissions.ask survive update --installed-only (I2)', POSIX_ONLY, () =>
+{
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const f = path.join(repo, '.claude', 'settings.json');
+            const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+            s.permissions.allow = ['Bash(ls:*)'];
+            s.permissions.ask = ['Bash(rm:*)'];
+            fs.writeFileSync(f, JSON.stringify(s, null, 2));
+            return null;
+        },
+        inspect: (repo) => json(repo, path.join('.claude', 'settings.json')),
+    });
+    assert.deepStrictEqual(result.permissions.allow, ['Bash(ls:*)']);
+    assert.deepStrictEqual(result.permissions.ask, ['Bash(rm:*)']);
+});
+
+// I3 (R47, fix round 1): args.js leaves --scope '' when not given; a bare `update` with no --scope
+// takes the scope from the PROJECT stamp's own `scope:` line, so a local (or user) install is never
+// silently dropped back to project on the next update.
+test('install-scope: --scope local, then a bare update with no --scope flag, keeps settings.json absent (I3)', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], []],
+        inspect: (repo) => ({
+            hasShared: exists(repo, '.claude', 'settings.json'),
+            hasLocal: exists(repo, '.claude', 'settings.local.json'),
+            stampText: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+        }),
+    });
+    assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
+    assert.strictEqual(result.hasShared, false, 'a bare update after a local-scope install must not create settings.json');
+    assert.strictEqual(result.hasLocal, true);
+    assert.match(result.stampText, /^scope: local$/m);
+});
+
+// I4 (R47, fix round 1): `--installed-only --print-plan` is read-only - configure.md and
+// validate.md call it as a run that writes nothing. Over an unmigrated 1.x global project it must
+// read the legacy account stamp and skills IN PLACE (the library-check.js fallback pattern) rather
+// than either failing 'nothing installed' or migrating them into the project.
+test('install-scope: update --installed-only --print-plan reads a 1.x account stamp in place and never migrates it', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun('update', SELECTION, {
+        args: ['--installed-only', '--print-plan'],
+        prepare: (repo, work) =>
+        {
+            const acct = path.join(work, 'acct');
+            fs.mkdirSync(path.join(acct, 'skills', 'csharp'), { recursive: true });
+            fs.writeFileSync(path.join(acct, 'skills', 'csharp', 'SKILL.md'), '---\nname: csharp\ndescription: d\n---\nbody\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp\n');
+        },
+        inspect: (repo) => ({
+            migratedSkill: exists(repo, '.claude', 'skills', 'csharp', 'SKILL.md'),
+            projectStamp: exists(repo, '.claude', 'alfred-code.stamp'),
+        }),
+    });
+    assert.match(out, /^plan skills: csharp$/m, out);
+    assert.doesNotMatch(out, /were moved from/, 'a --print-plan read must never migrate');
+    assert.strictEqual(result.migratedSkill, false, 'the account skill must not be copied into the project by a read-only run');
+    assert.strictEqual(result.projectStamp, false, 'a --print-plan run must never write the project its own stamp');
+});
+
+// I5 (R47, fix round 1): the MCP COPY route bakes one path into a user-scope `claude mcp add -s
+// user`, so `--memory-level project` there would open every project of the account onto this one's
+// db - refused on that route and scope only.
+test('install-scope: --memory-level project at --scope user is refused on the MCP copy route (I5)', POSIX_ONLY, () =>
+{
+    assert.throws(
+        () => seedRun('install', SELECTION, {
+            args: ['--scope', 'user', '--memory-level', 'project'],
+            env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+        }),
+        (e) => /--memory-level project is refused at --scope user on the MCP copy route/.test(e.stderr || e.message),
+    );
+});
+
+test('install-scope: --memory-level project at --scope project is never refused on the MCP copy route (I5)', POSIX_ONLY, () =>
+{
+    const { out } = seedRun('install', SELECTION, {
+        args: ['--scope', 'project', '--memory-level', 'project'],
+        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+    });
+    assert.match(out, /memory=project \(/, out);
+});

@@ -224,11 +224,16 @@ function main() {
   if (!event) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
-  // A never-set-up project under a user-scope core has hooks but no copied engine beside them (T16,
-  // R29) - exit silently, like every other fail-open path here, rather than the outer wrapper's
-  // stderr line, which is for a genuine bug in a PRESENT engine.
+  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
+  // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
+  // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
+  // a partial or skewed copy on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false), where
+  // docs.js failed to land beside this file - exit silently for exactly THAT missing-module case,
+  // like every other fail-open path here; a syntax error or any other load failure in a PRESENT
+  // engine is a genuine bug and must surface on stderr, not be swallowed.
   let docs;
-  try { docs = require('./docs.js'); } catch { return; }
+  try { docs = require('./docs.js'); }
+  catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
   // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the

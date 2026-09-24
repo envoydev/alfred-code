@@ -104,10 +104,14 @@ test('install-args: every enum refuses a value outside its set', () =>
     fails(['install', '--memory-level', 'account'], /--memory-level must be/);
 });
 
-test('install-args: the defaults are project scope, and nothing else decided', () =>
+test('install-args: the defaults are nothing decided - scope included (I3)', () =>
 {
     const p = ok(['install']);
-    assert.strictEqual(p.scope, 'project');
+    // I3 (R47): '' means 'not given' here too - alfred-code.js resolves it (project on a plain
+    // install, the stamp's own scope on an update with no stamp line) once it can read the stamp.
+    // Collapsing to 'project' in args.js is the bug this fixes: a later update on a user/local
+    // install would silently fall back to project scope.
+    assert.strictEqual(p.scope, '');
     // '' means 'not given' - a later rule decides, and that is NOT the same as a default
     assert.strictEqual(p.docsVersioning, '');
     assert.strictEqual(p.memoryLevel, '');

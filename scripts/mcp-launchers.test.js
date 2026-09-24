@@ -52,14 +52,18 @@ test('memory-launch: the project settings env is the db, because a plugin entry 
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/chosen/memory.db');
 });
 
-test('memory-launch: settings.local.json is the per-machine override, read after settings.json', () =>
+// I7 (R47, fix round 1): settings.local.json is read BEFORE settings.json, the same order
+// uv-python.js already uses - a local-scope install (T16) writes ALFRED_CODE_MEMORY_DB only to the
+// local file, so reading the shared file first would open the wrong project's database whenever a
+// repo also carries a committed project-scope install.
+test('memory-launch: settings.local.json is the per-machine override, and it WINS over settings.json', () =>
 {
     const { dir } = project('local-db', { local: { ALFRED_CODE_MEMORY_DB: '/tmp/local/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
-    // ... and settings.json WINS when both are present: it is what the install wrote.
+    // ... and stays the winner once settings.json also registers one: local is this machine's own.
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
         JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/tmp/installed/memory.db' } }));
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/installed/memory.db');
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
 });
 
 test('memory-launch: the ACCOUNT settings env answers for a global install', () =>

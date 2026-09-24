@@ -332,27 +332,14 @@ function writeSettings(opts)
     return { written: true, refused: false };
 }
 
-// T16 (R29): the MERGED view of settings.json + settings.local.json, the shape Claude Code itself
-// runs a session with - local extends/overrides the shared file. A `local`-scope run WRITES only
-// the local file (writeSettings' own `file` argument decides that), so a reader that only opened
-// settings.json would see nothing of a local-scope install; this is read-only, for a reader like
-// `selection.readBack` that needs the effective state whichever file it lives in.
-function readMergedSettings(claudeDir)
-{
-    const base = readSettings(path.join(claudeDir, 'settings.json')).data;
-    let local;
-    try { ({ data: local } = readSettings(path.join(claudeDir, 'settings.local.json'))); }
-    catch { local = {}; }
-    if (!local || typeof local !== 'object') local = {};
-    const out = { ...base, ...local };
-    out.env = { ...(base.env || {}), ...(local.env || {}) };
-    out.permissions = { deny: [...new Set([...((base.permissions || {}).deny || []), ...((local.permissions || {}).deny || [])])] };
-    out.enabledMcpjsonServers = [...new Set([...(base.enabledMcpjsonServers || []), ...(local.enabledMcpjsonServers || [])])];
-    out.skillOverrides = { ...(base.skillOverrides || {}), ...(local.skillOverrides || {}) };
-    const hooks = { ...(base.hooks || {}) };
-    for (const [event, entries] of Object.entries(local.hooks || {})) hooks[event] = [...(hooks[event] || []), ...(entries || [])];
-    out.hooks = hooks;
-    return out;
-}
+// T16/R47 (I1): the ONE place that decides which file THIS run's own settings writes go to - a
+// `local`-scope install's stack settings (and, per R47, its `autoMemoryEnabled` switch-off) are
+// machine-personal, so they go to settings.local.json; every other scope keeps the shared file. Every
+// write site names this helper instead of its own ternary, so the three call sites (writeSettings'
+// own target, the memory import gate/switch-off, the --installed-only read-back) cannot drift apart.
+// I2 dropped `readMergedSettings`: a READ-BACK belongs to the file THIS run WRITES, through the
+// fail-soft `readJson` a caller already has - never a merge that could copy a personal
+// settings.local.json entry into the shared settings.json a later write touches.
+const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
 
-module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, readMergedSettings, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

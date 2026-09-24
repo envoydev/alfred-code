@@ -184,9 +184,12 @@ test('no docs folder, garbage stdin, unknown event: silent and exit 0', () => {
   } finally { r.rm(); }
 });
 
-// T16, R29: a never-set-up project under a user-scope core carries the wired hook but no COPIED
-// engine beside it (docs.js is copied, not shipped through the plugin) - the hook must exit
-// silently, never the outer wrapper's stderr line, which is for a bug in a PRESENT engine.
+// M1 (R47, fix round 1): on the plugin route docs.js/memory.js/history.js are all tracked beside
+// this hook in the marketplace clone, so a never-set-up project under a user-scope core never
+// reaches the missing-module case - it is reachable only on the HOOKS COPY ROUTE
+// (ALFRED_CODE_HOOKS_VIA_PLUGIN=false) when docs.js failed to land beside the hook. The catch is
+// narrowed to exactly that MODULE_NOT_FOUND-for-docs.js case; anything else (a syntax error in a
+// PRESENT engine) rethrows to the outer wrapper's stderr line - see the sibling test just below.
 test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   const path = require('node:path');
@@ -202,6 +205,28 @@ test('the engine missing from beside the hook: exit 0, no output, no stderr', ()
     assert.strictEqual(out.status, 0);
     assert.strictEqual(out.stdout, '');
     assert.strictEqual(out.stderr, '');
+  } finally { r.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
+});
+
+// M1 (R47, fix round 1): the narrowed catch swallows ONLY 'docs.js is missing' - a genuine load
+// failure in a PRESENT engine (a syntax error, here) must still surface on stderr through the outer
+// wrapper, never be silently treated as the never-set-up case above.
+test('a syntax error in a PRESENT engine surfaces on stderr, never swallowed as a missing engine', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const path = require('node:path');
+  const os = require('node:os');
+  const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-broken-'));
+  try {
+    const { HOOKS } = require('./docs-fixture');
+    fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(lone, 'docs-session.js'));
+    fs.writeFileSync(path.join(lone, 'docs.js'), 'const x = ;\n');
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(lone, 'docs-session.js')], {
+      cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root },
+    });
+    assert.strictEqual(out.stdout, '');
+    assert.match(out.stderr, /^docs-session: /, 'a genuine load failure must reach the outer wrapper, not be swallowed');
+    assert.doesNotMatch(out.stderr, /Cannot find module/, 'this is a syntax error, never a missing-module one');
   } finally { r.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
 });
 

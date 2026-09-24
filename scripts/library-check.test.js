@@ -221,3 +221,29 @@ test('a 1.x global install not yet migrated is still found through --config-dir'
     assert.match(r.out, /library: clean \(4 copies\)/);
     assert.match(run(f).out, /no library stamp/, 'without --config-dir the project alone has nothing yet');
 });
+
+// I6 (R47, fix round 1): a project-native install (never migrated, its own stamp and skills always
+// in the project) can still be shadowed by an UNRELATED personal account skill of the same name -
+// Claude Code runs personal over project, so --config-dir is checked whether or not it was this
+// run's stamp source.
+test('an account skill of the same name shadows a project library copy - flagged, exit 1 (I6)', () =>
+{
+    const f = fx();
+    fs.mkdirSync(path.join(f.config, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(f.config, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
+    const r = run(f, ['--config-dir', f.config]);
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /shadowed: skill demo - an account copy at .*skills.demo overrides this project's own/);
+    assert.match(r.out, new RegExp(`rm -rf '${path.join(f.config, 'skills', 'demo').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
+});
+
+test('no --config-dir given, or no matching account skill, never reports shadowed', () =>
+{
+    const f = fx();
+    assert.doesNotMatch(run(f).out, /shadowed:/, 'no --config-dir at all');
+    fs.mkdirSync(path.join(f.config, 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(f.config, 'skills', 'unrelated.txt'), 'not a skill dir\n');
+    const r = run(f, ['--config-dir', f.config]);
+    assert.equal(r.code, 0, r.out);
+    assert.doesNotMatch(r.out, /shadowed:/);
+});

@@ -38,6 +38,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { stampFile, LEGACY } = require('./brand.js');
+// Fix round 1: inlined rather than `require('../derive-state.js')` - that module pulls in
+// selection-plugins.js, plugin-placement.js, install/manifest.js, hook-prelude.js and install/
+// plugins.js, a heavy graph for a one-line splitter, and every consumer of stamp.js (library-
+// stamp.js's SessionStart hook included) would have had to ship the whole chain just to get this.
+// Kept identical to derive-state.js's own copy (scripts/derive-state.js:200) - a drift there is a
+// drift here.
+const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
 
 // A playwright engine server belongs to its FAMILY: the always-list names `playwright`, and an
 // install carrying `playwright-firefox` is carrying it.
@@ -174,6 +181,16 @@ function readPicked(file)
     return { skills: list('picked-skills'), agents: list('picked-agents') };
 }
 
+// I3 (R47): the `scope:` line alone - what `update` with no `--scope` resolves against, since the
+// stamp is the only record of what the LAST install actually used (args.js leaves the flag '' rather
+// than default it, exactly like docsVersioning/memoryLevel/sentryAuth already do).
+function readStampScope(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return ''; }
+    return ((/^scope: (.*)$/m.exec(text) || [])[1] || '').trim();
+}
+
 // The library hashes of a stamp - what each copy held when this install wrote it. Null when the
 // stamp has no library lines at all (an older release, the shell twin, no stamp): nothing to
 // compare. A stamp with skills/agents but no `library-rules:` line (a pre-R29 release) still reads
@@ -232,6 +249,14 @@ const readPlaywrightEnabled = (file) => readPlaywright(file, 'playwright-enabled
 // project: the stamp under its OWN (1.x) name, so the existing read-new-else-legacy logic above
 // picks it up unchanged, and the skills tree beside it. The ACCOUNT copies are never touched - other
 // projects on the same machine may still be reading them.
+//
+// C1 (R47): copy only the names THIS STAMP RECORDS - the `library-skills` keys plus the
+// `picked-skills` names (with `@home` stripped) - directories only, never the whole account
+// `skills/` tree. The account dir also holds the user's PERSONAL skills and the claude.ai-synced
+// `synced/` folder (a reserved name), neither of which this project's stamp ever named; a blind
+// `fs.cpSync` of every entry copied those into the repo too, and force-overwrote a project skill of
+// the same name in place. A name the stamp records but the project already has is left alone and
+// logged - the account copy is never allowed to clobber a project file.
 function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = () => {} })
 {
     if (!configDir || !projectRoot) return false;
@@ -243,30 +268,55 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
     fs.mkdirSync(claudeDir, { recursive: true });
     fs.copyFileSync(acctLegacy, path.join(claudeDir, LEGACY.stamp));
 
+    const legacy = readLibrary(acctLegacy) || {};
+    const picked = readPicked(acctLegacy) || { skills: [] };
+    const names = new Set([
+        ...Object.keys(legacy.skills || {}),
+        ...(picked.skills || []).map((e) => splitPick(e).name),
+    ]);
+
     let moved = 0;
+    const shadow = [];
     const acctSkills = path.join(configDir, 'skills');
-    if (fs.existsSync(acctSkills))
+    if (names.size && fs.existsSync(acctSkills))
     {
         const dstSkills = path.join(claudeDir, 'skills');
         fs.mkdirSync(dstSkills, { recursive: true });
-        for (const name of fs.readdirSync(acctSkills))
+        for (const name of names)
         {
             // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
             // name it records is validated before it ever reaches a path join, a copy, or a printed 'rm -rf' -
             // at all three sites that build one from stamp-recorded names (migrateLegacyGlobal below,
             // library-check.js's shadow row, library-stamp.js's session echo). One path segment, the shape the
             // installer itself gives a skill name (lowercase letters, digits, dot, underscore, hyphen, starting
-            // with a letter or digit); never empty, never '.' or '..', no '/' or '\'. The regex alone already
+            // with a letter or digit); never empty, never '.' or '..', no '/' or '\\'. The regex alone already
             // excludes a traversal segment, but the containment check is what actually gates behaviour - a name
             // that passes the shape check is checked AGAIN after joining, so a resolved path landing anywhere
             // but directly inside the skills dir it was joined into is rejected too.
             if (!validSkillName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
-            try { fs.cpSync(path.join(acctSkills, name), path.join(dstSkills, name), { recursive: true }); moved += 1; }
+            const src = path.join(acctSkills, name);
+            let isDir = false;
+            try { isDir = fs.statSync(src).isDirectory(); } catch { isDir = false; }
+            if (!isDir) continue;   // the stamp named it, the account no longer has a folder for it
+            const dst = path.join(dstSkills, name);
+            // Either way - copied now, or already there - the account still holds a same-named
+            // folder, so it still SHADOWS the project's once Claude Code loads this session
+            // (personal over project); both branches record it for the disclosure below.
+            if (fs.existsSync(dst)) { log(`  skill ${name}: already in the project - the account copy was not used`); shadow.push(name); continue; }
+            try { fs.cpSync(src, dst, { recursive: true }); moved += 1; shadow.push(name); }
             catch (err) { note(`the account skill ${name} could not be copied (${err.message})`); }
         }
     }
+    // I6 (R47): the account copies are LEFT IN PLACE, and Claude Code runs a personal skill over a
+    // project one of the same name ('Resolve skills that share a name', code.claude.com/docs/en/skills)
+    // - so every name just migrated is still what actually loads, from the account, until it is
+    // removed by hand. Name the exact command rather than a wholesale `rm -rf` of the account
+    // skills dir, which may hold other, unrelated personal skills.
+    const rmCmd = shadow.length ? `rm -rf ${shadow.map((n) => `'${path.join(acctSkills, n)}'`).join(' ')}` : '';
     log(`  a 1.x global install's stamp and ${moved} skill(s) were moved from ${configDir} into the project - `
-        + 'the account copies stay in place (other projects on this machine may still read them)');
+        + 'the account copies stay in place and OVERRIDE the migrated ones (Claude Code runs a personal skill '
+        + 'over a project one of the same name) - once every project has updated, remove them:'
+        + (rmCmd ? ` ${rmCmd}` : ' (nothing was actually copied - no removal needed)'));
     return true;
 }
 
@@ -280,5 +330,5 @@ function validSkillName(name, skillsDir)
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
+    readPicked, readLibrary, readStampScope, readHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
 };

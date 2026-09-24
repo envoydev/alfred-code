@@ -96,6 +96,38 @@ test('a stamp version that is not a plain release number is silent, never echoed
 // the hook reads it, at project and at account level, and the new name wins when both exist.
 const OLD_STAMP = 'claude-stack.stamp'; // legacy-name
 
+// I6 (R47, fix round 1): an account skill of the same name as a project library copy silently
+// overrides it (Claude Code runs personal over project) - flagged here even when the stamp is
+// current, since library-check.js's own read is on-demand (validate/status) while this line fires
+// every session.
+test('an account skill shadowing a project library copy is flagged, even on a current stamp (I6)', () =>
+{
+    const f = fx({ stampVersion: '1.4.0', stackVersion: '1.4.0' });
+    fs.mkdirSync(path.join(f.config, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(f.config, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
+    const out = JSON.parse(runHook(f));
+    assert.match(out.systemMessage, /an account skill overrides this project's own copy of the same name.*: demo/);
+    assert.match(out.hookSpecificOutput.additionalContext, /demo/);
+});
+
+test('a stale stamp AND a shadowed skill both surface in the one line', () =>
+{
+    const f = fx({ stampVersion: '1.3.0', stackVersion: '1.4.0' });
+    fs.mkdirSync(path.join(f.config, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(f.config, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
+    const out = JSON.parse(runHook(f));
+    assert.match(out.systemMessage, /library copies are from 1\.3\.0, the stack is 1\.4\.0/);
+    assert.match(out.systemMessage, /an account skill overrides this project's own copy of the same name.*: demo/);
+});
+
+test('no account skill of that name, and no stale stamp, is silent', () =>
+{
+    const f = fx({ stampVersion: '1.4.0', stackVersion: '1.4.0' });
+    fs.mkdirSync(path.join(f.config, 'skills'), { recursive: true });
+    fs.writeFileSync(path.join(f.config, 'skills', 'unrelated.txt'), 'not a skill dir\n');
+    assert.equal(runHook(f), '');
+});
+
 test('a 1.x stamp under its old name is read - the project copy, and the account one for a global install', () =>
 {
     const own = JSON.parse(runHook(fx({ stampVersion: '1.3.0', stackVersion: '2.0.0', stampName: OLD_STAMP })));

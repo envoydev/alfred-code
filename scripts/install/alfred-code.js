@@ -99,22 +99,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const configDir = env.CLAUDE_CONFIG_DIR
         || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
     const projectRoot = rt.gitRoot(cwd) || cwd;
-    // T16, R29: args.js already normalised 'global' to 'user', so the flag IS the CLI scope -
-    // project|user|local pass straight through to every `claude plugin` / `claude mcp` call. Only
-    // the plugins (and claude-hud, pinned to user regardless) follow the scope now: the library
-    // copies, the rules, the hook engines, settings.json and the stamp live in the project's
-    // `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the project, and
-    // the docs-root rule is stamped there.
-    const cliScope = args.scope;
+    // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
+    // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
+    // mcp` call. Only the plugins (and claude-hud, pinned to user regardless) follow the scope now:
+    // the library copies, the rules, the hook engines, settings.json and the stamp live in the
+    // project's `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the
+    // project, and the docs-root rule is stamped there.
     const claudeDir = path.join(projectRoot, '.claude');
-    const skillsDir = path.join(projectRoot, '.claude', 'skills');
-    // A 1.x GLOBAL install's stamp and skills sat in the account dir; the first 2.x update copies
-    // both into the project once (idempotent - a project that already has its own stamp is left
-    // alone), so every read below finds them where every scope now keeps them. The account copies
-    // are never removed - other projects on this machine may still be reading them.
-    if (args.action === 'update') stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log });
-    // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
-    const stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
+    let skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');
 
@@ -170,16 +162,54 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (market !== BRAND.marketplace) log(`marketplace: ${market} (the key this install was registered under)`);
         const resolved = source.resolve();
         if (!resolved) return 1;
+
+        // T16/R47 (I4): the migration is a WRITE - it runs for a real `update` only, never on
+        // `--print-plan` (configure.md and validate.md call `update --installed-only --print-plan`
+        // as a run that writes nothing), and only here, inside the try, after the source resolved -
+        // an EACCES from cpSync is caught and reported through `note`, not a raw stack trace.
+        if (args.action === 'update' && !args.printPlan) stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log });
+        // What this run READS of the last install: the new stamp, else a 1.x install's under its old name.
+        let stampFile = stampLayer.stampFiles({ scope: args.scope, configDir, projectRoot }).read;
+        // A --print-plan read never migrates, but a not-yet-migrated 1.x global project should still
+        // report its last-known picks before the user commits to a real `update` - the same
+        // account-dir fallback library-check.js uses for the same reason.
+        if (!stampFile && args.printPlan && configDir)
+        {
+            const legacyAcct = path.join(configDir, LEGACY.stamp);
+            if (fs.existsSync(legacyAcct)) { stampFile = legacyAcct; skillsDir = path.join(configDir, 'skills'); }
+        }
+
+        // I3 (R47): args.js left '' when neither --scope nor SCOPE was given. `update` takes the
+        // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
+        // line maps to `user`, same as the CLI flag does); `install`, or an update with no stamp at
+        // all to read, defaults to `project` - the floor every scope always had.
+        if (!args.scope)
+        {
+            const stamped = args.action === 'update' && stampFile ? stampLayer.readStampScope(stampFile) : '';
+            args.scope = stamped === 'global' ? 'user' : (stamped || 'project');
+        }
+        const cliScope = args.scope;
+
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
 
         const manifest = loadManifest(resolved.dir);
+        const routes = plugins.pluginRoutes(env);
+        // I5 (R47): the MCP COPY route bakes ONE path into the registration
+        // (`claude mcp add -s user -e MCP_MEMORY_SQLITE_PATH=<path>`), so every project of the
+        // account would open THIS project's db - exactly what R29's own refusal used to guard, on
+        // the ONE route the plugin launcher's per-project re-read cannot cover.
+        if (args.memoryLevel === 'project' && args.scope === 'user' && !routes.mcps)
+        {
+            err("error: --memory-level project is refused at --scope user on the MCP copy route (ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
+                + 'the registration bakes one path into every project of the account; use --scope project, drop --memory-level project, or install through the plugin route instead\n');
+            return 1;
+        }
 
         // --- the six lists, narrowed to this project -------------------------------
         let lists = {
             skills: manifest.skills, agents: manifest.agents, rules: manifest.rules,
             hooks: manifest.hooks, plugins: manifest.plugins, mcps: manifest.mcps,
         };
-        const routes = plugins.pluginRoutes(env);
         // The playwright engines the last install INSTALLED, and the ones the user chose to enable (R67) -
         // the stamp's word, never the listing's flag: an engine left off is still installed, and a
         // project-scope flag can read a stale false (S22). Kept on the plugin route only; on the copy
@@ -216,9 +246,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
                 listing, stackListing,
-                // Merged: a local-scope run wrote settings.local.json, never settings.json - the
-                // read-back needs the EFFECTIVE state, whichever file carries it.
-                settings: settings.readMergedSettings(claudeDir),
+                // I2 (R47): read back from the file THIS run WRITES (settingsTarget, I1's helper),
+                // fail-soft - never a merge across settings.json/settings.local.json, which could
+                // read a personal settings.local.json entry as this project's state and write it
+                // straight into the shared file below.
+                settings: readJson(settings.settingsTarget(claudeDir, args.scope)),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
@@ -770,10 +802,12 @@ function installHooksAndRules(ctx)
         wired: ctx.routes.hooks ? null : [...new Set(ctx.lists.hooks.map(hookName))],
         shipped: [...new Set(ctx.manifest.catalogs.hooks.map(hookName))],
     });
-    // T16 (R29): at `local` scope the stack's own settings writes are machine-personal - they go to
-    // settings.local.json, never the shared settings.json; every other scope keeps the shared file.
+    // T16/R47 (I1): at `local` scope the stack's own settings writes are machine-personal - they go
+    // to settings.local.json, never the shared settings.json; every other scope keeps the shared
+    // file. settingsTarget is the one helper every write site names, so this and importMemory's own
+    // target cannot drift apart.
     settings.writeSettings({
-        file: path.join(ctx.claudeDir, ctx.args.scope === 'local' ? 'settings.local.json' : 'settings.json'),
+        file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
         retiredEntries: readRetiredEntries(ctx.source.dir).map((e) => e.name), liveEntries: ctx.liveCarriers || null,
@@ -796,7 +830,10 @@ function installHooksAndRules(ctx)
 
 function importMemory(ctx)
 {
-    const settingsFile = path.join(ctx.projectRoot, '.claude', 'settings.json');
+    // I1 (R47): the switch-off is one of THIS run's own settings writes, so it follows the same
+    // scope target as installHooksAndRules' own write - a local-scope install's `autoMemoryEnabled`
+    // now lands in settings.local.json, never the shared file every teammate reads.
+    const settingsFile = settings.settingsTarget(ctx.claudeDir, ctx.args.scope);
     const gate = memory.importGate({
         projectRoot: ctx.projectRoot, settingsFile,
         mcps: ctx.lists.mcps, rules: ctx.lists.rules,

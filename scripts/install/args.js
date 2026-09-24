@@ -15,7 +15,7 @@
 // overwrite a project's own answer on every update.
 
 const ENUMS = {
-    scope: { values: ['project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
+    scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
     memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
 };
@@ -114,9 +114,14 @@ function parseArgs(argv, env = {})
     if (out.space && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(out.space))
         fail(`--space '${out.space}' must start alphanumeric; chars [A-Za-z0-9._-]`);
 
-    // The flag wins, else the environment, else the default. The two enums are lower-cased so a
-    // non-canonical casing like 'Global' is accepted the same as on the case-insensitive twin.
-    out.scope = lower(out.scope || env.SCOPE || 'project');
+    // I3 (R47): the flag wins, else the environment, else '' - NOT a default of 'project' here, the
+    // same 'an empty string means not given' rule this file's own header states for docsVersioning and
+    // memoryLevel. `update` with neither takes the scope the LAST install actually
+    // used, from the stamp's own `scope:` line (alfred-code.js, once it has read the stamp); an
+    // `install` (nothing to read yet) resolves '' to 'project' right there too. Collapsing to
+    // 'project' HERE, before that stamp read, is exactly the bug this fixes - a later update on a
+    // user/local install silently fell back to project scope.
+    out.scope = lower(out.scope || env.SCOPE || '');
     // 'global' is the 2.x name for the CLI's own 'user' scope - a 1.x command body still passes it,
     // and it is aliased here so nothing downstream ever sees a fourth spelling.
     if (out.scope === 'global') out.scope = 'user';
@@ -126,10 +131,13 @@ function parseArgs(argv, env = {})
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
 
-    // R29 (T16): the memory db path is resolved PER PROJECT by the launcher itself (it reads the
-    // CURRENT project's settings.json/settings.local.json at launch, never a value baked into the
-    // plugin registration) - so `--memory-level project` is safe at every CLI scope, user and local
-    // included, and nothing here refuses it any more.
+    // R29 (T16) / I5 (R47): the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
+    // reads the CURRENT project's settings.json/settings.local.json at launch, never a value baked
+    // into the registration) - so `--memory-level project` is safe at every CLI scope on that route.
+    // The MCP COPY route (ALFRED_CODE_MCPS_VIA_PLUGIN=false) has no such launcher - it bakes ONE path
+    // into `claude mcp add -s user`, which every project of the account would then share - so that
+    // combination is still refused, narrowed to user scope on that one route, in alfred-code.js once
+    // `routes` is known (this file resolves flags, not plugin routes, so it cannot see that yet).
     out.playwrightBrowsers = [];
     if (out.playwrightBrowsersRaw)
     {

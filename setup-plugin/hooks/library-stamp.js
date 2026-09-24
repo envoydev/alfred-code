@@ -41,8 +41,20 @@ function main()
     const n = (v) => String(v).split('.').map((x) => parseInt(x, 10) || 0);
     const [a, b] = [n(stack), n(lib.version)];
     const older = a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : (a[2] || 0) > (b[2] || 0);
-    if (!older) return;
-    const line = `alfred-code: this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents.`;
+    // I6 (R47, fix round 1): a personal skill in the ACCOUNT dir overrides a project library copy of
+    // the same name (Claude Code runs personal over project) - flagged here too, whether or not the
+    // stamp is stale, since library-check.js's own read only runs on demand (validate/status).
+    const shadowed = Object.keys(lib.skills || {}).filter((name) =>
+    {
+        let isDir = false;
+        try { isDir = fs.statSync(path.join(account, 'skills', name)).isDirectory(); } catch { isDir = false; }
+        return isDir;
+    });
+    if (!older && !shadowed.length) return;
+    const parts = [];
+    if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
+    if (shadowed.length) parts.push(`an account skill overrides this project's own copy of the same name (Claude Code runs personal over project): ${shadowed.join(', ')} - remove the account copy once every project has updated`);
+    const line = `alfred-code: ${parts.join('; ')}.`;
     process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));
 }
 

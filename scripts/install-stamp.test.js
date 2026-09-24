@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -422,4 +422,89 @@ test('migrateLegacyGlobal: an account stamp with no skills folder still migrates
     assert.strictEqual(migrateLegacyGlobal({ configDir: acct, projectRoot: p.base }), true);
     assert.ok(fs.existsSync(path.join(p.base, '.claude', OLD_STAMP)));
     assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills')));
+});
+
+// C1 (R47): the migration copies only the names THE STAMP RECORDS - never the whole account
+// skills/ tree, which also holds the user's own personal skills and (per code.claude.com/docs/en/
+// skills) the claude.ai-synced `synced/` folder.
+test('migrateLegacyGlobal (C1): an account personal skill not named in the stamp is never copied', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
+    fs.mkdirSync(path.join(acct, 'skills', 'my-personal-thing'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'my-personal-thing', 'SKILL.md'), '---\nname: my-personal-thing\n---\nprivate\n');
+    fs.mkdirSync(path.join(acct, 'skills', 'synced'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'synced', 'whatever.md'), 'claude.ai-synced content\n');
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\nlibrary-skills: \n');
+    const logs = [];
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
+    assert.strictEqual(moved, true);
+    assert.ok(fs.existsSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md')), 'the stamp-named skill was not copied');
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'my-personal-thing')), 'a personal skill the stamp never named was copied into the project');
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'synced')), 'the claude.ai-synced folder was copied into the project');
+    assert.ok(logs.some((m) => /1 skill\(s\) were moved/.test(m)), logs.join(' | '));
+});
+
+test('migrateLegacyGlobal (C1): a same-named project skill is left byte-identical, and the account copy is not force-copied over it', () =>
+{
+    const p = project();
+    // A project that has its OWN skill file already, but somehow no stamp yet (a partial earlier
+    // run) - the migration must never overwrite it.
+    fs.mkdirSync(path.join(p.base, '.claude', 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'PROJECT VERSION - must survive\n');
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), 'ACCOUNT VERSION - must never land here\n');
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+    const logs = [];
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
+    assert.strictEqual(moved, true);
+    assert.strictEqual(fs.readFileSync(path.join(p.base, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf8'), 'PROJECT VERSION - must survive\n');
+    assert.ok(logs.some((m) => /demo: already in the project/.test(m)), logs.join(' | '));
+});
+
+test('migrateLegacyGlobal (C1): a stamp-named directory the account no longer has is skipped, not crashed on', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    // The stamp names a skill the account skills/ folder does not actually contain any more.
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: ghost\n');
+    const moved = migrateLegacyGlobal({ configDir: acct, projectRoot: p.base });
+    assert.strictEqual(moved, true);
+    assert.ok(!fs.existsSync(path.join(p.base, '.claude', 'skills', 'ghost')));
+});
+
+// I6 (R47): the disclosure names the override risk and the exact removal command for what was
+// actually migrated - never a wholesale wipe of the whole account skills dir.
+test('migrateLegacyGlobal (I6): the log names the override risk and a removal command scoped to the migrated names only', () =>
+{
+    const p = project();
+    const acct = path.join(p.base, 'acct');
+    fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
+    fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\n---\nbody\n');
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+    const logs = [];
+    migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m) });
+    const summary = logs.find((m) => /were moved from/.test(m));
+    assert.ok(summary, logs.join(' | '));
+    assert.match(summary, /OVERRIDE the migrated ones/);
+    assert.match(summary, /rm -rf/);
+    assert.ok(summary.includes(path.join(acct, 'skills', 'demo')), summary);
+});
+
+// I3 (R47): the stamp's own `scope:` line, read back verbatim (the resolution of '' into that value
+// is args.js/alfred-code.js's job, not this reader's).
+test('readStampScope: reads the scope line back, and empty when the file is absent or has none', () =>
+{
+    const p = project();
+    const file = path.join(p.base, '.claude', 'x.stamp');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'sha: abc\nscope: local\nversion: 2.0.0\n');
+    assert.strictEqual(readStampScope(file), 'local');
+    assert.strictEqual(readStampScope(path.join(p.base, 'does-not-exist.stamp')), '');
+    fs.writeFileSync(file, 'sha: abc\nversion: 2.0.0\n');
+    assert.strictEqual(readStampScope(file), '');
 });

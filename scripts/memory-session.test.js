@@ -178,8 +178,12 @@ test('no memory server registered for the project is silent', () => {
   } finally { p.rm(); }
 });
 
-// T16, R29: a never-set-up project under a user-scope core carries the wired hook but no COPIED
-// engine beside it - memory.js is copied, not shipped through the plugin.
+// M1 (R47, fix round 1): on the plugin route memory.js is tracked beside this hook in the
+// marketplace clone, so a never-set-up project under a user-scope core never reaches this case -
+// it is reachable only on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false) when memory.js
+// failed to land beside the hook. Unlike docs-session.js, this hook's own contract is broad
+// fail-open by design (a missing database, a locked file, node:sqlite unavailable - none of it is
+// logged), so a missing engine stays part of that same silent contract; no catch-narrowing here.
 test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
   const p = fixtureProject();
   const lone = tmpDir('memory-lone-');

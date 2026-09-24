@@ -93,7 +93,23 @@ function check({ project, source, configDir })
                 if (up && up !== hash) state = 'behind';
             }
             const row = { kind: kind.slice(0, -1), name, state };
-            if (kind === 'skills') row.mode = local[name] || settings[name] || 'on';
+            if (kind === 'skills')
+            {
+                row.mode = local[name] || settings[name] || 'on';
+                // I6 (R47, fix round 1): Claude Code runs a PERSONAL skill over a project one of the
+                // same name - an account copy of this same skill (left by migrateLegacyGlobal, or
+                // hand-added separately) silently overrides this project's own library copy however
+                // clean everything else above reads. configDir is checked whether or not it was this
+                // run's STAMP source, because the shadow can exist beside an install that was always
+                // project-native too - EXCEPT when dirs.skills already IS configDir/skills (a 1.x
+                // global install not yet migrated): that is the project's own copy, not a shadow.
+                if (configDir && dirs.skills !== path.join(configDir, 'skills'))
+                {
+                    let isDir = false;
+                    try { isDir = fs.statSync(path.join(configDir, 'skills', name)).isDirectory(); } catch { isDir = false; }
+                    if (isDir) row.shadowedByAccount = true;
+                }
+            }
             rows.push(row);
         }
     return { version: stamp.version, sourceVersion, rows, stale: Boolean(sourceVersion && stamp.version && newer(sourceVersion, stamp.version)) };
@@ -104,15 +120,21 @@ function main(argv)
     const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
     const project = path.resolve(arg('--project') || '.');
     const source = arg('--source');
-    const res = check({ project, source: source ? path.resolve(source) : null, configDir: arg('--config-dir') });
+    const configDir = arg('--config-dir');
+    const res = check({ project, source: source ? path.resolve(source) : null, configDir });
     if (!res) { console.log('library: no library stamp - nothing to check'); return 0; }
     const bad = res.rows.filter((r) => r.state !== 'ok');
-    const findings = bad.length + (res.stale ? 1 : 0);
+    const shadowed = res.rows.filter((r) => r.shadowedByAccount);
+    const findings = bad.length + (res.stale ? 1 : 0) + shadowed.length;
     if (argv.includes('--json')) { console.log(JSON.stringify(res)); return findings ? 1 : 0; }
     if (res.stale) console.log(`stale stamp: the project copies are from ${res.version}, the stack is ${res.sourceVersion} - run /alfred-code:update`);
     const say = { drift: 'edited in the project since update wrote it', missing: 'listed in the stamp, absent from the project', behind: 'the running stack ships a newer version' };
     for (const r of bad) console.log(`${r.state}: ${r.kind} ${r.name} - ${say[r.state]}`);
     for (const r of res.rows.filter((row) => row.mode && row.mode !== 'on')) console.log(`switched: skill ${r.name} is '${r.mode}' in skillOverrides`);
+    for (const r of shadowed)
+        console.log(`shadowed: skill ${r.name} - an account copy at ${path.join(configDir, 'skills', r.name)} overrides this project's own `
+            + `(Claude Code runs a personal skill over a project one of the same name) - once every project has updated, `
+            + `remove it: rm -rf '${path.join(configDir, 'skills', r.name)}'`);
     console.log(findings ? `library: ${findings} finding(s) over ${res.rows.length} copies` : `library: clean (${res.rows.length} copies)`);
     return findings ? 1 : 0;
 }
