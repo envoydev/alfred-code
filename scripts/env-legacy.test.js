@@ -99,12 +99,33 @@ test('memory.js level CLI falls back to a settings.json holding only CLAUDE_STAC
 
 test('guard-answer-length.js stands down on CLAUDE_STACK_HOOKS_OFF alone', () =>
 {
-    const out = execFileSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-answer-length.js')], {
-        input: JSON.stringify({}),
+    // A real UserPromptSubmit payload, the one shape this hook actually acts on - an empty `{}`
+    // payload matches none of the hook's `payload.hook_event_name === ...` branches and falls
+    // through to a silent `process.exit(0)` on EVERY path, gated or not, so it would stay green
+    // with the CLAUDE_STACK_ branch (or the whole standDown gate) deleted from the hook entirely.
+    const payload = JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'env-legacy-hooks-off',
+        cwd: os.tmpdir(),
+        prompt: 'does CLAUDE_STACK_HOOKS_OFF alone still stand this hook down',
+    });
+
+    const off = execFileSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-answer-length.js')], {
+        input: payload,
         env: withoutFresh('ALFRED_CODE_HOOKS_OFF', { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' }),
         encoding: 'utf8',
     });
-    assert.equal(out, '');
+    assert.equal(off, '');
+
+    // Positive control, the SAME payload with the gate unset: proves the empty result above is the
+    // switch actually firing, not the hook ignoring a payload it never reads either way.
+    const on = execFileSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-answer-length.js')], {
+        input: payload,
+        env: withoutFresh('ALFRED_CODE_HOOKS_OFF', {}),
+        encoding: 'utf8',
+    });
+    assert.match(on, /"hookEventName":"UserPromptSubmit"/);
+    assert.notEqual(on, '');
 });
 
 // Both launchers fall back to the ACCOUNT settings.json (~/.claude/settings.json by default) when a
