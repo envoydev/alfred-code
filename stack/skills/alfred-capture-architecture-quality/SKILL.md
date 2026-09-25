@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-architecture-quality
-description: "Judges the project's architecture as it stands - a reasoned strengths/weaknesses assessment, tiered and gated, recomputed fresh every run from the structure map, the code and any recorded decisions. Use when the user asks to assess, evaluate or judge the architecture, or asks what its weaknesses, risks or tradeoffs are. Deliberate only, never mid-build; reads the decision log but never writes to it, and keeps no version of its own output - the findings are a cache, not a record. Not for building the map itself, fixing what it finds, code style, or test coverage - the assessment keeps only structural testability blockers, never coverage gaps."
+description: "Judges the project's architecture as it stands - a reasoned strengths/weaknesses assessment, tiered and gated, recomputed fresh every run from the structure map, the code and any recorded decisions. Use when the user asks to assess, evaluate or judge the architecture, or asks what its weaknesses, risks or tradeoffs are. Deliberate only, never mid-build; reads the decision log but never writes to it, and keeps no version of its own output - the findings are a cache, not a record. Not for building the map itself, fixing what it finds, judging the code against its own quality rules (alfred-capture-code-quality), code style, or test coverage - the assessment keeps only structural testability blockers, never coverage gaps."
 ---
 
 # Project Architecture Quality Analyzer - Judge the Architecture (Deliberate)

@@ -112,6 +112,19 @@ test('the seat is a read-only sonnet support seat whose findings each name a fil
     assert.match(b, /Read-only/);
     assert.match(b, /says it covers/, 'loads the convention skills by description');
     assert.match(b, /deterministic scan/, 'an enumerable class pairs the audit with a scan');
+
+    // It judges only what it was handed: a convention skill loads because a handed rule names it,
+    // never because the module happens to hold that file family.
+    assert.match(b, /Judge only the rules the dispatch handed you/);
+    assert.match(b, /only when a handed convention rule names it/);
+    assert.doesNotMatch(b, /for each file family the module holds/, 'no skill loaded by file family alone');
+    // N modules' reports all land in the judging session, so each has a ceiling like the architecture seat's.
+    const report = squash(text.slice(text.indexOf('## Report')));
+    assert.match(report, /the whole report under ~1\.5k tokens/);
+    assert.match(report, /fold by rule/);
+    // The description names where each thing it does not do goes.
+    for (const dest of ['architecture-analyzer', 'test-coverage-analyzer', 'code-style-analyzer'])
+        assert.ok(fm.description.includes(dest), `the seat's description sends its neighbour's work to ${dest}`);
 });
 
 test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and ORIENT -> GATHER -> JUDGE -> RE-GATHER -> WRITE -> REPORT', () =>
@@ -145,6 +158,27 @@ test('the capture writes only quality/CODE-ASSESSMENT.md, fresh every run, and O
     for (const field of ['`References:`', '`Rules:`', '`Decisions:`', '`Findings gate:`', '`Write:`', '`Model:`'])
         assert.ok(b.includes(field), `the REPORT receipt carries ${field}`);
     assert.match(b, /Read `references\/doc-shape\.md` before JUDGE/);
+
+    // GATHER fans out ONE seat PER MODULE, in parallel - judged on the step's body, not its heading.
+    const raw = body(text);
+    const gatherAt = raw.indexOf('### 2. GATHER');
+    const gather = squash(raw.slice(raw.indexOf('\n', gatherAt), raw.indexOf('### 3. JUDGE')));
+    assert.match(gather, /Dispatch code-quality-analyzer per module/, 'one seat per module');
+    assert.match(gather, /in a single message/, 'the module seats go out in parallel');
+    // The decision log is read, never written - the rule stated as the hard rule it is.
+    assert.match(b, /\*\*Reads decisions, never writes them - hard rule\.\*\*/);
+    // No rule source at all: stop, write nothing - a doc judged against nothing reads as clean code.
+    assert.match(b, /\*\*No rule source at all - stop\.\*\*[^*]*writing nothing/);
+    assert.match(b, /No rule source at all - stop\.\*\*[^*]*`alfred-capture-code-style`[^*]*`\/alfred-loop-quality`/, 'and names the two ways to get rules');
+    // A remediation is checked against the OTHER handed rules, or the loop oscillates between them.
+    const judge = squash(raw.slice(raw.indexOf('### 3. JUDGE'), raw.indexOf('### 4. RE-GATHER')));
+    assert.match(judge, /Cross-check every Must-fix remediation against the other rules/);
+    assert.match(judge, /Cross-check[^]*precedence[^]*tiered structural/);
+    // The description names its neighbours with their destinations.
+    for (const dest of ['/alfred-loop-quality', 'alfred-capture-architecture-quality', 'alfred-capture-code-style', '/security-review', 'alfred-task-verify-code'])
+        assert.ok(fm.description.includes(dest), `Not for ... (${dest})`);
+    assert.ok(read('stack/skills/alfred-capture-architecture-quality/SKILL.md').split('\n')[2].includes('(alfred-capture-code-quality)'),
+        'the architecture-quality capture sends code quality to its new neighbour');
 });
 
 test('the doc shape ties every finding to file:line and to the rule it breaks, outside the docs engine', () =>
@@ -160,6 +194,7 @@ test('the doc shape ties every finding to file:line and to the rule it breaks, o
     assert.match(s, /no `watch\.json`/);
     assert.match(s, /Target: ~300 lines/);
     assert.match(s, /As of: <branch>@<short-sha>, <YYYY-MM-DD>/);
+    assert.match(s, /All three absent[^.]*stops[^.]*writes nothing/, 'no rule source at all is a stop, not a clean result');
     // The worked entry is the shape a run copies: a rule, a file:line, a severity, a tier, a remediation.
     const entry = /> \*\*C\d+ - [\s\S]*?\*\*Tier\*\* - (small|substantial|structural)\./.exec(shape);
     assert.ok(entry, 'one worked Must-fix entry');
@@ -268,9 +303,33 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     }
     assert.match(b, /`alfred-capture-code-quality`/, 'ANALYZE runs the capture');
     assert.match(b, /`<docs-path>\/quality\/CODE-ASSESSMENT\.md`/);
-    assert.match(b, /\*\*small\*\*/);
-    assert.match(b, /\*\*substantial\*\*[^]*`alfred-task-verify-plan`[^]*approval on that plan before building/);
-    assert.match(b, /\*\*structural\*\*[^.]*do NOT auto-apply/);
+    // Each tier is judged on its OWN bullet - a match that may span the whole body proves nothing.
+    const raw = body(text);
+    const region = raw.slice(raw.indexOf('\n- **small**'), raw.indexOf('### 3. LOOP or STOP'));
+    const bullets = region.split(/\n- (?=\*\*)/).filter((x) => x.trim());
+    const tier = (name) =>
+    {
+        const t = bullets.find((x) => x.startsWith(`**${name}**`));
+        assert.ok(t, `the ${name} tier has its own bullet`);
+        return squash(t);
+    };
+    const small = tier('small');
+    assert.match(small, /dispatch the matching domain implementer/, 'small goes to a domain implementer, never inline');
+    assert.match(small, /batched into one scoped brief/);
+    const substantial = tier('substantial');
+    let from = -1;
+    for (const step of ['domain solution-designer', '`alfred-task-verify-plan`', "the user's approval on that plan before building", 'domain implementers', 'domain verifier'])
+    {
+        const i = substantial.indexOf(step);
+        assert.ok(i > from, `substantial: '${step}' comes after the step before it`);
+        from = i;
+    }
+    const structural = tier('structural');
+    assert.match(structural, /do NOT auto-apply/);
+    assert.match(structural, /AskUserQuestion/, 'structural is the user\'s call');
+    // Past the trigger the STOP reconcile offers the fresh session before the capture runs again.
+    const stop = squash(raw.slice(raw.indexOf('### 3. LOOP or STOP')));
+    assert.match(stop, /reconcile ONCE[^]*When this session is already past the fresh-session trigger, the same fresh-session choice above applies before the capture runs/);
     for (const v of ['SATISFIED', 'PLATEAU', 'CAPPED', 'BLOCKED']) assert.ok(b.includes(`**${v}**`), `verdict ${v}`);
     assert.match(b, /Hard cap: 3 improve rounds/);
     assert.match(b, /references\/anti-gaming-sweep\.md/, 'the never-weaken sweep survives the rework');
@@ -288,6 +347,72 @@ test('the loop runs the capture each round and routes its findings by tier', () 
     // The starter set still ships, so a project without a loops folder is seeded as before.
     for (const f of ['fix-discipline.md', 'structure.md', 'code-quality.md', 'naming.md', 'logging.md', 'comments.md'])
         assert.ok(exists(`${LOOP}/references/${f}`), `starter prompt ${f}`);
+});
+
+// The fresh-session guard's roster, read the way lint 29 reads it.
+function orchestration()
+{
+    const m = /^const ORCHESTRATION = \/(.*)\/([a-z]*);$/m.exec(read('stack/hooks/guard-fresh-session-start.js'));
+    assert.ok(m, 'the hook carries its ORCHESTRATION line');
+    return new RegExp(m[1], m[2]);
+}
+
+test('every skill the inventory calls orchestration is on the fresh-session guard\'s roster', () =>
+{
+    const inventory = read('stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js');
+    const set = /const MODEL_INVOCABLE_BY_DESIGN = new Set\(\[([^\]]*)\]\)/.exec(inventory);
+    assert.ok(set, 'the inventory names its model-invocable orchestration skills');
+    const names = [...set[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    assert.ok(names.includes('alfred-capture-code-quality'));
+    const roster = orchestration();
+    for (const name of names)
+        assert.match(name, roster, `${name} is orchestration in the inventory, so the guard gates it too`);
+});
+
+test('a code-quality capture started past the fresh-session trigger is offered a fresh session first', () =>
+{
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cq-fresh-'));
+    try
+    {
+        const env = { ...process.env };
+        for (const k of Object.keys(env)) if (/^(ALFRED_CODE_|CLAUDE_STACK_)/.test(k)) delete env[k]; // legacy-name
+        delete env.CLAUDE_DOCS_PATH;
+        for (const [k, dir] of [['CLAUDE_CONFIG_DIR', 'acct'], ['CLAUDE_PROJECT_DIR', 'root'], ['ALFRED_CODE_HOOK_LOG_DIR', 'log']])
+        {
+            env[k] = path.join(tmp, dir);
+            fs.mkdirSync(env[k]);
+        }
+        // 450k proves the 1M tier and sits past its 400k trigger; 50k is under every trigger.
+        const transcript = (name, ctx) =>
+        {
+            const p = path.join(tmp, `${name}.jsonl`);
+            const row = (id, usage) => ({ type: 'assistant', message: { id, content: [{ type: 'text', text: 'ok' }], usage } });
+            fs.writeFileSync(p, [row(`${name}-floor`, { cache_creation_input_tokens: 20000 }), row(name, { cache_read_input_tokens: ctx })].map((r) => JSON.stringify(r)).join('\n') + '\n');
+            return p;
+        };
+        const call = (skill, tp) => spawnSync(process.execPath, [path.join(ROOT, 'stack', 'hooks', 'guard-fresh-session-start.js')],
+            { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, transcript_path: tp }), encoding: 'utf8', env });
+        const hot = call('alfred-code:alfred-capture-code-quality', transcript('hot-code', 450000));
+        assert.strictEqual(hot.status, 2, 'blocked past the trigger');
+        assert.match(hot.stderr, /^Blocked: alfred-code:alfred-capture-code-quality/);
+        assert.match(squash(hot.stderr), /ONE AskUserQuestion: start it in a fresh session \(recommended/);
+        assert.strictEqual(call('alfred-capture-code-quality', transcript('hot-bare', 450000)).status, 2, 'the bare name too');
+        assert.strictEqual(call('alfred-code:alfred-capture-architecture-quality', transcript('hot-arch', 450000)).status, 2, 'and its architecture twin');
+        assert.strictEqual(call('alfred-code:alfred-capture-code-quality', transcript('cold', 50000)).status, 0, 'under the trigger it runs');
+    }
+    finally
+    {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+});
+
+test('the CLAUDE.md seat counts match the agents on disk', () =>
+{
+    const n = fs.readdirSync(path.join(ROOT, 'stack', 'agents')).filter((f) => f.endsWith('.md')).length;
+    const doc = read('CLAUDE.md');
+    assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
+    assert.match(doc, new RegExp(`twins of all ${n}\\b`));
+    assert.match(doc, new RegExp(`every other seat of the ${n} is a library copy`));
 });
 
 test('the shared-rules registry pins the new homes of the loop and capture rules', () =>

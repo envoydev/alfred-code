@@ -38,7 +38,8 @@ never from recall, and never from a reference the project did not install:
 **Precedence.** The project's own record wins a disagreement: its decision log and CLAUDE.md choices
 first, then the loops prompts, then `CODE-STYLE.md`, then a house convention skill. A lower source's rule
 that a higher one contradicts is not a finding. No `loops/` folder, or none holding a stage prompt, drops
-source 1 - the report says so, and sources 2 and 3 are judged alone.
+source 1 - the report says so, and sources 2 and 3 are judged alone. All three absent: the run stops
+before GATHER and writes nothing - a doc judged against no rule would read as clean code.
 
 ## The findings gate - pass all four questions or it is not a finding
 
