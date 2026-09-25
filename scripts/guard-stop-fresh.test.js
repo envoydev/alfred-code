@@ -362,12 +362,14 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   fs.writeFileSync(path.join(ledger, 'conf.jsonl'), stale);
   assert.match(stopAnswer().stderr, /Re-send the SAME answer/, "an earlier turn's block is not this turn's");
 
-  // Only a BLOCK yields. The contract also logs rows that block nothing - the red-run injection and
+  // Only a BLOCK yields. The contract also logs rows that block nothing - the two method probes and
   // the skip at a tool-ended turn - and the A/B's after arm lost its verification line when a fresh
-  // injection row read as a block: the model was told to obey a block it never received.
+  // log row read as a block: the model was told to obey a block it never received. The done-gate
+  // probe is a Stop row written in this very turn, the closest shape to a real block.
   const now = new Date().toISOString();
   for (const row of [
-    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'inject', kind: 'root-cause', reason: 'inject: a red npm test run' },
+    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause', reason: 'probe: a red npm test run' },
+    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate', reason: 'probe: a done claim, unrun - logged, not held' },
     { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call' },
   ]) {
     fs.writeFileSync(path.join(ledger, 'conf.jsonl'), JSON.stringify(row) + '\n');

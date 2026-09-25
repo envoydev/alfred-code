@@ -133,14 +133,15 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
 });
 
 test('corpus-replay: a shell call\'s RESULT is replayed on the PostToolUse routes, red ones on the failure route', () => {
-  // The root-cause pointer is judged on the result, not the call: without the result the harness would
-  // hand the hook nothing to read, and the route would read silent for the harness's reason.
+  // The root-cause probe is judged on the result, not the call: without the result the harness would
+  // hand the hook nothing to read, and the route would read silent for the harness's reason. The route
+  // is log-only, so it fires when its probe row lands in the job's own session ledger.
   const use = (id, command) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
   const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
   const dir = corpus([use('a', 'npm test'), res('a', 'Exit code 1\nnot ok 1 - cart', true), use('b', 'ls'), res('b', 'README.md'), use('c', 'npm test | tail -3'), res('c', 'ℹ pass 3\nℹ fail 0')]);
   const { out } = run(dir, '--hook', 'guard-stop-contract.js::PostToolUse');
-  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUseFailure'), /\| 1 \| 1 \|/, 'the red npm test injects');
-  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls inject nothing');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUseFailure'), /\| 1 \| 1 \|/, 'the red npm test writes its probe row');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls log nothing');
 });
 
 test('corpus-replay: the result rides where the hook reads it, and only a shell call gets a PostToolUse payload', () => {

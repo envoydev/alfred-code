@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-root-cause
-description: "Use when any bug, failing test, build error or unexpected behavior needs its root cause found before any fix. Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence, which is the gated diagnose flow's job."
+description: "Use when anything fails and its cause is not yet proven, BEFORE the first fix is written - a red test, a build or compile error, a stack trace, an exception, a crash, a flaky or intermittent failure, a regression, wrong output, 'it worked yesterday' - and again when a fix did not hold. The debugging method that proves the cause before any change is made to fix it. Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job."
 ---
 
 # Root cause - one hypothesis, one change, then the fix

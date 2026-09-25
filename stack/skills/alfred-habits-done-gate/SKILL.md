@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-done-gate
-description: "Use before saying your own change is done, fixed, passing, works or ready. Not for reviewing someone else's change, which is a code review's job, or for the commit itself, which the commit checkpoint owns."
+description: "Use before saying your own change is done, fixed, passing, working, ready, resolved, all green or 'should work now' - the moment after the last edit of a feature, bug fix, refactor or config change, and before the close, a task ticked DONE, a plan stamped Completed or a commit. The verification gate for your own work, including the honest close when nothing can run here (a project with no tests, an instruction against running them). Not for reviewing someone else's change, which is a code review's job, or the commit itself, which the commit checkpoint owns."
 ---
 
 # Done gate - the run after the last edit is the evidence

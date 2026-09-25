@@ -702,6 +702,153 @@ test('hook-blocks: every log-only row (any mode) is counted apart from the block
   assert.ok(!hookBlocks.byHook['guard-stop-contract.js'], 'a skip row is not a stop-contract block');
 });
 
+// The done gate and the root-cause trigger are LOG-ONLY probes (2026-09-25): guard-stop-contract.js
+// writes where each skill was needed, and the analyzer counts what the session did about it.
+const tool = (id, name, input, ts) => ({
+  type: 'assistant', timestamp: ts || '2026-07-15T07:00:00.000Z',
+  message: { id: `m-${id}`, model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content: [{ type: 'tool_use', id, name, input }] },
+});
+const doneRow = (detail) => line({ ts: '2026-07-15T07:00:05.000Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate',
+  reason: 'probe: a done claim - logged, not held', detail: { claim: 'Fixed', file: 'src/a.js', run: null, skill: false, tests: 'declared', rule: null, outcome: 'unrun', ...detail } });
+const redRow = (id, extra) => line({ ts: '2026-07-15T07:00:01.000Z', hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause',
+  reason: 'probe: a red npm test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
+
+test('hook-blocks: done-gate probe rows split into ran, and unrun by rule, no tests, skill loaded and missed', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    doneRow({ outcome: 'ran', run: 'npm test' }),
+    doneRow({ rule: 'CLAUDE.md: - Do not run the tests: they need the staging database.' }),
+    doneRow({ rule: 'AGENTS.md: Tests must not be run by the agent.', tests: 'none-found' }),
+    doneRow({ tests: 'none-found' }),
+    doneRow({ skill: true }),
+    doneRow({}),
+    doneRow({ run: 'npm test' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.doneGate, { claims: 7, ran: 1, unrun: 6, byRule: 2, noTests: 1, skillLoaded: 1, inContext: 0, missed: 2 },
+    'exclusive buckets, a rule first, then no tests, then a loaded skill, then one loaded earlier');
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /DONE GATE \(probe\): 7 done claim\(s\) over an edit - 1 ran after the edit, 6 unrun: 2 excused by a rule, 1 with no tests found, 1 with the skill loaded, 0 with it loaded earlier, 2 MISSED/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| done gate \| 7 \| 1 \| 2 \| 1 \| 1 \| 0 \| 2 \|/);
+});
+
+test('hook-blocks: a root-cause probe is resolved against the transcript after the red run', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1\nnot ok 1', is_error: true };
+  // main: an edit before the load (after-fix), then a second streak with the skill already in context
+  const file = fixture(dir, [
+    tool('t1', 'Bash', { command: 'npm test' }), result('t1', red),
+    tool('t2', 'Edit', { file_path: 'src/a.js', old_string: 'a', new_string: 'b' }), result('t2'),
+    tool('t3', 'Skill', { skill: 'alfred-habits-root-cause' }), result('t3'),
+    tool('t4', 'Bash', { command: 'dotnet build' }), result('t4', red),
+    tool('t5', 'Edit', { file_path: 'src/b.cs', old_string: 'a', new_string: 'b' }), result('t5'),
+  ]);
+  const sub = path.join(dir, 'session', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  const agent = (name, records) => fs.writeFileSync(path.join(sub, `agent-${name}.jsonl`), records.map(line).join(''));
+  // a shell fix with no load: missed
+  agent('a1', [tool('s1', 'Bash', { command: 'npm test' }), result('s1', red), tool('s2', 'Bash', { command: "sed -i 's/x/y/' src/b.js" }), result('s2')]);
+  // a prose edit and a read, then nothing: no fix followed
+  agent('a2', [tool('u1', 'Bash', { command: 'npm test' }), result('u1', red), tool('u2', 'Edit', { file_path: 'README.md', old_string: 'a', new_string: 'b' }), result('u2'),
+    tool('u3', 'Read', { file_path: 'src/a.js' }), result('u3')]);
+  // a seat whose definition preloads the skill
+  agent('a3', [tool('v1', 'Bash', { command: 'dotnet test' }), result('v1', red), tool('v2', 'Edit', { file_path: 'src/c.cs', old_string: 'a', new_string: 'b' }), result('v2')]);
+  // the skill loaded before the fix
+  agent('a4', [tool('x1', 'Bash', { command: 'npm test' }), result('x1', red), tool('x2', 'Skill', { skill: 'alfred-code:alfred-habits-root-cause' }), result('x2'),
+    tool('x3', 'Edit', { file_path: 'src/d.js', old_string: 'a', new_string: 'b' }), result('x3')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    redRow('t1'), redRow('t4'), redRow('s1', { agent: 'a1' }), redRow('u1', { agent: 'a2' }),
+    redRow('v1', { agent: 'a3', agent_type: 'alfred-code:dotnet-test-failure-resolver' }), redRow('x1', { agent: 'a4' }), redRow('nope'),
+  ].join(''));
+  // a scratch write under /tmp is no fix: the red run with only that after it had no fix
+  agent('a5', [tool('y1', 'Bash', { command: 'npm test' }), result('y1', red), tool('y2', 'Write', { file_path: '/tmp/probe.js', content: '1' }), result('y2')]);
+  fs.appendFileSync(path.join(blocks, 'session.jsonl'), redRow('y1', { agent: 'a5' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1 });
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
+});
+
+test('hook-blocks: a fix is judged against the session\'s own cwd - inside it counts wherever it lives, outside it is scratch', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1', is_error: true };
+  const proj = path.join('/private/tmp', 'proj-under-tmp');
+  const at = (r) => ({ ...r, cwd: proj });
+  const file = fixture(dir, [
+    at(tool('a1', 'Bash', { command: 'npm test' })), at(result('a1', red)),
+    at(tool('a2', 'Write', { file_path: path.join(os.homedir(), 'elsewhere', 'probe.js'), content: '1' })), at(result('a2')),
+    at(tool('a3', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('a3')),
+    at(tool('a4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('a4')),
+  ]);
+  const sub = path.join(dir, 'session', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, 'agent-b.jsonl'), [at(tool('b1', 'Bash', { command: 'npm test' })), at(result('b1', red)),
+    at(tool('b2', 'Edit', { file_path: path.join(proj, 'src', 'b.js'), old_string: 'a', new_string: 'b' })), at(result('b2'))].map(line).join(''));
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), redRow('a1') + redRow('b1', { agent: 'b' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rootCause.beforeFix, 1, 'a write outside the cwd is scratch, so the load came before the fix');
+  assert.strictEqual(hookBlocks.rootCause.missed, 1, 'a project file under /private/tmp is still the fix');
+});
+
+// Review I7: a done-gate skill loaded in an EARLIER turn is in context, not a trigger that failed.
+test('hook-blocks: an unrun claim whose session loaded the done-gate skill earlier is counted in context, not missed', () => {
+  const dir = tmp();
+  const file = fixture(dir, [tool('k1', 'Skill', { skill: 'alfred-code:alfred-habits-done-gate' }, '2026-07-15T06:00:00.000Z'), result('k1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), doneRow({}) + line({ ...JSON.parse(doneRow({})), ts: '2026-07-15T05:00:00.000Z' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.doneGate.inContext, 1, 'the claim after the load');
+  assert.strictEqual(hookBlocks.doneGate.missed, 1, 'the claim before it');
+});
+
+// Review I5: a write the shell aims elsewhere through a cd or a variable, a denied edit, and a failed
+// Skill call change nothing - none of them is a fix or a load.
+test('hook-blocks: a shell write outside the cwd through a cd or a variable, a denied edit and a failed load are neither fix nor load', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1', is_error: true };
+  const proj = path.join(os.homedir(), 'proj-x');
+  const at = (r) => ({ ...r, cwd: proj });
+  const file = fixture(dir, [
+    at(tool('c1', 'Bash', { command: 'npm test' })), at(result('c1', red)),
+    at(tool('c2', 'Bash', { command: "cd /tmp/x && cat > p.js <<'EOF'\n1\nEOF" })), at(result('c2')),
+    at(tool('c3', 'Bash', { command: 'echo 1 > "$TMPDIR/p.js"' })), at(result('c3')),
+    at(tool('c4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('c4', { content: 'Edit operation blocked by hook', is_error: true })),
+    at(tool('c5', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('c5', { content: 'Unknown skill', is_error: true })),
+  ]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), redRow('c1'));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rootCause.noFix, 1, JSON.stringify(hookBlocks.rootCause));
+});
+
+test('hook-blocks: directory mode sums the probe rows of each session it reads, and no one else\'s', () => {
+  const dir = tmp();
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  for (const [sid, rows] of [['s-one', [doneRow({}), doneRow({ outcome: 'ran' })]], ['s-two', [doneRow({ tests: 'none-found' })]]]) {
+    fs.writeFileSync(path.join(dir, `${sid}.jsonl`), [bash('t1', 'echo'), result('t1')].map(line).join(''));
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), rows.join(''));
+  }
+  fs.writeFileSync(path.join(blocks, 's-other.jsonl'), doneRow({}));
+  const out = run([dir, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(out.probes.doneGate, { claims: 3, ran: 1, unrun: 2, byRule: 0, noTests: 1, skillLoaded: 0, inContext: 0, missed: 1 });
+  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+  const text = execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /DONE GATE \(probe\): 3 done claim\(s\)/);
+  assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');
+});
+
 // ---------- the efficiency scorecard ----------
 // Each row is a measured practice with a denominator; these pin the classifiers on synthetic
 // transcripts so a regex drift cannot silently move a rate the observation week is read from.

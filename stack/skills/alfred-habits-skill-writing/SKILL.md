@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-skill-writing
-description: "Use when writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference. Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's CLAUDE.md, which its instruction-file tooling owns."
+description: "Use when writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - when a skill does not fire, fires on the wrong request or is ignored after it loads, or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference. The skill-authoring method, from the trigger to the proof that the skill changes a run. Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's CLAUDE.md, which its instruction-file tooling owns."
 ---
 
 # Skill writing - a trigger that fires, a body that changes the run, proof on both sides

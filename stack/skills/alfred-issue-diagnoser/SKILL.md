@@ -106,10 +106,10 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    `Gathered:`, then stop - put 'continue to root cause?' through the AskUserQuestion tool per
    'The stop contract' above (the stop hook already enforces the call; measured: one run skipped
    this checkpoint and ran GATHER straight into ROOT CAUSE as a single 36-call stretch).
-3. **ROOT CAUSE** - run the investigation through the hypothesis-and-test method
-   (`alfred-habits-root-cause` - hypotheses first, each one confirmed or killed against the
-   code): form the
-   fewest hypotheses the evidence supports, then
+3. **ROOT CAUSE** - the FIRST action of this step is the `alfred-habits-root-cause` Skill call,
+   before the first hypothesis (skip it only when that skill is already in context): its
+   hypothesis-and-test loop runs the whole step - hypotheses first, each one confirmed or killed
+   against the code. Form the fewest hypotheses the evidence supports, then
    confirm or kill each against the located code and the reproduction - root cause before
    symptom, never a plausible guess. Match the evidence to the catalogue's signature and isolate
    where the signature points, which is almost never the line that threw. **Hard cap: 2

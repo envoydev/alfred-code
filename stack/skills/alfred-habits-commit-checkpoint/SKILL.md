@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-commit-checkpoint
-description: "Use before any non-trivial git commit, git push or gh pr merge: the pre-commit checkpoint (formatter, code review, security review on sensitive paths) and the COMMIT-GATE / PUSH-GATE receipts the commit guard reads. Triggers on commit this, ready to commit, push it, open the PR, or that hook's denial."
+description: "Use before any non-trivial git commit, git push or gh pr merge - 'commit this', 'ready to commit', 'push it', 'open the PR', 'merge it' - or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt. The pre-commit checkpoint (formatter, code review, the security review on auth, secret, crypto, payment and data-access paths) and the receipts the commit guard reads. Not for the done gate before it, which proves the change works, or the commit message's shape, which the git baseline owns."
 ---
 
 # Commit checkpoint - the gate before a commit or a publish

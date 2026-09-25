@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-plan-writing
-description: "Use when writing, stamping or reading an implementation plan file: the header lines, the task card, the status marks a build adds, the Decisions ledger, the resume line, and what a plan never carries. Not for the design itself - that is alfred-task-design."
+description: "Use when writing, stamping, resuming or reading an implementation plan file under the docs root's superpowers/plans folder - after a design is settled and before the build starts, and whenever a review, build or close marks the plan. The plan file's shape: the header lines, the task card, the status marks a build adds, the Gated and Approved lines, the Decisions ledger, the Completed stamp, and what a plan never carries. Not for the design itself - that is alfred-task-design."
 ---
 
 # Plan writing - the file a design hands to the build

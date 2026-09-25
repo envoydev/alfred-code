@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-clarify
-description: "Use before designing against an ambiguous feature, change or greenfield ask - a requirement that can be read more than one way. Not for how to build it: an implementation choice is decided, stated inline and recorded in the plan, which is the plan-writing habit's job."
+description: "Use before designing, planning or dispatching work on a feature, change or greenfield ask that can be read more than one way - an unclear scope, user, success criterion or constraint, 'make it better', 'add support for X', a vague bug report, or a brief a seat returned as NEEDS_CONTEXT. The requirements check that settles, through AskUserQuestion, which reading the user means before any design. Not for how to build it: an implementation choice (library, structure, naming, placement) is decided, stated inline and recorded in the plan, which is the plan-writing habit's job."
 ---
 
 # Clarify - one reading of the ask before any design

@@ -2226,7 +2226,12 @@ function readBlockLedger(target, sessionId) {
       if (!o || !o.hook) continue;
       // A row carrying a `mode` is a MEASUREMENT, not a block: the fork-liveness probe and the stop
       // hook's tool-ended skip both log and deny nothing.
-      if (o.mode) { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1; continue; }
+      if (o.mode) {
+        out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1;
+        if (o.mode === 'probe' && o.kind === 'done-gate' && o.detail) (out.doneGateRows || (out.doneGateRows = [])).push({ ...o.detail, ts: o.ts || null });
+        if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
+        continue;
+      }
       out.rows += 1;
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
@@ -2250,6 +2255,169 @@ function readBlockLedger(target, sessionId) {
   }
 
   return out;
+}
+
+// ---------- the two method-skill probes (log-only since 2026-09-25) ----------
+// guard-stop-contract.js writes where `alfred-habits-done-gate` and `alfred-habits-root-cause` were
+// NEEDED, and never holds or injects: the misses are counted here instead. A done-gate row is a claim
+// over a turn's source edit; its unrun rows split EXCLUSIVELY by the user's two named exceptions
+// first - a rule against running tests, a project with no tests found - then by whether the skill was
+// loaded that turn, then by whether the session loaded it in an EARLIER turn (the main transcript's
+// successful Skill calls, before the row). The rest are the misses.
+const newDoneGate = () => ({ claims: 0, ran: 0, unrun: 0, byRule: 0, noTests: 0, skillLoaded: 0, inContext: 0, missed: 0 });
+function tallyDoneGate(t, d, loadedBefore) {
+  t.claims += 1;
+  if (d.outcome === 'ran') { t.ran += 1; return; }
+  t.unrun += 1;
+  if (d.rule) t.byRule += 1;
+  else if (d.tests === 'none-found') t.noTests += 1;
+  else if (d.skill) t.skillLoaded += 1;
+  else if (loadedBefore(d.ts)) t.inContext += 1;
+  else t.missed += 1;
+}
+const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
+const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over an edit - ${t.ran} ran after the edit, ${t.unrun} unrun: `
+  + `${t.byRule} excused by a rule, ${t.noTests} with no tests found, ${t.skillLoaded} with the skill loaded, ${t.inContext} with it loaded earlier, ${t.missed} MISSED`;
+
+// A root-cause row is the first red build or test run of a streak. The ledger cannot know what came
+// next, so the transcript answers it: the run's tool_use_id is found in the session's own transcripts
+// (the main one and every subagent's), and what follows it in that actor's file decides - the skill
+// loaded before the next fix, or already in context (loaded earlier in the same file, or preloaded by
+// the seat's own definition), or loaded only after a fix, or a fix with no load at all (MISSED), or
+// no fix after the red run. A fix is a file-tool edit or a shell write to a non-prose file inside the
+// session's own cwd (the row's `cwd`; a relative path is inside it, resolved through the command's own
+// `cd`s) - a write anywhere else is scratch, and a target behind a variable is not judged. A row with no
+// cwd falls back to reading a temp-dir path as scratch. A call whose result is an error - a denied edit,
+// a failed Skill load - changed nothing and loaded nothing.
+const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+const ROOT_CAUSE_SKILL_RE = /(?:^|:)alfred-habits-root-cause$/;
+const FIX_EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const FIX_SKIP_RE = /\.(?:md|mdx|markdown|txt|rst|adoc|log|out|err|tmp|bak)$|(?:^|[\\/])\.claude[\\/]/i;
+const TEMP_PATH_RE = /^\/(?:tmp|dev|private\/tmp)\//;
+function fixPath(f, cwd) {
+  if (typeof f !== 'string' || !f || FIX_SKIP_RE.test(f) || f.startsWith('/dev/')) return false;
+  if (!path.isAbsolute(f)) return true;
+  if (!cwd) return !TEMP_PATH_RE.test(f);
+  const rel = path.relative(cwd, f);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+const FIX_SHELL_WHAT_RE = /^(?:an in-place edit|an interpreter write|a shell redirection|a `tee` write|a copy\/move destination)$/;
+let shellWritesLib;
+function shellWrites() {
+  if (shellWritesLib === undefined) {
+    try { shellWritesLib = require(path.join(__dirname, '..', 'stack', 'hooks', 'shell-writes.js')); } catch { shellWritesLib = null; }
+  }
+  return shellWritesLib;
+}
+function isFix(name, input, cwd) {
+  if (FIX_EDIT_TOOL_RE.test(name)) return fixPath(input.file_path || input.notebook_path, cwd);
+  const sw = shellWrites();
+  if (!/^(?:Bash|PowerShell)$/.test(name) || !sw) return false;
+  try {
+    const scan = sw.scanShell(String(input.command || ''));
+    return scan.targets.some((t) => {
+      if (!FIX_SHELL_WHAT_RE.test(t.what)) return false;
+      const raw = scan.expandVars ? scan.expandVars(String(t.raw || '')) : String(t.raw || '');
+      if (sw.isVar(raw) || /[$`]/.test(raw) || raw.startsWith('~')) return false;
+      if (path.isAbsolute(raw)) return fixPath(raw, cwd);
+      // With a known cwd, no anchor means a cd it cannot follow - never guess; with none, no cd at all.
+      const base = sw.anchorAt(scan.cds, t.index, cwd || null);
+      if (base) return fixPath(path.resolve(base, raw), cwd);
+      return cwd ? false : fixPath(raw, cwd);
+    });
+  } catch { return false; }
+}
+// The main transcript and its subagents' - the layout analyzeSubagents reads.
+function sessionTranscriptFiles(sessionFile) {
+  const files = [sessionFile];
+  let dir = path.join(sessionFile.replace(/\.jsonl$/, ''), 'subagents');
+  if (!fs.existsSync(dir)) dir = path.join(path.dirname(sessionFile), 'subagents');
+  const walk = (d, depth) => {
+    let names = [];
+    try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of names) {
+      if (e.isDirectory()) { if (depth < 2) walk(path.join(d, e.name), depth + 1); } else if (e.name.endsWith('.jsonl')) files.push(path.join(d, e.name));
+    }
+  };
+  walk(dir, 0);
+  return files;
+}
+function toolSequence(file) {
+  const seq = [];
+  const failed = new Set();
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return seq; }
+  for (const l of text.split('\n')) {
+    if (!l.includes('"tool_use"') && !l.includes('"tool_result"')) continue;
+    let o;
+    try { o = JSON.parse(l); } catch { continue; }
+    const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const b of c) {
+      if (b && b.type === 'tool_use' && o.type === 'assistant')
+        seq.push({ id: b.id, name: String(b.name || ''), input: b.input || {}, cwd: typeof o.cwd === 'string' ? o.cwd : null, ts: o.timestamp || null });
+      else if (b && b.type === 'tool_result' && b.is_error === true) failed.add(b.tool_use_id);
+    }
+  }
+  for (const st of seq) st.error = failed.has(st.id);
+  return seq;
+}
+const preloadCache = new Map();
+function seatPreloads(agentType) {
+  const name = String(agentType || '').replace(/^.*:/, '');
+  if (!name) return false;
+  if (!preloadCache.has(name)) {
+    let hit = false;
+    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(process.cwd(), '.claude', 'agents', `${name}.md`)]) {
+      try {
+        const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+        const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';
+        if (skills.split('\n').some((l) => ROOT_CAUSE_SKILL_RE.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
+      } catch { /* not this home */ }
+    }
+    preloadCache.set(name, hit);
+  }
+  return preloadCache.get(name);
+}
+function resolveRootCause(details, files) {
+  const t = newRootCause();
+  if (!details || !details.length) return t;
+  const seqs = files.map(toolSequence);
+  const isLoad = (st) => !st.error && st.name === 'Skill' && ROOT_CAUSE_SKILL_RE.test(String(st.input.skill || ''));
+  for (const d of details) {
+    t.streaks += 1;
+    let seq = null;
+    let at = -1;
+    for (const sq of seqs) { at = d.tool_use_id ? sq.findIndex((st) => st.id === d.tool_use_id) : -1; if (at >= 0) { seq = sq; break; } }
+    if (!seq) { t.unmatched += 1; continue; }
+    if (seq.slice(0, at).some(isLoad)) { t.inContext += 1; continue; }
+    if (seatPreloads(d.agent_type)) { t.preloaded += 1; continue; }
+    const rest = seq.slice(at + 1);
+    const load = rest.findIndex(isLoad);
+    const fix = rest.findIndex((st) => !st.error && isFix(st.name, st.input, st.cwd));
+    if (load >= 0 && (fix < 0 || load < fix)) t.beforeFix += 1;
+    else if (fix >= 0) { if (load >= 0) t.afterFix += 1; else t.missed += 1; }
+    else t.noFix += 1;
+  }
+  return t;
+}
+const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
+  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`;
+// Resolves a session's probe rows in place; the raw rows never reach a report.
+function finishProbes(ledger, sessionFile) {
+  if (ledger && ledger.doneGateRows) {
+    // The done-gate probe is a main-session Stop row, so the main transcript holds any earlier load.
+    const loads = toolSequence(sessionFile).filter((st) => !st.error && st.name === 'Skill' && DONE_GATE_SKILL_RE.test(String(st.input.skill || '')))
+      .map((st) => Date.parse(st.ts)).filter((n) => !Number.isNaN(n));
+    const loadedBefore = (ts) => { const at = Date.parse(ts); return !Number.isNaN(at) && loads.some((n) => n < at); };
+    ledger.doneGate = newDoneGate();
+    for (const d of ledger.doneGateRows) tallyDoneGate(ledger.doneGate, d, loadedBefore);
+    delete ledger.doneGateRows;
+  }
+  if (ledger && ledger.rootCauseRows) {
+    ledger.rootCause = resolveRootCause(ledger.rootCauseRows, sessionTranscriptFiles(sessionFile));
+    delete ledger.rootCauseRows;
+  }
+  return ledger;
 }
 
 // The transcript names the TOOL a denial hit and, when the harness prints the bracket, the hook
@@ -2667,6 +2835,8 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     }
     console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
+  if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
+  if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
   if (blockLedger && blockLedger.probes) console.log('\nPROBES ' + blockLedger.probes + ' row(s), log-only - denied nothing: ' + Object.entries(blockLedger.probeKinds).map(([k, n]) => k + ' x' + n).join(', ') + ' (a probe row is a measurement of how often the gate WOULD fire; judge its rate before it becomes a denial)');
 
   if (main.spikes.length) {
@@ -2977,6 +3147,15 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
+  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause)) {
+    out.push('## Skill probes - log-only (where a method skill was needed, and what the session did)', '');
+    const dg = blockLedger.doneGate;
+    if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
+      `| done gate | ${dg.claims} | ${dg.ran} | ${dg.byRule} | ${dg.noTests} | ${dg.skillLoaded} | ${dg.inContext} | ${dg.missed} |`, '');
+    const rc = blockLedger.rootCause;
+    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched |', '|---|---|---|---|---|---|---|---|---|',
+      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} |`, '');
+  }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
   out.push('## Efficiency verdict - FILL IN', '');
@@ -3180,7 +3359,13 @@ async function runAnalysis() {
     // different things and one project's inventory would report the rest's names as unused.
     const acc = newInventoryUse(loadPlugins(pluginsFile));
     const rollupJson = { sessions: [] };
+    // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
+    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause() } : null;
     for (const f of files) {
+      if (probeSum) {
+        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
+        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n];
+      }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
       addSessionUse(acc, s, agents, inventoryDir);
@@ -3203,10 +3388,12 @@ async function runAnalysis() {
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse }, null, 2)); return; }
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse, ...(probeSum ? { probes: probeSum } : {}) }, null, 2)); return; }
     console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)} ${rpad('', 8)} ${rpad(grandCorr.total ? `${grandCorr.saved}/${grandCorr.total}` : '-', 10)}`);
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
+    if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
+    if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
@@ -3218,7 +3405,7 @@ async function runAnalysis() {
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = readBlockLedger(blockDir, path.basename(target, '.jsonl'));
+  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl')), target);
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);

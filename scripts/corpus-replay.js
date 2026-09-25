@@ -30,7 +30,8 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // ---------------------------------------------------------------------------
 // The wiring. This is the SAME table the installers write into settings.json -
 // keep it in step with meta/stack-manifest.json's `hooks` list, which is the
-// source of truth. `deny` marks a route whose verdict is exit 2; the rest are
+// source of truth. `deny` marks a route whose verdict is exit 2; `probe` a LOG-ONLY route, which fires
+// when it wrote its own `mode: probe` row of that kind to the hook-blocks ledger; the rest are
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
 const ROUTES = [
@@ -47,9 +48,10 @@ const ROUTES = [
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
   // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -
-  // in the field the once-per-streak latch lowers it.
-  { hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', deny: false },
-  { hook: 'guard-stop-contract.js', event: 'PostToolUse', deny: false },
+  // in the field the once-per-streak latch lowers it. Log-only since 2026-09-25: a red run writes a
+  // `root-cause` probe row and injects nothing.
+  { hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', deny: false, probe: 'root-cause' },
+  { hook: 'guard-stop-contract.js', event: 'PostToolUse', deny: false, probe: 'root-cause' },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
   // harness sends when that agent finished.
@@ -217,7 +219,7 @@ function extract(files, opts) {
             const key = routeId(r) + '|' + sha(JSON.stringify([use.name, use.input, text.slice(-512), cwd]));
             const payload = { hook_event_name: event, session_id: `replay-${sha(key).slice(0, 12)}`, tool_name: use.name, tool_input: use.input || {}, cwd,
               ...(event === 'PostToolUseFailure' ? { error: text.slice(0, 4096) } : { tool_response: { stdout: text.slice(-4096), stderr: '', interrupted: false } }) };
-            if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, payload, cwd });
+            if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, probe: r.probe, payload, cwd });
           }
         }
       }
@@ -316,9 +318,16 @@ function runOne(job, scratch) {
     child.on('error', () => resolve({ ...job, status: -1, fired: false, error: 'spawn' }));
     child.on('close', (status) => {
       if (prefixPath) { try { fs.unlinkSync(prefixPath); } catch {} }
-      // A deny route fires on exit 2. An injection route fires when it actually emitted
-      // additionalContext - a silent exit 0 is the hook deciding there was nothing to say.
-      const fired = job.deny ? status === 2 : /additionalContext/.test(out);
+      // A deny route fires on exit 2. A probe route fires when its row landed in the job's own
+      // session ledger. An injection route fires when it actually emitted additionalContext - a
+      // silent exit 0 is the hook deciding there was nothing to say.
+      const probed = () => {
+        try {
+          return fs.readFileSync(path.join(scratch, 'docs', 'hook-blocks', `${payload.session_id}.jsonl`), 'utf8').split('\n')
+            .some((l) => { try { const o = JSON.parse(l); return o.mode === 'probe' && o.kind === job.probe; } catch { return false; } });
+        } catch { return false; }
+      };
+      const fired = job.deny ? status === 2 : job.probe ? probed() : /additionalContext/.test(out);
       resolve({ key: job.key, route: job.route, status, fired, error: status !== 0 && status !== 2 ? err.slice(0, 200) : '' });
     });
     child.stdin.end(JSON.stringify(payload));

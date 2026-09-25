@@ -16,12 +16,13 @@
 //   or resume fresh. It fires only after the work is done (never mid-response, which is what the
 //   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
 //   one - so a long session is asked once per real cost step, not once per question.
-//   It also carries the DONE GATE: a close claiming the change done / fixed / passing / works / ready
-//   while a source edit (a file tool's, or a shell write read through shell-writes.js) landed after
-//   the turn's last run is held once per turn, naming `alfred-habits-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
-// PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: INJECTION ONLY - a red build or test run
-//   points at `alfred-habits-root-cause` once per failure streak; the streak ends when every command that
-//   ran red in it has run green again, or after an hour with no red run.
+//   It also carries the DONE-GATE PROBE, log-only: a close claiming the change done / fixed / passing /
+//   works / ready over a turn with a source edit (a file tool's, or a shell write read through
+//   shell-writes.js) writes one row per turn - `unrun` when the edit landed after the turn's last run
+//   (ALFRED_CODE_DONE_GATE=0 off).
+// PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: LOG-ONLY - a red build or test run writes one
+//   probe row per failure streak (where `alfred-habits-root-cause` was needed); the streak ends when every
+//   command that ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
@@ -102,7 +103,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 // the command: `grep -rn "npm test" docs` is a search. The KIND names the runner; the KEY is the run
 // as typed, less its wrappers and redirections - `npm test` piped to `tail` is the same run as
 // `npm test`, and `npm test -- -t cart` is a scoped run of it. This list is NARROW on purpose: a
-// runner it misses costs the root-cause pointer nothing. The done gate asks a wider question below.
+// runner it misses costs the root-cause probe one row. The done gate asks a wider question below.
 const SHELL_TOOL_RE = /^(?:Bash|PowerShell)$/;
 const RUNNERS = [
   [/^(jest|vitest|mocha|ava|karma|pytest|tsc|playwright\s+test|cypress\s+run)(?=\s|$)/, (m) => m[1].replace(/\s+/g, ' ')],
@@ -133,18 +134,33 @@ function buildTestRun(command) {
 }
 const buildTestKind = (command) => (buildTestRun(command) || {}).kind || null;
 
-// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run -> alfred-habits-root-cause -----
-// The fix that follows a red run is where a guess lands, and the method that stops it only ever sat
-// in a baseline line the session had to remember. A build or test command that FAILED injects the
-// pointer once per failure streak; the next green run of the same kind resets that streak. A piped run
-// (`npm test | tail`) exits 0 whatever the tests did, so a green exit is read for the runner's own red
-// summary too. Injection only, never a block; one `mode: inject` ledger row per injection, so the
-// rate is measurable. The streak is per session and per actor - a subagent's red run is its own -
-// and ONE per actor: a second spelling of the failing suite (`npm test`, then `npx vitest run`), or
-// another red run inside the same stretch, says nothing the first pointer did not. Each red run's KEY
-// stays open until that run is green again (an unscoped green also closes its scoped runs; a scoped
-// green never closes the full suite), and the pointer comes back only once no key is open. A key
-// with no red run for an hour lapses, so a suite the session stopped running never mutes it for good.
+// One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a
+// probe and never as a block. Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
+}
+
+// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run, measured ---------------------
+// The fix that follows a red run is where a guess lands - where `alfred-habits-root-cause` is NEEDED.
+// LOG-ONLY since 2026-09-25 (the user's ruling: rely on the skill's description and the flows that
+// load it, and count the misses): a build or test command that FAILED writes one `mode: probe` row per
+// failure streak and says nothing to the model. The row carries the run's `tool_use_id` and actor, so
+// `analyze-usage.js --hook-blocks` reads the transcript after it - the skill loaded before the next
+// fix, after it, or never. A piped run (`npm test | tail`) exits 0 whatever the tests did, so a green
+// exit is read for the runner's own red summary too. The streak is per session and per actor - a
+// subagent's red run is its own - and ONE per actor: a second spelling of the failing suite (`npm
+// test`, then `npx vitest run`), or another red run inside the same stretch, is the same need. Each
+// red run's KEY stays open until that run is green again (an unscoped green also closes its scoped
+// runs; a scoped green never closes the full suite), and a new row comes only once no key is open. A
+// key with no red run for an hour lapses, so a suite the session stopped running never mutes it.
 const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]|\berror\[E\d{4}\]|\berror: could not compile\b/;
 // The Angular CLI's own verdict is a bare `Error:` line - too common in a passing run's logs to read
 // as red for any other runner.
@@ -180,24 +196,11 @@ if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'Po
     process.exit(0);
   }
   save({ ...Object.fromEntries(open.map((k) => [k, streaks[k]])), [runOf.key]: new Date(now).toISOString() });
-  if (open.length) process.exit(0); // said once already in this streak
-  try {
-    const path = require('path');
-    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
-      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name, tool: payload.tool_name,
-      mode: 'inject', kind: 'root-cause', reason: `inject: a red ${kind} run - alfred-habits-root-cause before the next fix`,
-    }) + '\n');
-  } catch { /* a log row never changes the injection */ }
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: {
-    hookEventName: payload.hook_event_name,
-    additionalContext: `The \`${kind}\` run failed - load \`alfred-habits-root-cause\` (the Skill tool) before the next fix, `
-      + 'and run its loop: the whole failure read and quoted, a repro, the cause localized and proven by one '
-      + 'hypothesis per change, then one fix at the root. Said once per failure streak - it ends when every build or test run '
-      + 'that failed in it has run green again.',
-  } }));
+  if (open.length) process.exit(0); // logged once already in this streak
+  ledgerRow({
+    mode: 'probe', kind: 'root-cause', reason: `probe: a red ${kind} run - logged, nothing injected`,
+    detail: { run: kind, key: runOf.key, tool_use_id: payload.tool_use_id || null, agent: payload.agent_id || null, agent_type: payload.agent_type || null },
+  });
   process.exit(0);
 }
 
@@ -622,10 +625,11 @@ if (payload.hook_event_name === 'SubagentStop') {
   process.exit(2);
 }
 
-// --- Stop: the done gate - a done claim over an edit nothing ran after ------------------------------
-// 'Fixed' typed over a change nothing ran is the claim `alfred-habits-done-gate` exists to stop, and a
-// baseline line alone never stopped it. The close is held ONCE per turn when it claims the change done,
-// fixed, passing, works or ready while a source edit landed after the turn's last run - or none ran.
+// --- Stop: the done-gate probe - a done claim over a turn's source edit, measured ---------------------
+// 'Fixed' typed over a change nothing ran is the claim `alfred-habits-done-gate` exists to stop. LOG-ONLY
+// since 2026-09-25: a close claiming the change done, fixed, passing, works or ready over a turn with a
+// source edit writes one probe row per turn - `unrun` when the edit landed after the turn's last run, or
+// none ran - and the analyzer counts the misses; it never holds the close.
 // The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger', 'the done gate', a
 // second-person 'when you're ready' and a colour ('the header is green') pass, and a sentence saying
 // it did not run disarms itself - only the skill's own 'not run - <why>' result line (a dash or colon
@@ -638,10 +642,11 @@ if (payload.hook_event_name === 'SubagentStop') {
 // ignores (one `git check-ignore`, at a Stop that holds a claim over edits past the last run), and a
 // path this turn created and then deleted - the scratch the quality-gates baseline says to delete.
 // A RUN is wider than the root-cause list above,
-// because here a miss holds an honest close: any shell command that is not a read, a write, git or a
+// because here a miss counts an honest close as unrun: any shell command that is not a read, a write, git or a
 // package install counts, and so does a dispatched agent (its own runs are in its own transcript).
 // A run's own output file is no edit. A call a hook denied before it ran counts as neither.
 const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
 // git's own bookkeeping, never a build input: setup's git-hygiene write lands here (B-M5)
@@ -834,6 +839,7 @@ function turnWork() {
   let at = 0;
   const edits = []; // { at, rel, file, make, del, mkdir }, in order
   let lastRun = null;
+  let skill = false;
   for (const o of turn) {
     const c = o.type === 'assistant' && Array.isArray(o.message.content) ? o.message.content : [];
     for (const blk of c) {
@@ -842,7 +848,9 @@ function turnWork() {
       const res = results.get(blk.id);
       const input = blk.input || {};
       const name = String(blk.name);
-      if (EDIT_TOOL_RE.test(name)) {
+      if (name === 'Skill') {
+        if (res && !res.error && DONE_GATE_SKILL_RE.test(String(input.skill || ''))) skill = true;
+      } else if (EDIT_TOOL_RE.test(name)) {
         const file = input.file_path || input.notebook_path;
         const rel = res && !res.error ? sourceEdit(file) : null;
         if (rel) edits.push({ at, rel, file: path.resolve(root, file), make: name === 'Write' });
@@ -877,7 +885,59 @@ function turnWork() {
   const left = since.filter((e) => !ignored.has(e));
   const lastEdit = left.length ? left[left.length - 1] : null;
   const first = b >= 0 ? rows[b] : null;
-  return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun };
+  return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun,
+    lastKept: kept.length ? kept[kept.length - 1] : null, skill };
+}
+
+// What the analyzer splits an unrun claim by - the user's two named exceptions. Both read the disk
+// only when a row is written, at most once per turn.
+// Does the project declare tests at all: a package.json test script other than npm init's
+// placeholder, a runner config or a pytest config at the root, a Go module or a Cargo crate (their
+// toolchain's test runner is always there), a test folder at the root or under src/, and a .NET test
+// project or a test file (`*_test.go`, `*.test.*`, `*.spec.*`) up to two folders down.
+const TEST_DIR_RE = /^(?:tests?|specs?|__tests__)$/i;
+const TEST_CONFIG_RE = /^(?:(?:vitest|jest|playwright|cypress)\.config\.[cm]?[jt]s|karma\.conf\.[cm]?js|pytest\.ini|conftest\.py|tox\.ini|go\.mod|Cargo\.toml)$/i;
+const TEST_FILE_RE = /test[\w.]*\.csproj$|_test\.go$|\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+function testsDeclared(root) {
+  const path = require('path');
+  try {
+    const t = ((JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) || {}).scripts || {}).test;
+    if (typeof t === 'string' && t.trim() && !/no test specified/i.test(t)) return 'declared';
+  } catch { /* no package.json, or not JSON */ }
+  const list = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } };
+  const walkable = (d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules';
+  const top = list(root);
+  if (top.some((d) => d.isFile() && (TEST_CONFIG_RE.test(d.name) || TEST_FILE_RE.test(d.name)))) return 'declared';
+  if ([...top, ...list(path.join(root, 'src'))].some((d) => d.isDirectory() && TEST_DIR_RE.test(d.name))) return 'declared';
+  for (const d of top.filter(walkable)) {
+    const inner = list(path.join(root, d.name));
+    if (inner.some((e) => e.isFile() && TEST_FILE_RE.test(e.name))) return 'declared';
+    for (const e of inner.filter(walkable))
+      if (list(path.join(root, d.name, e.name)).some((f) => f.isFile() && TEST_FILE_RE.test(f.name))) return 'declared';
+  }
+  return 'none-found';
+}
+// Does an instruction file forbid running tests: the project's CLAUDE.md, CLAUDE.local.md, AGENTS.md,
+// .claude/CLAUDE.md and .claude/rules/*.md, then the account CLAUDE.md. The first matching line, named
+// with its file. A line about HOW or WHEN to run them - which tests, how often, in which mode - is no
+// rule against running them ('never run the full suite while iterating'), and the account file is read
+// for every project, so one such line there would excuse every claim everywhere.
+const NO_TEST_RULE_RE = /\b(?:do not|don['\u2019]?t|never|must not|should not|avoid)\b[^.\n]{0,40}\b(?:run|execut|launch)\w*\b[^.\n]{0,30}\btests?\b|\btests?\b[^.\n]{0,30}\b(?:must not|should not|are not to|cannot|can['\u2019]t) be (?:run|executed)\b/i;
+const TEST_RULE_QUALIFIER_RE = /\b(?:full|whole|entire|all the|every|each|watch|while|until|before|after|only|again|twice|more than|in parallel)\b/i;
+function noTestRule(root) {
+  const path = require('path');
+  const files = ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', path.join('.claude', 'CLAUDE.md')].map((f) => path.join(root, f));
+  try {
+    for (const f of fs.readdirSync(path.join(root, '.claude', 'rules')).sort()) if (f.endsWith('.md')) files.push(path.join(root, '.claude', 'rules', f));
+  } catch { /* no rules folder */ }
+  files.push(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude'), 'CLAUDE.md'));
+  for (const f of files) {
+    let text;
+    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const line = text.split('\n').find((l) => NO_TEST_RULE_RE.test(l) && !TEST_RULE_QUALIFIER_RE.test(l));
+    if (line) return `${path.basename(f)}: ${line.trim().slice(0, 160)}`;
+  }
+  return null;
 }
 
 if (payload.hook_event_name === 'Stop') {
@@ -895,21 +955,7 @@ if (payload.hook_event_name === 'Stop') {
     if (hasToolUse) {
       // The turn ended on a tool call, not prose - nothing to judge. LOGGED, never denied: how often a
       // Stop lands here is the number that says whether this early exit hides closes it should read.
-      try {
-        const path = require('path');
-        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
-        fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
-          ts: new Date().toISOString(),
-          hook: path.basename(__filename),
-          event: payload.hook_event_name || '',
-          tool: '',
-          mode: 'skip-tool-end',
-          kind: 'tool-ended-turn',
-          reason: 'skip: the turn ended on a tool call - logged, not judged',
-        }) + '\n');
-      } catch { /* a log row never changes the verdict and never throws */ }
+      ledgerRow({ tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call - logged, not judged' });
       process.exit(0);
     }
     text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
@@ -951,6 +997,28 @@ if (payload.hook_event_name === 'Stop') {
     && !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail))
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
     && !NOTHING_PENDING_RE.test(tail);
+  // The done-gate PROBE, log-only since 2026-09-25 (the user's ruling: rely on the skill's description
+  // and the flows that load it, and count the misses). A claim over a turn with a source edit writes
+  // one row per turn - `unrun` when the last edit came after the last run (or none ran), `ran` when a
+  // run followed it - and never holds the close. It runs BEFORE every branch that can hold: a held
+  // close's continuation arrives with stop_hook_active, so a probe placed after one never ran.
+  // Everything it reads sits inside one try, so nothing it does can skip the branches below.
+  try {
+    const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+    const work = claim ? turnWork() : null;
+    const outcome = !work ? null : work.lastEdit ? 'unrun' : work.lastKept && work.lastRun ? 'ran' : null;
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const probed = outcome && `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-donegate-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.probed`;
+    if (probed && !fs.existsSync(probed)) {
+      try { fs.writeFileSync(probed, new Date().toISOString()); } catch { /* a lost marker logs the turn twice at most */ }
+      const root = require('path').resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
+      ledgerRow({
+        tool: '', mode: 'probe', kind: 'done-gate', reason: `probe: a done claim, ${outcome} - logged, not held`,
+        detail: { claim, file: (work.lastEdit || work.lastKept).rel, outcome, run: work.lastRun ? work.lastRun.kind : null,
+          skill: work.skill, tests: testsDeclared(root), rule: noTestRule(root) },
+      });
+    }
+  } catch { /* an unreadable turn is no proof of an edit - no row, and the branches below still run */ }
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
@@ -971,29 +1039,6 @@ if (payload.hook_event_name === 'Stop') {
       'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
-  }
-  // The done gate outranks the ask branches below: a claim over an unrun edit is wrong whatever the
-  // turn asks next, and the continuation it causes is the run that settles the claim.
-  const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
-  const work = claim ? (() => { try { return turnWork(); } catch { return null; } })() : null; // unreadable = no proof of an edit
-  if (work && work.lastEdit && (!work.lastRun || work.lastRun.at < work.lastEdit.at)) {
-    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
-    const held = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-donegate-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.held`;
-    if (!fs.existsSync(held)) {
-      try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
-      blockDetail('done-gate', `${claim} | ${work.lastEdit.rel}`);
-      const when = work.lastRun
-        ? `was edited after the last build or test run in this turn (\`${work.lastRun.kind}\`)`
-        : 'was edited in this turn, and no shell command or dispatched agent after it ran anything that could build or test it';
-      process.stderr.write(
-        `This close says '${claim}', but ${work.lastEdit.rel} ${when}, so nothing has checked the\n` +
-        'change as it stands. Load `alfred-habits-done-gate` (the Skill tool) and run its gate now: the build and\n' +
-        'the tests that cover the change, after the last edit, the result quoted. If they cannot run here,\n' +
-        "say 'not run - <why>' in place of the claim. Held once per turn; ALFRED_CODE_DONE_GATE=0 in the\n" +
-        'settings.json env turns it off.\n',
-      );
-      process.exit(2);
-    }
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.

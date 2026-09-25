@@ -96,14 +96,18 @@ change (see the invariants below).
     chained `git add` takes in; at most 2MB): a conflict marker, a debugger, a focused test or a
     credential-shaped literal blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
-  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`,
-    `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`;
+    LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off).
-    Done gate: a done claim over a source edit (file tool or shell write) nothing ran after is held ONCE
-    per turn, naming `alfred-habits-done-gate` (`ALFRED_CODE_DONE_GATE=0` off); a red build or test run
-    injects `alfred-habits-root-cause` once per failure streak (one per actor).
+    Two LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load
+    them, and the misses are counted, never held or injected): a done claim over a turn's source edit
+    (file tool or shell write) writes one `done-gate` row per turn - `unrun` when nothing ran after the edit,
+    with the skill load, the project's test markers and any instruction line against running tests
+    (`ALFRED_CODE_DONE_GATE=0` off) - and the first red build or test run of a streak writes one
+    `root-cause` row (one streak per actor) that `analyze-usage.js --hook-blocks` resolves against the
+    transcript: the skill loaded before the next fix, in context, after it, or MISSED.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
@@ -545,7 +549,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (114,453 on 2026-09-25: pathless rules 36,725, agent descriptions 29,148, skill descriptions 48,580). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (116,260 on 2026-09-25: pathless rules 36,725, agent descriptions 29,148, skill descriptions 50,387 - the habits descriptions spelled out when to load each, +1,807). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
