@@ -209,4 +209,54 @@ function removeDropped({ drop = [], dirs, shipped, log = () => {} })
     }
 }
 
-module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, DOCS_ROOT_DEFAULT };
+// The copied hooks are CommonJS, and a project whose own package.json says `"type": "module"` makes
+// Node load every `.js` under it as ESM - `.claude/hooks/` included: the engines crash on `require`,
+// and a copied guard dies with exit 1, which Claude Code treats as a non-blocking error, so the call
+// it exists to stop runs (reproduced: `rm -rf ~` through a copied rm guard). A package.json of exactly
+// `{"type":"commonjs"}` beside the copies scopes that folder back. It is the stack's file only while
+// it says exactly that: a package.json the user wrote there is never overwritten, only named; one of
+// the user's own `.js` hooks written as ESM would break under the marker, so it is named and the marker
+// is not written; and once no stack copy is left in the folder, the stack's marker goes with them.
+const COMMONJS_MARKER = '{ "type": "commonjs" }\n';
+const isCommonJsMarker = (text) =>
+{
+    try { const j = JSON.parse(text); return !!j && typeof j === 'object' && Object.keys(j).length === 1 && j.type === 'commonjs'; }
+    catch { return false; }
+};
+function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} })
+{
+    const file = path.join(dir, 'package.json');
+    let have = null;
+    try { have = fs.readFileSync(file, 'utf8'); } catch { have = null; }
+    const ours = have !== null && isCommonJsMarker(have);
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { names = []; }
+    const stack = new Set(stackFiles);
+    if (!names.some((f) => f.endsWith('.js') && stack.has(f)))
+    {
+        if (ours) { fs.rmSync(file, { force: true }); log('  hooks marker removed: package.json (no stack copy left beside it)'); }
+        return ours ? 'pruned' : 'none';
+    }
+    if (ours) return 'current';
+    if (have !== null)
+    {
+        note(`.claude/hooks/package.json is the project's own and is left as it is - the stack's copies there are CommonJS, so they fail if it says "type": "module"`);
+        return 'user';
+    }
+    const esmOwn = names.filter((f) => f.endsWith('.js') && !stack.has(f)).filter((f) =>
+    {
+        try { return /^\s*(?:import\s[\s\S]*?\sfrom\s|import\s*['"]|export\s)/m.test(fs.readFileSync(path.join(dir, f), 'utf8')); }
+        catch { return false; }
+    });
+    if (esmOwn.length)
+    {
+        note(`.claude/hooks holds your own ES-module hook(s) (${esmOwn.join(', ')}), so no CommonJS marker is written there - in a "type": "module" project the stack's copies beside them fail to load until those are renamed to .mjs`);
+        return 'user-esm';
+    }
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, COMMONJS_MARKER);
+    log('  hooks marker written -> package.json (the copies load as CommonJS whatever the project\'s own type)');
+    return 'written';
+}
+
+module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };

@@ -1108,6 +1108,8 @@ function installHooksAndRules(ctx)
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
         destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, render: copyRender(ctx, 'hook'), log: ctx.log, note: ctx.note,
     });
+    // The copies are CommonJS; a `"type": "module"` project would load them as ESM (copy.commonJsScope).
+    copy.commonJsScope({ dir: path.join(ctx.claudeDir, 'hooks'), stackFiles: catalogHooks.concat(HOOK_ENGINES, HOOK_MODULES), log: ctx.log, note: ctx.note });
     // N7: a copy error throws, so here every hook copy has landed - the copies are the record now, and
     // the line says so before the settings write below blanks the stored list on the full copy route. A
     // 'plugin' line over stack copies then only ever means a copy run that died part way (m8).

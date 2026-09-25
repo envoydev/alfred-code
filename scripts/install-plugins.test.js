@@ -1458,12 +1458,58 @@ test('seed: on the plugin route the copied engines still run, with no copy-route
         });
         return { files: fs.readdirSync(path.join(repo, '.claude', 'hooks')).sort(), runs };
     } });
-    assert.deepStrictEqual(result.files, ['docs.js', 'history.js', 'memory.js', 'model-windows.json'], 'only the engines and the window table');
+    assert.deepStrictEqual(result.files, ['docs.js', 'history.js', 'memory.js', 'model-windows.json', 'package.json'], 'only the engines, the window table and the CommonJS marker');
     for (const run of result.runs)
     {
         assert.strictEqual(run.status, 0, `${run.file}: ${run.stderr}`);
         assert.ok(!/Cannot find module/.test(run.stderr), `${run.file}: ${run.stderr}`);
     }
+});
+
+// A project whose own package.json says `"type": "module"` makes Node load every `.js` under it as
+// ESM - `.claude/hooks/` included - and the hooks are CommonJS: the copied engines crashed on `require`,
+// and on the copy route a copied guard died with exit 1, which Claude Code treats as a non-blocking
+// error, so `rm -rf ~` ran (reproduced on 6855900). A `{"type":"commonjs"}` package.json beside the
+// copies scopes them back; a user's own package.json there is theirs and is never overwritten.
+test('seed: the copied hooks run as CommonJS in a "type": "module" project, on both routes', POSIX_ONLY, () =>
+{
+    const { spawnSync } = require('node:child_process');
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const esm = (repo) => fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'esm-app', type: 'module' }));
+    const inspect = (repo) =>
+    {
+        const work = path.dirname(repo);
+        const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), CLAUDE_PROJECT_DIR: repo };
+        for (const k of ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_STACK_UV_PYTHON', 'CLAUDE_STACK_MEMORY_DB', 'MCP_MEMORY_SQLITE_PATH']) delete env[k]; // legacy-name
+        const hooks = path.join(repo, '.claude', 'hooks');
+        const runs = [['docs.js', 'status'], ['memory.js', 'level', repo], ['history.js', 'rulings']].map(([file, ...argv]) =>
+        {
+            const r = spawnSync(process.execPath, [path.join(hooks, file), ...argv], { cwd: repo, env, encoding: 'utf8' });
+            return { file, status: r.status, stderr: r.stderr };
+        });
+        const rm = fs.existsSync(path.join(hooks, 'guard-catastrophic-rm.js'))
+            ? spawnSync(process.execPath, [path.join(hooks, 'guard-catastrophic-rm.js')], { cwd: repo, env, encoding: 'utf8',
+                input: JSON.stringify({ session_id: 'esm', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf ~' } }) }).status
+            : null;
+        const marker = path.join(hooks, 'package.json');
+        return { runs, rm, marker: fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : null };
+    };
+    const plugin = seedRun('install', 'skill markdown-style\n', { plugins: listing, prepare: esm, inspect }).result;
+    const copyRoute = seedRun('install', 'skill markdown-style\nhook guard-catastrophic-rm\n', { plugins: listing, prepare: esm, inspect,
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' } }).result;
+    for (const [route, r] of [['plugin', plugin], ['copy', copyRoute]])
+    {
+        assert.deepStrictEqual(JSON.parse(r.marker || 'null'), { type: 'commonjs' }, `${route} route: the CommonJS marker is written beside the copies`);
+        for (const run of r.runs) assert.strictEqual(run.status, 0, `${route} route, ${run.file}: ${run.stderr}`);
+    }
+    assert.strictEqual(copyRoute.rm, 2, 'copy route: the copied guard still BLOCKS rm -rf ~ (exit 2, never the fail-open 1)');
+    // the user's own package.json in that folder is theirs: kept byte for byte, and the run says why
+    const own = '{ "type": "module", "private": true }\n';
+    const kept = seedRun('install', 'skill markdown-style\n', { plugins: listing,
+        prepare: (repo) => { esm(repo); fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'package.json'), own); },
+        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'hooks', 'package.json'), 'utf8') });
+    assert.strictEqual(kept.result, own, 'a package.json the user wrote there is never overwritten');
+    assert.match(kept.out, /hooks\/package\.json/, 'and the run names it');
 });
 
 // Ruling R55: a 1.x plugin-route project kept the copy route's prelude from an earlier copy-route
@@ -1802,7 +1848,8 @@ test('seed install on a listing it cannot read: an engine the settings name is u
 // recording `claude` stub listing the core and the three locked servers, dead uvx/npx/npm/curl, and
 // the entry's own `main` (per install-args.test.js's precedent), so a genuine fault can be raised
 // mid-run and caught by main's own outer try/catch exactly as a real crash would be.
-const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+// package.json: the CommonJS marker copy.commonJsScope writes beside every copy, engines included.
+const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json', 'package.json'];
 function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
 {
     const os = require('node:os');

@@ -289,3 +289,51 @@ test('install-copy: at project and user scope the docs root is settings.json\'s 
     assert.strictEqual(resolveDocsRoot(base, 'user'), 'docs/shared');
     assert.strictEqual(resolveDocsRoot(base, 'local'), 'docs/mine');
 });
+
+// A `"type": "module"` project makes Node load every `.js` beneath it as ESM, `.claude/hooks/` included,
+// so the copied CommonJS hooks crash (a guard with exit 1 lets its call through). The marker scopes
+// the folder back - and is the stack's only while it says exactly that.
+test('commonJsScope: marks a folder of stack copies, keeps the user\'s own, prunes its own when the copies leave', () =>
+{
+    const dir = path.join(TMP, `cjs-${++seq}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const stackFiles = ['docs.js', 'memory.js', 'model-windows.json'];
+    const marker = path.join(dir, 'package.json');
+
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'none', 'an empty folder gets no marker');
+    assert.ok(!fs.existsSync(marker));
+
+    fs.writeFileSync(path.join(dir, 'docs.js'), "'use strict';\n");
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'written');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(marker, 'utf8')), { type: 'commonjs' });
+    const before = fs.statSync(marker).mtimeMs;
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'current', 'a re-run leaves the marker as it is');
+    assert.strictEqual(fs.statSync(marker).mtimeMs, before);
+
+    fs.rmSync(path.join(dir, 'docs.js'));
+    fs.writeFileSync(path.join(dir, 'mine.js'), "'use strict';\n");
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'pruned', 'no stack copy left - the marker goes');
+    assert.ok(!fs.existsSync(marker));
+
+    const notes = [];
+    fs.writeFileSync(path.join(dir, 'memory.js'), "'use strict';\n");
+    fs.writeFileSync(marker, '{ "type": "module", "private": true }\n');
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: (m) => notes.push(m) }), 'user');
+    assert.strictEqual(fs.readFileSync(marker, 'utf8'), '{ "type": "module", "private": true }\n', 'the user\'s package.json is never rewritten');
+    assert.match(notes.join('\n'), /hooks\/package\.json/);
+    fs.rmSync(path.join(dir, 'memory.js'));
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'none', 'nor pruned');
+    assert.ok(fs.existsSync(marker));
+
+    fs.rmSync(marker);
+    fs.writeFileSync(path.join(dir, 'memory.js'), "'use strict';\n");
+    fs.writeFileSync(path.join(dir, 'mine.js'), "import fs from 'node:fs';\nexport const x = 1;\n");
+    const esmNotes = [];
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: (m) => esmNotes.push(m) }), 'user-esm', 'a marker would break the user\'s own ES-module hook');
+    assert.ok(!fs.existsSync(marker));
+    assert.match(esmNotes.join('\n'), /mine\.js/);
+
+    fs.writeFileSync(marker, 'not json');
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: () => {} }), 'user', 'an unreadable package.json is the user\'s too');
+    assert.strictEqual(fs.readFileSync(marker, 'utf8'), 'not json');
+});
