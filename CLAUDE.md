@@ -89,7 +89,8 @@ change (see the invariants below).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
     without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
-    or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question.
+    or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question. An
+    `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
   - `guard-ungated-commit.js` (PreToolUse `Bash`) - blocks a non-trivial `git commit` without the
     `<docs-path>/flow/COMMIT-GATE` receipt, and `git push` / `gh pr merge` without `PUSH-GATE`. A dry
     run or a branch level with upstream is never gated; `ALFRED_CODE_PUSH_GATE=0` turns the push half off.
