@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// Three wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
+// Four wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
 // fresh-session construction check (the flow skills' stop contracts) both failed as prose in
 // every audited strengthening - measured across 123 sessions: ~25 sessions ended turns on
 // 'say the word' / 'want me to X?' prose (stalls of 13min-37h, one plaintext-credential
@@ -16,6 +16,11 @@
 //   or resume fresh. It fires only after the work is done (never mid-response, which is what the
 //   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
 //   one - so a long session is asked once per real cost step, not once per question.
+//   It also carries the DONE GATE: a close claiming the change done / fixed / passing / works / ready
+//   while a source edit landed after the turn's last build or test run is held once per turn, naming
+//   `project-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
+// PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: INJECTION ONLY - a red build or test run
+//   points at `project-root-cause` once per failure streak; the next green run of that kind resets it.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
@@ -89,6 +94,95 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
     exit(code);
   };
 })();
+
+// --- build and test runs: one classifier for the two method triggers -----------------------------
+// A command is a build or test run when one of its segments STARTS with a known runner, after env
+// assignments and wrappers (npx, time, env). Quoted strings and heredoc bodies are arguments, never
+// the command: `grep -rn "npm test" docs` is a search. The kind names the streak - `npm test` piped
+// to `tail` is the same run as `npm test`.
+const SHELL_TOOL_RE = /^(?:Bash|PowerShell)$/;
+const RUNNERS = [
+  [/^(jest|vitest|mocha|ava|karma|pytest|tsc|playwright\s+test|cypress\s+run)(?=\s|$)/, (m) => m[1].replace(/\s+/g, ' ')],
+  [/^(npm|pnpm|yarn|bun)\s+(?:run\s+)?(?!lint)(t|test|build|[\w:.-]*(?:test|build|check|typecheck|compile)[\w:.-]*)(?=\s|$)/, (m) => `${m[1]} ${m[2]}`],
+  [/^node\s+(?:--[\w-]+(?:=\S+)?\s+)*--test(?=\s|$)/, () => 'node --test'],
+  [/^(?:python3?|py)\s+-m\s+(pytest|unittest)(?=\s|$)/, (m) => m[1]],
+  [/^dotnet\s+(build|test)(?=\s|$)/, (m) => `dotnet ${m[1]}`],
+  [/^(ng|nx)\s+(build|test)(?=\s|$)/, (m) => `${m[1]} ${m[2]}`],
+  [/^go\s+(build|test|vet)(?=\s|$)/, (m) => `go ${m[1]}`],
+  [/^cargo\s+(build|test|check|clippy|nextest)(?=\s|$)/, (m) => `cargo ${m[1]}`],
+  [/^(?:\.[\\/])?(mvnw?|gradlew?)(?:\.bat|\.cmd)?(?:\s+-[\w.=:-]+)*(?:\s+[\w:-]+)*?\s+(test|verify|package|install|compile|build|check|assemble)(?=\s|$)/, (m) => `${m[1].replace(/w$/, '')} ${m[2]}`],
+];
+function buildTestKind(command) {
+  const cmd = String(command || '')
+    .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1(?=\s|$)/g, ' ')
+    .replace(/'[^'\n]*'|"(?:[^"\\\n]|\\.)*"/g, ' ');
+  for (const raw of cmd.split(/&&|\|\||[;|&\n]/)) {
+    let seg = raw.trim().replace(/^[({]+\s*/, '');
+    for (let prev = ''; prev !== seg;) {
+      prev = seg;
+      seg = seg.replace(/^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx))\s+/, '');
+    }
+    for (const [re, name] of RUNNERS) {
+      const m = re.exec(seg);
+      if (m) return name(m);
+    }
+  }
+  return null;
+}
+
+// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run -> project-root-cause -----
+// The fix that follows a red run is where a guess lands, and the method that stops it only ever sat
+// in a baseline line the session had to remember. A build or test command that FAILED injects the
+// pointer once per failure streak; the next green run of the same kind resets that streak. A piped run
+// (`npm test | tail`) exits 0 whatever the tests did, so a green exit is read for the runner's own red
+// summary too. Injection only, never a block; one `mode: inject` ledger row per injection, so the
+// rate is measurable. The streak is per session and per actor - a subagent's red run is its own.
+const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]/;
+function runFailed(p) {
+  if (p.hook_event_name === 'PostToolUseFailure') return p.is_interrupt ? null : true;
+  const r = p.tool_response;
+  if (typeof r === 'string') return RED_SUMMARY_RE.test(r.slice(-4096));
+  if (!r || typeof r !== 'object' || r.interrupted) return null;
+  const code = r.exitCode !== undefined ? r.exitCode : r.exit_code;
+  if (typeof code === 'number' && code !== 0) return true;
+  return RED_SUMMARY_RE.test(`${r.stdout || ''}\n${r.stderr || ''}`.slice(-4096));
+}
+if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'PostToolUseFailure') {
+  if (!SHELL_TOOL_RE.test(String(payload.tool_name || ''))) process.exit(0);
+  const input = payload.tool_input;
+  const kind = buildTestKind(typeof input === 'string' ? input : input && input.command);
+  const failed = kind ? runFailed(payload) : null;
+  if (failed === null) process.exit(0);
+  const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+  const stateFile = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rootcause-${safe(payload.session_id || 'nosession')}-${safe(payload.agent_id || 'main')}.json`;
+  let streaks = {};
+  try { streaks = JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { /* no streak yet */ }
+  const save = () => { try { fs.writeFileSync(stateFile, JSON.stringify(streaks)); } catch { /* a lost marker re-injects once - never a block */ } };
+  if (!failed) {
+    if (streaks[kind]) { delete streaks[kind]; save(); }
+    process.exit(0);
+  }
+  if (streaks[kind]) process.exit(0); // said once already in this streak
+  streaks[kind] = new Date().toISOString();
+  save();
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name, tool: payload.tool_name,
+      mode: 'inject', kind: 'root-cause', reason: `inject: a red ${kind} run - project-root-cause before the next fix`,
+    }) + '\n');
+  } catch { /* a log row never changes the injection */ }
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: {
+    hookEventName: payload.hook_event_name,
+    additionalContext: `The \`${kind}\` run failed - load \`project-root-cause\` (the Skill tool) before the next fix, `
+      + 'and run its loop: the whole failure read and quoted, a repro, the cause localized and proven by one '
+      + `hypothesis per change, then one fix at the root. Said once per failure streak; the next green \`${kind}\` run resets it.`,
+  } }));
+  process.exit(0);
+}
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-fresh-session-start.js. An update from an older install can run this hook before that file
@@ -511,6 +605,115 @@ if (payload.hook_event_name === 'SubagentStop') {
   process.exit(2);
 }
 
+// --- Stop: the done gate - a done claim over an edit no build or test run followed -------------------
+// 'Fixed' typed over a change nothing ran is the claim `project-done-gate` exists to stop, and a
+// baseline line alone never stopped it. The close is held ONCE per turn when it claims the change done,
+// fixed, passing, works or ready while a source edit landed after the turn's last build or test run -
+// or none ran. The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger' and 'the
+// done gate' pass, and so does an honest 'not run - <why>'. A source edit is a file tool's write that
+// landed inside the project, outside `.claude/` and the docs root, on no prose file; a run is a shell
+// call the classifier above names, red or green, that was not denied before it ran (a missing result is
+// counted as run - the transcript can lag, and the gate fails open).
+const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
+const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
+const CLAIM_RES = [
+  /^(?:all |now |everything(?:'s| is) )?(done|fixed|ready|works|passing)\b/i,
+  /\b(?:is|are|'s|'re|was|were|be|been|now|looks?|seems?)\s+(?:now\s+|all\s+|fully\s+|already\s+)?(done|fixed|ready|working|passing|green)\b(?!\s+by\b)/i,
+  /(?<!\b(?:how|what|why|where|whether|if)\s)\b(?:tests?|suites?|specs?|builds?|checks?|it|this|that|everything|all)\s+(?:now\s+|all\s+|should\s+|will\s+)?(pass(?:es|ing)?|works?|succeeds?)\b/i,
+  /\b(works|passes)\s+(?:now|again|fine|correctly|as expected)\b/i,
+  /\bI(?:'ve| have)?\s+(?:now\s+|just\s+)?(fixed)\b/i,
+];
+function doneClaim(text) {
+  const t = String(text || '').replace(DONE_NOISE_RE, ' ');
+  if (NOT_RUN_RE.test(t)) return null; // the honest close the skill asks for
+  for (const raw of t.split(/(?<=[.!?])\s+|\n+/)) {
+    const s = raw.trim().replace(/^(?:[-*>]|\d+\.)\s+/, '').replace(/^\*\*|\*\*$/g, '');
+    if (!s || /\?["')\]*]*$/.test(s)) continue; // a question claims nothing
+    for (const re of CLAIM_RES) {
+      const m = re.exec(s);
+      if (m && !/\b(?:not|never|no|nothing|yet to)\s+(?:\w+\s+)?$|n't\s+(?:\w+\s+)?$/i.test(s.slice(Math.max(0, m.index - 30), m.index + m[0].length - m[1].length))) return m[1];
+    }
+  }
+  return null;
+}
+// The turn's source edits and build or test runs, in order, after its last TYPED row.
+function turnWork() {
+  const p = payload.transcript_path;
+  if (!p) return null;
+  const path = require('path');
+  const readRows = (tail) => {
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - tail);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const rows = [];
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try { const o = JSON.parse(line); if (o && o.message) rows.push(o); } catch { /* the window's partial first line */ }
+    }
+    return { rows, partial: start > 0 };
+  };
+  const boundary = (rows) => {
+    for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].type === 'user' && !rows[i].isCompactSummary && isTypedTurn(rows[i])) return i;
+    return -1;
+  };
+  let { rows, partial } = readRows(2 * 1024 * 1024);
+  let b = boundary(rows);
+  if (b < 0 && partial) { ({ rows } = readRows(8 * 1024 * 1024)); b = boundary(rows); }
+  const turn = rows.slice(b + 1);
+  const results = new Map();
+  for (const o of turn) {
+    const c = o.type === 'user' && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const blk of c) {
+      if (!blk || blk.type !== 'tool_result') continue;
+      const text = typeof blk.content === 'string' ? blk.content
+        : Array.isArray(blk.content) ? blk.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('\n') : '';
+      results.set(blk.tool_use_id, { error: blk.is_error === true, text });
+    }
+  }
+  const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
+  let realRoot = root;
+  try { realRoot = fs.realpathSync(root); } catch { /* compare the spelled root only */ }
+  const relIn = (base, f) => { const rel = path.relative(base, f); return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null; };
+  const sourceEdit = (file) => {
+    if (typeof file !== 'string' || !file || PROSE_FILE_RE.test(file)) return null;
+    const f = path.resolve(root, file);
+    for (const base of [root, realRoot]) {
+      const rel = relIn(base, f);
+      if (!rel) continue;
+      if (rel.split(/[\\/]/)[0] === '.claude' || relIn(path.resolve(base, docsRootEnv()), f)) return null;
+      return rel;
+    }
+    return null;
+  };
+  let at = 0;
+  let lastEdit = null;
+  let lastRun = null;
+  for (const o of turn) {
+    const c = o.type === 'assistant' && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const blk of c) {
+      if (!blk || blk.type !== 'tool_use') continue;
+      at += 1;
+      const res = results.get(blk.id);
+      const input = blk.input || {};
+      if (EDIT_TOOL_RE.test(String(blk.name))) {
+        const rel = res && !res.error ? sourceEdit(input.file_path || input.notebook_path) : null;
+        if (rel) lastEdit = { at, rel };
+      } else if (SHELL_TOOL_RE.test(String(blk.name))) {
+        const kind = buildTestKind(typeof input === 'string' ? input : input.command);
+        // A red run RAN ('Exit code N'); a denial, a rejection or a timeout did not.
+        if (kind && (!res || !res.error || /^\s*(?:Error:\s*)?Exit code -?\d+/i.test(res.text))) lastRun = { at, kind };
+      }
+    }
+  }
+  const first = b >= 0 ? rows[b] : null;
+  return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun };
+}
+
 if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - never loop
   // The harness sends the turn's final text as `last_assistant_message` (Stop / SubagentStop) and
@@ -602,6 +805,29 @@ if (payload.hook_event_name === 'Stop') {
       'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
+  }
+  // The done gate outranks the ask branches below: a claim over an unrun edit is wrong whatever the
+  // turn asks next, and the continuation it causes is the run that settles the claim.
+  const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+  const work = claim ? (() => { try { return turnWork(); } catch { return null; } })() : null; // unreadable = no proof of an edit
+  if (work && work.lastEdit && (!work.lastRun || work.lastRun.at < work.lastEdit.at)) {
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const held = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-donegate-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.held`;
+    if (!fs.existsSync(held)) {
+      try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
+      blockDetail('done-gate', `${claim} | ${work.lastEdit.rel}`);
+      const when = work.lastRun
+        ? `was edited after the last build or test run in this turn (\`${work.lastRun.kind}\`)`
+        : 'was edited in this turn and no build or test run followed - none ran';
+      process.stderr.write(
+        `This close says '${claim}', but ${work.lastEdit.rel} ${when}, so nothing has checked the\n` +
+        'change as it stands. Load `project-done-gate` (the Skill tool) and run its gate now: the build and\n' +
+        'the tests that cover the change, after the last edit, the result quoted. If they cannot run here,\n' +
+        "say 'not run - <why>' in place of the claim. Held once per turn; ALFRED_CODE_DONE_GATE=0 in the\n" +
+        'settings.json env turns it off.\n',
+      );
+      process.exit(2);
+    }
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.

@@ -131,6 +131,17 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   assert.doesNotMatch(row, /DEAD/, 'an orchestration run started at 190k must trip the gate');
 });
 
+test('corpus-replay: a shell call\'s RESULT is replayed on the PostToolUse routes, red ones on the failure route', () => {
+  // The root-cause pointer is judged on the result, not the call: without the result the harness would
+  // hand the hook nothing to read, and the route would read silent for the harness's reason.
+  const use = (id, command) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
+  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
+  const dir = corpus([use('a', 'npm test'), res('a', 'Exit code 1\nnot ok 1 - cart', true), use('b', 'ls'), res('b', 'README.md'), use('c', 'npm test | tail -3'), res('c', 'ℹ pass 3\nℹ fail 0')]);
+  const { out } = run(dir, '--hook', 'guard-stop-contract.js::PostToolUse');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUseFailure'), /\| 1 \| 1 \|/, 'the red npm test injects');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls inject nothing');
+});
+
 test('corpus-replay: a mid-turn answer is not a stop point', () => {
   // A Stop fires when the TURN ends. Counting every long assistant paragraph fed the gate mid-turn
   // prose - prose that legitimately ends on a question with work still pending, which is what the
