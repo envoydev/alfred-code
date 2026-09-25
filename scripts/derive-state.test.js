@@ -214,6 +214,31 @@ test('derive-state: the CLI prints the same object it returns', () =>
     assert.ok(routes && written, 'plus the routes it ran under and what they write');
 });
 
+// N6 (re-review): Claude Code puts settings.local.json's env into every process it starts, so setup's
+// derivation took a personal route switch as the run's own while the installer (C5) follows settings.json
+// at project and user scope - the `written` block then described an install the installer never makes.
+// The CLI reads the routes the installer's way, from the project `--root` names at the `--scope` given.
+test('derive-state: the CLI reads the routes the installer\'s way - a personal switch in settings.local.json yields to settings.json (N6)', () =>
+{
+    const file = realSelection();
+    const { execFileSync } = require('node:child_process');
+    const project = fs.mkdtempSync(path.join(TMP, 'routes-'));
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'settings.json'), JSON.stringify({ env: {} }));
+    const env = { ...process.env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
+    const routesOf = (extra, { local = true } = {}) =>
+    {
+        const localFile = path.join(project, '.claude', 'settings.local.json');
+        if (local) fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' } }));
+        else fs.rmSync(localFile, { force: true });
+        return JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', file, ...extra], { cwd: project, env, encoding: 'utf8' })).routes;
+    };
+    assert.strictEqual(routesOf([]).skills, true, 'a personal switch decided the committed route (cwd, default project scope)');
+    assert.strictEqual(routesOf(['--root', project, '--scope', 'user']).skills, true, 'user scope writes the shared file too');
+    assert.strictEqual(routesOf(['--root', project, '--scope', 'local']).skills, false, 'at local scope the local file is the install\'s own');
+    assert.strictEqual(routesOf(['--root', project], { local: false }).skills, false, 'a shell export the local file does not hold stands');
+});
+
 // THE INVERSE - what `update --installed-only` reads back. On the plugin routes `.claude/` holds
 // only the extras, so a disk read found no seat and no hook: measured on the Phase 8 matrix, one
 // update wrote all thirteen hooks into ALFRED_CODE_HOOKS_OFF, denied the eight core seats, and

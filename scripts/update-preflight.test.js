@@ -313,6 +313,28 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
     assert.match(rows.find((r) => r.startsWith('new: rule sql-conventions')), /^new: rule sql-conventions\toffer\t-\tleave\tcopies=[a-z-]+(,[a-z-]+)*$/);
 });
 
+// N6 (re-review): Claude Code puts settings.local.json's env into every process it starts, so a route
+// switch the runner keeps there reached the classification as the run's own - while the installer (C5)
+// follows settings.json at project and user scope. The preflight reads the routes the installer's way:
+// a value only the local file holds yields to settings.json; a shell export it does not hold stands;
+// at local scope the local file is the install's own settings and stands too.
+test('new items: the routes are read the installer\'s way - a personal switch in settings.local.json yields to settings.json (N6)', () => {
+    const fixture = { files: [{ status: 'added', filename: 'stack/skills/markdown-style/SKILL.md' }] };
+    const env = { ...process.env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
+    const verdict = ({ local, stamp }) =>
+    {
+        const { snap, install, fixtureFile } = scaffold({ fixture, settings: { env: {} }, ...(stamp ? { stamp } : {}) });
+        if (local) fs.writeFileSync(path.join(install, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' } }));
+        const listing = path.join(install, 'listing.json');
+        fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+        const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing], env);
+        return (/^new: skill markdown-style\t.*$/m.exec(out) || [out])[0];
+    };
+    assert.strictEqual(verdict({ local: true }), 'new: skill markdown-style\tarrives\talfred-code', 'a personal switch decided the committed route');
+    assert.match(verdict({ local: false }), /^new: skill markdown-style\toffer\t-/, 'a shell export the local file does not hold is the run\'s own');
+    assert.match(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), /^new: skill markdown-style\toffer\t-/, 'at local scope the local file is the install\'s own');
+});
+
 test('new items: a library skill the project already copied makes the rule that pulls it the free take', () => {
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/rules/sql-conventions.md' }] } });
     const listing = path.join(install, 'listing.json');

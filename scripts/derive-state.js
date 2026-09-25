@@ -2,7 +2,7 @@
 'use strict';
 // THE ONE DERIVATION - what a selection means for a project, decided once.
 //
-//   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]
+//   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope <scope>]
 //   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--settings <file>]
 //
 // Before this script, four readers answered the same question in their own words: the three guided
@@ -39,7 +39,7 @@ const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./se
 const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
-const { pluginRoutes, corePluginOn } = require('./install/plugins.js');
+const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
 const { BRAND, LEGACY, currentName } = require('./install/brand.js');
 const { validItemName } = require('./install/stamp.js');
 
@@ -425,7 +425,7 @@ function main(argv)
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
     }
     if (argv.includes('--delta'))
@@ -449,8 +449,10 @@ function main(argv)
         marketplace: arg('--marketplace') || 'envoydev',
     });
     // What THIS environment's routes write, by the installer's own rule - so a walk reporting the
-    // derivation before the install reports the copy routes as writing no off-state.
-    const routes = pluginRoutes(process.env);
+    // derivation before the install reports the copy routes as writing no off-state. N6: read the way the
+    // installer reads them (C5) - a switch only settings.local.json holds yields to settings.json at
+    // project and user scope - from the project `--root` names (the cwd by default) at `--scope`.
+    const routes = committedRoutesAt({ env: process.env, claudeDir: path.join(path.resolve(arg('--root') || '.'), '.claude'), scope: arg('--scope') || 'project' });
     console.log(JSON.stringify({ ...state, routes, written: writable(state, { routes }) }, null, 2));
     return 0;
 }

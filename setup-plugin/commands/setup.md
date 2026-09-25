@@ -168,8 +168,9 @@ Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.tx
 ## 11. Install
 
 **First, report what the selection means - from the derivation, never in your own words.** Run
-`node "$TMP/repo/scripts/derive-state.js" --selection "$TMP/selection.txt" --source "$TMP/repo" >
-"$TMP/state.json"` and render four lines from it, nothing added:
+`node "$TMP/repo/scripts/derive-state.js" --selection "$TMP/selection.txt" --source "$TMP/repo" --scope <scope> >
+"$TMP/state.json"` (the `<scope>` the installer call below takes - the routes are read as it reads
+them) and render four lines from it, nothing added:
 
 - skill and agent plugins - when `routes.skills` is true, `skill and agent plugins: <n> - <names>`
   from `plugins`; otherwise `skill and agent plugins: copy route - copied into .claude/`. The hooks

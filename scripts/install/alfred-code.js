@@ -253,11 +253,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const manifest = loadManifest(resolved.dir);
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes).
-        const sharedEnv = settings.readBackSettings(claudeDir, 'project', { sharedOnly: true }).env || {};
-        const routes = plugins.committedRoutes({
-            env, shared: sharedEnv, scope: args.scope, log,
-            personal: (() => { try { return JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')).env || {}; } catch { return {}; } })(),
-        });
+        const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
         // C10: the project memory level needs no refusal at user scope any more - on the full copy route,
         // the one route that registers memory itself, the registration lands in this project's .mcp.json
         // (mcp.registrationScope), so its path is this project's alone.

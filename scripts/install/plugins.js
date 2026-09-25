@@ -82,6 +82,19 @@ function committedRoutes({ env = {}, shared = {}, personal = {}, scope, log = ()
     return routes;
 }
 
+// The same routes read from a project's own `.claude/` - settings.json is the shared env, settings.local.json
+// the personal one (an unreadable file reads as empty). N6: the installer, setup's derivation
+// (derive-state.js) and update's new-item classification (update-preflight.js) all read them here.
+function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () => {} })
+{
+    const envIn = (name) =>
+    {
+        try { const e = JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8')).env; return e && typeof e === 'object' && !Array.isArray(e) ? e : {}; }
+        catch { return {}; }
+    };
+    return committedRoutes({ env, shared: envIn('settings.json'), personal: envIn('settings.local.json'), scope, log });
+}
+
 // `claude plugin list --json` -> one row per plugin NAME. A row carrying a projectPath belongs to
 // that project and is dropped unless it is this one; where both exist, THIS project's row wins over
 // the account-level one. Anything unparseable is an empty listing, never a crash: the callers all
@@ -749,7 +762,7 @@ function parseMarketplaces(json)
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
-    pluginRoutes, committedRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
+    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,

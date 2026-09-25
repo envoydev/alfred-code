@@ -227,10 +227,9 @@ function pickedByKind(stampFile, splitPick)
     return picks && { skill: names(picks.skills), agent: names(picks.agents) };
 }
 
-function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines })
+function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines, routes })
 {
     const { classifyNew, splitPick } = require('./derive-state.js');
-    const { pluginRoutes } = require('./install/plugins.js');
     // Only what this release actually ships, BEFORE the listing is read: a path that names no item
     // (an engine, a README) must not cost a `claude plugin list` call.
     const found = addedItems(compareLines, claudeDir, (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {});
@@ -262,7 +261,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
         parked: listing ? listing.filter((r) => !rowOn(r)).map((r) => r.name) : [],
         deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
         hooksOff,
-        routes: pluginRoutes(process.env),
+        routes,
         always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
         hasHooks,
         copied: libraryCopies(claudeDir),
@@ -381,7 +380,12 @@ function main()
     }
     if (!fired) console.log('migrations: none detected');
 
-    for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines })) console.log(l);
+    // N6: the routes the installer will commit (plugins.js committedRoutesAt, C5) - a switch only
+    // settings.local.json holds yields to settings.json below local scope. They sit in the project's
+    // `.claude/`: the --settings file's own folder when one is named (a 1.x global install's is there).
+    const routeDir = arg('--settings') ? path.dirname(path.resolve(arg('--settings'))) : accountDir ? path.resolve('.claude') : claudeDir;
+    const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
+    for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines, routes })) console.log(l);
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);
