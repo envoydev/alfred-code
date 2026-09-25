@@ -66,7 +66,8 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     const HUD = /^machine: claude-hud status line \+ compact layout /;
     const acct = path.join(TMP, `hud-acct-${seq++}`);
     const env = E({ CLAUDE_CONFIG_DIR: acct });
-    const hudLine = () => lineOf(render(plan({ inv: INV(), root, platform: 'darwin', env, probe: NONE })), HUD);
+    // The platform the CLI child below runs on, so the parent reads the line that child writes.
+    const hudLine = () => lineOf(render(plan({ inv: INV(), root, env, probe: NONE })), HUD);
 
     fs.mkdirSync(acct, { recursive: true });
     assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
@@ -75,15 +76,26 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
     fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
     fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user', installPath: cached, version: '0.8.0' }] } }));
-    const missing = render(plan({ inv: INV(), root, platform: 'darwin', env, probe: NONE }));
+    const missing = render(plan({ inv: INV(), root, env, probe: NONE }));
+    const command = `node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}"`;
+    // The keys the row adds ride the command as a shell comment: named in the ask, inert when run.
     assert.strictEqual(lineOf(missing, HUD),
-        `machine: claude-hud status line + compact layout - missing: node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}"`);
+        `machine: claude-hud status line + compact layout - missing: ${command} # adds 13 claude-hud keys: lineLayout, showSeparators, display (8), gitStatus (2), statusLine.refreshInterval`);
     assert.match(missing[missing.length - 1], /^init-plan: 5 to install, /, 'counted with the other missing items - one ask');
 
     // Applied: nothing left to do.
     const r = spawnSync(process.execPath, [path.join(__dirname, 'hud-statusline.js'), '--config-dir', acct], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(TMP, 'home') } });
     assert.strictEqual(r.status, 0, r.stdout + r.stderr);
     assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - present');
+
+    // A claude-hud line of an older shape: refresh, so the ask shows an existing line will change.
+    const settings0 = path.join(acct, 'settings.json');
+    const doc = JSON.parse(fs.readFileSync(settings0, 'utf8'));
+    doc.statusLine = { type: 'command', command: 'node ~/.claude/plugins/cache/claude-hud/claude-hud/0.5.0/dist/index.js', refreshInterval: 5 };
+    fs.writeFileSync(settings0, JSON.stringify(doc));
+    const refresh = render(plan({ inv: INV(), root, env, probe: NONE }));
+    assert.strictEqual(lineOf(refresh, HUD), `machine: claude-hud status line + compact layout - refresh: ${command}`);
+    assert.match(refresh[refresh.length - 1], /^init-plan: 5 to install, /, 'a refresh is one of the ask\'s options');
 
     // A status line the user owns, with the hud keys already in: not an option, one line naming the way over.
     const settings = path.join(acct, 'settings.json');
@@ -112,7 +124,7 @@ test('machine: the claude-hud item reads the account --space names when CLAUDE_C
     fs.writeFileSync(path.join(cached, 'index.js'), '');
     fs.writeFileSync(path.join(home, '.claude-work', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }] } }));
     const again = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
-    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"$`));
+    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}" # adds 13 claude-hud keys: `));
 });
 
 test('machine: everything present is reported present, and csharp-ls is asked only when csharp-lsp is kept', () =>

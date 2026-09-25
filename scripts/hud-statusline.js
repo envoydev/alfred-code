@@ -7,7 +7,9 @@
 //
 // Two writes into the ACCOUNT dir (CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude - the
 // installer's rule, stamp.js accountDir), both add-only:
-//   1. settings.json `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime.
+//   1. settings.json `statusLine` - the command claude-hud 0.8.0's setup writes for a Node runtime: the
+//      first `node` on PATH as found (setup's `command -v node`), in the bash sort -V form - on Windows
+//      too when Git Bash is there, else the cmd.exe line and its launcher.
 //      No statusLine: written. claude-hud's own line in a current shape: left as it is. claude-hud's
 //      line in a stale shape (a pinned version path, the old PowerShell wrapper, a runtime that is
 //      gone): its command refreshed, every other key kept. A line that is NOT claude-hud's: kept and
@@ -15,7 +17,10 @@
 //   2. the claude-hud row of meta/plugin-settings.json (the Compact layout among it), through
 //      plugin-settings.js - after the statusLine, because the row's refresh interval needs that block.
 // claude-hud not installed, or switched off by the user: one skip line, nothing written. An account
-// settings.json that is not a JSON object: one blocked line, nothing written, exit 1.
+// settings.json that is not a JSON object: one blocked line, nothing written, exit 1. Before its first
+// write the account settings.json is copied to settings.json.bak.<YYYYMMDD-HHMMSS>; a copy that fails
+// writes nothing, exit 1. An unknown argument or a flag with no value: exit 2, nothing written - never
+// a fallback to the environment's account.
 //
 // The shapes below are claude-hud 0.8.0's (commands/setup.md; MIT, Copyright (c) 2026 Jarrod Watts),
 // kept byte for byte so a line /claude-hud:setup wrote reads as current here, and ours there.
@@ -23,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { accountDir } = require('./install/stamp.js');
-const { planFor, applyTargets, report, readDoc } = require('./plugin-settings.js');
+const { planFor, applyTargets, backupOnce, report, readDoc } = require('./plugin-settings.js');
 
 const HUD = 'claude-hud';
 const CATALOG = path.join(__dirname, '..', 'meta', 'plugin-settings.json');
@@ -125,16 +130,78 @@ function cmdPath(env, exists)
     return exists(abs) ? abs : 'cmd.exe';
 }
 
-// What this platform's line should be. `launcher` is the file Windows needs beside it.
-function expected({ platform, configDir, runtime, env, exists })
+// PATH's absolute entries, whatever the key's case (Windows spells it Path).
+function pathDirs(env, platform)
 {
-    if (platform !== 'win32') return { command: fill(SORT_V, { RUNTIME_PATH: runtime, SOURCE: 'dist/index.js' }), launcher: null };
+    const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH');
+    const p = platform === 'win32' ? path.win32 : path.posix;
+    return String((key && env[key]) || '').split(platform === 'win32' ? ';' : ':').filter((d) => d && p.isAbsolute(d));
+}
+
+const isExecutable = (platform) => (file) =>
+{
+    try
+    {
+        if (!fs.statSync(file).isFile()) return false;
+        if (platform !== 'win32') fs.accessSync(file, fs.constants.X_OK);
+        return true;
+    }
+    catch { return false; }
+};
+
+// The runtime setup writes: `command -v node` (setup.md:126, :130), `(Get-Command node).Source` on
+// PowerShell (:217) - the first executable node on PATH AS FOUND. Never process.execPath's resolved
+// binary: a Homebrew Cellar path or a version manager's target is gone after the next upgrade.
+function nodeOnPath(env = process.env, platform = process.platform, runnable = isExecutable(platform))
+{
+    const p = platform === 'win32' ? path.win32 : path.posix;
+    const name = platform === 'win32' ? 'node.exe' : 'node';
+    return pathDirs(env, platform).map((d) => p.join(d, name)).find(runnable) || process.execPath;
+}
+
+// Windows: is there a Git Bash for Claude Code to run the status line through? claude-hud decides by
+// the session shell (setup.md:98-111): a node child sees MSYSTEM, which Git for Windows exports (bash
+// does not export OSTYPE). Else Claude Code's own lookup (code.claude.com troubleshoot-install and env-vars):
+// CLAUDE_CODE_GIT_BASH_PATH when it names an existing bash / sh, the two Program Files installs,
+// then bin\bash.exe of the git on PATH.
+function gitBash(env, exists)
+{
+    if (env.MSYSTEM || /^(msys|cygwin)/.test(env.OSTYPE || '')) return true;
+    const pinned = env.CLAUDE_CODE_GIT_BASH_PATH;
+    if (pinned && /^(bash|sh)(\.exe)?$/i.test(path.win32.basename(pinned)) && exists(pinned)) return true;
+    if (['C:\\Program Files\\Git\\bin\\bash.exe', 'C:\\Program Files (x86)\\Git\\bin\\bash.exe'].some((b) => exists(b))) return true;
+    const git = pathDirs(env, 'win32').map((d) => path.win32.join(d, 'git.exe')).find((g) => exists(g));
+    if (!git) return false;
+    // cmd\git.exe or bin\git.exe sits one level under the install, mingw64\bin\git.exe two.
+    const up = path.win32.dirname(path.win32.dirname(git));
+    return [up, path.win32.dirname(up)].some((root) => exists(path.win32.join(root, 'bin', 'bash.exe')));
+}
+
+// What this platform's line should be: the bash form (POSIX, or Windows with Git Bash - forward slashes,
+// which bash does not eat as escapes), else the cmd.exe line with `launcher`, the file it runs.
+function expected({ platform, configDir, runtime, env, exists, bash })
+{
+    if (platform !== 'win32' || bash)
+    {
+        const node = platform === 'win32' ? runtime.replace(/\\/g, '/') : runtime;
+        return { shell: 'bash', command: fill(SORT_V, { RUNTIME_PATH: node, SOURCE: 'dist/index.js' }), launcher: null };
+    }
     const wrapper = path.win32.join(configDir, 'plugins', HUD, 'statusline.mjs');
     return {
+        shell: 'cmd',
         command: fill(CMD, { CMD_PATH: cmdPath(env, exists), RUNTIME_PATH: runtime, WRAPPER_PATH: wrapper }),
         launcher: { file: path.join(configDir, 'plugins', HUD, 'statusline.mjs'), wrapper },
     };
 }
+
+// Git Bash spells a Windows path in mount form (`/c/...`, `/cygdrive/c/...`) - the regex the hooks
+// inline as gitbash-mount-path - and `command -v node` drops the .exe.
+const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+const winRuntimeExists = (runtime, exists) =>
+{
+    const native = runtime.replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:`);
+    return exists(native) || exists(`${native}.exe`);
+};
 
 // absent | current | stale | foreign. Current = a shape claude-hud 0.8.0 writes on this platform,
 // whose runtime (and on Windows, whose launcher) is on disk.
@@ -146,10 +213,10 @@ function classify(statusLine, { platform, want, exists })
     if (!command.trim()) return { state: 'absent' };
     if (!command.includes(HUD)) return { state: 'foreign', label: sourceLabel(command) };
     const win = platform === 'win32';
-    const shapes = win
-        // Windows takes node only (setup.md:128, :153) and never the awk form (setup.md:194).
-        ? [[CMD, ''], [SORT_V, 'dist/index.js']]
-        : [[SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']];
+    // Windows takes node only (setup.md:128, :153), never the awk form (setup.md:194), and only the
+    // form of the shell that will run it: a bash line cannot run without Git Bash, a cmd line under it.
+    const shapes = !win ? [[SORT_V, 'dist/index.js'], [AWK_NODE, 'dist/index.js'], [AWK_BUN, 'src/index.ts']]
+        : want.shell === 'bash' ? [[SORT_V, 'dist/index.js']] : [[CMD, '']];
     for (const [shape, source] of shapes)
     {
         const m = shapeRe(shape, source).exec(command);
@@ -159,7 +226,7 @@ function classify(statusLine, { platform, want, exists })
             const [, , runtime, wrapper] = m;
             if (exists(runtime) && wrapper.toLowerCase() === want.launcher.wrapper.toLowerCase() && exists(want.launcher.file)) return { state: 'current' };
         }
-        else if (exists(m[1])) return { state: 'current' };
+        else if (win ? winRuntimeExists(m[1], exists) : exists(m[1])) return { state: 'current' };
     }
     return { state: 'stale' };
 }
@@ -203,8 +270,34 @@ function resolveConfigDir({ flag, space, env = process.env })
     return accountDir(env, space || '');
 }
 
-// Everything the run would do, nothing written. `item` is init-plan's machine line state.
-function planHud({ configDir, platform = process.platform, runtime = process.execPath, env = process.env, exists = fs.existsSync, catalog })
+// The statusLine block as the run writes it: the command set, every other key the user had kept.
+function lineAfter(doc, command)
+{
+    const prior = doc && doc.statusLine && typeof doc.statusLine === 'object' && !Array.isArray(doc.statusLine) ? doc.statusLine : {};
+    return { ...prior, type: 'command', command };
+}
+
+// What the row adds, for the plan line: 'adds 13 claude-hud keys: lineLayout, display (8), ...'.
+function addsNote(targets)
+{
+    const groups = new Map();
+    for (const t of targets)
+        for (const r of t.skipped ? [] : t.rows.filter((row) => row.status === 'missing'))
+        {
+            const [head, ...rest] = r.key.split('.');
+            const g = groups.get(head) || { keys: [] };
+            g.keys.push(rest.length ? r.key : head);
+            groups.set(head, g);
+        }
+    const n = [...groups.values()].reduce((sum, g) => sum + g.keys.length, 0);
+    if (!n) return '';
+    const names = [...groups.entries()].map(([head, g]) => (g.keys.length > 1 ? `${head} (${g.keys.length})` : g.keys[0]));
+    return `adds ${n} claude-hud key${n === 1 ? '' : 's'}: ${names.join(', ')}`;
+}
+
+// Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
+// blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
+function planHud({ configDir, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, catalog })
 {
     const settingsFile = path.join(configDir, 'settings.json');
     const settings = readDoc(settingsFile);
@@ -216,15 +309,18 @@ function planHud({ configDir, platform = process.platform, runtime = process.exe
         plan.error = `${settingsFile} is not valid JSON`;
         return { ...plan, item: { state: 'blocked', detail: `${plan.error} - fix it, then run /alfred-code:init again` } };
     }
-    const want = expected({ platform, configDir, runtime, env, exists });
+    const bash = platform === 'win32' && gitBash(env, exists);
+    const want = expected({ platform, configDir, runtime, env, exists, bash });
     const statusLine = settings.doc ? settings.doc.statusLine : undefined;
     plan.statusLine = { ...classify(statusLine, { platform, want, exists }), command: want.command, launcher: want.launcher };
     plan.entry = (catalog || readJsonFile(CATALOG) || { plugins: {} }).plugins[HUD] || { targets: [] };
-    plan.targets = rowTargets(plan);
-    const writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
-    plan.changes = (writesLine ? 1 : 0) + (writesLine && want.launcher ? 1 : 0)
+    plan.writesLine = ['absent', 'stale'].includes(plan.statusLine.state);
+    // The row as it lands AFTER the statusLine write, which its refresh interval is gated on.
+    plan.targets = rowTargets(plan, plan.writesLine ? { 'settings.json': { ...(settings.doc || {}), statusLine: lineAfter(settings.doc, want.command) } } : {});
+    plan.changes = (plan.writesLine ? 1 : 0) + (plan.writesLine && want.launcher ? 1 : 0)
         + plan.targets.reduce((n, t) => n + (t.skipped ? 0 : t.rows.filter((r) => r.status === 'missing').length), 0);
-    if (plan.changes) plan.item = { state: 'missing', detail: null };
+    const note = addsNote(plan.targets);
+    if (plan.changes) plan.item = { state: plan.statusLine.state === 'stale' ? 'refresh' : 'missing', detail: null, note };
     else if (plan.statusLine.state === 'foreign')
         plan.item = { state: 'skip', detail: `the account statusLine is not claude-hud's (source: ${plan.statusLine.label}) - kept; /claude-hud:setup replaces it` };
     else plan.item = { state: 'present', detail: '' };
@@ -233,21 +329,36 @@ function planHud({ configDir, platform = process.platform, runtime = process.exe
 
 // The claude-hud row as plugin-settings plans it - minus the settings.json patch on a line that is
 // not claude-hud's: a refresh interval would re-run the user's own command on a timer.
-function rowTargets(plan)
+function rowTargets(plan, overlay = {})
 {
-    return planFor(plan.entry, plan.configDir).map((t) => (plan.statusLine.state === 'foreign' && t.file === 'settings.json'
+    return planFor(plan.entry, plan.configDir, overlay).map((t) => (plan.statusLine.state === 'foreign' && t.file === 'settings.json'
         ? { ...t, rows: [], skipped: 'the statusLine is not claude-hud\'s - no refresh interval is added to it' }
         : t));
 }
 
-function applyHud(plan)
+// `run` is this run's backup state (plugin-settings.js backupOnce): `now` and `copy` for tests.
+function applyHud(plan, run = {})
 {
     if (!plan.install.ok) return { code: 0, lines: [`hud: skipped - ${plan.install.why}`] };
     if (plan.error) return { code: 1, lines: [`hud: blocked - ${plan.error} - nothing written; fix it and run this again`] };
     const lines = [];
     let changes = 0;
     const sl = plan.statusLine;
-    if (sl.state === 'absent' || sl.state === 'stale')
+    // The account settings.json is copied before the run's first write to it (setup.md:487-505).
+    if (plan.writesLine || plan.targets.some((t) => t.file === 'settings.json' && !t.skipped && t.rows.some((r) => r.status === 'missing')))
+    {
+        try
+        {
+            const bak = backupOnce(plan.settingsFile, run);
+            if (bak) lines.push(`hud: backup - ${bak}`);
+        }
+        catch (e)
+        {
+            if (!e.backup) throw e;
+            return { code: 1, lines: [`hud: blocked - ${e.message} - nothing written; fix it and run this again`] };
+        }
+    }
+    if (plan.writesLine)
     {
         if (sl.launcher)
         {
@@ -257,8 +368,7 @@ function applyHud(plan)
             changes += 1;
         }
         const doc = plan.settings.doc || {};
-        const prior = doc.statusLine && typeof doc.statusLine === 'object' && !Array.isArray(doc.statusLine) ? doc.statusLine : {};
-        doc.statusLine = { ...prior, type: 'command', command: sl.command };
+        doc.statusLine = lineAfter(doc, sl.command);
         fs.mkdirSync(plan.configDir, { recursive: true });
         fs.writeFileSync(plan.settingsFile, JSON.stringify(doc, null, 2) + '\n');
         lines.push(sl.state === 'absent'
@@ -271,25 +381,50 @@ function applyHud(plan)
 
     // Re-planned after the statusLine write: the row's refresh interval is gated on that block.
     const targets = rowTargets(plan);
-    const applied = applyTargets(targets, false);
+    const applied = applyTargets(targets, false, run);
     changes += applied.changed;
     lines.push(...report([HUD], { [HUD]: rowTargets(plan) }, { applied }).text.split('\n').filter(Boolean));
     lines.push(`hud-statusline: ${changes} change(s)`);
     return { code: 0, lines };
 }
 
+const USAGE = 'usage: node scripts/hud-statusline.js [--config-dir <dir> | --space <name>] [--catalog <file>]';
+
+// Strict: a flag this script does not know, one without a value, the `--flag=value` form or a flag
+// given twice throws - never read as absent, which would fall back to the environment's account.
+function parseArgs(argv)
+{
+    const known = ['--config-dir', '--space', '--catalog'];
+    const args = {};
+    for (let i = 0; i < argv.length; i += 1)
+    {
+        const a = argv[i];
+        if (!known.includes(a)) throw new Error(`unknown argument '${a}'`);
+        if (Object.hasOwn(args, a)) throw new Error(`${a} is given twice`);
+        const v = argv[i + 1];
+        if (v === undefined || v === '' || v.startsWith('--')) throw new Error(`${a} needs a value`);
+        args[a] = v;
+        i += 1;
+    }
+    return args;
+}
+
 function main(argv, { env = process.env, out = (s) => process.stdout.write(s) } = {})
 {
-    const flag = (name) => { const i = argv.indexOf(name); return i >= 0 && i + 1 < argv.length ? argv[i + 1] : ''; };
     let configDir;
-    try { configDir = resolveConfigDir({ flag: flag('--config-dir'), space: flag('--space'), env }); }
-    catch (e) { out(`hud: ${e.message}\n`); return 2; }
-    const catalog = flag('--catalog') ? readJsonFile(flag('--catalog')) : null;
+    let catalog = null;
+    try
+    {
+        const args = parseArgs(argv);
+        configDir = resolveConfigDir({ flag: args['--config-dir'], space: args['--space'], env });
+        if (args['--catalog'] && !(catalog = readJsonFile(args['--catalog']))) throw new Error(`--catalog ${args['--catalog']} is not readable JSON`);
+    }
+    catch (e) { out(`hud: ${e.message} - nothing written; ${USAGE}\n`); return 2; }
     const res = applyHud(planHud({ configDir, env, catalog }));
     for (const line of res.lines) out(`${line}\n`);
     return res.code;
 }
 
-module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, hudInstall, resolveConfigDir, planHud, applyHud, main };
+module.exports = { SHAPES, LAUNCHER, fill, classify, expected, sourceLabel, gitBash, nodeOnPath, hudInstall, resolveConfigDir, planHud, applyHud, parseArgs, main };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

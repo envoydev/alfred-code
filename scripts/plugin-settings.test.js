@@ -5,13 +5,20 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { planFor, applyTargets, report, leaves, atPath, setLeaf } = require('./plugin-settings.js');
+const { planFor, applyTargets, report, leaves, atPath, setLeaf, main } = require('./plugin-settings.js');
 const CATALOG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-settings.json'), 'utf8'));
 
+// Every case's dir lives under ONE root, removed when the file's tests end.
+const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-settings-'));
+test.after(() => fs.rmSync(ROOT, { recursive: true, force: true }));
+let seq = 0;
 function tmp()
 {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-settings-'));
+    const dir = path.join(ROOT, `case-${seq++}`);
+    fs.mkdirSync(dir);
+    return dir;
 }
+const baks = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('settings.json.bak.')).sort();
 
 const ENTRY = {
     targets: [
@@ -132,4 +139,58 @@ test('the shipped catalog only recommends keys the plugin actually reads', () =>
     {
         for (const group of Object.keys(t.settings)) assert.ok(t.why[group], `${t.file}: the '${group}' group carries a why`);
     }
+});
+
+test('a file that breaks between plan and apply is left as it is', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'plugins', 'x', 'config.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ display: { a: false } }));
+    const plan = planFor(ENTRY, dir);
+    assert.ok(!plan[0].skipped && plan[0].rows.some((r) => r.status === 'missing'), 'planned while the file was fine');
+    fs.writeFileSync(file, '{ broken');
+    assert.strictEqual(applyTargets(plan, true).written, 0);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '{ broken');
+});
+
+test('the account settings.json is copied to settings.json.bak.<time> before it is patched, once per run - never when it is not written', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'settings.json');
+    const before = JSON.stringify({ statusLine: { type: 'command', command: 'hud' } });
+    fs.writeFileSync(file, before);
+    const applied = applyTargets(planFor(ENTRY, dir), false, { now: new Date(2026, 0, 2, 3, 4, 5) });
+    assert.strictEqual(applied.backup, `${file}.bak.20260102-030405`);
+    assert.strictEqual(fs.readFileSync(applied.backup, 'utf8'), before);
+    assert.match(report(['x'], { x: planFor(ENTRY, dir) }, { applied }).text, new RegExp(`\\nbackup: ${applied.backup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+    // A re-run: nothing to write, nothing copied.
+    assert.strictEqual(applyTargets(planFor(ENTRY, dir), false, { now: new Date(2026, 0, 2, 3, 9, 0) }).backup, null);
+    assert.deepStrictEqual(baks(dir), ['settings.json.bak.20260102-030405']);
+    // A run that already copied it (hud-statusline.js, before its statusLine write) copies nothing more.
+    fs.writeFileSync(file, before);
+    assert.strictEqual(applyTargets(planFor(ENTRY, dir), false, { done: true }).backup, null);
+    assert.deepStrictEqual(baks(dir), ['settings.json.bak.20260102-030405']);
+});
+
+test('a backup that cannot be made throws before ANY target is written', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ statusLine: { type: 'command', command: 'hud' } }));
+    const copy = () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); };
+    assert.throws(() => applyTargets(planFor(ENTRY, dir), false, { copy }), (e) => e.backup === true && /could not back up .*settings\.json \(EACCES\)/.test(e.message));
+    assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'x', 'config.json')), 'the earlier target is not written either');
+    assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).statusLine.refreshInterval, undefined);
+});
+
+test('CLI --apply: the account settings.json is backed up before the patch and the report names the copy', () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'hud' } }));
+    const lines = [];
+    const log = console.log;
+    console.log = (s) => lines.push(String(s));
+    let code;
+    try { code = main(['--config-dir', dir, '--plugin', 'claude-hud', '--apply']); }
+    finally { console.log = log; }
+    assert.strictEqual(code, 0);
+    assert.strictEqual(baks(dir).length, 1);
+    assert.match(lines.join('\n'), /\nbackup: .*settings\.json\.bak\.\d{8}-\d{6}$/);
 });

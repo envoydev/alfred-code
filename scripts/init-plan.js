@@ -6,7 +6,7 @@
 //
 // `--installed` is `update --installed-only --print-plan --plan-out`'s read-back. Two blocks:
 //
-//   machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why> | skip: <why>
+//   machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
 //     browsers, and the serena index. Setup's install already downloaded a picked firefox / webkit, so
@@ -14,7 +14,8 @@
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
 //     Last, the account's claude-hud status line + compact layout (hud-statusline.js, the account dir
 //     CLAUDE_CONFIG_DIR, else ~/.claude-<space>): `skip` when claude-hud is absent or switched off, or
-//     the statusLine is the user's own with nothing else to add.
+//     the statusLine is the user's own with nothing else to add; `refresh` when claude-hud's own line
+//     has a stale shape. Its command ends in `# adds <n> claude-hud keys: <names>`, a shell comment.
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
@@ -128,10 +129,12 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
 
     // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.
+    // The runtime is planHud's default - the node the command itself finds on this PATH.
     const configDir = resolveConfigDir({ space, env });
     const hud = planHud({ configDir, platform, env });
-    add(HUD_ITEM, hud.item.state, hud.item.state === 'missing'
-        ? `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}"`
+    const hudCommand = `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}"`;
+    add(HUD_ITEM, hud.item.state, ['missing', 'refresh'].includes(hud.item.state)
+        ? (hud.item.note ? `${hudCommand} # ${hud.item.note}` : hudCommand)
         : hud.item.detail);
 
     const skills = new Set(inv.skills || []);
@@ -159,7 +162,7 @@ function render({ machine, captures })
     const lines = machine.map(({ what, state, detail }) => (state === 'present' ? `machine: ${what} - present` : `machine: ${what} - ${state}: ${detail}`));
     for (const { skill, state, detail } of captures) lines.push(`capture: ${skill} - ${state}: ${detail}`);
     const count = (s) => machine.filter((m) => m.state.startsWith(s)).length;
-    lines.push(`init-plan: ${count('missing')} to install, ${count('blocked')} blocked, ${captures.filter((c) => c.state === 'run').length} captures to run`);
+    lines.push(`init-plan: ${count('missing') + count('refresh')} to install, ${count('blocked')} blocked, ${captures.filter((c) => c.state === 'run').length} captures to run`);
     return lines;
 }
 

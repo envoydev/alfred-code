@@ -15,6 +15,9 @@
 //      block belongs to the plugin's own setup, so a refresh interval never invents one.
 //   3. A key named in the target's `chosen_by` counts as the user's when that other path is set,
 //      and a target file that is not a JSON object is skipped, never written over.
+//   4. The account settings.json is copied to `settings.json.bak.<YYYYMMDD-HHMMSS>` before its first
+//      write of a run (claude-hud 0.8.0 setup.md:487-505) - never when nothing is written to it. A copy
+//      that fails writes nothing at all, exit 1.
 //
 // /alfred-code:init applies the claude-hud row through hud-statusline.js, after writing the
 // statusLine block it gates.
@@ -96,14 +99,15 @@ function setLeaf(obj, dotted, value)
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-// The delta for one plugin: every catalog leaf classified against what is on disk.
-function planFor(entry, configDir)
+// The delta for one plugin: every catalog leaf classified against what is on disk - or, for a file
+// named in `overlay`, against the doc a caller is about to write there.
+function planFor(entry, configDir, overlay = {})
 {
     const targets = [];
     for (const t of entry.targets || [])
     {
         const file = path.join(configDir, t.file);
-        const { exists, doc: current, bad } = readDoc(file);
+        const { exists, doc: current, bad } = Object.hasOwn(overlay, t.file) ? { exists: true, doc: overlay[t.file] } : readDoc(file);
         const rows = [];
         let skipped = null;
         if (bad) skipped = `${t.file} is not valid JSON - left as it is`;
@@ -131,15 +135,48 @@ function planFor(entry, configDir)
     return targets;
 }
 
-function applyTargets(targets, replace)
+const two = (n) => String(n).padStart(2, '0');
+
+// Rule 4. `run` is one run's state: `done` once the copy is decided, `now` and `copy` for tests. The
+// copy is decided ONCE, before the first write - a settings.json this run created is never copied. A
+// name already taken (a second run in the same second) gets -1, -2: an earlier copy is never replaced.
+function backupOnce(file, run = {})
+{
+    if (run.done) return null;
+    run.done = true;
+    if (!fs.existsSync(file)) return null;
+    const d = run.now || new Date();
+    const base = `${file}.bak.${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}`;
+    const copy = run.copy || fs.copyFileSync;
+    for (let n = 0; ; n++)
+    {
+        const bak = n ? `${base}-${n}` : base;
+        try { copy(file, bak, fs.constants.COPYFILE_EXCL); return bak; }
+        catch (e)
+        {
+            if (e.code === 'EEXIST' && n < 99) continue;
+            throw Object.assign(new Error(`could not back up ${file} (${e.code || e.message})`), { backup: true });
+        }
+    }
+}
+
+function applyTargets(targets, replace, run = {})
 {
     let written = 0;
     let changed = 0;
+    const writes = [];
     for (const t of targets)
     {
         if (t.skipped) continue;
         const toWrite = t.rows.filter(r => r.status === 'missing' || (replace && r.status === 'differs'));
-        if (!toWrite.length) continue;
+        if (toWrite.length) writes.push([t, toWrite]);
+    }
+
+    // Before ANY write, so a copy that fails leaves every target as it was.
+    const account = writes.find(([t]) => t.file === 'settings.json');
+    const backup = account ? backupOnce(account[0].absolute, run) : null;
+    for (const [t, toWrite] of writes)
+    {
         const { doc: found, bad } = readDoc(t.absolute);
         if (bad) continue;
         const doc = found || {};
@@ -150,7 +187,7 @@ function applyTargets(targets, replace)
         changed += toWrite.length;
     }
 
-    return { written, changed };
+    return { written, changed, backup };
 }
 
 function report(plugins, plan, opts)
@@ -180,6 +217,7 @@ function report(plugins, plan, opts)
     lines.push('');
     lines.push(`plugin-settings: ${missing} to add, ${differs} already set differently (kept unless you choose replace), ${match} already match`);
     if (opts.applied) lines.push(`applied: ${opts.applied.changed} key(s) across ${opts.applied.written} file(s)`);
+    if (opts.applied && opts.applied.backup) lines.push(`backup: ${opts.applied.backup}`);
 
     return { text: lines.join('\n'), missing, differs, match };
 }
@@ -208,7 +246,17 @@ function main(argv)
     for (const n of names) plan[n] = planFor(catalog.plugins[n], configDir);
 
     let applied = null;
-    if (doApply) for (const n of names) applied = ((a, b) => ({ written: a.written + b.written, changed: a.changed + b.changed }))(applied || { written: 0, changed: 0 }, applyTargets(plan[n], replace));
+    if (doApply)
+    {
+        // One apply over every plugin's targets: one backup decision, taken before the first write.
+        try { applied = applyTargets(names.flatMap(n => plan[n]), replace); }
+        catch (e)
+        {
+            if (!e.backup) throw e;
+            console.error(`plugin-settings: ${e.message} - nothing written`);
+            return 1;
+        }
+    }
 
     const out = report(names, doApply ? Object.fromEntries(names.map(n => [n, planFor(catalog.plugins[n], configDir)])) : plan, { applied });
     console.log(out.text);
@@ -216,6 +264,6 @@ function main(argv)
     return 0;
 }
 
-module.exports = { planFor, applyTargets, report, leaves, atPath, setLeaf, readDoc };
+module.exports = { planFor, applyTargets, backupOnce, report, leaves, atPath, setLeaf, readDoc, main };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

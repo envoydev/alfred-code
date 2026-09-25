@@ -55,7 +55,7 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 `node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
 
-- `machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why> | skip: <why>` -
+- `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
   playwright browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
   machine does not have), the serena index, then the account's claude-hud status line and compact
@@ -67,16 +67,20 @@ Nothing is inferred beyond those lines: a machine item the plan does not name is
 
 ## 3. Machine installs - ONE ask
 
-No `missing` line: one narration line, next step. Otherwise ONE AskUserQuestion, multi-select, one
-option per `missing` / `missing after uv` line - the label names the item, the description carries
-its exact command - every one pre-selected, 'install the selected' recommended (the servers that need
-them cannot start without them). A `blocked` line is not an option: name its fix once (the .NET SDK
-for csharp-ls, the browser for a picked chrome or msedge) - the user installs it; never attempt one.
-`claude-hud status line + compact layout` is one of those lines: its command (`hud-statusline.js`)
-writes the account `statusLine` claude-hud's own setup would, then claude-hud's row of
-`meta/plugin-settings.json`, add-only - a status line that is not claude-hud's is kept and reported
-with `/claude-hud:setup`. A `skip` line is not an option either: one narration line (claude-hud
-absent or switched off, or the user's own status line with nothing else to add).
+No `missing` or `refresh` line: one narration line, next step. Otherwise ONE AskUserQuestion,
+multi-select, one option per `missing` / `missing after uv` / `refresh` line - the label names the
+item, the description carries its exact command - every one pre-selected, 'install the selected'
+recommended (the servers that need them cannot start without them). A `blocked` line is not an
+option: name its fix once (the .NET SDK for csharp-ls, the browser for a picked chrome or msedge) -
+the user installs it; never attempt one. `claude-hud status line + compact layout` is one of those
+lines: its command (`hud-statusline.js`) writes the account `statusLine` claude-hud's own setup
+would, then claude-hud's row of `meta/plugin-settings.json`, add-only - a status line that is not
+claude-hud's is kept and reported with `/claude-hud:setup`. Its command ends in
+`# adds <n> claude-hud keys: <names>`, a shell comment the description keeps, so keys a setup Skip
+left out are named before they land. `refresh` is claude-hud's own line in a stale shape: the description says it
+is replaced, after the command copies the account `settings.json` to `settings.json.bak.<time>`. A
+`skip` line is not an option either: one narration line (claude-hud absent or switched off, or the
+user's own status line with nothing else to add).
 
 Run the picked commands in plan order, uv first - the `after uv` ones need it. A fresh uv lands in a
 directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not

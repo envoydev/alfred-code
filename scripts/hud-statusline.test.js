@@ -10,7 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const hud = require('./hud-statusline.js');
-const { SHAPES, LAUNCHER, fill, planHud, applyHud, resolveConfigDir } = hud;
+const { SHAPES, LAUNCHER, fill, planHud, applyHud, resolveConfigDir, nodeOnPath } = hud;
 
 const SCRIPT = path.join(__dirname, 'hud-statusline.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-'));
@@ -51,6 +51,15 @@ const read = (dir, file) => JSON.parse(fs.readFileSync(path.join(dir, file), 'ut
 const hudConfig = (dir) => read(dir, path.join('plugins', 'claude-hud', 'config.json'));
 const NODE = process.execPath;
 const run = (dir, opts = {}) => applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE, ...opts }));
+const baks = (dir) => fs.readdirSync(dir).filter((n) => n.startsWith('settings.json.bak.')).sort();
+
+const WIN_NODE = 'C:\\Program Files\\nodejs\\node.exe';
+const CMD_EXE = 'C:\\Windows\\System32\\cmd.exe';
+const WIN_ENV = { SystemRoot: 'C:\\Windows' };
+// A mocked Windows disk: the paths named (compared with backslashes), plus the real files a case wrote
+// under TMP (a launcher) - never the machine's own, so a Windows runner's real Git Bash stays out.
+const winDisk = (...present) => (p) => present.includes(String(p).replace(/\//g, '\\')) || (String(p).startsWith(TMP) && fs.existsSync(p));
+const cmdLine = (node, wrapper) => `${CMD_EXE} /d /s /c ""${node}" "${wrapper}""`;
 
 // The exact 0.8.0 text (commands/setup.md:199), pinned here independently of the script's own copy.
 const SORT_V_FOR = (rt) => 'cols=${COLUMNS:-}; case "$cols" in ""|*[!0-9]*) cols=$(stty size 2>/dev/null </dev/tty | awk \'{print $2}\');; esac; '
@@ -94,9 +103,9 @@ test('a re-run changes nothing: both files byte-identical, the plan reports no c
 test('Windows (mocked platform): statusline.mjs under <account>/plugins/claude-hud, run through the absolute cmd.exe - no PowerShell, no Bun', () =>
 {
     const dir = account();
-    const nodeExe = 'C:\\Program Files\\nodejs\\node.exe';
-    const cmdExe = 'C:\\Windows\\System32\\cmd.exe';
-    const exists = (p) => p === cmdExe || p === nodeExe || fs.existsSync(p);
+    const nodeExe = WIN_NODE;
+    const cmdExe = CMD_EXE;
+    const exists = winDisk(cmdExe, nodeExe);
     const plan = planHud({ configDir: dir, platform: 'win32', runtime: nodeExe, env: { SystemRoot: 'C:\\Windows' }, exists });
     const res = applyHud(plan);
     const wrapper = path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
@@ -117,9 +126,9 @@ test('Windows (mocked platform): statusline.mjs under <account>/plugins/claude-h
 
 test('Windows: a claude-hud line of another shape is stale - the old PowerShell wrapper, the macOS awk form, a missing launcher', () =>
 {
-    const nodeExe = 'C:\\Program Files\\nodejs\\node.exe';
-    const exists = (p) => p === nodeExe || fs.existsSync(p);
-    const opts = { platform: 'win32', runtime: nodeExe, env: { SystemRoot: 'C:\\Windows' }, exists };
+    const nodeExe = WIN_NODE;
+    const exists = winDisk(nodeExe);
+    const opts = { platform: 'win32', runtime: nodeExe, env: WIN_ENV, exists };
     const ps1 = account({ settings: { statusLine: { type: 'command', command: 'powershell -NoProfile -File C:\\Users\\u\\.claude\\plugins\\claude-hud\\statusline.ps1', refreshInterval: 3 } } });
     assert.strictEqual(planHud({ configDir: ps1, ...opts }).statusLine.state, 'stale');
     applyHud(planHud({ configDir: ps1, ...opts }));
@@ -233,7 +242,7 @@ test('a malformed account settings.json blocks: nothing is written, exit 1 throu
 test('the account dir: --config-dir, else CLAUDE_CONFIG_DIR, else ~/.claude-<space>, else ~/.claude - the installer\'s rule', () =>
 {
     const home = path.join(TMP, 'home');
-    assert.strictEqual(resolveConfigDir({ flag: '/x/acct', space: 'work', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), '/x/acct');
+    assert.strictEqual(resolveConfigDir({ flag: '/x/acct', space: 'work', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), path.resolve('/x/acct'));
     assert.strictEqual(resolveConfigDir({ space: 'work', env: { CLAUDE_CONFIG_DIR: '/y', HOME: home } }), '/y');
     assert.strictEqual(resolveConfigDir({ space: 'work', env: { HOME: home } }), path.join(home, '.claude-work'));
     assert.strictEqual(resolveConfigDir({ env: { HOME: home } }), path.join(home, '.claude'));
@@ -275,3 +284,215 @@ test('the Windows launcher body runs under node: newest version, main() called, 
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(r.stdout.trim(), 'hud 0.10.0 cols=76');
 });
+
+// R129: on Windows the line mirrors claude-hud 0.8.0 exactly - Git Bash present, the bash sort -V form
+// (setup.md:199, forward slashes, no launcher); absent, the cmd.exe line and its launcher (setup.md:369).
+test('Windows + Git Bash (MSYSTEM): the setup.md:199 sort -V line, node in forward slashes, no launcher', () =>
+{
+    const dir = account();
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, MSYSTEM: 'MINGW64' }, exists: winDisk(WIN_NODE, CMD_EXE) };
+    const plan = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(plan.statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.strictEqual(plan.statusLine.launcher, null);
+    applyHud(plan);
+    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'claude-hud', 'statusline.mjs')), 'no launcher under Git Bash');
+    const again = planHud({ configDir: dir, ...opts });
+    assert.strictEqual(again.statusLine.state, 'current');
+    assert.strictEqual(again.changes, 0);
+});
+
+test('Windows: Git Bash is found as Claude Code finds it - OSTYPE, CLAUDE_CODE_GIT_BASH_PATH (bash / sh names only), Program Files, the git on PATH', () =>
+{
+    const line = (env, present) => planHud({ configDir: account(), platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, ...env }, exists: winDisk(WIN_NODE, CMD_EXE, ...present) }).statusLine;
+    const bash = SORT_V_FOR('C:/Program Files/nodejs/node.exe');
+    const CMD_FORM = /^C:\\Windows\\System32\\cmd\.exe \/d \/s \/c ""/;
+    const none = line({}, []);
+    assert.match(none.command, CMD_FORM, 'no Git Bash: the cmd.exe line');
+    assert.ok(none.launcher, 'and its launcher');
+    assert.strictEqual(line({ OSTYPE: 'msys' }, []).command, bash);
+    assert.strictEqual(line({ OSTYPE: 'cygwin' }, []).command, bash);
+    assert.strictEqual(line({ CLAUDE_CODE_GIT_BASH_PATH: 'D:\\tools\\Git\\bin\\bash.exe' }, ['D:\\tools\\Git\\bin\\bash.exe']).command, bash);
+    assert.strictEqual(line({ CLAUDE_CODE_GIT_BASH_PATH: 'D:\\msys\\usr\\bin\\sh' }, ['D:\\msys\\usr\\bin\\sh']).command, bash);
+    assert.match(line({ CLAUDE_CODE_GIT_BASH_PATH: 'D:\\tools\\Git\\git-bash.exe' }, ['D:\\tools\\Git\\git-bash.exe']).command, CMD_FORM,
+        'a wrong-named file is ignored and the lookup falls through');
+    assert.match(line({ CLAUDE_CODE_GIT_BASH_PATH: 'D:\\gone\\bash.exe' }, []).command, CMD_FORM, 'so is a path not on disk');
+    assert.strictEqual(line({}, ['C:\\Program Files\\Git\\bin\\bash.exe']).command, bash);
+    assert.strictEqual(line({}, ['C:\\Program Files (x86)\\Git\\bin\\bash.exe']).command, bash);
+    assert.strictEqual(line({ Path: 'C:\\Windows;E:\\Git\\cmd' }, ['E:\\Git\\cmd\\git.exe', 'E:\\Git\\bin\\bash.exe']).command, bash, 'bin\\bash.exe of the git on PATH');
+    assert.strictEqual(line({ PATH: 'E:\\Git\\mingw64\\bin' }, ['E:\\Git\\mingw64\\bin\\git.exe', 'E:\\Git\\bin\\bash.exe']).command, bash);
+    assert.match(line({ PATH: 'E:\\Git\\cmd' }, ['E:\\Git\\cmd\\git.exe']).command, CMD_FORM, 'a git with no bash.exe of its own');
+});
+
+test('Windows: only the detected shell\'s form is current - claude-hud\'s own Git Bash line (/c/... node) is kept, a cmd line under Git Bash refreshed', () =>
+{
+    const bashEnv = { ...WIN_ENV, MSYSTEM: 'MINGW64' };
+    // /claude-hud:setup on Git Bash writes `command -v node` as it answers there (setup.md:130).
+    for (const node of ['/c/Program Files/nodejs/node', '/cygdrive/c/Program Files/nodejs/node', 'C:/Program Files/nodejs/node.exe'])
+    {
+        const own = account({ settings: { statusLine: { type: 'command', command: SORT_V_FOR(node) } } });
+        const plan = planHud({ configDir: own, platform: 'win32', runtime: WIN_NODE, env: bashEnv, exists: winDisk(WIN_NODE) });
+        assert.strictEqual(plan.statusLine.state, 'current', node);
+        applyHud(plan);
+        assert.strictEqual(read(own, 'settings.json').statusLine.command, SORT_V_FOR(node), `${node}: left as it is`);
+    }
+    const dead = account({ settings: { statusLine: { type: 'command', command: SORT_V_FOR('/d/gone/node') } } });
+    assert.strictEqual(planHud({ configDir: dead, platform: 'win32', runtime: WIN_NODE, env: bashEnv, exists: winDisk(WIN_NODE) }).statusLine.state, 'stale');
+
+    // The cmd.exe line this script writes without Git Bash reads stale once Git Bash is there, and back.
+    const dir = account();
+    applyHud(planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) }));
+    assert.match(read(dir, 'settings.json').statusLine.command, /cmd\.exe/);
+    const under = planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: bashEnv, exists: winDisk(WIN_NODE, CMD_EXE) });
+    assert.strictEqual(under.statusLine.state, 'stale');
+    applyHud(under);
+    assert.strictEqual(read(dir, 'settings.json').statusLine.command, SORT_V_FOR('C:/Program Files/nodejs/node.exe'));
+    assert.strictEqual(planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) }).statusLine.state, 'stale',
+        'a bash line cannot run where there is no Git Bash');
+});
+
+test('Windows cmd line: current only with a live node AND this account\'s own launcher', () =>
+{
+    const dir = account();
+    const opts = { platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) };
+    applyHud(planHud({ configDir: dir, ...opts }));
+    const wrapper = path.win32.join(dir, 'plugins', 'claude-hud', 'statusline.mjs');
+    const state = (command) =>
+    {
+        const s = read(dir, 'settings.json');
+        s.statusLine.command = command;
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(s));
+        return planHud({ configDir: dir, ...opts }).statusLine.state;
+    };
+    assert.strictEqual(state(cmdLine(WIN_NODE, wrapper)), 'current');
+    assert.strictEqual(state(cmdLine('C:\\gone\\node.exe', wrapper)), 'stale', 'a node that is gone');
+    assert.strictEqual(state(cmdLine(WIN_NODE, 'C:\\Users\\other\\.claude\\plugins\\claude-hud\\statusline.mjs')), 'stale', 'another account\'s launcher');
+});
+
+test('the runtime is the first node on PATH as found (command -v), never symlink-resolved; process.execPath only when PATH has none', { skip: process.platform === 'win32' && 'posix exec bits' }, () =>
+{
+    const d = (n) => { const p = path.join(TMP, `${n}-${seq++}`); fs.mkdirSync(p, { recursive: true }); return p; };
+    const empty = d('bin-empty');
+    const noexec = d('bin-noexec');
+    fs.writeFileSync(path.join(noexec, 'node'), '', { mode: 0o644 });
+    const dirNode = d('bin-dir');
+    fs.mkdirSync(path.join(dirNode, 'node'));
+    const cellar = d('cellar');
+    fs.writeFileSync(path.join(cellar, 'node'), '#!/bin/sh\n', { mode: 0o755 });
+    const brew = d('bin-brew');
+    fs.symlinkSync(path.join(cellar, 'node'), path.join(brew, 'node'));
+    const PATH = ['', 'relative/bin', empty, noexec, dirNode, brew, cellar].join(':');
+    assert.strictEqual(nodeOnPath({ PATH }, 'darwin'), path.join(brew, 'node'), 'the PATH entry, not its Cellar target');
+    assert.strictEqual(nodeOnPath({ PATH: empty }, 'darwin'), process.execPath);
+    assert.strictEqual(nodeOnPath({}, 'linux'), process.execPath);
+    // Windows: node.exe on Path, the answer (Get-Command node).Source gives (setup.md:217).
+    assert.strictEqual(nodeOnPath({ Path: 'C:\\Windows;C:\\Program Files\\nodejs' }, 'win32', (p) => p === WIN_NODE), WIN_NODE);
+    // planHud writes that node by default.
+    const plan = planHud({ configDir: account(), platform: 'darwin', env: { PATH } });
+    assert.strictEqual(plan.statusLine.command, SORT_V_FOR(path.join(brew, 'node')));
+});
+
+test('the account settings.json is backed up once per run before its first write (setup.md:487-505), never when nothing changes', () =>
+{
+    const dir = account({ settings: { model: 'opus' } });
+    const file = path.join(dir, 'settings.json');
+    const before = fs.readFileSync(file, 'utf8');
+    const res = applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE }), { now: new Date(2026, 8, 25, 9, 5, 7) });
+    const bak = `${file}.bak.20260925-090507`;
+    assert.deepStrictEqual(baks(dir), ['settings.json.bak.20260925-090507'], 'one copy, though the statusLine and its refresh interval are two writes');
+    assert.strictEqual(fs.readFileSync(bak, 'utf8'), before);
+    assert.strictEqual(res.lines[0], `hud: backup - ${bak}`);
+    // A re-run changes nothing and copies nothing.
+    const after = fs.readFileSync(file, 'utf8');
+    applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE }), { now: new Date(2026, 8, 25, 9, 6, 0) });
+    assert.deepStrictEqual(baks(dir), ['settings.json.bak.20260925-090507']);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), after);
+    // A second change in the same second takes a new name - an earlier copy is never written over.
+    const s = JSON.parse(after);
+    s.statusLine.command = 'node ~/.claude/plugins/cache/claude-hud/claude-hud/0.5.0/dist/index.js';
+    fs.writeFileSync(file, JSON.stringify(s));
+    applyHud(planHud({ configDir: dir, platform: 'darwin', runtime: NODE }), { now: new Date(2026, 8, 25, 9, 5, 7) });
+    assert.deepStrictEqual(baks(dir), ['settings.json.bak.20260925-090507', 'settings.json.bak.20260925-090507-1']);
+    assert.strictEqual(fs.readFileSync(bak, 'utf8'), before);
+    // Only a config.json key to add: the account settings.json is not written, so not copied.
+    const cfg = account({ settings: { statusLine: { type: 'command', command: SORT_V_FOR(NODE), refreshInterval: 5 } } });
+    applyHud(planHud({ configDir: cfg, platform: 'darwin', runtime: NODE }));
+    assert.deepStrictEqual(baks(cfg), []);
+    // No settings.json at all: nothing to copy.
+    const fresh = account();
+    applyHud(planHud({ configDir: fresh, platform: 'darwin', runtime: NODE }));
+    assert.deepStrictEqual(baks(fresh), []);
+});
+
+test('a backup that cannot be made blocks the run: exit 1, nothing written', () =>
+{
+    const dir = account({ settings: { model: 'opus' } });
+    const before = fs.readFileSync(path.join(dir, 'settings.json'), 'utf8');
+    const copy = () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); };
+    const res = applyHud(planHud({ configDir: dir, platform: 'win32', runtime: WIN_NODE, env: WIN_ENV, exists: winDisk(WIN_NODE, CMD_EXE) }), { copy });
+    assert.strictEqual(res.code, 1);
+    assert.deepStrictEqual(res.lines, [`hud: blocked - could not back up ${path.join(dir, 'settings.json')} (EACCES) - nothing written; fix it and run this again`]);
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'), before);
+    assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'claude-hud')), 'neither the launcher nor config.json');
+});
+
+test('the plan: refresh for a stale line, and the keys the row adds named - what a setup Skip left out included', () =>
+{
+    const fresh = planHud({ configDir: account(), platform: 'darwin', runtime: NODE });
+    assert.strictEqual(fresh.item.state, 'missing');
+    assert.strictEqual(fresh.item.note, 'adds 13 claude-hud keys: lineLayout, showSeparators, display (8), gitStatus (2), statusLine.refreshInterval');
+    const stale = planHud({ configDir: account({ settings: { statusLine: { type: 'command', command: 'node ~/.claude/plugins/cache/claude-hud/claude-hud/0.5.0/dist/index.js', refreshInterval: 5 } } }), platform: 'darwin', runtime: NODE });
+    assert.strictEqual(stale.item.state, 'refresh');
+    const cfg = { lineLayout: 'expanded', showSeparators: true, display: { showConfigCounts: true, showSkills: true, showMcp: true, showAgents: true, showTools: true, showCost: true, showEffortLevel: true, showPromptCache: true } };
+    const partial = planHud({ configDir: account({ config: cfg, settings: { statusLine: { type: 'command', command: SORT_V_FOR(NODE), refreshInterval: 3 } } }), platform: 'darwin', runtime: NODE });
+    assert.strictEqual(partial.item.state, 'missing');
+    assert.strictEqual(partial.item.note, 'adds 2 claude-hud keys: gitStatus (2)');
+    const one = planHud({ configDir: account({ config: { ...cfg, gitStatus: { showAheadBehind: true, showFileStats: true } }, settings: { statusLine: { type: 'command', command: SORT_V_FOR(NODE) } } }), platform: 'darwin', runtime: NODE });
+    assert.strictEqual(one.item.note, 'adds 1 claude-hud key: statusLine.refreshInterval');
+});
+
+test('claude-hud registered twice with one row switched off is still installed - the off wins only when every row is off', () =>
+{
+    const dir = account({ settings: { enabledPlugins: { 'claude-hud@claude-hud': false } } });
+    const reg = read(dir, path.join('plugins', 'installed_plugins.json'));
+    reg.plugins['claude-hud@mirror'] = reg.plugins['claude-hud@claude-hud'];
+    fs.writeFileSync(path.join(dir, 'plugins', 'installed_plugins.json'), JSON.stringify(reg));
+    assert.strictEqual(planHud({ configDir: dir, platform: 'darwin', runtime: NODE }).install.ok, true);
+    const off = read(dir, 'settings.json');
+    off.enabledPlugins['claude-hud@mirror'] = false;
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(off));
+    assert.match(planHud({ configDir: dir, platform: 'darwin', runtime: NODE }).install.why || '', /switched off/);
+});
+
+// I-4: a malformed flag never falls back to the env account. CLAUDE_CONFIG_DIR names an installed
+// stand-in account; each shape exits 2 and neither account is written.
+for (const [name, args] of [
+    ['an unknown argument', (iso) => ['--confg-dir', iso]],
+    ['a stray positional', (iso) => ['--config-dir', iso, 'extra']],
+    ['--config-dir with an empty value', () => ['--config-dir', '']],
+    ['--config-dir with no value', () => ['--config-dir']],
+    ['--config-dir followed by another flag', () => ['--config-dir', '--space', 'work']],
+    ['--space with an empty value', () => ['--space', '']],
+    ['--space with no value', () => ['--space']],
+    ['the --config-dir=<dir> form', (iso) => [`--config-dir=${iso}`]],
+    ['the --space=<name> form', () => ['--space=work']],
+    ['a flag given twice', (iso) => ['--config-dir', iso, '--config-dir', iso]],
+    ['an unreadable --catalog', (iso) => ['--config-dir', iso, '--catalog', path.join(TMP, 'no-such-catalog.json')]],
+])
+{
+    test(`CLI: ${name} exits 2 and writes nothing - never the env account`, () =>
+    {
+        const standin = account();
+        const iso = account();
+        const home = path.join(TMP, `home-${seq++}`);
+        fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
+        const r = spawnSync(process.execPath, [SCRIPT, ...args(iso)], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: standin } });
+        assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+        assert.match(r.stdout, /^hud: .*usage: node scripts\/hud-statusline\.js/m);
+        for (const dir of [standin, iso, path.join(home, '.claude-work')])
+        {
+            assert.ok(!fs.existsSync(path.join(dir, 'settings.json')), `${dir}: no settings.json`);
+            assert.ok(!fs.existsSync(path.join(dir, 'plugins', 'claude-hud')), `${dir}: no claude-hud files`);
+        }
+    });
+}

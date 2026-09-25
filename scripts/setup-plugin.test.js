@@ -138,6 +138,10 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     // Task 24: claude-hud's status line + compact layout rides that same ask - no ask of its own.
     assert.match(flat(init), /`claude-hud status line \+ compact layout` is one of those lines: its command \(`hud-statusline\.js`\)/);
     assert.match(flat(init), /A `skip` line is not an option either/);
+    // Fix round 1 (I-3, M-3): a stale line is a `refresh` option, backed up first; the keys the row adds are named.
+    assert.match(flat(init), /one option per `missing` \/ `missing after uv` \/ `refresh` line/);
+    assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
+    assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The four captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
