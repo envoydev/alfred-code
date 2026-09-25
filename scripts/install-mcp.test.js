@@ -453,3 +453,19 @@ test('seed update --installed-only (full copy route): a plugin-route install who
     assert.doesNotMatch(out, /the memory MCP is not part of this install/);
     assert.match(result, /^installed-always-mcps: .*\bserena\b/m, result);
 });
+
+// M1 (Task 18b fix round 1): R91 on a FRESH install. The full copy route never enables the core, so
+// the locked three ride no plugin there - the first install itself must register them in .mcp.json,
+// whatever the selection names, and a re-run must leave the file as it was.
+test('seed install (full copy route, fresh): a selection naming no server still lands the locked three in .mcp.json, and a re-run changes nothing (R91, M1)', POSIX_ONLY, () =>
+{
+    const { out, steps, result } = seedRun(['install', 'install'], 'skill markdown-style\n', {
+        env: COPY_ENV,
+        each: (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'),
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')),
+    });
+    const servers = Object.keys(result.mcpServers || {});
+    for (const name of mcp.LOCKED) assert.ok(servers.includes(name), `${name} missing from .mcp.json: ${servers.join(',')}\n${out}`);
+    assert.deepStrictEqual(servers.filter((n) => !mcp.LOCKED.includes(n)), [], 'nothing but the locked three');
+    assert.strictEqual(steps[1], steps[0], 'a re-run rewrote .mcp.json');
+});

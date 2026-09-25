@@ -43,6 +43,17 @@ test('routes: every route defaults ON, and only the documented `false` turns one
     assert.strictEqual(P.pluginRoutes({ ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }).hooks, true);
 });
 
+// M7 (Task 18b fix round 1): a 1.x shell or settings env still spelling the switch the old way keeps
+// its route until it is renamed; where both spellings are set, the new one wins.
+test('routes: the 1.x switch spelling is read as a fallback, and the new spelling wins over it (M7)', () =>
+{
+    assert.deepStrictEqual(P.pluginRoutes({ CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' }), // legacy-name
+        { hooks: false, skills: false, mcps: false });
+    assert.strictEqual(P.pluginRoutes({ CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'true' }).skills, true, 'the new spelling wins'); // legacy-name
+    assert.strictEqual(P.pluginRoutes({ CLAUDE_STACK_MCPS_VIA_PLUGIN: 'true', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' }).mcps, false, 'the new spelling wins'); // legacy-name
+    assert.strictEqual(P.pluginRoutes({ CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'true' }).hooks, true); // legacy-name
+});
+
 test('routes: the core plugin is on while ANY route is - that is when its companions are installed', () =>
 {
     assert.strictEqual(P.corePluginOn(ROUTES({ skills: false, mcps: false })), true);

@@ -110,7 +110,7 @@ comparable banner by banner; the content varies, the skeleton never does.
   `skills=plugin` means the plugin listing could not be read or the core entry is parked - stop and
   report which, since every carried seat would read as dropped. `hooks=no` means the hooks layer is
   not walked this run: its table would be a guess.
- Show the inventory grouped by category, with counts. Also run the evidence scan quietly -
+- Show the inventory grouped by category, with counts. Also run the evidence scan quietly -
   `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json"
   --out "$TMP/found.json"` - so the walk's tables can label what the project provably uses
   (`--found`).

@@ -22,6 +22,7 @@
 //   - VERSIONS ARE READ BACK. `claude plugin update` reports success whether or not anything moved.
 const path = require('node:path');
 const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
+const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
 // claude-hud is a statusline HUD: a project-scoped install plus the global statusline enable
 // mismatch, so every OTHER project warns 'plugin not cached'. It is user scope, always.
@@ -49,10 +50,11 @@ const CORE_DEP_PLUGINS = ['claude-hud@claude-hud'];
 // `...=false` restores the copy route - the documented contract, and the only value either twin
 // ever promised. (The sh twin read anything but the literal 'true' as off and the ps1 anything but
 // 'false' as on; on every documented value they agree, and this takes the documented reading.)
+// M7: `envOf` reads the 1.x spelling when the new one is unset - the new one wins where both are.
 const pluginRoutes = (env = {}) => ({
-    hooks: env.ALFRED_CODE_HOOKS_VIA_PLUGIN !== 'false',
-    skills: env.ALFRED_CODE_SKILLS_VIA_PLUGIN !== 'false',
-    mcps: env.ALFRED_CODE_MCPS_VIA_PLUGIN !== 'false',
+    hooks: envOf(env, 'HOOKS_VIA_PLUGIN') !== 'false',
+    skills: envOf(env, 'SKILLS_VIA_PLUGIN') !== 'false',
+    mcps: envOf(env, 'MCPS_VIA_PLUGIN') !== 'false',
 });
 
 const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes.mcps);
