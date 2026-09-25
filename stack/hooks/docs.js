@@ -411,8 +411,9 @@ function tracked() {
 }
 // The env keys that can declare the mode, in precedence order. ONE list, and every message below names the key that
 // ACTUALLY answered rather than spelling one - a twin reading a different spelling then diverges on this line alone
-// instead of on the header, the two status lines and the two mismatch sentences.
-const VERSIONING_KEYS = ['ALFRED_CODE_DOCS_VERSIONING'];
+// instead of on the header, the two status lines and the two mismatch sentences. The 1.x spelling answers after the
+// new one: a 1.x project declared its mode there, and it stays declared until its first update renames the key (B-M6).
+const VERSIONING_KEYS = ['ALFRED_CODE_DOCS_VERSIONING', 'CLAUDE_STACK_DOCS_VERSIONING']; // legacy-name
 // How the docs are versioned is an install-time DECISION, not a guess: 'git' = committed docs, git versions them per
 // branch (no overlay, ever); 'local' = the overlay model. An absent or unrecognised value falls back to
 // keptOutOfGit() below.

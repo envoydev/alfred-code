@@ -32,8 +32,9 @@ function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs
   git('add', '-A');
   git('commit', '-qm', 'seed');
   // ALFRED_CODE_DOCS_VERSIONING is scrubbed like the legacy docs-path spelling: this runner may itself sit in a
-  // session whose settings.json declares a mode, and a fixture must exercise the mode the CASE hands it.
-  const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '', ...extra });
+  // session whose settings.json declares a mode, and a fixture must exercise the mode the CASE hands it. The 1.x
+  // spelling too, since the engine reads it after the new one (B-M6).
+  const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '', CLAUDE_STACK_DOCS_VERSIONING: '', ...extra }); // legacy-name
   const cli = (args, input, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), ...args], { cwd: root, input, encoding: 'utf8', env: env(extra) });
   const hook = (payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: env(extra) });
   return {

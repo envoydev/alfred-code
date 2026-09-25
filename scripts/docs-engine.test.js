@@ -293,6 +293,35 @@ test('the mode messages name the env key that declared the mode, never a hardcod
   }
 });
 
+// B-M6: a 1.x project declared the mode under the old spelling. Between the plugin update and its first
+// /alfred-code:update that declaration is READ, never inferred over - and the new spelling wins when both exist.
+test('the legacy docs-versioning key declares the mode until the rename lands, and the new key wins over it', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const enginePath = require.resolve('../stack/hooks/docs.js');
+  const saved = { ...process.env };
+  const LEGACY_KEY = 'CLAUDE_STACK_DOCS_VERSIONING'; // legacy-name
+  const under = (env) => {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved, { CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '', [LEGACY_KEY]: '' }, env);
+    delete require.cache[enginePath];
+    const docs = require(enginePath);
+    return { mode: docs.docsMode(), status: docs.status().mode };
+  };
+  try {
+    const inferred = under({}).mode;
+    const other = inferred === 'git' ? 'local' : 'git';
+    const legacy = under({ [LEGACY_KEY]: other });
+    assert.strictEqual(legacy.mode, other, 'the old spelling is read, not inferred over');
+    assert.match(legacy.status, new RegExp(`^${other === 'git' ? 'git' : 'overlay'} \\(declared by ${LEGACY_KEY} - `));
+    assert.strictEqual(under({ ALFRED_CODE_DOCS_VERSIONING: inferred, [LEGACY_KEY]: other }).mode, inferred, 'the new spelling wins');
+  } finally {
+    delete require.cache[enginePath];
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    r.rm();
+  }
+});
+
 test('a section new on a branch is written with an empty base and read as added', () => {
   const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
   try {
