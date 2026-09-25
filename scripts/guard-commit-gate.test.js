@@ -274,3 +274,35 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
   fs.writeFileSync(allow, 'late.js:1\n');
   assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');
 });
+
+// ---------------------------------------------------------------------------------------------
+// the repo git runs in: a session whose shell sits in a git worktree of its project commits THERE
+// ---------------------------------------------------------------------------------------------
+test('guard-ungated-commit: a commit from a worktree is judged on the worktree, not the clean main checkout', () => {
+  const main = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-main-'));
+  const git = (dir, ...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git(main, 'init', '-q'); git(main, 'config', 'user.email', 't@example.com'); git(main, 'config', 'user.name', 'test');
+  fs.writeFileSync(path.join(main, 'a.txt'), 'seed\n');
+  git(main, 'add', '-A'); git(main, 'commit', '-qm', 'seed');
+  fs.appendFileSync(path.join(main, '.git', 'info', 'exclude'), '.claude/\n'); // as a set-up project ignores it
+  const wt = path.join(main, '.claude', 'worktrees', 'feat');
+  git(main, 'worktree', 'add', '-q', '-b', 'feat', wt);
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(wt, f), forty());
+  const inWorktree = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, cwd: wt }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: main }, cwd: main,
+  });
+  assert.equal(inWorktree('git commit -am x').status, 2, 'the worktree diff is non-trivial - no receipt, blocked');
+  writeReceipt(wt, 'COMMIT-GATE', ['VERIFIED the worktree change', 'authorized: "commit it"', `head: ${headOf(wt)}`,
+    'spec: 3 files', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
+  assert.equal(inWorktree('git commit -am x').status, 0, 'the receipt in the worktree opens it');
+
+  const sub = path.join(main, 'src');
+  fs.mkdirSync(sub);
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(main, f), forty());
+  writeReceipt(main, 'COMMIT-GATE', ['VERIFIED the main change', 'authorized: "commit it"', `head: ${headOf(main)}`,
+    'spec: 3 files', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
+  const fromSub = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, cwd: sub }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: main }, cwd: main,
+  });
+  assert.equal(fromSub.status, 0, 'a subfolder of the project still reads the project receipt');
+});

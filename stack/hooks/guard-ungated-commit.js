@@ -175,7 +175,11 @@ if (!commitMatch && !publishMatch) process.exit(0);
 // which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
 // the cross-project guard block a session's own temp cleanup. Translate before resolving; off
 // Windows the spelling is a real POSIX path and is never touched.
-let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+// The shell's own cwd is where git starts: a session working in a git worktree of its project keeps
+// CLAUDE_PROJECT_DIR on the main checkout, so anchoring there judged the main tree's diff and let a
+// worktree commit through ungated whenever main was clean (measured on 2.1.283).
+const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
+let root = payload.cwd || projectDir || process.cwd();
 const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p) => (process.platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
@@ -196,6 +200,15 @@ if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatch
 const rawOf = (m) => (m && !m.opaque ? command.substr(m.index, m[0].length) : (m ? m[0] : ''));
 const dashC = rawOf(publishMatch || commitMatch).match(/\s-C\s*("[^"]+"|'[^']+'|\S+)/);
 if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
+// The diff and the receipt belong to the repo git runs in. When that is the project's own repo, the
+// project dir stays the anchor: a subfolder cwd, or a project that is a subfolder of its repo, reads
+// the receipt where the session writes it.
+const topOf = (dir) => {
+  try { return fs.realpathSync(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()); } catch { return null; }
+};
+const gitTop = topOf(root);
+if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
+else if (gitTop) root = gitTop;
 // git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
 // first push, and the harness shows the model the hook's stderr as the denial reason.
 const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
