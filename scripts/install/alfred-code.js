@@ -958,13 +958,28 @@ function installMcps(ctx)
     // registration of the stack's own shape - another under the name is the user's (a server added back
     // with the add-back line included). An absent one costs no call.
     const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name)) || registrationOf(ctx, name, scope, liveMcpNames.has(name)) === 'stack';
+    const prune = (name, scope) =>
+    {
+        if (!ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) return;
+        ctx.log(`  mcp pruned: ${name}`);
+        const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
+        if (back) ctx.log(`    add it back: ${back.split('<scope>').join(scope)}`);
+    };
     for (const name of retired)
-        if (mayRemove(name, ctx.cliScope) && ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT }))
-        {
-            ctx.log(`  mcp pruned: ${name}`);
-            const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
-            if (back) ctx.log(`    add it back: ${back.split('<scope>').join(ctx.cliScope)}`);
-        }
+        if (mayRemove(name, ctx.cliScope)) prune(name, ctx.cliScope);
+    // F7 (R22g): the user-scope FULL copy route registers in THIS project's .mcp.json (C10), which the
+    // loop above never reaches at user scope - so a user-scope run registering anywhere else (the plugin
+    // route, or the MCP copy route with the core on) prunes every stack name there as a project-scope run
+    // does. Only a name the file holds costs a call; a server under a name of the user's own stays.
+    if (ctx.cliScope === 'user' && mcp.registrationScope(ctx.routes, ctx.cliScope) !== 'project')
+    {
+        const held = registrationsAt(ctx, 'project');
+        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS])];
+        // An unreadable file is said once (registrationOf's line) and nothing in it is removed.
+        if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project', false);
+        for (const name of names)
+            if (held.servers[name] && mayRemove(name, 'project')) prune(name, 'project');
+    }
 
     if (ctx.routes.mcps)
     {

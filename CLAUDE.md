@@ -365,6 +365,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   account-wide) - except the user-scope FULL copy route (C10): its stack servers go to THIS
   project's own `.mcp.json` instead, and a stale user-scope registration an earlier run left behind
   is named with its remove command (`claude mcp remove <name> -s user`), never removed by this one.
+  A user-scope run that registers anywhere else (the plugin route, or the MCP copy route with the
+  core on) prunes the stack names from that `.mcp.json` as a project-scope run does.
   `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are

@@ -1205,6 +1205,83 @@ test('seed update --scope user (full copy route): a user-scope playwright engine
     assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) playwright-chrome@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
 });
 
+// F7 (R22g, F1 G): C10 put the user-scope full copy route's servers in THIS project's .mcp.json, but a
+// user-scope run leaving that route pruned only at user scope - the project kept serena, memory,
+// context7 and the engine, so the next session loaded the bare context7 beside the plugin's and chrome
+// twice. A user-scope run that registers elsewhere prunes them from .mcp.json as a project-scope run
+// does: a name the file does not hold costs no call, a hand-added server stays, and so does its approval.
+// This CLI does to .mcp.json what `claude mcp remove <name> -s project` does - the recording stub writes
+// nothing - so the case reads the file the run leaves.
+const REMOVE_FROM_MCPJSON = 'const fs=require("fs");const n=process.argv[1];let d={};try{d=JSON.parse(fs.readFileSync(".mcp.json","utf8"))}catch{}'
+    + 'if(!d.mcpServers||!d.mcpServers[n]){console.error("No MCP server named "+n+" found in .mcp.json");process.exit(1)}'
+    + 'delete d.mcpServers[n];fs.writeFileSync(".mcp.json",JSON.stringify(d,null,2)+"\\n")';
+const MCPJSON_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+    `if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$4" = "-s" ] && [ "$5" = "project" ]; then exec "${process.execPath}" -e '${REMOVE_FROM_MCPJSON}' "$3"; fi`,
+    'exit 0'].join('\n');
+const LEFT_BY_C10 = ['context7', 'memory', 'playwright-chrome', 'serena'];
+// After the full copy route's run, the user adds a server of their own to .mcp.json and approves it.
+const handAdded = (repo) =>
+{
+    const file = path.join(repo, '.mcp.json');
+    const data = jsonAt(repo, '.mcp.json');
+    data.mcpServers = { ...(data.mcpServers || {}), mine: { type: 'stdio', command: 'node', args: ['my-server.js'], env: {} } };
+    fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    const settingsFile = path.join(repo, '.claude', 'settings.json');
+    const settingsData = jsonAt(repo, '.claude/settings.json');
+    settingsData.enabledMcpjsonServers = [...(settingsData.enabledMcpjsonServers || []), 'mine'];
+    fs.writeFileSync(settingsFile, `${JSON.stringify(settingsData, null, 2)}\n`);
+};
+const userCallsOf = (calls) => calls.filter((c) => /^mcp (add|remove) .*(--scope user|-s user)/.test(c));
+const projectRemovesOf = (calls) => calls.filter((c) => /^mcp remove .* -s project$/.test(c));
+
+test('seed update --scope user: the switch back from the full copy route prunes the stack servers C10 put in this project\'s .mcp.json, keeps a hand-added one, and calls nothing at user scope (F7, R22g)', POSIX_ONLY, () =>
+{
+    const rows = [...USER_ROWS(), { id: 'playwright-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        plugins: JSON.stringify(rows), tools: { claude: MCPJSON_CLI },
+        env: [COPY_ENV, {}, {}],
+        args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only']],
+        each: (repo, i) =>
+        {
+            const state = { calls: stepCalls(repo), mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).sort(), trusted: trusted(repo) };
+            if (i === 0) handAdded(repo);
+            return state;
+        },
+    });
+    const [copyRoute, back, again] = steps;
+    assert.deepStrictEqual(copyRoute.mcp, LEFT_BY_C10, `fixture: the full copy route registered in .mcp.json:\n${outs[0]}`);
+    assert.deepStrictEqual(back.mcp, ['mine'], `the switch back left stack servers in this project's .mcp.json:\n${back.calls.join('\n')}\n${outs[1]}`);
+    assert.deepStrictEqual(projectRemovesOf(back.calls).sort(), LEFT_BY_C10.map((n) => `mcp remove ${n} -s project`), 'a name .mcp.json does not hold cost a call, or one it holds was not removed');
+    for (const name of LEFT_BY_C10) assert.match(outs[1], new RegExp(`mcp pruned: ${name}\\n`), outs[1]);
+    assert.deepStrictEqual(back.trusted, ['mine'], 'the hand-added server lost its approval, or a stack name kept one');
+    for (const [i, step] of steps.entries()) assert.deepStrictEqual(userCallsOf(step.calls), [], `step ${i} called at user scope:\n${outs[i]}`);
+    assert.deepStrictEqual(projectRemovesOf(again.calls), [], `the re-run removed again:\n${outs[2]}`);
+    assert.deepStrictEqual(again.mcp, ['mine']);
+});
+
+// The same leftovers on the MCP copy route with the core on: the run registers its engine at user scope,
+// so the copy C10 put in .mcp.json ran chrome twice, and the locked three ran beside their plugins.
+test('seed update --scope user: leaving the full copy route for the MCP copy route prunes what C10 put in this project\'s .mcp.json - the engine registers at user scope once (F7)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        plugins: JSON.stringify(USER_ROWS()), tools: { claude: MCPJSON_CLI },
+        env: [COPY_ENV, MCP_COPY_ENV],
+        args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only']],
+        each: (repo, i) =>
+        {
+            const state = { calls: stepCalls(repo), mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).sort() };
+            if (i === 0) handAdded(repo);
+            return state;
+        },
+    });
+    const [, mcpCopy] = steps;
+    assert.deepStrictEqual(mcpCopy.mcp, ['mine'], `stack servers left in this project's .mcp.json:\n${mcpCopy.calls.join('\n')}\n${outs[1]}`);
+    assert.deepStrictEqual(projectRemovesOf(mcpCopy.calls).sort(), LEFT_BY_C10.map((n) => `mcp remove ${n} -s project`), outs[1]);
+    const adds = mcpCopy.calls.filter((c) => /^mcp add /.test(c));
+    assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user playwright-chrome'], `${adds.join('\n')}\n${outs[1]}`);
+});
+
 // A-M2 (final review A): at user scope every run removed each stack name from the account's own
 // registrations - a server of the user's own under the same name went with them. Only a registration of
 // the stack's own shape (the package it launches, or the url it calls) is removed; another is kept and
