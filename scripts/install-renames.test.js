@@ -161,6 +161,30 @@ test('settings writer: a skillOverrides value already set under the new name win
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('settings writer: a personal skillOverrides switch-off in settings.local.json follows the rename there, and nothing moves to the shared file', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
+    try
+    {
+        const file = path.join(dir, 'settings.json');
+        const localFile = path.join(dir, 'settings.local.json');
+        fs.writeFileSync(file, JSON.stringify({ env: {} }));
+        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'project-quality-loop': 'off', 'my-own-skill': 'off' }, MY_LOCAL_KEY: 1 }));
+        const logs = [];
+        const run = () => writeSettings({ file, localFile, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        run();
+        const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+        assert.deepStrictEqual(local.skillOverrides, { 'my-own-skill': 'off', 'alfred-loop-quality': 'off' });
+        assert.strictEqual(local.MY_LOCAL_KEY, 1, "the user's own local key survives");
+        assert.strictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).skillOverrides, undefined, 'a personal switch-off stays personal');
+        assert.ok(logs.some((m) => /settings\.local\.json: skillOverrides project-quality-loop re-keyed alfred-loop-quality/.test(m)), logs.join('\n'));
+        const before = fs.readFileSync(localFile, 'utf8');
+        run();
+        assert.strictEqual(fs.readFileSync(localFile, 'utf8'), before, 'a second run changes nothing');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ---------- end to end, one case per migration shape ----------
 
 // Shape 1: a 1.3.0 install on the plugin route - the 1.x core under the old key, a stamp whose picks
