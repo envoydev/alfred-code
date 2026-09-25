@@ -42,6 +42,41 @@ is kept for the projects that use it, with its uninstall command printed. The in
 marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
 `alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
 
+**Renamed in 2.0.0.** The `project-*` skills and the two failure diagnosers take grouped `alfred-*`
+names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
+prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
+docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
+`related-projects/`, `quality/`, `loops/`); a line in the project CLAUDE.md naming an old command is
+step 6's to fix.
+
+| was | now |
+|---|---|
+| `/project-solve-task` | `/alfred-task-solve` |
+| `/project-solve-cross-task` | `/alfred-task-solve-cross` |
+| `/project-build-from-scratch` | `/alfred-task-build-from-scratch` |
+| `/project-solution-design` | `/alfred-task-design` |
+| `/project-implementer` | `/alfred-task-implement` |
+| `/project-verify-plan` | `/alfred-task-verify-plan` |
+| `/project-verify-code` | `/alfred-task-verify-code` |
+| `/project-version-upgrade` | `/alfred-task-version-upgrade` |
+| `/project-diagnose-failure` | `/alfred-issue-diagnoser` |
+| `/project-ci-failure-signatures` | `/alfred-issue-signatures-ci` |
+| `/project-runtime-failure-signatures` | `/alfred-issue-signatures-runtime` |
+| `/project-architecture-analyzer` | `/alfred-capture-architecture` |
+| `/project-architecture-quality-analyzer` | `/alfred-capture-architecture-quality` |
+| `/project-code-style-analyzer` | `/alfred-capture-code-style` |
+| `/project-test-coverage-analyzer` | `/alfred-capture-test-coverage` |
+| `/project-related-context` | `/alfred-capture-related-projects` |
+| `/project-agent-capabilities` | `/alfred-capture-agent-capabilities` |
+| `/project-stack-usage-analyzer` | `/alfred-capture-stack-usage` |
+| `/project-first-look` | `/alfred-capture-first-look` |
+| `/project-quality-loop` | `/alfred-loop-quality` |
+| `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
+| `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
+| `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
+| seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
+| seat `runtime-failure-diagnoser` | seat `alfred-issue-diagnoser-runtime` |
+
 ## 0. Where to run it
 
 **This walk is script orchestration, not reasoning** - a stamp compare, an installer invocation, a

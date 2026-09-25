@@ -32,9 +32,9 @@ Pick the home before writing a word:
 The body stays unread until the description earns the load, and the description is paid for on
 every message whether it fires or not.
 
-- Start on the trigger - `Use when`, or `Use before` / `Load before` for a gate that must run before
-  an act - then the situation, in the words a request or a file would carry: the file types, tool
-  names, error text and synonyms a user actually types.
+- Start on the trigger - `Use when` / `Load when`, or `Use before` / `Load before` for a gate that must
+  run before an act - then the situation, in the words a request or a file would carry: the file
+  types, tool names, error text and synonyms a user actually types.
 - Close with `Not for` and the nearest neighbours that must stay quiet, each with where it goes
   instead - this is the clause that keeps a near-miss from loading the wrong skill.
 - List what it covers as keywords, never its steps in order: a description that retells the

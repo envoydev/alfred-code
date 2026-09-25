@@ -273,3 +273,47 @@ test('seed install --selection and update --add: a line naming an old item insta
     assert.ok(add.result.skills.includes('alfred-capture-stack-usage'), add.result.skills.join(' '));
     assert.ok(!add.out.includes('names nothing this release ships'), 'an old name is carried, never reported as unknown');
 });
+
+// ---------- the old names stay in their homes ----------
+
+// No surface may name an old identifier: a cite resolves to nothing, a preload loads nothing, and a
+// dispatch of an old seat finds no agent. The old names are allowed only where they are the record
+// of the rename - the manifest's retired lists and renamed map, this migration test, the history
+// docs, and update.md's upgrade table, each row of which must be the map's own pair. The names come
+// from the map, so this scan cannot drift from it; the manifest itself is the positive control.
+test('no surface names an old skill or seat outside the rename\'s own homes', () =>
+{
+    const pairs = { ...RENAMED.skills, ...RENAMED.agents };
+    const old = new RegExp(`(?<![A-Za-z0-9_-])(${Object.keys(pairs).join('|')})(?![A-Za-z0-9_-])`, 'g');
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
+    assert.ok(old.test(JSON.stringify(manifest.renamed)) && old.test(JSON.stringify(manifest.retired)), 'positive control: the scan sees the map and the retired lists');
+    old.lastIndex = 0;
+    const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', '.serena', '.superpowers', '.memory-mcp', '.playwright']);
+    const hits = [];
+    const tableRows = [];
+    const scan = (dir) =>
+    {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+        {
+            const full = path.join(dir, e.name);
+            const rel = path.relative(ROOT, full).split(path.sep).join('/');
+            if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) scan(full); continue; }
+            if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'scripts/install-renames.test.js') continue;
+            const buf = fs.readFileSync(full);
+            if (buf.includes(0)) continue;
+            let text = buf.toString('utf8');
+            if (rel === 'meta/stack-manifest.json') { const m = JSON.parse(text); delete m.retired; delete m.renamed; text = JSON.stringify(m, null, 2); }
+            text.split('\n').forEach((line, i) =>
+            {
+                const found = line.match(old);
+                if (!found) return;
+                const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
+                if (rel === 'setup-plugin/commands/update.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
+                hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
+            });
+        }
+    };
+    scan(ROOT);
+    assert.deepStrictEqual(hits, [], 'an old name is back outside its homes');
+    assert.deepStrictEqual(tableRows.sort(), Object.keys(pairs).sort(), 'update.md\'s upgrade table names every rename, each as the map\'s own pair');
+});

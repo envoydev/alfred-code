@@ -139,6 +139,8 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
     assert.ok(flat.includes('pressure applies only to a discipline'), 'the adverse step is for a discipline skill');
     // Review M1: the opener is the trigger, and a pre-act gate opens on it too.
     assert.ok(flat.includes('`Use when`') && flat.includes('`Use before`') && flat.includes('`Load before`'), 'the pre-act openers are allowed');
+    // R121: every opener the house descriptions use is one the habit allows.
+    assert.ok(flat.includes('`Load when`'), 'the Load when opener is allowed');
     // Review I3: the frontmatter facts every skill needs live here, where every install has them.
     for (const fact of ['1% of the context window', 'skillListingBudgetFraction', '1,536', '`when_to_use`', 'defaults to the folder name',
         '`disable-model-invocation: true`', '`user-invocable: false`', 'context7'])
