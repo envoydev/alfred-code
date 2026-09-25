@@ -1,6 +1,28 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+// F4 item 4: two UNRELATED checks each carried a '// 27.' header - the real check 27 (the removed
+// `suggests:` edge, rationale at ~:559, call site 'No install edge from a name...') and the
+// environment-catalog check (~:2076, meta/environment.json vs the Node seed), which is its own
+// check and must carry its own number. CLAUDE.md then had to hedge with 'not check 27' rather than
+// name the real one. This pins both: check 27 stays the suggests-edge check, and the
+// environment-catalog check carries the next unused id (58 - checks 1-57 are all spoken for,
+// including the historical gap at 17, which a retired check leaves unreused).
+test('lint-skills.js: the environment-catalog check and the suggests-edge check no longer share the id 27', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'lint-skills.js'), 'utf8');
+    const envCatalogHeader = /\/\/ (\d+)\. The environment catalog \(meta\/environment\.json\) against what the Node seed actually/.exec(src);
+    assert.ok(envCatalogHeader, 'the environment-catalog check header must still be findable by its own text');
+    assert.strictEqual(envCatalogHeader[1], '58', 'the environment-catalog check must carry the next unused id, not 27');
+
+    const suggestsRationale = /\/\/ (\d+)\. No artifact may put a skill into a project's install by NAMING it\./.exec(src);
+    const suggestsCallSite = /\/\/ (\d+)\. No install edge from a name: the removed `suggests:` frontmatter must not return\./.exec(src);
+    assert.ok(suggestsRationale && suggestsCallSite, 'the suggests-edge check must keep both its rationale and call-site headers');
+    assert.strictEqual(suggestsRationale[1], '27');
+    assert.strictEqual(suggestsCallSite[1], '27');
+});
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
     const lint = require('./lint-skills.js');
@@ -941,7 +963,7 @@ test('check 57: the walk reads tracked text files, and the live tree carries no 
 // no committed regression test (review, Minor: "a future edit to this function has nothing pinning
 // its negative-case behavior"). Pin every mismatch shape the function actually checks, plus one
 // clean pass, the way check 51's test does.
-test('check 27: lintEnvironmentCatalog catches catalog/seed/command/migration drift, and a clean set passes', () => {
+test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration drift, and a clean set passes', () => {
     const { lintEnvironmentCatalog } = require('./lint-skills.js');
 
     const commandSrcOk = { init: 'reads meta/environment.json here', configure: 'meta/environment.json', validate: 'meta/environment.json' };

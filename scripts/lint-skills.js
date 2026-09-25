@@ -2073,10 +2073,11 @@ function main()
         flag(`meta/shared-rules.json is unreadable: ${err.message}`);
     }
 
-    // 27. The environment catalog (meta/environment.json) against what the Node seed actually
+    // 58. The environment catalog (meta/environment.json) against what the Node seed actually
     //     seeds - scripts/install/settings.js, the one place that writes an ALFRED_CODE_ key into
     //     settings.json - plus the rename targets migrations.json names. (25 and 26 are the
-    //     optional-cite checks CLAUDE.md names by number - do not renumber those.)
+    //     optional-cite checks CLAUDE.md names by number - do not renumber those; this was itself
+    //     mislabeled 27, the suggests-edge check's own number, until F4.)
     try
     {
         const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
