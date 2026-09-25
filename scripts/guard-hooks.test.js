@@ -315,6 +315,10 @@ const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the sm
 // deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
 // two unrelated read-guard assertions red (measured: the fresh-session hook crossed it).
 const REPO = path.join(__dirname, '..');
+// A long markdown file well under the 60KB whole-read cap: the repo's own CLAUDE.md was this fixture
+// until it grew past that cap and turned the non-source assertion red.
+const NOTES = path.join(TMP, 'notes.md');
+fs.writeFileSync(NOTES, Array.from({ length: 400 }, (_, i) => `note ${i}`).join('\n'));
 const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 // A seeded repo whose HEAD sits on a named branch (the force-push guard reads HEAD for a bare push).
@@ -346,7 +350,7 @@ test('guard-read-whole-file: the Read matcher gates whole-file shapes and the cu
   assert.equal(read({ file_path: BIG, offset: 1, limit: BIG_LINES }), 2, 'limit = the line count');
   assert.equal(read({ file_path: BIG, offset: 50, limit: 40 }), 0, 'a ranged read');
   assert.equal(read({ file_path: SMALL }), 0, 'a small file reads whole');
-  assert.equal(read({ file_path: path.join(REPO, 'CLAUDE.md') }), 0, 'a non-source file is not gated');
+  assert.equal(read({ file_path: NOTES }), 0, 'a non-source file is not gated');
   assert.equal(read({ file_path: '/nope/missing.ts' }), 0, 'a missing file lets Read surface its own error');
   const sid = `cap-${process.pid}-${Date.now()}`;
   const third = Math.floor(BIG_LINES * 0.3);
@@ -1704,7 +1708,7 @@ test('guard-read-whole-file: a sweep over .md files is a sweep; one named .md fi
   // ignores it: the sweep is the shape that dumps, not the named read.
   const call = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, {}).status;
   assert.equal(call('for f in .claude/skills/*/SKILL.md; do cat "$f"; done'), 2, 'a loop over every SKILL.md is blocked');
-  assert.equal(call(`cat ${path.join(REPO, 'CLAUDE.md')}`), 0, 'one named markdown file is still a fine read');
+  assert.equal(call(`cat ${NOTES}`), 0, 'one named markdown file is still a fine read');
   assert.equal(call('find .claude/skills -name SKILL.md -exec cat {} \\;'), 2, 'find -exec over the same set too');
 });
 
