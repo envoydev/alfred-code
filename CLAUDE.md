@@ -289,8 +289,8 @@ change (see the invariants below).
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
     `alfred-code` so the eval CLI can load a library item. The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
-    one row plus the seed's own (the environment-catalog lint check - not check 27, which is the
-    `suggests:` removal check below).
+    one row plus the seed's own (lint check 58 - not check 27, which is the `suggests:` removal
+    check below).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
     `alfred-capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why.
@@ -343,7 +343,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
   playwright, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
-  names a registration writes - that needs the FILES, so the switch belongs with
+  names a registration writes - the agents' own `alfred-code:<skill>` preloads re-spelled to the bare
+  skill included, since on the full copy route nothing serves the qualified name - that needs the
+  FILES, so the switch belongs with
   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). The LOCKED THREE
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
@@ -359,7 +361,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   M9). An unreadable plugin listing on a copy route is one loud line naming the commands, never an
   empty list acted on.
 - **MCP servers are per-project at project and local scope** (a `user` install makes them
-  account-wide). `serena` (baseline-navigation), `context7`
+  account-wide) - except the user-scope FULL copy route (C10): its stack servers go to THIS
+  project's own `.mcp.json` instead, and a stale user-scope registration an earlier run left behind
+  is named with its remove command (`claude mcp remove <name> -s user`), never removed by this one.
+  `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
@@ -371,8 +376,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     session. Setup/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
     on at install, none flipped by update); the stamp's two lines are the record on EVERY route (a
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
-    uninstalled. On the copy route an engine's plugin row is uninstalled, on or off, and at project
-    scope one left off is registered AND named in `disabledMcpjsonServers` (it rejects a `.mcp.json`
+    uninstalled. On the copy route an engine's plugin row is uninstalled, on or off - except at user
+    scope on the FULL copy route (C11): there the engine registers in THIS project's `.mcp.json`
+    while its user-scope row still serves every other project, so an uninstall would take it from
+    all of them; it is switched off in this project only (`disable --scope project`) and recorded in
+    the stamp's `stood-down:` line, which a switch back enables. At project scope one left off is
+    registered AND named in `disabledMcpjsonServers` (it rejects a `.mcp.json`
     server only - measured); the list moves only when the enable answer does. No settings key reaches a
     local- or user-scope registration, so there the registration IS the enable: one left off is not
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
