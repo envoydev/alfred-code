@@ -258,3 +258,24 @@ test('captures: at local scope the docs root is the personal file\'s, at project
     stamp('project');
     assert.match(line(), /^capture: alfred-capture-architecture - run: /, 'project scope never reads the personal file');
 });
+
+// R134, the I-4 class: a --space that names no profile exits 2 - never the default account's plan.
+for (const [name, args] of [
+    ['--space with no value', ['--space']],
+    ['--space with an empty value', ['--space', '']],
+    ['the --space=<name> form', ['--space=work']],
+])
+{
+    test(`CLI: ${name} exits 2 with no plan`, () =>
+    {
+        const root = project();
+        const inv = path.join(root, 'installed.json');
+        fs.writeFileSync(inv, JSON.stringify(INV()));
+        const home = path.join(TMP, `cli-home-${seq++}`);
+        fs.mkdirSync(home);
+        const r = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root, ...args], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+        assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+        assert.match(r.stderr, /^init-plan: --space needs a profile name, as --space <name>$/m);
+        assert.strictEqual(r.stdout, '');
+    });
+}

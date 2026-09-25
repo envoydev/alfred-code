@@ -222,8 +222,18 @@ function report(plugins, plan, opts)
     return { text: lines.join('\n'), missing, differs, match };
 }
 
+// The account a write lands in is never guessed: `--config-dir` with no value, an empty one, a flag
+// in its place or the `--config-dir=<dir>` form would read as absent and fall back to ~/.claude.
+function badConfigDir(argv)
+{
+    const i = argv.indexOf('--config-dir');
+    const v = i >= 0 ? argv[i + 1] : 'unset';
+    return argv.some(a => a.startsWith('--config-dir=')) || !v || v.startsWith('--');
+}
+
 function main(argv)
 {
+    if (badConfigDir(argv)) { console.error('plugin-settings: --config-dir needs a directory, as --config-dir <dir> - nothing written'); return 2; }
     const root = path.join(__dirname, '..');
     const catalogPath = arg(argv, '--catalog') || path.join(root, 'meta', 'plugin-settings.json');
     const configDir = arg(argv, '--config-dir') || path.join(os.homedir(), '.claude');

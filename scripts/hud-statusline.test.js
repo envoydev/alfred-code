@@ -324,6 +324,26 @@ test('Windows: Git Bash is found as Claude Code finds it - OSTYPE, CLAUDE_CODE_G
     assert.match(line({ PATH: 'E:\\Git\\cmd' }, ['E:\\Git\\cmd\\git.exe']).command, CMD_FORM, 'a git with no bash.exe of its own');
 });
 
+test('Windows: the git on PATH is skipped as Claude Code skips it - in the launch folder, or below it in a node_modules / venv path', () =>
+{
+    // code.claude.com/docs/en/troubleshoot-install: 'Claude Code skips a git that sits in the folder you
+    // launched Claude Code from, or below it in a path that contains node_modules or a virtual-environment
+    // folder such as .venv or env, for example C:\dev\env\myproject\Git when you launched from C:\dev\env\myproject'.
+    const line = (cwd, PATH, present) => planHud({ configDir: account(), platform: 'win32', runtime: WIN_NODE, env: { ...WIN_ENV, PATH }, exists: winDisk(WIN_NODE, CMD_EXE, ...present), cwd }).statusLine.command;
+    const bash = SORT_V_FOR('C:/Program Files/nodejs/node.exe');
+    const CMD_FORM = /^C:\\Windows\\System32\\cmd\.exe \/d \/s \/c ""/;
+    assert.match(line('D:\\proj', 'D:\\proj', ['D:\\proj\\git.exe', 'D:\\bin\\bash.exe']), CMD_FORM, 'a git in the launch folder itself');
+    assert.match(line('d:\\PROJ\\', 'D:\\proj', ['D:\\proj\\git.exe', 'D:\\bin\\bash.exe']), CMD_FORM, 'paths compare without case');
+    assert.strictEqual(line('D:\\proj', 'D:\\proj;E:\\Git\\cmd', ['D:\\proj\\git.exe', 'E:\\Git\\cmd\\git.exe', 'E:\\Git\\bin\\bash.exe']), bash, 'the lookup moves on to the next git');
+    for (const dir of ['D:\\proj\\node_modules\\git', 'D:\\proj\\.venv\\Git', 'D:\\proj\\sub\\env\\Git'])
+        assert.match(line('D:\\proj', `${dir}\\cmd`, [`${dir}\\cmd\\git.exe`, `${dir}\\bin\\bash.exe`]), CMD_FORM, dir);
+    assert.match(line('C:\\dev\\env\\myproject', 'C:\\dev\\env\\myproject\\Git\\cmd',
+        ['C:\\dev\\env\\myproject\\Git\\cmd\\git.exe', 'C:\\dev\\env\\myproject\\Git\\bin\\bash.exe']), CMD_FORM, 'the docs\' own example');
+    // Kept: below the launch folder in no such path, such a path outside it, a name that only contains env.
+    for (const dir of ['D:\\proj\\tools\\Git', 'E:\\node_modules\\Git', 'D:\\proj\\environment\\Git'])
+        assert.strictEqual(line('D:\\proj', `${dir}\\cmd`, [`${dir}\\cmd\\git.exe`, `${dir}\\bin\\bash.exe`]), bash, dir);
+});
+
 test('Windows: only the detected shell\'s form is current - claude-hud\'s own Git Bash line (/c/... node) is kept, a cmd line under Git Bash refreshed', () =>
 {
     const bashEnv = { ...WIN_ENV, MSYSTEM: 'MINGW64' };

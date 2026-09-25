@@ -163,18 +163,30 @@ function nodeOnPath(env = process.env, platform = process.platform, runnable = i
 // the session shell (setup.md:98-111): a node child sees MSYSTEM, which Git for Windows exports (bash
 // does not export OSTYPE). Else Claude Code's own lookup (code.claude.com troubleshoot-install and env-vars):
 // CLAUDE_CODE_GIT_BASH_PATH when it names an existing bash / sh, the two Program Files installs,
-// then bin\bash.exe of the git on PATH.
-function gitBash(env, exists)
+// then bin\bash.exe of the git on PATH - skipping, as it does, a git in the launch folder (`cwd`), or
+// below it in a path holding node_modules or a virtual-environment folder (.venv, env).
+function gitBash(env, exists, cwd = process.cwd())
 {
     if (env.MSYSTEM || /^(msys|cygwin)/.test(env.OSTYPE || '')) return true;
     const pinned = env.CLAUDE_CODE_GIT_BASH_PATH;
     if (pinned && /^(bash|sh)(\.exe)?$/i.test(path.win32.basename(pinned)) && exists(pinned)) return true;
     if (['C:\\Program Files\\Git\\bin\\bash.exe', 'C:\\Program Files (x86)\\Git\\bin\\bash.exe'].some((b) => exists(b))) return true;
-    const git = pathDirs(env, 'win32').map((d) => path.win32.join(d, 'git.exe')).find((g) => exists(g));
+    const git = pathDirs(env, 'win32').map((d) => path.win32.join(d, 'git.exe')).find((g) => exists(g) && !projectGit(g, cwd));
     if (!git) return false;
     // cmd\git.exe or bin\git.exe sits one level under the install, mingw64\bin\git.exe two.
     const up = path.win32.dirname(path.win32.dirname(git));
     return [up, path.win32.dirname(up)].some((root) => exists(path.win32.join(root, 'bin', 'bash.exe')));
+}
+
+// A project's own git, which Claude Code will not run (troubleshoot-install): its folder IS the launch
+// folder, or lies below it with node_modules / .venv / env among the path's folders.
+function projectGit(git, cwd)
+{
+    const norm = (p) => path.win32.normalize(p).replace(/\\+$/, '').toLowerCase();
+    const dir = norm(path.win32.dirname(git));
+    const launch = norm(cwd);
+    if (dir === launch) return true;
+    return dir.startsWith(`${launch}\\`) && dir.split('\\').some((seg) => ['node_modules', '.venv', 'env'].includes(seg));
 }
 
 // What this platform's line should be: the bash form (POSIX, or Windows with Git Bash - forward slashes,
@@ -297,7 +309,7 @@ function addsNote(targets)
 
 // Everything the run would do, nothing written. `item` is init-plan's machine line state: skip,
 // blocked, missing, refresh (a claude-hud line of a stale shape will be replaced) or present.
-function planHud({ configDir, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, catalog })
+function planHud({ configDir, platform = process.platform, env = process.env, runtime = nodeOnPath(env, platform), exists = fs.existsSync, cwd = process.cwd(), catalog })
 {
     const settingsFile = path.join(configDir, 'settings.json');
     const settings = readDoc(settingsFile);
@@ -309,7 +321,7 @@ function planHud({ configDir, platform = process.platform, env = process.env, ru
         plan.error = `${settingsFile} is not valid JSON`;
         return { ...plan, item: { state: 'blocked', detail: `${plan.error} - fix it, then run /alfred-code:init again` } };
     }
-    const bash = platform === 'win32' && gitBash(env, exists);
+    const bash = platform === 'win32' && gitBash(env, exists, cwd);
     const want = expected({ platform, configDir, runtime, env, exists, bash });
     const statusLine = settings.doc ? settings.doc.statusLine : undefined;
     plan.statusLine = { ...classify(statusLine, { platform, want, exists }), command: want.command, launcher: want.launcher };

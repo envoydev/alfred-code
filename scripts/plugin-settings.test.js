@@ -194,3 +194,24 @@ test('CLI --apply: the account settings.json is backed up before the patch and t
     assert.strictEqual(baks(dir).length, 1);
     assert.match(lines.join('\n'), /\nbackup: .*settings\.json\.bak\.\d{8}-\d{6}$/);
 });
+
+// R134, the I-4 class: a --config-dir that names no directory exits 2 - never a fallback to ~/.claude,
+// never a relative dir made of the next flag.
+const SCRIPT = path.join(__dirname, 'plugin-settings.js');
+for (const [name, args] of [
+    ['--config-dir with no value', () => ['--plugin', 'claude-hud', '--apply', '--config-dir']],
+    ['--config-dir with an empty value', () => ['--config-dir', '', '--plugin', 'claude-hud', '--apply']],
+    ['the --config-dir=<dir> form', (dir) => [`--config-dir=${dir}`, '--plugin', 'claude-hud', '--apply']],
+    ['--config-dir followed by another flag', () => ['--config-dir', '--apply', '--plugin', 'claude-hud']],
+])
+{
+    test(`CLI: ${name} exits 2 and writes nothing`, () => {
+        const home = tmp();
+        const cwd = tmp();
+        const target = tmp();
+        const r = require('node:child_process').spawnSync(process.execPath, [SCRIPT, ...args(target)], { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+        assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+        assert.match(r.stderr, /^plugin-settings: --config-dir needs a directory, as --config-dir <dir> - nothing written$/m);
+        for (const dir of [home, cwd, target]) assert.deepStrictEqual(fs.readdirSync(dir), [], `${dir} stays empty`);
+    });
+}

@@ -172,6 +172,12 @@ if (require.main === module)
 {
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+    // A --space that names no profile would plan the default account instead.
+    if (argv.some((a) => a.startsWith('--space=')) || (argv.includes('--space') && !flag('--space')))
+    {
+        console.error('init-plan: --space needs a profile name, as --space <name>');
+        process.exit(2);
+    }
     const file = flag('--installed');
     let inv;
     try { inv = JSON.parse(fs.readFileSync(file, 'utf8')); if (!inv || typeof inv !== 'object') throw new Error('not an object'); }
