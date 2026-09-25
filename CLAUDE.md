@@ -33,7 +33,9 @@ change (see the invariants below).
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
   `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
-  `stamp`, `runtime`). One `node` command on every OS, so no OS branch in the command bodies. The
+  `stamp`, `runtime`), plus `claude-stack.js`, the entry shim a 1.x command body still calls against <!-- legacy-name -->
+  a 2.0.0 snapshot (it runs `alfred-code.js`; keep it listed so it is never deleted as unlisted
+  before the 2.x line ends). One `node` command on every OS, so no OS branch in the command bodies. The
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
   `docs/alfred-code.html` is the browser inventory.
@@ -204,8 +206,9 @@ change (see the invariants below).
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`); never in a build flow).
   `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
-  `integration-reviewer`). cursor-stack ships twins of all 44 - a protocol change here usually
-  needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
+  `integration-reviewer`). cursor-stack shipped twins of all 44 before this rebrand and is PENDING
+  the same rename while its mirror is paused - a protocol change here usually needs the same edit
+  there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
@@ -286,7 +289,8 @@ change (see the invariants below).
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
     `alfred-code` so the eval CLI can load a library item. The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
-    one row plus the seed's own (lint check 27).
+    one row plus the seed's own (the environment-catalog lint check - not check 27, which is the
+    `suggests:` removal check below).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
     `alfred-capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why.
@@ -322,7 +326,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, and `stamp.js state` |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -343,7 +347,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). The LOCKED THREE
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
-  twice. They come back to `.mcp.json` only on the FULL copy route; every registration and verify
+  twice. They come back to `.mcp.json` only on the FULL copy route, at every scope - never `mcp add
+  --scope user`; every registration and verify
   pass skips a locked name while the core is on. A switch onto that route disables the core and the
   locked three first, and copies every skill and seat the core carried, a denied seat excepted - that
   route reads them from the disk, where a plugin-route install holds only the extras. At `user` scope
@@ -538,7 +543,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   output.** `claude mcp add` over an existing name prints 'already exists' and exits 0, so a failed
   `remove` looks like success. `verifyProject` / `verifyUser` (`scripts/install/mcp.js`) read the result
   back: at project scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`);
-  at user scope the shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then
+  at user and local scope the shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then
   reported (the account config is never hand-edited). The expected shape is built from the same
   manifest words; a server the project added by hand is never touched. `scripts/install-mcp.test.js`
   pins it on the seed.
