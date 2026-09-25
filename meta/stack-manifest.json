@@ -909,7 +909,7 @@
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",
-      "note": "wired env-gated: a sh test skips the node spawn unless ALFRED_CODE_INSTRUMENT=1 (seeded \"0\" in settings env - flip it for a measured run; see README)"
+      "note": "wired env-gated: a plain node spawn that exits at its own env check unless ALFRED_CODE_INSTRUMENT=1 (seeded \"0\" in settings env - flip it for a measured run; see README)"
     }
   ],
   "plugins": [

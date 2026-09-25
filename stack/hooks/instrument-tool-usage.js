@@ -24,11 +24,12 @@ if (require.main === module) {
 // plus `Skill` and `mcp__*` - as one JSONL line so a run can be tallied exactly. It NEVER blocks
 // a call - it observes and exits 0.
 //
-// The installer wires this on matcher '.*' behind a shell gate - `[ "$ALFRED_CODE_INSTRUMENT" != "1" ] ||` -
-// so when the switch is off the per-call cost is a shell test, never a node spawn. The switch is
-// `ALFRED_CODE_INSTRUMENT` in .claude/settings.json env, seeded "0": flip it to "1" for a measured
-// benchmark / audit run (optionally ALFRED_CODE_INSTRUMENT_LOG=<path>), back to "0" after. The env check
-// below is the belt for a gate-less manual wiring: only the literal value 1 (or true) records.
+// This hook rides the core plugin (2.0.0 - no shell gate wrapper): the generated entry launches it
+// on matcher '.*' as a plain `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"`, so
+// when the switch is off the per-call cost is a node spawn that exits at the check below, not a
+// shell test. The switch is `ALFRED_CODE_INSTRUMENT` in .claude/settings.json env, seeded "0": flip
+// it to "1" for a measured benchmark / audit run (optionally ALFRED_CODE_INSTRUMENT_LOG=<path>),
+// back to "0" after. The env check below is what actually gates every call.
 //
 // Output: one JSONL row per matched call at
 //   $ALFRED_CODE_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
