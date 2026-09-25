@@ -24,7 +24,8 @@
 // memory-feature commits begin (a pinned SHA, `git archive`'d - a clean release-shaped snapshot, no
 // node_modules, no .git), a Claude-own-memory note seeded for it under a sandboxed CLAUDE_CONFIG_DIR
 // (never the real account), then updated in place by THIS working tree's HEAD (also `git archive`'d,
-// same release shape). Asserts baseline-memory.md landed, memory is registered, the seeded note
+// same release shape), then `memory.js init` from that snapshot - since 2.0.0 the notes import and the
+// switch-off belong to /alfred-code:init, not to update. Asserts baseline-memory.md landed, memory is registered, the seeded note
 // became a db row, and autoMemoryEnabled is false - each a thrown Error on failure, which the
 // existing per-run try/catch already turns into a reported FAIL record rather than a crash.
 //
@@ -416,6 +417,22 @@ function writeUpdateForensics(projectDir, { preInstallLog, updateLog, dbPath }) 
 // Every failure - a spawn error, a non-zero installer exit, a failed assertion - is a thrown Error,
 // which runOne()'s existing try/catch already turns into a reported record (pass:false, error
 // message) rather than crashing the batch; nothing extra is needed here for that requirement.
+// R90 N3: since 2.0.0 an `update` imports no notes and leaves Claude's own memory on - that is
+// `/alfred-code:init`'s job (`memory.js init`, which also stamps `initialised:`). So `--setup update`
+// runs it next, from the SAME release-shaped snapshot, at the level the update was given, over the
+// sandbox account the pre-feature note was seeded into. `spawn` is injectable so the step is pinned
+// offline (scripts/memory-usage-eval.test.js); a real run is billed and never part of `npm test`.
+function runInitAfterUpdate({ relSrc, projectDir, acctDir, env, spawn = spawnSync }) {
+  const res = spawn(process.execPath, [path.join(relSrc, 'scripts', 'install', 'memory.js'), 'init', '--project-root', projectDir, '--level', 'project', '--config-dir', acctDir], {
+    cwd: projectDir, encoding: 'utf8', timeout: 180000, env, maxBuffer: 64 * 1024 * 1024,
+  });
+  const log = `$ memory.js init --level project\nexit=${res.status}\n--- stdout ---\n${res.stdout || ''}\n--- stderr ---\n${res.stderr || ''}\n`;
+  if (res.error || res.status !== 0) {
+    throw new Error(`memory.js init after the update failed: ${res.error ? res.error.message : `exit ${res.status}`} - ${String(res.stderr || '').slice(-2000)}`);
+  }
+  return { log };
+}
+
 async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const preSrc = preFeatureSrc();
   const relSrc = releaseSrcSnapshot();
@@ -482,10 +499,12 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const updateRes = spawnSync(process.execPath, [path.join(relSrc, 'scripts', 'install', 'alfred-code.js'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
-  const updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;
+  let updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;
   if (updateRes.error || updateRes.status !== 0) {
     throw new Error(`update --installed-only (HEAD, over the ${PRE_FEATURE_COMMIT} baseline) failed: ${updateRes.error ? updateRes.error.message : `exit ${updateRes.status}`} - ${String(updateRes.stderr || '').slice(-2000)}`);
   }
+  // Step 3: the init the update now defers to (N3) - the notes import and the switch-off live there.
+  updateLog += runInitAfterUpdate({ relSrc, projectDir, acctDir, env: sandboxEnv }).log;
 
   const dbPath = path.join(projectDir, '.memory-mcp', 'memory.db');
   const mcpConfigPath = path.join(projectDir, '.mcp.json');
@@ -1077,7 +1096,7 @@ async function main() {
 
 module.exports = {
   SCENARIOS, buildProjectSelf, memoryRegistration, findProjectSlugDir,
-  passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate,
+  passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate, runInitAfterUpdate,
   readDbRowsForAssert, writeUpdateForensics, FORENSICS_DIR,
 };
 
