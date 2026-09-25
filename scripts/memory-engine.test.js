@@ -237,6 +237,21 @@ test('registeredDbPath falls back to the account .claude.json, user scope then p
   } finally { rmDir(root); rmDir(home); rmDir(config); }
 });
 
+test('registeredDbPath: settings.local.json ALFRED_CODE_MEMORY_DB wins over settings.json (Claude Code\'s own precedence)', () => {
+  const root = tmpDir('memory-reg-');
+  const home = tmpDir('memory-home-');
+  try {
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({
+      env: { ALFRED_CODE_MEMORY_DB: path.join(root, '.memory-mcp', 'shared.db') },
+    }));
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({
+      env: { ALFRED_CODE_MEMORY_DB: path.join(root, '.memory-mcp', 'local.db') },
+    }));
+    assert.strictEqual(m.registeredDbPath(root, { home }), path.join(root, '.memory-mcp', 'local.db'), 'settings.local.json must win when both files hold the key');
+  } finally { rmDir(root); rmDir(home); }
+});
+
 test('registeredDbPath never throws: absent files, garbage JSON, no memory entry all read as not registered', () => {
   const root = tmpDir('memory-reg-');
   const home = tmpDir('memory-home-');

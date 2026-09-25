@@ -134,8 +134,10 @@ function memoryEnvPath(entry, home) {
 // "not registered here".
 function settingsEnvDbPath(projectRoot, home, configDir) {
   const files = [
-    path.join(projectRoot, '.claude', 'settings.json'),
+    // settings.local.json first - Claude Code's own precedence, and the only file a local-scope
+    // install (T16) writes ALFRED_CODE_MEMORY_DB into (memory-launch.js resolves it the same order).
     path.join(projectRoot, '.claude', 'settings.local.json'),
+    path.join(projectRoot, '.claude', 'settings.json'),
     path.join(configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json'),
   ];
   for (const file of files) {
