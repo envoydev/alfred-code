@@ -171,3 +171,21 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     assert.strictEqual(bad.status, 2);
     assert.match(bad.stderr, /init-plan: cannot read /);
 });
+
+// R89 (R83 b): the capture outputs are looked for under the docs root the install's scope resolves - at
+// local scope settings.local.json over settings.json - or a capture already written under a
+// personal docs path reads as never run, and init runs it again.
+test('captures: at local scope the docs root is the personal file\'s, at project scope the shared one (R89)', () =>
+{
+    const root = project({ settings: { env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } } });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+    fs.mkdirSync(path.join(root, 'docs', 'mine', 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'mine', 'architecture', 'ARCHITECTURE.md'), '# map\n');
+    const line = () => render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe: NONE }))
+        .find((l) => l.startsWith('capture: project-architecture-analyzer'));
+    const stamp = (scope) => fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), `source: x\nscope: ${scope}\n`);
+    stamp('local');
+    assert.strictEqual(line(), 'capture: project-architecture-analyzer - done: docs/mine/architecture/ARCHITECTURE.md exists');
+    stamp('project');
+    assert.match(line(), /^capture: project-architecture-analyzer - run: /, 'project scope never reads the personal file');
+});

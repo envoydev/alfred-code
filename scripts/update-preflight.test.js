@@ -45,9 +45,9 @@ function scaffold({ migrations = [], settings = null, stamp = 'sha: aaa111\nvers
     return { snap, install, fixtureFile };
 }
 
-function run(args)
+function run(args, env = process.env)
 {
-    try { return { out: execFileSync('node', [SCRIPT, ...args], { encoding: 'utf8' }), code: 0 }; }
+    try { return { out: execFileSync('node', [SCRIPT, ...args], { encoding: 'utf8', env }), code: 0 }; }
     catch (e) { return { out: e.stdout, code: e.status }; }
 }
 
@@ -506,4 +506,61 @@ test('new items: the key comes from THIS project\'s rows, never another project\
     assert.strictEqual(code, 0, out);
     assert.match(out, /^new: skill markdown-style\tarrives\talfred-code$/m, out);
     assert.match(out, /^new: hook docs-session\tarrives\talfred-code$/m, out);
+});
+
+// I8 (R51): a 1.x GLOBAL install kept its stamp in the account dir, and the installer moves it into the
+// project only on the update this preflight runs BEFORE. Reading the project alone exited 'no stamp'
+// (2), and the command routed away before the migration could run. Only while the project has no stamp.
+test('a 1.x global install\'s account stamp is the baseline until the update moves it (I8)', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: null, fixture: { files: [] } });
+    fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'hooks', 'docs.js'), '');
+    const acct = path.join(path.dirname(install), 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: aaa111\nversion: 1.3.0\nscope: global\n'); // legacy-name
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: acct };
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m, out);
+    assert.match(out, /^legacy-stamp: .*claude-stack\.stamp - a 1\.x global install; this update moves it into the project$/m, out); // legacy-name
+
+    // The project's own stamp, once it has one, wins - the account copy stays for other projects.
+    fs.writeFileSync(path.join(install, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 2.0.0\n');
+    const own = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile], env);
+    assert.match(own.out, /^version: 2\.0\.0 -> 0\.2\.70$/m, own.out);
+    assert.doesNotMatch(own.out, /^legacy-stamp:/m);
+
+    // No account stamp either: still the plain 'no stamp' exit.
+    const bare = scaffold({ stamp: null, fixture: { files: [] } });
+    const none = run(['--snapshot', bare.snap, '--root', bare.install, '--fixture', bare.fixtureFile], { ...process.env, CLAUDE_CONFIG_DIR: path.join(path.dirname(bare.install), 'empty-acct') });
+    assert.strictEqual(none.code, 2, none.out);
+});
+
+// M4 (Task 16 review, R54): a switch-off that lives in settings.local.json - a local-scope install's
+// deny, or its ALFRED_CODE_HOOKS_OFF - is the user's off-state too; the classification reads both files
+// the way Claude Code lays them (env key by key, the local file winning; deny combined).
+test('new items: a deny or a hooks-off in settings.local.json is the user\'s off-state too (M4)', () => {
+    const fixture = { files: [{ status: 'added', filename: 'stack/agents/code-style-analyzer.md' }, { status: 'added', filename: 'stack/hooks/docs-session.js' }] };
+    const { snap, install, fixtureFile } = scaffold({ fixture, settings: { env: { ALFRED_CODE_HOOKS_OFF: '' } } });
+    fs.writeFileSync(path.join(install, '.claude', 'settings.local.json'), JSON.stringify({
+        permissions: { deny: ['Agent(alfred-code:code-style-analyzer)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'docs-session' },
+    }));
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, /^new: agent code-style-analyzer\toff\talfred-code$/m, out);
+    assert.match(out, /^new: hook docs-session\toff\talfred-code$/m, out);
+});
+
+// The env-keys before-state is the file THIS run writes: settings.local.json at local scope (the
+// stamp's `scope:` line), settings.json at every other.
+test('env-keys: the before-state is the file the run writes - settings.local.json at local scope', () => {
+    const { snap, install, fixtureFile } = scaffold({ stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n', settings: { env: { SHARED_ONLY: '1' } } });
+    fs.writeFileSync(path.join(install, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/x' } }));
+    const local = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
+    assert.match(local.out, /^env-keys: ALFRED_CODE_MEMORY_DB$/m, local.out);
+    fs.writeFileSync(path.join(install, '.claude', 'alfred-code.stamp'), 'sha: aaa111\nversion: 0.2.60\nscope: project\n');
+    const shared = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
+    assert.match(shared.out, /^env-keys: SHARED_ONLY$/m, shared.out);
 });

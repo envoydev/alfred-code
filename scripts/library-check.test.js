@@ -288,3 +288,34 @@ test('a traversal name in the drift/missing rows is never joined, hashed or echo
     assert.ok(json.rows.every((row) => !row.name.includes('outside')), JSON.stringify(json.rows));
     assert.strictEqual(json.invalid, 2);
 });
+
+// R54 M3: the account stamp is a fallback for a project that has NO stamp file - never for one whose
+// own stamp simply carries no library lines (a 1.2.0 project, or one the account stamp does not
+// describe). Reading it there reported another install's library as this project's.
+test('a project stamp without library lines never falls back to the account stamp (M3)', () =>
+{
+    const f = fx({ legacy: true });
+    fs.writeFileSync(path.join(f.project, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\npicked-skills: demo\n');
+    const r = run(f, ['--config-dir', f.config]);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /no library stamp/, 'the project has its own stamp - the account one is not this install');
+    fs.rmSync(path.join(f.project, '.claude', 'alfred-code.stamp'));
+    fs.writeFileSync(path.join(f.project, '.claude', OLD_STAMP), 'sha: abc\nversion: 1.2.0\n');
+    assert.match(run(f, ['--config-dir', f.config]).out, /no library stamp/, 'a 1.x-named project stamp counts as its own stamp too');
+});
+
+// R83 b: at local scope the docs-root rule is stamped from settings.local.json over settings.json, so
+// the normalised comparison has to un-stamp THAT value - reading settings.json alone saw the local
+// path as a hand edit and reported drift on every check.
+test('at local scope the docs-root rule is compared against the local docs path, never read as drift (R83 b)', () =>
+{
+    const f = fx({ docsRoot: 'docs/mine' });
+    const claudeDir = path.join(f.project, '.claude');
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }));
+    fs.writeFileSync(path.join(claudeDir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+    const stamp = path.join(claudeDir, 'alfred-code.stamp');
+    fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/^scope: .*$/m, 'scope: local'));
+    const r = run(f);
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /library: clean \(4 copies\)/);
+});

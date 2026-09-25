@@ -42,6 +42,27 @@ function resolveDocsRoot(settingsFile)
     }
 }
 
+// R87 / R89: which settings a PROJECT run reads and writes, by the install's scope (the stamp's
+// `scope:` line) - the rule the installer follows. At `local` scope the hooks see settings.local.json
+// laid over settings.json (the N6 merge), so the docs root and a stored versioning decision are read
+// from that view, and a write goes to settings.local.json, the file that scope writes. Any other
+// scope: settings.json alone. The docs root itself comes from the installer's own resolver
+// (`copy.resolveDocsRoot`), so the two can never stamp different roots.
+function scopedSettings(root)
+{
+    const claudeDir = path.join(root, '.claude');
+    const { stampFile } = require('./install/brand.js');
+    const { readStampScope } = require('./install/stamp.js');
+    const { settingsTarget, readBackSettings } = require('./install/settings.js');
+    const scope = readStampScope(stampFile(claudeDir).read || '') === 'local' ? 'local' : 'project';
+    const env = readBackSettings(claudeDir, scope).env;
+    return {
+        file: settingsTarget(claudeDir, scope),
+        env: env && typeof env === 'object' && !Array.isArray(env) ? env : {},
+        docs: String(require('./install/copy.js').resolveDocsRoot(root, scope)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, ''),
+    };
+}
+
 // The installer hashes baseline-docs-root.md AFTER it substitutes the placeholder (R29) - this
 // script does the SAME substitution again, later, so a re-stamp here is the same kind of rewrite
 // and must re-record the same hash, or the very next library check reads the rule as drift for a
@@ -71,8 +92,9 @@ function restampLibraryHash(claudeDir, ruleFile)
 }
 
 // claudeDir holds rules/ + settings.json: <project>/.claude for a project install, the account dir
-// (~/.claude, ~/.claude-<space>) for a global one.
-function stampDir(claudeDir)
+// (~/.claude, ~/.claude-<space>) for a 1.x global one. `value` is the root a project run resolved at
+// its scope; the account-dir mode reads that dir's settings.json alone.
+function stampDir(claudeDir, value)
 {
     const ruleFile = path.join(claudeDir, 'rules', 'baseline-docs-root.md');
     if (!fs.existsSync(ruleFile))
@@ -80,7 +102,7 @@ function stampDir(claudeDir)
         console.log(`stamp-docs-root: no ${ruleFile} - nothing to stamp`);
         return;
     }
-    const val = resolveDocsRoot(path.join(claudeDir, 'settings.json'));
+    const val = value || resolveDocsRoot(path.join(claudeDir, 'settings.json'));
     const text = fs.readFileSync(ruleFile, 'utf8');
     if (!STAMP_RE.test(text))
     {
@@ -94,7 +116,7 @@ function stampDir(claudeDir)
 
 function stamp(root)
 {
-    stampDir(path.join(root, '.claude'));
+    stampDir(path.join(root, '.claude'), require('./install/copy.js').resolveDocsRoot(root));
 }
 
 // The rule an ABSENT ALFRED_CODE_DOCS_VERSIONING is seeded by - the same rule as both installer seeds and docs.js
@@ -141,11 +163,13 @@ function reprobeVersioning(root, seeded)
         console.log("stamp-docs-root: --reprobe-versioning needs the value the install seeded ('git' or 'local') - nothing re-probed");
         return;
     }
-    const settingsFile = path.join(root, '.claude', 'settings.json');
+    const { file: settingsFile, env: view, docs } = scopedSettings(root);
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - docs versioning left as it is`); return; }
-    const stored = data && typeof data === 'object' && data.env ? envOf(data.env, 'DOCS_VERSIONING') : undefined;
+    if (!data || typeof data !== 'object' || Array.isArray(data) || (data.env !== undefined && (!data.env || typeof data.env !== 'object' || Array.isArray(data.env))))
+    { console.log(`stamp-docs-root: ${settingsFile} is not a JSON object with an env object - docs versioning left as it is`); return; }
+    const stored = envOf(view, 'DOCS_VERSIONING');
     if (!stored)
     {
         console.log('stamp-docs-root: no ALFRED_CODE_DOCS_VERSIONING in the env block - nothing to re-probe');
@@ -156,7 +180,6 @@ function reprobeVersioning(root, seeded)
         console.log(`stamp-docs-root: the env block holds '${stored}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
-    const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     if (spawnSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' }).status !== 0)
     {
         console.log('stamp-docs-root: not a git repository - docs versioning left as it is');
@@ -168,6 +191,7 @@ function reprobeVersioning(root, seeded)
         console.log(`stamp-docs-root: docs versioning already '${value}' at ${docs}/ - unchanged`);
         return;
     }
+    data.env = data.env || {};
     data.env.ALFRED_CODE_DOCS_VERSIONING = value;
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
     console.log(`stamp-docs-root: docs versioning re-probed at ${docs}/: '${value}'`);
@@ -179,7 +203,7 @@ function reprobeVersioning(root, seeded)
 // same guard as reprobeVersioning's 'a decision is never touched'. Merges only this one key.
 function seedVersioning(root)
 {
-    const settingsFile = path.join(root, '.claude', 'settings.json');
+    const { file: settingsFile, env: view, docs } = scopedSettings(root);
     let data;
     try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
     catch { console.log(`stamp-docs-root: cannot read ${settingsFile} - nothing seeded`); return; }
@@ -197,19 +221,18 @@ function seedVersioning(root)
         console.log(`stamp-docs-root: ${settingsFile} has an env that is not a JSON object - nothing seeded`);
         return;
     }
-    const decided = data.env ? envOf(data.env, 'DOCS_VERSIONING') : undefined;
+    const decided = envOf(view, 'DOCS_VERSIONING');
     if (decided)
     {
         console.log(`stamp-docs-root: ALFRED_CODE_DOCS_VERSIONING already '${decided}' - nothing seeded`);
         return;
     }
-    const docs = String(resolveDocsRoot(settingsFile)).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
     const value = probeVersioning(root, docs);
     const why = value === 'local' ? 'the docs are kept out of git' : 'the docs are not kept out of git';
     data.env = data.env || {};
     data.env.ALFRED_CODE_DOCS_VERSIONING = value;
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    console.log(`stamp-docs-root: settings.json env: ALFRED_CODE_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
+    console.log(`stamp-docs-root: ${path.basename(settingsFile)} env: ALFRED_CODE_DOCS_VERSIONING seeded '${value}' at ${docs}/ - ${why}`);
 }
 
 if (require.main === module)

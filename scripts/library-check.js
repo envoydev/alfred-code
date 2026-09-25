@@ -21,7 +21,7 @@
 // lines (an older release, the shell twin, a project the stack never installed): nothing to check.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readLibrary, validSkillName } = require('./install/stamp.js');
+const { readLibrary, validItemName } = require('./install/stamp.js');
 const { stampFile, LEGACY } = require('./install/brand.js');
 const { hashItem, hashBuffer } = require('./install/library.js');
 const { resolveDocsRoot } = require('./install/copy.js');
@@ -47,11 +47,14 @@ function check({ project, source, configDir })
     const claudeDir = path.join(project, '.claude');
     let base = claudeDir;
     // A 1.x project's own stamp keeps its old name until the next update rewrites it.
-    let stamp = readLibrary(stampFile(claudeDir).read);
-    if (!stamp && configDir)
+    const own = stampFile(claudeDir).read;
+    let stamp = readLibrary(own);
+    if (!own && configDir)
     {
         // A 1.x GLOBAL install left its stamp (and its skills) in the account dir, not yet migrated
-        // by an update - read it there too, once, so validate/status still report it.
+        // by an update - read it there too, once, so validate/status still report it. Only when the
+        // project has NO stamp file (R54 M3): one whose own stamp carries no library lines is its own
+        // install, and the account stamp describes some other.
         const legacy = path.join(configDir, LEGACY.stamp);
         if (fs.existsSync(legacy)) { stamp = readLibrary(legacy); base = configDir; }
     }
@@ -80,12 +83,12 @@ function check({ project, source, configDir })
         return hashItem(srcFile);
     };
     // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,
-    // hashed or printed (the N1 rule, stamp.js validSkillName) - an invalid one is only counted.
+    // hashed or printed (the N1 rule, stamp.js validItemName) - an invalid one is only counted.
     let invalid = 0;
     for (const kind of ['skills', 'agents', 'rules'])
         for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
         {
-            if (!validSkillName(name, dirs[kind])) { invalid += 1; continue; }
+            if (!validItemName(name, dirs[kind])) { invalid += 1; continue; }
             const file = kind === 'skills' ? path.join(dirs.skills, name) : path.join(dirs[kind], `${name}.md`);
             const have = hashItem(file);
             let state = 'ok';
@@ -115,7 +118,7 @@ function check({ project, source, configDir })
                 if (configDir)
                 {
                     const acctSkillsDir = path.join(configDir, 'skills');
-                    if (dirs.skills !== acctSkillsDir && validSkillName(name, acctSkillsDir))
+                    if (dirs.skills !== acctSkillsDir && validItemName(name, acctSkillsDir))
                     {
                         let isDir = false;
                         try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }

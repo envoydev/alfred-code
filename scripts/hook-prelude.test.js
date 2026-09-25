@@ -56,6 +56,19 @@ test('the plugin copy yields when the project still wires its own twin, and only
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// M4 (Task 16 review, R54): a LOCAL-scope copy-route install wires its hooks in settings.local.json -
+// a plugin copy beside it that read settings.json alone fired every guard twice.
+test('the plugin copy yields to a twin wired in settings.local.json too (M4)', () => {
+    const dir = project(JSON.stringify({ env: {} }));
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), wiring('guard-secret-value.js'));
+    const env = { CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_ROOT: '/somewhere/plugin' };
+    assert.strictEqual(yieldToCopiedTwin('guard-secret-value.js', env), true);
+    assert.strictEqual(yieldToCopiedTwin('guard-stop-contract.js', env), false);
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), '{ not json');
+    assert.strictEqual(yieldToCopiedTwin('guard-secret-value.js', env), false, 'a malformed local file fails open');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('an unquoted legacy wiring counts too - both spellings shipped', () => {
     const dir = project(JSON.stringify({
         hooks: { Stop: [{ hooks: [{ type: 'command', command: '$CLAUDE_PROJECT_DIR/.claude/hooks/guard-stop-contract.js' }] }] },

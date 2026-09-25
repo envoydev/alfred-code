@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validSkillName } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -535,14 +535,14 @@ test('readStampScope: reads the scope line back, and empty when the file is abse
 
 // N1 (R58 fix round 2, security): a name a stamp records is validated before it ever reaches a path
 // join, a copy, or a printed 'rm -rf' - one path segment, the installer's own skill-name shape.
-test('validSkillName: rejects an empty name, .., ../.., ../plugins, an absolute path, and a name with a slash', () =>
+test('validItemName: rejects an empty name, .., ../.., ../plugins, an absolute path, and a name with a slash', () =>
 {
     const dir = path.join(TMP, 'skills-dir');
     fs.mkdirSync(dir, { recursive: true });
     for (const bad of ['', '.', '..', '../..', '../plugins', '/etc', 'foo/bar', 'a\\b'])
-        assert.strictEqual(validSkillName(bad, dir), false, `'${bad}' must be rejected`);
-    assert.strictEqual(validSkillName('csharp', dir), true);
-    assert.strictEqual(validSkillName('dotnet-data-access', dir), true);
+        assert.strictEqual(validItemName(bad, dir), false, `'${bad}' must be rejected`);
+    assert.strictEqual(validItemName('csharp', dir), true);
+    assert.strictEqual(validItemName('dotnet-data-access', dir), true);
 });
 
 test('migrateLegacyGlobal (N1): a traversal name in the account stamp never reaches a copy or the printed rm -rf', () =>
@@ -617,7 +617,69 @@ test('initialised: fresh is pending, the line is carried, a pre-line stamp reads
 
     // The CLI the router runs: one word on stdout.
     const { spawnSync } = require('node:child_process');
-    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', root], { encoding: 'utf8' });
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(root, 'no-account') } });
     assert.strictEqual(cli.status, 0, cli.stderr);
     assert.strictEqual(cli.stdout, 'installed\n');
+});
+
+// N1 (Task 18a re-review, R90): a 1.x GLOBAL install kept its stamp in the account dir, so the project
+// holds only a copied engine. Until its first update migrates the stamp, the state is its own -
+// `legacy-global` - and the router sends it to update, never to init (which would mark nothing).
+test('installState: a 1.x global install whose stamp is still in the account dir reads legacy-global (N1)', () => {
+    const stamp = require('./install/stamp.js');
+    const root = path.join(TMP, `legacy-${seq++}`);
+    const claude = path.join(root, '.claude');
+    const acct = path.join(root, 'acct');
+    fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(claude, 'hooks', 'docs.js'), '');
+    const env = { CLAUDE_CONFIG_DIR: acct };
+    assert.strictEqual(stamp.installState(root, env), 'installed', 'no account stamp - an ordinary pending install');
+    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), null);
+
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\nscope: global\n');
+    assert.strictEqual(stamp.installState(root, env), 'legacy-global');
+    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), path.join(acct, OLD_STAMP));
+
+    // Its own stamp - migrated by an update - wins over the account's, whatever that one says.
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
+    assert.strictEqual(stamp.installState(root, env), 'installed');
+    assert.strictEqual(stamp.legacyAccountStamp({ claudeDir: claude, env }), null);
+
+    // No record in the project at all: another project's global install is not this one's.
+    const bare = path.join(TMP, `legacy-bare-${seq++}`);
+    fs.mkdirSync(bare, { recursive: true });
+    assert.strictEqual(stamp.installState(bare, env), 'not-installed');
+
+    const { spawnSync } = require('node:child_process');
+    fs.rmSync(path.join(claude, 'alfred-code.stamp'));
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: acct } });
+    assert.strictEqual(cli.stdout, 'legacy-global\n', cli.stderr);
+});
+
+// N2 (Task 18a re-review, R90): a git worktree carries no `.claude/` record of its own (ignored), so the
+// router reads the same checkouts the hooks' GATE 4 reads - the main checkout's record, and its stamp.
+test('installState: a worktree of a set-up repo reads the main checkout\'s record and stamp (N2)', () => {
+    const stamp = require('./install/stamp.js');
+    const { neverSetUp } = require('../stack/hooks/hook-prelude.js');
+    const { execFileSync } = require('node:child_process');
+    const main = path.join(TMP, `wt-main-${seq++}`);
+    fs.mkdirSync(main, { recursive: true });
+    const git = (...a) => execFileSync('git', ['-C', main, ...a], { stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q');
+    fs.writeFileSync(path.join(main, 'README.md'), 'x\n');
+    git('add', 'README.md');
+    git('commit', '-q', '-m', 'init');
+    fs.mkdirSync(path.join(main, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: 2026-09-25T10:00:00Z\n');
+    const wt = path.join(main, '.claude', 'worktrees', 'feat');
+    git('worktree', 'add', '-q', wt);
+    const env = { CLAUDE_CONFIG_DIR: path.join(main, 'no-account') };
+    assert.strictEqual(stamp.installState(wt, env), 'initialised', 'the worktree reads the main checkout\'s stamp');
+    assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: wt }), false, 'the hooks agree');
+    fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
+    assert.strictEqual(stamp.installState(wt, env), 'installed');
+    fs.rmSync(path.join(main, '.claude', 'alfred-code.stamp'));
+    assert.strictEqual(stamp.installState(wt, env), 'not-installed');
+    assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: wt }), true, 'and agree again');
 });

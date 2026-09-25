@@ -22,10 +22,10 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary, validSkillName, stampFile;
+    let readLibrary, validItemName, stampFile;
     try
     {
-        ({ readLibrary, validSkillName } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ readLibrary, validItemName } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
         ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
     }
     catch { return; }
@@ -56,7 +56,7 @@ function main()
     const acctSkillsDir = path.join(account, 'skills');
     const shadowed = projectStampFile ? Object.keys(lib.skills || {}).filter((name) =>
     {
-        if (!validSkillName(name, acctSkillsDir)) return false;
+        if (!validItemName(name, acctSkillsDir)) return false;
         let isDir = false;
         try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
         return isDir;

@@ -60,19 +60,21 @@ const family = (name) => String(name).replace(/^playwright-.*/, 'playwright');
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
 
 // N1 (R58 fix round 2, security): a stamp is a project file a clone can fill with ANY text, so a
-// name it records is validated before it ever reaches a path join, a copy, or a printed 'rm -rf' -
-// at all three sites that build one from stamp-recorded names (migrateLegacyGlobal below,
-// library-check.js's shadow row, library-stamp.js's session echo). One path segment, the shape the
-// installer itself gives a skill name (lowercase letters, digits, dot, underscore, hyphen, starting
+// name it records - a skill, a seat or a rule - is validated before it ever reaches a path join, a
+// copy, a printed 'rm -rf' or a selection line: migrateLegacyGlobal below, library-check.js's rows,
+// library-stamp.js's session echo, derive-state.js's stampCarried. One path segment, the shape the
+// installer itself gives an item name (lowercase letters, digits, dot, underscore, hyphen, starting
 // with a letter or digit); never empty, never '.' or '..', no '/' or '\'. The regex alone already
 // excludes a traversal segment, but the containment check is what actually gates behaviour - a name
 // that passes the shape check is checked AGAIN after joining, so a resolved path landing anywhere
-// but directly inside the skills dir it was joined into is rejected too.
-const SKILL_NAME = /^[a-z0-9][a-z0-9._-]*$/;
-function validSkillName(name, skillsDir)
+// but directly inside the dir it was joined into is rejected too. With no dir (a name that becomes
+// a selection line, not a path) the shape check is the whole test.
+const ITEM_NAME = /^[a-z0-9][a-z0-9._-]*$/;
+function validItemName(name, dir)
 {
-    if (typeof name !== 'string' || name === '.' || name === '..' || !SKILL_NAME.test(name)) return false;
-    const base = path.resolve(skillsDir);
+    if (typeof name !== 'string' || name === '.' || name === '..' || !ITEM_NAME.test(name)) return false;
+    if (dir === undefined) return true;
+    const base = path.resolve(dir);
     return path.dirname(path.resolve(base, name)) === base;
 }
 
@@ -323,13 +325,33 @@ function initialisedValue({ claudeDir, now = new Date() })
     return memoryOff(claudeDir) ? `${isoSeconds(now)} (memory already off before this release)` : 'pending';
 }
 
-// The router's one read: not-installed | installed (never initialised) | initialised. Installed is
-// the prelude's own record list, so the router and the hooks' GATE 4 can never disagree.
-function installState(projectRoot)
+// The account dir a 1.x global install kept its stamp in - the installer's own rule (alfred-code.js).
+const accountDir = (env = process.env) => env.CLAUDE_CONFIG_DIR
+    || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), '.claude');
+
+// R51 / R90 N1: a 1.x GLOBAL install's stamp, still in the account dir because no update has migrated
+// it - read only while the project holds no stamp of its own (the migrateLegacyGlobal guard). The path,
+// or null. update-preflight.js and the router read it; the installer's own read is the same fallback.
+function legacyAccountStamp({ claudeDir, env = process.env })
 {
-    const claudeDir = path.join(projectRoot, '.claude');
-    const { INSTALL_RECORDS } = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js'));
-    if (!INSTALL_RECORDS.some((record) => fs.existsSync(path.join(claudeDir, ...record)))) return 'not-installed';
+    if (stampFile(claudeDir).read) return null;
+    const file = path.join(accountDir(env), LEGACY.stamp);
+    return fs.existsSync(file) ? file : null;
+}
+
+// The router's one read: not-installed | legacy-global | installed (never initialised) | initialised.
+// Installed is the prelude's own record list over the prelude's own checkouts (the dir, its git top
+// level, a worktree's main checkout), so the router and the hooks' GATE 4 can never disagree (R90 N2);
+// the stamp is read in the checkout that holds the record. legacy-global is a 1.x global install whose
+// stamp the first update has not moved into the project yet: update's to take, never init's (N1).
+function installState(projectRoot, env = process.env)
+{
+    const { INSTALL_RECORDS, checkoutsOf } = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js'));
+    const holds = (at) => INSTALL_RECORDS.some((record) => fs.existsSync(path.join(at, '.claude', ...record)));
+    const at = checkoutsOf(path.resolve(projectRoot)).find(holds);
+    if (!at) return 'not-installed';
+    const claudeDir = path.join(at, '.claude');
+    if (legacyAccountStamp({ claudeDir, env })) return 'legacy-global';
     return isInitialised(initialisedValue({ claudeDir })) ? 'initialised' : 'installed';
 }
 
@@ -389,7 +411,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
             // N1: a name the account 1.x stamp records is not trusted shape-blind - skipped and
             // logged by its LENGTH only, never echoed, so a corrupted or hand-edited stamp can never
             // widen the copy (or the removal command below) past the account's own skills/ dir.
-            if (!validSkillName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
+            if (!validItemName(name, acctSkills)) { log(`  skill name skipped (${String(name).length} chars) - not a valid skill name`); continue; }
             const src = path.join(acctSkills, name);
             let isDir = false;
             try { isDir = fs.statSync(src).isDirectory(); } catch { isDir = false; }
@@ -418,8 +440,8 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validSkillName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised,
+    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validItemName,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, accountDir,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read, one word on stdout.

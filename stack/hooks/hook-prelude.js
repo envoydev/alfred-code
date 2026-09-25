@@ -15,7 +15,7 @@
 //
 // GATE 2 - the migration window. Between the release that starts shipping hooks through the plugin
 // and the update run that prunes the copies, a project can carry BOTH: the copied hook files
-// wired in `.claude/settings.json` and the same hooks enabled through the plugin. Every guard
+// wired in `.claude/settings.json` (or `settings.local.json`) and the same hooks enabled through the plugin. Every guard
 // would then fire twice - two denials for one command, two block rows in the ledger, two
 // AskUserQuestions. The PLUGIN copy is the one that steps aside, because the copied one is what the
 // project's own settings file points at and is the older, already-trusted route.
@@ -106,7 +106,9 @@ function yieldToCopiedTwin(hook, env)
     const wanted = baseName(hook);
     if (!wanted) return false;
     const target = (COPIED_PREFIX + wanted + '.js').toLowerCase();
-    for (const command of wiredCommands(path.join(root, '.claude', 'settings.json')))
+    // A local-scope install wires its copies in settings.local.json (M4, R54) - both files count.
+    const commands = ['settings.json', 'settings.local.json'].flatMap((name) => wiredCommands(path.join(root, '.claude', name)));
+    for (const command of commands)
     {
         const clean = command.replace(/"/g, '').trim().toLowerCase();
         if (clean === target || clean.startsWith(target + ' ')) return true;
@@ -249,4 +251,4 @@ function standDown(hook, env, argv)
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

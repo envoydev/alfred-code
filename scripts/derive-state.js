@@ -41,6 +41,7 @@ const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { pluginRoutes, corePluginOn } = require('./install/plugins.js');
 const { BRAND, LEGACY, currentName } = require('./install/brand.js');
+const { validItemName } = require('./install/stamp.js');
 
 const REPO = path.resolve(__dirname, '..');
 
@@ -218,6 +219,9 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
         {
             // A 1.x stamp homes a core pick `@claude-stack`: the same entry, never a moved-from one. // legacy-name
             const { name, home: stamped } = splitPick(entry);
+            // R78: the one name check every stamp reader runs - a carried name becomes a selection
+            // line the library layer joins into a path.
+            if (!validItemName(name)) continue;
             const was = stamped && currentName(stamped);
             const home = homeOf(place, kind, name);
             // Homed in a retired entry that is still enabled, library now: carried as a pick.

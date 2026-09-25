@@ -18,6 +18,7 @@
 // Output is the stamp-compare line contract, unchanged and first (so every existing branch
 // still reads), then:
 //
+//   legacy-stamp: <path> - ...             (only when the baseline is a 1.x global install's account stamp)
 //   changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>
 //   validate: yes|no                        (the version delta spans more than one release)
 //   policy-rev: current|none|stale installed=<hash|none> snapshot=<hash|none>
@@ -297,7 +298,7 @@ function main()
     const snapshot = arg('--snapshot');
     if (!snapshot)
     {
-        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
+        console.error('usage: update-preflight.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--root <install root>] [--settings <settings.json>] [--config-dir <account dir>] [--repo <owner/name>] [--fixture <compare.json>] [--listing <plugin-list.json>] [--marketplace <name>]\n       update-preflight.js --log <installer-log> [--hooks <n>]');
         process.exit(1);
     }
     const root = arg('--root', '.');
@@ -308,8 +309,22 @@ function main()
     const accountDir = /^\.claude(-.+)?$/.test(path.basename(path.resolve(root)))
         || (!fs.existsSync(path.join(root, '.claude')) && Boolean(stampIn(root).read));
     const claudeDir = accountDir ? path.resolve(root) : path.join(root, '.claude');
-    const stampFile = arg('--stamp', stampIn(claudeDir).read || stampIn(claudeDir).write);
-    const settingsFile = arg('--settings', path.join(claudeDir, 'settings.json'));
+    // I8 (R51): a 1.x GLOBAL install's stamp is still in the account dir until the installer - which
+    // runs AFTER this - moves it into the project; while the project holds no stamp of its own, that
+    // account stamp is the baseline, or the first update exits 'no stamp' before it can migrate.
+    const { legacyAccountStamp, readStampScope } = require('./install/stamp.js');
+    const own = stampIn(claudeDir).read;
+    const acctEnv = arg('--config-dir') ? { ...process.env, CLAUDE_CONFIG_DIR: arg('--config-dir') } : process.env;
+    const legacy = !own && !accountDir && !arg('--stamp') ? legacyAccountStamp({ claudeDir, env: acctEnv }) : null;
+    const stampFile = arg('--stamp', own || legacy || stampIn(claudeDir).write);
+    // M4 (R54): the file this run WRITES is the before-state and what the migrations act on -
+    // settings.local.json when the stamp says local (settings.js settingsTarget). The new-item
+    // classification reads the off-state the way Claude Code lays the two files: env key by key with
+    // the local file winning, deny combined (settings.js readBackSettings) - a local deny is off too.
+    const settingsLib = require('./install/settings.js');
+    const stampScope = readStampScope(stampFile);
+    const settingsFile = arg('--settings', accountDir ? path.join(claudeDir, 'settings.json') : settingsLib.settingsTarget(claudeDir, stampScope === 'local' ? 'local' : 'project'));
+    const layered = arg('--settings') || accountDir ? null : settingsLib.readBackSettings(claudeDir, 'local');
 
     const compareArgs = [path.join(snapshot, 'scripts', 'stamp-compare.js'), '--snapshot', snapshot, '--stamp', stampFile];
     for (const flag of ['--repo', '--fixture']) { const v = arg(flag); if (v) compareArgs.push(flag, v); }
@@ -317,6 +332,7 @@ function main()
     const out = String(res.stdout || '').replace(/\n$/, '');
     if (out) console.log(out);
     if (res.stderr) process.stderr.write(res.stderr);
+    if (legacy) console.log(`legacy-stamp: ${legacy} - a 1.x global install; this update moves it into the project`);
 
     const lines = out ? out.split('\n') : [];
     const c = changedClasses(lines);
@@ -342,7 +358,7 @@ function main()
     }
     if (!fired) console.log('migrations: none detected');
 
-    for (const l of newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines: lines })) console.log(l);
+    for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines })) console.log(l);
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);

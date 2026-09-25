@@ -518,6 +518,17 @@ test('stampCarried: no move, an uninstalled or parked old home, a parked core, a
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []);
 });
 
+// R78: a stamp is a file on disk a hand or a bad merge can change, and a carried name becomes a
+// selection line the library layer joins into a path. The shared validator (stamp.js validItemName)
+// gates it, the same check every other stamp reader runs: a name that fails it is never carried.
+test('stampCarried: a stamped name that is no item name - traversal, a separator, a space - is never carried (R78)', () =>
+{
+    const home = 'claude-stack-aspnet'; // legacy-name - a per-stack entry retired in 1.3.0
+    const bad = ['../../etc', 'a/b', '..', 'x y', 'Upper', ''];
+    const stamp = { skills: [...bad.map((n) => `${n}@${home}`), `dotnet-web-backend@${home}`], agents: bad.map((n) => `${n}@${home}`) };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: [home], routes: ALL_ROUTES }), ['skill dotnet-web-backend']);
+});
+
 test('readInstalled: every hook switched off reads back as `hook none`, not as unanswered', () =>
 {
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];

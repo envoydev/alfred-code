@@ -349,3 +349,50 @@ test('a 1.x settings file: the root and a stored versioning decision are read un
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// R87 / R89 (R83 b): the between-runs re-stamp and the versioning seed read the settings the way the
+// installer does at the install's scope. A local-scope install (the stamp's `scope: local`) lays
+// settings.local.json over settings.json, so a docs path set only in the personal file is the root, and
+// a seeded decision goes to the file that scope writes. Any other scope never reads the personal file.
+test('a local-scope install: the root and the versioning seed come from, and go to, settings.local.json (R87)', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }));
+    const claudeDir = path.join(root, '.claude');
+    const localFile = path.join(claudeDir, 'settings.local.json');
+    const stampScope = (scope) => fs.writeFileSync(path.join(claudeDir, 'alfred-code.stamp'), renderStamp({
+        repoUrl: 'https://example.invalid/r', ref: 'main', sha: 'a'.repeat(40), version: '2.0.0', installed: '2026-09-25T00:00:00Z',
+        action: 'install', scope, hooks: [], alwaysRules: [], alwaysMcps: [], picked: {}, library: { skills: {}, agents: {}, rules: {} },
+    }));
+    try
+    {
+        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+        stampScope('project');
+        run(root);
+        assert.match(stampLine(root), /This install's root: `docs\/shared`/, 'project scope never reads the personal file');
+
+        stampScope('local');
+        run(root);
+        assert.match(stampLine(root), /This install's root: `docs\/mine`/);
+
+        gitIn(root, 'init', '-q', '-b', 'develop', '.');
+        fs.writeFileSync(path.join(root, 'README.md'), '# repo\n');
+        gitIn(root, 'add', 'README.md');
+        gitIn(root, 'commit', '-qm', 'seed');
+        const shared = fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8');
+        assert.match(seed(root), /settings\.local\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\/mine\//);
+        assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(fs.readFileSync(path.join(claudeDir, 'settings.json'), 'utf8'), shared, 'settings.json untouched');
+        assert.match(seed(root), /already 'git' - nothing seeded/, 'the local value is the decision now');
+
+        // A decision held in settings.json beneath is a decision at local scope too: nothing seeded over it.
+        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+        fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared', ALFRED_CODE_DOCS_VERSIONING: 'local' } }));
+        assert.match(seed(root), /already 'local' - nothing seeded/);
+
+        // The re-probe reads the local view and writes the local file.
+        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_DOCS_VERSIONING: 'local' } }));
+        assert.match(reprobe(root), /docs versioning re-probed at docs\/mine\/: 'git'/);
+        assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'local', 'the shared value is left as it was');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

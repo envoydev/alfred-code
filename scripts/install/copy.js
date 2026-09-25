@@ -68,19 +68,25 @@ function installFromSource({ sourceDir, subdir, label, destDir, files, exec = fa
     return { copied, skipped, missing };
 }
 
-// The docs root, resolved exactly as the shell resolves it: the project settings.json, then the
-// pre-0.2.43 key an older install stamped, then the default. A 1.x install spells the key
-// CLAUDE_STACK_DOCS_PATH until the settings layer's env pass renames it, and this runs before that // legacy-name
-// pass - envOf reads all three spellings. A malformed or absent file is not a
-// failure - it means 'no value here', which is what the default is for.
-function resolveDocsRoot(projectRoot)
+// The docs root, resolved as the hooks will see it at this install's scope (R83 b / R87): at `local`
+// scope settings.local.json is laid over settings.json (the N6 merge, `readBackSettings`), so a docs
+// path set only in the personal file is the root; at project and user scope only settings.json. The
+// scope defaults to the stamp's own `scope:` line, so a reader outside a run (library-check,
+// init-plan) resolves what the last install used. envOf reads the new key, then the 1.x
+// CLAUDE_STACK_DOCS_PATH spelling an update renames later in the same run, then the pre-0.2.43 // legacy-name
+// one. A malformed or absent file is not a failure - it means 'no value here', which is what the
+// default is for.
+function resolveDocsRoot(projectRoot, scope)
 {
-    try
-    {
-        const env = JSON.parse(fs.readFileSync(path.join(projectRoot, '.claude', 'settings.json'), 'utf8')).env || {};
-        return envOf(env, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
-    }
-    catch { return DOCS_ROOT_DEFAULT; }
+    // Required here, not at the top: settings.js pulls in derive-state.js, which a reader of this
+    // module alone never needs.
+    const { readBackSettings } = require('./settings.js');
+    const { readStampScope } = require('./stamp.js');
+    const { stampFile } = require('./brand.js');
+    const claudeDir = path.join(projectRoot, '.claude');
+    const at = scope || readStampScope(stampFile(claudeDir).read || '');
+    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project').env;
+    return envOf(env && typeof env === 'object' ? env : {}, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
 }
 
 // Replace `__DOCS_ROOT__` in the COPIED rule with the current value. It runs on install and on
@@ -88,11 +94,11 @@ function resolveDocsRoot(projectRoot)
 // makes an update re-stamp is the copy that precedes it - the stamped destination differs from the
 // pristine source, so the source is copied back and this writes the current value over a fresh
 // placeholder. The two halves are one behaviour; neither works alone.
-function stampDocsRoot(projectRoot, { log = () => {}, note = () => {} } = {})
+function stampDocsRoot(projectRoot, { scope, log = () => {}, note = () => {} } = {})
 {
     const rule = path.join(projectRoot, '.claude', 'rules', DOCS_ROOT_RULE);
     if (!fs.existsSync(rule)) return false;
-    const value = resolveDocsRoot(projectRoot);
+    const value = resolveDocsRoot(projectRoot, scope);
     try
     {
         const text = fs.readFileSync(rule, 'utf8');
