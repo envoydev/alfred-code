@@ -891,7 +891,7 @@
       "file": "check-turn-build.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60, the one declared exception (this twin writes 10 - a longer check is killed, fail-open)"
+      "note": "the turn's ONE scoped tsc / dotnet build per root, first 20 error lines as a block, once per turn; timeout 60 on this Stop wiring alone, the one declared exception - its PostToolUse half keeps 10"
     },
     {
       "file": "history-session.js",

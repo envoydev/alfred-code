@@ -33,11 +33,11 @@ const { BRAND, LEGACY } = require('./brand.js');
 // freezes the session for ten minutes. 10s is ~400x the measured cost and still fails fast.
 const HOOK_TIMEOUT = 10;
 // The ONE declared exception: check-turn-build.js runs a scoped tsc / dotnet build at Stop, which is
-// seconds of real work, not a 25ms spawn - and it keeps its checks inside 50s of this. The plugin
-// entry's generator reads the same table (build-marketplace.js). The frozen twins write 10 for it:
-// on that route a longer check is killed and fails open.
-const HOOK_TIMEOUTS = { 'check-turn-build.js': 60 };
-const timeoutFor = (file) => HOOK_TIMEOUTS[file] || HOOK_TIMEOUT;
+// seconds of real work, not a 25ms spawn - and it keeps its checks inside 50s of this. Keyed by EVENT:
+// the same file's PostToolUse half only appends a path, and a stall there must die at 10s like any
+// other hook. The plugin entry's generator reads the same table (build-marketplace.js).
+const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 } };
+const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 
 const HOOKS_DIR_MARK = '/.claude/hooks/';
 
@@ -88,10 +88,10 @@ function wireHooks(data, specs, retiredHooks)
 
     // Backfill the timeout onto entries an earlier install wrote bare - they carry the 600s default.
     const ours = new Set(specs.flatMap((s) => [s.command, s.legacy]));
-    for (const [, entries] of every())
+    for (const [event, entries] of every())
         for (const entry of entries)
             for (const h of entry.hooks || [])
-                if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command))) { h.timeout = timeoutFor(fileOf(h.command)); changed = true; }
+                if (ours.has(h.command) && h.timeout !== timeoutFor(fileOf(h.command), event)) { h.timeout = timeoutFor(fileOf(h.command), event); changed = true; }
 
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
     // SELECTED specs, so a hook the user de-selected keeps its entries - that is configure's job.
@@ -135,7 +135,7 @@ function wireHooks(data, specs, retiredHooks)
             const already = list.some((e) => (e.matcher || '') === eventMatcher
                 && (e.hooks || []).some((h) => h.command === command));
             if (already) continue;
-            const entry = { hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command)) }] };
+            const entry = { hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), event) }] };
             if (eventMatcher) entry.matcher = eventMatcher;
             list.push(entry);
             changed = true;
@@ -146,7 +146,7 @@ function wireHooks(data, specs, retiredHooks)
         // on the command alone dropped the second (measured - no install carried the Bash matcher).
         const have = new Set(list.flatMap((e) => (e.hooks || []).map((h) => `${e.matcher || ''}\u0000${h.command}`)));
         if (have.has(`${matcher}\u0000${command}`)) continue;
-        list.push({ matcher, hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command)) }] });
+        list.push({ matcher, hooks: [{ type: 'command', command, timeout: timeoutFor(fileOf(command), 'PreToolUse') }] });
         changed = true;
     }
 

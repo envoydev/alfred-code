@@ -358,6 +358,22 @@ test('preferences and corrections (own or global) come first, newest first, then
   } finally { rmDir(dir); }
 });
 
+test('a credential-shaped literal in a memory is redacted before the session start injects it', { skip: skipNoSqlite }, () => {
+  // The database is shared across accounts and projects, and a stored note can quote a token; the
+  // start block re-sends every stored line into every session, a new copy of the exposure each time.
+  const dir = tmpDir('memory-select-');
+  const fake = 'ghp_' + 'Z9'.repeat(18);
+  try {
+    const file = buildDb(dir, [
+      { content: `the CI token is ${fake} - rotate it`, tags: 'project:myapp', memory_type: 'reference', created_at: 500 },
+    ]);
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
+    assert.ok(!text.includes(fake), 'the value never reaches the injection');
+    assert.match(text, /the CI token is <redacted> - rotate it/, 'the note keeps its meaning');
+    assert.strictEqual(counts.own, 1);
+  } finally { rmDir(dir); }
+});
+
 test('a project-tagged preference or correction joins group 1 too, ahead of the project\'s other memories', { skip: skipNoSqlite }, () => {
   const dir = tmpDir('memory-select-');
   try {

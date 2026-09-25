@@ -94,11 +94,12 @@
       "key": "ALFRED_CODE_MONITOR",
       "default": "log",
       "ask": false,
-      "what": "monitor-session.js: a live monitor that never denies - the same tool with the same input 5 times in one turn, more than 20 distinct files written in one turn, the context at 80% of the fresh-session trigger. `log` writes one `mode: monitor` row per note to the hook-blocks ledger and injects nothing (the observation week); `inject` also hands the note back to the model; `0` is off.",
+      "what": "monitor-session.js: a live monitor that never denies - the same tool with the same input 5 times in one turn, more than 20 distinct files written in one turn, the context at 80% of the fresh-session trigger. `log` writes one `mode: monitor` row per note to the hook-blocks ledger and injects nothing (the observation week); `inject` also hands the note back to the model; `0` (or `off`, which the hook reads the same) is off.",
       "validate": {
         "type": "enum",
         "values": [
           "0",
+          "off",
           "log",
           "inject"
         ]

@@ -121,7 +121,7 @@ if (require.main === module)
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
-  const sid = String(payload.session_id || 'nosession');
+  const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const list = path.join(docs, 'flow', `turn-edits-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 
   if (event === 'PostToolUse')
@@ -159,7 +159,7 @@ if (require.main === module)
     const dir = path.join(docs, 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
-      ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', mode: 'block',
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '',
       reason: `the turn's build check failed: ${errors.length} error line(s) shown`, detail: { roots: outcomes },
     })}\n`);
   }

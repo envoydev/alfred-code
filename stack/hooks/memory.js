@@ -328,6 +328,12 @@ const ageDays = (row, now) => {
 };
 const ageLabel = (days) => (days == null ? '' : days === 0 ? ', today' : `, ${days} day${days === 1 ? '' : 's'} old`);
 
+// pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes).
+// The database is shared across accounts and projects and a stored note can quote a token; the start
+// block re-sends every line it picks into every session, so a value is redacted before it is injected.
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+const redactSecrets = (text) => String(text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>');
+
 // The four selection groups, in order, newest first within each (the SQL query already orders every
 // row newest-first, and each group below is a single pass over that same order, so 'newest first'
 // holds within a group without a separate sort), `agent:`-tagged rows dropped entirely, a row picked
@@ -376,7 +382,7 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
   const lines = [];
   let bytes = 0;
   for (const { row, key } of picked) {
-    const line = `- [${kindLabel(row.memory_type)}${ageLabel(ageDays(row, now))}] ${truncate(oneLine(row.content), LINE_CONTENT_CAP)}`;
+    const line = `- [${kindLabel(row.memory_type)}${ageLabel(ageDays(row, now))}] ${truncate(redactSecrets(oneLine(row.content)), LINE_CONTENT_CAP)}`;
     const size = Buffer.byteLength(lines.length ? `\n${line}` : line, 'utf8');
     if (bytes + size > capBytes) continue;
     lines.push(line);

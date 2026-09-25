@@ -100,7 +100,7 @@ function blocks(root, session) {
 
 function upsert(root, payload) {
   try {
-    const session = String(payload.session_id || 'nosession');
+    const session = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
     const dir = historyDir(root);
     ensureDir(dir);
     const file = path.join(dir, `${session}.json`);

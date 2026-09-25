@@ -8,14 +8,11 @@ const { execFileSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
-// The fifteen the installers wire. The two engines (docs.js, memory.js) are copied beside them and
-// never wired, so they carry no gate.
-const WIRED = [
-    'guard-protected-force-push', 'guard-catastrophic-rm', 'guard-read-whole-file', 'guard-secret-value',
-    'guard-unapproved-dispatch', 'guard-ungated-commit', 'guard-stop-contract', 'guard-fresh-session-start',
-    'guard-cross-project-write', 'guard-config-protection', 'guard-answer-length', 'docs-session', 'memory-session',
-    'monitor-session', 'check-turn-build', 'history-session', 'instrument-tool-usage',
-];
+// Every hook the manifest wires, read from the manifest itself - a hand list drifted twice ('fifteen'
+// over seventeen rows). The engines (docs.js, memory.js, history.js) are copied beside them and never
+// wired, so they carry no gate.
+const { loadManifest } = require('./install/manifest.js');
+const WIRED = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))];
 
 // A payload every hook parses without acting: a benign Bash read in the project root.
 const payload = (dir) => JSON.stringify({
@@ -58,7 +55,8 @@ function run(hook, dir, env)
     catch (err) { return { status: err.status === undefined ? -1 : err.status, out: String(err.stdout || '') + String(err.stderr || '') }; }
 }
 
-test('all thirteen wired hooks carry the gate block, and the two engines do not', () => {
+test('every wired hook carries the gate block, and the engines do not', () => {
+    assert.ok(WIRED.length >= 17, `the manifest read back ${WIRED.length} wired hooks`);
     for (const hook of WIRED)
     {
         const text = fs.readFileSync(path.join(HOOKS_DIR, hook + '.js'), 'utf8');

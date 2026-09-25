@@ -234,6 +234,10 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   assert.equal(call('alfred-issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
   assert.equal(call('alfred-loop-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
+  // A subagent's Skill call carries agent_id: the carry this hook reads is the parent session's, and
+  // a seat has no user to answer the offer - so the size trigger never judges it.
+  assert.equal(run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: hot('e'), agent_id: 'a1b2c3' }), 0,
+    'a seat is not offered a fresh session on its parent\'s history');
 });
 
 test('guard-fresh-session-start: the size offer is answerable - the retry passes, growth re-arms it', () => {
@@ -298,6 +302,9 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
   assert.equal(call(at('w-1m-260k', 260000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
   assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch'); // legacy-name
+  // A 1.x settings.json keeps its CLAUDE_STACK_* names until its first 2.0.0 update renames them - the // legacy-name
+  // tier variables answer under the old name meanwhile, like every other setting envOf reads.
+  assert.equal(call(at('w-200k-110-legacy', 110000), w200({ ALFRED_CODE_FRESH_SESSION_200K: '', CLAUDE_STACK_FRESH_SESSION_200K: '100000' })), 2, 'the 1.x name moves it too'); // legacy-name
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -2545,4 +2552,22 @@ test('guard-stop-contract: a credential in the blocked text never reaches the le
   assert.ok(!rows.includes(FAKE_TOKEN), 'the ledger row carries no value');
   assert.match(rows, /<redacted>/, 'it says one was there');
   assert.ok(!fs.readFileSync(path.join(logDir, 'guard-stop-contract.log'), 'utf8').includes(FAKE_TOKEN), 'nor does the breadcrumb');
+});
+
+test('every hook-blocks ledger file is named from a sanitised session id', () => {
+  // The session id became a path segment unchecked: '../../escaped' wrote a ledger row two folders
+  // above hook-blocks. The harness sends a UUID, so the rename is a no-op there - and a guard's
+  // side effect never leaves the folder it owns.
+  const root = fs.mkdtempSync(path.join(TMP, 'sid-'));
+  const r = runIn('guard-catastrophic-rm.js', { session_id: '../../escaped', tool_name: 'Bash', tool_input: { command: 'rm -rf /' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
+  assert.equal(r.status, 2);
+  assert.ok(!fs.existsSync(path.join(root, 'escaped.jsonl')), 'nothing lands outside hook-blocks');
+  assert.deepStrictEqual(fs.readdirSync(path.join(root, '.claude', 'docs', 'hook-blocks')), ['.._.._escaped.jsonl']);
+  // Every writer and reader spells the name the same way, or the answer-length hook reads a file the
+  // stop contract never wrote.
+  for (const f of fs.readdirSync(HOOKS).filter((n) => n.endsWith('.js'))) {
+    const text = fs.readFileSync(path.join(HOOKS, f), 'utf8');
+    assert.doesNotMatch(text, /\$\{(?:payload|input)\.session_id \|\| 'nosession'\}\.jsonl/, `${f} names a ledger file from a raw session id`);
+  }
 });

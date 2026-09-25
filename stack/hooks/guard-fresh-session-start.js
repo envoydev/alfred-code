@@ -74,7 +74,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -460,6 +460,10 @@ function recordSizeOffer(ctx) {
   try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
 
+// A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
+// the carry read here is the parent session's, and a seat has no user to answer the offer - so
+// neither trigger judges it.
+if (payload.agent_id) process.exit(0);
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage

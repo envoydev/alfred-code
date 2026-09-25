@@ -117,7 +117,7 @@ if (require.main === module)
   // CLAUDE_DOCS_PATH (pre-0.2.43).
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
-  const sid = String(payload.session_id || 'nosession');
+  const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const stateFile = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
   let state = null;
   try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { /* absent or garbage - a fresh count */ }

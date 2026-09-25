@@ -102,6 +102,14 @@ test('settings-writer: every wiring carries the timeout, because the default is 
     for (const h of all) assert.strictEqual(h.timeout, HOOK_TIMEOUT, 'a bare wiring would freeze a session for ten minutes');
 });
 
+test('settings-writer: the 60s exception is the build check\'s Stop wiring alone, not its PostToolUse append', () =>
+{
+    const file = settingsFile({ hooks: { PostToolUse: [{ matcher: 'Write|Edit|MultiEdit', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/check-turn-build.js"', timeout: 60 }] }] } });
+    const { data } = write(file, { hookSpecs: [HOOK('check-turn-build.js', '@PostToolUse:Write|Edit|MultiEdit'), HOOK('check-turn-build.js', '@Stop')] });
+    assert.strictEqual(data.hooks.Stop.flatMap((e) => e.hooks)[0].timeout, 60, 'the build itself gets its minute');
+    assert.strictEqual(data.hooks.PostToolUse.flatMap((e) => e.hooks)[0].timeout, HOOK_TIMEOUT, 'a path append that stalls is killed at 10s, and an old 60 is corrected');
+});
+
 test('settings-writer: the command placeholder is QUOTED, so a path with a space survives', () =>
 {
     assert.strictEqual(hookCommand('a.js', '').command, '"$CLAUDE_PROJECT_DIR/.claude/hooks/a.js"');

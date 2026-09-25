@@ -72,7 +72,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -322,7 +322,7 @@ function stopContractBlockedThisTurn(turnStartMs) {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${payload.session_id || 'nosession'}.jsonl`);
+    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
     const rows = fs.readFileSync(file, 'utf8').trim().split('\n').slice(-20);
     for (const line of rows) {
       let o;

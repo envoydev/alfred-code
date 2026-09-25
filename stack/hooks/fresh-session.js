@@ -30,8 +30,10 @@ function use(p) {
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
 // by design and the SessionStart `compact` route is what reaches the user - lower the variable to
 // be asked before the harness decides. Which WINDOW this session runs in is resolved below.
+// Read through envOf, so a 1.x settings.json's CLAUDE_STACK_* spelling answers until its update // legacy-name
+// renames it - the key is passed with the ALFRED_CODE_ prefix and read by its suffix.
 function freshAt(key, dflt) {
-  const n = parseInt(process.env[key], 10);
+  const n = parseInt(envOf(process.env, String(key).replace(/^ALFRED_CODE_/, '')), 10);
   return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
 }
 const FRESH_AT_200K = freshAt('ALFRED_CODE_FRESH_SESSION_200K', 150000);

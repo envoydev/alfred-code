@@ -77,6 +77,10 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     const row = fs.readFileSync(path.join(p.root, '.claude', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.strictEqual(row.hook, 'check-turn-build.js');
     assert.strictEqual(row.event, 'Stop');
+    // A row carrying a `mode` is a PROBE to analyze-usage.js (every guard's block row has none), so a
+    // real block written with mode 'block' was tallied as a probe and left out of the block rate.
+    assert.strictEqual(row.mode, undefined, 'a block row carries no mode');
+    assert.strictEqual(row.tool, '', 'and the tool field every block row has');
 });
 
 test('turn-build: once per turn - the continuation Stop after a block passes, even with errors still there', { skip: !posix && 'stub binaries are shell scripts' }, () =>

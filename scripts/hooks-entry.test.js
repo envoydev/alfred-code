@@ -44,8 +44,9 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 fo
             for (const h of b.hooks)
             {
                 assert.strictEqual(h.type, 'command');
-                // check-turn-build.js runs a real build at Stop - the one hook allowed past 10s.
-                const expected = /check-turn-build\.js"/.test(h.command) ? 60 : 10;
+                // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s. Its
+                // PostToolUse half only appends a path, so it keeps 10 like every other hook.
+                const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60 : 10;
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
                 assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
                     `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
