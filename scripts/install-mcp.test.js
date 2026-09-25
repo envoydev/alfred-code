@@ -469,3 +469,47 @@ test('seed install (full copy route, fresh): a selection naming no server still 
     assert.deepStrictEqual(servers.filter((n) => !mcp.LOCKED.includes(n)), [], 'nothing but the locked three');
     assert.strictEqual(steps[1], steps[0], 'a re-run rewrote .mcp.json');
 });
+
+// R107 (Task 8a concern 1): the locked three come back to .mcp.json only on the FULL copy route,
+// 'where the core is never enabled'. A plugin-route install switched to the copies kept the core and
+// the three MCP plugins enabled beside the new registrations - serena and memory then ran twice (the
+// two routes launch them differently, so Claude Code dedups neither) and the core's skills listed
+// twice (measured in the Task 8 matrix, R22). The switch disables the stack's own rows first: the core
+// and the locked three, only as `name@<stack key>` and only at the run's scope.
+const STACK_ROWS = (key, over = {}) => ['alfred-code', 'serena', 'context7', 'memory']
+    .map((n) => ({ id: `${n}@${key}`, version: '2.0.0', scope: 'project', enabled: true, ...(over[n] || {}) }));
+const switchRun = (rows) => seedRun(['install', 'update'], 'skill markdown-style\n', {
+    plugins: JSON.stringify(rows),
+    env: [{}, COPY_ENV],
+    args: [[], ['--installed-only']],
+    // Only the second run's CLI calls are this case's evidence.
+    each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+    inspect: (repo) => Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}),
+});
+
+for (const key of ['envoydev', 'claude-stack']) // legacy-name
+{
+    test(`seed update (full copy route, key ${key}): a plugin-route install switched to the copies disables the core and the locked three before any registration (R107)`, POSIX_ONLY, () =>
+    {
+        const rows = [...STACK_ROWS(key),
+            { id: 'context7@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
+            { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }];
+        const { calls, out, result } = switchRun(rows);
+        const disables = calls.filter((c) => /^plugin disable /.test(c));
+        assert.deepStrictEqual([...disables].sort(), ['alfred-code', 'context7', 'memory', 'serena'].map((n) => `plugin disable ${n}@${key} --scope project`),
+            `only the stack's own rows, at this scope:\n${disables.join('\n')}\n${out}`);
+        const lastDisable = calls.map((c) => /^plugin disable /.test(c)).lastIndexOf(true);
+        const firstAdd = calls.findIndex((c) => /^mcp add /.test(c));
+        assert.ok(firstAdd > lastDisable, `a registration ran before the plugins were off:\n${calls.join('\n')}`);
+        assert.match(out, new RegExp(`plugin disabled \\[project\\]: alfred-code@${key}`));
+        for (const name of mcp.LOCKED) assert.ok(result.includes(name), `${name} missing from .mcp.json: ${result.join(',')}`);
+    });
+}
+
+test('seed update (full copy route): a stack row already off is left alone, and one at another scope is named with its command, never disabled (R107)', POSIX_ONLY, () =>
+{
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { scope: 'user' } });
+    const { calls, out } = switchRun(rows);
+    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], `a re-run disables nothing:\n${calls.join('\n')}`);
+    assert.match(out, /memory@envoydev is enabled at user scope, not this run's - .*claude plugin disable memory@envoydev --scope user/);
+});

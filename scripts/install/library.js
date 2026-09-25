@@ -53,7 +53,10 @@ function hashBuffer(name, buf)
 
 // Rules are a third kind, same shape as agents: no plugin ever carries one (there is no plugin
 // route for a rule), so every rule is always a library copy, on every route.
-function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, log = () => {}, note = () => {} })
+// `render` maps `<kind>/<name>` of a single-file item to a function of its source text: the copy is
+// compared with, and written as, the rendered text - so a copy the installer itself substitutes into
+// (baseline-docs-root's `__DOCS_ROOT__`) is rewritten only when the substitution changes it.
+function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, log = () => {}, note = () => {} })
 {
     const out = { skills: {}, agents: {}, rules: {} };
     const plan = [
@@ -63,7 +66,10 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
     ];
     for (const item of plan)
     {
-        const want = hashItem(item.src);
+        const renderer = render[`${item.kind}/${item.name}`];
+        let body = null;
+        if (renderer) { try { body = Buffer.from(renderer(fs.readFileSync(item.src, 'utf8'))); } catch { body = null; } }
+        const want = body ? hashBuffer(path.basename(item.dst), body) : hashItem(item.src);
         if (!want) { note(`${item.label} '${item.name}' not found in the stack source`); continue; }
         const have = hashItem(item.dst);
         if (have === want) { out[item.kind][item.name] = want; continue; }
@@ -71,7 +77,8 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], a
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
-        fs.cpSync(item.src, item.dst, { recursive: true });
+        if (body) fs.writeFileSync(item.dst, body);
+        else fs.cpSync(item.src, item.dst, { recursive: true });
         out[item.kind][item.name] = hashItem(item.dst);
         log(`${item.label} [library]: ${item.name}`);
     }

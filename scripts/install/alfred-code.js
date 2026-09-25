@@ -656,6 +656,10 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const engines = playwrightMoves(ctx, { blind: !listingRead(raw), rows });
+    // R107: on the full copy route the stack's own plugins go off first - installMcps registers the
+    // locked three after this layer, and they must never run twice.
+    if (!plugins.corePluginOn(ctx.routes))
+        plugins.copyRouteStandDown({ rows, market: ctx.market, scope: ctx.cliScope, locked: mcp.LOCKED, cli: ctx.cli, log: ctx.log, note: ctx.note });
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -856,15 +860,20 @@ function installHooksAndRules(ctx)
     // in the stamp beside the skills and agents one. `ctx.library` may already carry skills/agents
     // from the plugin route above; on the copy route this is its first write.
     ctx.library = ctx.library || { skills: {}, agents: {} };
+    // The docs-root rule is compared and written with its root already substituted, so an update
+    // that changes nothing about it neither rewrites it nor says it did (Task 8a concern 7).
+    const docsRoot = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     const rulesLibrary = library.copyLibrary({
         sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
         rules: ctx.lists.rules.map((f) => f.replace(/\.md$/, '')),
+        render: { [`rules/${DOCS_ROOT_RULE}`]: (text) => text.split('__DOCS_ROOT__').join(docsRoot) },
         stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
+    // A copy this run did not write may still hold the placeholder: stampDocsRoot substitutes it IN
+    // PLACE, after copyLibrary already hashed it - re-hash the one file it touches, or `drift` fires
+    // on every check from here on.
     copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, log: ctx.log, note: ctx.note });
-    // stampDocsRoot rewrites baseline-docs-root.md IN PLACE, after copyLibrary already hashed it -
-    // re-hash the one file it touches, or `drift` fires on every check from here on.
     if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
         ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(path.join(ctx.claudeDir, 'rules', `${DOCS_ROOT_RULE}.md`));
 

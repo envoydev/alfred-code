@@ -159,12 +159,17 @@ function wireHooks(data, specs, retiredHooks)
 function renameEnv(env, migrations, log, label = 'settings.json')
 {
     let changed = false;
+    // The log names what happened to the old key: its value moved, or it went because the new key
+    // already holds one (which wins) or it held nothing to move.
     const move = (oldKey, newKey) =>
     {
-        if (!(newKey in env) && env[oldKey] !== '') env[newKey] = env[oldKey];
+        let what = `renamed to ${newKey}`;
+        if (newKey in env) what = `dropped - ${newKey} is already set and wins`;
+        else if (env[oldKey] === '') what = 'dropped - it was empty';
+        else env[newKey] = env[oldKey];
         delete env[oldKey];
         changed = true;
-        log(`  ${label} env: ${oldKey} renamed to ${newKey}`);
+        log(`  ${label} env: ${oldKey} ${what}`);
     };
     // 1. RENAMES - value first, then drop the old key.
     for (const [oldKey, newKey] of migrations.renames || []) if (oldKey in env) move(oldKey, newKey);

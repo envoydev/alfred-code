@@ -661,3 +661,20 @@ test('leaveLocalScope: no local file, a malformed one, or a malformed settings.j
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8')), { env: { ALFRED_CODE_PUSH_GATE: '0' } }, 'nothing leaves a file that cannot receive it');
     assert.strictEqual(notes.length, 2, notes.join('\n'));
 });
+
+// Task 8a concern 2: the rename pass logged 'renamed' for every old key it removed, also when the new
+// key already held a value (which wins) or the old one was empty (nothing moves) - the log now says
+// what actually happened to each.
+test('settings-writer env: the rename log says renamed only when the value moved', () =>
+{
+    const file = settingsFile({ env: { CLAUDE_STACK_MONITOR: 'log', ALFRED_CODE_MONITOR: 'inject', CLAUDE_STACK_PUSH_GATE: '', CLAUDE_STACK_ROTATE_ASK: '0' } }); // legacy-name
+    const { logs, data } = write(file, { migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] } }); // legacy-name
+    const text = logs.join('\n');
+    assert.strictEqual(data.env.ALFRED_CODE_MONITOR, 'inject', 'the new key wins');
+    assert.strictEqual(data.env.ALFRED_CODE_ROTATE_ASK, '0');
+    assert.match(text, /settings\.json env: CLAUDE_STACK_ROTATE_ASK renamed to ALFRED_CODE_ROTATE_ASK/); // legacy-name
+    assert.doesNotMatch(text, /CLAUDE_STACK_MONITOR renamed/); // legacy-name
+    assert.match(text, /settings\.json env: CLAUDE_STACK_MONITOR dropped - ALFRED_CODE_MONITOR is already set and wins/); // legacy-name
+    assert.doesNotMatch(text, /CLAUDE_STACK_PUSH_GATE renamed/); // legacy-name
+    assert.match(text, /settings\.json env: CLAUDE_STACK_PUSH_GATE dropped - it was empty/); // legacy-name
+});

@@ -354,6 +354,35 @@ function retiredSpec(name, market, retiredRows = [])
     return `${name}@${(row && row.marketplace) || market}`;
 }
 
+// THE FULL COPY ROUTE runs beside none of the stack's own plugins (R107): the locked servers come back
+// to .mcp.json there, and a core or locked-server plugin left enabled would run each server twice and
+// list every core skill beside its copy. A switch from a plugin route disables them BEFORE anything is
+// registered - the core and the locked three, only as `name@<stack key>` (a same-named plugin of
+// another marketplace is not ours) and only at the run's scope (a row at another scope serves other
+// projects: named with its command, never disabled). A row already off is left alone, so a re-run
+// calls nothing.
+function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, locked = [], cli, log = () => {}, note = () => {} })
+{
+    const off = [];
+    for (const name of [BRAND.core, ...locked])
+        for (const row of rows.filter((r) => r.name === name && r.marketplace === market && r.enabled))
+        {
+            const spec = `${name}@${market}`;
+            if (row.scope !== scope)
+            {
+                log(`  ${spec} is enabled at ${row.scope} scope, not this run's - the full copy route runs beside it; if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`);
+                continue;
+            }
+            if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true, expect: 'reported' }))
+            {
+                log(`plugin disabled [${scope}]: ${spec} (the full copy route carries it as copies)`);
+                off.push(spec);
+            }
+            else note(`plugin disable failed: ${spec} - it runs beside the full copy route; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
+        }
+    return off;
+}
+
 // UPDATE: uninstall the retired plugins this project carries AT THIS RUN'S SCOPE, each by its full
 // spec. A name that is not installed here is not an error, it is nothing to do. `rows` holds every
 // scope (`parsePluginList` everyScope); a bare `listing` is read the same way.
@@ -529,4 +558,5 @@ module.exports = {
     pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
+    copyRouteStandDown,
 };

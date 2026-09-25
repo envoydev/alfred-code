@@ -239,3 +239,28 @@ test('the copy-route MCP tool-name re-spelling is hashed too - a rewritten rule 
     assert.ok(!result.content.includes('mcp__plugin_memory_memory__'), 'the plugin spelling did not survive the copy route');
     assert.strictEqual(result.recorded, result.computed, 'the recorded hash must match the RE-SPELLED file, not what copyLibrary wrote before the downconvert pass');
 });
+
+// Task 8a concern 7: every update logged baseline-docs-root as rewritten - copyLibrary compared the
+// stamped copy with the placeholder source, copied the source back, and the docs-root stamp put the
+// same value in again. The rule is rendered before the comparison now, so only a real change (a new
+// docs root) is a write, and a log line.
+test('baseline-docs-root is logged as rewritten only when its content changed', POSIX_ONLY, () =>
+{
+    const setDocsPath = (repo) =>
+    {
+        const file = path.join(repo, '.claude', 'settings.json');
+        const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+        data.env.ALFRED_CODE_DOCS_PATH = 'docs-moved';
+        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+    };
+    const rulePath = (repo) => path.join(repo, '.claude', 'rules', 'baseline-docs-root.md');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule baseline-docs-root\nmcp serena\nmcp context7\nmcp memory\n', {
+        each: (repo, i) => { const text = fs.readFileSync(rulePath(repo), 'utf8'); if (i === 1) setDocsPath(repo); return text; },
+    });
+    const said = (out) => /rule \[library\]: baseline-docs-root|rule stamped: baseline-docs-root/.test(out);
+    assert.ok(said(outs[0]), `the first install writes it:\n${outs[0]}`);
+    assert.strictEqual(steps[1], steps[0], 'an update with the same docs root leaves the rule as it was');
+    assert.ok(!said(outs[1]), `an unchanged rule was logged as rewritten:\n${outs[1].split('\n').filter((l) => /docs-root/.test(l)).join('\n')}`);
+    assert.ok(said(outs[2]), 'a new docs root is a rewrite, and says so');
+    assert.match(steps[2], /This install's root: `docs-moved`/);
+});
