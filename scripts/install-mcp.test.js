@@ -1152,6 +1152,11 @@ test('seed install + update --scope user (full copy route): every stack server l
 // `playwright`, stayed at user scope with nothing said. Each is named with its command like C10's stale
 // names, and never removed (another user-scope install may still load it); a server of the user's own
 // under a dropped engine's name gets the kept line instead.
+// M-F5-1 (re-review follow-up): `playwright-webkit` is not live (this run only keeps chrome), so a foreign
+// registration under it is noise, not something the user must act on - its kept line loses the `!!`.
+// M-F5-2 (re-review follow-up): `playwright`'s identity is the package name only (mcp.identityOf), which
+// cannot tell the stack's 1.x registration apart from the user's own `npx @playwright/mcp` under the same
+// bare name - it is never named as the stack's leftover, and the neutral wording is unmarked.
 test('seed update --scope user (full copy route): a dropped engine and a legacy playwright still registered at user scope are named with their command, never removed (N5)', POSIX_ONLY, () =>
 {
     const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
@@ -1163,9 +1168,13 @@ test('seed update --scope user (full copy route): a dropped engine and a legacy 
         },
     });
     const still = (name) => (out.match(new RegExp(`!! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`, 'g')) || []).length;
-    for (const name of ['playwright-webkit', 'playwright']) assert.strictEqual(still(name), 1, `${name}:\n${out}`);
+    assert.strictEqual(still('playwright-webkit'), 1, `playwright-webkit:\n${out}`);
+    assert.strictEqual(still('playwright'), 0, 'the bare name cannot be told from the user\'s own - it must never claim stack authorship (M-F5-2)');
+    assert.strictEqual((out.match(/playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it/g) || []).length, 1, out);
+    assert.doesNotMatch(out, /!! playwright is registered at user scope/, 'the ambiguous bare name is never marked (M-F5-2)');
     assert.strictEqual(still('playwright-firefox'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
-    assert.strictEqual((out.match(/!! mcp playwright-firefox: the user-scope registration is not the stack's/g) || []).length, 1, out);
+    assert.strictEqual((out.match(/!! mcp playwright-firefox: the user-scope registration is not the stack's/g) || []).length, 0, 'a dropped, non-live engine\'s kept line carries no actionable marker (M-F5-1)');
+    assert.strictEqual((out.match(/mcp playwright-firefox: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove playwright-firefox -s user/g) || []).length, 1, 'the kept line itself still logs, unmarked (M-F5-1)');
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s user$/.test(c)), [], `a user-scope registration was removed:\n${calls.join('\n')}`);
 });
 

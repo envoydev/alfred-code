@@ -921,7 +921,11 @@ function registrationsAt(ctx, scope)
 // launches, or the url it calls - mcp.identityOf), 'absent' when the scope holds none under the name (no
 // call to make), 'foreign' when it is another server the user registered under the same name - kept and
 // named once per run - and 'unreadable' when the file cannot be read, which removes nothing, said once.
-function registrationOf(ctx, name, scope)
+// M-F5-1: `live` says whether THIS run currently wants `name` active - a locked server, or a playwright
+// engine this project keeps. Only then is a foreign collision under it something the user must act on, so
+// only then does the kept line carry `!!`; a name nothing collides with in practice (a dropped engine, a
+// name this version never registers) still logs the kept line, but plain.
+function registrationOf(ctx, name, scope, live)
 {
     const regs = registrationsAt(ctx, scope);
     const once = (key, line) => { if (!ctx.mcpSaid.has(key)) ctx.log(line); ctx.mcpSaid.add(key); };
@@ -936,7 +940,7 @@ function registrationOf(ctx, name, scope)
         catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir),
     });
     if ((ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry))) return 'stack';
-    once(`${scope}:${name}`, `  !! mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
+    once(`${scope}:${name}`, `  ${live ? '!! ' : ''}mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
     ctx.mcpForeign.set(name, scope);
     return 'foreign';
 }
@@ -946,10 +950,14 @@ function installMcps(ctx)
     if (!ctx.hasClaude) return;
     const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue });
     const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
+    // M-F5-1: the names this run currently wants active - the locked three (always) and a playwright
+    // engine this project keeps - shared by every registrationOf call below so the `!!` marker lands only
+    // where a collision is actionable.
+    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map((e) => `playwright-${e}`)]);
     // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
     // registration of the stack's own shape - another under the name is the user's (a server added back
     // with the add-back line included). An absent one costs no call.
-    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name)) || registrationOf(ctx, name, scope) === 'stack';
+    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name)) || registrationOf(ctx, name, scope, liveMcpNames.has(name)) === 'stack';
     for (const name of retired)
         if (mayRemove(name, ctx.cliScope) && ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT }))
         {
@@ -975,15 +983,21 @@ function installMcps(ctx)
     // not verified (the verify's re-register would remove it).
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
         .filter((e) => !unregistered.includes(e.split('|')[0]))
-        .filter((e) => scope !== 'user' || registrationOf(ctx, e.split('|')[0], 'user') !== 'foreign');
+        .filter((e) => scope !== 'user' || registrationOf(ctx, e.split('|')[0], 'user', true) !== 'foreign');
     // C10: a user-scope run on the full copy route registers in .mcp.json; what an earlier one registered
     // at user scope still reaches every project on the account, and another user-scope install there
     // still loads it until its own update - so it is named with its command, never removed here. N5: so is
     // an engine this run drops (or a 1.x single `playwright`) - the drop above removed it from .mcp.json.
+    // M-F5-2: `playwright`'s identity is the package name only (mcp.identityOf) - it cannot tell the
+    // stack's 1.x registration apart from the user's own `npx @playwright/mcp` under the same bare name,
+    // so authorship is never claimed there; every other name (an engine suffix, or serena/context7/memory)
+    // is the stack's own naming, so the authored wording stays.
     if (scope !== ctx.cliScope && ctx.cliScope === 'user')
         for (const name of [...new Set([...live.map((e) => e.split('|')[0]), ...dropped])])
-            if (registrationOf(ctx, name, 'user') === 'stack')
-                ctx.log(`  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
+            if (registrationOf(ctx, name, 'user', liveMcpNames.has(name)) === 'stack')
+                ctx.log(name === 'playwright'
+                    ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
+                    : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     for (const entry of live)
     {
         const name = entry.split('|')[0];
@@ -1008,7 +1022,7 @@ function installMcps(ctx)
         expects, scope,
         // N4: at user scope only a registration the account file showed as the stack's is re-registered -
         // the re-register removes first, and one it could not read (or did not hold) may be the user's.
-        owned: (name) => scope !== 'user' || registrationOf(ctx, name, 'user') === 'stack',
+        owned: (name) => scope !== 'user' || registrationOf(ctx, name, 'user', liveMcpNames.has(name)) === 'stack',
         getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.cliEnv }),
         reregister: (name) =>
         {
