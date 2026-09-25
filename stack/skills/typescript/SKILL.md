@@ -1,11 +1,11 @@
 ---
 name: typescript
-description: Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing questions in checked .js files - the TypeScript type layer over the `javascript` baseline. Lean on the compiler (full strict plus the extra safety flags), model data with types, narrow unknown instead of any, brand look-alike primitives, and treat plain JS as checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load `javascript` with it, the base-language layer this stacks on; in an Angular project also load the Angular framework-conventions skill, when your skill list has one - Angular template type-checking and component typing belong there, not here. Not for base-language rules alone (javascript) or C#/.NET.
+description: Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing questions in checked .js files - the TypeScript type layer over the `javascript` baseline. Covers the strict flag set, modeling data with types, narrowing unknown instead of any, branded primitives, and checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load `javascript` with it, the base-language layer this stacks on; in an Angular project also load the Angular framework-conventions skill, when your skill list has one - Angular template type-checking and component typing belong there, not here. Not for base-language rules alone (javascript) or C#/.NET.
 ---
 
 # TypeScript conventions - the type layer
 
-**Before anything else: call the Skill tool for `javascript` now, or state it is already loaded this session** - its base-language rules (modules, async, failure channels, naming, untrusted input) are what this type layer stacks on, and a companion named only in flowing prose goes unacted (measured: a session reviewed untrusted-input parsing, squarely the base layer's trap territory, with the companion never invoked). A framework adds its own layer on top (`angular-conventions` for Angular). Baseline is TypeScript 5+.
+**Before anything else: call the Skill tool for `javascript` now, or state it is already loaded this session** - its base-language rules (modules, async, failure channels, naming, untrusted input) are what this type layer stacks on, and a companion named only in flowing prose goes unacted (measured: a session reviewed untrusted-input parsing, squarely the base layer's trap territory, with the companion never invoked). A framework adds its own layer on top - for Angular, the framework-conventions skill covering components, templates and signals, where the install has one. Baseline is TypeScript 5+.
 
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 
@@ -22,6 +22,8 @@ The single organizing idea: the compiler is the cheapest test you have. Configur
 - The transpiler-safety set: `isolatedModules` (or `verbatimModuleSyntax`, which implies it) is mandatory when a single-file transpiler (esbuild/SWC/Vite/Babel) does the emitting - it forbids `const enum` and demands `export type` re-exports, which keeps the source portable across transpilers. `moduleResolution: "bundler"` for bundled projects, `nodenext` for direct-to-Node code.
 
 Keep these in one shared base `tsconfig` and have each project `extends` it. A per-project config that redefines the flags drifts; one that inherits them cannot.
+
+Where the house config-protection guard runs, it blocks any strictness-key edit to a tsconfig that already exists - a tightening included - until the user allows it. Ask for that allowance with the error count the flag surfaces, and never route around the block; a new tsconfig takes the full set from the start.
 
 ## Don't lie to the compiler
 

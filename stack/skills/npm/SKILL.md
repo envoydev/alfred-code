@@ -46,4 +46,4 @@ The full authoring guide - exports maps, ESM-only vs dual, versioning, release a
 
 ## CI, updates, and the wider toolbox
 
-Cache keys per CI provider, Docker layering, Renovate/Dependabot cooldown + noise-reduction config, bundle/dedupe analysis, and the honest npm-vs-pnpm-vs-bun / monorepo-tooling state: `references/ci-and-operations.md`. Update bots need their own cooldown too - the package-manager cooldown fires at install time, the bot's at PR-open time; security patches bypass both.
+Cache keys per CI provider, Docker layering, Renovate/Dependabot cooldown + noise-reduction config, bundle/dedupe analysis, and the honest npm-vs-pnpm-vs-bun / monorepo-tooling state: `references/ci-and-operations.md`. Update bots need their own cooldown too - the package-manager cooldown fires at install time, the bot's at PR-open time. A security fix younger than the window is held back by `min-release-age` as well: `npm audit fix` keeps the vulnerable version, warns and exits non-zero. Exempt that one package with `min-release-age-exclude[]=<name>` rather than lowering the window for the whole tree.

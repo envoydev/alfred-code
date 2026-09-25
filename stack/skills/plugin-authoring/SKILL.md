@@ -33,13 +33,15 @@ and `url`), `homepage`, `repository`, `license`, `keywords`, and the component p
 `workflows`, `userConfig`). Full schema, path semantics and the marketplace shape:
 `references/manifest-and-marketplace.md`.
 
-Three rules the schema does not shout about:
+Four rules the schema does not shout about:
 
 - **A component path is relative to the plugin root and starts with `./`.** Nothing may reach
   above the root with `../` - a plugin copied out of a marketplace clone loses whatever `../`
   pointed at, and validate rejects the shape.
 - **Path fields REPLACE the default folder for that component, except `skills`, which ADDS.**
-  Setting `commands: ["./cmd"]` means `./commands/` is no longer scanned; setting `skills` scans both.
+  Setting `commands: ["./cmd"]` means `./commands/` is no longer scanned; setting `skills` scans both,
+  unless the entry is sourced from the marketplace root, where the listed skill folders are the
+  whole set. Hooks, MCP and LSP servers merge by their own rules.
 - **The cache entry is the whole SOURCE, not the paths the entry lists.** An entry sourced from a
   repo ROOT caches that repo entire - every sibling folder, not just the subdir it serves as the
   plugin (measured on a real install). That is free tooling if you mean it: a plugin whose

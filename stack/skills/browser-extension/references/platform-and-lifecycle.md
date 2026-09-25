@@ -18,7 +18,7 @@ Loaded from the `browser-extension` skill when picking targets, debugging worker
 | Safari | converted Web Extension | no | `xcrun safari-web-extension-converter` generates an Xcode container app; App Store distribution; dev testing needs 'Allow Unsigned Extensions' (resets on Safari quit); the converter's unsupported-key warnings are incomplete - budget real fix-up time |
 
 - Declare both `background.service_worker` (Chrome) and `background.scripts` (Firefox) - Chrome 121+ ignores the extra keys, Firefox 121+ starts the event page regardless.
-- Namespace: `chrome.*` is callback-based, `browser.*` promise-based. webextension-polyfill gives one promise-based `browser.*` everywhere (no-op on Firefox). Chrome ships a native `browser` namespace from 148, but the polyfill stays the safe floor for older versions.
+- Namespace: under MV3 every async `chrome.*` method returns a promise when no callback is passed (complete since Chrome 122; event listeners still take callbacks), and Firefox's `browser.*` is promise-based. webextension-polyfill gives one promise-based `browser.*` everywhere (no-op on Firefox). Chrome ships a native `browser` namespace from 148, but the polyfill stays the safe floor for older versions.
 - If the extension's core is blocking network filtering, Firefox is the only full-power target - plan the Chrome build around declarativeNetRequest limits from day one.
 
 ## Service worker lifecycle
