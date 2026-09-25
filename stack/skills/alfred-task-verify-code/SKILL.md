@@ -1,6 +1,6 @@
 ---
 name: alfred-task-verify-code
-description: "Use to review an assembled build in this chat without dispatching agents: reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list. Triggers on review the build, check the code, review before done. Not the plan audit."
+description: "Use to review an assembled build in this chat without dispatching agents: reruns build + tests, checks the code against its plan, runs the app on failing inputs, traces changed contracts, returns a ranked punch-list. Triggers on review the build, check the code, review before done. Not the plan audit (alfred-task-verify-plan)."
 ---
 
 # Verify Code - review the assembled code in one chat, no dispatch

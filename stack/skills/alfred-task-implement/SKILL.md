@@ -1,6 +1,6 @@
 ---
 name: alfred-task-implement
-description: "Use when you have a task plan and want to build it in this chat, task by task: honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review. Triggers on execute the plan, build the plan, implement task 2. Not for a plan-less ad-hoc edit."
+description: "Use when you have a task plan and want to build it in this chat, task by task: honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review. Triggers on execute the plan, build the plan, implement task 2. Not for a plan-less ad-hoc edit, or the whole gated cycle from design to done (/alfred-task-solve)."
 ---
 
 # Project Implementer - execute a verified plan, task by task, in one chat

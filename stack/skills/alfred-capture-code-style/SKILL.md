@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-code-style
-description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into <docs-path>/code-style/CODE-STYLE.md, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (alfred-capture-architecture), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
+description: "The deliberate project code-style capture. Use when the user asks to capture the project code style or to set up the code-style doc and rule; manual, /-only, and re-run to refresh in place. It fans out code-style-analyzer agents (one per detected language), merges their reports into code-style/CODE-STYLE.md under the docs root, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents. NOT for architecture (alfred-capture-architecture), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source)."
 disable-model-invocation: true
 ---
 

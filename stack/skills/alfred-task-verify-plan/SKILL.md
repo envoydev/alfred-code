@@ -1,6 +1,6 @@
 ---
 name: alfred-task-verify-plan
-description: "Use to audit an implementation plan or design before writing code: checks it names the stack's non-obvious traps, matches the scope, covers edge and safety cases, and stays minimal. Triggers on review this plan, is this design sound, does the plan miss anything, before I build. Not the built-code review."
+description: "Use to audit an implementation plan or design before writing code: checks it names the stack's non-obvious traps, matches the scope, covers edge and safety cases, and stays minimal. Triggers on review this plan, is this design sound, does the plan miss anything, before I build. Not the built-code review (alfred-task-verify-code)."
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build

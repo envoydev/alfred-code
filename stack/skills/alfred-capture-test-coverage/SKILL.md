@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-test-coverage
-description: "Measures test coverage: detects each stack's coverage tooling, runs the instrumented suite once per surface, judges it against the user's % bar and writes the coverage doc. Use when asked to measure coverage, capture a coverage baseline, or how covered is this project. Not for writing the missing tests."
+description: "Use when the user asks to measure test coverage, capture a coverage baseline, or how covered this project is: detects each stack's coverage tooling, runs the instrumented suite once per surface, judges it against the user's % bar and writes the coverage doc. Deliberate only, never mid-build. Not for writing the missing tests - that is the coverage loop (/alfred-loop-test-coverage)."
 ---
 
 # Project Test Coverage Analyzer - Capture the Coverage (Deliberate)
@@ -27,7 +27,6 @@ Find what the project already uses - never pick or install one:
 - **.NET** - coverlet via `dotnet test --collect:"XPlat Code Coverage"` (or the msbuild `/p:CollectCoverage=true` form the repo already wires) -> cobertura XML.
 - **Angular** - `ng test` with the coverage flag of the builder `angular.json` names (`--coverage` under `@angular/build:unit-test`, the Vitest default for new workspaces; `--code-coverage` under the older Karma builder - confirm an unfamiliar builder's flag via context7, never from recall) -> the `coverage/` output (lcov + summary).
 - **Plain JS/TS** - the ladder: a `package.json` test script -> a runner config file -> a test runner in devDependencies; use the first rung that answers, with its coverage flag.
-
 - **Any other stack** - the project's own test script or runner config, with the coverage flag that runner documents (confirm it via context7, never from recall).
 
 A surface where every rung is empty is a **'no test infrastructure'** verdict: coverage unmeasurable, the requirement UNMET, one weak point tiered substantial whose simplify-testing action names the missing harness. Installing the runner is the loop's first fix, never this capture's.

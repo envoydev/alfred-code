@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-test-first
-description: "Use before writing the production code of a new feature, a bug fix or a behavior change - the moment before the first edit to a source file, in any language and test framework, whether or not the user said 'TDD' or 'tests'. The test-driven cycle, and the honest 'test: none - <reason>' when no test fits. Not for a config-only or docs-only edit or a throwaway spike, which record 'test: none' with the reason and go straight to the done gate."
+description: "Use before writing the production code of a new feature, a bug fix or a behavior change - the moment before the first edit to a source file, in any language and test framework, whether or not the user said 'TDD' or 'tests'. The test-driven cycle, and the honest 'test: none' line, with its reason, when no test fits. Not for a config-only or docs-only edit or a throwaway spike, which record 'test: none' with the reason and go straight to the done gate."
 ---
 
 # Test first - red for the right reason, then green, then clean

@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-related-projects
-description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `<docs-path>/related-projects/RELATED-PROJECTS.md`. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name)."
 disable-model-invocation: true
 ---
 

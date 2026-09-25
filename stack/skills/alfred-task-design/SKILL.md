@@ -1,6 +1,6 @@
 ---
 name: alfred-task-design
-description: "Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan. Triggers on how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for one-line edits."
+description: "Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan. Triggers on how does this fit, design this feature, where does this belong, break this into tasks, plan this change. Not for one-line edits, or auditing a plan that already exists (alfred-task-verify-plan)."
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
