@@ -277,9 +277,11 @@ only seeded when missing.
 --memory-level project`, or 'move memory to the project level') - never asked for, never inferred: this
 is the no-questions fast path, and an existing registration is otherwise left exactly where it is. The
 installer re-points the registration to that level's database (nothing is copied or deleted) and
-prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; any other value is
-refused before anything is written (`--memory-level project` is refused at `--scope user` on the full
-copy route, where one registration would bake one path into every project of the account).
+prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; any value outside
+`global` / `scoped` / `project` is refused before anything is written. `--memory-level project` rides
+every scope, `--scope user` included: the plugin launcher resolves the db path per PROJECT at launch
+(never baked into the registration), and the full copy route - the one route that registers memory
+itself - registers it in this project's own `.mcp.json` at every scope.
 
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
 derivation now ADOPTS `baseline-memory` and the `memory` MCP the same way it adopts a new hook,
