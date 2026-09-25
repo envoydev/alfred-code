@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked playwright browsers, the serena index - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked playwright browsers, the serena index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -53,12 +53,13 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 ## 2. The plan - a script states it, never you
 
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
 
-- `machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why>` -
+- `machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
   playwright browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
-  machine does not have), the serena index. The command is the exact one to run.
+  machine does not have), the serena index, then the account's claude-hud status line and compact
+  layout. The command is the exact one to run.
 - `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
   captures in their fixed order, each only when the install lists its skill AND its seat.
 
@@ -71,6 +72,11 @@ option per `missing` / `missing after uv` line - the label names the item, the d
 its exact command - every one pre-selected, 'install the selected' recommended (the servers that need
 them cannot start without them). A `blocked` line is not an option: name its fix once (the .NET SDK
 for csharp-ls, the browser for a picked chrome or msedge) - the user installs it; never attempt one.
+`claude-hud status line + compact layout` is one of those lines: its command (`hud-statusline.js`)
+writes the account `statusLine` claude-hud's own setup would, then claude-hud's row of
+`meta/plugin-settings.json`, add-only - a status line that is not claude-hud's is kept and reported
+with `/claude-hud:setup`. A `skip` line is not an option either: one narration line (claude-hud
+absent or switched off, or the user's own status line with nothing else to add).
 
 Run the picked commands in plan order, uv first - the `after uv` ones need it. A fresh uv lands in a
 directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not

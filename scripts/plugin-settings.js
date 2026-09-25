@@ -13,6 +13,11 @@
 //      discipline as the env step: a pinned choice is never silently overridden.
 //   2. A target carrying `requires_path` is skipped when that path is absent - the statusLine
 //      block belongs to the plugin's own setup, so a refresh interval never invents one.
+//   3. A key named in the target's `chosen_by` counts as the user's when that other path is set,
+//      and a target file that is not a JSON object is skipped, never written over.
+//
+// /alfred-code:init applies the claude-hud row through hud-statusline.js, after writing the
+// statusLine block it gates.
 //
 // Paths resolve against the ACCOUNT config dir (~/.claude, or ~/.claude-<space> under a
 // profile), which is where a plugin's config lives whichever scope the plugin was installed at.
@@ -31,6 +36,22 @@ function readJson(file)
 {
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch { return null; }
+}
+
+// A target file as on disk: absent, an object, or BAD - there but not a JSON object. A bad file is
+// never written over: add-only means the user's broken file stays theirs to fix. Blank reads as {}.
+function readDoc(file)
+{
+    let text;
+    try { text = fs.readFileSync(file, 'utf8'); }
+    catch { return { exists: false, doc: null }; }
+    if (!text.trim()) return { exists: true, doc: {} };
+    try
+    {
+        const doc = JSON.parse(text);
+        return doc && typeof doc === 'object' && !Array.isArray(doc) ? { exists: true, doc } : { exists: true, bad: true };
+    }
+    catch { return { exists: true, bad: true }; }
 }
 
 function atPath(obj, dotted)
@@ -82,10 +103,11 @@ function planFor(entry, configDir)
     for (const t of entry.targets || [])
     {
         const file = path.join(configDir, t.file);
-        const current = readJson(file);
+        const { exists, doc: current, bad } = readDoc(file);
         const rows = [];
         let skipped = null;
-        if (t.requires_path && (!current || atPath(current, t.requires_path) === undefined))
+        if (bad) skipped = `${t.file} is not valid JSON - left as it is`;
+        else if (t.requires_path && (!current || atPath(current, t.requires_path) === undefined))
         {
             skipped = `no \`${t.requires_path}\` in ${t.file} - the plugin's own setup owns that block`;
         }
@@ -94,11 +116,16 @@ function planFor(entry, configDir)
             for (const [key, want] of leaves(t.settings))
             {
                 const have = current ? atPath(current, key) : undefined;
-                rows.push({ key, want, have, status: have === undefined ? 'missing' : same(have, want) ? 'match' : 'differs' });
+                // `chosen_by`: another path whose presence means the user already chose this key
+                // (claude-hud's legacy `layout`), so the key is reported as theirs, never added.
+                const via = t.chosen_by && t.chosen_by[key];
+                const viaHave = have === undefined && via && current ? atPath(current, via) : undefined;
+                if (viaHave !== undefined) rows.push({ key, want, have: viaHave, via, status: 'differs' });
+                else rows.push({ key, want, have, status: have === undefined ? 'missing' : same(have, want) ? 'match' : 'differs' });
             }
         }
 
-        targets.push({ file: t.file, absolute: file, exists: current !== null, why: t.why || {}, rows, skipped });
+        targets.push({ file: t.file, absolute: file, exists, why: t.why || {}, rows, skipped });
     }
 
     return targets;
@@ -113,7 +140,9 @@ function applyTargets(targets, replace)
         if (t.skipped) continue;
         const toWrite = t.rows.filter(r => r.status === 'missing' || (replace && r.status === 'differs'));
         if (!toWrite.length) continue;
-        const doc = readJson(t.absolute) || {};
+        const { doc: found, bad } = readDoc(t.absolute);
+        if (bad) continue;
+        const doc = found || {};
         for (const r of toWrite) setLeaf(doc, r.key, r.want);
         fs.mkdirSync(path.dirname(t.absolute), { recursive: true });
         fs.writeFileSync(t.absolute, JSON.stringify(doc, null, 2) + '\n');
@@ -142,7 +171,7 @@ function report(plugins, plan, opts)
                 if (r.status === 'missing') missing++;
                 else if (r.status === 'differs') differs++;
                 else match++;
-                const now = r.status === 'missing' ? 'not set' : JSON.stringify(r.have);
+                const now = r.status === 'missing' ? 'not set' : `${r.via ? `${r.via} ` : ''}${JSON.stringify(r.have)}`;
                 lines.push(`    ${r.status.padEnd(8)} ${r.key} -> ${JSON.stringify(r.want)}${r.status === 'match' ? '' : ` (now: ${now})`}`);
             }
         }
@@ -187,6 +216,6 @@ function main(argv)
     return 0;
 }
 
-module.exports = { planFor, applyTargets, report, leaves, atPath, setLeaf };
+module.exports = { planFor, applyTargets, report, leaves, atPath, setLeaf, readDoc };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

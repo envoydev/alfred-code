@@ -325,9 +325,10 @@ function initialisedValue({ claudeDir, now = new Date() })
     return memoryOff(claudeDir) ? `${isoSeconds(now)} (memory already off before this release)` : 'pending';
 }
 
-// The account dir a 1.x global install kept its stamp in - the installer's own rule (alfred-code.js).
-const accountDir = (env = process.env) => env.CLAUDE_CONFIG_DIR
-    || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), '.claude');
+// The account dir - the installer's own rule (alfred-code.js): CLAUDE_CONFIG_DIR, else the --space
+// profile's ~/.claude-<space>, else ~/.claude. A 1.x global install kept its stamp there.
+const accountDir = (env = process.env, space = '') => env.CLAUDE_CONFIG_DIR
+    || path.join(env.HOME || env.USERPROFILE || require('node:os').homedir(), space ? `.claude-${space}` : '.claude');
 
 // R51 / R90 N1: a 1.x GLOBAL install's stamp, still in the account dir because no update has migrated
 // it - read only while the project holds no stamp of its own (the migrateLegacyGlobal guard). The path,
@@ -507,6 +508,7 @@ module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
     readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, worktreeMain, installScope,
+    accountDir,
 };
 
 // `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for

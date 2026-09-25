@@ -135,6 +135,9 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(init, /scripts\/init-plan\.js" --installed "\$TMP\/installed\.json" --root \./);
     assert.match(init, /scripts\/install\/memory\.js" init --project-root \. --level <answer>/);
     assert.match(flat(init), /ONE AskUserQuestion, multi-select, one option per `missing`/);
+    // Task 24: claude-hud's status line + compact layout rides that same ask - no ask of its own.
+    assert.match(flat(init), /`claude-hud status line \+ compact layout` is one of those lines: its command \(`hud-statusline\.js`\)/);
+    assert.match(flat(init), /A `skip` line is not an option either/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
     // The four captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');

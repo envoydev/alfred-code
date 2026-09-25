@@ -2,16 +2,19 @@
 'use strict';
 // WHAT /alfred-code:init DOES IN THIS PROJECT - stated by a script, so the command never infers it.
 //
-//   node scripts/init-plan.js --installed <plan-out.json> --root <project> [--plugin-root <dir>]
+//   node scripts/init-plan.js --installed <plan-out.json> --root <project> [--plugin-root <dir>] [--space <name>]
 //
 // `--installed` is `update --installed-only --print-plan --plan-out`'s read-back. Two blocks:
 //
-//   machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why>
+//   machine: <what> - present | missing: <command> | missing after uv: <command> | blocked: <why> | skip: <why>
 //     What the kept MCPs need before they can start, probed on this machine, in install order: uv,
 //     the pinned Python fetched through it, csharp-ls when csharp-lsp is kept, the picked playwright
 //     browsers, and the serena index. Setup's install already downloaded a picked firefox / webkit, so
 //     one is here only when that download failed; chrome and msedge run the machine's own browser,
 //     probed like stack-select's msedge check, and one that is not there is `blocked` with its fix.
+//     Last, the account's claude-hud status line + compact layout (hud-statusline.js, the account dir
+//     CLAUDE_CONFIG_DIR, else ~/.claude-<space>): `skip` when claude-hud is absent or switched off, or
+//     the statusLine is the user's own with nothing else to add.
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
@@ -31,6 +34,9 @@ const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'
 const { serenaHomeFor } = require(path.join(REPO, 'stack', 'mcp', 'serena-launch.js'));
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
 const { browserCandidates } = require(path.join(REPO, 'scripts', 'stack-select.js'));
+const { planHud, resolveConfigDir } = require(path.join(REPO, 'scripts', 'hud-statusline.js'));
+
+const HUD_ITEM = 'claude-hud status line + compact layout';
 
 const DOWNLOADED = ['firefox', 'webkit'];
 // The machine browsers a picked chrome / msedge runs: PATH names, then stack-select's app locations.
@@ -79,7 +85,7 @@ function pinOf(name)
 
 const nonEmptyDir = (dir) => { try { return fs.readdirSync(dir).length > 0; } catch { return false; } };
 
-function plan({ inv, root, platform = process.platform, arch = process.arch, env = process.env, probe = probes, pluginRoot = '' })
+function plan({ inv, root, platform = process.platform, arch = process.arch, env = process.env, probe = probes, pluginRoot = '', space = '' })
 {
     const machine = [];
     const add = (what, state, detail = '') => machine.push({ what, state, detail });
@@ -120,6 +126,13 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     const index = `uvx --python ${request} --from serena-agent${pinOf('serena')} serena project index`;
     add('serena index', nonEmptyDir(path.join(root, '.serena', 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
+
+    // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.
+    const configDir = resolveConfigDir({ space, env });
+    const hud = planHud({ configDir, platform, env });
+    add(HUD_ITEM, hud.item.state, hud.item.state === 'missing'
+        ? `node "${path.join(REPO, 'scripts', 'hud-statusline.js')}" --config-dir "${configDir}"`
+        : hud.item.detail);
 
     const skills = new Set(inv.skills || []);
     const agents = new Set(inv.agents || []);
@@ -165,5 +178,8 @@ if (require.main === module)
         process.exit(2);
     }
     const root = path.resolve(flag('--root') || process.cwd());
-    for (const line of render(plan({ inv, root, pluginRoot: flag('--plugin-root') || '' }))) console.log(line);
+    let lines;
+    try { lines = render(plan({ inv, root, pluginRoot: flag('--plugin-root') || '', space: flag('--space') || '' })); }
+    catch (err) { console.error(`init-plan: ${err.message}`); process.exit(2); }
+    for (const line of lines) console.log(line);
 }

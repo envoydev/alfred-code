@@ -53,9 +53,66 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the playwright browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
         `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.serena.version} serena project index`);
-    // Order is install order: uv, python, csharp-ls, the engines, the index.
+    // Order is install order: uv, python, csharp-ls, the engines, the index - then the account's hud.
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
-    assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index']);
+    assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index',
+        'machine: claude-hud status line + compact layout']);
+});
+
+// Task 24: claude-hud arrives configured - one item INSIDE the machine ask, never an ask of its own.
+test('machine: the claude-hud item - skip without it, missing with its one command, present once applied, never over a foreign line', () =>
+{
+    const root = project();
+    const HUD = /^machine: claude-hud status line \+ compact layout /;
+    const acct = path.join(TMP, `hud-acct-${seq++}`);
+    const env = E({ CLAUDE_CONFIG_DIR: acct });
+    const hudLine = () => lineOf(render(plan({ inv: INV(), root, platform: 'darwin', env, probe: NONE })), HUD);
+
+    fs.mkdirSync(acct, { recursive: true });
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+
+    const cached = path.join(acct, 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0');
+    fs.mkdirSync(path.join(cached, 'dist'), { recursive: true });
+    fs.writeFileSync(path.join(cached, 'dist', 'index.js'), '');
+    fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user', installPath: cached, version: '0.8.0' }] } }));
+    const missing = render(plan({ inv: INV(), root, platform: 'darwin', env, probe: NONE }));
+    assert.strictEqual(lineOf(missing, HUD),
+        `machine: claude-hud status line + compact layout - missing: node "${path.join(__dirname, 'hud-statusline.js')}" --config-dir "${acct}"`);
+    assert.match(missing[missing.length - 1], /^init-plan: 5 to install, /, 'counted with the other missing items - one ask');
+
+    // Applied: nothing left to do.
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'hud-statusline.js'), '--config-dir', acct], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(TMP, 'home') } });
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - present');
+
+    // A status line the user owns, with the hud keys already in: not an option, one line naming the way over.
+    const settings = path.join(acct, 'settings.json');
+    fs.writeFileSync(settings, JSON.stringify({ statusLine: { type: 'command', command: 'echo mine' } }));
+    assert.strictEqual(hudLine(),
+        'machine: claude-hud status line + compact layout - skip: the account statusLine is not claude-hud\'s (source: custom) - kept; /claude-hud:setup replaces it');
+
+    // Malformed account settings: blocked with its fix, nothing to pick.
+    fs.writeFileSync(settings, '{ nope');
+    assert.match(hudLine(), /^machine: claude-hud status line \+ compact layout - blocked: .*settings\.json is not valid JSON - fix it, then run \/alfred-code:init again$/);
+
+    // Switched off by the user: their off wins, one line.
+    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'claude-hud@claude-hud': false } }));
+    assert.strictEqual(hudLine(), 'machine: claude-hud status line + compact layout - skip: claude-hud is switched off in this account');
+});
+
+test('machine: the claude-hud item reads the account --space names when CLAUDE_CONFIG_DIR is unset', () =>
+{
+    const root = project();
+    const home = path.join(TMP, `space-home-${seq++}`);
+    fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
+    const lines = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
+    assert.strictEqual(lineOf(lines, /claude-hud/), 'machine: claude-hud status line + compact layout - skip: claude-hud is not installed in this account');
+    const cached = path.join(home, '.claude-work', 'plugins', 'cache', 'claude-hud', 'claude-hud', '0.8.0', 'dist');
+    fs.mkdirSync(cached, { recursive: true });
+    fs.writeFileSync(path.join(cached, 'index.js'), '');
+    fs.writeFileSync(path.join(home, '.claude-work', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'claude-hud@claude-hud': [{ scope: 'user' }] } }));
+    const again = render(plan({ inv: INV(), root, platform: 'linux', env: { HOME: home }, probe: NONE, space: 'work' }));
+    assert.match(lineOf(again, /claude-hud/), new RegExp(`--config-dir "${path.join(home, '.claude-work').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"$`));
 });
 
 test('machine: everything present is reported present, and csharp-ls is asked only when csharp-lsp is kept', () =>
