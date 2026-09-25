@@ -9,14 +9,18 @@
    table stays last - then delete that comment.
 2. Trim the ## Rules table to what the installer actually laid down - and drop any GENERATED
    row whose capture skill this install skipped (its /command will not resolve).
-3. Run the captures that write the rows marked GENERATED, in the post-install order:
-   /alfred-capture-architecture, /alfred-capture-code-style, /alfred-capture-related-projects ONLY
-   when this project has sibling repos (a standalone repo drops that row instead), then
+3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
+   filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
+   order: /alfred-capture-related-projects ONLY when this project has sibling repos (a standalone repo
+   drops that row instead), then /alfred-capture-architecture, /alfred-capture-code-style, then
    /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
    /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo's canonical agent instructions already live in an AGENTS.md (for other agent
-tooling), keep this file thin and import it with `@AGENTS.md` - written unbackticked on a live line,
-since backticks make a path literal - instead of filling the same content twice. But never
+tooling), keep this file thin and import it - `@../AGENTS.md` from this seeded .claude/CLAUDE.md,
+`@AGENTS.md` from a root CLAUDE.md (a relative import resolves against the importing file), on a
+live line and unbackticked (backticks make a path literal) - instead of filling the same content
+twice. Claude reads an AGENTS.md on its own only where no CLAUDE.md exists, so once this file
+exists, the import is what loads it. But never
 `@import` anything under .claude/rules/: those files auto-load, so an import pays for them twice.
 In a monorepo this is the ROOT file - shared conventions only; every package gets its own thin
 .claude/CLAUDE.md carrying just what is specific to that subtree (a session launched from the
@@ -38,7 +42,10 @@ so an unfilled template pays nothing for this block.) -->
 numbered order below, with ## Rules left last: a fixed order means every filled file keeps the same
 fact in the same place, and the two highest-traffic facts (stack, commands) sit at the top. Keep
 each section lean, then delete this comment block. Comments are stripped from injection, so this
-outline costs nothing even while it sits here.
+outline costs nothing even while it sits here. Where the architecture capture ran, the docs hook
+already pushes its ORIENTATION.md (the project shape, the module map, the contracts a newcomer
+breaks first) into every session: items 1 and 4 then keep only what it lacks - the domain-terms
+map, a dependency rule's why - plus a pointer to its sections, never a second copy.
 
 1. What this project is - one paragraph: domain, shape (binary / service / library), persistence,
    surfaces - plus a domain-terms map (business term -> code entity) wherever the two vocabularies
@@ -48,9 +55,10 @@ outline costs nothing even while it sits here.
    is NOT hand-filled here - it lives in the generated
    .claude/rules/baseline-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if
    that skill was not installed, a lean hand-filled routing list here is the fallback).
-3. Commands - copy-pasteable build / test / run / migrate / publish, with any environment quirks - and
-   beside the full-suite test command the SCOPED one (a single project, a test filter, a spec path)
-   that iteration uses, so the whole suite runs once at the gate.
+3. Commands - copy-pasteable build / test / format / run / migrate / publish, with any environment
+   quirks - and beside the full-suite test command the SCOPED one (a single project, a test filter, a
+   spec path) that iteration uses, so the whole suite runs once at the gate. Name any extra diff gate a
+   commit must pass here too: the pre-commit checkpoint runs the formatter and the gates this file names.
 4. Architecture - the layers / modules and the dependency rules between them, with the why. Not the
    folder tour: a directory map is the derivable class /doctor cuts, and Claude reads the tree itself.
 5. Key patterns - the non-obvious in-house patterns a newcomer would trip on, and the forbid-list
@@ -71,8 +79,9 @@ outline costs nothing even while it sits here.
 
 ## Rules
 
-The always-on baseline set in `.claude/rules/`, all loaded every session. Path-scoped rules in the
-same directory attach on a matching file touch - their own `paths:` frontmatter says when.
+The rules this project runs on, all in `.claude/rules/`: every `baseline-*` file loads each session,
+and a path-scoped rule (`project-code-style.md` below, and the other path-scoped rules the install
+copied) attaches on a matching file touch - its own `paths:` frontmatter says when.
 
 In GENERATED rows, `user-run` marks a slash-only capture (`disable-model-invocation`): only the
 user can invoke it - a model Skill call is refused, so name the command to the user rather than
@@ -81,11 +90,12 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), and claims about the outside world checked through `context7` |
-| `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
+| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `context7`, background work, and tearing down what a run started or wrote |
+| `.claude/rules/baseline-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
+| `.claude/rules/baseline-memory.md` | the shared `memory` MCP - what goes there (preferences, corrections, lessons), and searching it before asking or reading |
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture docs pointer - where the docs live and how to read them by section; the orientation itself arrives through the docs hook |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
