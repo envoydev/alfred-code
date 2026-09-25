@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, spawn } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}

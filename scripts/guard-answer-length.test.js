@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer-length.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-length-'));
