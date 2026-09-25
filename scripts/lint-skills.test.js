@@ -24,6 +24,32 @@ test('lint-skills.js: the environment-catalog check and the suggests-edge check 
     assert.strictEqual(suggestsCallSite[1], '27');
 });
 
+// F4 re-review N3: CLAUDE.md's Install-stamp row lists who reads a 1.x account-dir stamp, written
+// before F1/F2 merged - it omitted stamp.js's own `scope` command (installScope falls back to
+// legacyGlobalStamp, A-I1, stamp.js:409/431-434) and the library-stamp.js SessionStart hook (B-I1,
+// setup-plugin/hooks/library-stamp.js:39-41).
+test('N3: CLAUDE.md names stamp.js scope and library-stamp.js among the 1.x account-dir stamp readers', () => {
+    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const readerLine = /A 1\.x account-dir stamp is read by[^|]*\|/.exec(claudeMd);
+    assert.ok(readerLine, 'the Install stamp row must still name its stamp readers');
+    assert.match(readerLine[0], /stamp\.js scope/, 'stamp.js scope must be named - it falls back to the legacy account stamp');
+    assert.match(readerLine[0], /library-stamp\.js/, 'the library-stamp.js SessionStart hook must be named');
+});
+
+// F4 re-review N8: README.md's 'Writes, in the account dir' row must name the account writes every
+// `claude plugin install` makes (the plugin cache + installed_plugins.json, at every scope - measured
+// repeatedly in docs/rebrand-evidence.md) and the MCP copy route's ~/.claude.json write at user/local
+// scope (mcp.js:505-506, alfred-code.js:522), or the 'nothing else is written' sentence below it lies.
+test('N8: README.md names installed_plugins.json/the plugin cache and .claude.json among the account-dir writes', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+    const acctRow = /\| \*\*Writes, in the account dir\*\* \|[^\n]*\|/.exec(readme);
+    assert.ok(acctRow, 'the account-dir writes row must still exist');
+    assert.match(acctRow[0], /installed_plugins\.json/, 'the plugin-install bookkeeping file must be named');
+    assert.match(acctRow[0], /plugins\/cache/, 'the plugin cache directory must be named');
+    assert.match(acctRow[0], /~\/\.claude\.json/, 'the MCP copy route\'s user/local-scope account file must be named');
+    assert.match(readme, /Nothing is written outside the project and the account-dir writes named above/, 'the closing claim must still point at this row');
+});
+
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
     const lint = require('./lint-skills.js');
     assert.strictEqual(typeof lint.manifestFlatSet, 'function');
