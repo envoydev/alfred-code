@@ -1007,6 +1007,9 @@ function installMcps(ctx)
     if (scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
     else mcp.verifyUser({
         expects, scope,
+        // N4: at user scope only a registration the account file showed as the stack's is re-registered -
+        // the re-register removes first, and one it could not read (or did not hold) may be the user's.
+        owned: (name) => scope !== 'user' || registrationOf(ctx, name, 'user') === 'stack',
         getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.cliEnv }),
         reregister: (name) =>
         {

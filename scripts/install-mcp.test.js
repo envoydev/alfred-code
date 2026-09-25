@@ -1265,6 +1265,47 @@ test('seed update --scope user: an unreadable account .claude.json removes nothi
     assert.strictEqual((out.match(/\.claude\.json could not be read - no user-scope registration was removed/g) || []).length, 1, out);
 });
 
+// N4 (re-review): the verify pass re-registers a user-scope shape that drifted - `mcp remove`, then add. A
+// name the account file does not show as the stack's (unreadable, or absent while the CLI holds one) was
+// removed all the same: the user's own server under a stack name went, right after a line saying none
+// would. Here `mcp get` answers every name with a shape of the user's own; only a registration the file
+// shows as the stack's is re-registered, and the one it cannot is named once, its command beside it.
+const OWN_SHAPE_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+    'if [ "$1" = "mcp" ] && [ "$2" = "get" ]; then printf \'%s:\\n  Scope: User config\\n  Type: stdio\\n  Command: node\\n  Args: my-own-server.js\\n\' "$3"; fi',
+    'exit 0'].join('\n');
+for (const [label, account, reregistered] of [
+    ['an unreadable account file', '{not json', false],
+    ['no account file while the CLI holds a registration', null, false],
+    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'playwright-chrome': STACK_PW('chrome') } }), true],
+])
+{
+    test(`seed update --scope user (MCP copy route): the verify pass with ${label} re-registers only the stack's own (N4)`, POSIX_ONLY, () =>
+    {
+        const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+            plugins: JSON.stringify(USER_ROWS()), env: MCP_COPY_ENV, tools: { claude: OWN_SHAPE_CLI },
+            args: ['--scope', 'user', '--playwright-browsers', 'chrome'],
+            prepare: (repo, work) =>
+            {
+                pwProject(repo);
+                if (account !== null) { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), account); }
+            },
+        });
+        const removes = calls.filter((c) => /^mcp remove playwright-chrome -s user$/.test(c));
+        const skipped = (out.match(/!! mcp playwright-chrome: the user-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove playwright-chrome -s user, then re-run/g) || []).length;
+        assert.ok(calls.some((c) => /^mcp get playwright-chrome$/.test(c)), `the verify pass never read the shape:\n${calls.join('\n')}`);
+        if (reregistered)
+        {
+            assert.ok(removes.length > 0 && /shape drifted at user scope: playwright-chrome - re-registering/.test(out), `the stack's own drifted registration was not re-registered:\n${calls.join('\n')}\n${out}`);
+            assert.strictEqual(skipped, 0, out);
+            return;
+        }
+        assert.deepStrictEqual(removes, [], `a registration not known to be the stack's was removed:\n${calls.join('\n')}\n${out}`);
+        assert.strictEqual(skipped, 1, out);
+        assert.doesNotMatch(out, /shape drifted at user scope: playwright-chrome|could not be brought to the current shape/, out);
+    });
+}
+
 // C17 ((i), Task 8a): the copy route copied each skill and seat with the plugin spelling, then re-spelled
 // it in place - so every run rewrote the same files and logged 're-spelled in N file(s)'. A copy is now
 // written as the text it holds (rendered at copy time) and only when that differs, so a re-run writes

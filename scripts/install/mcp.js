@@ -227,8 +227,10 @@ function wantShape(expect)
 
 // USER SCOPE: the registration lives in the account config, which this seed never hand-edits. The
 // check runs through `claude mcp get`, a mismatch is retried once through the CLI, and anything
-// still wrong is REPORTED - never silently accepted.
-function verifyUser({ expects = [], scope, getShape, reregister, log = () => {}, note = () => {} })
+// still wrong is REPORTED - never silently accepted. N4: the retry removes first, so a name `owned`
+// cannot vouch for (the caller's read of the account file did not show the stack's own registration
+// there) is named once and left alone - it may be the user's own server under a stack name.
+function verifyUser({ expects = [], scope, getShape, reregister, owned = () => true, log = () => {}, note = () => {} })
 {
     const repaired = [];
     for (const expect of expects)
@@ -237,6 +239,11 @@ function verifyUser({ expects = [], scope, getShape, reregister, log = () => {},
         let have = shapeNorm(parseGetShape(getShape(expect.name)));
         if (!have) continue;                       // an older CLI, or a server the config does not expose
         if (have === want) continue;
+        if (!owned(expect.name))
+        {
+            log(`  !! mcp ${expect.name}: the ${scope}-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove ${expect.name} -s ${scope}, then re-run`);
+            continue;
+        }
         log(`  mcp shape drifted at user scope: ${expect.name} - re-registering`);
         reregister(expect.name, scope);
         have = shapeNorm(parseGetShape(getShape(expect.name)));
