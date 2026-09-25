@@ -93,7 +93,9 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
   };
 })();
 const input = payload.tool_input || {};
-const seat = String(input.subagent_type || '');
+// An Agent call with no subagent_type runs the built-in general-purpose seat (the docs say so), so an
+// omitted field is judged as that seat - read as '', it walked past both generic gates.
+const seat = String(input.subagent_type || 'general-purpose');
 // `fork` belongs in BOTH sets, and it is the seat that most needs to: a fork inherits the ENTIRE
 // parent context, so it is the most expensive dispatch the harness offers and it was the only one
 // no gate looked at (measured: a fork taken for a read-only grep job cost 869,483 cache-read over
@@ -143,7 +145,9 @@ if (SEARCH_SEATS.has(seat)) {
         `Answer it INLINE instead: mcp__plugin_serena_serena__find_symbol for a declaration or signature,\n` +
         `mcp__plugin_serena_serena__find_referencing_symbols for callers, mcp__plugin_serena_serena__get_symbols_overview\n` +
         `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when serena's\n` +
-        `language server cannot resolve it. Dispatch a search seat only for a genuinely broad\n` +
+        `language server cannot resolve it. The serena tools are DEFERRED - load them first with\n` +
+        `ToolSearch select:mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols,mcp__plugin_serena_serena__get_symbols_overview\n` +
+        `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );
     process.exit(2);

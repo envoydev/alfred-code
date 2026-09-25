@@ -186,7 +186,9 @@ const actIndex = Math.min(
   commitMatch ? commitMatch.index : Number.MAX_SAFE_INTEGER,
   publishMatch ? publishMatch.index : Number.MAX_SAFE_INTEGER,
 );
-const cdMatches = [...command.slice(0, actIndex).matchAll(/(?:^|&&|;|\n|\|)\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g)];
+// PowerShell moves the cwd with Set-Location (sl, chdir) or Push-Location (pushd), a -Path or
+// -LiteralPath name optional - the matcher claims that tool, so its spelling anchors the same way.
+const cdMatches = [...command.slice(0, actIndex).matchAll(/(?:^|&&|;|\n|\|)\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|[^\s;&|]+)/gi)];
 if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatches.length - 1][1])));
 // the match came off the quote-masked copy, so read the -C ARGUMENT back out of the real
 // command - the mask keeps the offsets, not the path (a masked `-C "<sibling>"` resolved to a
@@ -194,7 +196,9 @@ if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatch
 const rawOf = (m) => (m && !m.opaque ? command.substr(m.index, m[0].length) : (m ? m[0] : ''));
 const dashC = rawOf(publishMatch || commitMatch).match(/\s-C\s*("[^"]+"|'[^']+'|\S+)/);
 if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
-const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000 }).toString().trim();
+// git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
+// first push, and the harness shows the model the hook's stderr as the denial reason.
+const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
 // The files this act would commit. The stack's own docs root is excluded: the receipt is written
 // INTO it moments before the act, so counting it inflated both the trivial-diff bar and the spec
 // check - a conformant `spec: 3 files` read as covering 3 of 4 because the fourth was the receipt.
@@ -325,7 +329,9 @@ function isOwnOptionLabel(span) {
   }
   return false;
 }
-const skillCallRan = () => /"name"\s*:\s*"Skill"/.test(tail());
+// A skill the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is
+// as much a run of that skill as the model's own call (measured: slash-run loops, zero Skill events).
+const skillCallRan = () => /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:alfred|project)-[\w-]+<\/command-name>/.test(tail());
 
 // One judge, two routes. The receipt written as its own file and the receipt written inside the
 // same command as the act are the SAME document, so they answer to the same contract - otherwise
@@ -413,7 +419,7 @@ function judgeReceipt(body, opts) {
       return r;
     }
   }
-  if (!/live[-\s]?probe/i.test(bodyText)) {
+  if (!/live[-\s_]?probe/i.test(bodyText)) {
     r.problem = 'no live-probe line - a VERIFIED review states what it actually ran, either the quoted output or `NOT RUN - <reason>` (spelled live-probe, live probe or live_probe)';
     return r;
   }
@@ -451,7 +457,9 @@ function judgeReceipt(body, opts) {
   }
   // A stamp minted from a CARRIED resume block must say so, or a 9h30m-old answer mints fresh
   // consent in 45 seconds and defeats the freshness check.
-  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b/i.test(first) && !skillCallRan() && !field('carried')) {
+  // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>`
+  // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
+  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\balfred-loop-[a-z-]+/i.test(first) && !skillCallRan() && !field('carried')) {
     r.problem = `the VERIFIED line names a verify skill but no Skill call ran in this session - if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
@@ -595,7 +603,7 @@ function stagedFindings() {
   const out = [];
   let budget = SCAN_LIMIT;
   const read = (args) => {
-    const text = execFileSync('git', args, { cwd: root, timeout: 5000, maxBuffer: budget }).toString();
+    const text = execFileSync('git', args, { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
     budget -= Buffer.byteLength(text);
     if (budget < 0) throw new Error('over the scan cap');
     return text;

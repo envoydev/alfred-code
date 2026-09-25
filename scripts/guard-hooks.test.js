@@ -449,6 +449,9 @@ test('guard-ungated-commit: the receipt states', () => {
   receipt(full({ spec: 'spec: 1 file' })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'a spec covering fewer files than the tree has');
   receipt(full({ probe: null })); assert.equal(gateIn(dir, 'git commit -am x'), 2, 'no live-probe line');
   receipt(full({ probe: 'live probe = NOT RUN - no test target' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, "'live probe' spelled with a space, NOT RUN with a reason");
+  // the denial itself lists `live_probe` among the accepted spellings - a model that followed it
+  // retried into the same block
+  receipt(full({ probe: 'live_probe: `npm test` 12/12' })); assert.equal(gateIn(dir, 'git commit -am x'), 0, "'live_probe' is the third spelling the denial names");
   // the VERIFIED line names a verify skill and this transcript carries no Skill call
   const tp = transcript('no-skill', [assistantRow('m1', 'reviewed')]);
   const gateT = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: tp },
@@ -456,6 +459,16 @@ test('guard-ungated-commit: the receipt states', () => {
   receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
   receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
+  // the 2.0.0 loop names - `quality-loop` matched the 1.x spelling only, so a receipt naming the
+  // renamed loop minted consent with no loop ever run
+  receipt(full({ first: 'VERIFIED alfred-loop-quality round 2 gate' })); assert.equal(gateT('git commit -am x'), 2, 'a quality loop named but never called');
+  receipt(full({ first: 'VERIFIED alfred-loop-architecture-quality stage 3' })); assert.equal(gateT('git commit -am x'), 2, 'the architecture loop too');
+  // ... while a loop the user TYPED is a run of it: a slash invocation writes no Skill call at all
+  // (measured: 4 of 4 slash-run loops, zero Skill events), only the harness's command row
+  const slash = transcript('slash-loop', [{ type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:alfred-loop-quality</command-name>' } }, assistantRow('m1', 'round 2 green')]);
+  const gateS = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: slash },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  assert.equal(gateS('git commit -am x'), 0, 'a slash-invoked loop ran');
 
   receipt(full());
   const old = (Date.now() - 3 * 3600 * 1000) / 1000; fs.utimesSync(gate, old, old);
@@ -504,6 +517,25 @@ test('guard-ungated-commit: a cd or -C into a sibling repo judges THAT tree', ()
   assert.equal(gateIn(home, 'git commit -am x'), 0, 'the clean home repo passes');
   assert.equal(gateIn(home, `cd ${sib} && git commit -am x`), 2, 'cd into the dirty sibling');
   assert.equal(gateIn(home, `git -C "${sib}" commit -am x`), 2, '-C into the dirty sibling');
+  // the PowerShell tool moves its cwd with Set-Location (or its sl / Push-Location spellings), and
+  // the matcher claims that route - a sibling commit behind it was judged against the clean home
+  const ps = (command) => runIn('guard-ungated-commit.js', { tool_name: 'PowerShell', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: home }, cwd: home }).status;
+  assert.equal(ps(`Set-Location ${sib}; git commit -am x`), 2, 'Set-Location into the dirty sibling');
+  assert.equal(ps(`sl '${sib}'; git commit -am x`), 2, 'the sl alias');
+  assert.equal(ps(`Push-Location -Path "${sib}"; git commit -am x`), 2, 'Push-Location with its -Path name');
+  assert.equal(ps('git commit -am x'), 0, 'the clean home still passes on PowerShell');
+});
+
+test('guard-ungated-commit: a first push denial opens on the gate, not on git\'s own errors', () => {
+  // a branch with no upstream is the usual FIRST push - the @{u} probes print `fatal: no upstream`
+  // and the denial the model reads started with two lines of it
+  const dir = scratchRepo();
+  const r = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git push origin HEAD' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(r.status, 2, 'still gated');
+  assert.doesNotMatch(r.stderr, /^fatal:/m, 'no git noise in the reason');
+  assert.match(r.stderr, /^Blocked/, 'the reason leads');
 });
 
 // A clone with a real upstream, so `git log @{u}..HEAD` answers - the publish gate's
@@ -864,10 +896,32 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
   assert.equal(disp('Explore', 'find the class SocketConnection'), 2, 'named-symbol hunt');
   assert.equal(disp('general-purpose', 'list all usages of AddSocketServices'), 2, 'the generic seat too');
 
+  // the denial names the deferred tools AND the one line that loads them - naming a tool is not having it
+  const denied = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'Find who calls SocketConnection.Send' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  assert.match(denied.stderr, /ToolSearch select:mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols,mcp__plugin_serena_serena__get_symbols_overview/, 'the loading line');
+
   // a real sweep still passes - no stamp involved, so this is the no-flow path
   assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
   assert.equal(disp('Explore', 'x'), 0, 'an empty brief');
   assert.equal(disp('aspnet-verifier', 'who calls Foo'), 0, 'a named seat carries serena itself');
+});
+
+// An Agent call with no subagent_type runs the built-in general-purpose seat (the docs: 'When Claude
+// calls the Agent tool without a subagent_type, it gets the built-in general-purpose subagent'), so
+// leaving the field out was a way around both generic gates - the same brief blocked when typed.
+test('guard-unapproved-dispatch: an untyped dispatch is the general-purpose seat it runs as', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  fs.mkdirSync(path.dirname(gate), { recursive: true });
+  const untyped = (prompt) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  assert.equal(untyped('Find who calls SocketConnection.Send').status, 2, 'a symbol question with the seat left out');
+  assert.equal(untyped('Implement the endpoint in Orders.cs').status, 0, 'no flow stamped - a generic seat is free');
+  fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
+  const r = untyped('Implement the endpoint in Orders.cs');
+  assert.equal(r.status, 2, 'a stamped flow refuses the untyped generic seat');
+  assert.match(r.stderr, /general-purpose/, 'the denial names the seat that would have run');
 });
 
 test('guard-stop-contract: the fresh-session offer lands at turn end, once per cost step', () => {
@@ -1934,6 +1988,30 @@ test('PowerShell route: the cross-project write guard resolves the same target',
   assert.equal(pwsh('guard-cross-project-write.js', `echo hi > ${outside}`), 2, 'a redirection outside the project root');
   assert.equal(run('guard-cross-project-write.js', { tool_name: 'Bash', tool_input: { command: `echo hi > ${outside}` } }), 2, 'and the Bash spelling agrees');
   assert.equal(pwsh('guard-cross-project-write.js', 'echo hi > README.md'), 0, 'an in-project relative target passes');
+});
+
+// The PowerShell tool's OWN write verbs. The case above re-sends a Bash spelling; the cmdlets a
+// PowerShell session actually writes with (Set-Content, Out-File, Remove-Item, New-Item, Copy-Item,
+// Move-Item) and the Set-Location that moves its cwd were never parsed, so the matcher claimed a
+// route the parser could not see (replayed: each of these exit 0 while `echo x > <same path>` exits 2).
+test('PowerShell route: the cmdlets that write, and Set-Location, are judged like their Bash twins', () => {
+  const psx = (command) => xp({ tool_name: 'PowerShell', tool_input: { command } });
+  const out = path.join(XP_OTHER, 'ps', 'f.txt');
+  assert.equal(psx(`Set-Content -Path ${out} -Value x`), 2, 'Set-Content -Path');
+  assert.equal(psx(`Add-Content ${out} 'more'`), 2, 'Add-Content, positional');
+  assert.equal(psx(`'x' | Out-File -FilePath "${out}"`), 2, 'Out-File -FilePath behind a pipe');
+  assert.equal(psx(`Remove-Item ${path.join(XP_OTHER, 'dist')} -Recurse -Force`), 2, 'Remove-Item');
+  assert.equal(psx(`New-Item -ItemType File -Path ${out}`), 2, 'New-Item, the value of -ItemType skipped');
+  assert.equal(psx(`Copy-Item README.md -Destination ${out}`), 2, 'Copy-Item -Destination');
+  assert.equal(psx(`Move-Item ${out} .\\b.txt`), 2, 'Move-Item removes its source');
+  assert.equal(psx(`set-content -path ${out} -value x`), 2, 'cmdlets are case-insensitive');
+  assert.equal(psx(`Set-Location ${XP_OTHER}; Set-Content f.txt x`), 2, 'Set-Location then a relative write');
+  assert.equal(psx(`Set-Location -Path ${XP_OTHER}; git commit -m x`), 2, 'Set-Location then a bare git write');
+  // the passes carry equal weight - an in-project write, a read of the sibling, a value that looks like a path
+  assert.equal(psx('Set-Content -Path notes.txt -Value x'), 0, 'an in-project Set-Content');
+  assert.equal(psx(`Get-Content ${out}`), 0, 'reading the sibling stays open');
+  assert.equal(psx(`Set-Content -Path notes.txt -Value ${out}`), 0, 'the -Value is data, not a target');
+  assert.equal(psx(`Write-Output 'Remove-Item ${out}'`), 0, 'a quoted cmdlet is prose');
 });
 
 // ---- SubagentStop: a subagent that stops on a wait nobody will end ----------------------------

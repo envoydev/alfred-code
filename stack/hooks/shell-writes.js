@@ -85,8 +85,10 @@ const SED_SCRIPT_ARG = /^(?:\/(?:[^/\\]|\\.)*\/(?:,\/(?:[^/\\]|\\.)*\/)?[dpq=]|(
 
 // `cd` / `pushd` earlier in the command move the anchor for everything after them. A target
 // that cannot be followed (`cd -`, `cd $DIR`, a relative cd from an unknown place) makes the
-// anchor unknown, and an unknown anchor judges nothing relative - never guess.
-const CD_RE = /(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;|&()]+)/g;
+// anchor unknown, and an unknown anchor judges nothing relative - never guess. PowerShell spells
+// the same move Set-Location (sl, chdir) or Push-Location, a -Path / -LiteralPath name optional.
+const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';
+const CD_RE = new RegExp(`(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:${CD_VERB})\\s+(?:-(?:literal)?path\\s+)?("[^"]+"|'[^']+'|[^\\s;|&()]+)`, 'gi');
 // The directory a path written at `index` resolves from: `root` moved by every cd before it, or
 // null once a cd cannot be followed. `norm` turns a cd's raw token into a path (the guard adds its
 // tilde and Git Bash mount spellings; unquoting is the floor).
@@ -109,6 +111,33 @@ const GIT_MUTATING = 'commit|add|checkout|switch|merge|rebase|reset|revert|resto
   // `stash list`/`stash show` and the listing forms of `tag` (bare, -l, -n) are reads - flagging
   // them as writes blocked honest investigation of the other repo (reproduced).
   + '|stash(?!\\s+(?:list|show)\\b)|clean|rm|mv|tag\\s+(?!-l\\b|--list\\b|-n\\b)(?:-\\S+\\s+)*[^-\\s]\\S*|branch\\s+-[dDm]';
+// Remove-Item's family deletes (the done gate counts it as a removal, like `rm`); the rest write.
+const PS_REMOVE_VERBS = 'remove-item|ri|del|erase|rd';
+const PS_WRITE_VERBS = `set-content|add-content|out-file|clear-content|new-item|ni|${PS_REMOVE_VERBS}|move-item|mi|move|copy-item|cpi|copy|rename-item|rni|ren`;
+const PS_PATH_PARAMS = new Set(['path', 'literalpath', 'lp', 'pspath', 'filepath', 'destination']);
+const PS_VALUE_PARAMS = new Set(['value', 'encoding', 'itemtype', 'type', 'filter', 'include', 'exclude', 'stream', 'credential',
+  'delimiter', 'width', 'inputobject', 'newname', 'name', 'target', 'erroraction', 'ea', 'warningaction', 'wa', 'informationaction',
+  'ia', 'errorvariable', 'ev', 'warningvariable', 'wv', 'outvariable', 'ov', 'outbuffer', 'ob', 'pipelinevariable', 'pv']);
+// The paths one PowerShell write names: every -Path-like value and every positional argument.
+function psTargets(args) {
+  const words = shellWords(args);
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    const w = words[i];
+    if (!w) continue;
+    if (!w.startsWith('-')) { out.push(w); continue; }
+    const colon = w.indexOf(':');
+    const name = (colon === -1 ? w.slice(1) : w.slice(1, colon)).toLowerCase();
+    const inline = colon === -1 ? null : w.slice(colon + 1);
+    if (PS_PATH_PARAMS.has(name)) {
+      if (inline !== null) { if (inline) out.push(inline); } else if (i + 1 < words.length) { out.push(words[i + 1]); i += 1; }
+    } else if (PS_VALUE_PARAMS.has(name) && inline === null) {
+      i += 1; // the parameter's value is data
+    }
+    // anything else is a switch (-Force, -Recurse, -Append, -Confirm:$false) and names no path
+  }
+  return out;
+}
 const WRITE_PATTERNS = [
   // shell redirection into a file, `>>` included; `2>&1` and `>&2` are not file targets
   { re: new RegExp(`>>?\\s*(?!&)${TARGET}`, 'g'), what: 'a shell redirection' },
@@ -125,6 +154,11 @@ const WRITE_PATTERNS = [
   { re: new RegExp(`\\bmv\\s+(?:-\\S+\\s+)*${TARGET}`, 'g'), what: 'a move OUT of another project' },
   // `git -C <dir> <mutating subcommand>` is a write to that dir even with no path argument
   { re: new RegExp(`\\bgit\\s+-C\\s+${TARGET}\\s+(?:${GIT_MUTATING})(?![\\w-])`, 'g'), what: 'a git write in another checkout' },
+  // PowerShell's own write verbs, full cmdlet or alias, at a command position only (an alias like
+  // `del` must not match inside `--delete`). Their targets are read by parameter, below: a -Path /
+  // -LiteralPath / -FilePath / -Destination value or a positional argument, never the value of a
+  // data parameter such as -Value or -ItemType.
+  { re: new RegExp(`(?<=(?:^|[;&|(\\n{])\\s*)(${PS_WRITE_VERBS})(?![\\w-])(${SEG}*)`, 'gi'), what: 'a PowerShell write', ps: true },
 ];
 
 // An INTERPRETER with an inline script is a write route the patterns above CANNOT see, and the
@@ -210,14 +244,19 @@ function scanShell(rawCommand) {
   }
   const expandVars = (t) => t.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
     (m, br, bare) => (assigns.has(br || bare) ? assigns.get(br || bare) : m));
-  const cds = [...command.matchAll(CD_RE)].filter((c) => !inQuotes(c.index + c[0].search(/(?:cd|pushd)\s/)));
+  const cds = [...command.matchAll(CD_RE)].filter((c) => !inQuotes(c.index + c[0].search(new RegExp(`(?:${CD_VERB})\\s`, 'i'))));
 
   const targets = [];
-  for (const { re, what, all, sedish } of WRITE_PATTERNS) {
+  for (const { re, what, all, sedish, ps } of WRITE_PATTERNS) {
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(command)) !== null) {
       if (inQuotes(m.index)) continue; // prose inside a quoted string
+      if (ps) {
+        const verb = new RegExp(`^(?:${PS_REMOVE_VERBS})$`, 'i').test(m[1]) ? 'rm' : m[1];
+        for (const tok of psTargets(m[2])) targets.push({ raw: tok, index: m.index, what, verb });
+        continue;
+      }
       const verb = (/^[>\s]/.test(m[0]) ? '>' : m[0].match(/^\S+/)[0]);
       if (!all) { targets.push({ raw: unquote(m[1]), index: m.index, what, verb }); continue; }
       for (const tok of shellWords(m[1])) {
