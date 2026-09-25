@@ -75,7 +75,10 @@ touches no committed file). The lines, minus anything the project already covers
 - `.memory-mcp/` - only present at a `project`-level memory install; whichever run set that level
   (init, update or configure) wrote its own `.memory-mcp/.gitignore` (`*`), so it never needs a line
   here. Nothing to do.
-- Add runtime dirs only when they appear in the tree: `.playwright/`, `.slopwatch/`.
+- `.playwright/` - only when a playwright engine is kept; the run wrote its own
+  `.playwright/.gitignore` (`*`), since the browser profiles hold session cookies, so it never needs
+  a line here either. Nothing to do.
+- Add runtime dirs only when they appear in the tree: `.slopwatch/`.
 
 ## 3. Check the shared memory landed
 

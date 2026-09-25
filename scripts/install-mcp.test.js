@@ -1405,6 +1405,93 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
         assert.ok(ids[name] && ids[name].size, `${name}: no registration row in meta/retired-plugins.json`);
 });
 
+// Plugins audit (2026-09-26): Claude Code connects to a server ONCE, from the highest source - local,
+// project, user, then plugins - and matches a plugin server against those by ENDPOINT. Measured on
+// 2.1.282 through the session's init row: a user- or project-scope registration of the context7 url,
+// under `context7` or any other name, left the context7 plugin out of the session, so every
+// `mcp__plugin_context7_context7__` spelling the stack ships resolved nothing. A stdio server matches on
+// command AND args, which a launcher-started plugin never shares - a same-NAMED one runs beside it.
+test('shadowingRegistrations: a registration above the plugins that replaces a plugin server, or runs beside it', () =>
+{
+    const ctx7 = { type: 'http', url: `${mcp.CONTEXT7_REMOTE.url}/` };
+    const rows = mcp.shadowingRegistrations({
+        plugins: ['serena', 'context7', 'memory'],
+        scopes: {
+            user: { docs7: ctx7, serena: STACK_SERENA, mine: { command: 'node', args: ['my-server.js'] }, 'playwright-chrome': STACK_PW('chrome') },
+            project: { context7: { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'] } },
+            local: { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]==11.0.0', 'memory', 'server'] } },
+        },
+    });
+    assert.deepStrictEqual(rows, [
+        { scope: 'local', name: 'memory', plugin: 'memory', kind: 'beside' },
+        { scope: 'project', name: 'context7', plugin: 'context7', kind: 'beside' },
+        { scope: 'user', name: 'docs7', plugin: 'context7', kind: 'replaces' },
+        { scope: 'user', name: 'serena', plugin: 'serena', kind: 'beside' },
+    ], 'local, project, user in precedence order; a server no carried plugin meets is no row');
+    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: [], scopes: { user: { docs7: ctx7 } } }), [], 'no plugin carried, nothing shadowed');
+    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['context7'] }), [], 'no registrations read');
+});
+
+// The run at PROJECT scope prunes this project's .mcp.json by name, and never reads the account's user-
+// or local-scope registrations - where context7's own README puts it (`claude mcp add --transport http
+// context7 <url>`). Each one that takes a plugin's place is named with its remove command, removed never:
+// a user-scope registration serves every project of the account.
+test('seed install (plugin route, project scope): a user- or local-scope registration that shadows a stack plugin is named with its remove command, never removed', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), tools: { claude: MCPJSON_CLI },
+        prepare: (repo, work) =>
+        {
+            // Keyed by the real path too: the run's project root is the resolved one (/private/var on macOS).
+            const local = { mcpServers: { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]==11.0.0', 'memory', 'server'] } } };
+            accountMcp(work, { docs7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url }, serena: STACK_SERENA },
+                { [repo]: local, [fs.realpathSync(repo)]: local });
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { context7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url } } }, null, 2)}\n`);
+        },
+    });
+    const line = (re) => (out.match(re) || []).length;
+    assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the context7 plugin, so Claude Code connects to it instead and the stack's mcp__plugin_context7_context7__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out);
+    assert.strictEqual(line(/mcp serena \(user scope\) starts beside the serena plugin's own server - two serena servers in every session here; if nothing else needs it: claude mcp remove serena -s user/g), 1, out);
+    assert.strictEqual(line(/mcp memory \(local scope\) starts beside the memory plugin's own server/g), 1, out);
+    assert.strictEqual(line(/mcp context7 \(project scope\)/g), 0, 'the prune removed the project registration - naming it too is noise');
+    assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s (user|local)$/.test(c)), [], 'a project-scope run removed an account registration');
+});
+
+// Plugins audit (2026-09-26): every playwright engine runs with a PERSISTENT profile under
+// <project>/.playwright/<engine> - the cookies and storage of whatever site a check logged into - and
+// the folder only appears once a browser has run, after setup's git-hygiene step looked for it. So a
+// kept engine gets the folder's own `.gitignore` (`*`), the way a project-level memory database does;
+// an existing one is the user's, left alone.
+test('ensurePlaywrightIgnore: a kept engine ignores its profile folder, once, and never touches the user\'s own file', () =>
+{
+    const root = fs.mkdtempSync(path.join(TMP, 'pw-ignore-'));
+    const file = path.join(root, '.playwright', '.gitignore');
+    const lines = [];
+    assert.strictEqual(mcp.ensurePlaywrightIgnore({ projectRoot: root, engines: [], log: (l) => lines.push(l) }), false);
+    assert.ok(!fs.existsSync(path.join(root, '.playwright')), 'no engine kept, yet the folder was made');
+    assert.strictEqual(mcp.ensurePlaywrightIgnore({ projectRoot: root, engines: ['chrome'], log: (l) => lines.push(l) }), true);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '*\n');
+    assert.strictEqual(lines.filter((l) => /\.playwright\/\.gitignore written/.test(l)).length, 1, lines.join('\n'));
+    assert.strictEqual(mcp.ensurePlaywrightIgnore({ projectRoot: root, engines: ['chrome'], log: (l) => lines.push(l) }), false, 'a re-run wrote it again');
+    fs.writeFileSync(file, '# mine\nchrome/\n');
+    assert.strictEqual(mcp.ensurePlaywrightIgnore({ projectRoot: root, engines: ['firefox'] }), false);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\nchrome/\n', 'the user\'s own file was rewritten');
+});
+
+test('seed install: a kept playwright engine leaves .playwright/.gitignore behind, and no engine leaves no folder', POSIX_ONLY, () =>
+{
+    const kept = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
+        inspect: (repo) => { try { return fs.readFileSync(path.join(repo, '.playwright', '.gitignore'), 'utf8'); } catch { return null; } },
+    });
+    assert.strictEqual(kept.result, '*\n', kept.out);
+    const none = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')),
+        inspect: (repo) => fs.existsSync(path.join(repo, '.playwright')),
+    });
+    assert.strictEqual(none.result, false, none.out);
+});
+
 // A-M2: an account file the run cannot read is no list of registrations - nothing is removed at user
 // scope, and the run says so once.
 test('seed update --scope user: an unreadable account .claude.json removes nothing and is said once (A-M2)', POSIX_ONLY, () =>

@@ -595,6 +595,8 @@ function runLayers(ctx)
         selected: ctx.lists.mcps.some((e) => e.startsWith('serena|')),
         log: ctx.log,
     });
+    try { mcp.ensurePlaywrightIgnore({ projectRoot: ctx.projectRoot, engines: pwEngines(ctx), log: ctx.log }); }
+    catch (err) { ctx.note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     seeds.playwrightDownloads({
         browsers: ctx.lists.mcps.filter((e) => e.startsWith('playwright-')).map((e) => e.split('|')[0].slice(11)),
         pin: ctx.pins.PW_PIN,
@@ -945,6 +947,26 @@ function registrationOf(ctx, name, scope, live)
     return 'foreign';
 }
 
+// A registration at local, project or user scope outranks every plugin server (mcp.shadowingRegistrations):
+// one calling a carried plugin's url takes its place, so the stack's plugin-spelled tool names resolve
+// nothing, and one under a carried plugin's name starts a second server. The run prunes only its own
+// scope, so what is left is the user's own or serves other projects - each named once with its remove
+// command. A same-named one registrationOf already named as foreign is not said twice.
+function warnShadowed(ctx, carried)
+{
+    const scopes = {};
+    for (const scope of ['local', 'project', 'user'])
+        scopes[scope] = mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers;
+    for (const row of mcp.shadowingRegistrations({ plugins: carried, scopes }))
+    {
+        if (row.kind === 'beside' && ctx.mcpForeign.get(row.name) === row.scope) continue;
+        const remove = `claude mcp remove ${row.name} -s ${row.scope}`;
+        ctx.log(row.kind === 'replaces'
+            ? `  !! mcp ${row.name} (${row.scope} scope) calls the url of the ${row.plugin} plugin, so Claude Code connects to it instead and the stack's mcp__plugin_${row.plugin}_${row.plugin}__ tools never load - if nothing else needs it: ${remove}`
+            : `  mcp ${row.name} (${row.scope} scope) starts beside the ${row.plugin} plugin's own server - two ${row.plugin} servers in every session here; if nothing else needs it: ${remove}`);
+    }
+}
+
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
@@ -987,6 +1009,11 @@ function installMcps(ctx)
         for (const name of names)
             if (held.servers[name] && registrationOf(ctx, name, 'project', liveMcpNames.has(name)) === 'stack') prune(name, 'project');
     }
+
+    // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
+    // changed the files): named, never removed here.
+    if (mcp.corePluginOn(ctx.routes))
+        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map((e) => `playwright-${e}`)] : mcp.LOCKED);
 
     if (ctx.routes.mcps)
     {

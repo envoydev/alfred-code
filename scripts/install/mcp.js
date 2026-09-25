@@ -529,6 +529,48 @@ function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
     return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, file };
 }
 
+// What takes a plugin-carried server's place. Claude Code connects to a server ONCE, from the highest
+// source - local, project, user, then plugins - and matches a PLUGIN server against those three by
+// ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
+// session's init row: a user- or project-scope registration of the context7 url, under `context7` or
+// any other name, left the context7 plugin out of the session, so every `mcp__plugin_context7_context7__`
+// spelling the stack ships (its tool grants, baseline-quality-gates' ToolSearch line) resolved nothing.
+// A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
+// same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
+// registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
+const PLUGIN_ENDPOINTS = { context7: () => `http:${CONTEXT7_REMOTE.url}` };
+function shadowingRegistrations({ plugins = [], scopes = {} })
+{
+    const rows = [];
+    for (const scope of ['local', 'project', 'user'])
+    {
+        for (const [name, entry] of Object.entries(scopes[scope] || {}))
+        {
+            const id = identityOf(entry);
+            const replaced = plugins.find((plugin) => PLUGIN_ENDPOINTS[plugin] && PLUGIN_ENDPOINTS[plugin]() === id);
+            if (replaced) rows.push({ scope, name, plugin: replaced, kind: 'replaces' });
+            else if (plugins.includes(name)) rows.push({ scope, name, plugin: name, kind: 'beside' });
+        }
+    }
+    return rows;
+}
+
+// Every playwright engine runs with a PERSISTENT profile under <project>/.playwright/<engine> - the
+// cookies and storage of whatever site a check logged into - on the plugin and the copy route alike.
+// The folder only appears once a browser has run, after setup's git-hygiene step has looked for it, so
+// a kept engine gets the folder's own `.gitignore` (`*`), the way a project-level memory database does
+// (memory.ensureProjectIgnore). An existing one is the user's, left alone.
+function ensurePlaywrightIgnore({ projectRoot, engines = [], log = () => {} })
+{
+    if (!engines.length) return false;
+    const ignore = path.join(projectRoot, '.playwright', '.gitignore');
+    if (fs.existsSync(ignore)) return false;
+    fs.mkdirSync(path.dirname(ignore), { recursive: true });
+    fs.writeFileSync(ignore, '*\n');
+    log('  playwright: .playwright/.gitignore written - the browser profiles hold session cookies and are never committed');
+    return true;
+}
+
 // The hosted context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the context7
 // plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
 // where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
@@ -558,5 +600,5 @@ module.exports = {
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
-    registrationScope, identityOf, packageName, stackIdentities, registrationsAt,
+    registrationScope, identityOf, packageName, stackIdentities, registrationsAt, shadowingRegistrations, ensurePlaywrightIgnore,
 };
