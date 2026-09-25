@@ -400,32 +400,112 @@ test('settingsTarget: local scope targets settings.local.json, every other scope
     assert.strictEqual(settingsTarget(dir, ''), path.join(dir, 'settings.json'));
 });
 
-// N5 (fix round 5): the read-back reads only the written file at project and user scope (I2), and at
-// local scope settings.local.json laid over settings.json for the two keys it reads, `env` and `deny`.
-test('readBackSettings: the target alone at project and user scope, the local overlay at local scope', () =>
+// N5 (fix round 5): at local scope settings.local.json is laid over settings.json for the two keys the
+// read-back uses, `env` and `deny`. R99 (Task 18b fix round 2): at project and user scope too, the stack
+// keys settings.local.json holds are laid over settings.json, key by key - Claude Code applies them
+// there, so a read-back blind to them showed a hook the user switched off as on. Only the stack's own
+// env keys: every other entry (deny, hooks, a non-stack key) is the shared file's. `sharedOnly` is the
+// shared file alone, for the readers that must not see the local file (the N6 inherited view, R98's
+// docs root).
+test('readBackSettings: local over shared for the stack keys at every scope, the full overlay at local scope (R99)', () =>
 {
     const dir = path.join(TMP, `readback-${seq++}`, '.claude');
     fs.mkdirSync(dir, { recursive: true });
+    const sharedHooks = { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'shared' }] }] };
     fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
-        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'shared' },
-        permissions: { deny: ['Agent(alfred-code:a)'], allow: ['Bash(ls:*)'] },
+        env: { ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared' },
+        permissions: { deny: ['Agent(alfred-code:a)'], allow: ['Bash(ls:*)'] }, hooks: sharedHooks,
     }));
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
-        env: { BOTH: 'local', LOCAL_ONLY: '1' }, permissions: { deny: ['Agent(alfred-code:b)', 'Agent(alfred-code:a)'] },
+        env: { BOTH: 'local', LOCAL_ONLY: '1', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', CLAUDE_STACK_INSTRUMENT: '1' }, // legacy-name
+        permissions: { deny: ['Agent(alfred-code:b)', 'Agent(alfred-code:a)'] }, hooks: { PreToolUse: [] },
     }));
     for (const scope of ['project', 'user'])
-        assert.deepStrictEqual(readBackSettings(dir, scope).env, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'shared' });
+    {
+        const r = readBackSettings(dir, scope);
+        assert.deepStrictEqual(r.env, {
+            ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared',
+            CLAUDE_STACK_INSTRUMENT: '1', // legacy-name
+        }, `${scope}: the stack keys the local file holds win, nothing else of it is read`);
+        assert.deepStrictEqual(r.permissions.deny, ['Agent(alfred-code:a)'], `${scope}: deny is the shared file's`);
+        assert.deepStrictEqual(r.hooks, sharedHooks, `${scope}: hooks are the shared file's`);
+        assert.deepStrictEqual(readBackSettings(dir, scope, { sharedOnly: true }).env,
+            { ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared' }, `${scope}: sharedOnly reads settings.json alone`);
+    }
     const merged = readBackSettings(dir, 'local');
-    assert.deepStrictEqual(merged.env, { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1' });
+    assert.deepStrictEqual(merged.env, {
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'local', LOCAL_ONLY: '1',
+        CLAUDE_STACK_INSTRUMENT: '1', // legacy-name
+    });
     assert.deepStrictEqual(merged.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)']);
     assert.deepStrictEqual(merged.permissions.allow, ['Bash(ls:*)']);
     // A local key wins even when it is the empty list - Claude Code reads it the same way.
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: '' } }));
     assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }));
+    assert.strictEqual(readBackSettings(dir, 'project').env.ALFRED_CODE_HOOKS_OFF, '', 'the same at project scope');
     // Fail-soft: garbage in either file reads as empty, never a throw.
     fs.writeFileSync(path.join(dir, 'settings.json'), '{ not json');
-    assert.deepStrictEqual(readBackSettings(dir, 'project'), {});
+    assert.deepStrictEqual(readBackSettings(dir, 'project'), { env: { ALFRED_CODE_HOOKS_OFF: '' } });
+    assert.deepStrictEqual(readBackSettings(dir, 'project', { sharedOnly: true }), {});
     assert.strictEqual(readBackSettings(dir, 'local').env.ALFRED_CODE_HOOKS_OFF, '');
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '[1]');
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '0' } }));
+    assert.deepStrictEqual(readBackSettings(dir, 'project'), { env: { ALFRED_CODE_PUSH_GATE: '0' } }, 'a malformed local file adds nothing');
+    fs.rmSync(path.join(dir, 'settings.local.json'));
+    assert.deepStrictEqual(readBackSettings(dir, 'user'), { env: { ALFRED_CODE_PUSH_GATE: '0' } }, 'no local file: the shared file as it is');
+});
+
+// R99 (Task 18b fix round 2): at project and user scope a stack key settings.local.json holds is the
+// one Claude Code applies, so the run writes it THERE - an answered hooks layer, a decision, a
+// migration - never into settings.json, where it would be shadowed and look applied. A key the local
+// file lacks lands in settings.json as before, and a key it holds is never seeded into settings.json.
+test('settings-writer: at project scope a write to a stack key settings.local.json holds goes to the local file (R99)', () =>
+{
+    const dir = path.join(TMP, `overlay-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const sharedFile = path.join(dir, 'settings.json');
+    const localFile = path.join(dir, 'settings.local.json');
+    fs.writeFileSync(sharedFile, JSON.stringify({ env: { TEAM: 'y' } }));
+    fs.writeFileSync(localFile, JSON.stringify({
+        env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_DOCS_VERSIONING: 'local', CLAUDE_STACK_MONITOR: 'inject', MY_OWN: 'x' }, // legacy-name
+        permissions: { allow: ['Bash(ls)'] },
+    }));
+    const logs = [];
+    const opts = {
+        file: sharedFile, localFile, catalog: CATALOG, migrations: { ...MIGRATIONS, prefixRenames: [['CLAUDE_STACK_', 'ALFRED_CODE_']] }, // legacy-name
+        hooksOff: ['guard-answer-length', 'guard-secret-value'], hooksAnswered: true, docsVersioning: { value: 'git', seed: 'git' },
+    };
+    writeSettings({ ...opts, log: (m) => logs.push(m) });
+    const shared = JSON.parse(fs.readFileSync(sharedFile, 'utf8'));
+    const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+    assert.deepStrictEqual(local.env, {
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,guard-secret-value', ALFRED_CODE_FRESH_SESSION_DEFAULT: '180000',
+        ALFRED_CODE_DOCS_VERSIONING: 'git', ALFRED_CODE_MONITOR: 'inject', MY_OWN: 'x',
+    }, 'the answer, the decision, the reseed and the rename land where the key applies');
+    assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'] }, 'nothing else of the local file is touched');
+    for (const key of ['ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_FRESH_SESSION_DEFAULT', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_MONITOR'])
+        assert.ok(!(key in shared.env), `${key} reached settings.json, where the local value shadows it`);
+    assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
+    assert.strictEqual(shared.env.TEAM, 'y');
+    const text = logs.join('\n');
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = guard-answer-length,guard-secret-value/);
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_FRESH_SESSION_DEFAULT reset to 180000/);
+    assert.match(text, /settings\.local\.json env: CLAUDE_STACK_MONITOR renamed to ALFRED_CODE_MONITOR/); // legacy-name
+    assert.match(text, /settings\.json env: ALFRED_CODE_PUSH_GATE seeded/);
+
+    // Idempotent: a second run writes neither file.
+    const before = [fs.readFileSync(sharedFile, 'utf8'), fs.readFileSync(localFile, 'utf8')];
+    assert.strictEqual(writeSettings(opts).written, false);
+    assert.deepStrictEqual([fs.readFileSync(sharedFile, 'utf8'), fs.readFileSync(localFile, 'utf8')], before);
+
+    // A malformed local file is no overlay: named once, and settings.json takes the writes.
+    fs.writeFileSync(localFile, '{ nope');
+    const notes = [];
+    writeSettings({ ...opts, note: (m) => notes.push(m) });
+    assert.match(notes.join('\n'), /settings\.local\.json is not valid JSON/);
+    assert.strictEqual(fs.readFileSync(localFile, 'utf8'), '{ nope', 'a malformed local file is left untouched');
+    assert.strictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')).env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length,guard-secret-value');
 });
 
 // N6 (Task 16b): at local scope settings.json still applies beneath the file this run writes, so a key

@@ -55,7 +55,7 @@ function scopedSettings(root)
     const { readStampScope } = require('./install/stamp.js');
     const { settingsTarget, readBackSettings } = require('./install/settings.js');
     const scope = readStampScope(stampFile(claudeDir).read || '') === 'local' ? 'local' : 'project';
-    const env = readBackSettings(claudeDir, scope).env;
+    const env = readBackSettings(claudeDir, scope, { sharedOnly: true }).env;
     return {
         file: settingsTarget(claudeDir, scope),
         env: env && typeof env === 'object' && !Array.isArray(env) ? env : {},

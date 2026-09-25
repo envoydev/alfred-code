@@ -230,7 +230,8 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 12a.
 
 The values come from the snapshot's `$TMP/repo/meta/environment.json` - the ONE list of what this
 release owns in the scope's settings file `env` (`.claude/settings.local.json` at local scope, else
-`.claude/settings.json`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
+`.claude/settings.json` - where a key `settings.local.json` also holds is read from, and written back
+to, that local file, since it applies over `settings.json`). Read each row's `key`, `default` and `what` FROM THAT FILE and put the `what` in
 front of the user in its own words; do not carry a copy of the rows here, or the walk shows five
 values on the day the catalog holds six. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus. The installer seeds every row only when ABSENT, so this
 step is the one place they change deliberately. A row whose key is missing from the file is one the

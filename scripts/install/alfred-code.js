@@ -886,7 +886,10 @@ function installHooksAndRules(ctx)
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no
         // gap for a seed to fill - a local default would hide it.
-        inheritedEnv: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project').env : null,
+        inheritedEnv: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).env : null,
+        // R99: at every other scope settings.local.json applies OVER settings.json, so a stack key it
+        // holds is written back there - where the read-back found it and where it takes effect.
+        localFile: ctx.args.scope === 'local' ? null : path.join(ctx.claudeDir, 'settings.local.json'),
         log: ctx.log, note: ctx.note,
     });
 }

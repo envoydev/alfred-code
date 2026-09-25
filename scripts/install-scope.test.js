@@ -656,3 +656,38 @@ test('install-scope: a local install moved to project scope drops its seeded key
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run/, outs[1]);
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed/, outs[1]);
 });
+
+// R99 (Task 18b fix round 2), the re-review's N1 measured end to end: a walk at local scope names an
+// unpicked hook off in settings.local.json, the move to project scope keeps that value there (R96),
+// and from then on every project-scope run must read the stack keys the local file holds over
+// settings.json - as Claude Code applies them - and write a change to such a key back THERE.
+// Otherwise configure's read-back lists the hook as on, and a --drop lands in settings.json, shadowed.
+test('install-scope: after a move off local, configure reads the locally switched-off hook as off, and a drop takes effect in the local file (R99)', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const selection = `skill markdown-style\n${shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).join('\n')}\n`;
+    const project = ['--scope', 'project', '--installed-only'];
+    const { outs, steps, result } = seedRun(['install', 'update', 'update', 'update', 'update'], selection, {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
+        args: [['--scope', 'local'], project, [...project, '--print-plan', '--plan-out', 'plan.json'], [...project, '--drop', 'hook guard-secret-value'], project],
+        each: (repo, i) =>
+        {
+            const env = (name) => (json(repo, path.join('.claude', name)).env || {});
+            if (i === 0) return env('settings.local.json').ALFRED_CODE_HOOKS_OFF;
+            if (i === 2) return json(repo, 'plan.json');
+            return { shared: fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'), local: fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8') };
+        },
+        inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+    });
+    assert.strictEqual(steps[0], 'guard-answer-length', 'the walk at local scope named the unpicked hook off in settings.local.json');
+    assert.ok(!steps[2].hooks.includes('guard-answer-length'), `configure's read-back lists the switched-off hook as on: ${steps[2].hooks.join(',')}`);
+    assert.ok(steps[2].hooks.includes('guard-secret-value'), steps[2].hooks.join(','));
+    assert.strictEqual(steps[2].hooks.length, shipped.length - 1);
+    const off = (env) => String((env || {}).ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort();
+    assert.deepStrictEqual(off(result.local.env), ['guard-answer-length', 'guard-secret-value'], 'the drop landed in the local file, where it applies');
+    assert.deepStrictEqual(off({ ...result.shared.env, ...result.local.env }), ['guard-answer-length', 'guard-secret-value'], 'in effect, both hooks are off');
+    assert.ok(!off(result.shared.env).includes('guard-secret-value'), 'the drop went into settings.json, shadowed');
+    assert.match(outs[3], /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = /, outs[3]);
+    assert.deepStrictEqual(steps[4], steps[3], 'a re-run changes neither file');
+});

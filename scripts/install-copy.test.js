@@ -274,3 +274,18 @@ test('install-copy: a 1.x CLAUDE_STACK_DOCS_PATH is the root the stamp writes', 
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     assert.ok(fs.readFileSync(file, 'utf8').includes('docs/legacy/architecture'));
 });
+
+// R98 / R99 (Task 18b fix round 2): the read-back lays the stack keys settings.local.json holds over
+// settings.json at every scope, but the docs root is not one of its readers - at project and user
+// scope the stamped rule names settings.json's root, the shared one, even where a local key shadows it.
+test('install-copy: at project and user scope the docs root is settings.json\'s alone; at local scope the local file wins (R98)', () =>
+{
+    const { base } = fixture();
+    fs.mkdirSync(path.join(base, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(base, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }));
+    fs.writeFileSync(path.join(base, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+    const { resolveDocsRoot } = require('./install/copy.js');
+    assert.strictEqual(resolveDocsRoot(base, 'project'), 'docs/shared');
+    assert.strictEqual(resolveDocsRoot(base, 'user'), 'docs/shared');
+    assert.strictEqual(resolveDocsRoot(base, 'local'), 'docs/mine');
+});

@@ -60,6 +60,8 @@ function readJson(file)
 
 // One migration entry's `detect` against the install root. Unknown kinds never fire - a
 // catalog written by a newer release must not make an older preflight claim a detection.
+const isEnvDetect = (entry) => Object.keys((entry && entry.detect) || {}).some((k) => k.startsWith('settings_env_'));
+
 function detects(entry, root, settings)
 {
     const d = (entry && entry.detect) || {};
@@ -343,10 +345,15 @@ function main()
     const catalog = readJson(path.join(snapshot, 'meta', 'migrations.json'));
     const entries = (catalog && catalog.migrations) || [];
     const settings = readJson(settingsFile);
+    // R99: a project or user run migrates the STACK keys settings.local.json holds too (the writer's
+    // overlay), so a migration fires on either file - on the local one for those keys alone.
+    const localFile = path.join(claudeDir, 'settings.local.json');
+    const localStack = settingsFile === localFile || arg('--settings') ? null
+        : { env: Object.fromEntries(Object.entries((readJson(localFile) || {}).env || {}).filter(([k]) => settingsLib.isStackKey(k))) };
     let fired = 0;
     for (const e of entries)
     {
-        if (!detects(e, root, settings)) continue;
+        if (!detects(e, root, settings) && !(localStack && isEnvDetect(e) && detects(e, root, localStack))) continue;
         fired += 1;
         console.log(`migration: ${e.id}\t${detectKind(e)}`);
         // Every field the caller ACTS on, for the entries that actually fired - so the catalog

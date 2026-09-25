@@ -85,7 +85,8 @@ function resolveDocsRoot(projectRoot, scope)
     const { stampFile } = require('./brand.js');
     const claudeDir = path.join(projectRoot, '.claude');
     const at = scope || readStampScope(stampFile(claudeDir).read || '');
-    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project').env;
+    // R98: at project and user scope the docs root is settings.json's alone - the stamped rule is shared.
+    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
     return envOf(env && typeof env === 'object' ? env : {}, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
 }
 

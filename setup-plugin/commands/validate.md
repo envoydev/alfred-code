@@ -56,7 +56,9 @@ into the project first; `installed` / `initialised` -> go on. `<scope>` below is
 the same script, reading the stamp under either name (a 1.x install keeps `claude-stack.stamp` until <!-- legacy-name -->
 its first 2.0.0 update), a 1.x `global` as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
-(`.claude/settings.local.json` laid over `.claude/settings.json` at local scope). One installer on
+(`.claude/settings.local.json` laid over `.claude/settings.json` at local scope; at project and user
+scope `settings.json`, with every stack key `settings.local.json` holds laid over it and written back
+there). One installer on
 every OS.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
@@ -308,7 +310,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 The one layer that is not an artifact: the values this stack owns in the scope's settings.json
 `env`. Read the rows from the snapshot's `$TMP/repo/meta/environment.json` and the current block
 from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local
-scope, else `.claude/settings.json`), then show one
+scope, else `.claude/settings.json` with every `ALFRED_CODE_*` key `settings.local.json` holds laid
+over it - such a key is fixed in that local file, where it applies), then show one
 table of the actionable rows only - an install whose env already matches gets the single line
 `environment: nothing to reconcile` and you move on. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus.
 

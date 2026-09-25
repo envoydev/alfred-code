@@ -174,20 +174,16 @@ function renameEnv(env, migrations, log, label = 'settings.json')
     return changed;
 }
 
-// `inherited` (N6): the env of a file Claude Code lays THIS file over - settings.json beneath a
-// local-scope run's settings.local.json. A key it holds, under any spelling the renames carry, counts as
-// present for every absent-only seed below: a default here would hide the user's value there. Renames,
-// retirements and decisions still act on this file alone.
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, log, label = 'settings.json' })
-{
-    let changed = renameEnv(env, migrations, log, label);
-    const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
-    renameEnv(beneath, migrations, () => {});
-    const present = (key) => key in env || key in beneath;
+// The env keys the stack owns, under either name - what R99 reads from and writes to settings.local.json.
+const isStackKey = (key) => /^(ALFRED_CODE_|CLAUDE_STACK_)/.test(key) || key === 'CLAUDE_DOCS_PATH'; // legacy-name
 
+// Steps 2 and 3 of the env pass, in place, over the keys `only` admits.
+function retireAndReseed(env, migrations, log, label, only = () => true)
+{
+    let changed = false;
     // 2. RETIREMENTS - unconditional, or only while the value is still the stack's own old seed.
     for (const [key, onlyWhen] of migrations.retired || [])
-        if (key in env && (onlyWhen === null || onlyWhen === undefined || env[key] === onlyWhen))
+        if (only(key) && key in env && (onlyWhen === null || onlyWhen === undefined || env[key] === onlyWhen))
         {
             delete env[key];
             changed = true;
@@ -196,7 +192,36 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
 
     // 3. BAD SEEDS - corrected only while the key still holds the wrong default.
     for (const [key, badSeed, to] of migrations.reseed || [])
-        if (env[key] === badSeed) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+        if (only(key) && env[key] === badSeed) { env[key] = to; changed = true; log(`  ${label} env: ${key} reset to ${to} (auto-detect)`); }
+    return changed;
+}
+
+// `inherited` (N6): the env of a file Claude Code lays THIS file over - settings.json beneath a
+// local-scope run's settings.local.json. A key it holds, under any spelling the renames carry, counts as
+// present for every absent-only seed below: a default here would hide the user's value there. Renames,
+// retirements and decisions still act on this file alone.
+// `overlay` (R99, Task 18b fix round 2): the env of the file Claude Code lays OVER this one - a project
+// or user run's settings.local.json. A stack key it holds is the value that applies, so the migrations
+// run over its stack keys too, a key it holds counts as present for every seed (a copy here would be
+// shadowed), and every decision below lands in it, where it takes effect - never in this file, where
+// it would look applied and change nothing. The caller writes the overlay back to its own file.
+function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+{
+    let changed = renameEnv(env, migrations, log, label);
+    const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
+    renameEnv(beneath, migrations, () => {});
+    const held = overlay && typeof overlay === 'object' && !Array.isArray(overlay) ? overlay : null;
+    if (held)
+    {
+        renameEnv(held, migrations, log, overlayLabel);
+        retireAndReseed(held, migrations, log, overlayLabel, isStackKey);
+    }
+    const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held;
+    const present = (key) => key in env || key in beneath || heldHere(key);
+    // Where a decision about `key` lands: the overlay when it holds the key, else this file.
+    const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
+
+    if (retireAndReseed(env, migrations, log, label)) changed = true;
 
     // 4. SEEDS - absent-only, from the catalog, which is the one list.
     for (const row of catalog)
@@ -214,9 +239,10 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
     // it the caller's seed rule answers, and only when the key is absent.
     if (docsVersioning && docsVersioning.value)
     {
-        const old = env.ALFRED_CODE_DOCS_VERSIONING;
-        if (old !== docsVersioning.value) { env.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.value; changed = true; }
-        log(`  ${label} env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
+        const { into, lab, mine } = at('ALFRED_CODE_DOCS_VERSIONING');
+        const old = into.ALFRED_CODE_DOCS_VERSIONING;
+        if (old !== docsVersioning.value) { into.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.value; if (mine) changed = true; }
+        log(`  ${lab} env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
             + ` (--docs-versioning${old === docsVersioning.value ? ', unchanged' : ''})`);
     }
     else if (!present('ALFRED_CODE_DOCS_VERSIONING') && docsVersioning && docsVersioning.seed)
@@ -228,15 +254,19 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
 
     // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
     for (const [key, value, shown] of [['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb]])
-        if (value && env[key] !== value) { env[key] = value; changed = true; log(`  ${label} env: ${key} -> ${shown}`); }
+    {
+        const { into, lab, mine } = at(key);
+        if (value && into[key] !== value) { into[key] = value; if (mine) changed = true; log(`  ${lab} env: ${key} -> ${shown}`); }
+    }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
     // value - the one exception to absent-only, because the user is looking at the question.
     const off = (hooksOff || []).join(',');
     if (hooksAnswered)
     {
-        if (env.ALFRED_CODE_HOOKS_OFF !== off)
-        { env.ALFRED_CODE_HOOKS_OFF = off; changed = true; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
+        const { into, lab, mine } = at('ALFRED_CODE_HOOKS_OFF');
+        if (into.ALFRED_CODE_HOOKS_OFF !== off)
+        { into.ALFRED_CODE_HOOKS_OFF = off; if (mine) changed = true; log(`  ${lab} env: ALFRED_CODE_HOOKS_OFF = ${off || '(empty - every hook runs)'}`); }
     }
     else if (!present('ALFRED_CODE_HOOKS_OFF'))
     { env.ALFRED_CODE_HOOKS_OFF = ''; changed = true; log(`  ${label} env: ALFRED_CODE_HOOKS_OFF seeded (empty - every hook runs)`); }
@@ -250,7 +280,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
-        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null,
+        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null,
         log = () => {}, note = () => {},
     } = opts;
 
@@ -332,9 +362,23 @@ function writeSettings(opts)
     for (const name of mcpOff) if (enabled.includes(name))
     { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
 
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, log, label })) changed = true;
+    // R99: `localFile` is settings.local.json on a project or user run - its stack keys apply over this
+    // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
+    // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
+    let local = null;
+    if (localFile && fs.existsSync(localFile))
+    {
+        try { ({ data: local } = readSettings(localFile)); }
+        catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; }
+    }
+    const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
+    const overlayBefore = overlay ? JSON.stringify(overlay) : null;
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, log, label,
+        overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
+    const localChanged = Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore;
+    if (localChanged) fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
 
-    if (!changed) return { written: false, refused: false };
+    if (!changed) return { written: localChanged, refused: false };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
     return { written: true, refused: false };
@@ -348,18 +392,28 @@ function writeSettings(opts)
 const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'local' ? 'settings.local.json' : 'settings.json');
 
 // What the --installed-only read-back reads, fail-soft (an unreadable file reads as empty). At project
-// and user scope, only the file this run writes (I2: a merge there could carry a personal
-// settings.local.json entry into the shared file). At local scope the write lands in the personal file,
+// and user scope, the file this run writes with the STACK env keys settings.local.json holds laid over
+// it, key by key (R99): Claude Code applies those, so a read-back blind to them showed a hook the user
+// switched off as on. Nothing else of the local file is read there (I2: a merge could carry a personal
+// entry into the shared file), and the writer puts a change to such a key back into the local file
+// (`writeSettings` `localFile`), never the shared one. `sharedOnly` is settings.json alone - the N6
+// inherited view and R98's docs root read that. At local scope the write lands in the personal file,
 // so settings.local.json is laid over settings.json (N5) for the two keys the read-back uses: `env` key
 // by key with local winning, and `permissions.deny` combined. Every other key is the local file's whole
 // where it has one - `permissions.allow` / `ask` / `additionalDirectories`, `enabledPlugins`, `hooks`
 // included - so this is NOT the view Claude Code resolves, which combines every list across files: a
 // caller that reads more than `env` and `deny` needs its own merge.
-function readBackSettings(claudeDir, scope)
+function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
 {
     const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
     const read = (name) => { try { return obj(JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8'))); } catch { return {}; } };
-    if (scope !== 'local') return read('settings.json');
+    if (scope !== 'local')
+    {
+        const own = read('settings.json');
+        if (sharedOnly) return own;
+        const held = Object.entries(obj(read('settings.local.json').env)).filter(([key]) => isStackKey(key));
+        return held.length ? { ...own, env: { ...obj(own.env), ...Object.fromEntries(held) } } : own;
+    }
     const shared = read('settings.json');
     const local = read('settings.local.json');
     const deny = (s) => (Array.isArray(obj(s.permissions).deny) ? obj(s.permissions).deny : []);
@@ -464,4 +518,4 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     return { moved: true };
 }
 
-module.exports = { writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

@@ -125,7 +125,7 @@ node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
 ```
 
 (It reads the scope's settings as the installer does - `settings.local.json` laid over
-`settings.json` at local scope. A `--space` install passes `--config-dir ~/.claude-<space>`, so a
+`settings.json` at local scope, and at every other scope the stack keys `settings.local.json` holds. A `--space` install passes `--config-dir ~/.claude-<space>`, so a
 1.x global stamp is looked for in that account. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE
 pre-install read - never hand-write a second probe for anything it already prints, and never

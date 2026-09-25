@@ -33,7 +33,10 @@ copied hook engines and the settings are under `<root>/.claude/` (`<root>` = the
 else the current directory); the scope says only where the plugin rows are enabled and which
 settings file holds the stack's keys - `.claude/settings.local.json` at `local` scope (it wins over
 `settings.json` key by key), `.claude/settings.json` at `project` and `user`. Call that file the
-SCOPE FILE below.
+SCOPE FILE below. But at EVERY scope a stack key `settings.local.json` holds applies over `settings.json`,
+as Claude Code lays the two files - a value a move off `local` kept there, or one set by hand - so the
+env reads below use the STACK VIEW: `settings.json`'s `env` with every `ALFRED_CODE_*` key of
+`settings.local.json` laid over it (at `local` scope, the whole local `env`).
 
 ## 2. General info - always, before the question
 
@@ -173,7 +176,7 @@ say so in one line and skip the table.
 **Hooks** - the ROUTE decides: the hooks ride the core, so with the core (`alfred-code@<key>`) in
 the plugins listing and `ALFRED_CODE_HOOKS_VIA_PLUGIN` not `false` the installed set is the
 release's whole hook catalog (the stamp's `shipped-hooks:` line) MINUS the names in
-`ALFRED_CODE_HOOKS_OFF`; otherwise (the copy route, where the core's own copies stand down for the
+`ALFRED_CODE_HOOKS_OFF` read from the stack view; otherwise (the copy route, where the core's own copies stand down for the
 wired ones), `.claude/hooks/*.js` bare basenames, excluding the engines (`docs`, `memory`,
 `history`, `fresh-session`), the shared `hook-prelude`, and the generated legacy
 `inject-code-style.js`. On the plugin route the `wired` column reads `plugin` for every row and the
@@ -241,8 +244,8 @@ It is the only place a plugin that cannot load says so: a row the catalog no lon
 `enabled: true` in settings, loads nothing, and shows the failure nowhere but this field
 (`docs/rebrand-evidence.md` S13, S25).
 
-**Environment** - the install's knobs, one row each, from the scope file's `env` (at `local` scope
-the local file wins over `settings.json` key by key):
+**Environment** - the install's knobs, one row each, from the STACK VIEW (`settings.local.json` over
+`settings.json` key by key, at every scope):
 
 | item | value |
 |---|---|

@@ -553,6 +553,22 @@ test('new items: a deny or a hooks-off in settings.local.json is the user\'s off
     assert.match(out, /^new: hook docs-session\toff\talfred-code$/m, out);
 });
 
+// R99 (Task 18b fix round 2): at project and user scope the update migrates a STACK key
+// settings.local.json holds as well (the writer's overlay), so the preflight reports that migration too.
+// A key of the local file that is not the stack's is never the run's to migrate.
+test('migrations: at project scope a stack key settings.local.json holds is detected too, never its other keys (R99)', () => {
+    const migrations = [
+        { id: 'fresh-session-default-reseed', detect: { settings_env_value: { key: 'ALFRED_CODE_FRESH_SESSION_DEFAULT', equals: '250000' } } },
+        { id: 'autocompact-seed-dropped', detect: { settings_env_value: { key: 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', equals: '40' } } },
+    ];
+    const { snap, install, fixtureFile } = scaffold({ migrations, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: project\n', settings: { env: { SHARED_ONLY: '1' } } });
+    fs.writeFileSync(path.join(install, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '40' } }));
+    const out = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out;
+    assert.match(out, /^migration: fresh-session-default-reseed\tsettings_env_value$/m, out);
+    assert.ok(!/^migration: autocompact-seed-dropped/m.test(out), 'a non-stack key of the local file is not the run\'s to migrate');
+    assert.match(out, /^env-keys: SHARED_ONLY$/m, 'the before-state is still the file the run writes');
+});
+
 // The env-keys before-state is the file THIS run writes: settings.local.json at local scope (the
 // stamp's `scope:` line), settings.json at every other.
 test('env-keys: the before-state is the file the run writes - settings.local.json at local scope', () => {
