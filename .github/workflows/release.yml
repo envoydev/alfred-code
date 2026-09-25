@@ -1,7 +1,8 @@
 name: release
 
 # Republish the release on every release merge to main: one tar.gz + one zip source
-# snapshot per revision, tagged v<version> from the plugin manifest
+# snapshot per revision, each attached twice - as alfred-code.* and, the same bytes, under the
+# pre-rebrand name a 1.x install's archive fallback asks for - tagged v<version> from the plugin manifest
 # (setup-plugin/.claude-plugin/plugin.json) - the marketplace serves that same manifest
 # from main, so the marketplace, main, and the release always carry ONE version (the
 # parity lint keeps marketplace.json equal). A RELEASE-SOURCE file inside each archive

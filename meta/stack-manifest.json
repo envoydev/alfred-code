@@ -1,6 +1,5 @@
 {
-  "generatedBy": "build-manifest",
-  "note": "The six lists both installers work from. Edited HERE, never in the twins - they read this file. `node scripts/build-manifest.js --write` regenerates it from the shell twin while the twins still carry the blocks, and proves the two agree either way.",
+  "note": "The six lists and the `retired` block the seed reads (scripts/install/manifest.js). Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count.",
   "skills": [
     {
       "repo": "envoydev/alfred-code",

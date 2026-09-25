@@ -2632,19 +2632,21 @@ function stackTextFiles(root = ROOT)
 // 57. The 1.x name stays in the legacy readers. 2.0.0 renamed the stack to alfred-code, and the
 // old spellings are READ for the whole 2.x line - so a 1.x spelling left anywhere else is either a
 // reader nobody marked or a new thing named after a retired product. A line that must keep one
-// carries `legacy-name` (`// legacy-name`, `# legacy-name`, `<!-- legacy-name -->`). What passes
-// without a marker, each for its reason:
+// carries the marker - the whole word `legacy-name` in a comment (`// legacy-name`, `# legacy-name`,
+// `<!-- legacy-name -->`, or `legacy-name:` inside one), never the letters alone. What passes without
+// a marker, each for its reason:
 const LEGACY_NAME = /claude-stack|CLAUDE_STACK_/g; // legacy-name
+const LEGACY_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])legacy-name(?![\w-])/;
 const LEGACY_FILES = [
     { re: /^docs\/[^/]+-evidence\.md$/, why: 'measured evidence keeps its words' },
     { re: /^meta\/migrations\.json$/, why: 'a migration names the spelling it migrates from' },
     { re: /^meta\/retired-entries\.json$/, why: 'the only record of what each 1.x per-stack entry carried' },
-    { re: /^\.claude-plugin\/marketplace\.json$/, why: 'generated: its 1.x aliases come from brand.js LEGACY, its retired entries from retired-entries.json, and check 49 holds it to the generator' },
 ];
-// JSON carries no comment, and brand.js is the one home a call site takes the old names from.
+// JSON carries no comment. Only the marketplace's plugins[] passes: check 49 holds every entry there
+// to its generator (the core, the 1.x aliases from brand.js LEGACY, the retired entries) and check 53
+// the MCP plugins. Its name, owner and metadata are hand-edited at every release, so they are checked.
 const LEGACY_SPANS = [
-    { file: 'meta/stack-manifest.json', start: /^\s*"retired"\s*:\s*\{/, why: 'the retired lists are history' },
-    { file: 'scripts/install/brand.js', start: /^const LEGACY = \{/, why: 'the one home of the 1.x names' },
+    { file: '.claude-plugin/marketplace.json', start: /^\s*"plugins"\s*:\s*\[/, why: 'generated entries, held to their generator by checks 49 and 53' },
 ];
 // The per-stack entries 1.2.0 shipped keep their 1.x names while they are retired (plan decision
 // D2): a name listed in meta/retired-entries.json passes wherever it appears.
@@ -2653,8 +2655,9 @@ function retiredEntryNames(root = ROOT)
     try { return JSON.parse(fs.readFileSync(path.join(root, 'meta', 'retired-entries.json'), 'utf8')).entries.map((e) => e.name); }
     catch { return []; }
 }
-// The line range of the brace block opening on the first line `start` matches, strings skipped.
-function braceSpan(lines, start)
+// The line range of the `{...}` or `[...]` block opening on the first line `start` matches, strings
+// skipped.
+function blockSpan(lines, start)
 {
     const first = lines.findIndex((l) => start.test(l));
     if (first < 0) return null;
@@ -2668,8 +2671,8 @@ function braceSpan(lines, start)
             const ch = line[c];
             if (quote) { if (ch === '\\') c++; else if (ch === quote) quote = ''; continue; }
             if (ch === '"' || ch === "'" || ch === '`') quote = ch;
-            else if (ch === '{') depth++;
-            else if (ch === '}' && --depth === 0) return [first, i];
+            else if (ch === '{' || ch === '[') depth++;
+            else if ((ch === '}' || ch === ']') && --depth === 0) return [first, i];
         }
     }
     return [first, lines.length - 1];
@@ -2683,10 +2686,10 @@ function lintLegacyNames(files, { retiredEntries = retiredEntryNames() } = {})
     {
         if (LEGACY_FILES.some((a) => a.re.test(file))) continue;
         const lines = text.split('\n');
-        const spans = LEGACY_SPANS.filter((s) => s.file === file).map((s) => braceSpan(lines, s.start)).filter(Boolean);
+        const spans = LEGACY_SPANS.filter((s) => s.file === file).map((s) => blockSpan(lines, s.start)).filter(Boolean);
         lines.forEach((line, i) =>
         {
-            if (line.includes('legacy-name') || spans.some(([a, b]) => i >= a && i <= b)) return;
+            if (LEGACY_MARKER.test(line) || spans.some(([a, b]) => i >= a && i <= b)) return;
             const rest = retiredRe ? line.replace(retiredRe, '') : line;
             const hits = [...new Set(rest.match(LEGACY_NAME) || [])];
             if (hits.length)

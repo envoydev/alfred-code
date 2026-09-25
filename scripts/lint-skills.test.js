@@ -845,21 +845,70 @@ test('check 57: a 1.x name outside the legacy readers is a finding, named file:l
     assert.strictEqual(of('scripts/install/brand.js', `const X = '${OLD}';\n`).length, 1, 'brand.js outside its LEGACY block is checked');
 });
 
-test('check 57: every allowed shape passes - evidence, history files, the generated marketplace, the two spans, the retired entries and the marker', () => {
+test('check 57: every allowed shape passes - evidence, history files, the retired entries and the marker', () => {
     const { lintLegacyNames } = require('./lint-skills.js');
     const retiredEntries = [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`];
     const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries });
-    for (const file of ['docs/rebrand-evidence.md', 'docs/plugin-migration-evidence.md', 'meta/migrations.json', 'meta/retired-entries.json', '.claude-plugin/marketplace.json'])
+    for (const file of ['docs/rebrand-evidence.md', 'docs/plugin-migration-evidence.md', 'meta/migrations.json', 'meta/retired-entries.json'])
         assert.deepStrictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`), [], `${file} is allowed whole`);
-    const brand = `'use strict';\nconst LEGACY = {\n    core: '${OLD}',\n    stamp: '${OLD}.stamp',\n};\nconst after = '${OLD}';\n`;
-    assert.deepStrictEqual(of('scripts/install/brand.js', brand).map((f) => f.split(' ')[0]), ['scripts/install/brand.js:6'], 'the LEGACY block is allowed, the line after it is not');
-    const manifest = `{\n  "skills": [\n    { "repo": "envoydev/${OLD}", "name": "x" }\n  ],\n  "retired": {\n    "plugins": [\n      "${OLD}-old"\n    ]\n  }\n}\n`;
-    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest).map((f) => f.split(' ')[0]), ['meta/stack-manifest.json:3'], 'the retired lists are history, a skill row is not');
+    // brand.js LEGACY and the manifest's retired block carry no allowance of their own: every LEGACY
+    // line is marked, and the retired lists hold no 1.x name.
+    const brand = `'use strict';\nconst LEGACY = {\n    core: '${OLD}', // legacy-name\n    stamp: '${OLD}.stamp',\n};\n`;
+    assert.deepStrictEqual(of('scripts/install/brand.js', brand).map((f) => f.split(' ')[0]), ['scripts/install/brand.js:4'], 'an unmarked LEGACY line is a finding');
+    const manifest = `{\n  "retired": {\n    "plugins": [\n      "${OLD}-old"\n    ]\n  }\n}\n`;
+    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest).map((f) => f.split(' ')[0]), ['meta/stack-manifest.json:4'], 'the retired block is checked like any other');
     assert.deepStrictEqual(of('scripts/x.test.js', `const home = '${OLD}-wpf';\nconst deny = 'Agent(${OLD}-aspnet-data:seat)';\n`), [], 'a retired per-stack entry name is allowed wherever it appears');
     assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpf@${OLD}';\n`).length, 1, 'the key beside a retired entry name is still the 1.x key');
     assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpfx';\n`).length, 1, 'a longer name is not a retired entry');
     assert.deepStrictEqual(of('stack/hooks/h.js', `const old = env.${OLD_ENV}X; // legacy-name\n`), [], 'a marked code line');
     assert.deepStrictEqual(of('CLAUDE.md', `the 1.x \`${OLD}.stamp\` <!-- legacy-name -->\n`), [], 'a marked markdown line');
+    assert.deepStrictEqual(of('.github/workflows/w.yml', `cp a ${OLD}.zip # legacy-name - the 1.x fallback\n`), [], 'a marked shell / yaml line');
+    assert.deepStrictEqual(of('setup-plugin/references/p.md', `x ${OLD} # a probe; legacy-name: the 1.x cache dir\n`), [], 'the marker with a colon after it');
+});
+
+test('check 57: the marker is a whole word in a comment - a line merely containing the letters is checked', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [] });
+    assert.strictEqual(of('scripts/x.js', `const a = 'my-legacy-names-list ${OLD}';\n`).length, 1, 'a longer word is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // legacy-names\n`).length, 1, 'a plural in a comment is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // old-legacy-name\n`).length, 1, 'a prefixed word is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = 'legacy-name ${OLD}';\n`).length, 1, 'the word outside a comment is not the marker');
+});
+
+test('check 57: in the marketplace only the generated plugins[] passes - name, owner and metadata are checked', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/marketplace.json', text }], { retiredEntries: [] }).map((f) => f.split(' ')[0]);
+    const market = [
+        '{',
+        '  "name": "envoydev",',
+        '  "owner": {',
+        `    "url": "https://github.com/envoydev/${OLD}"`,
+        '  },',
+        '  "metadata": {',
+        `    "description": "installed via the ${OLD} plugin",`,
+        '    "version": "2.0.0"',
+        '  },',
+        '  "plugins": [',
+        '    {',
+        `      "name": "${OLD}",`,
+        `      "description": "[RETIRED] ] ${OLD} - brackets in a string do not end the list"`,
+        '    },',
+        `    { "name": "${OLD}-hooks" }`,
+        '  ]',
+        '}',
+        '',
+    ].join('\n');
+    assert.deepStrictEqual(of(market), ['.claude-plugin/marketplace.json:4', '.claude-plugin/marketplace.json:7'], 'owner.url and metadata.description are findings, every plugins[] line passes');
+    // The live file: the plugins[] entries check 49 generates pass, and a 1.x name in the hand-edited
+    // metadata is caught.
+    const live = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
+    assert.deepStrictEqual(of(live), [], 'the committed marketplace is clean');
+    const bumped = JSON.parse(live);
+    bumped.metadata.description = `installed via the ${OLD} plugin`;
+    bumped.owner.url = `https://github.com/envoydev/${OLD}`;
+    assert.strictEqual(of(`${JSON.stringify(bumped, null, 2)}\n`).length, 2, 'a hand edit to metadata.description or owner.url is a finding');
 });
 
 test('check 57: the walk reads tracked text files, and the live tree carries no unmarked 1.x name', () => {

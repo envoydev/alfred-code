@@ -246,8 +246,8 @@ change (see the invariants below).
     rules, hooks, mcps, plugins) - add a name there when any of the six is renamed or removed (a
     stamp compare only names what left after the stamped commit). A retired PLUGIN also gets a
     `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update uninstalls it only as
-    `name@<stack key>`, keeps a row at another scope and prints the add-back line - the path the five
-    cut MCP servers took. An entry that CARRIED picks (the per-stack entries retired in 1.3.0) is named
+    `name@<row's marketplace>`, else `name@<stack key>` (`retiredSpec`), keeps a row at another scope
+    and prints the add-back line - the path the five cut MCP servers took. An entry that CARRIED picks (the per-stack entries retired in 1.3.0) is named
     only in `meta/retired-entries.json`, since update copies its picks first. On the plugin routes the
     seed also prunes every shipped COPY a plugin now carries. A retired pathless rule, hook wiring, MCP
     registration or plugin costs every session until pruned; a shipped-but-unneeded one is validate's
@@ -314,11 +314,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core carries its plan, test-first, root-cause - `project-root-cause` - and done-gate steps, and nothing shipped cites a `superpowers:` skill) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is uninstalled by update (`meta/retired-entries.json`) |
+| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core carries its plan, test-first, root-cause and done-gate steps; nothing shipped cites `superpowers:`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is uninstalled by update (`meta/retired-entries.json`) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the shell twins are deleted) |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), and `initialised: <date>`, which only `/alfred-code:init` writes; configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -344,7 +344,8 @@ mirrored there in the same sitting.
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
   twice. They come back to `.mcp.json` only on the FULL copy route; every registration and verify
   pass skips a locked name while the core is on.
-- **MCP servers are per-project, never global.** `serena` (baseline-navigation), `context7`
+- **MCP servers are per-project at project and local scope** (a `user` install makes them
+  account-wide). `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
@@ -453,10 +454,10 @@ mirrored there in the same sitting.
   `CLAUDE_DOCS_PATH`, `claude-stack.stamp`, the marketplace key, the plugin cache dir, <!-- legacy-name -->
   `Agent(claude-stack:<seat>)`) are READ for the whole 2.x line by legacy readers; the new spelling <!-- legacy-name -->
   wins when both exist. Lint check 57 fails on any other 1.x spelling in a tracked file: a reader's
-  line carries `legacy-name` (`<!-- legacy-name -->` in markdown, `// legacy-name` in code), and
-  only history (`docs/*-evidence.md`, `meta/migrations.json`, `meta/retired-entries.json`, the
-  manifest's `retired` block), the generated marketplace, `brand.js` `LEGACY` and the retired entry
-  names pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
+  line carries the word `legacy-name` in a comment (`<!-- legacy-name -->` in markdown, `//` or `#`
+  in code), and only history (`docs/*-evidence.md`, `meta/migrations.json`,
+  `meta/retired-entries.json`), the marketplace's generated `plugins[]` and the retired entry names
+  pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
 - **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
