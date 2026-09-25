@@ -368,16 +368,24 @@ function rowsOn({ rows = [], names = [], market, isOn = () => undefined })
 // list every core skill beside its copy. A switch from a plugin route disables them BEFORE anything is
 // registered - the core, its two 1.x ids (R111: a 1.3.0 install switched straight across never took
 // the 1.x move) and the locked three, only as `name@<stack key>` (a same-named plugin of another
-// marketplace is not ours) and only at the run's scope (a row at another scope serves other projects:
-// named with its command, never disabled). A row already off is left alone, so a re-run calls nothing.
-// The 1.x ids are DISABLED, not uninstalled: a later switch back to the plugin route reads the old
-// core's row - its key and scope - and moves the install across from there (migrateLegacy). The old
-// hooks id goes BEFORE the old core: 1.3.0 declares it dependent on the core, and the CLI refuses to
-// disable a plugin an enabled one depends on (measured on 2.1.282) - the order migrateLegacy removes them.
+// marketplace is not ours) and only rows of the run's scope (a row at another scope serves other
+// projects: named with its command, never disabled). A row already off is left alone, so a re-run
+// calls nothing. The 1.x ids are DISABLED, not uninstalled: a later switch back to the plugin route
+// reads the old core's row - its key and scope - and moves the install across from there
+// (migrateLegacy). The old hooks id goes BEFORE the old core: 1.3.0 declares it dependent on the core,
+// and the CLI refuses to disable a plugin an enabled one depends on (measured on 2.1.282).
+//
+// AT USER SCOPE (I2, R132) a row serves every project of the account while the copies land in this one
+// alone, so it is switched off HERE ONLY: `disable --scope project` over a user-scope install writes
+// this project's enabledPlugins false, which Claude Code honours over the user row while every other
+// project keeps it (measured on 2.1.282). Each off is returned as `{ scope, spec }` - the stamp's
+// `stood-down` record, the one thing a switch back enables (restoreStoodDown).
+const standDownScope = (scope) => (scope === 'user' ? 'project' : scope);
 function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, locked = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const off = [];
     const legacy = [LEGACY.hooks, LEGACY.core];
+    const at = standDownScope(scope);
     for (const row of rowsOn({ rows, names: [...legacy, BRAND.core, ...locked], market, isOn }))
     {
         const spec = `${row.name}@${market}`;
@@ -386,17 +394,46 @@ function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, lock
             log(`  ${spec} is enabled at ${row.scope} scope, not this run's - the full copy route runs beside it; if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`);
             continue;
         }
-        const why = legacy.includes(row.name)
+        // Already off in this project (a re-run): the settings file there says so.
+        if (at !== row.scope && isOn(spec, at) === false) continue;
+        const why = (legacy.includes(row.name)
             ? 'a 1.x id - the full copy route carries it as copies; a switch back to the plugin route moves it across'
-            : 'the full copy route carries it as copies';
-        if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true, expect: 'reported' }))
+            : 'the full copy route carries it as copies')
+            + (at !== row.scope ? `; this project only - the ${row.scope}-scope install stays on for every other project` : '');
+        if (cli(['plugin', 'disable', spec, '--scope', at], { quiet: true, expect: 'reported' }))
         {
-            log(`plugin disabled [${scope}]: ${spec} (${why})`);
-            off.push(spec);
+            log(`plugin disabled [${at}]: ${spec} (${why})`);
+            off.push({ scope: at, spec });
         }
-        else note(`plugin disable failed: ${spec} - it runs beside the full copy route; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
+        else note(`plugin disable failed: ${spec} - it runs beside the full copy route; disable it by hand: claude plugin disable ${spec} --scope ${at}`);
     }
     return off;
+}
+
+// THE SWITCH BACK (R116, M9): only what the full copy route switched off comes back on - the stamp's
+// `stood-down` record, at the scope it was written - never a core the user switched off themselves,
+// which the settings file cannot tell apart. An entry the plugin set carries and its settings file
+// there still names off is enabled, leaves before the core (the stand-down's order reversed). The
+// entries still owed (a failed enable) are returned for the stamp; the rest are done or moot.
+function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}, note = () => {} })
+{
+    const restored = [];
+    const owed = [];
+    for (const entry of [...record].reverse())
+    {
+        if (!plugins.includes(entry.spec) || isOn(entry.spec, entry.scope) !== false) continue;
+        if (cli(['plugin', 'enable', entry.spec, '--scope', entry.scope], { quiet: true, expect: 'reported' }))
+        {
+            log(`plugin enabled [${entry.scope}]: ${entry.spec} (the full copy route switched it off here)`);
+            restored.push(entry.spec);
+        }
+        else
+        {
+            owed.unshift(entry);
+            note(`plugin enable failed: ${entry.spec} - it stays off here until it is enabled; the next update retries it, or: claude plugin enable ${entry.spec} --scope ${entry.scope}`);
+        }
+    }
+    return { restored, owed };
 }
 
 // THE PLAYWRIGHT ENGINES the copy route registers in .mcp.json load as nothing else (R111): each one's
@@ -547,7 +584,7 @@ function extraMarketplaces(rows, set)
 // (docs/rebrand-evidence.md S22). A playwright engine is never enabled for its flag - the user's own
 // off-state, which only their answer (`engines.on`) switches - and an absent one is installed as on
 // install: switched off after when the user chose it off.
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], restored = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
@@ -561,14 +598,14 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
             log(`plugin install [${pscope}]: ${spec}`);
             if (cli(['plugin', 'install', spec, '--scope', pscope, '-y']) && engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
         }
-        // The core is locked on (brand.js alwaysOn): its flag is no reason to act (S22) - but the
-        // settings file naming it off is, the full copy route's stand-down wrote that (R116). A
-        // user-disabled claude-hud stays off (USER_OFF_WINS).
-        else if ((fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
-            || (alwaysOn(bareName(spec)) && isOn(spec, pscope) === false))
+        // The core is locked on (brand.js alwaysOn): its flag is no reason to act (S22), and a core the
+        // full copy route switched off came back through restoreStoodDown already - `restored`, whose
+        // listing flag is stale now. A user-disabled claude-hud stays off (USER_OFF_WINS).
+        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before) && !restored.includes(spec))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
-            // A stale listing flag (S22) makes this a no-op enable, which exits 1 with this line.
+            // A stale listing flag (S22) makes this a no-op enable, which exits 1 saying 'Plugin "<spec>" is
+            // already enabled at <scope> scope' (measured on 2.1.282, project and user scope - M8, R132).
             cli(['plugin', 'enable', spec, '--scope', pscope], { expect: /is already enabled/ });
         }
         log(`plugin update [${pscope}]: ${spec}`);
@@ -607,5 +644,5 @@ module.exports = {
     pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown, engineStandDown, rowsOn,
+    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn,
 };

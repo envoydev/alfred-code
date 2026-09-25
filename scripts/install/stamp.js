@@ -31,6 +31,11 @@
 // next run reads: the installed set to keep (and to uninstall from, when a run keeps fewer), and the
 // last choice an engine installed again is switched back to.
 //
+// `stood-down` is what the full copy route switched off in THIS project (M9, R132) - `<scope>:<spec>`
+// each, the scope the disable was written at (a user-scope row is switched off at project scope, I2).
+// The settings file cannot tell that off from the user's own /plugin disable, so this line is the only
+// reason a switch back enables the core: it lists what is still owed and is gone once it is enabled.
+//
 // `initialised` is the one line only /alfred-code:init writes (its memory step, `memory.js init`, once
 // the notes are in and Claude's own memory is off): a date. A fresh install writes `pending`, every
 // later run carries the value forward, and nothing but init turns `pending` into a date - so an update
@@ -106,7 +111,7 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, library = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {} } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -130,6 +135,7 @@ function renderStamp(fields)
         `picked-agents: ${(picked.agents || []).join(',')}`,
         `playwright-browsers: ${(playwright || []).join(',')}`,
         ...(Array.isArray(playwrightEnabled) ? [`playwright-enabled: ${playwrightEnabled.join(',')}`] : []),
+        ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
@@ -155,7 +161,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, library,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, stoodDown, library,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -184,7 +190,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, library,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -270,6 +276,18 @@ function readPlaywright(file, line = 'playwright-browsers')
     return PW_ORDER.filter((e) => named.includes(e));
 }
 const readPlaywrightEnabled = (file) => readPlaywright(file, 'playwright-enabled');
+
+// The `stood-down` record - [] with no stamp or no line. An entry of any other shape is not ours and is
+// dropped, so a hand-edited line can never make a run enable something at a scope it did not name.
+const STOOD_DOWN = /^(project|local):([\w.-]+@[\w.-]+)$/;
+function readStoodDown(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return []; }
+    const m = /^stood-down:(.*)$/m.exec(text);
+    if (!m) return [];
+    return m[1].split(',').map((s) => STOOD_DOWN.exec(s.trim())).filter(Boolean).map(([, scope, spec]) => ({ scope, spec }));
+}
 // NM1 (fix round 3): the full stamp - including this same `hooks-route:` line - is only written once,
 // at the very END of a run, after installHooksAndRules has already pruned the OTHER route's copies.
 // A run that dies in between (the process killed, a later fail-soft step's uncaught error) leaves the
@@ -506,7 +524,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validItemName,
+    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, worktreeMain, installScope,
     accountDir,
 };

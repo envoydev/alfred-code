@@ -561,34 +561,148 @@ test('seed update (plugin route): a copy-route install whose 1.x ids were disabl
 
 // R116 matrix re-run: the full copy route disables a 2.x core (R107), and the plugin route never enabled
 // the core for its flag - the listing's flag reads a running core as off (S22). So a switch back left
-// the core off while the copies it replaces were pruned: the project ran no core at all. The settings
-// file's word is not stale - a core it names off at the run's scope is enabled; the flag alone still
-// moves nothing.
-test('seed update (plugin route): a copy-route install whose 2.x core was disabled switches back with the core enabled - the flag alone moves nothing (R116)', POSIX_ONLY, () =>
+// the core off while the copies it replaces were pruned: the project ran no core at all.
+// M9 (R132): the settings file cannot tell the stand-down's off from the user's own /plugin disable, so
+// the STAMP records what the stand-down switched off (`stood-down:`, scope and spec), and a switch back
+// enables exactly that - at the scope it was written - while the settings file there still says false.
+const settingsWord = (repo, word, file = 'settings.json') =>
 {
-    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { enabled: false } });
-    const run = (settingsWord) => seedRun(['install', 'update'], 'skill markdown-style\n', {
-        plugins: JSON.stringify(rows),
-        env: [COPY_ENV, {}],
+    const at = path.join(repo, '.claude', file);
+    const data = jsonAt(repo, `.claude/${file}`);
+    data.enabledPlugins = { ...(data.enabledPlugins || {}), ...word };
+    fs.mkdirSync(path.dirname(at), { recursive: true });
+    fs.writeFileSync(at, `${JSON.stringify(data, null, 2)}\n`);
+};
+const stoodDownLine = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').find((l) => l.startsWith('stood-down:')) || null;
+const STOOD = ['alfred-code', ...mcp.LOCKED];
+const offWord = (names = STOOD) => Object.fromEntries(names.map((n) => [`${n}@envoydev`, false]));
+
+test('seed update (plugin route): a switch back enables what the full copy route switched off - the stamp\'s record, never the flag (R116, M9)', POSIX_ONLY, () =>
+{
+    const run = (word) => seedRun(['install', 'update', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')),
+        env: [{}, COPY_ENV, {}],
+        args: [[], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const state = { calls: stepCalls(repo), stood: stoodDownLine(repo) };
+            // What the CLI's disable wrote (the recording stub writes nothing), or the stale case.
+            if (i === 1) settingsWord(repo, word);
+            return state;
+        },
+    });
+    const off = run(offWord());
+    const [, down, back] = off.steps;
+    assert.strictEqual(down.stood, `stood-down: ${STOOD.map((n) => `project:${n}@envoydev`).join(',')}`, off.outs[1]);
+    const enables = back.calls.filter((c) => /^plugin enable /.test(c));
+    for (const name of STOOD) assert.ok(enables.includes(`plugin enable ${name}@envoydev --scope project`), `${name} stayed off:\n${enables.join('\n')}\n${off.outs[2]}`);
+    assert.strictEqual(enables.length, STOOD.length, `an enable ran twice:\n${enables.join('\n')}`);
+    assert.strictEqual(back.stood, null, 'the record outlived the switch back');
+    const stale = run({ 'alfred-code@envoydev': true });
+    assert.ok(!stale.steps[2].calls.includes('plugin enable alfred-code@envoydev --scope project'), `a core the settings name on was enabled:\n${stale.steps[2].calls.join('\n')}`);
+});
+
+test('seed update (plugin route): a core the USER switched off in this project stays off - no record, no enable (M9)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')),
         args: [[], ['--installed-only']],
         each: (repo, i) =>
         {
-            if (i !== 0) return null;
-            fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), '');
-            const file = path.join(repo, '.claude', 'settings.json');
-            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            data.enabledPlugins = { ...(data.enabledPlugins || {}), ...settingsWord };
-            fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-            return null;
+            const state = { calls: stepCalls(repo), stood: stoodDownLine(repo) };
+            if (i === 0) settingsWord(repo, offWord(['alfred-code']));
+            return state;
         },
     });
-    const off = run({ 'alfred-code@envoydev': false, 'serena@envoydev': false, 'context7@envoydev': false, 'memory@envoydev': false });
-    const enables = off.calls.filter((c) => /^plugin enable /.test(c));
-    assert.ok(enables.includes('plugin enable alfred-code@envoydev --scope project'), `the core stayed off:\n${enables.join('\n')}\n${off.out}`);
-    for (const name of mcp.LOCKED) assert.ok(enables.includes(`plugin enable ${name}@envoydev --scope project`), `${name}:\n${enables.join('\n')}`);
-    const stale = run({ 'alfred-code@envoydev': true });
-    assert.ok(!stale.calls.includes('plugin enable alfred-code@envoydev --scope project'), `a stale false flag alone enabled the core:\n${stale.calls.join('\n')}`);
+    assert.ok(!steps[1].calls.some((c) => /^plugin enable alfred-code@/.test(c)), `the user's own off was switched back on:\n${steps[1].calls.join('\n')}\n${outs[1]}`);
+    assert.strictEqual(steps[1].stood, null);
 });
+
+// I2 (R132): at USER scope a row serves every project of the account, while the copies land in this
+// project alone - so the stand-down switched the core and the locked three off for every project, and
+// the guards a never-set-up repo keeps (R54) with them. Measured on 2.1.282: `claude plugin disable
+// <spec> --scope project` over a user-scope install writes THIS project's enabledPlugins false, the
+// plugin is off here, and a second project keeps it on. So the stand-down writes there and nowhere
+// else, a re-run calls nothing, and the switch back enables it there.
+const USER_ROWS = () => STACK_ROWS('envoydev', Object.fromEntries(STOOD.map((n) => [n, { scope: 'user' }])));
+test('seed update --scope user (full copy route): the stand-down switches the user-scope rows off in THIS project only, a re-run calls nothing, and the switch back enables them there (I2, M9)', POSIX_ONLY, () =>
+{
+    // A rule copied here: at user scope an install with nothing on disk reads as no install of THIS project.
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(USER_ROWS()),
+        env: [{}, COPY_ENV, COPY_ENV, {}],
+        args: [['--scope', 'user'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only']],
+        each: (repo, i) =>
+        {
+            const state = { calls: stepCalls(repo), stood: stoodDownLine(repo), account: jsonAt(path.join(path.dirname(repo), 'acct'), 'settings.json').enabledPlugins };
+            if (i === 1) settingsWord(repo, offWord());
+            return state;
+        },
+    });
+    const [, down, again, back] = steps;
+    const disables = down.calls.filter((c) => /^plugin disable /.test(c));
+    assert.deepStrictEqual([...disables].sort(), STOOD.map((n) => `plugin disable ${n}@envoydev --scope project`).sort(), `${disables.join('\n')}\n${outs[1]}`);
+    assert.match(outs[1], /plugin disabled \[project\]: alfred-code@envoydev \(.*this project only/);
+    assert.strictEqual(down.stood, `stood-down: ${STOOD.map((n) => `project:${n}@envoydev`).join(',')}`);
+    assert.deepStrictEqual(again.calls.filter((c) => /^plugin (disable|enable) /.test(c)), [], `a re-run switched something:\n${outs[2]}`);
+    assert.strictEqual(again.stood, down.stood, 'the re-run dropped the record');
+    const enables = back.calls.filter((c) => /^plugin enable /.test(c));
+    assert.deepStrictEqual([...enables].sort(), STOOD.map((n) => `plugin enable ${n}@envoydev --scope project`).sort(), `${enables.join('\n')}\n${outs[3]}`);
+    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable) .* --scope user/.test(c))), 'a user-scope row was switched');
+    assert.strictEqual(back.stood, null);
+});
+
+// M3 (R132): a 1.2.0 plugin-route install updated straight onto the full copy route still has its
+// per-stack carriers, which declare the old core a dependency - and the CLI refuses to disable a plugin
+// an enabled one depends on (P111). The carriers are pruned first, then the stack's rows go off.
+test('seed update (full copy route): the retired carriers are pruned BEFORE the stand-down disables the core they depend on (M3)', POSIX_ONLY, () =>
+{
+    const carrier = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-entries.json'), 'utf8'));
+    const name = (Array.isArray(carrier) ? carrier : carrier.entries || carrier.plugins)[0].name;
+    const rows = [...LEGACY_ROWS(), { id: `${name}@claude-stack`, version: '1.2.0', scope: 'project', enabled: true }]; // legacy-name
+    const { calls, out } = switchRun(rows);
+    const prune = calls.indexOf(`plugin uninstall ${name}@claude-stack --scope project -y`); // legacy-name
+    const disable = calls.indexOf('plugin disable claude-stack@claude-stack --scope project'); // legacy-name
+    assert.ok(prune >= 0, `the carrier was not pruned:\n${calls.join('\n')}\n${out}`);
+    assert.ok(disable > prune, `the old core was disabled before the carrier that depends on it went:\n${calls.join('\n')}`);
+});
+
+// M4 (R132): an unreadable `claude plugin list --json` reads as no rows, and the stand-down then did
+// nothing without a word - the core and the locked three, if enabled, ran beside the registrations.
+test('seed update (full copy route): an unreadable plugin listing is one loud line naming the stand-down it could not do, never an empty list acted on (M4)', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\n', {
+        env: [{}, COPY_ENV],
+        args: [[], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) { stepCalls(repo); fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), 'not json'); } return null; },
+    });
+    const loud = out.split('\n').filter((l) => /!! .*plugin listing could not be read/.test(l));
+    assert.strictEqual(loud.length, 1, out);
+    assert.match(loud[0], /claude plugin disable alfred-code@envoydev --scope project/);
+    assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], calls.join('\n'));
+});
+
+// M8 (R132): a stale listing flag makes the update's enable a no-op, which the CLI refuses. The text is
+// MEASURED on 2.1.282 (stderr, exit 1): 'Failed to enable plugin "<spec>": Plugin "<spec>" is already
+// enabled at project scope' - and 'at user scope' for a user row. The expect matches both, so the no-op
+// prints no failure line.
+for (const scope of ['project', 'user'])
+{
+    test(`seed update: the CLI's measured 'already enabled' answer to a stale-flag enable prints no failure line (${scope} scope, M8)`, POSIX_ONLY, () =>
+    {
+        const stub = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+            'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
+            `if [ "$1" = "plugin" ] && [ "$2" = "enable" ]; then printf '%s\\n' "✘ Failed to enable plugin \\"$3\\": Plugin \\"$3\\" is already enabled at ${scope} scope" >&2; exit 1; fi`,
+            'exit 0'].join('\n');
+        const rows = STACK_ROWS('envoydev', { serena: { enabled: false, scope } });
+        const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\n', {
+            plugins: JSON.stringify(rows), tools: { claude: stub },
+            args: [['--scope', scope], ['--scope', scope, '--installed-only']],
+        });
+        assert.ok(calls.includes(`plugin enable serena@envoydev --scope ${scope}`), `no stale-flag enable ran:\n${calls.join('\n')}`);
+        assert.doesNotMatch(out, /!! .*plugin enable/, out);
+    });
+}
 
 // The listing's own flag is not the word on whether a row runs: it read a running project-scope core
 // as off (docs/rebrand-evidence.md S22), and a no-op disable exits 1 (S28). The settings file at the

@@ -494,6 +494,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue,
             pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: cliScope, kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
+            // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
+            // own stand-down, and what a switch back could not enable yet.
+            standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
         };
         // R116 (j): an engine left off does not load. At project scope the copy route lists it in
         // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
@@ -533,6 +536,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
             picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
+            stoodDown: stoodDownRecord(ctx),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
         });
 
@@ -675,15 +679,21 @@ function installPlugins(ctx)
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
-    const engines = playwrightMoves(ctx, { blind: !listingRead(raw), rows });
+    const blind = !listingRead(raw);
+    const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
-    // a plugin. On the full copy route the stack's own rows go off first (the core, its 1.x ids and the
-    // locked three); wherever the copy route registers a playwright engine, that engine's row goes.
-    // Which rows are on is the settings file's word at each scope before the listing's (S22, S28).
+    // a plugin. On the full copy route the stack's own rows go off (the core, its 1.x ids and the locked
+    // three) - after the retired carriers that depend on the old core are pruned (M3), and before the
+    // MCP layer registers anything; wherever the copy route registers a playwright engine, that engine's
+    // row goes. Which rows are on is the settings file's word at each scope before the listing's (S22,
+    // S28). M4 (R132): a listing that could not be read is no list of rows - one loud line names what
+    // could not be switched off, and nothing is acted on.
     const isOn = engineOn(ctx);
+    const copyRoute = !plugins.corePluginOn(ctx.routes);
     const stand = { rows, market: ctx.market, scope: ctx.cliScope, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note };
-    if (!plugins.corePluginOn(ctx.routes)) plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED });
-    if (!ctx.routes.mcps) plugins.engineStandDown({ ...stand, engines: pwEngines(ctx) });
+    if (blind && (copyRoute || !ctx.routes.mcps)) ctx.note(blindStandDown(ctx, copyRoute));
+    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED }); };
+    if (!ctx.routes.mcps && !blind) plugins.engineStandDown({ ...stand, engines: pwEngines(ctx) });
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -710,14 +720,19 @@ function installPlugins(ctx)
     const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
     const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
     ctx.liveCarriers = installed(moved.gone);
+    // The switch back (R116, M9): what the full copy route switched off comes back on - the record only.
+    const back = copyRoute ? { restored: [], owed: null }
+        : plugins.restoreStoodDown({ record: ctx.standDown.prior, plugins: set, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note });
+    ctx.standDown.owed = back.owed;
     if (ctx.args.action === 'update')
     {
         // A move that ran (or retried) pruned the retired entries already; a failed one removes nothing.
         const moving = moved.ran || moved.failed;
         const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         ctx.liveCarriers = installed(gone);
+        standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         for (const row of ctx.dropEntries || [])
@@ -732,9 +747,36 @@ function installPlugins(ctx)
         }
         return;
     }
+    standDown();
     plugins.installPlugins({
         plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
+}
+
+// M4 (R132): the one line for a listing the run could not read on a copy route - what would have been
+// switched off, each with its command, so nothing runs beside its .mcp.json registration unsaid.
+function blindStandDown(ctx, copyRoute)
+{
+    const at = plugins.standDownScope(ctx.cliScope);
+    const cmds = [
+        ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
+        ...pwEngines(ctx).map((e) => `claude plugin uninstall playwright-${e}@${ctx.market} --scope ${ctx.cliScope}`),
+    ];
+    return `the plugin listing could not be read, so no stack plugin was switched off before the copy route registers its servers - any still enabled runs beside its registration; check /plugin, or: ${cmds.join('; ')}`;
+}
+
+// M9 (R132): the stamp's `stood-down` record after this run. On the full copy route: the earlier record,
+// less an entry the settings file there names on again (the user turned it back on), plus what this run
+// switched off. On a plugin route: what the switch back still owes - or the whole record when it never
+// ran (no claude CLI).
+function stoodDownRecord(ctx)
+{
+    const { prior, now, owed } = ctx.standDown;
+    if (plugins.corePluginOn(ctx.routes)) return owed || prior;
+    const isOn = engineOn(ctx);
+    const kept = prior.filter((e) => isOn(e.spec, e.scope) !== true);
+    const key = (e) => `${e.scope}:${e.spec}`;
+    return [...kept, ...now.filter((e) => !kept.some((k) => key(k) === key(e)))];
 }
 
 // THE PLAYWRIGHT ENGINES for the plugin pass (R67): installed and enabled as the user picked. First an

@@ -322,7 +322,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -346,9 +346,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   twice. They come back to `.mcp.json` only on the FULL copy route; every registration and verify
   pass skips a locked name while the core is on. A switch onto that route disables the core and the
   locked three first, and copies every skill and seat the core carried, a denied seat excepted - that
-  route reads them from the disk, where a plugin-route install holds only the extras. A switch back
-  enables them again: the settings file naming the core off is the one reason a run enables it, never
-  the listing's flag (S22) (R116).
+  route reads them from the disk, where a plugin-route install holds only the extras. At `user` scope
+  the rows are switched off in THIS project only (`disable --scope project`, which Claude Code honours
+  over the user row while every other project keeps it - measured on 2.1.282, I2). Each off lands in
+  the stamp's `stood-down` line, and a switch back enables exactly those, at the scope they were
+  written: never the listing's flag (S22), and never a core the user switched off themselves (R116,
+  M9). An unreadable plugin listing on a copy route is one loud line naming the commands, never an
+  empty list acted on.
 - **MCP servers are per-project at project and local scope** (a `user` install makes them
   account-wide). `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
