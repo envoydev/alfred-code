@@ -775,3 +775,37 @@ test('installScope: the stamp\'s scope under either name, `global` as user, anyt
     const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'scope', root], { encoding: 'utf8' });
     assert.strictEqual(cli.stdout, 'user\n', cli.stderr);
 });
+
+// A-I1 (final review A): a 1.x GLOBAL install the first update has not moved yet holds no stamp of its
+// own - only a copied engine - so installScope read `project`, and an update handed that scope installed
+// the core beside the live user-scope alias. It reads the account stamp now, by the SAME test the router's
+// `legacy-global` state uses - so a repo that was never set up, with the same account stamp, stays project.
+test('installScope: an unmigrated 1.x global install reads its account stamp\'s scope; a never-set-up repo stays project (A-I1)', () => {
+    const stamp = require('./install/stamp.js');
+    const { spawnSync } = require('node:child_process');
+    const root = path.join(TMP, `legacy-scope-${seq++}`);
+    const claude = path.join(root, '.claude');
+    const acct = path.join(root, 'acct');
+    fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(claude, 'hooks', 'docs.js'), '');
+    fs.writeFileSync(path.join(acct, OLD_STAMP), 'sha: abc\nversion: 1.3.0\nscope: global\n');
+    const env = { CLAUDE_CONFIG_DIR: acct };
+    assert.strictEqual(stamp.installState(root, env), 'legacy-global');
+    assert.strictEqual(stamp.installScope(root, env), 'user', 'the account stamp\'s global, read as user');
+    assert.strictEqual(stamp.legacyGlobalStamp(root, env), path.join(acct, OLD_STAMP));
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'scope', root], { encoding: 'utf8', env: { ...process.env, CLAUDE_CONFIG_DIR: acct } });
+    assert.strictEqual(cli.stdout, 'user\n', cli.stderr);
+
+    // Never set up: the same account stamp, no record here - not this project's install.
+    const bare = path.join(TMP, `legacy-scope-bare-${seq++}`);
+    fs.mkdirSync(bare, { recursive: true });
+    assert.strictEqual(stamp.installState(bare, env), 'not-installed');
+    assert.strictEqual(stamp.installScope(bare, env), 'project');
+    assert.strictEqual(stamp.legacyGlobalStamp(bare, env), null);
+
+    // Migrated: the project's own stamp wins over the account's.
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: project\n');
+    assert.strictEqual(stamp.installScope(root, env), 'project');
+    assert.strictEqual(stamp.legacyGlobalStamp(root, env), null);
+});

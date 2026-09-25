@@ -118,9 +118,12 @@ test('install-args: the defaults are nothing decided - scope included (I3)', () 
     assert.deepStrictEqual(p.playwrightBrowsers, []);
 });
 
-test('install-args: the flag beats the environment, and the environment beats the default', () =>
+// A-M4 (final review A): a generic ambient SCOPE is another tool's variable - read as this installer's
+// scope, a `SCOPE=user` in the launching shell made a project run account-wide. Only the flag counts.
+test('install-args: the scope comes from --scope alone - an ambient SCOPE is never read (A-M4)', () =>
 {
-    assert.strictEqual(ok(['install'], { SCOPE: 'user' }).scope, 'user');
+    assert.strictEqual(ok(['install'], { SCOPE: 'user' }).scope, '');
+    assert.strictEqual(ok(['install'], { SCOPE: 'global' }).scope, '');
     assert.strictEqual(ok(['install', '--scope', 'project'], { SCOPE: 'user' }).scope, 'project');
 });
 
@@ -128,7 +131,6 @@ test("install-args: 'global' is accepted as an alias of 'user' - a 1.x command b
 {
     assert.strictEqual(ok(['install', '--scope', 'global']).scope, 'user');
     assert.strictEqual(ok(['install', '--scope', 'GLOBAL']).scope, 'user');
-    assert.strictEqual(ok(['install'], { SCOPE: 'global' }).scope, 'user');
 });
 
 test('install-args: --memory-level project rides every scope - the db path is resolved per project, not baked into the registration', () =>

@@ -92,7 +92,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     const note = (m) => { failures += 1; out(`==>   !! ${m}\n`); };
 
     let args;
-    try { args = parseArgs(argv, env); }
+    try { args = parseArgs(argv); }
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
 
     const home = env.HOME || env.USERPROFILE || '';
@@ -105,6 +105,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     }
     const configDir = env.CLAUDE_CONFIG_DIR
         || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
+    // A-I5 (final review A, ruling): a `claude` spawned with the run's own env uses the account THAT env
+    // names - with --space and no CLAUDE_CONFIG_DIR, the default one, while every write of the installer's
+    // own lands in the space's. So every CLI spawn carries the space's account; one set already wins.
+    const cliEnv = args.space && !env.CLAUDE_CONFIG_DIR ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env;
     const projectRoot = rt.gitRoot(cwd) || cwd;
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
@@ -125,10 +129,24 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     }
     let skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
+    // The memory database this install points at: the flag's level, else the path already registered,
+    // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped
+    // databases live under the HOME - with none they would be a RELATIVE path, written into settings and
+    // resolved against whatever cwd reads it. Refused like the no-home case above, before anything runs.
+    const level = memory.resolveLevel({
+        flag: args.memoryLevel,
+        registeredPath: registeredMemoryPath(mcpFile, claudeDir),
+        home, space: args.space, projectRoot,
+    });
+    if (!home && !path.isAbsolute(level.dbPath))
+    {
+        err(`error: no home directory - HOME and USERPROFILE are unset, so the ${level.level} memory database would be the relative path ${level.dbPath}; set HOME, or pass --memory-level project\n`);
+        return 1;
+    }
     // R105: a `claude` found on PATH that cannot be STARTED (a batch file spawned without cmd.exe, a
     // missing interpreter) is said once, here, and the run goes on as without one - never a failure
     // line per plugin, and never a call that fails with no line at all.
-    const claudeBroken = rt.which('claude') ? rt.unrunnable('claude', { cwd: projectRoot, env }) : null;
+    const claudeBroken = rt.which('claude') ? rt.unrunnable('claude', { cwd: projectRoot, env: cliEnv }) : null;
     const hasClaude = claudeBroken === '';
     if (claudeBroken) note(`${claudeBroken} - the plugin and MCP layers were skipped`);
 
@@ -146,7 +164,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     });
 
     const cli = hasClaude
-        ? rt.cliRunner('claude', { cwd: projectRoot, env, out: plain, fail: note })
+        ? rt.cliRunner('claude', { cwd: projectRoot, env: cliEnv, out: plain, fail: note })
         : () => false;
     // The marketplaces this run already refreshed, so no later pass pays the round trip twice.
     const refreshed = new Set();
@@ -154,8 +172,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // THE MARKETPLACE KEY every stack spec of this run is spelled with: the key whose core is installed
     // (a 1.x install keeps `claude-stack`), else a registration of the stack's repo, else the current // legacy-name
     // name - read from the listings, never assumed (brand.js marketOf).
-    const readRaw = () => (hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }) : '');
-    const readMarkets = () => (hasClaude ? plugins.parseMarketplaces(rt.capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot, env })) : []);
+    const readRaw = () => (hasClaude ? rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }) : '');
+    const readMarkets = () => (hasClaude ? plugins.parseMarketplaces(rt.capture('claude', ['plugin', 'marketplace', 'list', '--json'], { cwd: projectRoot, env: cliEnv })) : []);
     let market = BRAND.marketplace;
     let marketSeen = { listing: [], marketplaces: [] };
     let rawListing = null;
@@ -196,7 +214,23 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (unmigrated) stampFile = legacyAcct;
         if (unmigrated && args.printPlan) skillsDir = path.join(configDir, 'skills');
 
-        // I3 (R47): args.js left '' when neither --scope nor SCOPE was given. `update` takes the
+        // A-I1 (final review A, ruling): an unmigrated 1.x GLOBAL install - the router's legacy-global
+        // test - keeps the scope its account stamp names (`global` = user), whatever --scope arrives: the
+        // 1.3.0 update body passes a model-judged one, and 'project' put the core beside the live
+        // user-scope alias. A repo never set up is not one, and keeps the scope it was handed.
+        if (unmigrated && stampLayer.legacyGlobalStamp(projectRoot, { ...env, CLAUDE_CONFIG_DIR: configDir }))
+        {
+            const raw = stampLayer.readStampScope(legacyAcct).toLowerCase();
+            const legacyScope = raw === 'global' ? 'user' : raw;
+            if (legacyScope && ENUMS.scope.values.includes(legacyScope))
+            {
+                if (args.scope && args.scope !== legacyScope)
+                    log(`scope: this project is a 1.x global install - migrated at ${legacyScope} scope (the passed --scope ${args.scope} is ignored on this first run)`);
+                args.scope = legacyScope;
+            }
+        }
+
+        // I3 (R47): args.js left '' when --scope was not given. `update` takes the
         // scope the LAST install actually used, from the stamp's own `scope:` line (a 1.x `global`
         // line maps to `user`, same as the CLI flag does); `install`, or an update with no stamp at
         // all to read, defaults to `project` - the floor every scope always had.
@@ -226,11 +260,6 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // hooks/skills/mcps riding a copy instead of a plugin - exactly what R29's own refusal used
         // to guard, on the ONE route the plugin launcher's per-project re-read cannot cover.
         // m5: keyed on the RESOLVED level - with no flag, the .mcp.json registration's own path.
-        const level = memory.resolveLevel({
-            flag: args.memoryLevel,
-            registeredPath: registeredMemoryPath(mcpFile, claudeDir),
-            home, space: args.space, projectRoot,
-        });
         if (level.level === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
         {
             const what = level.from === 'flag' ? '--memory-level project' : `the memory level project (read from ${registeredMemoryPath(mcpFile) ? path.basename(mcpFile) : 'the settings env'})`;
@@ -450,7 +479,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             }
             if (args.planOut)
             {
-                if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env }), projectRoot) : [];
+                if (!listing) listing = hasClaude ? plugins.parsePluginList(rt.capture('claude', ['plugin', 'list', '--json'], { cwd: projectRoot, env: cliEnv }), projectRoot) : [];
                 const inv = selection.planInventory({
                     lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
                 });
@@ -489,7 +518,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions,
         });
         const ctx = {
-            args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
+            args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue,
@@ -674,7 +703,7 @@ function installPlugins(ctx)
     if (!ctx.hasClaude) { if (!ctx.claudeBroken) ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
     // One row per name@marketplace: the set mixes official picks with stack entries, and the official
     // catalog ships names the stack uses too.
-    const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env });
+    const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.cliEnv });
     const readListing = () => plugins.parsePluginList(readRaw(), ctx.projectRoot, { byMarketplace: true });
     const raw = readRaw();
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
@@ -886,7 +915,7 @@ function installMcps(ctx)
     if (ctx.args.scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
     else mcp.verifyUser({
         expects, scope: ctx.cliScope,
-        getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.env }),
+        getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.cliEnv }),
         reregister: (name) =>
         {
             const entry = live.find((e) => e.split('|')[0] === name);
@@ -1043,7 +1072,7 @@ function importMemory(ctx)
         tools: { node: true, uvx: ctx.rt.which('uvx') },
     });
     const importer = path.join(ctx.source.dir, 'scripts', 'memory-import.js');
-    const acct = ctx.env.CLAUDE_CONFIG_DIR ? ['--config-dir', ctx.configDir] : [];
+    const acct = ctx.cliEnv.CLAUDE_CONFIG_DIR ? ['--config-dir', ctx.configDir] : [];
     memory.importNotes({
         gate, importer, settingsFile,
         runImport: () =>

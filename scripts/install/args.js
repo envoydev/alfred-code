@@ -58,7 +58,7 @@ function fail(message)
 
 const lower = (v) => String(v ?? '').toLowerCase();
 
-function parseArgs(argv, env = {})
+function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
@@ -114,14 +114,14 @@ function parseArgs(argv, env = {})
     if (out.space && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(out.space))
         fail(`--space '${out.space}' must start alphanumeric; chars [A-Za-z0-9._-]`);
 
-    // I3 (R47): the flag wins, else the environment, else '' - NOT a default of 'project' here, the
-    // same 'an empty string means not given' rule this file's own header states for docsVersioning and
-    // memoryLevel. `update` with neither takes the scope the LAST install actually
-    // used, from the stamp's own `scope:` line (alfred-code.js, once it has read the stamp); an
-    // `install` (nothing to read yet) resolves '' to 'project' right there too. Collapsing to
-    // 'project' HERE, before that stamp read, is exactly the bug this fixes - a later update on a
-    // user/local install silently fell back to project scope.
-    out.scope = lower(out.scope || env.SCOPE || '');
+    // I3 (R47): the flag, else '' - NOT a default of 'project' here, the same 'an empty string means
+    // not given' rule this file's own header states for docsVersioning and memoryLevel. `update` without
+    // it takes the scope the LAST install actually used, from the stamp's own `scope:` line
+    // (alfred-code.js, once it has read the stamp); an `install` (nothing to read yet) resolves '' to
+    // 'project' right there too. Collapsing to 'project' HERE, before that stamp read, is exactly the
+    // bug this fixes - a later update on a user/local install silently fell back to project scope.
+    // A-M4: never an ambient `SCOPE` - another tool's variable made a project run account-wide.
+    out.scope = lower(out.scope || '');
     // 'global' is the 2.x name for the CLI's own 'user' scope - a 1.x command body still passes it,
     // and it is aliased here so nothing downstream ever sees a fourth spelling.
     if (out.scope === 'global') out.scope = 'user';

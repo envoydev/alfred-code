@@ -406,20 +406,32 @@ function installState(projectRoot, env = process.env)
     if (!at) return 'not-installed';
     if (worktreeMain(projectRoot)) return 'worktree-of-installed';
     const claudeDir = path.join(at, '.claude');
-    if (legacyAccountStamp({ claudeDir, env })) return 'legacy-global';
+    if (legacyGlobalStamp(projectRoot, env)) return 'legacy-global';
     return isInitialised(initialisedValue({ claudeDir })) ? 'initialised' : 'installed';
+}
+
+// THE ONE TEST for `legacy-global` (A-I1): an install record in the project's checkouts, no stamp of its
+// own there, and the 1.x stamp in the account dir - the account stamp's path, or null. The router's state,
+// the scope a command passes back and the installer's own scope decision all read it, so they never
+// disagree; a repo that was never set up is none of it, whatever the account holds.
+function legacyGlobalStamp(projectRoot, env = process.env)
+{
+    const { at } = recordCheckout(projectRoot);
+    return at ? legacyAccountStamp({ claudeDir: path.join(at, '.claude'), env }) : null;
 }
 
 // M5 (Task 18b fix round 1): the scope the last install used, for a command to pass back to the
 // installer - the stamp under either name (a 1.x install keeps `claude-stack.stamp` until its first // legacy-name
 // 2.0.0 update), a 1.x `global` as `user` (args.js reads the flag the same way), and anything else -
 // no stamp, no line, a hand-edited value - as `project`, the floor every scope always had. Read in the
-// tree the command runs in, never a worktree's main checkout (R95 stops those before this read).
+// tree the command runs in, never a worktree's main checkout (R95 stops those before this read). A-I1: an
+// unmigrated 1.x GLOBAL install (legacyGlobalStamp) reads the account stamp's scope - its `global` is
+// `user` - so the first update moves the install at the scope it lives at.
 const SCOPES = ['project', 'user', 'local'];
-function installScope(projectRoot)
+function installScope(projectRoot, env = process.env)
 {
     const own = ownCheckouts(projectRoot);
-    const { read } = stampFile(path.join(own[own.length - 1], '.claude'));
+    const read = stampFile(path.join(own[own.length - 1], '.claude')).read || legacyGlobalStamp(projectRoot, env);
     const raw = read ? readStampScope(read).toLowerCase() : '';
     const scope = raw === 'global' ? 'user' : raw;
     return SCOPES.includes(scope) ? scope : 'project';
@@ -525,7 +537,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
     readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, worktreeMain, installScope,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, worktreeMain, installScope,
     accountDir,
 };
 

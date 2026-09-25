@@ -105,6 +105,68 @@ test('install-scope: a 1.x global install\'s account-dir stamp and skills are mo
     assert.ok(result.newStamp, 'the run did not finish writing its own 2.x stamp');
 });
 
+// A-I1 (final review A, ruling): a 1.x GLOBAL install not yet migrated keeps the scope its account stamp
+// names (`global` = user) whatever --scope the 1.3.0 update body passes - the model-judged 'project' put
+// the core beside the live user-scope alias. One line says so, only when the passed scope differed. The
+// test is the router's own legacy-global one: a repo never set up, with the same account stamp, keeps
+// the scope it was handed.
+const LEGACY_GLOBAL_LINE = 'scope: this project is a 1.x global install - migrated at user scope (the passed --scope project is ignored on this first run)';
+const legacyGlobal = (record) => (repo, work) =>
+{
+    const acct = path.join(work, 'acct');
+    fs.mkdirSync(acct, { recursive: true });
+    fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\nscope: global\n'); // legacy-name
+    if (record) { fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), ''); }
+};
+for (const [label, args, line] of [['--scope project', ['--scope', 'project'], true], ['no --scope', [], false], ['--scope global', ['--scope', 'global'], false]])
+{
+    test(`install-scope: an unmigrated 1.x global install updated with ${label} is migrated at user scope (A-I1)`, POSIX_ONLY, () =>
+    {
+        const { calls, out, result } = seedRun('update', SELECTION, {
+            args, prepare: legacyGlobal(true),
+            inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+        });
+        assert.strictEqual(out.split('\n').filter((l) => l.includes(LEGACY_GLOBAL_LINE)).length, line ? 1 : 0, out);
+        assert.match(out, /action: update \[scope=user,/, out);
+        assert.match(result, /^scope: user$/m, 'the stamp records the scope the install lives at');
+        assert.ok(calls.some((c) => /^plugin (install|update) alfred-code@envoydev --scope user -y$/.test(c)), calls.join('\n'));
+        assert.ok(!calls.some((c) => / --scope project( |$)/.test(c) && /^plugin /.test(c)), calls.join('\n'));
+    });
+}
+
+test('install-scope: a repo never set up keeps the --scope it was handed, whatever the account stamp says (A-I1)', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun('update', SELECTION, {
+        args: ['--scope', 'project'], prepare: legacyGlobal(false),
+        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+    });
+    assert.doesNotMatch(out, /is a 1\.x global install/, out);
+    assert.match(result, /^scope: project$/m);
+});
+
+// A-I5 (final review A, ruling): `--space <name>` with no CLAUDE_CONFIG_DIR puts the installer's own
+// writes in ~/.claude-<name>, but every `claude` spawn inherited an env naming no account, so the CLI
+// installed the core and its plugins into the DEFAULT one. Each spawn now carries the space's account; a
+// CLAUDE_CONFIG_DIR already set wins, as it does for the installer's own writes. The recording stub logs
+// the CLAUDE_CONFIG_DIR each call received.
+const ENV_STUB = ['printf \'%s|%s\\n\' "${CLAUDE_CONFIG_DIR:-unset}" "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0'].join('\n');
+for (const [label, env, dir] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: undefined }, '.claude-work'], ['CLAUDE_CONFIG_DIR set', {}, 'acct']])
+{
+    test(`install-scope: a --space run with ${label} hands every claude call the account it writes (A-I5)`, POSIX_ONLY, () =>
+    {
+        let work = '';
+        const { calls, out } = seedRun('install', SELECTION, {
+            env, args: ['--space', 'work'], tools: { claude: ENV_STUB },
+            prepare: (repo, w) => { work = w; },
+        });
+        const want = path.join(work, dir);
+        assert.match(out, new RegExp(`account=${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`), out);
+        assert.ok(calls.some((c) => c.endsWith('|plugin install alfred-code@envoydev --scope project -y')), calls.join('\n'));
+        assert.deepStrictEqual(calls.filter((c) => !c.startsWith(`${want}|`)), [], `a claude call ran against another account (want ${want})`);
+    });
+}
+
 test('install-scope: a 1.x account-dir stamp is left alone by a plain install - only update migrates it', POSIX_ONLY, () =>
 {
     const { out } = seedRun('install', SELECTION, {
@@ -750,3 +812,40 @@ test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, 
     assert.deepStrictEqual(run.calls, [], `a claude call ran:\n${run.calls.join('\n')}`);
     assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
 });
+
+// C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped memory databases
+// live under the HOME - with none, the path was a RELATIVE `.memory-mcp/memory.db`, written into
+// settings.json and resolved against whatever cwd reads it. Refused like the no-home case: one line,
+// before any call or write. The project level needs no home, and runs.
+for (const [label, args, refused] of [['the default level', [], true], ['--memory-level scoped', ['--memory-level', 'scoped'], true], ['--memory-level project', ['--memory-level', 'project'], false]])
+{
+    test(`install-entry: CLAUDE_CONFIG_DIR with no HOME and ${label} ${refused ? 'is refused before anything is called or written' : 'runs - its database is the project\'s'} (C9)`, POSIX_ONLY, () =>
+    {
+        const env = { HOME: undefined, USERPROFILE: undefined };
+        const run = seedRun('install', SELECTION, {
+            env, failOk: true, args,
+            prepare: (repo, work) =>
+            {
+                const guard = path.join(work, 'home-guard.js');
+                fs.writeFileSync(guard, `require('node:os').homedir = () => ${JSON.stringify(path.join(work, 'no-home'))};\n`);
+                env.NODE_OPTIONS = `--require ${guard}`;
+            },
+            inspect: (repo) => ({
+                claude: exists(repo, '.claude'),
+                db: exists(repo, '.claude', 'settings.json') ? (json(repo, '.claude/settings.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
+            }),
+        });
+        if (!refused)
+        {
+            assert.strictEqual(run.code, 0, run.err);
+            assert.ok(path.isAbsolute(run.result.db || ''), `the project database path is absolute: ${run.result.db}`);
+            return;
+        }
+        assert.notStrictEqual(run.code, 0, run.out);
+        const said = run.err.trim().split('\n');
+        assert.strictEqual(said.length, 1, run.err);
+        assert.match(said[0], /no home directory - HOME and USERPROFILE are unset, so the (global|scoped) memory database would be the relative path/);
+        assert.deepStrictEqual(run.calls, [], `a claude call ran:\n${run.calls.join('\n')}`);
+        assert.strictEqual(run.result.claude, false, 'the project was written');
+    });
+}
