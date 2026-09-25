@@ -255,6 +255,10 @@ back on). The other four (`security-guidance`, `claude-md-management`, `csharp-l
 pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or
 `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names
 the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
+`security-guidance` costs more than its row shows: its Stop, SubagentStop and commit hooks send the
+diff to the Anthropic API under the user's own key or session - a billed model call each - and its
+SessionStart hook pip-installs `claude-agent-sdk` unpinned. Say that in one line under the table
+whenever the row is in it, so a pick is an informed one.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which

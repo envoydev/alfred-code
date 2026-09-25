@@ -915,24 +915,24 @@
   "plugins": [
     {
       "id": "claude-md-management@claude-plugins-official",
-      "note": "audit + revise CLAUDE.md files"
+      "note": "audit + revise CLAUDE.md files; pin: the official marketplace, its plugin.json version - auto-update is on there by default, so it moves between stack updates"
     },
     {
       "id": "csharp-lsp@claude-plugins-official",
-      "note": "inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls)"
+      "note": "inline Roslyn diagnostics on edit (complements serena nav); needs csharp-ls (dotnet tool install -g csharp-ls); pin: the official marketplace entry's version - the package itself is empty, and the server is whatever csharp-ls is on PATH, unpinned"
     },
     {
       "id": "typescript-lsp@claude-plugins-official",
-      "note": "same for Angular/TS work"
+      "note": "same for Angular/TS work; pin: the official marketplace entry's version - the server is whatever typescript-language-server is on PATH, unpinned"
     },
     {
       "id": "security-guidance@claude-plugins-official",
-      "note": "security hooks: pattern warnings + LLM diff review on Stop/commit"
+      "note": "security hooks: pattern warnings + LLM diff review on Stop/commit - that review sends the diff to the Anthropic API under the user's own key or session, a billed model call per Stop, SubagentStop and commit, and its SessionStart hook pip-installs claude-agent-sdk unpinned; pin: the official marketplace, its plugin.json version - auto-update is on there by default"
     },
     {
       "id": "claude-hud@claude-hud",
       "active": false,
-      "note": "statusline HUD - required, installed beside the core on every run at user scope (its status line is account-wide)",
+      "note": "statusline HUD - required, installed beside the core on every run at user scope (its status line is account-wide); pin: a third-party marketplace, its plugin.json version - auto-update is off there by default, so the stack's update is what moves it",
       "marketplace": "jarrodwatts/claude-hud"
     }
   ],
