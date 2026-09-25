@@ -1282,6 +1282,32 @@ test('seed update --scope user: leaving the full copy route for the MCP copy rou
     assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user playwright-chrome'], `${adds.join('\n')}\n${outs[1]}`);
 });
 
+// F7 ruling: that prune never removes the user's own server. A stack name in .mcp.json goes only when the
+// registration is the stack's own shape (mcp.identityOf); another under the name is kept, with its
+// approval, and named once with its remove command - A-M2's rule, not the project scope's by-name one.
+test('seed update --scope user: the prune of this project\'s .mcp.json keeps the user\'s own server under a stack name and names it once (F7 ruling)', POSIX_ONLY, () =>
+{
+    const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(USER_ROWS()), tools: { claude: MCPJSON_CLI },
+        args: ['--scope', 'user'],
+        prepare: (repo) =>
+        {
+            pwProject(repo);
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: {
+                serena: { type: 'stdio', command: 'node', args: ['my-serena.js'], env: {} },
+                context7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url, headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' } },
+            } }, null, 2)}\n`);
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['serena', 'context7'] }, null, 2)}\n`);
+        },
+        inspect: (repo) => ({ mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), trusted: trusted(repo) }),
+    });
+    assert.deepStrictEqual(projectRemovesOf(calls), ['mcp remove context7 -s project'], `${projectRemovesOf(calls).join('\n')}\n${out}`);
+    assert.deepStrictEqual(result.mcp, ['serena'], 'the user\'s own serena went, or the stack\'s context7 stayed');
+    assert.strictEqual((out.match(/!! mcp serena: the project-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove serena -s project/g) || []).length, 1, out);
+    assert.deepStrictEqual(result.trusted, ['serena'], 'the kept server lost its approval, or the pruned one kept it');
+    assert.deepStrictEqual(userCallsOf(calls), [], out);
+});
+
 // A-M2 (final review A): at user scope every run removed each stack name from the account's own
 // registrations - a server of the user's own under the same name went with them. Only a registration of
 // the stack's own shape (the package it launches, or the url it calls) is removed; another is kept and

@@ -969,8 +969,10 @@ function installMcps(ctx)
         if (mayRemove(name, ctx.cliScope)) prune(name, ctx.cliScope);
     // F7 (R22g): the user-scope FULL copy route registers in THIS project's .mcp.json (C10), which the
     // loop above never reaches at user scope - so a user-scope run registering anywhere else (the plugin
-    // route, or the MCP copy route with the core on) prunes every stack name there as a project-scope run
-    // does. Only a name the file holds costs a call; a server under a name of the user's own stays.
+    // route, or the MCP copy route with the core on) prunes the stack's own registrations there. Only a
+    // name the file holds costs a call, and only the stack's own shape goes (A-M2's rule, not the project
+    // scope's by-name one): the user's own server under a stack name is kept, named once with its remove
+    // command, and keeps its approval.
     if (ctx.cliScope === 'user' && mcp.registrationScope(ctx.routes, ctx.cliScope) !== 'project')
     {
         const held = registrationsAt(ctx, 'project');
@@ -978,7 +980,7 @@ function installMcps(ctx)
         // An unreadable file is said once (registrationOf's line) and nothing in it is removed.
         if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project', false);
         for (const name of names)
-            if (held.servers[name] && mayRemove(name, 'project')) prune(name, 'project');
+            if (held.servers[name] && registrationOf(ctx, name, 'project', liveMcpNames.has(name)) === 'stack') prune(name, 'project');
     }
 
     if (ctx.routes.mcps)
