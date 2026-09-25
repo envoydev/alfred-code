@@ -180,6 +180,29 @@ for (const [label, env, dir] of [['no CLAUDE_CONFIG_DIR', { CLAUDE_CONFIG_DIR: u
     });
 }
 
+// A-I5 completion (F4 re-review, item 2): the copy route writes the machine's Python pin into each uvx
+// registration, and `ALFRED_CODE_UV_PYTHON` is read from the account settings last. The installer asked
+// uv-python with the run's own env, so a `--space` run from a plain shell read the DEFAULT account's
+// override, not the space's. It asks with the env its claude calls carry.
+test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space account\'s Python override for the copy route (A-I5)', POSIX_ONLY, () =>
+{
+    const { calls } = seedRun('install', SELECTION, {
+        env: { CLAUDE_CONFIG_DIR: undefined, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+        args: ['--space', 'work'],
+        prepare: (repo, work) =>
+        {
+            for (const [dir, pin] of [['.claude-work', '3.10'], ['.claude', '3.11']])
+            {
+                fs.mkdirSync(path.join(work, dir), { recursive: true });
+                fs.writeFileSync(path.join(work, dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_UV_PYTHON: pin } }));
+            }
+        },
+    });
+    const serena = calls.find((c) => /^mcp add --scope project serena /.test(c));
+    assert.ok(serena, calls.join('\n'));
+    assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
+});
+
 test('install-scope: a 1.x account-dir stamp is left alone by a plain install - only update migrates it', POSIX_ONLY, () =>
 {
     const { out } = seedRun('install', SELECTION, {

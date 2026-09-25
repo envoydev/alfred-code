@@ -494,7 +494,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
             // Read from the SEED's own tree, never the snapshot's: a snapshot older than the seed has no
             // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
-            UV_PYTHON: pythonRequest({ env, projectDir: projectRoot }),
+            // A-I5: the account the run's claude calls use - a --space run's own, not the default one.
+            UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
             // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows.
             SERENA_HOME: serenaHomeFor(),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
