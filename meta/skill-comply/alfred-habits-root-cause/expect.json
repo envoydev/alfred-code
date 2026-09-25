@@ -76,7 +76,7 @@
     {
       "id": "one-hypothesis-per-change",
       "from": "stack/skills/alfred-habits-root-cause/SKILL.md",
-      "quote": "Write it as one line - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next.",
+      "quote": "Write it as one line in your reply BEFORE the change - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next.",
       "graders": [
         {
           "type": "x_each",
