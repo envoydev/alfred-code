@@ -96,6 +96,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     catch (e) { err(`${USAGE}\nerror: ${e.message}\n`); return 1; }
 
     const home = env.HOME || env.USERPROFILE || '';
+    // With no home and no CLAUDE_CONFIG_DIR the account dir would be a RELATIVE `.claude` - the
+    // project's own, against the cwd - and an account key would land in its tracked settings.json.
+    if (!home && !env.CLAUDE_CONFIG_DIR)
+    {
+        err('error: no account directory - HOME, USERPROFILE and CLAUDE_CONFIG_DIR are all unset; set one and run again\n');
+        return 1;
+    }
     const configDir = env.CLAUDE_CONFIG_DIR
         || path.join(home, args.space ? `.claude-${args.space}` : '.claude');
     const projectRoot = rt.gitRoot(cwd) || cwd;

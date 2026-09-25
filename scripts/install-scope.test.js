@@ -724,3 +724,29 @@ test('install-scope: a move off local removes an older shipped seed and the docs
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_FRESH_SESSION_DEFAULT removed - the stack's own seed \('250000'\)/, outs[1]);
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed \('local'\)/, outs[1]);
 });
+
+// Safety ticket (R132): with no HOME, no USERPROFILE and no CLAUDE_CONFIG_DIR the account dir resolved
+// to a RELATIVE `.claude` - against the process cwd, the project's own - so a key the run writes to the
+// account landed in the project's tracked settings.json. Refused with one line, before any call or write.
+test('install-entry: no home and no CLAUDE_CONFIG_DIR is refused with one line, before anything is called or written', POSIX_ONLY, () =>
+{
+    const env = { HOME: undefined, USERPROFILE: undefined, CLAUDE_CONFIG_DIR: undefined };
+    const run = seedRun('install', SELECTION, {
+        env, failOk: true,
+        // A start with no HOME must never reach the real account through os.homedir() - in this process
+        // or a node child - whatever the seed does.
+        prepare: (repo, work) =>
+        {
+            const guard = path.join(work, 'home-guard.js');
+            fs.writeFileSync(guard, `require('node:os').homedir = () => ${JSON.stringify(path.join(work, 'no-home'))};\n`);
+            env.NODE_OPTIONS = `--require ${guard}`;
+        },
+        inspect: (repo) => ({ claude: exists(repo, '.claude'), mcp: exists(repo, '.mcp.json') }),
+    });
+    assert.notStrictEqual(run.code, 0, run.out);
+    const said = run.err.trim().split('\n');
+    assert.strictEqual(said.length, 1, run.err);
+    assert.match(said[0], /HOME, USERPROFILE and CLAUDE_CONFIG_DIR/);
+    assert.deepStrictEqual(run.calls, [], `a claude call ran:\n${run.calls.join('\n')}`);
+    assert.deepStrictEqual(run.result, { claude: false, mcp: false }, 'the project was written');
+});
