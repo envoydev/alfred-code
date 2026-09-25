@@ -788,7 +788,7 @@ test('seed update (full copy route): the switch stamps what it copied as picked 
             return picks(repo);
         },
     });
-    assert.ok(steps[2].some((l) => l.includes('project-first-look')), `the copy route reads its copies as picks:\n${steps[2].join('\n')}`);
+    assert.ok(steps[2].some((l) => l.includes('alfred-capture-first-look')), `the copy route reads its copies as picks:\n${steps[2].join('\n')}`);
     assert.deepStrictEqual(steps[2], steps[1], `the re-run rewrote the picks:\n${out}`);
 });
 

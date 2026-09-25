@@ -684,14 +684,14 @@ test('read-back: a switch onto the full copy route reads back what the core stil
     assert.ok(!on.lines.includes(`agent ${seat}`), 'a denied seat stays off');
     // The settings file's word before the listing's flag (S22): a stale false flag is still a core that runs.
     const stale = back({ listing: [row('alfred-code@envoydev', { enabled: false })], isOn: () => true });
-    assert.ok(stale.lines.includes('skill project-first-look'), items(stale).join(', '));
+    assert.ok(stale.lines.includes('skill alfred-capture-first-look'), items(stale).join(', '));
     const off = back({ listing: [row('alfred-code@envoydev')], isOn: () => false });
     assert.deepStrictEqual(items(off), [], 'a core already off (a switched install re-run) adds nothing');
     const elsewhere = back({ listing: [row('alfred-code@envoydev', { scope: 'user' })] });
     assert.deepStrictEqual(items(elsewhere), [], 'a core at another scope keeps running there - nothing to carry across');
     const plugin = sel.readBack({ claudeDir: target({ rules: ['baseline-security'] }), mcpServers: [], listing: [row('alfred-code@envoydev')], settings: {},
         routes: { skills: false, hooks: true, mcps: false }, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {}, stampPicked: { skills: [], agents: [] }, marketplace: 'envoydev', scope: 'project' });
-    assert.ok(!plugin.lines.includes('skill project-first-look'), 'a partial copy route keeps the core on - it carries its own items');
+    assert.ok(!plugin.lines.includes('skill alfred-capture-first-look'), 'a partial copy route keeps the core on - it carries its own items');
 });
 
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
