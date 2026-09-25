@@ -339,31 +339,50 @@ function writeSettings(opts)
     // one that blocks it (docs/rebrand-evidence.md S6).
     const live = (home) => (liveEntries || (home === LEGACY.core ? [] : retiredEntries)).includes(home);
     const homes = [...retiredEntries, LEGACY.core];
-    for (const entry of [...deny])
+    // I1 (fix round 1): both passes below also run over settings.local.json's deny list - a seat the
+    // user switched off for themselves is re-spelled THERE, never moved into the shared file.
+    const respellSeats = (list, lab) =>
     {
-        const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-        if (!m || !homes.includes(m[1])) continue;
-        const core = `Agent(${BRAND.core}:${seatNow(m[2])})`;
-        const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
-        if (!deny.includes(core)) { deny.push(core); changed = true; log(`  ${label}: ${entry} also denied as ${core} (${why})`); }
-        if (live(m[1])) continue;
-        deny.splice(deny.indexOf(entry), 1);
-        changed = true;
-        log(`  ${label}: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
-    }
+        let touched = false;
+        for (const entry of [...list])
+        {
+            const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
+            if (!m || !homes.includes(m[1])) continue;
+            const core = `Agent(${BRAND.core}:${seatNow(m[2])})`;
+            const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
+            if (!list.includes(core)) { list.push(core); touched = true; log(`  ${lab}: ${entry} also denied as ${core} (${why})`); }
+            if (live(m[1])) continue;
+            list.splice(list.indexOf(entry), 1);
+            touched = true;
+            log(`  ${lab}: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
+        }
 
-    // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
-    // name; the read-back already read it that way (selection.js renameDeny).
-    for (const entry of [...deny])
+        // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
+        // name; the read-back already read it that way (selection.js renameDeny).
+        for (const entry of [...list])
+        {
+            const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
+            if (!m || m[1] !== BRAND.core || seatNow(m[2]) === m[2]) continue;
+            const now = `Agent(${BRAND.core}:${seatNow(m[2])})`;
+            if (list.includes(now)) list.splice(list.indexOf(entry), 1);
+            else list[list.indexOf(entry)] = now;
+            touched = true;
+            log(`  ${lab}: ${entry} re-spelled ${now} (the seat was renamed)`);
+        }
+        return touched;
+    };
+    if (respellSeats(deny, label)) changed = true;
+    // R99: `localFile` is settings.local.json on a project or user run - its stack keys apply over this
+    // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
+    // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
+    let local = null;
+    if (localFile && fs.existsSync(localFile))
     {
-        const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
-        if (!m || m[1] !== BRAND.core || seatNow(m[2]) === m[2]) continue;
-        const now = `Agent(${BRAND.core}:${seatNow(m[2])})`;
-        if (deny.includes(now)) deny.splice(deny.indexOf(entry), 1);
-        else deny[deny.indexOf(entry)] = now;
-        changed = true;
-        log(`  ${label}: ${entry} re-spelled ${now} (the seat was renamed)`);
+        try { ({ data: local } = readSettings(localFile)); }
+        catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; }
     }
+    const localDeny = local && local.permissions && Array.isArray(local.permissions.deny) ? local.permissions.deny : null;
+    const localRespelled = Boolean(localDeny) && respellSeats(localDeny, path.basename(localFile));
     if (rekeyOverrides(data, renamed, log, label)) changed = true;
 
     // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on
@@ -382,7 +401,7 @@ function writeSettings(opts)
     for (const rule of agentDeny)
     {
         dropSeat(rule, rule);
-        if (!deny.includes(rule)) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
+        if (!deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
     }
     for (const rule of agentAllow) dropSeat(rule, null);
 
@@ -396,22 +415,13 @@ function writeSettings(opts)
     for (const name of mcpOff) if (enabled.includes(name))
     { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
 
-    // R99: `localFile` is settings.local.json on a project or user run - its stack keys apply over this
-    // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
-    // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
-    let local = null;
-    if (localFile && fs.existsSync(localFile))
-    {
-        try { ({ data: local } = readSettings(localFile)); }
-        catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; }
-    }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay ? JSON.stringify(overlay) : null;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
-    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed;
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled;
     if (localChanged) fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
 
     if (!changed) return { written: localChanged, refused: false };
@@ -430,8 +440,9 @@ const settingsTarget = (claudeDir, scope) => path.join(claudeDir, scope === 'loc
 // What the --installed-only read-back reads, fail-soft (an unreadable file reads as empty). At project
 // and user scope, the file this run writes with the STACK env keys settings.local.json holds laid over
 // it, key by key (R99): Claude Code applies those, so a read-back blind to them showed a hook the user
-// switched off as on. Nothing else of the local file is read there (I2: a merge could carry a personal
-// entry into the shared file), and the writer puts a change to such a key back into the local file
+// switched off as on, and a seat denied there as on. Nothing else of the local file is read there
+// (I2: a merge could carry a personal entry into the shared file), and the writer puts a change to
+// such a key back into the local file
 // (`writeSettings` `localFile`), never the shared one. `sharedOnly` is settings.json alone - the N6
 // inherited view and R98's docs root read that. At local scope the write lands in the personal file,
 // so settings.local.json is laid over settings.json (N5) for the two keys the read-back uses: `env` key
@@ -447,8 +458,14 @@ function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
     {
         const own = read('settings.json');
         if (sharedOnly) return own;
-        const held = Object.entries(obj(read('settings.local.json').env)).filter(([key]) => isStackKey(key));
-        return held.length ? { ...own, env: { ...obj(own.env), ...Object.fromEntries(held) } } : own;
+        const personal = read('settings.local.json');
+        const held = Object.entries(obj(personal.env)).filter(([key]) => isStackKey(key));
+        const view = held.length ? { ...own, env: { ...obj(own.env), ...Object.fromEntries(held) } } : own;
+        // I1 (fix round 1): a stack seat deny kept there is an off-state Claude Code applies, so the
+        // read-back sees it (left_out, status); the writer re-spells it there and never copies it here.
+        const list = (x) => (Array.isArray(obj(obj(x).permissions).deny) ? obj(x.permissions).deny : []);
+        const seats = list(personal).filter((d) => stackSeat(d));
+        return seats.length ? { ...view, permissions: { ...obj(view.permissions), deny: [...new Set([...list(view), ...seats])] } } : view;
     }
     const shared = read('settings.json');
     const local = read('settings.local.json');

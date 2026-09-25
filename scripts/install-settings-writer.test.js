@@ -427,7 +427,7 @@ test('readBackSettings: local over shared for the stack keys at every scope, the
             ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared',
             CLAUDE_STACK_INSTRUMENT: '1', // legacy-name
         }, `${scope}: the stack keys the local file holds win, nothing else of it is read`);
-        assert.deepStrictEqual(r.permissions.deny, ['Agent(alfred-code:a)'], `${scope}: deny is the shared file's`);
+        assert.deepStrictEqual(r.permissions.deny, ['Agent(alfred-code:a)', 'Agent(alfred-code:b)'], `${scope}: deny is the shared file's plus the stack seat denies the local file holds (Task 22 I1)`);
         assert.deepStrictEqual(r.hooks, sharedHooks, `${scope}: hooks are the shared file's`);
         assert.deepStrictEqual(readBackSettings(dir, scope, { sharedOnly: true }).env,
             { ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_PUSH_GATE: '1', SHARED_ONLY: '1', BOTH: 'shared' }, `${scope}: sharedOnly reads settings.json alone`);

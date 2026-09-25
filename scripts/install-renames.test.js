@@ -14,7 +14,7 @@ const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { loadManifest } = require('./install/manifest.js');
 const selection = require('./install/selection.js');
-const { writeSettings } = require('./install/settings.js');
+const { writeSettings, readBackSettings } = require('./install/settings.js');
 
 const ROOT = path.join(__dirname, '..');
 const RENAMED = loadManifest(ROOT).renamed;
@@ -185,6 +185,54 @@ test('settings writer: a personal skillOverrides switch-off in settings.local.js
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// I1 (fix round 1): a seat the user switched off for themselves - a deny in settings.local.json - is
+// re-spelled where it is, never moved into the shared file, and the read-back sees it off.
+const LOCAL_DENY = [`Agent(${OLD_KEY}:ci-failure-diagnoser)`, 'Agent(alfred-code:runtime-failure-diagnoser)', 'Bash(my-own:*)'];
+test('settings writer (I1): a seat deny in settings.local.json is re-spelled there, and the shared file gains none of it', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
+    try
+    {
+        const file = path.join(dir, 'settings.json');
+        const localFile = path.join(dir, 'settings.local.json');
+        fs.writeFileSync(file, JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }));
+        fs.writeFileSync(localFile, JSON.stringify({ permissions: { deny: LOCAL_DENY }, MY_LOCAL_KEY: 1 }));
+        const logs = [];
+        // The read-back sees both seats off, so the run's agent off-list names them under the new name.
+        const agentDeny = ['Agent(alfred-code:alfred-issue-diagnoser-ci)', 'Agent(alfred-code:alfred-issue-diagnoser-runtime)'];
+        const run = () => writeSettings({ file, localFile, renamed: RENAMED, liveEntries: [], agentDeny, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        run();
+        const local = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+        assert.deepStrictEqual(local.permissions.deny.slice().sort(), [...agentDeny, 'Bash(my-own:*)'].sort(), local.permissions.deny.join('\n'));
+        assert.strictEqual(local.MY_LOCAL_KEY, 1);
+        const shared = JSON.parse(fs.readFileSync(file, 'utf8'));
+        assert.ok(!((shared.permissions || {}).deny || []).some((d) => /diagnoser/.test(d)), `a personal switch-off moved into the shared file: ${JSON.stringify(shared.permissions)}`);
+        assert.strictEqual(shared.env.MY_OWN_KEY, 'mine');
+        assert.ok(logs.some((m) => /^ {2}settings\.local\.json: .*ci-failure-diagnoser\).*alfred-issue-diagnoser-ci/.test(m)), logs.join('\n'));
+        const before = [fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')];
+        run();
+        assert.deepStrictEqual([fs.readFileSync(file, 'utf8'), fs.readFileSync(localFile, 'utf8')], before, 'a second run changes nothing');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('readBackSettings (I1): at project and user scope a stack seat deny in settings.local.json is read, and nothing else of that file\'s deny list is', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-settings-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)'] } }));
+        fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ permissions: { deny: LOCAL_DENY } }));
+        for (const scope of ['project', 'user'])
+        {
+            const deny = readBackSettings(dir, scope).permissions.deny;
+            assert.deepStrictEqual(deny.slice().sort(), ['Read(.env)', ...LOCAL_DENY.slice(0, 2)].sort(), `${scope}: ${deny.join(' ')}`);
+            assert.deepStrictEqual(readBackSettings(dir, scope, { sharedOnly: true }).permissions.deny, ['Read(.env)'], `${scope}: sharedOnly stays the shared file alone`);
+        }
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 // ---------- end to end, one case per migration shape ----------
 
 // Shape 1: a 1.3.0 install on the plugin route - the 1.x core under the old key, a stamp whose picks
@@ -257,6 +305,41 @@ test('seed update --installed-only: a seat denied under its old name stays denie
     assert.strictEqual(r.settings.env.MY_OWN_KEY, 'mine');
     assert.ok(renamedLines(out).includes('==> renamed: agent ci-failure-diagnoser -> alfred-issue-diagnoser-ci'), out);
 });
+
+// I1 / R126 at every scope: a seat the user denied for themselves in settings.local.json stays off
+// under its new name, in that file, and a re-run changes nothing.
+for (const scope of ['project', 'user', 'local'])
+{
+    test(`seed update --installed-only --scope ${scope} (I1): a seat denied in settings.local.json stays off there under its new name, and a re-run is quiet`, POSIX_ONLY, () =>
+    {
+        const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope, enabled: true })));
+        const shared = JSON.stringify({ env: { MY_OWN_KEY: 'mine' } }, null, 2);
+        const prepare = (repo) =>
+        {
+            write(repo, '.claude/rules/baseline-interaction.md');
+            write(repo, '.claude/alfred-code.stamp', 'version: 1.3.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
+            write(repo, '.claude/settings.json', shared);
+            write(repo, '.claude/settings.local.json', JSON.stringify({ permissions: { deny: LOCAL_DENY }, MY_LOCAL_KEY: 1 }, null, 2));
+        };
+        const each = (repo) =>
+        {
+            const raw = (name) => fs.readFileSync(path.join(repo, '.claude', name), 'utf8');
+            return { ...inspect(repo), sharedRaw: raw('settings.json'), localRaw: raw('settings.local.json'), local: JSON.parse(raw('settings.local.json')) };
+        };
+        const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--scope', scope], prepare, each });
+        const [first, second] = steps;
+        const deny = first.local.permissions.deny;
+        assert.ok(deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)') && deny.includes('Agent(alfred-code:alfred-issue-diagnoser-runtime)'), `${scope}: ${deny.join(' | ')}\n${outs[0]}`);
+        assert.ok(!deny.some((d) => /:(ci|runtime)-failure-diagnoser\)$/.test(d)), `${scope}: an old seat spelling is left in settings.local.json: ${deny.join(' | ')}`);
+        assert.ok(deny.includes('Bash(my-own:*)') && first.local.MY_LOCAL_KEY === 1, `${scope}: the user's own local entries stay`);
+        if (scope === 'local') assert.strictEqual(first.sharedRaw, shared, 'a local-scope run never writes the shared file');
+        else assert.ok(!((first.settings.permissions || {}).deny || []).some((d) => /diagnoser/.test(d)), `${scope}: a personal switch-off moved into settings.json: ${first.sharedRaw}`);
+        assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine');
+        assert.ok(!first.pickedAgents.some((e) => /diagnoser/.test(e)), `${scope}: a denied seat is no pick: ${first.pickedAgents.join(',')}`);
+        assert.deepStrictEqual([second.sharedRaw, second.localRaw], [first.sharedRaw, first.localRaw], `${scope}: the re-run changes neither file`);
+        assert.deepStrictEqual(renamedLines(outs[1]), [], `${scope}: the re-run has nothing left to rename`);
+    });
+}
 
 // Shape 3: the full copy route - every skill and seat is a project copy under its old name.
 test('seed update --installed-only on the copy route: the old copies become new copies and none is left behind', POSIX_ONLY, () =>
