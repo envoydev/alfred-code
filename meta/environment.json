@@ -106,6 +106,21 @@
       }
     },
     {
+      "key": "ALFRED_CODE_CORRECTION_NUDGE",
+      "default": "log",
+      "ask": false,
+      "what": "guard-answer-length.js: a correction turn (a short prompt that follows an answer and carries a correction marker - 'no, ...', 'I meant', 'why did you', 'shorter') writes one `mode: probe` / `kind: correction` row to the hook-blocks ledger. `log` writes the row and injects nothing (the count-first week); `inject` also hands back the line 'this reads as a correction - store it with memory_store (user_correction, project tag) before continuing'; `0` (or `off`, which the hook reads the same) is off.",
+      "validate": {
+        "type": "enum",
+        "values": [
+          "0",
+          "off",
+          "log",
+          "inject"
+        ]
+      }
+    },
+    {
       "key": "ALFRED_CODE_TURN_CHECK",
       "default": "0",
       "ask": false,

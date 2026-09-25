@@ -819,7 +819,7 @@
       "file": "guard-answer-length.js",
       "matcher": "@UserPromptSubmit",
       "event": "",
-      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized"
+      "note": "inject the answer budget (~3 sentences plus points) at the end of the turn's context - the short-answer rule mechanized; a correction turn writes one log-only probe row (ALFRED_CODE_CORRECTION_NUDGE=inject adds the memory-save line)"
     },
     {
       "file": "guard-answer-length.js",

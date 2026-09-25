@@ -12,7 +12,9 @@
 //   carries the FORMAT ASK on a correction streak: the third consecutive short human turn that
 //   follows a long answer gets one line naming the interaction rule's 're-ask on the SAME
 //   deliverable -> ONE format AskUserQuestion' - injection only, never a denial. Measured lost as
-//   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask.
+//   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
+//   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
+//   `log`; `inject` adds the memory-save line).
 // Stop wiring: an answer whose prose (code blocks, tables and inline spans excluded) runs past the
 //   hard cap with no depth request in the user's own message is blocked, and the model re-answers
 //   at budget. The answer measured is the payload's `last_assistant_message`; the transcript's
@@ -196,34 +198,40 @@ const BUDGET_TEXT =
 const STREAK_TURNS = 3;
 const STREAK_SHORT = 200;
 const STREAK_LONG = 1500;
+// In order: { role, len } - assistant rows merged by message.id, prose only; a user turn also keeps
+// its text, and an interruption row is marked, because it sits between an answer and its correction.
+function conversationTurns() {
+  const turns = [];
+  let lastId = null;
+  let lastUserText = '';
+  for (const line of tailLines()) {
+    if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || !o.message) continue;
+    if (o.type === 'assistant' && Array.isArray(o.message.content)) {
+      const text = o.message.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+      const len = proseOf(text).length;
+      const id = o.message.id;
+      const prev = turns[turns.length - 1];
+      if (id && id === lastId && prev && prev.role === 'assistant') prev.len += len;
+      else turns.push({ role: 'assistant', len });
+      lastId = id || null;
+    } else if (o.type === 'user' && !o.isMeta) {
+      const c = o.message.content;
+      const typed = typeof c === 'string' ? c
+        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+      // tool results, harness markers and slash commands are not corrections
+      if (!typed.trim() || /^\s*</.test(typed)) continue;
+      lastUserText = typed.trim();
+      turns.push({ role: 'user', len: lastUserText.length, text: lastUserText, interrupt: /^\[Request interrupted by user/.test(lastUserText) });
+    }
+  }
+  return { turns, lastUserText };
+}
 function correctionStreak(currentPrompt) {
   try {
-    const turns = [];   // in order: { role, len } - assistant rows merged by message.id, prose only
-    let lastId = null;
-    let lastUserText = '';
-    for (const line of tailLines()) {
-      if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      if (!o || !o.message) continue;
-      if (o.type === 'assistant' && Array.isArray(o.message.content)) {
-        const text = o.message.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
-        const len = proseOf(text).length;
-        const id = o.message.id;
-        const prev = turns[turns.length - 1];
-        if (id && id === lastId && prev && prev.role === 'assistant') prev.len += len;
-        else turns.push({ role: 'assistant', len });
-        lastId = id || null;
-      } else if (o.type === 'user' && !o.isMeta) {
-        const c = o.message.content;
-        const typed = typeof c === 'string' ? c
-          : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
-        // tool results, harness markers and slash commands are not corrections
-        if (!typed.trim() || /^\s*</.test(typed)) continue;
-        lastUserText = typed.trim();
-        turns.push({ role: 'user', len: lastUserText.length });
-      }
-    }
+    const { turns, lastUserText } = conversationTurns();
     // the prompt being submitted is the last turn - unless the transcript already holds it
     const now = String(currentPrompt || '').trim();
     if (now && now !== lastUserText && !/^</.test(now)) turns.push({ role: 'user', len: now.length });
@@ -236,6 +244,59 @@ function correctionStreak(currentPrompt) {
     }
     return streak;
   } catch { return 0; }
+}
+
+// --- correction-turn test (the one single-turn test; analyze-usage.js carries the pinned copy) ---
+// The old test was a SHAPE - a short turn right after a 1,500+ char answer - so it counted whatever
+// the user said next: replayed over the local transcripts, 51 of its 60 hits were status checks,
+// questions and requests (and it missed the corrections that followed a short answer). A correction
+// is now a short typed turn that follows an answer of any length AND carries a correction marker -
+// in-sample, 3 of the replay's 52 hits were not corrections. A STRONG marker counts anywhere; a WEAK
+// one (an opening 'but', 'instead', 'it should') only in a turn that asks nothing, where it is a
+// correction rather than a challenge. 'why can't you' is a question about a limit, not a correction.
+// The Cyrillic stems are bounded by a non-letter lookbehind (JS \b is ASCII-only); too few Cyrillic
+// turns exist in the corpus to measure them.
+const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
+function correctionMarker(text) {
+  const t = String(text || '').replace(/[‘’]/g, "'").trim();
+  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  return m ? m[0].trim().slice(0, 40) : null;
+}
+// --- end correction-turn test
+
+// The prompt being submitted, judged by the test above: it follows an assistant answer (an
+// interruption row between them does not count) and is a typed turn of at most STREAK_SHORT chars.
+function correctionTurn(currentPrompt) {
+  try {
+    const now = String(currentPrompt || '').trim();
+    if (!now || now.length > STREAK_SHORT || /^[</]/.test(now)) return null;
+    const marker = correctionMarker(now);
+    if (!marker) return null;
+    const { turns } = conversationTurns();
+    let end = turns.length;
+    if (end && turns[end - 1].role === 'user' && turns[end - 1].text === now) end -= 1; // the prompt's own row
+    for (let i = end - 1; i >= 0; i -= 1) {
+      if (turns[i].role === 'assistant') return marker;
+      if (!turns[i].interrupt) return null;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// One MEASUREMENT row in the hook-blocks ledger (a `mode`, so the analyzer reads a probe, never a
+// block). Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
 }
 
 // --- the verbatim re-ask: the same question, typed again ------------------------------------
@@ -290,8 +351,23 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       'AskUserQuestion on the format - shape, length, language, what to keep - not another redraft ' +
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
+  // The correction nudge, LOG-ONLY by default (the user's 'count first' ruling): 38 of 38 and then
+  // 35 of 35 measured corrections were never saved to the shared memory. ALFRED_CODE_CORRECTION_NUDGE:
+  // `log` (the seed, and the value when absent) writes one row per correction turn and injects
+  // nothing; `inject` also hands the save line back; `0` (or `off`) is off.
+  const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();
+  const marker = nudgeMode === '0' || nudgeMode === 'off' ? null : correctionTurn(payload.prompt);
+  const inject = !!marker && nudgeMode === 'inject';
+  if (marker) {
+    ledgerRow({ mode: 'probe', kind: 'correction', injected: inject,
+      reason: `probe: a correction turn - ${inject ? 'save line injected' : 'logged, nothing injected'}`,
+      detail: { marker, chars: String(payload.prompt).trim().length } });
+  }
+  const nudge = inject
+    ? ' CORRECTION: this reads as a correction - store it with memory_store (user_correction, project tag) before continuing.'
+    : '';
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },
   }));
   process.exit(0);
 }

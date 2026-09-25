@@ -112,6 +112,19 @@ function proseOf(text) {
 }
 const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
+// Its single-turn correction test, copied verbatim (shared-rules.json `correction-turn-test`): a
+// short typed turn that follows an answer of any length and carries a correction marker - the
+// turns the corrections-saved row counts.
+// --- correction-turn test
+const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
+function correctionMarker(text) {
+  const t = String(text || '').replace(/[‘’]/g, "'").trim();
+  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  return m ? m[0].trim().slice(0, 40) : null;
+}
+// --- end correction-turn test
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
@@ -1256,7 +1269,7 @@ async function analyzeTranscript(file, window) {
       greenClaims: 0, unverifiedGreenClaims: [],
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
-      correctionsSaved: 0,       // of those, followed by a memory store within SAVE_WINDOW replies
+      correctionsSaved: 0,       // correction turns (the hook's marker test) followed by a memory store within SAVE_WINDOW replies
       correctionsUnsaved: [],    // timestamps of the ones that were not
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
@@ -1342,18 +1355,23 @@ async function analyzeTranscript(file, window) {
       if (lastSkill) s.skillTimeline.push({ ts: ts || null, skill: null });
       lastSkill = null;
     }
-    turns.push({ role: 'user', len: t.length });
+    const interrupt = /^\[Request interrupted by user/.test(t);
+    turns.push({ role: 'user', len: t.length, interrupt });
     // the loose pair first: the answer before this turn, consecutive assistant rows merged
     {
       let j = turns.length - 2, alen = 0;
       while (j >= 0 && turns[j].role === 'assistant') { alen += turns[j].len; j -= 1; }
       if (alen >= STREAK_LONG) {
         s.efficiency.longAnswered += 1;
-        if (t.length <= STREAK_SHORT) {
-          s.efficiency.correctionTurns += 1;
-          pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
-        }
+        if (t.length <= STREAK_SHORT) s.efficiency.correctionTurns += 1;
       }
+    }
+    // A correction waiting on a save: the hook's single-turn test - an answer before it (an
+    // interruption row between them does not count), at most STREAK_SHORT chars, a marker.
+    if (!interrupt && t.length <= STREAK_SHORT && correctionMarker(t)) {
+      let k = turns.length - 2;
+      while (k >= 0 && turns[k].role === 'user' && turns[k].interrupt) k -= 1;
+      if (k >= 0 && turns[k].role === 'assistant') pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
     }
     let streak = 0;
     for (let i = turns.length - 1; i >= 1; i -= 2) {
@@ -2397,6 +2415,7 @@ function readBlockLedger(target, sessionId) {
         out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1;
         if (o.mode === 'probe' && o.kind === 'done-gate' && o.detail) (out.doneGateRows || (out.doneGateRows = [])).push({ ...o.detail, ts: o.ts || null });
         if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
+        if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
         continue;
       }
       out.rows += 1;
@@ -2569,6 +2588,12 @@ function resolveRootCause(details, files) {
 }
 const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
   + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`;
+// The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
+// one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
+// read from the transcript with the same test.
+const newCorrection = () => ({ turns: 0, injected: 0 });
+const correctionLine = (t) => `CORRECTION NUDGE (probe): ${t.turns} correction turn(s) - ${t.injected} with the save line injected, ${t.turns - t.injected} logged only`;
+
 // Resolves a session's probe rows in place; the raw rows never reach a report.
 function finishProbes(ledger, sessionFile) {
   if (ledger && ledger.doneGateRows) {
@@ -2784,7 +2809,7 @@ function efficiencyRows(main, agg, blockLedger) {
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
     const unsaved = (e.correctionsUnsaved || []).length;
-    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make is a preference or a lesson; one never stored is made again next session' });
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer-length reads it) is a preference or a lesson; one never stored is made again next session' });
   }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {
@@ -3004,6 +3029,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   }
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
   if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
+  if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
   if (blockLedger && blockLedger.probes) console.log('\nPROBES ' + blockLedger.probes + ' row(s), log-only - denied nothing: ' + Object.entries(blockLedger.probeKinds).map(([k, n]) => k + ' x' + n).join(', ') + ' (a probe row is a measurement of how often the gate WOULD fire; judge its rate before it becomes a denial)');
 
   if (main.spikes.length) {
@@ -3314,7 +3340,7 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
-  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause)) {
+  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction)) {
     out.push('## Skill probes - log-only (where a method skill was needed, and what the session did)', '');
     const dg = blockLedger.doneGate;
     if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
@@ -3322,6 +3348,9 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     const rc = blockLedger.rootCause;
     if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched |', '|---|---|---|---|---|---|---|---|---|',
       `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} |`, '');
+    const co = blockLedger.correction;
+    if (co) out.push('| probe | correction turns | save line injected | logged only |', '|---|---|---|---|',
+      `| correction nudge | ${co.turns} | ${co.injected} | ${co.turns - co.injected} |`, '');
   }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
@@ -3547,7 +3576,7 @@ async function runAnalysis() {
     const acc = newInventoryUse(loadPlugins(pluginsFile));
     const rollupJson = { sessions: [] };
     // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
-    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause() } : null;
+    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection() } : null;
     for (const f of files) {
       if (probeSum) {
         const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
@@ -3585,6 +3614,7 @@ async function runAnalysis() {
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
     if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
+    if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;

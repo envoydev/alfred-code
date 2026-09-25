@@ -713,6 +713,27 @@ const doneRow = (detail) => line({ ts: '2026-07-15T07:00:05.000Z', hook: 'guard-
 const redRow = (id, extra) => line({ ts: '2026-07-15T07:00:01.000Z', hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause',
   reason: 'probe: a red npm test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
 
+// R3 (ECC comparison): guard-answer-length.js writes one `kind: correction` probe row per correction
+// turn, `injected` when ALFRED_CODE_CORRECTION_NUDGE=inject handed the save line back.
+test('hook-blocks: correction probe rows are counted, split by whether the save line was injected', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  const corr = (injected, marker) => line({ ts: '2026-07-15T07:00:03.000Z', hook: 'guard-answer-length.js', event: 'UserPromptSubmit', tool: '', mode: 'probe', kind: 'correction',
+    injected, reason: 'probe: a correction turn - logged, nothing injected', detail: { marker, chars: 20 } });
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [corr(false, 'no'), corr(false, 'I meant'), corr(true, 'shorter')].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.correction, { turns: 3, injected: 1 });
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /CORRECTION NUDGE \(probe\): 3 correction turn\(s\) - 1 with the save line injected, 2 logged only/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| correction nudge \| 3 \| 1 \| 2 \|/);
+  const roll = JSON.parse(execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+  assert.deepStrictEqual(roll.probes.correction, { turns: 3, injected: 1 }, 'the rollup sums the corpus');
+});
+
 test('hook-blocks: done-gate probe rows split into ran, and unrun by rule, no tests, skill loaded and missed', () => {
   const dir = tmp();
   const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
@@ -956,6 +977,24 @@ test('scorecard: a green claim with no check in its turn is listed, a checked or
   assert.strictEqual(e.longAnswered, 4);
   assert.strictEqual(e.finalAnswers, 8);
   assert.deepStrictEqual(e.correctionStreaks, [scT(15)], 'recorded once, at the third short turn, not again at the fourth');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The single-turn test is guard-answer-length.js's own (the pinned copy): a short turn that follows an
+// answer of ANY length and carries a correction marker. A status question after a long answer is no
+// correction any more; a correction after a short answer now counts.
+test('scorecard: corrections are the hook\'s marker test, not a short turn after a long answer', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  let a = scHuman(scT(0), 'write it') + endTurn('a1', scT(1), 'prose '.repeat(280)) + scHuman(scT(2), 'how much time is left?');
+  a += endTurn('a2', scT(3), 'About ten minutes.') + scHuman(scT(4), 'I meant the CI pipeline');
+  a += endTurn('a3', scT(5), 'Switched to the CI pipeline.') + scHuman(scT(6), 'Are you still running?') + endTurn('a4', scT(7), 'No.');
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.strictEqual(ea.correctionTurns, 1, 'the streak view still counts the short turn after the long answer');
+  assert.strictEqual(ea.correctionsSaved, 0);
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(4)], 'only the marked turn is a correction');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
