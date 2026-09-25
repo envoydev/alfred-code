@@ -337,6 +337,36 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     return { lines, closeFrom, parked, deny, installed: true, answered, engines, blind: !ours.length };
 }
 
+// R109: plugins the stack once offered and no longer does, each with the release that dropped it. NOT a
+// retirement: each belongs to another marketplace, so no run installs, refreshes, disables or
+// uninstalls one - an installed copy is the user's own. A pick of one (a selection line, an --add) is
+// dropped with ONE line; the listed copy an older install picked is named on the first update past
+// that release only (the retired-MCP pattern, mcp.dueRetired), and is silent after it. `said` carries
+// the names already told across the run's calls, so one run says each once.
+const FORMER_PLUGINS = { superpowers: '2.0.0' };
+function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, log = () => {}, said = new Set() } = {})
+{
+    const former = (l) =>
+    {
+        const m = /^plugin\s+(\S+)$/.exec(String(l).trim());
+        const name = m && nameOfPlugin(m[1]);
+        return name && Object.hasOwn(FORMER_PLUGINS, name) ? name : null;
+    };
+    const named = new Set(lines.map(former).filter(Boolean));
+    for (const r of listing)
+    {
+        const name = r && nameOfPlugin(r.name || '');
+        if (Object.hasOwn(FORMER_PLUGINS, name) && lastVersion && compare && compare(lastVersion, FORMER_PLUGINS[name]) < 0) named.add(name);
+    }
+    for (const name of named)
+    {
+        if (said.has(name)) continue;
+        said.add(name);
+        log(`plugin ${name}: no longer a stack pick (${FORMER_PLUGINS[name]}) - dropped from the picks; an installed copy stays as your own, never refreshed, disabled or uninstalled`);
+    }
+    return lines.filter((l) => !former(l));
+}
+
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
 // read-back. Duplicates are dropped; each real addition is logged.
 function addLines(lines, add = [], log = () => {})
@@ -427,7 +457,7 @@ const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
 // enabled one is installed whatever the selection says (a companion every run adds, or an optional
-// pick such as superpowers the user installed - R72: kept, never removed), or an
+// pick the user installed - kept, never removed), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
 // A disabled claude-hud is parked but gets no DISABLED row: that row's accept action is an enable,
@@ -495,6 +525,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
 };

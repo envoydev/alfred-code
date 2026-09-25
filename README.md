@@ -34,7 +34,7 @@ The stack is built for this house's verticals:
 | **Rules** | 19 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 4 | one plugin each, named for the server (7 entries: playwright expands per browser); the project's closure enables its own |
-| **Plugins** | 5 + the stack's own | five optional third-party picks via the `claude` CLI - four suggested on evidence (a `*.csproj`, a `tsconfig.json`, an auth or payment package, a tracked `CLAUDE.md`), and `superpowers`, suggested but never seeded - plus `claude-hud`, which every install carries beside the core (`claude-hud` at user scope - its status line is account-wide), and the core `alfred-code` itself - the always-on skills and seats, and every hook |
+| **Plugins** | 4 + the stack's own | four optional third-party picks via the `claude` CLI, each suggested on evidence (a `*.csproj`, a `tsconfig.json`, an auth or payment package, a tracked `CLAUDE.md`) - plus `claude-hud`, which every install carries beside the core (`claude-hud` at user scope - its status line is account-wide), and the core `alfred-code` itself - the always-on skills and seats, and every hook |
 
 The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
 inventory at [`docs/alfred-code.html`](docs/alfred-code.html), not in this README.
@@ -81,9 +81,7 @@ claude plugin marketplace add envoydev/alfred-code
 claude plugin install alfred-code@envoydev
 ```
 
-The first line makes the official marketplace known: the optional third-party picks live there,
-`superpowers` among them (suggested, no longer installed by default - the stack carries its own
-plan-writing, test-first, root-cause, done-gate and clarify skills).
+The first line makes the official marketplace known: the optional third-party picks live there.
 
 Then `/alfred-code:setup` runs a fresh install (it decides the selection FROM the project, with
 what the project needs and why shown first) and ends on a restart; `/alfred-code:init`, typed in the

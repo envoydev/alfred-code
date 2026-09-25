@@ -228,7 +228,7 @@ test('only the core carries a cross-marketplace dependency, and the allowlist na
         'allowCrossMarketplaceDependenciesOn must name exactly the marketplaces the entries reach into - a missing name fails the install with a cross-marketplace error, an extra one widens trust for nothing');
 });
 
-// R72: superpowers is an optional pick - suggested, never seeded - so no run adds it on its own.
+// R109: superpowers is no stack pick at all, so no run adds it on its own.
 // claude-hud is the one plugin from another marketplace every run installs.
 test('claude-hud is the plugin the installer adds from another marketplace on every run, and superpowers is not', () => {
     assert.strictEqual(shippedBy['alfred-code'].dependencies, undefined);

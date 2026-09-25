@@ -717,7 +717,6 @@
         <div class="row"><span class="rl">Process</span><div class="chips">
           <span class="chip">project-build-from-scratch</span>
           <span class="chip">create-ticket</span><span class="chip">markdown-style</span>
-          <span class="chip">superpowers (optional) · plan/TDD/debug/verify/finish</span>
         </div></div>
         <div class="serve">
           <span class="chip">guard-read-whole-file</span><span class="chip">guard-secret-value</span><span class="chip">guard-protected-force-push</span>
@@ -858,7 +857,7 @@ const house = {
     ["project-solve-task","Build / orchestration","The gated single-chat vertical for one task, feature, or bug: project-solution-design writes the plan file, project-verify-plan audits and stamps it, the user approves and picks the build mode via one options question (session or domain implementer agents - the task-fit choice marked recommended), project-implementer builds resume-proof (IN_PROGRESS/DONE ticks + resume note in the plan file), a skippable plan-conformance verify, then project-verify-code + the done-gate. A hard user stop between every step - switch model/effort, add context, or edit the plan before saying go - and a serena cycle note keeps the cursor so compaction or a fresh session resumes exactly where it stopped. Every step builds to the quality loop's bar: the plan's Decisions ledger grows through design and build, and the review gates the code against it.","manual"],
     ["project-diagnose-failure","Diagnostics","The gated single-chat investigation for a failure of any kind, from whatever evidence exists: triage it to an evidence tier (stack trace / log window or CI run / written repro steps / a bare client report - tier 4 is the default case, not the edge), gather through evidence-gatherer seats or inline per the run-start mode ask, prove the root cause through the house root-cause loop (project-root-cause) against the matching signature catalogue, then a user FORK - write a report, plan the fix as contracted tasks for the gated build cycle, or emit a log-points card so the next occurrence arrives one tier higher. Read-only throughout, so no approval stamp and no commit gate; a red pipeline routes out to ci-failure-diagnoser, and an unreachable link is named, never guessed at.","manual"],
     ["project-runtime-failure-signatures","Diagnostics","A lookup of the common local-runtime failure signatures - null-reference, DI / composition-root resolution, async deadlock / sync-over-async hang, race / shared mutable state, disposed-lifecycle, config / environment drift, boundary / off-by-one, database contention / exhaustion, HTTP error with a clean response - each mapped to where the cause actually lives, which is almost never the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with project-root-cause (this names the signature, that runs the hypothesis-and-test loop)."],
-    ["project-root-cause","Diagnostics","The house root-cause loop every diagnosis runs on: read the whole failure, make it fail on demand, walk back from where it threw, compare with a case that works, one hypothesis per change, fix at the root test-first, and stop to question the design after three fixes that each surface a new failure. Preloaded by both diagnoser seats and the four resolvers, cited by the gated investigation, pointed at by the interaction baseline, and injected once per failure streak when a build or test run fails; written fresh in 2.0.0, when superpowers became an optional pick."],
+    ["project-root-cause","Diagnostics","The house root-cause loop every diagnosis runs on: read the whole failure, make it fail on demand, walk back from where it threw, compare with a case that works, one hypothesis per change, fix at the root test-first, and stop to question the design after three fixes that each surface a new failure. Preloaded by both diagnoser seats and the four resolvers, cited by the gated investigation, pointed at by the interaction baseline, and injected once per failure streak when a build or test run fails, written fresh in 2.0.0."],
     ["project-ci-failure-signatures","Diagnostics","Triage a red CI pipeline or PR check in the current chat - match the failure to a signature (compile/restore, green-locally-red-on-the-runner, quality gate, signing/release, workflow-config drift, infra flake), make the red-in-CI/green-locally call between a real code defect and an environment/pin/config/workflow failure that never touched the code, and route it. The single-chat form of the ci-failure-diagnoser seat and the CI sibling of project-runtime-failure-signatures; pull the failing log yourself via gh rather than dispatching evidence-gatherers."],
     ["project-stack-usage-analyzer","Diagnostics","Token/tool usage audit of stack skill runs - is Claude Code with the stack efficient here, in tokens and in effectiveness: sweeps EVERY session transcript of this project for stack-skill invocations (scope asked up front - all matching / today / current / custom; already-audited sessions skipped), runs the stack&#39;s analyze-usage.js per session (read from the plugin cache, release-archive then clone fallback; --report-md skeleton keeps the numbers machine-written; --hook-log join when a ALFRED_CODE_INSTRUMENT ledger exists), and writes &lt;docs-path&gt;/alfred-code-usage-report/&lt;session-id&gt;/ - report-usage.md (machine tables plus the efficiency scorecard - cache misses by Claude Code&#39;s own rule, compaction re-reads, build-dir reads, scoped vs whole-suite runs, checked commits, green claims with no check, correction streaks, dispatch overhead - and the authored waste analysis, protocol check, efficiency verdict, verdict) plus the --json dumps and raw session data, and a cross-session SUMMARY.md when several sessions are audited. Report body: aggregates, tool names, paths only - never file contents. Manual, /-only.","manual"],
     ["plugin-authoring","Plugins / authoring","Claude Code plugin authoring: the plugin.json / marketplace.json schema, layout and load precedence, plugin root vs persistent data paths, per-component rules (commands, skills, agents, hooks, MCP, LSP), the validate / --plugin-dir / details / eval verification loop and the security review. Evidence-gated on a plugin manifest; opt-in otherwise."],
@@ -887,20 +886,6 @@ const repository = [
   ["claude-hud:setup","CLI config","https://github.com/jarrodwatts/claude-hud","Configure claude-hud as your statusline."],
   ["claude-md-management:claude-md-improver","Project memory","https://github.com/anthropics/claude-plugins-official","Audit and improve CLAUDE.md files. Outputs quality report; makes targeted updates."],
   ["claude-md-management:revise-claude-md","Project memory","https://github.com/anthropics/claude-plugins-official","Update CLAUDE.md with learnings from the current session."],
-  ["superpowers:brainstorming","Workflow","https://github.com/anthropics/claude-plugins-official","Required before creative work; explores intent + design pre-implementation."],
-  ["superpowers:dispatching-parallel-agents","Workflow","https://github.com/anthropics/claude-plugins-official","2+ independent tasks without shared state - parallel dispatch."],
-  ["superpowers:executing-plans","Workflow","https://github.com/anthropics/claude-plugins-official","Execute a written plan in a fresh session with review checkpoints."],
-  ["superpowers:finishing-a-development-branch","Workflow","https://github.com/anthropics/claude-plugins-official","Decide merge/PR/cleanup path when branch is complete."],
-  ["superpowers:receiving-code-review","Workflow","https://github.com/anthropics/claude-plugins-official","Process review feedback with technical rigor; verify before agreeing."],
-  ["superpowers:requesting-code-review","Workflow","https://github.com/anthropics/claude-plugins-official","Request review on completed work before merging."],
-  ["superpowers:subagent-driven-development","Workflow","https://github.com/anthropics/claude-plugins-official","Execute plans via independent subagents in current session."],
-  ["superpowers:systematic-debugging","Debugging","https://github.com/anthropics/claude-plugins-official","Bug / test failure - diagnostic before fix proposal."],
-  ["superpowers:test-driven-development","Testing","https://github.com/anthropics/claude-plugins-official","RED → GREEN → REFACTOR; tests first."],
-  ["superpowers:using-git-worktrees","Git","https://github.com/anthropics/claude-plugins-official","Isolate feature work via native tools or git worktree fallback."],
-  ["superpowers:using-superpowers","Skill discovery","https://github.com/anthropics/claude-plugins-official","Auto-injected; teaches how to find / use skills at conversation start."],
-  ["superpowers:verification-before-completion","Workflow","https://github.com/anthropics/claude-plugins-official","Gate done claims with verification commands + evidence."],
-  ["superpowers:writing-plans","Workflow","https://github.com/anthropics/claude-plugins-official","Multi-step task → write the plan before touching code."],
-  ["superpowers:writing-skills","Skill discovery","https://github.com/anthropics/claude-plugins-official","Create/edit/verify skills via TDD-for-documentation."],
 ];
 
 function renderFixedSource(g, filtered) {
@@ -949,7 +934,7 @@ function shortSource(url) {
 }
 
 // One PLUGIN is the unit, not one skill. All installable plugins - the marketplace
-// skill packs (superpowers etc.) AND the LSP / hook / UI plugins - share a single section
+// skill packs AND the LSP / hook / UI plugins - share a single section
 // instead of being split by marketplace across several tables. A pack that ships many
 // skills lists them under an expandable toggle rather than giving each skill its own row.
 // The underlying `repository` / `otherTools` data arrays stay untouched (the parity lint
@@ -959,7 +944,6 @@ function shortSource(url) {
 // ships hooks or commands rather than skills (e.g. security-guidance) still lists them here,
 // like the skill packs do, rather than in the Hooks section.
 const pluginMeta = {
-  "superpowers":          { kind: "workflow",        provides: "skills",   blurb: "Optional pick, suggested, never seeded (R72). An engineering-discipline skill pack from the official marketplace: brainstorming, TDD, systematic debugging, plan writing/execution, code review, git worktrees, and subagent dispatch. Measured at 5,707 always-on chars a session on 6.4.1 (a 3,405-char SessionStart injection, back after every compaction, plus 15 descriptions); the four the house flow leaned on have house homes in the core - the done gate, the plan format, the test-first line and project-root-cause." },
   "claude-md-management": { kind: "project memory",   provides: "commands", blurb: "Optional pick, suggested on a tracked CLAUDE.md. Keeps CLAUDE.md honest - an audit-and-improve pass plus a session-learning revision command." },
   "claude-hud":           { kind: "statusline",       provides: "commands", blurb: "Required - installed beside the core on every run, at user scope (its status line is account-wide); one you disable stays off. A live session heads-up display for the statusline - configure layout, presets, and manual overrides." },
   "csharp-lsp":           { kind: "C# / diagnostics", blurb: "Optional pick, suggested on a *.csproj or *.sln. Roslyn language server - inline diagnostics after each edit without a full dotnet build round-trip. Complements serena (navigation)." },
@@ -970,7 +954,7 @@ const pluginMeta = {
     { label: "commit reviewer",    area: "commit",      desc: "Agentic reviewer catching injection, XSS, SSRF, hardcoded secrets, and 25+ vulnerability classes." },
   ] },
 };
-const pluginOrder = ["superpowers", "claude-md-management", "claude-hud", "csharp-lsp", "typescript-lsp", "security-guidance"];
+const pluginOrder = ["claude-md-management", "claude-hud", "csharp-lsp", "typescript-lsp", "security-guidance"];
 
 // Marketplace slug per URL, so a plugin's own install line reads `/plugin install <plugin>@<marketplace>`.
 const marketplaceByUrl = {

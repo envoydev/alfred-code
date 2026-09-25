@@ -896,10 +896,6 @@
   ],
   "plugins": [
     {
-      "id": "superpowers@claude-plugins-official",
-      "note": "OPTIONAL pick, suggested, never seeded (R72): workflow skills (plan, TDD, debug, verify-before-done) whose load-bearing four have house homes in the core. Costs 5,707 always-on chars a session on 6.4.1 (3,405 SessionStart injection, back after every compaction, + 2,302 for 15 descriptions), outside lint check 33's budget"
-    },
-    {
       "id": "claude-md-management@claude-plugins-official",
       "note": "audit + revise CLAUDE.md files"
     },

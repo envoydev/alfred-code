@@ -1132,7 +1132,6 @@
       "claude-md-management",
       "csharp-lsp",
       "security-guidance",
-      "superpowers",
       "typescript-lsp"
     ],
     "dependencyPlugins": [

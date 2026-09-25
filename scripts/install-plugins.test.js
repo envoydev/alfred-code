@@ -818,46 +818,54 @@ test('seed update --installed-only: a claude-hud the user disabled stays off, wi
     }
 });
 
-// R72: superpowers is an optional pick, never seeded. A selection that does not name it installs none;
-// one that names it installs it from its own marketplace. And an install that already has it - every
-// install before 2.0.0 does - keeps it: it lives in another marketplace, which no retirement pass
-// touches (R32), so update refreshes it at the scope it sits at and never uninstalls or disables it.
+// R109: superpowers is no stack pick any more. It lives in another marketplace, so this is no
+// retirement (R32): no run installs, refreshes, disables or uninstalls it - an installed copy is the
+// user's own - and a pick of it (a selection line, an --add, the copy an older install picked) is
+// dropped with ONE line. The listed copy is named on the first update past 2.0.0 only.
 const SP = 'superpowers@claude-plugins-official';
 const spTouched = (calls, verbs) => calls.filter((c) => new RegExp(`^plugin (${verbs}) ${SP}( |$)`).test(c));
+const SP_ANY = 'install|enable|update|uninstall|disable';
+const spLines = (out) => (String(out).match(/^.*plugin superpowers: no longer a stack pick.*$/gm) || []);
 
-test('seed install: a selection that names no superpowers installs none, one that names it installs it', POSIX_ONLY, () =>
+test('seed install: a selection that still names superpowers installs nothing, and says so once', POSIX_ONLY, () =>
 {
-    const bare = seedRun('install', 'skill markdown-style\nrule markdown-docs\n').calls;
-    assert.deepStrictEqual(spTouched(bare, 'install|enable|update'), [], bare.join('\n'));
-    const picked = seedRun('install', 'skill markdown-style\nrule markdown-docs\nplugin superpowers\n').calls;
-    assert.deepStrictEqual(spTouched(picked, 'install'), [`plugin install ${SP} --scope project -y`], picked.join('\n'));
+    const bare = seedRun('install', 'skill markdown-style\nrule markdown-docs\n');
+    assert.deepStrictEqual(spTouched(bare.calls, SP_ANY), [], bare.calls.join('\n'));
+    assert.deepStrictEqual(spLines(bare.out), []);
+    const picked = seedRun('install', 'skill markdown-style\nrule markdown-docs\nplugin superpowers\n');
+    assert.deepStrictEqual(spTouched(picked.calls, SP_ANY), [], picked.calls.join('\n'));
+    assert.strictEqual(spLines(picked.out).length, 1, picked.out);
 });
 
 const spListing = (scope) => JSON.stringify([
     ...['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })),
     { id: SP, version: '6.4.1', scope, enabled: true },
 ]);
-const spPrepare = (repo) =>
+const spPrepare = (version) => (repo) =>
 {
     fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
     fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
-    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 1.3.0\nsha: 0000000\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `version: ${version}\nsha: 0000000\n`);
 };
 
-test('seed update --installed-only: an install that has superpowers keeps it, refreshed at its own scope', POSIX_ONLY, () =>
+test('seed update --installed-only: an installed superpowers is left as the user\'s own, and named once on the first update past 2.0.0', POSIX_ONLY, () =>
 {
     for (const scope of ['user', 'project'])
     {
-        const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: spListing(scope), args: ['--installed-only'], prepare: spPrepare });
-        assert.deepStrictEqual(spTouched(calls, 'uninstall|disable'), [], `${scope}: superpowers was taken out:\n${calls.join('\n')}`);
-        assert.deepStrictEqual(spTouched(calls, 'update'), [`plugin update ${SP} --scope ${scope} -y`], `${scope}: it was not kept:\n${calls.join('\n')}`);
+        const { calls, out } = seedRun('update', 'skill markdown-style\n', { plugins: spListing(scope), args: ['--installed-only', '--add', 'plugin superpowers'], prepare: spPrepare('1.3.0') });
+        assert.deepStrictEqual(spTouched(calls, SP_ANY), [], `${scope}: the stack touched it:\n${calls.join('\n')}`);
+        assert.strictEqual(spLines(out).length, 1, `${scope}: the listed copy and the --add are one line:\n${out}`);
+        assert.doesNotMatch(out, /--add plugin superpowers names nothing/, 'said once, never twice');
     }
+    const later = seedRun('update', 'skill markdown-style\n', { plugins: spListing('user'), args: ['--installed-only'], prepare: spPrepare('2.0.0') });
+    assert.deepStrictEqual(spTouched(later.calls, SP_ANY), [], later.calls.join('\n'));
+    assert.deepStrictEqual(spLines(later.out), [], 'past 2.0.0 the listed copy is simply the user\'s own');
 });
 
 test('seed update: a selection that does not name an installed superpowers leaves it installed and enabled', POSIX_ONLY, () =>
 {
-    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: spListing('project'), prepare: spPrepare });
-    assert.deepStrictEqual(spTouched(calls, 'uninstall|disable'), [], calls.join('\n'));
+    const { calls } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: spListing('project'), prepare: spPrepare('1.3.0') });
+    assert.deepStrictEqual(spTouched(calls, SP_ANY), [], calls.join('\n'));
 });
 
 test('seed update: an absent claude-hud gets its marketplace before the install', POSIX_ONLY, () =>

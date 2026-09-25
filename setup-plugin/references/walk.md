@@ -244,10 +244,7 @@ applied).
 `claude-hud` shows as `dependency`: every install carries it beside the core plugin (at user scope -
 its status line is account-wide) and the installer puts it back on every run, so it cannot be dropped
 and is never offered as a pick (a `claude-hud` the user disabled stays off: updated, never switched
-back on). `superpowers` is an OPTIONAL pick (R72): suggested, never seeded or pre-selected, so its
-FRESH row shows `-` and its why column names its cost and what the core already carries (the
-`general.notes` line in `recommendations.json`), and in DELTA it is kept where installed. The other
-four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL:
+back on). The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL:
 pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or
 `typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names
 the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.

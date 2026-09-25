@@ -291,10 +291,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // layer, and the hooks layer when it carries hook lines (none = every hook, as on disk); a
         // read-back answers only what it found evidence of.
         let answered = { hooks: true, agents: true };
+        // R109: a former stack pick is dropped here, once per run, and never touched on the machine.
+        const formerSaid = new Set();
+        args.add = selection.dropFormerPicks({ lines: args.add, log, said: formerSaid });
         if (args.installedOnly)
         {
             const raw = rawListing ?? readRaw();
             listing = plugins.parsePluginList(raw, projectRoot);
+            selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
             const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: market });
             const lastPicked = stampLayer.readPicked(stampFile);
             const back = selection.readBack({
@@ -359,7 +363,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             let text;
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
-            picked = selection.parseSelection(text);
+            picked = selection.parseSelection(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }).join('\n'));
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);

@@ -287,7 +287,7 @@ change (see the invariants below).
     one row plus the seed's own (lint check 27).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
     `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added); its
-    `notes` give an opt-in row nothing selects its walk-table why (superpowers: the cost).
+    `notes` give an opt-in row nothing selects its walk-table why.
   - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
     arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
@@ -316,7 +316,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core's method skills replace it; nothing shipped cites `superpowers:`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
+| Plugins | 4 OPTIONAL third-party picks via `claude plugin install`, each suggested on evidence (`meta/evidence.json`): claude-md-management, the `*-lsp` pair and security-guidance (`superpowers` left them in 2.0.0, and is never touched - R109) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the shell twins are deleted) |
@@ -507,7 +507,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (112,738 on 2026-09-25: pathless rules 36,635, agent descriptions 28,530, skill descriptions 47,573; an optional superpowers adds 5,707 outside it). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (112,738 on 2026-09-25: pathless rules 36,635, agent descriptions 28,530, skill descriptions 47,573). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

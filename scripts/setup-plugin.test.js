@@ -87,9 +87,9 @@ test('setup: the suggestions are validate\'s checks in fresh-install mode, paste
     assert.ok(call && !/--installed/.test(call), 'fresh-install mode: no inventory to diff against');
     assert.match(flat(block), /each already carries its reason/);
     assert.match(flat(block), /ONE `baseline: <n> item\(s\)` count line/, 'M1: the baseline is a count, not 59 rows');
-    // M1: what 3a says the walk pre-selects agrees with step 9 - superpowers is suggested, never pre-selected.
-    assert.match(flat(block), /`superpowers` is never among them; it is step 9's suggestion, never pre-selected/);
-    assert.match(flat(walkBody()), /`superpowers` is an OPTIONAL pick \(R72\): suggested, never seeded or pre-selected/);
+    // M1: 3a names what the walk pre-selects - and, since R109, no plugin the stack stopped offering.
+    assert.match(flat(block), /The walk pre-selects every row printed here \(`stack:<name>`, `evidence`, `required`\)\./);
+    assert.doesNotMatch(flat(block) + flat(walkBody()), /superpowers/);
     assert.match(setup, /--found "\$TMP\/found\.json"/, 'the tables still carry the scan\'s evidence labels');
 });
 
@@ -834,4 +834,21 @@ test('the 2.0.0 add-back lines fit every install scope', () =>
     const migrations = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')).migrations;
     for (const m of migrations.filter((x) => /claude mcp add /.test(x.then || '') && /--scope project\b/.test(x.then)))
         assert.match(m.then, /--scope user\b/, `${m.id}'s add-back names only the project scope - a global install registers at user scope`);
+});
+
+// R109: superpowers left every stack selection surface. It belongs to another marketplace, so this is
+// no retirement - the seed tests (install-plugins.test.js) pin that no run touches an installed copy.
+test('superpowers is on no stack selection surface', () => {
+    const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const manifest = JSON.parse(read('meta/stack-manifest.json'));
+    assert.ok(!manifest.plugins.some((p) => /^superpowers@/.test(p.id)), 'the manifest plugin catalog');
+    for (const rel of ['meta/recommendations.json', 'meta/evidence.json'])
+        assert.doesNotMatch(read(rel), /superpowers/, rel);
+    assert.ok(!JSON.parse(read('meta/stack-graph.json')).catalog.plugins.includes('superpowers'), 'the graph catalog');
+    for (const f of fs.readdirSync(path.join(PLUGIN_DIR, 'commands')).map((c) => `setup-plugin/commands/${c}`).concat('setup-plugin/references/walk.md'))
+        assert.doesNotMatch(read(f), /`superpowers`/, f);
+    const html = read('docs/alfred-code.html');
+    assert.doesNotMatch(html, /pluginOrder = \[[^\]]*superpowers/, 'the HTML plugin order');
+    assert.doesNotMatch(html, /"superpowers":\s*\{/, 'the HTML plugin card');
+    assert.doesNotMatch(html, /\["superpowers:/, 'the HTML skill rows');
 });

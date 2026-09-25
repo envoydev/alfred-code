@@ -81,15 +81,7 @@
   ],
   "agents": [
    "related-project-analyzer"
-  ],
-  "plugins": [
-   "superpowers"
-  ],
-  "notes": {
-   "plugins": {
-    "superpowers": "optional - 5.7k always-on chars a session; the core already carries its plan-writing, test-first, root-cause, done-gate and clarify skills"
-   }
-  }
+  ]
  },
  "stacks": {
   "aspnet": {

@@ -43,8 +43,7 @@ const CORE_SPEC = `${BRAND.core}@${BRAND.marketplace}`;
 // The plugin every install carries beside the core from ANOTHER marketplace - required, never a pick
 // (R27). It is not a dependency of the core: `claude plugin update` over an older core installs none
 // a release adds, and a plugin missing one is disabled at load, its commands with it (measured on
-// 2.1.280) - so the run installs it. claude-hud keeps its user-scope pin above. superpowers is an
-// optional pick since R72, never added here.
+// 2.1.280) - so the run installs it. claude-hud keeps its user-scope pin above.
 const CORE_DEP_PLUGINS = ['claude-hud@claude-hud'];
 
 // `...=false` restores the copy route - the documented contract, and the only value either twin

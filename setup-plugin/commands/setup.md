@@ -112,9 +112,7 @@ Paste the lines byte-for-byte in ONE fenced block under a `suggestions:` heading
 carries its reason (`missing: <category> <name> - needed by <stack>`, `evidence-missing: <category>
 <name> - <signal in manifest>`), and the baseline every install carries is ONE `baseline: <n> item(s)`
 count line, never a row per item. A greenfield run's scan finds nothing: the `--missing` half
-alone. The walk pre-selects every row printed here (`stack:<name>`, `evidence`, `required`) - an
-optional pick such as `superpowers` is never among them; it is step 9's suggestion, never
-pre-selected. An `evidence-missing` row outside the confirmed stacks is the one a hand pick would
+alone. The walk pre-selects every row printed here (`stack:<name>`, `evidence`, `required`). An `evidence-missing` row outside the confirmed stacks is the one a hand pick would
 miss - name it once in the narration line. Never add a suggestion of your own beyond what the tools
 print.
 

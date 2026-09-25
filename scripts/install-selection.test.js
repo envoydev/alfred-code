@@ -799,3 +799,30 @@ test('read-back: a 1.x install - the old key, the core still named claude-stack 
         assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as the renamed install');
     }
 });
+
+// R109: a plugin the stack once offered (superpowers) is no pick and no retirement - its line is
+// dropped with ONE line whatever brought it (a selection, an --add), and the listed copy an older
+// install picked is named on the first update past the release that dropped it only.
+test('former picks: dropped from the lines with one line, the listed copy named only past its release', () =>
+{
+    const { compareVersions } = require('./install/source.js');
+    const said = new Set();
+    const logs = [];
+    const log = (m) => logs.push(m);
+    const kept = sel.dropFormerPicks({ lines: ['skill markdown-style', 'plugin superpowers', 'plugin csharp-lsp'], log, said });
+    assert.deepStrictEqual(kept, ['skill markdown-style', 'plugin csharp-lsp']);
+    const listing = [{ name: 'superpowers', marketplace: 'claude-plugins-official', scope: 'user', enabled: true }];
+    sel.dropFormerPicks({ listing, lastVersion: '1.3.0', compare: compareVersions, log, said });
+    assert.strictEqual(logs.length, 1, logs.join('\n'));
+    assert.match(logs[0], /^plugin superpowers: no longer a stack pick .* never refreshed, disabled or uninstalled$/);
+
+    const fresh = [];
+    sel.dropFormerPicks({ listing, lastVersion: '1.3.0', compare: compareVersions, log: (m) => fresh.push(m) });
+    assert.strictEqual(fresh.length, 1, 'an older install\'s listed copy is named');
+    for (const lastVersion of ['2.0.0', '2.1.0', ''])
+    {
+        const quiet = [];
+        sel.dropFormerPicks({ listing, lastVersion, compare: compareVersions, log: (m) => quiet.push(m) });
+        assert.deepStrictEqual(quiet, [], `stamp '${lastVersion}': the copy is the user's own, no line`);
+    }
+});
