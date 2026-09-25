@@ -119,7 +119,27 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "project-root-cause",
-      "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers, cited by the resolvers, the investigation flow and baseline-interaction"
+      "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers and the four resolvers, pointed at by baseline-interaction, injected once per failure streak by the stop contract's failing-run branch"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "project-done-gate",
+      "note": "the done gate (R106, moved out of baseline-quality-gates): build + relevant tests after the last edit, output quoted, green summary vs red trace, scoped runs then the full suite once, never a gamed pass; pointed at by baseline-quality-gates, preloaded by every verifier and implementer, held for by the stop contract's done-claim branch"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "project-test-first",
+      "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer, loaded by project-implementer"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "project-plan-writing",
+      "note": "the plan file's one shape (R106, was project-solution-design's references/plan-format.md): header lines, task card, status marks, Decisions ledger, resume line; loaded by project-solution-design at step 4, project-verify-plan and project-implementer before reading a plan"
+    },
+    {
+      "repo": "envoydev/alfred-code",
+      "name": "project-clarify",
+      "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by project-solve-task step 1, project-solve-cross-task and project-build-from-scratch before any design"
     },
     {
       "repo": "envoydev/alfred-code",

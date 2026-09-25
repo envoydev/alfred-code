@@ -8,16 +8,28 @@ const { placement, costOf, costToday, CORE, LIBRARY } = require('./plugin-placem
 const REPO = path.resolve(__dirname, '..');
 const p = placement();
 
-test('the core plugin is exactly the always closure - 23 skills, 8 agents', () => {
+test('the core plugin is exactly the always closure - 27 skills, 8 agents', () => {
     const core = p.plugins[CORE];
     assert.ok(core, 'the core plugin must exist');
-    assert.strictEqual(core.skills.length, 23);
+    assert.strictEqual(core.skills.length, 27);
     assert.strictEqual(core.agents.length, 8);
-    for (const s of ['project-agent-capabilities', 'project-solve-cross-task', 'project-root-cause'])
+    for (const s of ['project-agent-capabilities', 'project-solve-cross-task'])
         assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);
     for (const a of ['integration-reviewer', 'security-auditor'])
         assert.ok(core.agents.includes(a), `${a} is always-closure, so it belongs to the core`);
     assert.deepStrictEqual(core.dependencies, [], 'the core depends on nothing');
+});
+
+// R106: the five method skills the superpowers pack used to carry each ride the CORE, so every
+// install has them and every citer - a baseline pointer, a seat's preload, a flow's Skill call, a
+// hook's message - may name them. A library copy could be switched off per project.
+test('the five method skills land in the core, never the library', () => {
+    const five = ['project-root-cause', 'project-done-gate', 'project-test-first', 'project-plan-writing', 'project-clarify'];
+    for (const s of five)
+    {
+        assert.ok(p.plugins[CORE].skills.includes(s), `${s} belongs to the core`);
+        assert.ok(!p.library.skills.includes(s), `${s} is never a library copy`);
+    }
 });
 
 test('the core is the only plugin; every other item is library', () => {

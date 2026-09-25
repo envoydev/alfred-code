@@ -1,8 +1,14 @@
-# Plan format - the file a design hands to the build
+---
+name: project-plan-writing
+description: "Use when writing, stamping or reading an implementation plan file: the header lines, the task card, the status marks a build adds, the Decisions ledger, the resume line, and what a plan never carries. Not the design itself."
+---
+
+# Plan writing - the file a design hands to the build
 
 The plan file is the handoff: the build reads its task cards, the gates stamp its header, and a
-compacted or fresh session resumes from it. This is its one shape; the Example in `SKILL.md` is the
-same plan in chat shorthand.
+compacted or fresh session resumes from it. This is its one shape - the design writes it, the plan
+audit and the build read it, and the Example in `project-solution-design` is the same plan in chat
+shorthand.
 
 ## The file
 
@@ -67,4 +73,5 @@ stamped later by the flow that owns it, never pre-filled:
 
 - The execution mode, a banner, or advice on how to run it - that is the solve flow's mode ask.
 - A whole implementation pasted in - anchors and shapes, not code.
-- A library or vendor claim from memory - `SKILL.md`'s Plan format section says how one is cited.
+- A library or vendor claim from memory - `project-solution-design`'s Plan format section says how
+  one is cited.

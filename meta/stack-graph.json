@@ -253,6 +253,10 @@
       "mcps": [],
       "plugins": []
     },
+    "project-clarify": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-code-style-analyzer": {
       "mcps": [],
       "plugins": []
@@ -265,11 +269,19 @@
       "mcps": [],
       "plugins": []
     },
+    "project-done-gate": {
+      "mcps": [],
+      "plugins": []
+    },
     "project-first-look": {
       "mcps": [],
       "plugins": []
     },
     "project-implementer": {
+      "mcps": [],
+      "plugins": []
+    },
+    "project-plan-writing": {
       "mcps": [],
       "plugins": []
     },
@@ -312,6 +324,10 @@
       "plugins": []
     },
     "project-test-coverage-loop": {
+      "mcps": [],
+      "plugins": []
+    },
+    "project-test-first": {
       "mcps": [],
       "plugins": []
     },
