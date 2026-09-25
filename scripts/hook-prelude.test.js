@@ -306,6 +306,38 @@ test('a hook run from the alias root exits silently while alfred-code is enabled
     fs.rmSync(alone.dir, { recursive: true, force: true });
 });
 
+// Seam S4 (final review A-I1, C13): an update that took the wrong scope leaves the 1.x alias enabled and
+// installed at USER scope beside `alfred-code` enabled and installed at PROJECT scope (under the 1.x
+// marketplace key), and a 1.x project moved to local scope can leave the old hooks alias on too. Only the
+// alias gate keeps a guard from firing twice there - every hook the alias carries stands down, the core's
+// copy is the one guard, and a project the split never reached still has the alias as its guard.
+test('the split state - the alias at user scope, the core at project scope, the old hooks alias on - runs each hook once (S4)', () => {
+    const ALIAS = 'claude-stack@claude-stack'; // legacy-name
+    const HOOKS_ALIAS = 'claude-stack-hooks@claude-stack'; // legacy-name
+    const CORE_OLD_KEY = 'alfred-code@claude-stack'; // legacy-name - the core installed under the 1.x marketplace key
+    const s = scopes({ account: on(ALIAS), project: { enabledPlugins: { [CORE_OLD_KEY]: true, [HOOKS_ALIAS]: true } },
+        core: [{ id: ALIAS, scope: 'user' }, { id: CORE_OLD_KEY, scope: 'project' }, { id: HOOKS_ALIAS, scope: 'project' }] });
+    const hooks = [...new Set(Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks)
+        .map((h) => (h.command.match(/\/stack\/hooks\/([\w-]+)\.js/) || [])[1]).filter(Boolean))];
+    assert.ok(hooks.length >= 17, `every stack hook the core wires: ${hooks.join(', ')}`);
+    for (const hook of hooks)
+    {
+        assert.strictEqual(standDown(hook, s.env(ALIAS_ROOT), ['node', 'x.js']), true, `${hook}: the alias copy stands down`);
+        assert.strictEqual(standDown(hook, s.env(CORE_ROOT), ['node', 'x.js']), false, `${hook}: the core copy runs`);
+    }
+    const alias = fire('guard-protected-force-push.js', s.env(ALIAS_ROOT));
+    assert.strictEqual(alias.status, 0, alias.stderr);
+    assert.strictEqual(alias.stdout + alias.stderr, '', 'the alias copy says nothing');
+    assert.strictEqual(fire('guard-protected-force-push.js', s.env(CORE_ROOT)).status, 2, 'the core copy is the one denial');
+    const market = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+    const hooksAlias = market.plugins.find((p) => p.name === HOOKS_ALIAS.split('@')[0]);
+    assert.ok(hooksAlias && !hooksAlias.hooks, 'the old hooks alias carries no hooks, so nothing launches from its root');
+    fs.rmSync(s.dir, { recursive: true, force: true });
+    const untouched = scopes({ account: on(ALIAS), core: [{ id: ALIAS, scope: 'user' }] });
+    assert.strictEqual(fire('guard-protected-force-push.js', untouched.env(ALIAS_ROOT)).status, 2, 'a project the split never reached keeps the alias as its guard');
+    fs.rmSync(untouched.dir, { recursive: true, force: true });
+});
+
 // The copy route (ALFRED_CODE_HOOKS_VIA_PLUGIN=false) keeps copying and wiring the hooks while the
 // core, on for the skills, now carries them too - both would fire (S15). The core's copy stands down
 // through the existing migration-window gate.
