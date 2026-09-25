@@ -827,6 +827,66 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });
 
+// Check 57. The 1.x spellings are built from these two, so no fixture line below spells one out.
+const OLD = 'claude-stack'; // legacy-name
+const OLD_ENV = 'CLAUDE_STACK_'; // legacy-name
+
+test('check 57: a 1.x name outside the legacy readers is a finding, named file:line', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`] });
+    const skill = of('stack/skills/x/SKILL.md', `intro\nrun /${OLD}:update first\n`);
+    assert.strictEqual(skill.length, 1, 'one line, one finding');
+    assert.match(skill[0], /^stack\/skills\/x\/SKILL\.md:2 /, 'the finding names file:line');
+    assert.match(skill[0], /legacy-name/, 'the finding names the way out');
+    assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_ENV}MONITOR;\n`).length, 1, 'the env prefix is a 1.x name too');
+    assert.strictEqual(of('stack/hooks/h.js', `a ${OLD}\nb ${OLD_ENV}X\nc\n`).length, 2, 'every line is its own finding');
+    assert.deepStrictEqual(of('README.md', 'the Cursor twin is cursor-stack\n'), [], 'cursor-stack never matches');
+    assert.strictEqual(of('docs/notes.md', `${OLD}\n`).length, 1, 'a docs file that is not evidence is checked');
+    assert.strictEqual(of('scripts/install/brand.js', `const X = '${OLD}';\n`).length, 1, 'brand.js outside its LEGACY block is checked');
+});
+
+test('check 57: every allowed shape passes - evidence, history files, the generated marketplace, the two spans, the retired entries and the marker', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const retiredEntries = [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`];
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries });
+    for (const file of ['docs/rebrand-evidence.md', 'docs/plugin-migration-evidence.md', 'meta/migrations.json', 'meta/retired-entries.json', '.claude-plugin/marketplace.json'])
+        assert.deepStrictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`), [], `${file} is allowed whole`);
+    const brand = `'use strict';\nconst LEGACY = {\n    core: '${OLD}',\n    stamp: '${OLD}.stamp',\n};\nconst after = '${OLD}';\n`;
+    assert.deepStrictEqual(of('scripts/install/brand.js', brand).map((f) => f.split(' ')[0]), ['scripts/install/brand.js:6'], 'the LEGACY block is allowed, the line after it is not');
+    const manifest = `{\n  "skills": [\n    { "repo": "envoydev/${OLD}", "name": "x" }\n  ],\n  "retired": {\n    "plugins": [\n      "${OLD}-old"\n    ]\n  }\n}\n`;
+    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest).map((f) => f.split(' ')[0]), ['meta/stack-manifest.json:3'], 'the retired lists are history, a skill row is not');
+    assert.deepStrictEqual(of('scripts/x.test.js', `const home = '${OLD}-wpf';\nconst deny = 'Agent(${OLD}-aspnet-data:seat)';\n`), [], 'a retired per-stack entry name is allowed wherever it appears');
+    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpf@${OLD}';\n`).length, 1, 'the key beside a retired entry name is still the 1.x key');
+    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpfx';\n`).length, 1, 'a longer name is not a retired entry');
+    assert.deepStrictEqual(of('stack/hooks/h.js', `const old = env.${OLD_ENV}X; // legacy-name\n`), [], 'a marked code line');
+    assert.deepStrictEqual(of('CLAUDE.md', `the 1.x \`${OLD}.stamp\` <!-- legacy-name -->\n`), [], 'a marked markdown line');
+});
+
+test('check 57: the walk reads tracked text files, and the live tree carries no unmarked 1.x name', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintLegacyNames, repoTextFiles } = require('./lint-skills.js');
+    // A tree with no .git (the clean export the gate runs in) is walked: node_modules and binary
+    // files are skipped, a text file is read.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lint57-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'a.md'), `${OLD}\n`);
+        fs.mkdirSync(path.join(dir, 'node_modules'));
+        fs.writeFileSync(path.join(dir, 'node_modules', 'b.js'), `${OLD}\n`);
+        fs.writeFileSync(path.join(dir, 'c.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(OLD)]));
+        const files = repoTextFiles(dir);
+        assert.deepStrictEqual(files.map((f) => f.file), ['a.md'], 'only the text file outside node_modules');
+        assert.strictEqual(lintLegacyNames(files, { retiredEntries: [] }).length, 1);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+
+    const live = repoTextFiles();
+    assert.ok(live.length > 300, `the walk reaches the tree (${live.length} files)`);
+    assert.deepStrictEqual(lintLegacyNames(live), [], 'every 1.x spelling left is a marked legacy reader or an allowed history file');
+});
+
 // Check 27. Task 12 rewrote lintEnvironmentCatalog from a twin-diff to a seed-literal-name diff
 // (settings.js's `written:true` rows plus the two special-cased decision keys), and shipped it with
 // no committed regression test (review, Minor: "a future edit to this function has nothing pinning

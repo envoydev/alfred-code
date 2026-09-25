@@ -38,7 +38,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied // legacy-name
 // beside docs-session.js, without hook-prelude.js), so its own copy of envOf is inline rather than
 // required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
 function envOf(env, suffix)

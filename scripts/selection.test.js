@@ -79,7 +79,7 @@ test('environment catalog: a renamed key is declared on both sides', () =>
     const cat = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8'));
     const migrations = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'migrations.json'), 'utf8'));
     const { envMigrations } = require('./install/env-migrations.js');
-    // a history rename's `to` text is CLAUDE_STACK_* (history keeps its words); the prefix rename
+    // a history rename's `to` text is CLAUDE_STACK_* (history keeps its words); the prefix rename // legacy-name
     // moves it on again to ALFRED_CODE_*, which is the spelling the live catalog owns now.
     const { prefixRenames } = envMigrations(migrations);
     const currentKey = (key) =>

@@ -107,7 +107,7 @@ machinery, no pasted output, one narration line between steps.
 
 ## 1. Preconditions
 `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read from the install records
-the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied `hooks/docs.js`) in this
+the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied `hooks/docs.js`) in this <!-- legacy-name -->
 repo, its git top level or a worktree's main checkout - never from `.claude/skills` or
 `.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
 the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-global` is a 1.x GLOBAL install whose stamp still
@@ -174,7 +174,7 @@ It prints, in order:
 **Environment migrations are the exception: they never join the prune list.** They act on the
 scope's settings.json `env`, and none of them can lose anything the user chose: `rename_settings_env`
 changes a KEY and carries the value across, `rename_settings_env_prefix` does the same for every key
-sharing an old PREFIX in one entry (the 2.0.0 rebrand's `CLAUDE_STACK_* -> ALFRED_CODE_*` is the only
+sharing an old PREFIX in one entry (the 2.0.0 rebrand's `CLAUDE_STACK_* -> ALFRED_CODE_*` is the only <!-- legacy-name -->
 one shipped so far), and `remove_settings_env` drops a key this stack
 RETIRED - one nothing reads any more, and where the key still means something outside this stack it
 carries the exact seeded value it is dropped at, so a hand-set value stays. The installer's env pass

@@ -29,7 +29,7 @@
 // in it still passes.
 const fs = require('fs');
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
-// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
 // project whose settings.json has not been migrated yet keeps resolving.
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 const path = require('path');
@@ -106,8 +106,8 @@ const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // name returns 'Agent type not found'), so from the release that ships the seats as plugins every
 // house dispatch arrives prefixed. Three spellings are therefore the same seat - bare, which is the
 // copy route and cursor-stack, `alfred-code[-<group>]:<seat>`, and a 1.x install's
-// `claude-stack[-<group>]:<seat>` (the marketplace KEY never migrates - docs/rebrand-evidence.md -
-// so a 1.x install's home names stay `claude-stack`-prefixed for the whole 2.x line). A FOREIGN
+// `claude-stack[-<group>]:<seat>` (the marketplace KEY never migrates - docs/rebrand-evidence.md - // legacy-name
+// so a 1.x install's home names stay `claude-stack`-prefixed for the whole 2.x line). A FOREIGN // legacy-name
 // plugin's `x-implementer` is not this flow's seat: it has no APPROVAL convention behind it, so
 // gating it would block a tool the user chose with a message about a flow that does not apply to it.
 const HOUSE_PREFIX = /^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/; // legacy-name

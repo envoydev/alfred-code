@@ -40,7 +40,7 @@ function envFrom(file)
     catch { return {}; }   // absent, unreadable or malformed is not a failure - fall through
 }
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This launcher ships without
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This launcher ships without // legacy-name
 // hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
 // the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
 function envOf(env, suffix)

@@ -55,7 +55,7 @@ function baseName(hook)
     return String(hook || '').trim().toLowerCase().replace(/\.js$/, '');
 }
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. A hook runs at 2.0.0 before the
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. A hook runs at 2.0.0 before the // legacy-name
 // project's own update renames its settings, so the old name answers until then.
 function envOf(env, suffix)
 {

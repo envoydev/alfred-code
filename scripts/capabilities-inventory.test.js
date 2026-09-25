@@ -407,15 +407,15 @@ test('report: the docs root is resolved and printed, so `<docs-path>` is never l
     assert.match(out, /COMPARE:\s+no --body yet/);
 });
 
-// 2.0.0 renamed the setting; a 1.x install still carries CLAUDE_STACK_DOCS_PATH until its own
+// 2.0.0 renamed the setting; a 1.x install still carries CLAUDE_STACK_DOCS_PATH until its own // legacy-name
 // update renames it, and this script has no hook-prelude.js to share envOf with - so it needs its
 // own regression proving the legacy spelling alone still resolves.
-test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.x spelling', { skip: posixOnly }, () =>
+test('report: a project not yet migrated resolves CLAUDE_STACK_DOCS_PATH, the 1.x spelling', { skip: posixOnly }, () => // legacy-name
 {
     const root = project('docs-root-legacy');
-    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai-legacy' } }), -100);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/ai-legacy' } }), -100); // legacy-name
     const { out } = run([], { cwd: root });
-    assert.match(out, /DOCS ROOT: docs\/ai-legacy\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/);
+    assert.match(out, /DOCS ROOT: docs\/ai-legacy\s+\(from CLAUDE_STACK_DOCS_PATH in \.claude\/settings\.json env\)/); // legacy-name
 });
 
 // A 1.x install's stamp keeps its old name until an update rewrites it: it is still the install's

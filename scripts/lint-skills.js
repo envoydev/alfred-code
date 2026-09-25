@@ -1230,9 +1230,8 @@ function main()
     // parity held by discipline). The one Node-side source is meta/stack-manifest.json.
     const raw = readStackManifest();
     const primary = manifestSkillMap(raw.skills);   // canonical SKILLS view
-    // The manifest's SKILLS rows still name this repo's own skills by its 1.x slug - the value is
-    // data carried over from the frozen twins verbatim (zero-diff, Phase 7b), not a live reference.
-    const TWIN_HOUSE_REPO = 'envoydev/claude-stack'; // legacy-name
+    // The manifest's SKILLS rows name this repo's own skills by its GitHub slug.
+    const HOUSE_REPO = require('./install/brand.js').BRAND.slug;
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
@@ -1301,9 +1300,9 @@ function main()
     // 3. Every active envoydev manifest entry has a local directory.
     for (const [skill, repo] of primary.active)
     {
-        if (repo === TWIN_HOUSE_REPO && !dirs.includes(skill))
+        if (repo === HOUSE_REPO && !dirs.includes(skill))
         {
-            flag(`SKILLS registers ${TWIN_HOUSE_REPO}|${skill} but skills/${skill}/ does not exist`);
+            flag(`SKILLS registers ${HOUSE_REPO}|${skill} but skills/${skill}/ does not exist`);
         }
     }
 
@@ -1452,7 +1451,7 @@ function main()
         }
     }
 
-    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== TWIN_HOUSE_REPO));
+    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== HOUSE_REPO));
     const inventory = new Set([...thirdPartyActive, ...primary.commented.keys()]);
     for (const name of thirdPartyActive)
     {
@@ -2289,6 +2288,8 @@ function main()
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
     // 56. No retired plugin's name is left in shipped stack text.
     for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
+    // 57. The 1.x name stays in the legacy readers - every other tracked line spells alfred-code.
+    for (const finding of lintLegacyNames(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2628,6 +2629,111 @@ function stackTextFiles(root = ROOT)
     return files;
 }
 
+// 57. The 1.x name stays in the legacy readers. 2.0.0 renamed the stack to alfred-code, and the
+// old spellings are READ for the whole 2.x line - so a 1.x spelling left anywhere else is either a
+// reader nobody marked or a new thing named after a retired product. A line that must keep one
+// carries `legacy-name` (`// legacy-name`, `# legacy-name`, `<!-- legacy-name -->`). What passes
+// without a marker, each for its reason:
+const LEGACY_NAME = /claude-stack|CLAUDE_STACK_/g; // legacy-name
+const LEGACY_FILES = [
+    { re: /^docs\/[^/]+-evidence\.md$/, why: 'measured evidence keeps its words' },
+    { re: /^meta\/migrations\.json$/, why: 'a migration names the spelling it migrates from' },
+    { re: /^meta\/retired-entries\.json$/, why: 'the only record of what each 1.x per-stack entry carried' },
+    { re: /^\.claude-plugin\/marketplace\.json$/, why: 'generated: its 1.x aliases come from brand.js LEGACY, its retired entries from retired-entries.json, and check 49 holds it to the generator' },
+];
+// JSON carries no comment, and brand.js is the one home a call site takes the old names from.
+const LEGACY_SPANS = [
+    { file: 'meta/stack-manifest.json', start: /^\s*"retired"\s*:\s*\{/, why: 'the retired lists are history' },
+    { file: 'scripts/install/brand.js', start: /^const LEGACY = \{/, why: 'the one home of the 1.x names' },
+];
+// The per-stack entries 1.2.0 shipped keep their 1.x names while they are retired (plan decision
+// D2): a name listed in meta/retired-entries.json passes wherever it appears.
+function retiredEntryNames(root = ROOT)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(root, 'meta', 'retired-entries.json'), 'utf8')).entries.map((e) => e.name); }
+    catch { return []; }
+}
+// The line range of the brace block opening on the first line `start` matches, strings skipped.
+function braceSpan(lines, start)
+{
+    const first = lines.findIndex((l) => start.test(l));
+    if (first < 0) return null;
+    let depth = 0;
+    let quote = '';
+    for (let i = first; i < lines.length; i++)
+    {
+        const line = lines[i];
+        for (let c = 0; c < line.length; c++)
+        {
+            const ch = line[c];
+            if (quote) { if (ch === '\\') c++; else if (ch === quote) quote = ''; continue; }
+            if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+            else if (ch === '{') depth++;
+            else if (ch === '}' && --depth === 0) return [first, i];
+        }
+    }
+    return [first, lines.length - 1];
+}
+function lintLegacyNames(files, { retiredEntries = retiredEntryNames() } = {})
+{
+    const escaped = [...retiredEntries].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'));
+    const retiredRe = escaped.length ? new RegExp(`(?:${escaped.join('|')})(?![\\w-])`, 'g') : null;
+    const out = [];
+    for (const { file, text } of files)
+    {
+        if (LEGACY_FILES.some((a) => a.re.test(file))) continue;
+        const lines = text.split('\n');
+        const spans = LEGACY_SPANS.filter((s) => s.file === file).map((s) => braceSpan(lines, s.start)).filter(Boolean);
+        lines.forEach((line, i) =>
+        {
+            if (line.includes('legacy-name') || spans.some(([a, b]) => i >= a && i <= b)) return;
+            const rest = retiredRe ? line.replace(retiredRe, '') : line;
+            const hits = [...new Set(rest.match(LEGACY_NAME) || [])];
+            if (hits.length)
+                out.push(`${file}:${i + 1} spells the 1.x name (${hits.join(', ')}) - use alfred-code / ALFRED_CODE_, or mark a legacy reader's line \`legacy-name\` (\`// legacy-name\` in code, \`<!-- legacy-name -->\` in markdown).`);
+        });
+    }
+    return out;
+}
+// Every tracked text file: `git ls-files` when `root` is a repo's top level, else a walk of the
+// tree (the clean export the gate runs in has no .git), node_modules and .git skipped. A file
+// holding a NUL byte is binary and skipped.
+function repoTextFiles(root = ROOT)
+{
+    let names = null;
+    try
+    {
+        const top = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (fs.realpathSync(top) === fs.realpathSync(root))
+            names = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
+    }
+    catch { names = null; }
+    if (!names)
+    {
+        names = [];
+        const walk = (dir, rel) =>
+        {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+            {
+                if (e.name === 'node_modules' || e.name === '.git') continue;
+                const r = rel ? `${rel}/${e.name}` : e.name;
+                if (e.isDirectory()) walk(path.join(dir, e.name), r);
+                else if (e.isFile()) names.push(r);
+            }
+        };
+        walk(root, '');
+    }
+    const files = [];
+    for (const name of names.sort())
+    {
+        let buf;
+        try { buf = fs.readFileSync(path.join(root, name)); } catch { continue; }   // tracked but deleted in the tree
+        if (buf.includes(0)) continue;
+        files.push({ file: name, text: buf.toString('utf8') });
+    }
+    return files;
+}
+
 // 48. The stack hooks ride the CORE entry (2.0.0, 'Fold into core'), GENERATED from the manifest's
 // own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
 // exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
@@ -2865,6 +2971,8 @@ module.exports = {
     lintMcpToolNames,
     lintRetiredNames,
     stackTextFiles,
+    lintLegacyNames,
+    repoTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,
     lintMarketplaceEntries,

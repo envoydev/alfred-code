@@ -25,7 +25,7 @@ const { spawn } = require('node:child_process');
 const PYTHON = '3.13';
 const WINDOWS_ARM_PYTHON = 'cpython-3.13-windows-x86_64-none';
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This file ships without
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This file ships without // legacy-name
 // hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
 // the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
 function envOf(env, suffix)

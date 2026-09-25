@@ -5315,7 +5315,7 @@
       ]
     },
     "env-legacy-fallback": {
-      "_note": "2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the two MCP launchers (memory-launch.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is five edits, not one.",
+      "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the two MCP launchers (memory-launch.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is five edits, not one.",
       "owner": {
         "file": "stack/hooks/hook-prelude.js",
         "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"

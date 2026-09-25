@@ -48,7 +48,7 @@ recompute, no pasted tool output, one narration line between steps.
 settings in the project's `.claude/`, so validate reconciles all three the same way - there is no
 account-only install to refuse. Find the install with `node "$TMP/repo/scripts/install/stamp.js"
 state .`, which reads the install records the hooks read (`alfred-code.stamp`, the 1.x
-`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main
+`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main <!-- legacy-name -->
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
 `not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-global` (a 1.x global install
 whose stamp is still in the account dir) -> stop and route to `/alfred-code:update`, which moves it

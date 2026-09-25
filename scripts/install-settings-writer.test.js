@@ -26,7 +26,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const CATALOG = require('../meta/environment.json').env;
 const MIGRATIONS = {
     renames: [['CLAUDE_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']],
-    retired: [['CLAUDE_STACK_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']],
+    retired: [['CLAUDE_STACK_FRESH_SESSION_PCT', null], ['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', '40']], // legacy-name
     reseed: [['ALFRED_CODE_FRESH_SESSION_DEFAULT', '250000', '180000']],
 };
 
@@ -203,8 +203,8 @@ test('settings-env: a rename never overwrites a value already set under the NEW 
 
 test('settings-env: a RETIRED key is dropped, and a conditional one only at its old seed', () =>
 {
-    const dropped = envPass({ CLAUDE_STACK_FRESH_SESSION_PCT: '40' }).env;
-    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in dropped));
+    const dropped = envPass({ CLAUDE_STACK_FRESH_SESSION_PCT: '40' }).env; // legacy-name
+    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in dropped)); // legacy-name
 
     const atSeed = envPass({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '40' }).env;
     assert.ok(!('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' in atSeed), 'the stack\'s own old seed was kept');
@@ -351,7 +351,7 @@ test('settings-writer: a seat that moved home loses its OLD stack spelling, whic
 {
     // The deny names the carrying plugin; a release that moves the seat changes the spelling. The
     // old entry then addresses nothing and would sit in the file forever.
-    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-old:security-auditor)', 'Agent(claude-stack-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } });
+    const file = settingsFile({ permissions: { deny: ['Agent(claude-stack-old:security-auditor)', 'Agent(claude-stack-old:evidence-gatherer)', 'Agent(my-own:security-auditor)'] } }); // legacy-name
     const { data } = write(file, {
         agentDeny: ['Agent(alfred-code:security-auditor)'],
         agentAllow: ['Agent(alfred-code:evidence-gatherer)'],

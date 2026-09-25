@@ -108,7 +108,7 @@ change (see the invariants below).
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
     model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
-    suffix, carry or compaction is read), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the
+    suffix, carry or compaction is read), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the <!-- legacy-name -->
     seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
@@ -467,13 +467,14 @@ mirrored there in the same sitting.
   equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
-- **The 1.x name is retired, never reused.** `claude-stack` spellings (`CLAUDE_STACK_*`, the older
-  `CLAUDE_DOCS_PATH`, `claude-stack.stamp`, the marketplace key, the plugin cache dir,
-  `Agent(claude-stack:<seat>)`) are READ for the whole 2.x line by dedicated legacy readers - the new
-  `ALFRED_CODE_*` / `alfred-code` spelling wins whenever both exist. Lint check 55 keeps every other
-  spot on the new name; a line that must still carry the old one marks it `<!-- legacy-name -->`
-  (`// legacy-name` in code) so the check skips it. Never spend `claude-stack` on anything NEW - a
-  fresh flag, key, file or entry name is `alfred-code` / `ALFRED_CODE_` from day one.
+- **The 1.x name is retired, never reused.** Its spellings (`CLAUDE_STACK_*`, the older <!-- legacy-name -->
+  `CLAUDE_DOCS_PATH`, `claude-stack.stamp`, the marketplace key, the plugin cache dir, <!-- legacy-name -->
+  `Agent(claude-stack:<seat>)`) are READ for the whole 2.x line by legacy readers; the new spelling <!-- legacy-name -->
+  wins when both exist. Lint check 57 fails on any other 1.x spelling in a tracked file: a reader's
+  line carries `legacy-name` (`<!-- legacy-name -->` in markdown, `// legacy-name` in code), and
+  only history (`docs/*-evidence.md`, `meta/migrations.json`, `meta/retired-entries.json`, the
+  manifest's `retired` block), the generated marketplace, `brand.js` `LEGACY` and the retired entry
+  names pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
 - **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root

@@ -109,16 +109,16 @@ test('settings_env_value fires only on the exact seeded value; an unknown detect
 test('settings_env_prefix fires on ANY key under that prefix, and reports the prefix rename', () => {
     const migrations = [{
         id: 'alfred-code-settings-prefix',
-        detect: { settings_env_prefix: 'CLAUDE_STACK_' },
-        rename_settings_env_prefix: { from: 'CLAUDE_STACK_', to: 'ALFRED_CODE_' },
+        detect: { settings_env_prefix: 'CLAUDE_STACK_' }, // legacy-name
+        rename_settings_env_prefix: { from: 'CLAUDE_STACK_', to: 'ALFRED_CODE_' }, // legacy-name
     }];
     const none = scaffold({ migrations, settings: { env: { MY_OWN_APP_KEY: 'x' } } });
     assert.match(run(['--snapshot', none.snap, '--root', none.install, '--fixture', none.fixtureFile]).out, /^migrations: none detected$/m);
 
-    const seeded = scaffold({ migrations, settings: { env: { CLAUDE_STACK_MONITOR: 'log' } } });
+    const seeded = scaffold({ migrations, settings: { env: { CLAUDE_STACK_MONITOR: 'log' } } }); // legacy-name
     const out = run(['--snapshot', seeded.snap, '--root', seeded.install, '--fixture', seeded.fixtureFile]).out;
     assert.match(out, /^migration: alfred-code-settings-prefix\tsettings_env_prefix$/m);
-    assert.match(out, /^ {2}env-rename-prefix: CLAUDE_STACK_\* -> ALFRED_CODE_\*$/m);
+    assert.match(out, /^ {2}env-rename-prefix: CLAUDE_STACK_\* -> ALFRED_CODE_\*$/m); // legacy-name
 });
 
 test('settings_hook_wired reads the wiring, not a file; the matcher scopes it', () => {

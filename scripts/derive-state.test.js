@@ -306,7 +306,7 @@ test('readInstalled: HOOKS_OFF matches the way the hooks read it - `.js`, case a
 
 test('readInstalled: a seat denied under ANY stack entry\'s spelling stays off after it moves home', () =>
 {
-    const lines = readInstalled({ plugins: ['alfred-code'], deny: ['Agent(claude-stack-old-home:security-auditor)'], routes: { skills: true }, sourceDir: ROOT });
+    const lines = readInstalled({ plugins: ['alfred-code'], deny: ['Agent(claude-stack-old-home:security-auditor)'], routes: { skills: true }, sourceDir: ROOT }); // legacy-name
     assert.ok(!lines.includes('agent security-auditor'));
 });
 
@@ -388,7 +388,7 @@ test('floor: the model-invocable skills plus the seats not denied, from the stac
 
 test('floor: only the seat\'s CURRENT home spelling denies it - Claude Code matches that name exactly', () =>
 {
-    const stale = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack-old-home:security-auditor)'] });
+    const stale = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack-old-home:security-auditor)'] }); // legacy-name
     assert.deepStrictEqual(stale.agents.denied, [], 'a deny under an entry the seat left hides nothing');
     assert.strictEqual(stale.agents.chars, floor({ plugins: FLOOR_ENTRIES }).agents.chars);
 });
@@ -501,21 +501,21 @@ const { stampCarried, classifyNew } = require('./derive-state.js');
 
 test('stampCarried: an item MOVED out of an entry still enabled here into the core comes back through the core', () =>
 {
-    const stamp = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] };
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill project-solve-cross-task', 'agent security-auditor']);
+    const stamp = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill project-solve-cross-task', 'agent security-auditor']); // legacy-name
 });
 
 test('stampCarried: no move, an uninstalled or parked old home, a parked core, a denied seat, a library item - nothing', () =>
 {
-    const moved = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] };
+    const moved = { skills: ['project-solve-cross-task@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['project-solve-cross-task@alfred-code'] }, enabled: ['alfred-code'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['alfred-code'], routes: ALL_ROUTES }), [], 'the new home is parked');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), ['skill project-solve-cross-task'], 'a seat denied under any spelling');
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'project-solve-cross-task'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home');
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one');
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []);
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['alfred-code'], routes: ALL_ROUTES }), [], 'the new home is parked'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), ['skill project-solve-cross-task'], 'a seat denied under any spelling'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'project-solve-cross-task'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []); // legacy-name
 });
 
 // R78: a stamp is a file on disk a hand or a bad merge can change, and a carried name becomes a

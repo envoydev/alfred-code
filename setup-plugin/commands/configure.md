@@ -78,7 +78,7 @@ comparable banner by banner; the content varies, the skeleton never does.
 ## 1. Install status - find it, inventory it, diff it
 
 - **Find the install.** `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read
-  from the install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a
+  from the install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a <!-- legacy-name -->
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing

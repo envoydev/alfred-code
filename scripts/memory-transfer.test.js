@@ -272,17 +272,17 @@ test('serviceEntry: another project\'s plugin row, a foreign marketplace and a g
 
 // Requirement 5 (task-5c): a 1.x install's marketplace KEY never migrates on rename
 // (docs/rebrand-evidence.md S4/S9), so its installed_plugins.json row still keys the server
-// `memory@claude-stack` for the whole 2.x line. The lookup reads the current key first, then falls
+// `memory@claude-stack` for the whole 2.x line. The lookup reads the current key first, then falls // legacy-name
 // back to the legacy one, and the current key's row wins when both exist.
-test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and memory@envoydev wins when both exist', { skip: skipNoSqlite }, () =>
+test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and memory@envoydev wins when both exist', { skip: skipNoSqlite }, () => // legacy-name
 {
     const sb = sandbox();
     const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
     const row = { scope: 'project', projectPath: sb.root, installPath: sb.pluginRoot, version: '1.0.0' };
     // legacy-name - a 1.x install's plugin id still ends @claude-stack; the marketplace key never moves.
-    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [row] } }));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [row] } })); // legacy-name
     const viaLegacy = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
-    assert.ok(viaLegacy, 'the memory@claude-stack row alone still resolves an installPath');
+    assert.ok(viaLegacy, 'the memory@claude-stack row alone still resolves an installPath'); // legacy-name
     assert.strictEqual(viaLegacy.command, process.execPath);
 
     const newRoot = path.join(sb.work, 'plugin-cache', 'memory-new', '2.0.0');
@@ -297,7 +297,7 @@ test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and m
         } } }],
     }, null, 2));
     fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: {
-        'memory@claude-stack': [row],
+        'memory@claude-stack': [row], // legacy-name
         'memory@envoydev': [{ ...row, installPath: newRoot }],
     } }));
     const viaBoth = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });

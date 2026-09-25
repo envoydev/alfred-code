@@ -62,8 +62,8 @@
 // agent-{agentId}.jsonl" (code.claude.com/docs/en/sub-agents, via context7) - confirmed live in this
 // harness's own manual dry run (see task-8-report.md).
 //
-// Isolation: every run's temp project lives under CLAUDE_STACK_EVAL_SCRATCH (default
-// <os.tmpdir()>/claude-stack-memory-usage-eval/), matching this repo's own "session scratchpad (or
+// Isolation: every run's temp project lives under ALFRED_CODE_EVAL_SCRATCH (default
+// <os.tmpdir()>/alfred-code-memory-usage-eval/), matching this repo's own "session scratchpad (or
 // os.tmpdir())" convention - the harness has to be runnable outside any one agent session's own
 // scratchpad. CLAUDE_CONFIG_DIR is NEVER set (auth lives in the default account). After a run, the temp
 // project AND the exact ~/.claude/projects/<slug>/ folder it created are deleted - found by searching
@@ -98,8 +98,8 @@ const FIXTURES_DIR = path.join(ROOT, 'scripts', 'fixtures', 'memory-usage');
 // FACT-EMBED (spike-facts.md): the [sqlite] extra is what gives real 384-dim embeddings; without it
 // the server hard-refuses on a db that already holds memories. Pinned to the version the spike proved
 // live; override for a later pin via env, never hardcode a second place.
-const MEMORY_VERSION = process.env.CLAUDE_STACK_EVAL_MEMORY_VERSION || '11.13.0';
-const TMP_BASE = process.env.CLAUDE_STACK_EVAL_SCRATCH || path.join(os.tmpdir(), 'claude-stack-memory-usage-eval');
+const MEMORY_VERSION = process.env.ALFRED_CODE_EVAL_MEMORY_VERSION || '11.13.0';
+const TMP_BASE = process.env.ALFRED_CODE_EVAL_SCRATCH || path.join(os.tmpdir(), 'alfred-code-memory-usage-eval');
 // A SIBLING of every per-run project/acct dir, never touched by cleanupRun() (which only ever removes
 // the three paths it is handed) - so a forensics dump written here survives cleanup on purpose.
 const FORENSICS_DIR = path.join(TMP_BASE, 'forensics');
@@ -128,7 +128,7 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   fs.mkdirSync(projectDir, { recursive: true });
   // A git repo of its own: memory.js's projectName() (and the model's own `basename "$(pwd)"` check)
   // both resolve the project tag from `git rev-parse --show-toplevel`, which must be THIS dir, not the
-  // claude-stack worktree the harness itself runs from.
+  // Alfred Code worktree the harness itself runs from.
   execFileSync('git', ['init', '-q'], { cwd: projectDir });
 
   const claudeDir = path.join(projectDir, '.claude');
@@ -264,7 +264,7 @@ async function diffSetups(agents) {
     lines.push(`settings.json hook EVENTS only the real install wires (docs-session.js, from selecting it to get docs.js): ${installExtraEventKeys.join(', ') || '(none)'}`);
 
     // Other install-only artifacts
-    for (const extra of ['CLAUDE.md', 'claude-stack.stamp']) {
+    for (const extra of ['CLAUDE.md', 'alfred-code.stamp']) {
       lines.push(`.claude/${extra}: self=${fs.existsSync(path.join(selfDir, '.claude', extra))} install=${fs.existsSync(path.join(installDir, '.claude', extra))}`);
     }
     lines.push(`settings.json autoMemoryEnabled: self=${settingsSelf.autoMemoryEnabled} install=${settingsInstall.autoMemoryEnabled} (install switches Claude's own auto-memory off; self-built leaves it untouched)`);
@@ -477,8 +477,8 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // its own write_stamp() heredoc never had those lines at all - not merely empty-valued). This is
   // what proves the update path is exercising the real 'a locked item this project never had before'
   // case a4c0828 fixed, not an already-always-aware fixture.
-  const preStampPath = path.join(projectDir, '.claude', 'claude-stack.stamp');
-  if (!fs.existsSync(preStampPath)) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) wrote no claude-stack.stamp - not a valid pre-feature baseline`);
+  const preStampPath = path.join(projectDir, '.claude', 'claude-stack.stamp'); // legacy-name - the pre-feature commit is a 1.x install
+  if (!fs.existsSync(preStampPath)) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) wrote no claude-stack.stamp - not a valid pre-feature baseline`); // legacy-name
   const preStamp = fs.readFileSync(preStampPath, 'utf8');
   if (/^installed-always-(rules|mcps):/m.test(preStamp)) {
     throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) stamp already carries installed-always- keys - not a pre-a4c0828 baseline`);

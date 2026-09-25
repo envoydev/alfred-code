@@ -392,7 +392,7 @@ function installState(projectRoot, env = process.env)
 }
 
 // M5 (Task 18b fix round 1): the scope the last install used, for a command to pass back to the
-// installer - the stamp under either name (a 1.x install keeps `claude-stack.stamp` until its first
+// installer - the stamp under either name (a 1.x install keeps `claude-stack.stamp` until its first // legacy-name
 // 2.0.0 update), a 1.x `global` as `user` (args.js reads the flag the same way), and anything else -
 // no stamp, no line, a hand-edited value - as `project`, the floor every scope always had. Read in the
 // tree the command runs in, never a worktree's main checkout (R95 stops those before this read).

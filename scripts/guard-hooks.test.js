@@ -41,11 +41,11 @@ delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // (measured 2026-09-22: red on an installed checkout, green in CI, which installs nothing).
 delete process.env.ALFRED_CODE_DOCS_PATH;
 delete process.env.CLAUDE_DOCS_PATH;
-// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers
+// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers // legacy-name
 // ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too
-// (measured here: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 resolved every unproven window in
+// (measured here: CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 resolved every unproven window in // legacy-name
 // this file as 1M). Strip the whole prefix rather than naming each key by hand.
-for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k];
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k]; // legacy-name
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
 // 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480
@@ -297,7 +297,7 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
     'without a model id it is not the 1M tier - it is the default one, off here');
   assert.equal(call(at('w-1m-260k', 260000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '250000' })), 2, 'the tier variable moves it');
   assert.equal(call(at('w-1m-450k-off', 450000), w1m({ ALFRED_CODE_FRESH_SESSION_1M: '0' })), 0, '0 switches that tier off');
-  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch');
+  assert.equal(call(at('w-1m-450k-pct0', 450000), w1m({ CLAUDE_STACK_FRESH_SESSION_PCT: '0' })), 2, 'the retired percentage key is dead - it is no longer an off switch'); // legacy-name
 });
 
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
@@ -699,7 +699,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
   // A hyphenated foreign plugin name, carrying a REAL house seat name after the colon, is still
-  // judged by its PREFIX, not by whether the seat name happens to match - the legacy claude-stack
+  // judged by its PREFIX, not by whether the seat name happens to match - the legacy claude-stack // legacy-name
   // spelling must not widen HOUSE_PREFIX into matching any hyphenated home.
   assert.equal(disp('someone-else:wpf-implementer'), 0, 'a hyphenated FOREIGN plugin is still foreign');
   assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
@@ -901,7 +901,7 @@ test('guard-stop-contract: the tier variable at 0 turns the offer off', () => {
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, '0 on the trigger this session uses disables the offer outright');
   assert.equal(stop(w1m), 2, 'and the same session still qualifies at the 1M default');
   assert.equal(stop({ ...w1m, ALFRED_CODE_FRESH_SESSION_DEFAULT: '0', ALFRED_CODE_FRESH_SESSION_200K: '0' }), 2, 'the other tiers\' switches do not reach it');
-  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all');
+  assert.equal(stop({ ...w1m, CLAUDE_STACK_FRESH_SESSION_PCT: '0' }), 2, 'and the retired percentage key is not read at all'); // legacy-name
   const acct1m = fs.mkdtempSync(path.join(TMP, 'stopoff-1m-'));
   fs.writeFileSync(path.join(acct1m, 'settings.json'), JSON.stringify({ model: 'claude-opus-5' }));
   assert.equal(stop({ CLAUDE_CONFIG_DIR: acct1m, ALFRED_CODE_FRESH_SESSION_1M: '0' }), 0, 'a readable 1M window reads its own switch');
@@ -1246,11 +1246,11 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 });
 
 // --- the context window the trigger scales against: reported 2026-09-04 on a 1M session -------
-// CLAUDE_STACK_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a
+// CLAUDE_STACK_FRESH_SESSION_PCT was documented as a percentage of the window but inert on a // legacy-name
 // fresh 1M session: the window was INFERRED from observed usage, so it read 200k until the
 // session had already grown past 200k per message - the state the gate exists to prevent - and
 // 200k x every percent from 5 to 75 collapses onto the 150k floor. Both that key and the
-// CLAUDE_STACK_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the
+// CLAUDE_STACK_CONTEXT_WINDOW override are retired; the window is DETECTED in two layers, the // legacy-name
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
@@ -1317,15 +1317,15 @@ test('fresh-session window: the account settings model id names the tier before 
     assert.equal(askLoop(ctxAt('win-model-450k', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('acct-1m2', 'claude-opus-5') })), 2, 'and 450k on the 1M tier still fires');
 });
 
-test('fresh-session window: the retired CLAUDE_STACK_CONTEXT_WINDOW override is inert', () => {
+test('fresh-session window: the retired CLAUDE_STACK_CONTEXT_WINDOW override is inert', () => { // legacy-name
     // It used to be the FIRST resolution layer and is gone: the window is detected, never stated.
     // Every install seeded the key, so a settings block still carrying one must not move a tier.
     const hot = ctxAt('win-env-170k', 170000);
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 0,
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 0, // legacy-name
         'a stated 200k window resolves nothing now - the default trigger applies, and 170k is under it');
-    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2,
+    assert.equal(askLoop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000', CLAUDE_CONFIG_DIR: accountDir('acct-inert', 'claude-haiku-4-5') })), 2, // legacy-name
         'the model id decides alone: 170k is past the 200k tier trigger, whatever the dead key says');
-    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2,
+    assert.equal(askLoop(ctxAt('win-env-450k', 450000), winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '200000' })), 2, // legacy-name
         '... and 450k fires on the default trigger, the dead key naming a tier it cannot set');
 });
 
@@ -1403,7 +1403,7 @@ test('stop contract: the fresh-session offer reads the window exactly as its twi
     assert.equal(stop(hot, winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m', 'claude-opus-5') })), 0, 'a 1M model id lifts it past 190k');
     assert.equal(stop(at('stopwin-450k', 450000), winEnv()), 2, 'and 450k is past the default trigger');
     assert.equal(stop(at('stopwin-450k-1m', 450000), winEnv({ CLAUDE_CONFIG_DIR: accountDir('stop-acct-1m2', 'claude-opus-5') })), 2, '... as it is past the 1M one');
-    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 190k is past it');
+    assert.equal(stop(hot, winEnv({ CLAUDE_STACK_CONTEXT_WINDOW: '1000000' })), 2, 'the retired override moves nothing here either - it resolves no window, so the default trigger applies and 190k is past it'); // legacy-name
 });
 
 test('guard-answer-length: the cap holds, and never deletes a report field or a self-correction', () => {

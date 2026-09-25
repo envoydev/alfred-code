@@ -887,8 +887,8 @@ test('prunedRetired keeps a parked carrier and one at another scope, and says so
     const gone = P.prunedRetired({ rows, retired: [...carriers, 'ponytail'], retiredRows: RETIRED_ROWS, carriers, market: key, scope: 'project', cli: (a) => { calls.push(a.join(' ')); return true; }, log: (m) => logs.push(m) });
     assert.deepStrictEqual(gone.sort(), ['claude-stack-web-angular', 'ponytail'], 'a parked retired name that carries nothing still goes at this scope');
     assert.ok(!calls.some((c) => /claude-stack-angular@|claude-stack-aspnet@/.test(c)), calls.join(' | '));
-    assert.ok(logs.some((m) => /claude-stack-angular@claude-stack is parked here - kept/.test(m) && /claude plugin uninstall claude-stack-angular@claude-stack --scope project/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /claude-stack-aspnet@claude-stack is installed at user scope/.test(m) && /claude plugin uninstall claude-stack-aspnet@claude-stack --scope user/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /claude-stack-angular@claude-stack is parked here - kept/.test(m) && /claude plugin uninstall claude-stack-angular@claude-stack --scope project/.test(m)), logs.join(' | ')); // legacy-name
+    assert.ok(logs.some((m) => /claude-stack-aspnet@claude-stack is installed at user scope/.test(m) && /claude plugin uninstall claude-stack-aspnet@claude-stack --scope user/.test(m)), logs.join(' | ')); // legacy-name
 });
 
 test('prunedRetired retries a refused uninstall in a second pass', () =>

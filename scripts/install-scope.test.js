@@ -84,12 +84,12 @@ test('install-scope: a 1.x global install\'s account-dir stamp and skills are mo
             const acct = path.join(work, 'acct');
             fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
             fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
         },
         inspect: (repo) =>
         {
             const acctSkills = path.join(path.dirname(repo), 'acct', 'skills', 'demo', 'SKILL.md');
-            const acctStamp = path.join(path.dirname(repo), 'acct', 'claude-stack.stamp');
+            const acctStamp = path.join(path.dirname(repo), 'acct', 'claude-stack.stamp'); // legacy-name
             return {
                 migratedSkill: exists(repo, '.claude', 'skills', 'demo', 'SKILL.md'),
                 acctSkillStillThere: fs.existsSync(acctSkills),
@@ -112,7 +112,7 @@ test('install-scope: a 1.x account-dir stamp is left alone by a plain install - 
         {
             const acct = path.join(work, 'acct');
             fs.mkdirSync(acct, { recursive: true });
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\n'); // legacy-name
         },
     });
     assert.doesNotMatch(out, /were moved from/, 'a bare install must not migrate a 1.x account install');
@@ -133,7 +133,7 @@ test('install-scope: a failed copy during 1.x migration is reported through note
             const acct = path.join(work, 'acct');
             fs.mkdirSync(path.join(acct, 'skills', 'demo'), { recursive: true });
             fs.writeFileSync(path.join(acct, 'skills', 'demo', 'SKILL.md'), '---\nname: demo\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
             // The project's destination skills dir, made READ-ONLY before the run - cpSync cannot
             // create the 'demo' entry inside it and fails with EACCES, a normal catchable JS error.
             fs.mkdirSync(path.join(repo, '.claude', 'skills'), { recursive: true });
@@ -252,7 +252,7 @@ test('install-scope: update --installed-only --print-plan reads a 1.x account st
             const acct = path.join(work, 'acct');
             fs.mkdirSync(path.join(acct, 'skills', 'csharp'), { recursive: true });
             fs.writeFileSync(path.join(acct, 'skills', 'csharp', 'SKILL.md'), '---\nname: csharp\ndescription: d\n---\nbody\n');
-            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp\n');
+            fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nversion: 1.3.0\npicked-skills: csharp\n'); // legacy-name
         },
         inspect: (repo) => ({
             migratedSkill: exists(repo, '.claude', 'skills', 'csharp', 'SKILL.md'),

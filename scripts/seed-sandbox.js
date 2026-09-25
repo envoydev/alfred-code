@@ -15,7 +15,7 @@ const ROOT = path.join(__dirname, '..');
 const SEED = path.join(__dirname, 'install', 'alfred-code.js');
 const POSIX_ONLY = { skip: process.platform === 'win32' && 'the recording stub is a shell script' };
 
-// A 1.x install's shell may still export CLAUDE_STACK_* alongside the current ALFRED_CODE_* names -
+// A 1.x install's shell may still export CLAUDE_STACK_* alongside the current ALFRED_CODE_* names - // legacy-name
 // both prefixes are stripped so neither reaches the sandbox, in place, returning the same object.
 function scrubLegacyEnv(env)
 {

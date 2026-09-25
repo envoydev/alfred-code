@@ -38,7 +38,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn } = require('child_process');
 
-// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied // legacy-name
 // beside memory-session.js, without hook-prelude.js), so its own copy of envOf is inline rather
 // than required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
 function envOf(env, suffix)
@@ -630,7 +630,7 @@ function registrationEntry(projectRoot, home, configDir) {
 // from its root), so its own marketplace.json declares the server exactly as Claude Code launches
 // it. The key is the marketplace's REGISTERED name, not a constant one: a fresh install adds the
 // marketplace as `envoydev`, but a 1.x install's marketplace key never migrates on rename
-// (docs/rebrand-evidence.md S4/S9), so its row still keys `memory@claude-stack` for the whole 2.x
+// (docs/rebrand-evidence.md S4/S9), so its row still keys `memory@claude-stack` for the whole 2.x // legacy-name
 // line - read only as a fallback, and the current key's row wins when both exist. This project's
 // install first, then an account-level one; another project's install, or a `memory` plugin from
 // any other marketplace, is never used.

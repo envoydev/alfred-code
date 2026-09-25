@@ -13,7 +13,7 @@
 // is written after every copy step, so it only ever names a revision that fully landed).
 //
 // The frozen sh/ps1 twins were removed in 2.0.0 (Phase 7b, R33): `ALFRED_CODE_SEED=shell` (or the
-// 1.x `CLAUDE_STACK_SEED`) no longer routes anywhere - it refuses with one line and exit 1, before
+// 1.x `CLAUDE_STACK_SEED`) no longer routes anywhere - it refuses with one line and exit 1, before // legacy-name
 // this file does anything else (the D1 check, below).
 const fs = require('node:fs');
 const path = require('node:path');

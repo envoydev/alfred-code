@@ -261,8 +261,8 @@ test('the retired entries stay listed for one release, marked retired', () =>
 
 test('a retired name missing from the frozen file is dropped from the marketplace', () =>
 {
-    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-gone', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['claude-stack-gone'] });
-    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-gone'), undefined);
+    const mkt = applyToMarketplace({ plugins: [{ name: 'claude-stack-gone', source: './' }, { name: 'third-party', source: './x' }] }, buildEntries(), { retired: ['claude-stack-gone'] }); // legacy-name
+    assert.strictEqual(mkt.plugins.find((p) => p.name === 'claude-stack-gone'), undefined); // legacy-name
     assert.ok(mkt.plugins.find((p) => p.name === 'third-party'), 'a name nobody retired is kept');
 });
 

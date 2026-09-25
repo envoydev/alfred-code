@@ -3,407 +3,407 @@
   "note": "The six lists both installers work from. Edited HERE, never in the twins - they read this file. `node scripts/build-manifest.js --write` regenerates it from the shell twin while the twins still carry the blocks, and proves the two agree either way.",
   "skills": [
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "create-ticket",
       "note": "ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dev-log-convert",
       "note": "UA/EN work notes -> structured English work log; trigger 'dev-log'"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "explain-code-tutor",
       "note": "senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-quality-loop",
       "note": "autonomous review-and-fix loop pipeline over a loops/ folder of numbered prompts"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-architecture-quality-loop",
       "note": "deliberate analyze-assess-improve loop - the architecture capture writes ARCHITECTURE.md, the pros/cons capture writes ASSESSMENT.md fresh every round, fix cons by tier, reconcile; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-code-style-analyzer",
       "note": "deliberate code-style capture - fans out code-style-analyzer per language, merges docs/code-style/CODE-STYLE.md (its own docs domain), generates the path-scoped project-code-style rule; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-architecture-analyzer",
       "note": "deliberate architecture capture - dispatches architecture-analyzer per module, reasons in the main session, writes docs/architecture/ARCHITECTURE.md + the generated awareness rule baseline-project-architecture.md; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-first-look",
       "note": "provisional ORIENTATION.md from one manifest scan (scripts/scan-evidence.js --orientation) - stack, modules, build/test/run commands, entry points; never over a capture, replaced by the architecture capture"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-architecture-quality-analyzer",
       "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-test-coverage-analyzer",
       "note": "deliberate coverage capture - detect tooling per surface, instrumented run ONCE per surface in the main session, writes docs/test-coverage/COVERAGE.md (90% line after exclusions default, tiered weak points) + raw/ machine-readable results; manual /-only (the loop Read-loads it)"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-test-coverage-loop",
       "note": "deliberate coverage analyze-triage-fix loop - runs the capture, works weak points by tier (tests inline/implementer briefs, testability refactors approval-gated, structural = user decision), reconciles docs; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-version-upgrade",
       "note": "deliberate BREAKING version-event flow (framework/runtime/package major) - plan in-session via context7 + architecture-analyzer digests, approval gate (auto mode only on explicit user ask), staged execution via implementers + resolvers; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-agent-capabilities",
       "note": "deliberate capabilities capture - inventories installed skills/agents/MCPs/plugins, generates the awareness rule baseline-project-agent-capabilities.md; manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-related-context",
       "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-build-from-scratch",
       "note": "greenfield scaffolding + design->scaffold->slice-by-slice build orchestration over the pipeline"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-solve-cross-task",
       "note": "entry-point router: classify -> smallest execution mode -> cross-domain contract freeze + integration gate; home of the shared subagent policies"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-verify-plan",
       "note": "audit an implementation plan BEFORE building - risk-coverage review (traps named per the stack skill, scope, edges, minimal); precedes /code-review"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-verify-code",
       "note": "single-chat, no-dispatch review of an assembled build - the inline alternative to /code-review: rerun build/test, gate vs plan, RUN the app on failable inputs, trace wire-contract changes to consumers, ranked punch-list"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-commit-checkpoint",
       "note": "the pre-commit checkpoint + publish ceremony, out of the always-on git rule: formatter, house review, security review, the COMMIT-GATE / PUSH-GATE receipt the guard reads"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-implementer",
       "note": "single-chat build step: execute a verified plan task-by-task (contracts + per-task green gate + inline red-resolution, no dispatch), finish via /code-review + the done-gate"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-solution-design",
       "note": "single-chat designer twin: read the architecture, judge where a change fits (extend/refactor/isolate), load the stack skill for traps, decompose into an ordered plan; feeds project-verify-plan"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-solve-task",
       "note": "gated single-chat vertical: design -> plan audit -> user approval + build mode -> build -> build review (skippable: project-verify-code inline or the verifier seat) -> done-gate; hard user stop between steps, plan-file + serena-note state survives compaction"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-diagnose-failure",
       "note": "gated single-chat investigation: triage evidence to a tier -> gather (evidence-gatherer seats or inline) -> prove root cause -> user fork (report / contracted fix tasks / log-points card); read-only, any evidence source incl. none but a client report"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-root-cause",
       "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers, cited by the resolvers, the investigation flow and baseline-interaction"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-runtime-failure-signatures",
       "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with project-root-cause"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-ci-failure-signatures",
       "note": "single-chat CI-diagnoser twin: red-pipeline signatures (compile/restore, green-locally-red-on-runner, quality-gate, signing/release, workflow-config, infra-flake) -> code-vs-environment call + route; pairs with project-runtime-failure-signatures"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "project-stack-usage-analyzer",
-      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/claude-stack-usage-report/"
+      "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/alfred-code-usage-report/"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "plugin-authoring",
       "note": "Claude Code plugin authoring: manifest + marketplace schema, layout and precedence, plugin root vs data paths, per-component rules, the validate / plugin-dir / details / eval loop, security review"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "devops",
       "note": "DevOps for the .NET/Angular house: Docker multi-stage/digest-pinned/non-root, GitHub Actions CI/CD, safe expand-contract deploys, secrets/OIDC, Aspire AppHost"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "database-conventions",
       "note": "cross-engine DB conventions + per-engine skill routing"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "database-security",
       "note": "SQL/data-layer security: parameterized-only injection, least-privilege DB accounts, row-level security, connection-string secrets, encryption, audit"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "typescript",
       "note": "framework-agnostic TS/JS baseline (strict typing, modules, async, JS+JSDoc)"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "javascript",
       "note": "base JS-family language layer: ESM modules, async discipline, two failure channels, modern-feature adoption, untrusted input, naming; typescript stacks on it"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "ts-js-testing",
       "note": "plain TS/JS testing hub: runner routing (Vitest default), role-keyed strategy, seam stubs over module mocks, exclusion catalog - practices only, the % bar is user-set via project-test-coverage-analyzer"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "npm",
       "note": "professional npm: lockfile+ci discipline, supply-chain baseline (ignore-scripts/cooldown/allow-git), audit gating, overrides vs legacy-peer-deps, exports maps + ESM-first publishing, update-bot cooldowns"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "browser-extension",
       "note": "MV3 browser extensions: ephemeral service worker + storage tiers, typed cross-context messaging, isolated vs MAIN world, least-privilege permissions, CSP-safe UI, WXT tooling, store review + monetization"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "webpack",
       "note": "webpack 5 library builds: transpile/type-check split (swc + fork-ts-checker + tsc declarations), externals from package.json, tree-shaking preconditions, ESM output state, resolution traps, config factory + cache pitfalls"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "angular-conventions",
       "note": "Angular 17+/TS house conventions (signals, OnPush, a11y)"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "angular-testing",
       "note": "Angular testing hub: TestBed/harness patterns, runner routing, exclusion catalog - practices only, the % bar is user-set via project-test-coverage-analyzer"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "angular-material",
       "note": "Angular Material + CDK: selective imports, M3 theming, CDK primitives, harnesses"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "angular-styling",
       "note": "Angular CSS/styling: ViewEncapsulation, :host, ::ng-deep ways-out, design tokens, responsive, a11y styling"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "angular-security",
       "note": "Angular/web frontend security: XSS/DomSanitizer bypass, CSP, CSRF, no-secrets-in-bundle, token storage, SSR/TransferState"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "ionic",
       "note": "house Ionic/Capacitor conventions: UI, nav, lifecycle, permissions, plugin sourcing + wrapping"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "capacitor-release",
       "note": "Ionic/Capacitor release pipeline: cap sync/build, iOS+Android signing, store submission, OTA, versioning, CI, symbols"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "ionic-security",
       "note": "Ionic/Capacitor mobile security: Keychain/Keystore storage, deep-link validation, permissions, cleartext/WebView hardening"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "csharp",
       "note": "C# house conventions - style, naming, async, logging, DI"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "csharp-design-patterns",
       "note": "all 23 GoF patterns with modern .NET 8+ forms"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet",
       "note": "router mapping .NET work areas to specialist skills"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-architecture-tests",
       "note": "architecture fitness tests: NetArchTest (default)/ArchUnitNET - layer+dependency+naming+isolation rules as build-failing tests"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-aspire",
       "note": ".NET Aspire local orchestration: AppHost, ServiceDefaults, service discovery, dashboard"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-authentication",
       "note": "ASP.NET Core authn/authz: JWT/OIDC/Identity, policy-based authz, secrets"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-code-quality",
       "note": "C# quality enforcement: CSharpier formatter ownership, SDK analyzers + AnalysisLevel, .editorconfig severity, TreatWarningsAsErrors (+ legacy batch promotion), Roslynator, CI gate"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-console-apps",
       "note": "console-app interface surface: CLI arg parsing (System.CommandLine 2.0/Spectre.Console.Cli/Cocona) + bot-SDK integration (Telegram/Discord/Slack/exchange) in a BackgroundService"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-cryptography",
       "note": "System.Security.Cryptography: SHA-2, AES-GCM, RSA/ECDSA, PBKDF2/Argon2id, constant-time compare"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-web-error-handling",
       "note": "Result + ProblemDetails (RFC 9457) + IExceptionHandler + FluentValidation"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-grpc",
       "note": "gRPC: .proto/codegen, ASP.NET Core host, 4 streaming modes, JWT/mTLS, interceptors, health"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-hosted-services",
       "note": "worker/background-service host: BackgroundService, ExecuteAsync trap, scoped scope, PeriodicTimer, shutdown, Channels"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-windows-service",
       "note": "Windows Service SCM layer: AddWindowsService, budgets, non-zero-exit recovery, sc.exe install, gMSA/hardening, ServiceBase maintenance"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-messaging",
       "note": "event-driven messaging: Wolverine (MIT)/MassTransit, outbox, sagas, RabbitMQ/Azure SB"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-migrate",
       "note": "safe migration workflow: EF schema, .NET upgrades, NuGet - rollback + verify per step"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-minimal-api",
       "note": "minimal API endpoint mechanics: MapGroup, TypedResults, endpoint filters, binding"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-mvc-controllers",
       "note": "controller-based Web API: [ApiController], attribute routing, ActionResult<T>, auto-400 filter, action filters, binding"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-openapi",
       "note": "OpenAPI doc (Swashbuckle / built-in .NET 9+) + Scalar docs UI"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-realtime",
       "note": "SignalR real-time: strongly-typed Hub<T>, IHubContext push, groups/presence, reconnection, JWT-over-querystring, Redis/Azure backplane"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-security",
       "note": "OWASP Top 10 (2021) -> .NET 8 mitigations; deprecated-pattern warnings"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-source-generators",
       "note": "Roslyn IIncrementalGenerator authoring + built-in generators (GeneratedRegex/LoggerMessage/STJ)"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-testing",
       "note": ".NET test strategy: AAA, per-layer coverage, library routing"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-web-backend",
       "note": "ASP.NET Core cross-cutting: HttpClientFactory, OpenAPI, observability"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-winforms",
       "note": "WinForms conventions: MVP/binding, disposal, GDI leaks, high-DPI, migration"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-wpf",
       "note": "WPF strict-MVVM conventions, bindings, virtualization"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "postgres",
       "note": "PostgreSQL engine delta: index types, JSONB, SARGability, EXPLAIN, pooling"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "sqlite",
       "note": "SQLite engine delta: WAL/single-writer, PRAGMAs, type affinity, limited ALTER"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-data-access",
       "note": "EF Core + NHibernate ORM hub (references/): DbContext, tracking, N+1, projection"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-architecture",
       "note": "architecture decision hub (references/): clean/ddd/vsa/modular/microservices"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "markdown-style",
       "note": "Markdown authoring / review: syntax canon (valid) + house style overlay, two-pass procedure"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "docs-as-code",
       "note": "docs-as-code authoring: Mermaid sequence/ER diagrams, ADRs (Nygard/MADR 4), C4 views - per-type references/"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "ilspy-decompile",
       "note": "decompile a .NET assembly (ilspycmd via dnx) to read real API/behavior - framework internals, NuGet source, pre-upgrade checks"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-project-setup",
       "note": ".NET solution build spine (hub, references/): src/tests layout, .slnx, Directory.Build.props, global.json, central package management, dotnet-tool pinning"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-performance",
       "note": "perf-aware .NET design (hub, references/): allocation/type design (struct vs class, Span, ValueTask) + serialization-format choice (STJ source-gen / Protobuf / MessagePack)"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "dotnet-diagnostics",
       "note": "measure/diagnose a live .NET process (hub, references/): BenchmarkDotNet microbenchmarks + crash/hang/OOM dump capture & first-look SOS analysis"
     },
     {
-      "repo": "envoydev/claude-stack",
+      "repo": "envoydev/alfred-code",
       "name": "nx",
       "note": "Nx monorepo: project-graph nav + 'nx affected' scoping, generators, module-boundary tags; CLI over MCP; serena-vs-nx routing"
     }
@@ -602,7 +602,7 @@
     },
     {
       "file": "baseline-docs-root.md",
-      "note": "generated-docs root resolution (CLAUDE_STACK_DOCS_PATH)"
+      "note": "generated-docs root resolution (ALFRED_CODE_DOCS_PATH)"
     },
     {
       "file": "baseline-memory.md",
@@ -710,7 +710,7 @@
       "file": "guard-ungated-commit.js",
       "matcher": "Bash|PowerShell",
       "event": "",
-      "note": "block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (CLAUDE_STACK_PUSH_GATE=0 turns that half off)"
+      "note": "block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -758,7 +758,7 @@
       "file": "guard-config-protection.js",
       "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
       "event": "",
-      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, CLAUDE_STACK_CONFIG_PROTECT=0 turns it off"
+      "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, ALFRED_CODE_CONFIG_PROTECT=0 turns it off"
     },
     {
       "file": "guard-cross-project-write.js",
@@ -824,7 +824,7 @@
       "file": "monitor-session.js",
       "matcher": "@PostToolUse",
       "event": "",
-      "note": "a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when CLAUDE_STACK_MONITOR=inject"
+      "note": "a live monitor that never denies: the same call repeated 5 times with identical input, over 20 files written in one turn, the context at 80% of the fresh-session trigger - one row each, injected only when ALFRED_CODE_MONITOR=inject"
     },
     {
       "file": "monitor-session.js",
@@ -836,7 +836,7 @@
       "file": "check-turn-build.js",
       "matcher": "@PostToolUse:Write|Edit|MultiEdit",
       "event": "",
-      "note": "seeded OFF (CLAUDE_STACK_TURN_CHECK=0): records each written path for the turn's one build check"
+      "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): records each written path for the turn's one build check"
     },
     {
       "file": "check-turn-build.js",
@@ -848,7 +848,7 @@
       "file": "history-session.js",
       "matcher": "@SessionStart",
       "event": "",
-      "note": "what the last sessions on this branch did and ruled, injected at start (600 chars) - engine history.js copied beside it; CLAUDE_STACK_HISTORY=0 off"
+      "note": "what the last sessions on this branch did and ruled, injected at start (600 chars) - engine history.js copied beside it; ALFRED_CODE_HISTORY=0 off"
     },
     {
       "file": "history-session.js",
@@ -860,7 +860,7 @@
       "file": "instrument-tool-usage.js",
       "matcher": ".*",
       "event": "",
-      "note": "wired env-gated: a sh test skips the node spawn unless CLAUDE_STACK_INSTRUMENT=1 (seeded \"0\" in settings env - flip it for a measured run; see README)"
+      "note": "wired env-gated: a sh test skips the node spawn unless ALFRED_CODE_INSTRUMENT=1 (seeded \"0\" in settings env - flip it for a measured run; see README)"
     }
   ],
   "plugins": [
