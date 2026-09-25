@@ -27,6 +27,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
+const { SECRET_KEY } = require('./seeds.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -370,18 +371,22 @@ function readBackSettings(claudeDir, scope)
 }
 
 // R78 (Task 16 round 5): an install moved from `local` scope back to project or user scope. Claude
-// Code lays settings.local.json over settings.json, so every stack key and seat deny the local install
-// wrote there would keep overriding the file the install now lives in - and no later run clears them,
-// since only a local-scope read-back reads the local file. The move carries them across: an
-// `ALFRED_CODE_*` key settings.json lacks moves with its value (a customised one keeps the
-// customisation), one it already holds keeps the shared value; a stack seat deny and a secret-file
-// deny join settings.json's list. The stack's copied-hook wiring (`hookFiles`) and its `.mcp.json`
-// approvals (`mcpNames`) are dropped from the local file - this run writes them to settings.json on
-// the routes that use them. Everything else in the local file - the user's own keys, allow list,
-// hooks, `autoMemoryEnabled` - stays as it was. Logged by key, never by value. A file that cannot be
-// read or written moves nothing: half a move would strand keys in neither file.
+// Code lays settings.local.json over settings.json, so every stack entry the local install wrote there
+// would keep overriding the file the install now lives in - and no later run clears them, since only a
+// local-scope read-back reads the local file. A stack seat deny and a secret-file deny join
+// settings.json's list. The stack's copied-hook wiring (`hookFiles`) and its `.mcp.json` approvals
+// (`mcpNames`) are dropped from the local file - this run writes them to settings.json on the routes
+// that use them.
+// R96 (Task 18b fix round 1): an `ALFRED_CODE_*` env key NEVER moves - settings.json is the
+// committed file, and a value set locally is personal (a hooks-off list, a second writable tree). A
+// local key still holding the stack's own seed (`seeds`, what this run would seed) or one the stack
+// writes every run (`written`) is the stack's stale copy and goes; any other value stays in
+// settings.local.json untouched, still overriding settings.json, and each key is logged once with the
+// value that applies from here on (a credential-shaped key by its length). Everything else in the local
+// file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
+// cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
-function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], log = () => {}, note = () => {} })
+function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], log = () => {}, note = () => {} })
 {
     const localFile = path.join(claudeDir, 'settings.local.json');
     const sharedFile = path.join(claudeDir, 'settings.json');
@@ -396,11 +401,20 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     let sharedChanged = false;
 
     const env = isObj(local.env) ? local.env : null;
+    const sharedEnv = isObj(shared.env) ? shared.env : {};
+    const shown = (key, v) => (SECRET_KEY.test(key) ? `(set, ${String(v).length} chars)` : v === '' ? '(empty)' : `'${v}'`);
     for (const key of Object.keys(env || {}).filter((k) => k.startsWith(ENV_PREFIX)))
     {
-        if (!isObj(shared.env)) shared.env = {};
-        if (Object.hasOwn(shared.env, key)) say(`${key} dropped - settings.json holds its own value`);
-        else { shared.env[key] = env[key]; sharedChanged = true; say(`${key} moved to settings.json`); }
+        const v = env[key];
+        const has = Object.hasOwn(sharedEnv, key);
+        if (written.includes(key)) say(`${key} removed - the stack writes it every run, to settings.json from here on`);
+        else if (Object.hasOwn(seeds, key) && seeds[key] === v)
+            say(`${key} removed - the stack's own seed (${shown(key, v)}); ${has ? `settings.json's ${shown(key, sharedEnv[key])} applies` : 'settings.json gets the same seed'}`);
+        else
+        {
+            say(`${key} stays here - your value ${shown(key, v)} applies over settings.json${has ? ` (${shown(key, sharedEnv[key])})` : ''}, and over what a later run writes there`);
+            continue;
+        }
         delete env[key];
         localChanged = true;
     }

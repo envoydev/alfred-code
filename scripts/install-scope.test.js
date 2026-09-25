@@ -600,12 +600,13 @@ test('install-scope: at local scope a local docs path is the root the rule stamp
     assert.deepStrictEqual(result.shared, { env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }, 'settings.json is left exactly as it was');
 });
 
-// R78 (Task 16 round 5): moving a LOCAL install back to project (or user) scope. Claude Code lays
-// settings.local.json over settings.json, so every stack key and seat deny the local install wrote
-// there kept overriding the shared file the install now lives in. The move carries them across - a
-// key settings.json lacks moves with its value, one it holds keeps the shared value - and leaves the
-// user's own keys in the local file alone.
-test('install-scope: a local install moved to project scope leaves no stack key or seat deny behind in settings.local.json (R78)', POSIX_ONLY, () =>
+// R78 (Task 16 round 5) and R96 (Task 18b fix round 1): moving a LOCAL install back to project (or
+// user) scope. Claude Code lays settings.local.json over settings.json, so a stack key the local
+// install SEEDED there would keep overriding the file the install now lives in: those go, and so do
+// the seat denies (moved into settings.json). A value the USER set locally stays local, untouched -
+// settings.json is committed, so nothing personal ever moves into it - and is logged with the value
+// that now applies.
+test('install-scope: a local install moved to project scope drops its seeded keys and seat denies, keeps the user\'s local values local (R78, R96)', POSIX_ONLY, () =>
 {
     const { outs, result } = seedRun(['install', 'update'], 'skill csharp\nrule markdown-docs\n', {
         args: [['--scope', 'local'], ['--scope', 'project', '--installed-only']],
@@ -619,28 +620,39 @@ test('install-scope: a local install moved to project scope leaves no stack key 
         each: (repo, i) =>
         {
             if (i !== 0) return null;
-            // The user customised two stack values at local scope: one settings.json lacks, one it holds.
+            // The user set four stack values at local scope: two settings.json lacks, one it holds, and
+            // a personal path that must never reach the committed file.
             const file = path.join(repo, '.claude', 'settings.local.json');
             const local = JSON.parse(fs.readFileSync(file, 'utf8'));
-            Object.assign(local.env, { ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0' });
+            Object.assign(local.env, {
+                ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0',
+                ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
+            });
             fs.writeFileSync(file, JSON.stringify(local));
-            return (local.permissions.deny || []).filter((d) => /^Agent\(alfred-code:/.test(d)).sort();
+            return { seeded: Object.keys(local.env).filter((k) => k.startsWith('ALFRED_CODE_')) };
         },
         inspect: (repo) => ({
             shared: json(repo, path.join('.claude', 'settings.json')),
             local: json(repo, path.join('.claude', 'settings.local.json')),
-            rule: fs.readFileSync(path.join(repo, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'),
         }),
     });
     assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
-    const stackKeys = Object.keys(result.local.env || {}).filter((k) => k.startsWith('ALFRED_CODE_'));
-    assert.deepStrictEqual(stackKeys, [], `stack keys left in settings.local.json: ${stackKeys.join(',')}`);
-    assert.deepStrictEqual(result.local.env, { MY_OWN: 'x' }, 'the user\'s own key stays');
+    assert.deepStrictEqual(result.local.env, {
+        MY_OWN: 'x', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0',
+        ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
+    }, 'the user\'s values stay local, untouched, and every seeded stack key left');
+    assert.ok(!JSON.stringify(result.shared).includes('/elsewhere/other-repo'), 'a personal path reached the committed settings.json');
+    assert.ok(!JSON.stringify(result.shared).includes('docs/mine'), 'a local value moved into settings.json');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_PUSH_GATE, '1', 'settings.json keeps its own value');
+    // What Claude Code resolves: the local file over the shared one.
+    const effective = { ...result.shared.env, ...result.local.env };
+    assert.strictEqual(effective.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the hook the user switched off came back on');
+    assert.strictEqual(effective.ALFRED_CODE_ALLOW_WRITE_OUTSIDE, '/elsewhere/other-repo');
     assert.deepStrictEqual(result.local.permissions.allow, ['Bash(ls)'], 'the user\'s own permissions stay');
     assert.deepStrictEqual((result.local.permissions.deny || []).filter((d) => /^Agent\(/.test(d)), [], 'no seat deny left in the local file');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_PATH, 'docs/mine', 'a value settings.json lacked moves across');
-    assert.strictEqual(result.shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a value settings.json holds keeps the shared one');
-    assert.match(result.rule, /This install's root: `docs\/mine`/);
     assert.ok((result.shared.permissions.deny || []).some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies moved into settings.json');
-    assert.match(outs[1], /settings\.local\.json: .*moved to settings\.json/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here - your value 'guard-answer-length' applies over settings\.json/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_INSTRUMENT removed - the stack's own seed/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed/, outs[1]);
 });

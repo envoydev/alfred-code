@@ -240,14 +240,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // R78: an install moved off `local` scope carries the stack's own entries out of
         // settings.local.json first, so the read-back below and every write after it find them in
         // the file this run writes. A --print-plan moves nothing and reads the local overlay instead.
+        // R96: an env key the stack seeded there goes - `seeds` is what THIS run would seed in its
+        // place (the catalog default, the docs-versioning rule's answer), `written` the keys it writes
+        // every run - and a value the user set stays local; no env key moves into settings.json.
         const leavingLocal = Boolean(stampFile) && stampLayer.readStampScope(stampFile) === 'local' && args.scope !== 'local';
         if (leavingLocal && !args.printPlan)
         {
+            const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
+            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, r.default]));
+            seeds.ALFRED_CODE_DOCS_VERSIONING = docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) });
             settings.leaveLocalScope({
                 claudeDir,
                 hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))],
                 mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS),
-                denySpecs: SECRET_DENY, log, note,
+                denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
             });
         }
 

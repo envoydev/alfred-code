@@ -496,42 +496,64 @@ test('settings-writer: every log line names the file the run writes (M6)', () =>
     assert.match(notes.join('\n'), /^settings\.local\.json is not valid JSON/);
 });
 
-// R78 (Task 16 round 5): a local install moved to project or user scope carries the stack's keys and
-// seat denies out of settings.local.json - left there, they keep overriding the file the install now
-// lives in, and no project-scope run ever reads the local file to clear them.
-test('leaveLocalScope: stack keys and seat denies move to settings.json, the user\'s own entries stay (R78)', () =>
+// R78 (Task 16 round 5) and R96 (Task 18b fix round 1): a local install moved to project or user
+// scope. The stack's seat denies move into settings.json; its env keys NEVER do - settings.json is the
+// committed file, and a value the user set locally is personal. A local key still holding the stack's
+// own seed (or a key the stack writes every run) is the stack's stale copy and goes; any other value
+// stays in settings.local.json, untouched, logged once with the value that now applies.
+test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays local, seat denies move (R78, R96)', () =>
 {
     const dir = path.join(TMP, `leave-${seq++}`, '.claude');
     fs.mkdirSync(dir, { recursive: true });
     const cmd = hookCommand('guard-catastrophic-rm.js').command;
-    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1', TEAM: 'y' }, permissions: { deny: ['Read(secret)'] } }));
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_MONITOR: 'inject', TEAM: 'y' }, permissions: { deny: ['Read(secret)'] } }));
     fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
-        env: { ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', MY_OWN: 'x' },
+        env: {
+            ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+            ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123',
+            ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_MONITOR: 'log', ALFRED_CODE_TURN_CHECK: 0,
+            ALFRED_CODE_MEMORY_DB: '/elsewhere/.memory-mcp/memory.db', MY_OWN: 'x',
+        },
         permissions: { allow: ['Bash(ls)'], deny: ['Agent(alfred-code:evidence-gatherer)', 'Read(.env)', 'Bash(rm:*)'] },
         enabledMcpjsonServers: ['serena', 'mine'],
         hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] },
         autoMemoryEnabled: false,
     }));
+    const seeds = { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_HOOKS_OFF: '', ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_MONITOR: 'log', ALFRED_CODE_TURN_CHECK: '0' };
+    const opts = { claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'], seeds, written: ['ALFRED_CODE_MEMORY_DB'] };
     const logs = [];
-    const out = leaveLocalScope({ claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'], log: (m) => logs.push(m) });
+    const out = leaveLocalScope({ ...opts, log: (m) => logs.push(m) });
     assert.strictEqual(out.moved, true);
     const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
     const shared = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
-    assert.deepStrictEqual(local.env, { MY_OWN: 'x' });
+    assert.deepStrictEqual(local.env, {
+        ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
+        ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123', ALFRED_CODE_TURN_CHECK: 0, MY_OWN: 'x',
+    }, 'a value the user set stays local, untouched; a seed-valued key and a written key leave');
+    assert.deepStrictEqual(shared.env, { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_MONITOR: 'inject', TEAM: 'y' }, 'no env key ever moves into settings.json');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'], deny: ['Bash(rm:*)'] });
     assert.deepStrictEqual(local.enabledMcpjsonServers, ['mine']);
     assert.deepStrictEqual(local.hooks, { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] });
     assert.strictEqual(local.autoMemoryEnabled, false, 'a key the stack does not own by name is left alone');
-    assert.deepStrictEqual(shared.env, { ALFRED_CODE_PUSH_GATE: '1', TEAM: 'y', ALFRED_CODE_DOCS_PATH: 'docs/mine' });
     assert.deepStrictEqual(shared.permissions.deny, ['Read(secret)', 'Agent(alfred-code:evidence-gatherer)', 'Read(.env)']);
-    // Named by key, never by value.
-    assert.match(logs.join('\n'), /settings\.local\.json: ALFRED_CODE_DOCS_PATH moved to settings\.json/);
-    assert.match(logs.join('\n'), /settings\.local\.json: ALFRED_CODE_PUSH_GATE dropped - settings\.json holds its own value/);
-    assert.ok(!/docs\/mine/.test(logs.join('\n')), 'a value reached the log');
+    const text = logs.join('\n');
+    // Each kept key is logged once, with the value that now applies - the local one.
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here - your value 'guard-answer-length' applies over settings\.json/);
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_PUSH_GATE stays here - your value '0' applies over settings\.json \('1'\)/);
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_ALLOW_WRITE_OUTSIDE stays here - your value '\/elsewhere\/other-repo' applies/);
+    assert.strictEqual((text.match(/ALFRED_CODE_HOOKS_OFF/g) || []).length, 1, 'logged once');
+    // A removed key names what applies from here on.
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_MONITOR removed - the stack's own seed \('log'\); settings\.json's 'inject' applies/);
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_INSTRUMENT removed - the stack's own seed \('0'\); settings\.json gets the same seed/);
+    assert.match(text, /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run, to settings\.json from here on/);
+    // A credential-shaped key is named by its length, never its value.
+    assert.match(text, /ALFRED_CODE_API_TOKEN stays here - your value \(set, 6 chars\) applies/);
+    assert.ok(!/abc123/.test(text), 'a credential value reached the log');
 
     // Idempotent: a second move finds nothing to carry and writes nothing.
     const before = fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8');
-    assert.strictEqual(leaveLocalScope({ claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'] }).moved, false);
+    const again = [];
+    assert.strictEqual(leaveLocalScope({ ...opts, log: (m) => again.push(m) }).moved, false);
     assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), before);
 });
 

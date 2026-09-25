@@ -341,11 +341,14 @@ written (the shared contract is in `source-protocol.md`'s 'Capture the installer
   Nothing changed at step 7 - the level already matches, or memory was dropped - needs no flag.
 - `--scope` is the stamp's own `scope:` line (`project`, `user` or `local`), and `--space` the
   profile that owns the install - pass them unchanged unless the user asked to MOVE the install.
-  Moving a `local` install to `project` or `user` carries the stack's own entries out of
-  `settings.local.json` first (every `ALFRED_CODE_*` key settings.json lacks, the seat denies, the
-  copied-hook wiring and `.mcp.json` approvals), or they would keep overriding the shared file; the
-  installer logs each as `settings.local.json: <key> moved to settings.json` (or `dropped -
-  settings.json holds its own value`) - report those lines by key, never a value.
+  Moving a `local` install to `project` or `user` clears the stack's own entries out of
+  `settings.local.json` first, or they would keep overriding the shared file: the seat denies move
+  into settings.json, the copied-hook wiring and `.mcp.json` approvals go, and so does every
+  `ALFRED_CODE_*` key still holding the stack's seed (`<key> removed - the stack's own seed ...`). No
+  env key ever moves into the committed settings.json: a value the user set locally stays in
+  `settings.local.json` and keeps applying (`<key> stays here - your value <v> applies over
+  settings.json ...`) - report each kept key with that value, as logged (a credential-shaped key by
+  its length).
 
 The run refreshes EVERY installed item, in every category, whether or not its area was walked this
 run - the area picker decides which tables you page through, never which files the installer
