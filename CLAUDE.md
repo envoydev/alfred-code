@@ -51,7 +51,9 @@ change (see the invariants below).
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
-  `ALFRED_CODE_HOOKS_OFF`. The four gates live in `hook-prelude.js`, never inlined: the csv opt-out;
+  `ALFRED_CODE_HOOKS_OFF`. The five gates live in `hook-prelude.js`, never inlined: the csv opt-out;
+  the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret
+  and force-push guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
   the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
   record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only

@@ -31,6 +31,7 @@ const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js')
 const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
+const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -80,6 +81,18 @@ function coreEntry(options = {})
         strict: false,
         category: 'development',
         tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
+        // One /config row for the whole hook set, per user (pluginConfigs lives in the account settings
+        // only). hook-prelude.js reads it as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; a project's
+        // ALFRED_CODE_HOOKS_OFF still wins. A picker needs Claude Code 2.1.271+; older builds keep the default.
+        userConfig: {
+            hook_profile: {
+                type: 'string',
+                title: 'Hook profile',
+                description: 'Which Alfred Code hooks run: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. A project\'s ALFRED_CODE_HOOKS_OFF still switches a hook off.',
+                options: [...HOOK_PROFILES],
+                default: 'standard',
+            },
+        },
         commands,
         skills: ['./setup-plugin/skills/alfred-code'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
         agents: plug.agents.map(a => `./stack/agents/${a}.md`),

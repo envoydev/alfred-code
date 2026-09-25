@@ -101,6 +101,56 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
         'no project dir at all is not a reason to go silent');
 });
 
+// GATE 5 - the hook profile. The core's `hook_profile` userConfig reaches every plugin hook as
+// CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
+const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
+const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-ungated-commit',
+    'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build', 'monitor-session'];
+
+test('profile minimal keeps only the rm, secret and force-push guards; every other hook stands down', () => {
+    const { PROTECTIVE } = require(PRELUDE);
+    for (const hook of EVERY_HOOK)
+        assert.strictEqual(standDown(hook, { [PROFILE]: 'minimal' }, ['node', 'x.js']), !PROTECTIVE.has(hook), hook);
+    assert.strictEqual(standDown('guard-catastrophic-rm.js', { [PROFILE]: ' Minimal ' }, ['node', 'x.js']), false, 'case, space and the suffix are read like the csv');
+    assert.strictEqual(standDown('docs-session', { [PROFILE]: ' Minimal ' }, ['node', 'x.js']), true);
+    assert.strictEqual(standDown('guard-read-whole-file', { [PROFILE]: 'minimal' }, ['node', 'guard-read-whole-file.js', '--flag']), false, 'a CLI is never gated');
+});
+
+test('profile standard, absent, empty or unknown changes nothing - today\'s set', () => {
+    for (const value of [undefined, '', 'standard', 'STANDARD', 'maximal', 'off', '0'])
+        for (const hook of EVERY_HOOK)
+            assert.strictEqual(standDown(hook, { [PROFILE]: value }, ['node', 'x.js']), false, `${hook} under ${JSON.stringify(value)}`);
+});
+
+test('profile strict turns the seeded-off Stop build check on, and nothing else changes', () => {
+    const { switchOn } = require(PRELUDE);
+    assert.strictEqual(switchOn('TURN_CHECK', { [PROFILE]: 'strict', ALFRED_CODE_TURN_CHECK: '0' }), true, 'the seeded 0 is overridden');
+    assert.strictEqual(switchOn('TURN_CHECK', { [PROFILE]: 'strict' }), true);
+    assert.strictEqual(switchOn('TURN_CHECK', { ALFRED_CODE_TURN_CHECK: '0' }), false, 'standard reads the setting');
+    assert.strictEqual(switchOn('TURN_CHECK', { ALFRED_CODE_TURN_CHECK: '1' }), true);
+    assert.strictEqual(switchOn('TURN_CHECK', { CLAUDE_STACK_TURN_CHECK: '1' }), true, 'the 1.x spelling answers through envOf'); // legacy-name
+    assert.strictEqual(switchOn('TURN_CHECK', { [PROFILE]: 'minimal', ALFRED_CODE_TURN_CHECK: '0' }), false);
+    assert.strictEqual(switchOn('INSTRUMENT', { [PROFILE]: 'strict', ALFRED_CODE_INSTRUMENT: '0' }), false, 'instrumentation is measurement, not a check - strict leaves it');
+    for (const hook of EVERY_HOOK) assert.strictEqual(standDown(hook, { [PROFILE]: 'strict' }, ['node', 'x.js']), false, hook);
+});
+
+test('the project csv still wins over every profile', () => {
+    assert.strictEqual(standDown('check-turn-build', { [PROFILE]: 'strict', ALFRED_CODE_HOOKS_OFF: 'check-turn-build' }, ['node', 'x.js']), true, 'strict cannot turn a csv-off hook back on');
+    assert.strictEqual(standDown('guard-catastrophic-rm', { [PROFILE]: 'minimal', ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' }, ['node', 'x.js']), true, 'minimal keeps no guard the csv switched off');
+    assert.strictEqual(standDown('guard-secret-value', { [PROFILE]: 'minimal', ALFRED_CODE_HOOKS_OFF: 'guard-catastrophic-rm' }, ['node', 'x.js']), false);
+    assert.strictEqual(standDown('docs-session', { [PROFILE]: 'standard', ALFRED_CODE_HOOKS_OFF: 'docs-session' }, ['node', 'x.js']), true);
+});
+
+test('the profile the prelude reads is the userConfig key the core entry declares, with the same three options', () => {
+    const { HOOK_PROFILES } = require(PRELUDE);
+    const field = coreEntry().userConfig && coreEntry().userConfig.hook_profile;
+    assert.ok(field, 'the core entry declares hook_profile');
+    assert.deepStrictEqual(field.options, HOOK_PROFILES);
+    assert.strictEqual(field.default, 'standard');
+    assert.strictEqual(field.type, 'string');
+    assert.strictEqual(`CLAUDE_PLUGIN_OPTION_${'hook_profile'.toUpperCase()}`, PROFILE, 'the docs export <KEY> uppercased');
+});
+
 test('the prelude reads process.env when no env is handed in', () => {
     const before = process.env.ALFRED_CODE_HOOKS_OFF;
     process.env.ALFRED_CODE_HOOKS_OFF = 'guard-answer-length';

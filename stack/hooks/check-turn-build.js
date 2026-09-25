@@ -106,14 +106,17 @@ if (require.main === module)
   // install without the prelude runs the hook unchanged') when hook-prelude.js cannot be loaded - a
   // skewed copy (a newer hook beside an older/missing engine) must still orient, not crash.
   let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+  let switchOn = (suffix) => String(envOf(process.env, suffix) || '').trim() === '1';
   try
   {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    // the hook profile applies here: strict reads the seeded 0 as on
+    if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
     if (prelude.standDown('check-turn-build')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  if (String(envOf(process.env, 'TURN_CHECK') || '').trim() !== '1') process.exit(0);
+  if (!switchOn('TURN_CHECK')) process.exit(0);
 
   let payload;
   try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }

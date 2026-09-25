@@ -37,6 +37,14 @@
 // skipping its block row: what they stop cannot be undone, and a user-scope core is the only guard
 // a repo never set up has.
 //
+// GATE 5 - the hook profile. The core entry's `hook_profile` userConfig (minimal / standard / strict,
+// set in /config and stored in the ACCOUNT settings' `pluginConfigs` - never a project file) reaches
+// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the three PROTECTIVE guards
+// only; `standard`, absent or anything unknown is today's set; `strict` is standard with the seeded-off
+// switches that are safe on read as on (STRICT_ON - the Stop build check). The project's csv still wins:
+// a hook it names stays off under every profile. A copied hook gets no option variable, so it reads
+// as standard.
+//
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
 'use strict';
@@ -64,6 +72,32 @@ function envOf(env, suffix)
     const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
     if (old !== undefined && old !== '') return old;
     return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
+// GATE 5. The three spellings the core's userConfig offers, in its picker's order.
+const HOOK_PROFILES = ['minimal', 'standard', 'strict'];
+// The seeded-off switches strict turns on: a deterministic check, never a monitor that judges the
+// model's habits (those stay log-only until measured) nor instrumentation (measurement, not a check).
+const STRICT_ON = new Set(['TURN_CHECK']);
+
+function hookProfile(env)
+{
+    const value = String((env || process.env).CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || '').trim().toLowerCase();
+    return HOOK_PROFILES.includes(value) ? value : 'standard';
+}
+
+function profileOff(hook, env)
+{
+    return hookProfile(env) === 'minimal' && !PROTECTIVE.has(baseName(hook));
+}
+
+// A hook's own on-switch (`ALFRED_CODE_<suffix>=1`), with the profile applied: strict reads a STRICT_ON
+// switch as on over the seeded 0. The csv needs no case here - a hook it names stood down before this.
+function switchOn(suffix, env)
+{
+    const source = env || process.env;
+    if (STRICT_ON.has(suffix) && hookProfile(source) === 'strict') return true;
+    return String(envOf(source, suffix) || '').trim() === '1';
 }
 
 function hookDisabled(hook, env)
@@ -245,10 +279,10 @@ function standDown(hook, env, argv)
     try
     {
         if (isCliInvocation(argv)) return false;
-        return hookDisabled(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env)
+        return hookDisabled(hook, env) || profileOff(hook, env) || yieldToCopiedTwin(hook, env) || aliasYieldsToCore(env)
             || (neverSetUp(env) && !PROTECTIVE.has(baseName(hook)));
     }
     catch { return false; }
 }
 
-module.exports = { hookDisabled, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

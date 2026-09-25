@@ -18,7 +18,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const posix = process.platform !== 'win32';
 
 const BASE_ENV = { ...process.env };
-for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK']) delete BASE_ENV[k];
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
 
 let seq = 0;
 function project()
@@ -81,6 +81,32 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     // real block written with mode 'block' was tallied as a probe and left out of the block rate.
     assert.strictEqual(row.mode, undefined, 'a block row carries no mode');
     assert.strictEqual(row.tool, '', 'and the tool field every block row has');
+});
+
+// R13: the core's hook_profile userConfig - strict runs the check over the seeded ALFRED_CODE_TURN_CHECK=0,
+// the project's csv still switches it off, and minimal stands it down even where the project set it on.
+test('turn-build: profile strict runs the check over a seeded 0; the csv and profile minimal still keep it off', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const setUp = (env) =>
+    {
+        const p = project();
+        p.file('tsconfig.json', '{}');
+        p.tsc('.', 2);
+        p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }, env);
+        return { p, stop: p.run({ hook_event_name: 'Stop' }, env) };
+    };
+    const strict = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict' });
+    assert.strictEqual(strict.stop.status, 2, strict.stop.stderr);
+    assert.match(strict.stop.stderr, /problem 2$/m);
+    const standard = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'standard' });
+    assert.strictEqual(standard.stop.status, 0);
+    assert.deepStrictEqual(standard.p.spawned(), [], 'standard reads the seeded 0');
+    const csv = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict', ALFRED_CODE_HOOKS_OFF: 'check-turn-build' });
+    assert.strictEqual(csv.stop.status, 0);
+    assert.deepStrictEqual(csv.p.spawned(), [], 'the csv wins over strict');
+    const minimal = setUp({ ALFRED_CODE_TURN_CHECK: '1', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
+    assert.strictEqual(minimal.stop.status, 0);
+    assert.deepStrictEqual(minimal.p.spawned(), [], 'minimal keeps only the three protective guards');
 });
 
 test('turn-build: once per turn - the continuation Stop after a block passes, even with errors still there', { skip: !posix && 'stub binaries are shell scripts' }, () =>
