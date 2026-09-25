@@ -5512,6 +5512,45 @@
           "marker": "function envOf(env, suffix)\n{\n    const fresh = env[`ALFRED_CODE_${suffix}`];\n    if (fresh !== undefined && fresh !== '') return fresh;\n    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name\n    if (old !== undefined && old !== '') return old;\n    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name\n}"
         }
       ]
+    },
+    "flaui-ui-automation-mechanics": {
+      "_note": "The FlaUI mechanics block - locator order, one page object per window, explicit waits, launch and teardown per test class, the Windows CI job on a logged-on session - is deliberately twinned in the WPF and WinForms UI-automation references so each desktop skill ships self-contained; wpf owns it, an edit lands in both.",
+      "owner": {
+        "file": "stack/skills/dotnet-wpf/references/ui-automation.md",
+        "marker": "installed as a Windows service has none"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-winforms/references/ui-automation.md",
+          "marker": "installed as a Windows service has none"
+        }
+      ]
+    },
+    "fix-test-named-for-defect": {
+      "_note": "A test added for a fix is named for the defect it pins and fails on the unfixed code first - dotnet-testing owns it, angular-testing carries the spec-shaped copy.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "fails on the unfixed code before it passes"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "fails on the unfixed code before it passes"
+        }
+      ]
+    },
+    "self-review-is-not-the-check": {
+      "_note": "Re-reading your own change is not verification; the check is a run or a reviewer who did not write it - dotnet-testing owns it, angular-testing carries the copy.",
+      "owner": {
+        "file": "stack/skills/dotnet-testing/SKILL.md",
+        "marker": "A self-review is never the check"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/angular-testing/SKILL.md",
+          "marker": "A self-review is never the check"
+        }
+      ]
     }
   }
 }
