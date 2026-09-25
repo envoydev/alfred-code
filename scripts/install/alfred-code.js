@@ -966,6 +966,13 @@ function installHooksAndRules(ctx)
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });
+    // M1 (R132): the account file rejects a .mcp.json server as well, and the installer never edits it -
+    // an engine this run enabled that it still lists is named with its file, never left to look on.
+    const accountFile = path.join(ctx.configDir, 'settings.json');
+    const accountOff = readJson(accountFile).disabledMcpjsonServers;
+    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map((e) => `playwright-${e}`).filter((n) => ctx.pw.mcpjson.enable.includes(n));
+    for (const name of (Array.isArray(accountOff) ? accountOff : []).filter((n) => enabledNow.includes(n)))
+        ctx.log(`playwright: ${name} is still rejected by ${accountFile}'s disabledMcpjsonServers - the installer never edits the account file; take it out there to load it`);
 }
 
 function importMemory(ctx)

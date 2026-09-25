@@ -832,6 +832,43 @@ test('seed update (MCP copy route): an engine the user enables stays enabled acr
     assert.deepStrictEqual(answeredOn.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome,webkit']);
 });
 
+// M1 (R132): the run READS a rejection from settings.json, settings.local.json and the account file,
+// but wrote the answer only to its own file - and Claude Code's approval dialog writes a rejection to
+// settings.local.json. An enable answer then left the engine rejected while the stamp said enabled,
+// and the next run flipped the stamp back. The answer now takes the name out of the local file too; the
+// account file is never edited, so an entry there is named with its file instead.
+test('seed update (MCP copy route): an enable answer takes the engine out of settings.local.json too, and names the account file that still rejects one (M1)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+        env: MCP_COPY_ENV,
+        args: [['--playwright-browsers', 'chrome,webkit,firefox', '--playwright-enabled', 'chrome'], ['--installed-only', '--playwright-enabled', 'all'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            const local = jsonAt(repo, '.claude/settings.local.json');
+            const account = path.join(path.dirname(repo), 'acct', 'settings.json');
+            const state = { ...pwState(repo), local: local.disabledMcpjsonServers, localKeys: Object.keys(local), account: fs.existsSync(account) ? fs.readFileSync(account, 'utf8') : '' };
+            if (i === 0)
+            {
+                // The approval dialog's rejection of webkit, beside a key of the user's own; firefox is
+                // rejected in the account file.
+                fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ disabledMcpjsonServers: ['playwright-webkit'], permissions: { allow: ['Bash(ls)'] } }, null, 2)}\n`);
+                const acct = jsonAt(path.dirname(account), 'settings.json');
+                fs.mkdirSync(path.dirname(account), { recursive: true });
+                fs.writeFileSync(account, `${JSON.stringify({ ...acct, disabledMcpjsonServers: ['playwright-firefox'] }, null, 2)}\n`);
+            }
+            return state;
+        },
+    });
+    const [, answered, again] = steps;
+    assert.deepStrictEqual(answered.local, undefined, `the local rejection survived the enable answer:\n${outs[1]}`);
+    assert.deepStrictEqual(answered.localKeys, ['permissions'], 'the user\'s own local key went');
+    assert.ok(!(answered.disabled || []).includes('playwright-webkit'), outs[1]);
+    assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - playwright-webkit/);
+    assert.match(outs[1], /playwright-firefox is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);
+    assert.match(answered.account, /"playwright-firefox"/, 'the account file was edited');
+    assert.deepStrictEqual(again.stamp, ['playwright-browsers: chrome,firefox,webkit', 'playwright-enabled: chrome,webkit'], `the next run flipped the stamp:\n${outs[2]}`);
+});
+
 test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE on/off - disabledMcpjsonServers, not the stamp (R116 j)', POSIX_ONLY, () =>
 {
     const planFor = (disabled, stampEnabled) =>

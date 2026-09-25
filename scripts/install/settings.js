@@ -447,7 +447,20 @@ function writeSettings(opts)
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
-    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled;
+    // M1 (R132): an entry in ANY settings file rejects a .mcp.json server, and Claude Code's approval
+    // dialog writes its rejection to settings.local.json - so an engine this run enables leaves that
+    // list too. Only the names the answer moved: another entry, or a key of the user's own, stays.
+    let localListChanged = false;
+    if (local && mcpjsonEnable.length && Array.isArray(local.disabledMcpjsonServers))
+    {
+        const moved = local.disabledMcpjsonServers.filter((n) => mcpjsonEnable.includes(n));
+        for (const name of moved) log(`  ${path.basename(localFile)}: disabledMcpjsonServers - ${name}`);
+        const kept = local.disabledMcpjsonServers.filter((n) => !mcpjsonEnable.includes(n));
+        if (moved.length && kept.length) local.disabledMcpjsonServers = kept;
+        else if (moved.length) delete local.disabledMcpjsonServers;
+        localListChanged = moved.length > 0;
+    }
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localListChanged;
     if (localChanged) fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
 
     if (!changed) return { written: localChanged, refused: false };
