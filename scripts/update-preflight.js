@@ -44,6 +44,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const { isCore, rowOn, marketKey, stampFile: stampIn } = require('./install/brand.js');
 
 function arg(name, fallback)
@@ -207,7 +208,7 @@ function readListing(root, marketplace)
     if (file) { try { text = fs.readFileSync(file, 'utf8'); } catch { text = null; } }
     else
     {
-        const r = spawnSync('claude', ['plugin', 'list', '--json'], { cwd: root, encoding: 'utf8', timeout: 60000 });
+        const r = rt.spawnCommand('claude', ['plugin', 'list', '--json'], { cwd: root, encoding: 'utf8', timeout: 60000 });
         text = r.status === 0 ? String(r.stdout || '') : null;
     }
     try { JSON.parse(text); } catch { return null; }

@@ -7,7 +7,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', '.serena', '.claude']);
 const MAX_DEPTH = 6;
@@ -126,7 +126,7 @@ function trackedOf(root, candidates)
     if (!candidates.length) return new Set();
     try
     {
-        const out = execFileSync('git', ['--literal-pathspecs', '-C', root, 'ls-files', '-z', '--', ...candidates.map(f => relPosix(root, f))],
+        const out = rt.execCommand('git', ['--literal-pathspecs', '-C', root, 'ls-files', '-z', '--', ...candidates.map(f => relPosix(root, f))],
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
         return new Set(out.split('\0').filter(Boolean));
     }
@@ -326,7 +326,7 @@ function extensions(root, files)
 // The capture stamp every doc under the docs root opens with, from git itself; a tree outside git says so.
 function captureLine(root)
 {
-    const git = (...args) => { try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
+    const git = (...args) => { try { return rt.execCommand('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
     const d = new Date();
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (git('rev-parse', '--git-dir') === null) return `Captured: no git, ${date}`;

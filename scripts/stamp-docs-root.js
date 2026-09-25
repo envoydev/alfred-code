@@ -19,7 +19,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 // ALFRED_CODE_<key>, else a 1.x install's CLAUDE_STACK_<key> the installer's env pass has not renamed // legacy-name
 // yet (and, for DOCS_PATH, the pre-0.2.43 CLAUDE_DOCS_PATH).
 const { envOf } = require('../stack/hooks/hook-prelude.js');
@@ -142,9 +142,9 @@ function probeVersioning(root, docs)
     }
     catch { domainDirs = []; }
     const quiet = { cwd: root, stdio: 'ignore' };
-    if (domainDirs.some(n => spawnSync('git', ['ls-files', '--error-unmatch', '--', `${base}/${n}`], quiet).status === 0)) return 'git';
+    if (domainDirs.some(n => rt.spawnCommand('git', ['ls-files', '--error-unmatch', '--', `${base}/${n}`], quiet).status === 0)) return 'git';
     if (domainDirs.length) return 'local';
-    return docs && spawnSync('git', ['check-ignore', '-q', '--', `${docs}/`], quiet).status === 0 ? 'local' : 'git';
+    return docs && rt.spawnCommand('git', ['check-ignore', '-q', '--', `${docs}/`], quiet).status === 0 ? 'local' : 'git';
 }
 
 // ALFRED_CODE_DOCS_VERSIONING is seeded by that rule, probed at the docs path the settings file
@@ -180,7 +180,7 @@ function reprobeVersioning(root, seeded)
         console.log(`stamp-docs-root: the env block holds '${stored}', not the '${seeded}' this run seeded - that is a decision, so docs versioning is left as it is`);
         return;
     }
-    if (spawnSync('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' }).status !== 0)
+    if (rt.spawnCommand('git', ['rev-parse', '--git-dir'], { cwd: root, stdio: 'ignore' }).status !== 0)
     {
         console.log('stamp-docs-root: not a git repository - docs versioning left as it is');
         return;

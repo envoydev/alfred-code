@@ -253,7 +253,7 @@ const enginePresent = (spec, before, engines) => engines.specs.includes(spec)
 // by a disable at the SAME scope; a disable that fails leaves the engine on and says how to finish.
 function switchOff(spec, scope, { cli, log, note })
 {
-    if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true })) log(`plugin disabled [${scope}]: ${spec} (installed, left off as picked - /plugin turns it on)`);
+    if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true, expect: 'reported' })) log(`plugin disabled [${scope}]: ${spec} (installed, left off as picked - /plugin turns it on)`);
     else note(`plugin disable failed: ${spec} - it stays enabled; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
 }
 
@@ -272,7 +272,7 @@ function engineInPlace(spec, { scope, before, engines, cli, log, note })
     const verb = want ? 'enable' : 'disable';
     if (at !== scope) { log(`  ${spec} is installed at ${at} scope, not this run's - not switched there, it is every project's install; to switch it: claude plugin ${verb} ${spec} --scope ${at}`); return; }
     if (engines.isOn(spec, at) === want) return;
-    if (cli(['plugin', verb, spec, '--scope', at], { quiet: true })) log(`plugin ${verb}d [${at}]: ${spec} (as picked - /plugin toggles it)`);
+    if (cli(['plugin', verb, spec, '--scope', at], { quiet: true, expect: 'reported' })) log(`plugin ${verb}d [${at}]: ${spec} (as picked - /plugin toggles it)`);
     else note(`plugin ${verb} failed: ${spec} - ${verb} it by hand: claude plugin ${verb} ${spec} --scope ${at}`);
 }
 
@@ -288,7 +288,7 @@ function uninstallEngines({ specs = [], rows = [], blind = false, scope, cli, lo
     const gone = [];
     const drop = (spec) =>
     {
-        const ok = cli(['plugin', 'uninstall', spec, '--scope', scope, '-y'], { quiet: true });
+        const ok = cli(['plugin', 'uninstall', spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' });
         if (ok) { log(`plugin uninstalled [${scope}]: ${spec} (no longer picked)`); gone.push(spec); }
         return ok;
     };
@@ -337,7 +337,7 @@ function installPlugins({ plugins, scope, marketplaces = [], before = [], fresh 
         log(`plugin [${pscope}]: ${spec}`);
         // -y: the marketplace-command consent prompt cannot be answered when stdin is not a TTY,
         // which is every guided run.
-        if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'])) { note(`plugin ${spec} failed`); continue; }
+        if (!cli(['plugin', 'install', spec, '--scope', pscope, '-y'], { expect: 'reported' })) { note(`plugin ${spec} failed`); continue; }
         if (fieldOf(before, spec, 'version'))
             cli(['plugin', 'update', spec, '--scope', scopeFor(spec, scope, before), '-y'], { quiet: true });
         else if (engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
@@ -363,7 +363,7 @@ function retiredSpec(name, market, retiredRows = [])
 // record: parked, it is the user's off-state for its items, which have no other home once it is gone,
 // so it stays at this scope as well. After each uninstall the row's add-back line is printed: the
 // retirement takes the plugin, never the user's way back to the server.
-function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers = [], market = BRAND.marketplace, scope, cli, log = () => {} })
+function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers = [], market = BRAND.marketplace, scope, cli, log = () => {}, note = () => {} })
 {
     const all = rows || listing || [];
     const gone = [];
@@ -391,7 +391,7 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
         const next = [];
         for (const item of left)
         {
-            if (cli(['plugin', 'uninstall', item.spec, '--scope', scope, '-y'], { quiet: true }))
+            if (cli(['plugin', 'uninstall', item.spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
             {
                 log(`  plugin pruned (retired upstream) [${scope}]: ${item.spec}`);
                 const back = addBack(item.name);
@@ -402,6 +402,7 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
         }
         left = next;
     }
+    for (const item of left) note(`plugin uninstall failed: ${item.spec} - remove it by hand: claude plugin uninstall ${item.spec} --scope ${scope}`);
     return gone;
 }
 
@@ -433,7 +434,7 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     {
         const install = ['plugin', 'install', spec, '--scope', scope, '-y'];
         log(`plugin [${scope}]: ${spec} (moves the 1.x install across - installed before its old ids go)`);
-        if (!cli(install))
+        if (!cli(install, { expect: 'reported' }))
         {
             out.failed = spec;
             note(`the 1.x install was not moved - 'claude ${install.join(' ')}' failed, so nothing was removed and the old core keeps the guards running; run it by hand, then update again`);
@@ -443,13 +444,13 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     }
     else log(`plugin [${scope}]: ${spec} is installed beside a 1.x id - the removals an earlier move left are retried`);
     out.ran = true;
-    out.gone = prunedRetired({ rows, retired, retiredRows, carriers, market: key, scope, cli, log });
+    out.gone = prunedRetired({ rows, retired, retiredRows, carriers, market: key, scope, cli, log, note });
     for (const name of [LEGACY.hooks, LEGACY.core])
         for (const r of named(name, key))
         {
             if (r.scope !== scope) { if (name === LEGACY.hooks) kept(r); continue; }
             const id = `${name}@${key}`;
-            if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true }))
+            if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
             { log(`  plugin removed (a 1.x id, now a retired alias) [${scope}]: ${id}`); out.removed.push(r); }
             else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes; the next update retries it, or: claude plugin uninstall ${id} --scope ${scope}`);
         }
@@ -489,7 +490,8 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
         else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
-            cli(['plugin', 'enable', spec, '--scope', pscope]);
+            // A stale listing flag (S22) makes this a no-op enable, which exits 1 with this line.
+            cli(['plugin', 'enable', spec, '--scope', pscope], { expect: /is already enabled/ });
         }
         log(`plugin update [${pscope}]: ${spec}`);
         cli(['plugin', 'update', spec, '--scope', pscope, '-y']);

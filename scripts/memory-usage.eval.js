@@ -84,6 +84,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, spawnSync, execFileSync } = require('child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
 const RULE_SRC = path.join(ROOT, 'stack', 'rules', 'baseline-memory.md');
@@ -129,7 +130,7 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   // A git repo of its own: memory.js's projectName() (and the model's own `basename "$(pwd)"` check)
   // both resolve the project tag from `git rev-parse --show-toplevel`, which must be THIS dir, not the
   // Alfred Code worktree the harness itself runs from.
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   const claudeDir = path.join(projectDir, '.claude');
   fs.mkdirSync(path.join(claudeDir, 'rules'), { recursive: true });
@@ -179,7 +180,7 @@ const INSTALLER_SEED = path.join(ROOT, 'scripts', 'install', 'alfred-code.js');
 // and the auth the installer's own `claude` calls need both resolve through the real default account.
 function buildProjectInstall(projectDir, { agents = [] } = {}) {
   fs.mkdirSync(projectDir, { recursive: true });
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   const selectionPath = path.join(projectDir, '.eval-selection.txt');
   const selectionLines = ['rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
@@ -309,18 +310,18 @@ const PRE_FEATURE_COMMIT = 'bb5c684';
 function extractGitArchive(committish, destDir) {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
-  const archive = spawnSync('git', ['archive', committish], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+  const archive = rt.spawnCommand('git', ['archive', committish], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   if (archive.error || archive.status !== 0) {
     throw new Error(`git archive ${committish} failed: ${archive.error ? archive.error.message : String(archive.stderr || '').slice(-2000)}`);
   }
-  const tar = spawnSync('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 });
+  const tar = rt.spawnCommand('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 });
   if (tar.error || tar.status !== 0) {
     throw new Error(`tar extract of ${committish} into ${destDir} failed: ${tar.error ? tar.error.message : String(tar.stderr || '').slice(-2000)}`);
   }
-  const shaRes = spawnSync('git', ['rev-parse', committish], { cwd: ROOT, encoding: 'utf8' });
+  const shaRes = rt.spawnCommand('git', ['rev-parse', committish], { cwd: ROOT, encoding: 'utf8' });
   const sha = (shaRes.stdout || '').trim();
   if (shaRes.status !== 0 || !sha) throw new Error(`git rev-parse ${committish} failed: ${shaRes.stderr || ''}`);
-  const pluginJsonRes = spawnSync('git', ['show', `${committish}:setup-plugin/.claude-plugin/plugin.json`], { cwd: ROOT, encoding: 'utf8' });
+  const pluginJsonRes = rt.spawnCommand('git', ['show', `${committish}:setup-plugin/.claude-plugin/plugin.json`], { cwd: ROOT, encoding: 'utf8' });
   const versionMatch = /"version"\s*:\s*"([^"]+)"/.exec(pluginJsonRes.stdout || '');
   const version = versionMatch ? versionMatch[1] : '0.0.0';
   fs.writeFileSync(path.join(destDir, 'RELEASE-SOURCE'), `sha: ${sha}\nref: ${committish}\nversion: ${version}\nsource: memory-usage-eval-archive\n`);
@@ -443,7 +444,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const sandboxEnv = { ...process.env, CLAUDE_CONFIG_DIR: acctDir };
 
   fs.mkdirSync(projectDir, { recursive: true });
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   // Step 1: pre-feature install. A minimal, deliberately narrow selection (one always-on rule, no
   // plugin/skill/agent lines) - the old installer has no memory categories to name, and this is
@@ -461,7 +462,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // needed so a LATER assert failure (the install itself having exited 0) can still dump what it saw.
   // PRE_FEATURE_COMMIT predates Phase 7b (R33): that archive genuinely still carries the frozen shell
   // twin, so this call targets it on purpose - it is not a live reference to a file this repo ships.
-  const preInstallRes = spawnSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {   // legacy-name
+  const preInstallRes = rt.spawnCommand('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {   // legacy-name
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
   const preInstallLog = `$ install --selection ${preSelectionPath} --source ${preSrc}\nexit=${preInstallRes.status}\n--- stdout ---\n${preInstallRes.stdout || ''}\n--- stderr ---\n${preInstallRes.stderr || ''}\n`;
@@ -613,7 +614,7 @@ function withSeedLock(fn) {
 
 async function seedMemoryNow(mcpConfigPath, cwd, notes) {
   const entry = readRegistration(mcpConfigPath);
-  const child = spawn(entry.command, entry.args || [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = rt.spawnCommandAsync(entry.command, entry.args || [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
   const rpc = createRpcClient(child);
   try {
     // Generous even solo-warm (~2s): covers a cold ONNX/model download (~41s per FACT-EMBED) plus
@@ -653,7 +654,7 @@ function runClaude(projectDir, prompt, { mcpConfigPath, allowedTools, model, ses
     '--max-budget-usd', String(maxBudgetUsd),
     '--forward-subagent-text',
   ];
-  const res = spawnSync('claude', args, { cwd: projectDir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: timeoutMs });
+  const res = rt.spawnCommand('claude', args, { cwd: projectDir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: timeoutMs });
   const lines = String(res.stdout || '').split('\n').filter(Boolean)
     .map((l) => { try { return JSON.parse(l); } catch { return null; } })
     .filter(Boolean);

@@ -28,7 +28,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const REPO = path.join(__dirname, '..');
 const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
@@ -64,12 +64,10 @@ function browsersDir(platform, env)
 }
 
 const probes = {
-    has: (bin, env = process.env) =>
-    {
-        const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [bin], { env, encoding: 'utf8' });
-        return r.status === 0 && Boolean((r.stdout || '').trim());
-    },
-    pythonFound: (request, env = process.env) => spawnSync('uv', ['python', 'find', request], { env, encoding: 'utf8', shell: process.platform === 'win32' }).status === 0,
+    // On Windows a tool counts only when it resolves to a file Node can start (R105): `where` also
+    // lists npm's extensionless sh shim, which no Windows spawn runs.
+    has: (bin, env = process.env) => rt.which(bin, { env }),
+    pythonFound: (request, env = process.env) => rt.spawnCommand('uv', ['python', 'find', request], { env, encoding: 'utf8' }).status === 0,
     file: (p) => fs.existsSync(p),
     dir: (dir, prefix) => { try { return fs.readdirSync(dir).some((n) => n.startsWith(prefix)); } catch { return false; } },
 };

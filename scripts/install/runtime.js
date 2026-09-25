@@ -10,23 +10,37 @@
 //   - A MISSING TOOL IS FAIL-SOFT, never an abort. `claude` absent means the plugin and MCP layers
 //     are skipped and reported; the file layers still land.
 //   - A COMMAND'S EXIT CODE IS THE ANSWER, never its output. The verify passes read files.
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn: spawnAsync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
 const lines = (text) => String(text).split('\n').map((l) => l.trim()).filter(Boolean);
 
-// WINDOWS (R104): an npm-installed `claude` or `npx` is a BATCH FILE, and `where` lists npm's
-// extensionless sh shim before it. Node starts a .exe/.com directly, but a .cmd/.bat only through
-// cmd.exe: a batch file spawned directly fails EINVAL since the CVE-2024-27980 fix (ENOENT before
-// it), so the seed read `claude` as present and every plugin and MCP call then failed. The first
-// match Node can start, in `where`'s own order, is the one a shell would run - '' when there is none.
-function resolveWin(cmd, run = spawnSync)
+// WINDOWS (R104, R105): an npm-installed `claude`, `npx` or `npm` is a BATCH FILE, and `where` lists
+// npm's extensionless sh shim before it. Node starts a .exe/.com directly, but a .cmd/.bat only
+// through cmd.exe: a batch file spawned directly fails EINVAL since the CVE-2024-27980 fix (ENOENT
+// before it), in spawnSync and spawn alike - measured on a Windows 11 VM, where the seed read
+// `claude` as present and then every plugin and MCP call failed. The first match Node can start, in
+// `where`'s own order, is the one a shell would run - '' when there is none. `env` is the caller's:
+// a PATH it changed (init installs a tool, then looks again) is the one searched.
+function resolveWin(cmd, run = spawnSync, env = process.env)
 {
-    const r = run('where', [cmd], { encoding: 'utf8' });
+    const r = run('where', [cmd], { encoding: 'utf8', env });
     if (!r || r.status !== 0) return '';
     return lines(r.stdout || '').find((p) => /\.(exe|com|cmd|bat)$/i.test(p)) || '';
+}
+
+// One `where` per name and PATH for the whole run - the seed makes dozens of `claude` calls. Only a
+// FOUND path is kept, so a tool installed mid-run is still found on the next look.
+const resolvedWin = new Map();
+function resolveOnce(cmd, env = process.env)
+{
+    const key = `${cmd}\0${env.PATH || env.Path || ''}`;
+    if (resolvedWin.has(key)) return resolvedWin.get(key);
+    const full = resolveWin(cmd, spawnSync, env);
+    if (full) resolvedWin.set(key, full);
+    return full;
 }
 
 // cmd.exe's metacharacters; a caret before one makes it literal.
@@ -43,40 +57,107 @@ function cmdArg(arg)
     return quoted.replace(CMD_META, '^$1').replace(CMD_META, '^$1');
 }
 
-// The one spawn behind every runner: unchanged off Windows. On Windows the name is resolved to its
-// full path first; a .exe/.com is spawned directly, a .cmd/.bat through cmd.exe with every argument
-// escaped by `cmdArg`. No `shell: true`: that concatenates rather than escapes, which Node
+// WHAT to start for one external command: unchanged off Windows. On Windows the name is resolved to
+// its full path first; a .exe/.com is started directly, a .cmd/.bat through cmd.exe with every
+// argument escaped by `cmdArg`. No `shell: true`: that concatenates rather than escapes, which Node
 // deprecated (DEP0190) for exactly the reason it sounds like. A line break has no escape in a cmd.exe
 // command line - it ends the command - so an argument carrying one is refused, never run.
-function spawnCommand(bin, argv, opts, { platform = process.platform, resolve = resolveWin, spawn = spawnSync } = {})
+function commandPlan(bin, argv, opts, { platform = process.platform, resolve = resolveOnce } = {})
 {
-    if (platform !== 'win32') return spawn(bin, argv, opts);
-    const failed = (why) => ({ status: null, stdout: '', stderr: why, error: new Error(why) });
-    const full = resolve(bin);
-    if (!full) return failed(`${bin}: not found on PATH as a .exe, .com, .cmd or .bat`);
-    if (!/\.(cmd|bat)$/i.test(full)) return spawn(full, argv, opts);
-    if (argv.some((a) => /[\r\n]/.test(String(a)))) return failed(`${bin}: an argument holds a line break, which cmd.exe cannot pass`);
+    if (platform !== 'win32') return { cmd: bin, args: argv, opts };
     const env = (opts && opts.env) || process.env;
+    const full = resolve(bin, env);
+    if (!full) return { why: `${bin}: not found on PATH as a .exe, .com, .cmd or .bat` };
+    if (!/\.(cmd|bat)$/i.test(full)) return { cmd: full, args: argv, opts };
+    if (argv.some((a) => /[\r\n]/.test(String(a)))) return { why: `${bin}: an argument holds a line break, which cmd.exe cannot pass` };
     const comspec = env.ComSpec || env.COMSPEC || 'cmd.exe';
     const line = [full.replace(CMD_META, '^$1'), ...argv.map(cmdArg)].join(' ');
-    return spawn(comspec, ['/d', '/s', '/c', `"${line}"`], { ...opts, windowsVerbatimArguments: true });
+    return { cmd: comspec, args: ['/d', '/s', '/c', `"${line}"`], opts: { ...opts, windowsVerbatimArguments: true } };
 }
 
-// `command -v` is a shell builtin, so posix gets an explicit `sh -c` with the name quoted into it. On
-// Windows a tool counts only when it resolves to a file Node can start.
-const which = (cmd, { platform = process.platform, resolve = resolveWin } = {}) => (platform === 'win32'
-    ? Boolean(resolve(cmd))
-    : spawnSync('/bin/sh', ['-c', `command -v '${String(cmd).replace(/'/g, "'\\''")}'`], { stdio: 'ignore' }).status === 0);
-
-// One runner for every `claude ...` call: returns true on exit 0, and prints nothing unless the
-// caller asks for the output. `platform`, `resolve` and `spawn` are the seams the tests hand in.
-function cliRunner(bin, { cwd, env, out = () => {}, platform, resolve, spawn } = {})
+// THE ONE SPAWN behind every external command the scripts run (R105) - `node` itself excepted, which
+// is `process.execPath` and never a batch file. `platform`, `resolve` and `spawn` are the seams the
+// tests hand in. A command that cannot be planned comes back as a spawn error, never a start.
+function spawnCommand(bin, argv = [], opts = {}, { platform, resolve, spawn = spawnSync } = {})
 {
-    return (argv, { quiet = false } = {}) =>
+    const plan = commandPlan(bin, argv, opts, { platform, resolve });
+    if (plan.why) return { status: null, stdout: '', stderr: plan.why, error: new Error(plan.why) };
+    return spawn(plan.cmd, plan.args, plan.opts);
+}
+
+// The async twin, a ChildProcess. A name that does not resolve is started plainly, so its failure
+// arrives as the 'error' event every caller of `spawn` already handles.
+function spawnCommandAsync(bin, argv = [], opts = {}, { platform, resolve, spawn = spawnAsync } = {})
+{
+    const plan = commandPlan(bin, argv, opts, { platform, resolve });
+    return plan.why ? spawn(bin, argv, opts) : spawn(plan.cmd, plan.args, plan.opts);
+}
+
+// execFileSync's contract over the same route: stdout back, a throw carrying `status`, `stdout` and
+// `stderr` on a failed start or a non-zero exit, and stderr passed through when no `stdio` was asked for.
+function execCommand(bin, argv = [], opts = {}, seams = {})
+{
+    const r = spawnCommand(bin, argv, opts, seams);
+    if (!opts.stdio && r.stderr && !r.error) process.stderr.write(r.stderr);
+    if (r.error) throw Object.assign(r.error, { status: null, stdout: r.stdout, stderr: r.stderr });
+    if (r.status !== 0)
+        throw Object.assign(new Error(`Command failed: ${[bin, ...argv].join(' ')}${r.stderr ? `\n${String(r.stderr).trim()}` : ''}`),
+            { status: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr });
+    return r.stdout;
+}
+
+// Where a tool resolves - '' when it does not. `command -v` is a shell builtin, so posix gets an
+// explicit `sh -c` with the name quoted into it. On Windows a tool counts only when it resolves to a
+// file Node can start.
+function locate(cmd, { platform = process.platform, resolve = resolveOnce, env = process.env } = {})
+{
+    if (platform === 'win32') return resolve(cmd, env) || '';
+    const r = spawnSync('/bin/sh', ['-c', `command -v '${String(cmd).replace(/'/g, "'\\''")}'`], { encoding: 'utf8', env });
+    return r.status === 0 ? String(r.stdout || '').trim() : '';
+}
+const which = (cmd, seams = {}) => Boolean(locate(cmd, seams));
+
+// FOUND BUT NOT RUNNABLE (R105): a tool on PATH that cannot be started - a batch file spawned
+// directly, a missing interpreter, a broken ComSpec. One `--version` start answers it; only a failed
+// START counts, never a non-zero exit. '' when it runs, else the one line the run prints.
+function unrunnable(bin, { cwd, env, platform, resolve, spawn } = {})
+{
+    const r = spawnCommand(bin, ['--version'], { cwd, env, encoding: 'utf8' }, { platform, resolve, spawn });
+    if (!r.error) return '';
+    const at = locate(bin, { platform, resolve, env: env || process.env }) || bin;
+    return `${bin} found at ${at} but could not be run: ${r.error.message}`;
+}
+
+// What a failed call says: its words up to the first option - never a value handed after one (a
+// header, an env pair) - and the last line it printed, stderr first.
+const callLabel = (argv) => { const at = argv.findIndex((a) => String(a).startsWith('-')); return (at < 0 ? argv : argv.slice(0, at)).join(' '); };
+const lastSaid = (r) => (lines(r.stderr || '').pop() || lines(r.stdout || '').pop() || '').slice(0, 300);
+
+// One runner for every `claude ...` call: true on exit 0. A FAILED call prints one line through
+// `fail` (R105 - the VM run failed its marketplace and `mcp remove` calls with no line at all) unless
+// the caller says what it expects: `expect: 'reported'` (the caller notes the failure itself),
+// `'answer'` (the exit code IS the answer, as for `mcp get`) or a RegExp over the output (a benign
+// failure, such as removing a server that is not there). A CLI that cannot START is said once, and
+// no later call of the run starts it again.
+function cliRunner(bin, { cwd, env, out = () => {}, fail = () => {}, platform, resolve, spawn } = {})
+{
+    let broken = false;
+    return (argv, { quiet = false, expect } = {}) =>
     {
+        if (broken) return false;
         const r = spawnCommand(bin, argv, { cwd, env, encoding: 'utf8' }, { platform, resolve, spawn });
         if (!quiet && r.stdout) out(r.stdout.trimEnd().split('\n').slice(-1)[0]);
-        return r.status === 0;
+        if (r.status === 0) return true;
+        if (r.error)
+        {
+            broken = true;
+            fail(`${bin} could not be run: ${r.error.message} - no later ${bin} call of this run is tried`);
+            return false;
+        }
+        const benign = expect === 'reported' || expect === 'answer'
+            || (expect instanceof RegExp && expect.test(`${r.stderr || ''}\n${r.stdout || ''}`));
+        if (!benign) fail(`${bin} ${callLabel(argv)} failed (${r.signal ? `signal ${r.signal}` : `exit ${r.status}`})${lastSaid(r) ? `: ${lastSaid(r)}` : ''}`);
+        return false;
     };
 }
 
@@ -93,7 +174,7 @@ function gitRevision(dir)
 {
     const ask = (args) =>
     {
-        const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8' });
+        const r = spawnCommand('git', args, { cwd: dir, encoding: 'utf8' });
         return r.status === 0 ? (r.stdout || '').trim() : '';
     };
     const sha = ask(['rev-parse', 'HEAD']);
@@ -103,7 +184,7 @@ function gitRevision(dir)
 
 function gitRoot(cwd)
 {
-    const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+    const r = spawnCommand('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
     return r.status === 0 ? r.stdout.trim() : '';
 }
 
@@ -127,8 +208,8 @@ function fetchArchive({ repoUrl, tmpdir = os.tmpdir() } = {})
     const dl = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-dl-'));
     const repo = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-src-'));
     const tgz = path.join(dl, 'alfred-code.tar.gz');
-    const ok = spawnSync('curl', ['-fsSL', `${repoUrl}/releases/latest/download/alfred-code.tar.gz`, '-o', tgz], { stdio: 'ignore' }).status === 0
-        && spawnSync('tar', ['-xzf', tgz, '-C', repo], { stdio: 'ignore' }).status === 0;
+    const ok = spawnCommand('curl', ['-fsSL', `${repoUrl}/releases/latest/download/alfred-code.tar.gz`, '-o', tgz], { stdio: 'ignore' }).status === 0
+        && spawnCommand('tar', ['-xzf', tgz, '-C', repo], { stdio: 'ignore' }).status === 0;
     fs.rmSync(dl, { recursive: true, force: true });
     if (!ok) { fs.rmSync(repo, { recursive: true, force: true }); return null; }
     return repo;
@@ -140,7 +221,7 @@ function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
 {
     if (!which('git')) return null;
     const dir = fs.mkdtempSync(path.join(tmpdir, 'alfred-code-clone-'));
-    if (spawnSync('git', ['clone', '--depth', '1', '-b', 'main', repoUrl, dir], { stdio: 'ignore' }).status !== 0)
+    if (spawnCommand('git', ['clone', '--depth', '1', '-b', 'main', repoUrl, dir], { stdio: 'ignore' }).status !== 0)
     {
         fs.rmSync(dir, { recursive: true, force: true });
         return null;
@@ -149,4 +230,7 @@ function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
     return { dir, sha: rev.sha, ref: rev.ref };
 }
 
-module.exports = { which, cliRunner, capture, resolveWin, cmdArg, spawnCommand, gitRoot, gitRevision, runNode, lines, fetchArchive, cloneMain, join: path.join };
+module.exports = {
+    which, locate, unrunnable, cliRunner, capture, resolveWin, cmdArg, spawnCommand, spawnCommandAsync, execCommand,
+    gitRoot, gitRevision, runNode, lines, fetchArchive, cloneMain, join: path.join,
+};

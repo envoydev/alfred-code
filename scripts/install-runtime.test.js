@@ -9,7 +9,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { which, cliRunner, capture, resolveWin, cmdArg } = require('./install/runtime.js');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { which, cliRunner, capture, resolveWin, cmdArg, spawnCommandAsync, execCommand, locate, unrunnable } = require('./install/runtime.js');
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const NPM_SHIM = 'C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd';
 // A name no machine carries: before the fix the runner ignored the injected spawn and started the
@@ -133,4 +137,146 @@ test('install-runtime: which on win32 is true only for a match Node can start', 
 {
     assert.strictEqual(which('claude', { platform: 'win32', resolve: () => NPM_SHIM }), true);
     assert.strictEqual(which('claude', { platform: 'win32', resolve: () => '' }), false);
+});
+
+// R105 - the Windows VM measured the rest: spawnSync('claude') ENOENT, spawnSync('claude.cmd') EINVAL,
+// every plugin install '!! failed', and the marketplace calls and eight `mcp remove` calls failing
+// with no line at all while the seed exited 0.
+
+test('install-runtime: a .bat resolved on win32 takes the cmd.exe route like a .cmd', () =>
+{
+    const { calls, spawn } = recorder();
+    cliRunner(BIN, { env: {}, platform: 'win32', resolve: () => 'C:\\tools\\claude.BAT', spawn })(['plugin', 'list'], { quiet: true });
+    assert.strictEqual(calls[0].cmd, 'cmd.exe');
+    assert.deepStrictEqual(calls[0].args.slice(0, 3), ['/d', '/s', '/c']);
+    assert.strictEqual(calls[0].opts.windowsVerbatimArguments, true);
+    assert.match(calls[0].args[3], /^"C:\\tools\\claude\.BAT /);
+});
+
+test('install-runtime: execCommand routes like the runners, returns stdout, and throws with the status on a non-zero exit', () =>
+{
+    const { calls, spawn } = recorder({ status: 0, stdout: 'v1\n', stderr: '' });
+    assert.strictEqual(execCommand(BIN, ['--version'], { encoding: 'utf8', stdio: 'pipe' }, { platform: 'win32', resolve: () => 'C:\\npm\\npm.cmd', spawn }), 'v1\n');
+    assert.strictEqual(calls[0].cmd, 'cmd.exe');
+    const bad = recorder({ status: 2, stdout: 'o', stderr: 'e' });
+    assert.throws(() => execCommand(BIN, ['x'], { stdio: 'pipe' }, { platform: 'win32', resolve: () => 'C:\\bin\\git.exe', spawn: bad.spawn }),
+        (e) => e.status === 2 && e.stdout === 'o' && e.stderr === 'e');
+    assert.strictEqual(bad.calls[0].cmd, 'C:\\bin\\git.exe');
+    assert.throws(() => execCommand(BIN, ['x'], {}, { platform: 'win32', resolve: () => '', spawn: bad.spawn }), /not found on PATH/);
+});
+
+test('install-runtime: spawnCommandAsync runs a .cmd through cmd.exe and a .exe directly, and leaves an unresolved name to the plain spawn', () =>
+{
+    const { calls, spawn } = recorder({ on: () => {} });
+    spawnCommandAsync(BIN, ['-y', 'a b"&c'], { cwd: 'C:\\p' }, { platform: 'win32', resolve: () => 'C:\\npm\\npx.cmd', spawn });
+    assert.strictEqual(calls[0].cmd, 'cmd.exe');
+    assert.strictEqual(calls[0].opts.windowsVerbatimArguments, true);
+    assert.ok(calls[0].args[3].endsWith(`${cmdArg('a b"&c')}"`));
+    spawnCommandAsync(BIN, ['x'], {}, { platform: 'win32', resolve: () => 'C:\\uv\\uvx.exe', spawn });
+    assert.deepStrictEqual([calls[1].cmd, calls[1].args], ['C:\\uv\\uvx.exe', ['x']]);
+    // Unresolved: the plain spawn raises its own 'error' event, which the caller already handles.
+    spawnCommandAsync(BIN, ['x'], {}, { platform: 'win32', resolve: () => '', spawn });
+    assert.deepStrictEqual([calls[2].cmd, calls[2].args], [BIN, ['x']]);
+});
+
+test('install-runtime: resolveWin asks where with the caller\'s env, so a PATH the caller changed is the one searched', () =>
+{
+    let seen = null;
+    resolveWin('uv', (cmd, args, opts) => { seen = opts.env; return { status: 0, stdout: 'C:\\uv\\uv.exe\r\n' }; }, { PATH: 'C:\\uv' });
+    assert.deepStrictEqual(seen, { PATH: 'C:\\uv' });
+    assert.strictEqual(locate('uv', { platform: 'win32', resolve: () => 'C:\\uv\\uv.exe' }), 'C:\\uv\\uv.exe');
+});
+
+test('install-runtime: a failed call prints ONE line naming the call and its reason, unless the caller expects the failure', () =>
+{
+    const fails = [];
+    const failing = recorder({ status: 1, stdout: '', stderr: 'first\nNo MCP server named "x" in .mcp.json\n' });
+    const run = cliRunner(BIN, { env: {}, platform: 'darwin', spawn: failing.spawn, fail: (m) => fails.push(m) });
+    assert.strictEqual(run(['plugin', 'marketplace', 'update', 'envoydev'], { quiet: true }), false);
+    assert.deepStrictEqual(fails, [`${BIN} plugin marketplace update envoydev failed (exit 1): No MCP server named "x" in .mcp.json`]);
+    // Expected: an absent server's remove, a probe whose exit code is the answer, a failure the caller notes.
+    run(['mcp', 'remove', 'x', '-s', 'project'], { quiet: true, expect: /No MCP server named/ });
+    run(['mcp', 'get', 'x'], { quiet: true, expect: 'answer' });
+    run(['plugin', 'install', 'x@y'], { expect: 'reported' });
+    assert.strictEqual(fails.length, 1, fails.join('\n'));
+    // A benign pattern that does not match is a real failure; the label stops at the first option,
+    // so no value handed after it (a header, an env pair) is ever printed.
+    run(['mcp', 'add', '--scope', 'project', 'x', '--', 'npx', 'value-r105'], { quiet: true, expect: /already exists/ });
+    assert.strictEqual(fails[1], `${BIN} mcp add failed (exit 1): No MCP server named "x" in .mcp.json`);
+    // No stderr: the reason is stdout's last line (the CLI prints 'Not logged in' there).
+    const outOnly = recorder({ status: 1, stdout: 'Not logged in\n', stderr: '' });
+    cliRunner(BIN, { env: {}, platform: 'darwin', spawn: outOnly.spawn, fail: (m) => fails.push(m) })(['plugin', 'update', 'x@y'], { quiet: true });
+    assert.strictEqual(fails[2], `${BIN} plugin update x@y failed (exit 1): Not logged in`);
+});
+
+test('install-runtime: a CLI that cannot be RUN fails loudly once, and no later call spawns or prints', () =>
+{
+    const fails = [];
+    const error = Object.assign(new Error('spawnSync C:\\npm\\claude.cmd EINVAL'), { code: 'EINVAL' });
+    const { calls, spawn } = recorder({ status: null, stdout: '', stderr: '', error });
+    const run = cliRunner(BIN, { env: {}, platform: 'darwin', spawn, fail: (m) => fails.push(m) });
+    assert.strictEqual(run(['plugin', 'marketplace', 'update', 'a'], { quiet: true }), false);
+    assert.strictEqual(run(['mcp', 'get', 'x'], { quiet: true, expect: 'answer' }), false);
+    assert.strictEqual(run(['plugin', 'install', 'x@y'], { expect: 'reported' }), false);
+    assert.strictEqual(calls.length, 1, 'a CLI that cannot start is not started again');
+    assert.strictEqual(fails.length, 1, fails.join('\n'));
+    assert.match(fails[0], /could not be run: spawnSync C:\\npm\\claude\.cmd EINVAL/);
+});
+
+test('install-runtime: unrunnable names the path and the error when the CLI cannot start, and is empty when it starts - whatever its exit', () =>
+{
+    const error = Object.assign(new Error('spawnSync C:\\npm\\claude.cmd EINVAL'), { code: 'EINVAL' });
+    const cannot = recorder({ status: null, stdout: '', stderr: '', error });
+    assert.strictEqual(unrunnable(BIN, { env: {}, platform: 'win32', resolve: () => NPM_SHIM, spawn: cannot.spawn }),
+        `${BIN} found at ${NPM_SHIM} but could not be run: spawnSync C:\\npm\\claude.cmd EINVAL`);
+    assert.deepStrictEqual(cannot.calls[0].args.slice(-1)[0].endsWith(`${cmdArg('--version')}"`), true, 'the probe is --version');
+    assert.strictEqual(unrunnable(BIN, { env: {}, platform: 'win32', resolve: () => NPM_SHIM, spawn: recorder({ status: 1, stdout: '', stderr: '' }).spawn }), '');
+});
+
+const STUB_HEAD = ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"', 'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi'];
+const bangLines = (out) => out.split('\n').filter((l) => l.includes('!!'));
+
+test('install-runtime: the seed with a claude it finds but cannot run says so ONCE and skips the plugin and MCP layers', POSIX_ONLY, () =>
+{
+    // The posix twin of the Windows failure: on PATH and executable, but its interpreter is missing,
+    // so every spawn fails ENOENT exactly as spawnSync('claude') did on the VM. PATH holds nothing
+    // else named claude - a start that fails ENOENT goes on down PATH, and would reach a real CLI.
+    const env = {};
+    const run = seedRun('install', 'skill csharp\n', {
+        env,
+        prepare: (repo, work) =>
+        {
+            fs.writeFileSync(path.join(work, 'bin', 'claude'), '#!/nonexistent/alfred-code-r105\n', { mode: 0o755 });
+            fs.mkdirSync(path.join(work, 'nodebin'));
+            fs.symlinkSync(process.execPath, path.join(work, 'nodebin', 'node'));
+            env.PATH = [path.join(work, 'bin'), path.join(work, 'nodebin'), '/usr/bin', '/bin'].join(path.delimiter);
+        },
+        inspect: (repo) => fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')),
+    });
+    const loud = run.out.split('\n').filter((l) => /could not be run/.test(l));
+    assert.strictEqual(loud.length, 1, run.out);
+    assert.match(loud[0], /!! claude found at \S+\/bin\/claude but could not be run: .*ENOENT - the plugin and MCP layers were skipped/);
+    assert.doesNotMatch(run.out, /not on PATH|plugin \S+ failed|mcp \S+ failed/);
+    assert.strictEqual(run.result, true, 'the file layers still land');
+});
+
+test('install-runtime: the seed prints a line for a failed marketplace refresh and a failed mcp remove, and none for an absent server', POSIX_ONLY, () =>
+{
+    const stub = [...STUB_HEAD,
+        'if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "update" ]; then echo "r105 refresh refused" >&2; exit 1; fi',
+        'if [ "$1" = "plugin" ] && [ "$2" = "install" ] && [ "${3%%@*}" = "claude-hud" ]; then echo "r105 install refused" >&2; exit 1; fi',
+        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$3" = "serena" ]; then echo "r105 .mcp.json could not be parsed" >&2; exit 1; fi',
+        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ]; then echo "No MCP server named \\"$3\\" in .mcp.json" >&2; exit 1; fi',
+        'exit 0', ''].join('\n');
+    const run = seedRun('install', 'skill csharp\n', { prepare: (repo, work) => fs.writeFileSync(path.join(work, 'bin', 'claude'), stub, { mode: 0o755 }) });
+    const bangs = bangLines(run.out);
+    const refreshes = run.calls.filter((c) => /^plugin marketplace update /.test(c));
+    assert.ok(refreshes.length > 0, run.calls.join('\n'));
+    for (const c of refreshes)
+        assert.strictEqual(bangs.filter((l) => l.includes(`!! claude ${c} failed (exit 1): r105 refresh refused`)).length, 1, `${c}:\n${bangs.join('\n')}`);
+    assert.strictEqual(bangs.filter((l) => l.includes('!! claude mcp remove serena failed (exit 1): r105 .mcp.json could not be parsed')).length, 1, bangs.join('\n'));
+    assert.ok(run.calls.includes('mcp remove context7 -s project'), 'the absent-server remove ran');
+    assert.deepStrictEqual(bangs.filter((l) => /mcp remove/.test(l) && !/serena/.test(l)), [], 'an absent server is nothing to report');
+    // The install failure is the caller's own note, once - never a second line from the runner.
+    assert.deepStrictEqual(bangs.filter((l) => /claude-hud@/.test(l)), ['==>   !! plugin claude-hud@claude-hud failed'], bangs.join('\n'));
 });

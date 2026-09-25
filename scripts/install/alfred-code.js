@@ -118,7 +118,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     }
     let skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
-    const hasClaude = rt.which('claude');
+    // R105: a `claude` found on PATH that cannot be STARTED (a batch file spawned without cmd.exe, a
+    // missing interpreter) is said once, here, and the run goes on as without one - never a failure
+    // line per plugin, and never a call that fails with no line at all.
+    const claudeBroken = rt.which('claude') ? rt.unrunnable('claude', { cwd: projectRoot, env }) : null;
+    const hasClaude = claudeBroken === '';
+    if (claudeBroken) note(`${claudeBroken} - the plugin and MCP layers were skipped`);
 
     const repoUrl = env.ALFRED_CODE_REPO_URL || 'https://github.com/envoydev/alfred-code';
     const source = createSource({
@@ -134,7 +139,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     });
 
     const cli = hasClaude
-        ? rt.cliRunner('claude', { cwd: projectRoot, env, out: plain })
+        ? rt.cliRunner('claude', { cwd: projectRoot, env, out: plain, fail: note })
         : () => false;
     // The marketplaces this run already refreshed, so no later pass pays the round trip twice.
     const refreshed = new Set();
@@ -472,7 +477,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const ctx = {
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
-            pins, tokens, remotes, level, hasClaude, picked, answered, dropEntries, cliScope, refreshed,
+            pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, pw: { prior: priorPw, ...pwOn },
         };
         if (!routes.mcps && pwOn.apply && pw.browsers.length)
@@ -642,7 +647,7 @@ function installSkillsAndAgents(ctx)
 
 function installPlugins(ctx)
 {
-    if (!ctx.hasClaude) { ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
+    if (!ctx.hasClaude) { if (!ctx.claudeBroken) ctx.note('the claude CLI is not on PATH - the plugin and MCP layers were skipped'); return; }
     // One row per name@marketplace: the set mixes official picks with stack entries, and the official
     // catalog ships names the stack uses too.
     const readRaw = () => ctx.rt.capture('claude', ['plugin', 'list', '--json'], { cwd: ctx.projectRoot, env: ctx.env });
@@ -681,7 +686,7 @@ function installPlugins(ctx)
     {
         // A move that ran (or retried) pruned the retired entries already; a failed one removes nothing.
         const moving = moved.ran || moved.failed;
-        const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log });
+        const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
             plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
@@ -694,7 +699,7 @@ function installPlugins(ctx)
             // An entry enabled at ANOTHER scope belongs to that scope's install too - an account-wide
             // entry a project run disabled would vanish from every other project. Said, not done.
             if (row.scope !== ctx.cliScope) { ctx.log(`  ${spec} is enabled at ${row.scope} scope, not this run's - if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`); continue; }
-            if (ctx.cli(['plugin', 'disable', spec, '--scope', row.scope], { quiet: true })) ctx.log(`plugin disabled [${row.scope}]: ${spec} (nothing kept needs it after --drop)`);
+            if (ctx.cli(['plugin', 'disable', spec, '--scope', row.scope], { quiet: true, expect: 'reported' })) ctx.log(`plugin disabled [${row.scope}]: ${spec} (nothing kept needs it after --drop)`);
             else ctx.note(`plugin disable failed: ${spec} - disable it by hand: claude plugin disable ${spec} --scope ${row.scope}`);
         }
         return;
@@ -763,13 +768,17 @@ function listingRead(raw)
     catch { return false; }
 }
 
+// `claude mcp remove` of a server the scope does not hold exits 1 with this line - nothing to remove
+// is nothing to report (measured on 2.1.282: '... in .mcp.json', '... in local scope', '... in user scope').
+const MCP_ABSENT = /No MCP server named/;
+
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
     const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue });
     const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
     for (const name of retired)
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true }))
+        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT }))
         {
             ctx.log(`  mcp pruned: ${name}`);
             const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
@@ -782,17 +791,17 @@ function installMcps(ctx)
         return;
     }
     for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }))
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true })) ctx.log(`  mcp removed: ${name}`);
+        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
 
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)));
     for (const entry of live)
     {
         const name = entry.split('|')[0];
         const args = entry.slice(entry.indexOf('|') + 1);
-        if (ctx.args.action === 'update') ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true });
-        else if (ctx.cli(['mcp', 'get', name], { quiet: true })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
+        if (ctx.args.action === 'update') ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT });
+        else if (ctx.cli(['mcp', 'get', name], { quiet: true, expect: 'answer' })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
         ctx.log(`mcp [${ctx.args.scope}]: ${name}`);
-        if (!ctx.cli(mcp.registerSpec({ name, args, scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens })))
+        if (!ctx.cli(mcp.registerSpec({ name, args, scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
             ctx.note(`mcp ${name} failed`);
     }
 
@@ -807,7 +816,7 @@ function installMcps(ctx)
         reregister: (name) =>
         {
             const entry = live.find((e) => e.split('|')[0] === name);
-            ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true });
+            ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT });
             ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
         },
         log: ctx.log, note: ctx.note,

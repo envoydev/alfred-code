@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 
 function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs' } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-engine-')));
   const git = (...args) => {
-    const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    const r = rt.spawnCommand('git', args, { cwd: root, encoding: 'utf8' });
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout.trim();
   };

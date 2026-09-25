@@ -66,7 +66,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
 
@@ -2398,7 +2398,7 @@ function isTracked(base, rel)
 {
     try
     {
-        execFileSync('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
+        rt.execCommand('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
         return true;
     }
     catch { return false; }
@@ -2706,9 +2706,9 @@ function repoTextFiles(root = ROOT)
     let names = null;
     try
     {
-        const top = execFileSync('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const top = rt.execCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         if (fs.realpathSync(top) === fs.realpathSync(root))
-            names = execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
+            names = rt.execCommand('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
     }
     catch { names = null; }
     if (!names)
@@ -2876,13 +2876,13 @@ function lintMarketplaceEntries(liveIn)
 function lintMarketplaceSchema()
 {
     const out = [];
-    try { execFileSync('claude', ['--version'], { stdio: 'ignore' }); }
+    try { rt.execCommand('claude', ['--version'], { stdio: 'ignore' }); }
     catch
     {
         console.log('lint-skills: the claude CLI is absent - `claude plugin validate --strict` NOT RUN.');
         return out;
     }
-    try { execFileSync('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try { rt.execCommand('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (err)
     {
         const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');

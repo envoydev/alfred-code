@@ -17,12 +17,16 @@ const P = require('./install/plugins.js');
 function cli(fails = [])
 {
     const calls = [];
-    const run = (argv) =>
+    const expects = [];
+    const run = (argv, opts = {}) =>
     {
         calls.push(argv.join(' '));
+        expects.push(opts.expect);
         return !fails.some((f) => argv.join(' ').includes(f));
     };
     run.calls = calls;
+    // What each call told the runner to expect of a failure (R105): undefined means the runner prints it.
+    run.expectOf = (re) => calls.map((c, i) => [c, expects[i]]).filter(([c]) => re.test(c)).map(([, e]) => e);
     run.matching = (re) => calls.filter((c) => re.test(c));
     return run;
 }
@@ -353,6 +357,31 @@ test('retired: a retired plugin at this scope is uninstalled by its FULL spec, a
     assert.deepStrictEqual(gone, ['ponytail']);
     assert.deepStrictEqual(run.matching(/uninstall/), ['plugin uninstall ponytail@ponytail --scope project -y']);
     assert.ok(logs.some((m) => /pruned \(retired upstream\) \[project\]: ponytail@ponytail/.test(m)), logs.join(' | '));
+});
+
+test('retired: an uninstall still refused after the retry pass is noted with its command, never left silent (R105)', () =>
+{
+    const run = cli(['uninstall sentry@envoydev']);
+    const notes = [];
+    const gone = P.prunedRetired({ rows: [prow('sentry', 'envoydev', 'project')], retired: ['sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: run, note: (m) => notes.push(m) });
+    assert.deepStrictEqual(gone, []);
+    assert.strictEqual(run.matching(/uninstall/).length, 2, 'tried, then retried once');
+    // The prune reports its own leftovers, so the runner is told not to print each refusal as well.
+    assert.deepStrictEqual(run.expectOf(/uninstall/), ['reported', 'reported']);
+    assert.deepStrictEqual(notes, ['plugin uninstall failed: sentry@envoydev - remove it by hand: claude plugin uninstall sentry@envoydev --scope project']);
+});
+
+test('R105: a call whose failure the caller notes itself is marked reported; one nobody reports is left to the runner', () =>
+{
+    const notes = [];
+    const run = cli(['plugin install', 'plugin disable']);
+    P.installPlugins({ plugins: ['x@mp', 'playwright-webkit@envoydev'], scope: 'project', engines: { specs: [], present: [], presentScope: {}, off: ['playwright-webkit@envoydev'], on: null, isOn: () => undefined }, cli: run, note: (m) => notes.push(m) });
+    assert.deepStrictEqual(run.expectOf(/^plugin install /), ['reported', 'reported']);
+    assert.deepStrictEqual(run.expectOf(/^plugin marketplace (add|update) /).filter(Boolean), [], 'a marketplace call is never silenced');
+    assert.deepStrictEqual(notes, ['plugin x@mp failed', 'plugin playwright-webkit@envoydev failed']);
+    const up = cli(['plugin install']);
+    P.updatePlugins({ plugins: ['y@mp'], scope: 'project', cli: up, after: [] });
+    assert.deepStrictEqual(up.expectOf(/^plugin (install|update) /), [undefined, undefined], 'update notes no failed install itself - the runner prints it');
 });
 
 test('retired: a same-named plugin from ANOTHER marketplace is never the retired one - the official sentry stays', () =>

@@ -18,7 +18,7 @@
 //     overlay, so the probe is written to fail toward `git`.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const rt = require('./runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 // A folder under the docs root is a DOMAIN when it holds a watch.json - architecture/ is
 // grandfathered without one. `references/` and `history/` are reserved names, never domains. The
@@ -43,7 +43,7 @@ function domains(docsBase)
 const realGit = (projectRoot) => ({
     tracked(dir)
     {
-        try { execFileSync('git', ['ls-files', '--error-unmatch', '--', dir], { cwd: projectRoot, stdio: 'ignore' }); return true; }
+        try { rt.execCommand('git', ['ls-files', '--error-unmatch', '--', dir], { cwd: projectRoot, stdio: 'ignore' }); return true; }
         catch { return false; }
     },
     // `<docs>/` WITH the trailing slash: git answers check-ignore for a path that does not exist
@@ -52,7 +52,7 @@ const realGit = (projectRoot) => ({
     ignored(rel)
     {
         if (!rel) return false;
-        try { execFileSync('git', ['check-ignore', '-q', '--', `${rel}/`], { cwd: projectRoot, stdio: 'ignore' }); return true; }
+        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${rel}/`], { cwd: projectRoot, stdio: 'ignore' }); return true; }
         catch { return false; }
     },
 });

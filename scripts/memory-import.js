@@ -67,7 +67,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 // The server route - finding the server, the precheck, the store loop, the post-exit verify - lives in
 // the memory engine, shared with its `import` verb, so both imports store the same way.
 const engine = require('../stack/hooks/memory.js');
@@ -112,7 +112,7 @@ function gitTopLevel(projectRoot)
 {
     try
     {
-        const commonDir = execFileSync(
+        const commonDir = rt.execCommand(
             'git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
             { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();
@@ -121,7 +121,7 @@ function gitTopLevel(projectRoot)
     catch (e) { /* not a git repo, or git missing - fall through to --show-toplevel */ }
     try
     {
-        const top = execFileSync(
+        const top = rt.execCommand(
             'git', ['rev-parse', '--show-toplevel'],
             { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();

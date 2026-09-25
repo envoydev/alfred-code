@@ -14,7 +14,7 @@
 // reads as 'ship unpinned' - the same fallback the installer had.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
@@ -32,7 +32,7 @@ function npmLatest(pkg)
 {
     try
     {
-        const out = execFileSync('npm', ['view', pkg, 'version'],
+        const out = rt.execCommand('npm', ['view', pkg, 'version'],
             { encoding: 'utf8', timeout: 30000, env: { ...process.env, npm_config_fetch_timeout: '15000' } });
         return out.trim() || null;
     }
@@ -43,7 +43,7 @@ function pypiLatest(pkg)
 {
     try
     {
-        const out = execFileSync('curl', ['-fsSL', '--max-time', '20', `https://pypi.org/pypi/${pkg}/json`],
+        const out = rt.execCommand('curl', ['-fsSL', '--max-time', '20', `https://pypi.org/pypi/${pkg}/json`],
             { encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 });
         return JSON.parse(out).info.version || null;
     }

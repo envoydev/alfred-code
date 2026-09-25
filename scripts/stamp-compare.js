@@ -21,7 +21,6 @@
 // 404s without it, and the anonymous limit is 60 requests an hour.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { versionTag } = require('./install/source.js');
 const { BRAND, stampFile: stampIn } = require('./install/brand.js');
 
@@ -49,7 +48,8 @@ function snapshotHead(dir)
     const rs = readStampFile(path.join(dir, 'RELEASE-SOURCE'));
     if (rs.sha) return rs;
     // A clone fallback has no RELEASE-SOURCE - its git HEAD is the same truth.
-    try { return { sha: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
+    // The one Windows-safe spawn (R105), required only on this fallback.
+    try { return { sha: require('./install/runtime.js').execCommand('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
     catch
     {
         // A plugin-cache snapshot has neither: its version tag, the revision the installer stamps from it.

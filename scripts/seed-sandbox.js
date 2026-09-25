@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
 const SEED = path.join(__dirname, 'install', 'alfred-code.js');
@@ -43,7 +44,7 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-sandbox-'));
     const repo = path.join(work, 'repo');
     fs.mkdirSync(repo);
-    execFileSync('git', ['init', '-q', repo]);
+    rt.execCommand('git', ['init', '-q', repo]);
     const bin = path.join(work, 'bin');
     fs.mkdirSync(bin);
     const log = path.join(work, 'claude-calls.log');
