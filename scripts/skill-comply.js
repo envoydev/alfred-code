@@ -73,7 +73,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
 const EXPECT_DIR = path.join(ROOT, 'meta', 'skill-comply');
@@ -652,7 +652,7 @@ function runLive(cmds, { timeoutMs = 900000 } = {})
     for (const c of cmds)
     {
         process.stderr.write(`skill-comply: ${c.kind}: ${c.cmd.slice(0, 160)}${c.cmd.length > 160 ? ' ...' : ''}\n`);
-        const r = spawnSync('bash', ['-c', c.cmd], { stdio: 'inherit', timeout: c.kind === 'billed' ? timeoutMs : 600000 });
+        const r = rt.spawnCommand('bash', ['-c', c.cmd], { stdio: 'inherit', timeout: c.kind === 'billed' ? timeoutMs : 600000 });
         const failed = r.status !== 0 || r.error;
         if (failed && c.kind === 'prep') throw new Error(`a preparation step failed (exit ${r.status ?? r.error.code}) - nothing after it ran`);
         if (failed) process.stderr.write(`skill-comply: ${c.kind} step exited ${r.status ?? r.error.code} - recorded, continuing\n`);

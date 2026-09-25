@@ -17,28 +17,46 @@ const path = require('node:path');
 
 const lines = (text) => String(text).split('\n').map((l) => l.trim()).filter(Boolean);
 
-// WINDOWS (R104, R105): an npm-installed `claude`, `npx` or `npm` is a BATCH FILE, and `where` lists
-// npm's extensionless sh shim before it. Node starts a .exe/.com directly, but a .cmd/.bat only
-// through cmd.exe: a batch file spawned directly fails EINVAL since the CVE-2024-27980 fix (ENOENT
-// before it), in spawnSync and spawn alike - measured on a Windows 11 VM, where the seed read
-// `claude` as present and then every plugin and MCP call failed. The first match Node can start, in
-// `where`'s own order, is the one a shell would run - '' when there is none. `env` is the caller's:
-// a PATH it changed (init installs a tool, then looks again) is the one searched.
-function resolveWin(cmd, run = spawnSync, env = process.env)
+// WINDOWS (R104, R105): an npm-installed `claude`, `npx` or `npm` is a BATCH FILE, and npm puts an
+// extensionless sh shim beside it. Node starts a .exe/.com directly, but a .cmd/.bat only through
+// cmd.exe: a batch file spawned directly fails EINVAL since the CVE-2024-27980 fix (ENOENT before it),
+// in spawnSync and spawn alike - measured on a Windows 11 VM, where the seed read `claude` as present
+// and then every plugin and MCP call failed. So the name is resolved to the file a shell would run.
+//
+// The lookup is NODE's own (I1, R132), never `where`: `where` printed its paths in the console code
+// page, so a folder with a non-ASCII name came back mangled and the spawn named a file that is not
+// there - and it searched the current directory first, where a repo's own `git.cmd` would have run
+// (M5). Here each PATH entry is tried in order, through each PATHEXT extension Node can start, and the
+// first file wins; the path stays the string Node built. An empty or relative entry is skipped: the
+// current directory is never searched. `env` is the caller's - a PATH it changed (init installs a
+// tool, then looks again) is the one searched.
+const STARTABLE = ['.com', '.exe', '.bat', '.cmd'];
+const isFileOnDisk = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+const envKey = (env, name) => Object.keys(env || {}).find((k) => k.toUpperCase() === name);
+function resolveWin(cmd, env = process.env, isFile = isFileOnDisk)
 {
-    const r = run('where', [cmd], { encoding: 'utf8', env });
-    if (!r || r.status !== 0) return '';
-    return lines(r.stdout || '').find((p) => /\.(exe|com|cmd|bat)$/i.test(p)) || '';
+    const read = (name) => { const k = envKey(env, name); return k ? String(env[k] || '') : ''; };
+    const dirs = read('PATH').split(';').map((d) => d.trim().replace(/^"(.*)"$/, '$1')).filter((d) => path.win32.isAbsolute(d) && /^([A-Za-z]:\\|\\\\)/.test(d));
+    const listed = (read('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim().toLowerCase()).filter((e) => STARTABLE.includes(e));
+    const own = path.win32.extname(cmd).toLowerCase();
+    const names = STARTABLE.includes(own) ? [cmd] : listed.map((e) => cmd + e);
+    for (const dir of dirs)
+        for (const name of names)
+        {
+            const full = path.win32.join(dir, name);
+            if (isFile(full)) return full;
+        }
+    return '';
 }
 
-// One `where` per name and PATH for the whole run - the seed makes dozens of `claude` calls. Only a
+// One lookup per name and PATH for the whole run - the seed makes dozens of `claude` calls. Only a
 // FOUND path is kept, so a tool installed mid-run is still found on the next look.
 const resolvedWin = new Map();
-function resolveOnce(cmd, env = process.env)
+function resolveOnce(cmd, env = process.env, isFile = isFileOnDisk)
 {
-    const key = `${cmd}\0${env.PATH || env.Path || ''}`;
+    const key = `${cmd}\0${(envKey(env, 'PATH') && env[envKey(env, 'PATH')]) || ''}`;
     if (resolvedWin.has(key)) return resolvedWin.get(key);
-    const full = resolveWin(cmd, spawnSync, env);
+    const full = resolveWin(cmd, env, isFile);
     if (full) resolvedWin.set(key, full);
     return full;
 }
@@ -231,6 +249,6 @@ function cloneMain({ repoUrl, tmpdir = os.tmpdir() } = {})
 }
 
 module.exports = {
-    which, locate, unrunnable, cliRunner, capture, resolveWin, cmdArg, spawnCommand, spawnCommandAsync, execCommand,
+    which, locate, unrunnable, cliRunner, capture, resolveWin, resolveOnce, cmdArg, spawnCommand, spawnCommandAsync, execCommand,
     gitRoot, gitRevision, runNode, lines, fetchArchive, cloneMain, join: path.join,
 };

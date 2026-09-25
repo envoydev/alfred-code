@@ -12,7 +12,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { which, cliRunner, capture, resolveWin, cmdArg, spawnCommandAsync, execCommand, locate, unrunnable } = require('./install/runtime.js');
+const { which, cliRunner, capture, resolveWin, resolveOnce, cmdArg, spawnCommandAsync, execCommand, locate, unrunnable } = require('./install/runtime.js');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const NPM_SHIM = 'C:\\Users\\u\\AppData\\Roaming\\npm\\claude.cmd';
@@ -123,14 +123,61 @@ test('install-runtime: off win32 the call is the plain spawn it always was', () 
     assert.notStrictEqual(calls[0].opts.windowsVerbatimArguments, true);
 });
 
-test('install-runtime: resolveWin takes the first match Node can start, in where\'s own order', () =>
+// I1 (R132): the lookup is NODE's own walk of PATH x PATHEXT, never `where` - whose output came back
+// decoded in the console code page, so a path holding a non-ASCII directory was mangled before it was
+// started, and which searched the current directory first (M5). `isFile` is the seam: a fake file set.
+const files = (...list) => { const set = new Set(list); const seen = []; const isFile = (p) => { seen.push(p); return set.has(p); }; return { isFile, seen, set }; };
+
+test('install-runtime: resolveWin walks PATH in order, each entry through PATHEXT, and takes the first file Node can start', () =>
 {
-    const where = (stdout, status = 0) => () => ({ status, stdout });
-    // npm's extensionless sh shim comes first and cannot run under Windows.
-    assert.strictEqual(resolveWin('claude', where('C:\\npm\\claude\r\nC:\\npm\\claude.cmd\r\nC:\\bin\\claude.exe\r\n')), 'C:\\npm\\claude.cmd');
-    assert.strictEqual(resolveWin('claude', where('C:\\bin\\claude.exe\r\nC:\\npm\\claude.cmd\r\n')), 'C:\\bin\\claude.exe');
-    assert.strictEqual(resolveWin('claude', where('C:\\npm\\claude\r\n')), '');
-    assert.strictEqual(resolveWin('claude', where('', 1)), '');
+    // npm's extensionless sh shim sits first in its folder and cannot run under Windows.
+    const npm = files('C:\\npm\\claude', 'C:\\npm\\claude.cmd', 'C:\\bin\\claude.exe');
+    assert.strictEqual(resolveWin('claude', { PATH: 'C:\\npm;C:\\bin' }, npm.isFile), 'C:\\npm\\claude.cmd');
+    assert.strictEqual(resolveWin('claude', { PATH: 'C:\\bin;C:\\npm' }, npm.isFile), 'C:\\bin\\claude.exe');
+    assert.strictEqual(resolveWin('claude', { PATH: 'C:\\npm' }, files('C:\\npm\\claude').isFile), '');
+    assert.strictEqual(resolveWin('claude', {}, npm.isFile), '', 'no PATH is no match');
+    // Within one folder PATHEXT decides, and an extension Node cannot start is never a candidate.
+    const both = files('C:\\t\\x.cmd', 'C:\\t\\x.exe', 'C:\\t\\x.js');
+    assert.strictEqual(resolveWin('x', { PATH: 'C:\\t', PATHEXT: '.COM;.EXE;.BAT;.CMD' }, both.isFile), 'C:\\t\\x.exe');
+    assert.strictEqual(resolveWin('x', { PATH: 'C:\\t', PATHEXT: '.CMD;.EXE' }, both.isFile), 'C:\\t\\x.cmd');
+    assert.strictEqual(resolveWin('x', { PATH: 'C:\\t', PATHEXT: '.JS' }, both.isFile), '', 'a .js is not started by Node');
+    assert.strictEqual(resolveWin('x', { PATH: 'C:\\t' }, files('C:\\t\\x.bat').isFile), 'C:\\t\\x.bat', 'no PATHEXT - the Windows default');
+    // A name that carries its extension already is looked up as it stands; the PATH key is any case.
+    assert.strictEqual(resolveWin('x.cmd', { Path: '"C:\\Program Files\\t";C:\\u' }, files('C:\\Program Files\\t\\x.cmd').isFile), 'C:\\Program Files\\t\\x.cmd');
+});
+
+test('install-runtime: resolveWin never looks in the current directory - an empty or relative PATH entry is skipped (M5)', () =>
+{
+    const here = files('claude.cmd', '.\\claude.cmd', path.win32.join(process.cwd(), 'claude.cmd'), 'bin\\claude.cmd');
+    assert.strictEqual(resolveWin('claude', { PATH: ';.;bin;;' }, here.isFile), '');
+    assert.deepStrictEqual(here.seen.filter((p) => !path.win32.isAbsolute(p) || !/^[A-Za-z]:\\/.test(p)), [], `a relative candidate was looked at: ${here.seen.join(', ')}`);
+});
+
+test('install-runtime: a path under a non-ASCII folder reaches the spawn exactly as Node holds it - .exe direct, .cmd through cmd.exe (I1)', () =>
+{
+    const env = { PATH: 'C:\\тест\\bin;C:\\Windows', ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
+    const exe = files(`C:\\тест\\bin\\${BIN}.exe`);
+    const direct = recorder();
+    cliRunner(BIN, { env, platform: 'win32', resolve: (cmd, e) => resolveWin(cmd, e, exe.isFile), spawn: direct.spawn })(['plugin', 'list'], { quiet: true });
+    assert.strictEqual(direct.calls[0].cmd, `C:\\тест\\bin\\${BIN}.exe`);
+    const shim = files(`C:\\тест\\bin\\${BIN}.cmd`);
+    const viaCmd = recorder();
+    cliRunner(BIN, { env, platform: 'win32', resolve: (cmd, e) => resolveWin(cmd, e, shim.isFile), spawn: viaCmd.spawn })(['plugin', 'list'], { quiet: true });
+    assert.strictEqual(viaCmd.calls[0].cmd, 'C:\\Windows\\system32\\cmd.exe');
+    assert.ok(viaCmd.calls[0].args[3].startsWith(`"C:\\тест\\bin\\${BIN}.cmd `), viaCmd.calls[0].args[3]);
+});
+
+test('install-runtime: resolveOnce keeps a FOUND path for the run, and looks again after a miss - a tool installed mid-run is found (M2)', () =>
+{
+    const env = { PATH: `C:\\r132-${process.pid}` };
+    const tool = files();
+    assert.strictEqual(resolveOnce('uv', env, tool.isFile), '', 'nothing there yet');
+    tool.set.add(`C:\\r132-${process.pid}\\uv.exe`);
+    assert.strictEqual(resolveOnce('uv', env, tool.isFile), `C:\\r132-${process.pid}\\uv.exe`, 'the miss was cached');
+    tool.set.clear();
+    const before = tool.seen.length;
+    assert.strictEqual(resolveOnce('uv', env, tool.isFile), `C:\\r132-${process.pid}\\uv.exe`, 'a found path is kept for the run');
+    assert.strictEqual(tool.seen.length, before, 'a kept path looks at no file again');
 });
 
 test('install-runtime: which on win32 is true only for a match Node can start', () =>
@@ -179,11 +226,11 @@ test('install-runtime: spawnCommandAsync runs a .cmd through cmd.exe and a .exe 
     assert.deepStrictEqual([calls[2].cmd, calls[2].args], [BIN, ['x']]);
 });
 
-test('install-runtime: resolveWin asks where with the caller\'s env, so a PATH the caller changed is the one searched', () =>
+test('install-runtime: resolveWin searches the PATH of the env it is handed, so a PATH the caller changed is the one searched', () =>
 {
-    let seen = null;
-    resolveWin('uv', (cmd, args, opts) => { seen = opts.env; return { status: 0, stdout: 'C:\\uv\\uv.exe\r\n' }; }, { PATH: 'C:\\uv' });
-    assert.deepStrictEqual(seen, { PATH: 'C:\\uv' });
+    const uv = files('C:\\uv\\uv.exe');
+    assert.strictEqual(resolveWin('uv', { PATH: 'C:\\uv' }, uv.isFile), 'C:\\uv\\uv.exe');
+    assert.strictEqual(resolveWin('uv', { PATH: 'C:\\other' }, uv.isFile), '');
     assert.strictEqual(locate('uv', { platform: 'win32', resolve: () => 'C:\\uv\\uv.exe' }), 'C:\\uv\\uv.exe');
 });
 
@@ -242,6 +289,7 @@ test('install-runtime: the seed with a claude it finds but cannot run says so ON
     // so every spawn fails ENOENT exactly as spawnSync('claude') did on the VM. PATH holds nothing
     // else named claude - a start that fails ENOENT goes on down PATH, and would reach a real CLI.
     const env = {};
+    let outside = null;
     const run = seedRun('install', 'skill csharp\n', {
         env,
         prepare: (repo, work) =>
@@ -249,7 +297,12 @@ test('install-runtime: the seed with a claude it finds but cannot run says so ON
             fs.writeFileSync(path.join(work, 'bin', 'claude'), '#!/nonexistent/alfred-code-r105\n', { mode: 0o755 });
             fs.mkdirSync(path.join(work, 'nodebin'));
             fs.symlinkSync(process.execPath, path.join(work, 'nodebin', 'node'));
-            env.PATH = [path.join(work, 'bin'), path.join(work, 'nodebin'), '/usr/bin', '/bin'].join(path.delimiter);
+            // The seed needs git and a shell besides node; each is linked in by its resolved path.
+            for (const tool of ['git', 'sh']) fs.symlinkSync(locate(tool), path.join(work, 'nodebin', tool));
+            env.PATH = [path.join(work, 'bin'), path.join(work, 'nodebin')].join(path.delimiter);
+            // M7 (R132): nothing on PATH outside the sandbox - a runner with a real /usr/bin/claude would
+            // otherwise start it once the stub's start failed ENOENT.
+            outside = env.PATH.split(path.delimiter).filter((d) => !d.startsWith(work));
         },
         inspect: (repo) => fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')),
     });
@@ -258,6 +311,7 @@ test('install-runtime: the seed with a claude it finds but cannot run says so ON
     assert.match(loud[0], /!! claude found at \S+\/bin\/claude but could not be run: .*ENOENT - the plugin and MCP layers were skipped/);
     assert.doesNotMatch(run.out, /not on PATH|plugin \S+ failed|mcp \S+ failed/);
     assert.strictEqual(run.result, true, 'the file layers still land');
+    assert.deepStrictEqual(outside, [], 'PATH reaches past the sandbox');
 });
 
 test('install-runtime: the seed prints a line for a failed marketplace refresh and a failed mcp remove, and none for an absent server', POSIX_ONLY, () =>
@@ -279,4 +333,22 @@ test('install-runtime: the seed prints a line for a failed marketplace refresh a
     assert.deepStrictEqual(bangs.filter((l) => /mcp remove/.test(l) && !/serena/.test(l)), [], 'an absent server is nothing to report');
     // The install failure is the caller's own note, once - never a second line from the runner.
     assert.deepStrictEqual(bangs.filter((l) => /claude-hud@/.test(l)), ['==>   !! plugin claude-hud@claude-hud failed'], bangs.join('\n'));
+});
+
+// M6 (R132): R105 routed every external command in scripts/ through the one Windows-safe spawn, and a
+// later script arrived with its own `spawnSync('bash', ...)`. A start of anything but node itself goes
+// through runtime.js - the seam that resolves a batch file and escapes for cmd.exe.
+test('install-runtime: no script outside runtime.js starts an external command directly - only node itself (M6)', () =>
+{
+    const dirs = [__dirname, path.join(__dirname, 'install')];
+    const files = dirs.flatMap((d) => fs.readdirSync(d).map((f) => path.join(d, f)))
+        .filter((f) => f.endsWith('.js') && !f.endsWith('.test.js') && path.basename(f) !== 'runtime.js');
+    const direct = /(?<![.\w])(spawnSync|execFileSync|execSync|spawn|execFile)\(\s*(?!process\.execPath\b)/g;
+    const hits = files.flatMap((f) =>
+    {
+        const text = fs.readFileSync(f, 'utf8');
+        return [...text.matchAll(direct)].map((m) => `${path.relative(__dirname, f)}:${text.slice(0, m.index).split('\n').length}`);
+    });
+    assert.ok(files.length > 20, `the sweep read ${files.length} files`);
+    assert.deepStrictEqual(hits, [], `a direct start outside runtime.js: ${hits.join(', ')}`);
 });
