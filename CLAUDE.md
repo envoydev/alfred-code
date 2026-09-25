@@ -23,46 +23,42 @@ change (see the invariants below).
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
   file types. The always closure rides the CORE plugin; every other skill and agent is LIBRARY -
-  listed by no marketplace entry, copied into `.claude/skills` / `.claude/agents` per pick
-  (`scripts/install/library.js`, each copy's hash in the stamp), because a plugin skill is locked on
-  and only a project copy can be switched off per project (measured, the 2026-09-24 library test).
-  `scripts/library-check.js` reports drift and staleness for validate and status; the core's
-  SessionStart line (`setup-plugin/hooks/library-stamp.js`) says when the copies are older than the
-  stack. `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route unchanged.
-- `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one
-  module per layer beside it (`source`, `manifest`, `selection`, `copy`, `settings`, `plugins`,
-  `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`, `stamp`, `runtime`). One `node` command on
-  every OS - node is already a hard prerequisite, every hook runs it - so there is no OS branch left
-  in the command bodies. `scripts/os/claude-stack.{sh,ps1}` <!-- legacy-name --> - the FROZEN shell
-  and PowerShell twins Phase 7 kept for one release behind `ALFRED_CODE_SEED=shell` - are DELETED
-  (Phase 7b, R33, 2.0.0); that env var now REFUSES instead of routing anywhere (the D1 check in
-  `setup-plugin/references/source-protocol.md`). `meta/stack-manifest.json` (hand-edited directly -
-  `scripts/build-manifest.js`, which generated it FROM the sh twin, is deleted with it) is the one
-  source the seed reads its six lists from. `docs/alfred-code.html` is the browser inventory.
+  listed by no marketplace entry, copied into `.claude/skills` / `.claude/agents` per pick - and
+  every rule is a library copy in `.claude/rules` the same way (`scripts/install/library.js`, each
+  copy's hash in the stamp), because a plugin skill is locked on and only a project copy can be
+  switched off per project (measured, the 2026-09-24 library test). `scripts/library-check.js`
+  reports drift and staleness for validate and status; the core's SessionStart line
+  (`setup-plugin/hooks/library-stamp.js`) says when the copies are older than the stack.
+  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route.
+- `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
+  per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
+  `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
+  `stamp`, `runtime`). One `node` command on every OS, so no OS branch in the command bodies. The
+  frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
+  `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
+  `docs/alfred-code.html` is the browser inventory.
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
-- `stack/hooks/` - seventeen hooks, shipped INSIDE the core `alfred-code` plugin entry since 2.0.0: the installers
-  register the stack marketplace and enable it, and NOTHING is copied or wired per project except the
-  three engines (`docs.js`, `memory.js`, `history.js`) and `model-windows.json`, which stay in `.claude/hooks/` because
-  22 bodies shared with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js rulings`). The core's hooks block is GENERATED from the
-  manifest's `hooks[]` table after the core's own two per event (`mergeHooks`, lint check 48), so one table
-  owns the wiring; every hook carries `"timeout": 10` there (a hook with no timeout gets Claude Code's
-  600s default) - `check-turn-build.js` carries 60, the one declared exception, from the same
-  `HOOK_TIMEOUTS` table the seed writes (`install/settings.js`) - and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec
-  bit, which git carries into the cache as committed, and never runs on Windows).
-  `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the core still carries the
-  hooks: its copies stand down for the wired ones, `ALFRED_CODE_HOOKS_OFF` names the unpicked), and
-  the walk's hooks layer now writes the rows it did NOT pick into `ALFRED_CODE_HOOKS_OFF` instead of
-  leaving files out. The four gates live in `hook-prelude.js`, never inlined in every hook: the csv
-  opt-out; the plugin copy standing down while a project still wires its copied twin; a repo never
-  set up (R54: no record in it, its git top level or a worktree's main checkout - the rm, secret and
-  force-push guards stay live there, writing no row, R86); and the 1.x ALIAS - a hook launched from a `.../claude-stack/<version>` root stands down <!-- legacy-name -->
-  while settings enable an `alfred-code@*` its `installed_plugins.json` row can load, so the two
-  never double-fire (S26). All fail open - an unreadable file runs the hook.
-  The fresh-session arithmetic (the trigger per window tier, the window lookup, the cold floor) has one
-  home too: `fresh-session.js`, an engine the two fresh-session hooks and the session monitor require
-  from their own directory, copied with the hooks on the copy route; a hook that runs before it lands
-  keeps every offer off.
+- `stack/hooks/` - seventeen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
+  hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
+  `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
+  with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
+  rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
+  own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
+  gets Claude Code's 600s) except `check-turn-build.js`'s 60, from the `HOOK_TIMEOUTS` table the seed
+  writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
+  never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
+  core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
+  `ALFRED_CODE_HOOKS_OFF`. The four gates live in `hook-prelude.js`, never inlined: the csv opt-out;
+  the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
+  record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
+  installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
+  the rm, secret and force-push guards stay live, writing no row - R54, R86); and the 1.x ALIAS - a
+  hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
+  `alfred-code@*` its `installed_plugins.json` row can load (S26). All fail open.
+  The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
+  engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
+  own directory; a hook that runs before it lands keeps every offer off.
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is
@@ -83,8 +79,7 @@ change (see the invariants below).
     carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering read (`grep`,
     `jq .path`, `head`) keeps its filter over the view. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
-    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The four
-    account-settings `permissions.deny` entries written until 0.2.62 are retired and dropped every run.
+    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
     without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
@@ -108,8 +103,8 @@ change (see the invariants below).
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
     model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
-    suffix, carry or compaction is read), never declared - `CLAUDE_STACK_FRESH_SESSION_PCT`, `CLAUDE_STACK_CONTEXT_WINDOW` and the <!-- legacy-name -->
-    seeding of `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are retired. A trigger at or above its window is clamped
+    suffix, carry or compaction is read), never declared (the percentage and window overrides and the
+    `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` seed are retired). A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
     re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
@@ -158,7 +153,7 @@ change (see the invariants below).
     the format ask (injection only).
   - `instrument-tool-usage.js` - wired env-gated: skipped unless `ALFRED_CODE_INSTRUMENT` (seeded "0")
     is "1".
-  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Bash/PowerShell/Grep/Glob, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` / `-DocsVersioning` writes it; absent, it is seeded - and the engine falls back - by ONE rule in four homes, the two installer seeds, `stamp-docs-root.js` and `docs.js`, pinned together by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read (two holds, then a logged bypass; no hold when no doc file can be read by section); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
+  - `docs-session.js` (`SessionStart`, `SubagentStart`, `SubagentStop`, PreToolUse on Read/Edit/Write/MultiEdit/NotebookEdit/Bash/PowerShell/Grep/Glob, `Stop`) with its engine `docs.js` (copied beside it, not wired) - every docs DOMAIN (a top-level folder under the docs root holding a `watch.json`, plus the grandfathered `architecture/`) follows the branch, and HOW is declared at install time in `ALFRED_CODE_DOCS_VERSIONING` (`--docs-versioning` writes it; absent, ONE rule seeds it and is the engine's fallback, in three homes - `install/docs.js`, `stamp-docs-root.js`, `docs.js` - pinned by one table-driven test: `local` only when the docs are kept out of git - no domain tracked, and a domain exists or git ignores the docs root - else `git`, a fresh project included): `git` means the docs are committed and git versions them per branch, `local` means per-branch section overlays under `<docs-path>/.branches/`, folded into mainline at the first mainline session after the branch merges. The setting WINS over what the repo does, and a disagreement is reported in `status` and the start block rather than resolved the other way. The start block pushes `ORIENTATION.md` (4KB cap) - a PROVISIONAL one (the first-look scan's, `scan-evidence.js --orientation`) with a stale warning, and `status` / `stale` call it stale by definition; the first change under a source root waits for a section read (two holds, then a logged bypass; no hold when no doc file can be read by section); the FINISH ask fires only when a changed file hits the capture's `watch.json` - at `SubagentStop` for what that agent WROTE (a tool event carries `agent_id` only inside a subagent, so every write is attributed to its actor - the main session included, under one key of its own - and intersected with the tree diff; a read-only seat running beside a writer is never asked, a write the gate DENIED is never credited, and paths are compared in git's spelling on every platform), then once at `Stop` for what the session wrote itself plus every change no actor claimed (a script's output, a tool this hook is not wired on), both in the same shape: the section named, its file, its current FIRST SENTENCE quoted, and a `set ... --expect <hash>` that refuses a rewrite of a section another agent moved meanwhile. `ALFRED_CODE_DOCS_BLOCK` / `_GATE` / `_ASK` = `0` switch the parts off.
   - `memory-session.js` (`SessionStart`) with its engine `memory.js` (copied beside it, not wired -
     the `docs.js` pattern) - reads the shared memory database FILE directly (`node:sqlite`, no
     server, no model call) and injects this project's memories plus every `preference` /
@@ -174,12 +169,10 @@ change (see the invariants below).
     `node:sqlite` unavailable on this Node injects nothing, and never logs - a silent SessionStart
     is never reported as a failure. The CLI also moves memories between databases: `export [project]
     [--all] [--db <file>]` writes the live rows as JSONL straight from the file (a read failure exits
-    1, never an empty success), and `import <file.jsonl>` stores them THROUGH the service (real
-    embeddings), skipping a line whose content hash - the service's own, sha256 of the trimmed
-    lower-cased content - is already live. Both imports, this one and the installer's notes import,
-    find the server one way (`serviceEntry`): a registration, else the installed
-    `memory@envoydev` plugin's own declaration with the db path pinned - the plugin route has no
-    registration, which is why the notes import found no server there until 1.1.0.
+    1), and `import <file.jsonl>` stores them THROUGH the service (real embeddings), skipping a line
+    whose content hash (the service's own) is already live. Both imports, this one and init's notes
+    import, find the server one way (`serviceEntry`): a registration, else the installed
+    `memory@envoydev` plugin's own declaration with the db path pinned.
   - `history-session.js` (`SessionStart` + `Stop`) with its engine `history.js` (copied beside it, not
     wired) - a machine-local record per session under `<docs-path>/history/` (a `.gitignore` of `*` written
     INSIDE that folder, the project's own never opened; no `watch.json`, so no docs domain): at `Stop` it
@@ -191,7 +184,7 @@ change (see the invariants below).
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
   --hooks-answered`, setup only, which switches every hook off).
-- `stack/agents/` - 43 Claude-contract subagents, copied into `.claude/agents/`:
+- `stack/agents/` - 43 Claude-contract subagents, the core seats in the core plugin, the rest library copies:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
   - cross-cutting: `ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` (read-only
@@ -212,10 +205,10 @@ change (see the invariants below).
   `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
   needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - nineteen single-job rules copied into `.claude/rules/`. Seven always-on `baseline-*.md`
+- `stack/rules/` - nineteen single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
   `project-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
-  installers stamp its value over `__DOCS_ROOT__` on every install/update, setup/configure re-stamp),
+  the installer stamps its value over `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks serena).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
@@ -224,18 +217,22 @@ change (see the invariants below).
   house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
 - `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
-  - `/alfred-code:setup` (fresh install; reports `derive-state.js`'s `written` block before
-    installing, ends on a restart), `/alfred-code:init` (the bootstrap after it: `init-plan.js`,
-    `memory.js init`), `/alfred-code:update` (refresh + prune from the stamp compare; its ONE ask offers
-    what the release ADDED - `update-preflight.js`'s `new:` lines, classified by
-    `derive-state.classifyNew` - and a yes is `--add '<category> <name>'` on `--installed-only`),
-    `/alfred-code:configure` (add or drop), `/alfred-code:status` (read-only, no snapshot: general info, a
+  - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
+    block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
+    bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
+    - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
+    writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill). `/alfred-code:update`
+    refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
+    `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
+    `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
+    the walk it shares with setup (`setup-plugin/references/walk.md`), `/alfred-code:status` (read-only, no snapshot: general info, a
     health column from the CLI's own error fields, usage from `analyze-usage.js --inventory`, plus the
     install's always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
-    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed).
+    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed). In a git
+    worktree of an installed checkout every command stops and names the main checkout.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either
@@ -245,17 +242,16 @@ change (see the invariants below).
     dropped library copy deleted (a copy-route hook unwired too), and an MCP entry nothing kept needs
     is disabled at the run's own scope and route - never the core (which carries the hooks) or the
     three locked servers.
-  - The seed prunes only names in its own RETIRED_SKILLS / RETIRED_AGENTS / RETIRED_RULES /
-    RETIRED_HOOKS / RETIRED_MCPS / RETIRED_PLUGINS lists - extend the list when any of the six is
-    renamed or removed (a stamp compare only names what left after the stamped commit), then hand-edit
-    `meta/stack-manifest.json`'s `retired` block to match: it is read directly, never generated.
-    A retired PLUGIN also gets a `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update
-    uninstalls it only by its full stack spec, keeps a row at another scope, prints the add-back.
-    The one exception: an entry that CARRIED picks (the per-stack entries retired in 1.3.0)
-    is named only in `meta/retired-entries.json` and pruned by the Node seed alone, because only it
-    copies the picks first. On the plugin routes the seed also prunes every shipped skill, agent and hook COPY a
-    plugin now carries (a project agent outranks the plugin's own). A retired pathless rule, hook wiring, MCP registration or plugin keeps costing every session until
-    pruned. A shipped-but-unneeded server or plugin is validate's whole-stack-absent pass, not a retirement.
+  - The seed prunes only the names in `meta/stack-manifest.json`'s `retired` block (skills, agents,
+    rules, hooks, mcps, plugins) - add a name there when any of the six is renamed or removed (a
+    stamp compare only names what left after the stamped commit). A retired PLUGIN also gets a
+    `meta/retired-plugins.json` row (`retiredIn`, `addBack`): update uninstalls it only as
+    `name@<stack key>`, keeps a row at another scope and prints the add-back line - the path the five
+    cut MCP servers took. An entry that CARRIED picks (the per-stack entries retired in 1.3.0) is named
+    only in `meta/retired-entries.json`, since update copies its picks first. On the plugin routes the
+    seed also prunes every shipped COPY a plugin now carries. A retired pathless rule, hook wiring, MCP
+    registration or plugin costs every session until pruned; a shipped-but-unneeded one is validate's
+    whole-stack-absent pass, not a retirement.
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
@@ -273,22 +269,20 @@ change (see the invariants below).
     the placement rule in `scripts/plugin-placement.js`: the core is the always closure plus every
     stack hook, every other item is library. Regenerate with `npm run marketplace`; lint checks 44 and
     45 fail when the file is stale, a second plugin appears, or an item has no home or two. The live
-    marketplace also lists the 1.x ids as RETIRED aliases (`aliasEntries`, from `brand.js` `LEGACY`):
-    `claude-stack` is the core under its old name, `claude-stack-hooks` carries nothing. No `renames` <!-- legacy-name -->
-    key - a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md`
-    S11, S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
-  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN: listed in the
-    marketplace for one release under a RETIRED description (lint 49 counts them as generated) so an
-    installed one keeps working until the Node seed's update copies its picks and uninstalls it
-    (leaves first). A PARKED one is kept - it is the user's off-state for its items - and so is one at
-    another scope, which other projects use; both are logged with the uninstall command. The listing
-    goes in the release after 1.3.0; the FILE stays as long as the names are retired, since it is the
-    only record of what each entry carried - without it an install that skipped 1.3.x loses its picks.
+    marketplace also lists the two 1.x ids as RETIRED aliases (`aliasEntries`, from `brand.js`
+    `LEGACY`): the core under its old name, and the old hooks id carrying nothing. No `renames` key -
+    a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md` S11,
+    S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
+  - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN and listed under a RETIRED
+    description through 2.0.0 (lint 49 counts them as generated), so an installed one keeps working
+    until update copies its picks and uninstalls it (leaves first); a PARKED one, or one at another
+    scope, is kept and logged with its uninstall command. The FILE stays while the names are retired:
+    it is the only record of what each entry carried.
   - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`;
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
     `alfred-code` so the eval CLI can load a library item. The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
-    one row plus the two installer seeds (lint-checked).
+    one row plus the seed's own (lint check 27).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
     `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why (superpowers: the cost).
@@ -320,11 +314,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested, never seeded (R72) - plus `claude-hud` (user scope - its status line is account-wide), installed beside the core on EVERY run and never a pick (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows, lint check 51) - the core declares NO `dependencies`: `claude plugin update` over an older core installs none a release adds, and a plugin missing one is disabled at load, commands and all, so update could not repair it (measured on 2.1.280) - plus the core, which carries the stack hooks too; every run refreshes each marketplace its specs name first, once (`install` never moves a plugin already present, `update` reads the local catalog as it stands), with each plugin read by its full `name@marketplace` (the official catalog ships same-named ones), install updates one already listed, update installs an absent one, enables a parked one (never `claude-hud`: a disabled one is only updated, since `install` re-enables it - measured on 2.1.282), then updates, at the scope `claude plugin list --json` reports, and reads versions back; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is read back while enabled, then uninstalled by update (`meta/retired-entries.json`) |
-| Hooks | the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
+| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core carries its plan, test-first, root-cause - `project-root-cause` - and done-gate steps, and nothing shipped cites a `superpowers:` skill) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is uninstalled by update (`meta/retired-entries.json`) |
+| Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
-| Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the frozen `scripts/os` twins it used to select were deleted in 2.0.0) |
-| Install stamp | `alfred-code.stamp` (the project's `.claude/`, at every scope) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release - takes what the enabled entries carry as its picks) and `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each library copy as written); configure diffs it against `main`. The stamp and every copy live in the PROJECT at every scope (the stack's settings keys in `settings.local.json` at `local`); the scope says only where the plugin rows are enabled, and a `user` install makes every plugin / MCP call user-scoped. A 1.x global stamp left in the account dir is read by update alone, which moves it into the project |
+| Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the shell twins are deleted) |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), and `initialised: <date>`, which only `/alfred-code:init` writes; configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update alone, which moves it into the project |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -336,25 +330,20 @@ mirrored there in the same sitting.
 ## The model these templates encode
 
 - **Every MCP server ships as its OWN plugin, and the tool names say so.** ONE PLUGIN, ONE SERVER,
-  SAME NAME (lint check 53), because a plugin server's tools are addressed
-  `mcp__plugin_<plugin>_<server>__<tool>` - so every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`
-  for a single `<n>`, and lint check 54 fails on a bare `mcp__<server>__` anywhere under `stack/`,
-  `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a `tools:` allowlist written that
-  way silently drops the tool, a `ToolSearch select:` line silently finds none). A plugin's servers
-  all LOAD TOGETHER, which is why a second server in one entry is never an option - it would put a
-  second set of tool schemas in every session of every project that enabled it. The entries are
-  GENERATED (`scripts/build-marketplace.js --mcp-entries`, from `meta/mcp-pins.json`), and
-  `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for the droppable playwright -
-  on which the installer re-spells the copied skills, agents, rules and hooks back to the bare names,
-  because those are what a registration writes. That re-spelling needs the FILES, so the switch
-  belongs with `ALFRED_CODE_SKILLS_VIA_PLUGIN=false`; the mixed pair is reported, never half-fixed.
-  The LOCKED THREE are plugin-only whenever any plugin route is on: the installer installs them
-  beside the core (the selection names them on the MCP route, `pluginSet` adds them on the mixed
-  one - never as the core's `dependencies`, see the Plugins surface above), and registering them as well would
-  run each server twice and pay both sets of tool schemas every session. They come back to
-  `.mcp.json` only on the FULL copy route, where the core is never enabled. Every registration and
-  verify pass skips a locked name while the core is on, and the re-spelling covers only the servers
-  a run actually registered bare.
+  SAME NAME (lint check 53): a plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so
+  every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`, and lint check 54 fails on a bare
+  `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a
+  `tools:` allowlist silently drops the tool, a `ToolSearch select:` line finds none). A plugin's
+  servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
+  every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
+  `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
+  playwright, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
+  names a registration writes - that needs the FILES, so the switch belongs with
+  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). The LOCKED THREE
+  are plugin-only whenever any plugin route is on: installed beside the core (never as its
+  `dependencies`, see the Plugins surface) and never also registered, which would run each server
+  twice. They come back to `.mcp.json` only on the FULL copy route; every registration and verify
+  pass skips a locked name while the core is on.
 - **MCP servers are per-project, never global.** `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
@@ -369,42 +358,39 @@ mirrored there in the same sitting.
     run drops is uninstalled. A legacy `playwright` server migrates. The playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
-    `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`).
+    `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
+    `meta/retired-plugins.json`): update uninstalls each only as `name@<stack key>` and prints its
+    add-back line.
 - **`memory` is required like serena and context7**, chosen per install by LEVEL rather than by
   a droppable pick: `global` (`~/.memory-mcp/memory.db`, every Claude account and Cursor on the
   machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,
   `memory_default.db` with no space - one account), `project` (`<project>/.memory-mcp/memory.db`,
-  gitignored - this project only). `--memory-level <global|scoped|project>` / `-MemoryLevel` sets
-  it; init and configure ASK it (one AskUserQuestion, the three levels, `global` recommended),
-  update passes it only when the invocation names one, changing it re-points the registration and
-  never touches the database file. The registration needs the `[sqlite]` extra -
-  `mcp-memory-service[sqlite]==<ver>` via `uvx --with numpy --from ...` - because that extra is
-  what gives the service real 384-dim embeddings; without it the server refuses to start on a
-  database already holding memories. Env: `MCP_MEMORY_STORAGE_BACKEND=sqlite_vec`,
-  `MCP_MEMORY_SQLITE_PATH=<db>`, `MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000` (a shared file,
-  several writers). Before switching Claude's own memory off, `/alfred-code:init` (`memory.js init`,
-  which then stamps `initialised: <date>`; no run imports before that line) imports the project's
-  existing `MEMORY.md` / `memory/*.md` notes into the chosen database once, through the memory
-  service itself (idempotent - a re-run imports nothing twice); the switch-off
-  (`autoMemoryEnabled: false`) writes to THIS repo's own project `.claude/settings.json` - always,
-  even at global scope, never the account file, which would silence every other project's memory
-  too - and waits for that import to succeed first: a failed import leaves Claude's own memory ON
-  and is reported as such, never retried into a false success, and the old `MEMORY.md` /
-  `memory/*.md` files are never deleted either way. A note a PRE-fix registration imported was
-  hash-embedded rather than given a real 384-dim embedding, so it loads by project tag but misses a
-  `memory_search` by meaning; the service has no re-embed tool, so `memory.js reembed` does it - the
-  marker is the stored vector's norm (about 11 for a hash embedding, 1 for the sentence model, read
-  from the vec0 shadow tables), and each row is deleted, stored and given back its dates through the
-  service (`memory_update` with `preserve_timestamps: false`), after an owner-only backup of the whole
-  rows under `~/.memory-mcp/backups/` (never beside a project db, inside a repo), which `reembed
-  --restore <backup>` replays. A row tied to another memory (superseded, a child, a `memory_graph`
-  edge) is left alone, since a delete drops its edges; the first row goes alone and stops the run when
-  its new vector is still not unit length; the `conflict:unresolved` tag the service adds on a store is
-  reported, never counted as a changed field. `memory.js duplicates` reports same-content pairs and
+  gitignored - this project only). `--memory-level` sets it; init and configure ASK it (one
+  AskUserQuestion, the three levels, `global` recommended), update passes it only when the invocation
+  names one, and changing it re-points the server, never touching the database file. The server needs
+  the `[sqlite]` extra - `mcp-memory-service[sqlite]==<ver>` via `uvx --with numpy --from ...` - for
+  real 384-dim embeddings; without it the server refuses to start on a database already holding
+  memories. Env: `MCP_MEMORY_STORAGE_BACKEND=sqlite_vec`, `MCP_MEMORY_SQLITE_PATH=<db>`,
+  `MCP_MEMORY_SQLITE_PRAGMAS=busy_timeout=15000` (a shared file, several writers). SETUP never
+  imports: `/alfred-code:init`, in the session after setup's restart (`scripts/install/memory.js
+  init`), imports the project's existing `MEMORY.md` / `memory/*.md` notes into the chosen database
+  once, through the service (idempotent), and only after that import succeeds switches Claude's own
+  memory off (`autoMemoryEnabled: false`) and writes the stamp's `initialised:` line. The switch-off
+  lands in THIS project's own `.claude/settings.json` at project and user scope, and in
+  `settings.local.json` at local scope, where a value the user set stays local (R96) - never the
+  account file, which would silence every other project. A failed import leaves Claude's own memory
+  ON and is reported, never retried into a false success; the old note files are never deleted.
+  A note a PRE-fix registration imported was hash-embedded, so it loads by project tag but misses a
+  `memory_search` by meaning; `memory.js reembed` fixes it (the service has no re-embed tool): the
+  marker is the stored vector's norm (about 11 for a hash embedding, 1 for the sentence model), each
+  row is deleted, stored and given back its dates through the service, after an owner-only backup
+  under `~/.memory-mcp/backups/` that `reembed --restore <backup>` replays. A row tied to another
+  memory (superseded, a child, a graph edge) is left alone; the first row goes alone and stops the run
+  when its new vector is still not unit length. `memory.js duplicates` reports same-content pairs and
   deletes nothing.
 - **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
-  enabled), so the installers SEED `.serena/project.yml` on install and update: project name, the
+  enabled), so the installer SEEDS `.serena/project.yml` on install and update: project name, the
   `language_servers` their own scan detects (C#, TypeScript/JS), and `ignored_paths` for `.serena` /
   `.claude` / `.playwright`. A key that already has entries is never rewritten, and never appended twice
   (a duplicate YAML key is an error). The key was renamed from `languages` in serena 1.7.0; the C#
@@ -419,27 +405,23 @@ mirrored there in the same sitting.
 - **serena and memory run on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
   the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
-  server never gets a project settings env key, so the launchers read the files).
-  uvx takes the newest interpreter it finds, and serena-agent's pyyaml 6.0.2 ships no 3.14 wheel, so
-  an unpinned start compiles it and dies without a C compiler - Claude Code shows only
-  CONNECTION_CLOSED. Windows ARM64 has no wheel for five compiled deps on ANY Python, while the x64
-  build runs there under emulation. Both plugin entries start through a node launcher
+  server never gets a project settings env key). uvx takes the newest interpreter, and serena-agent's
+  pyyaml 6.0.2 ships no 3.14 wheel, so an unpinned start dies without a C compiler (Claude Code shows
+  only CONNECTION_CLOSED); Windows ARM64 has no wheel for five compiled deps on ANY Python, while the
+  x64 build runs there under emulation. Both plugin entries start through a node launcher
   (`serena-launch.js`, `memory-launch.js`) because the right value is the MACHINE's; the copy route
-  resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry: Claude Code launches the
-  one in the marketplace clone, which the next refresh overwrites (`docs/uv-python-pin-evidence.md`).
-  The serena launcher also spells `SERENA_HOME` in the platform's separator and keeps it RELATIVE
-  (a plugin server's cwd is the project), and the copy route registers the same `.serena\home` on
-  Windows (`@SERENA_HOME@`): serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so
-  on Windows the path reaches cmd.exe UNQUOTED, which cuts `.serena/home\...` at its first `/`
-  ('.serena' is not recognized as a command) - and an absolute path at the first space in the
-  project's own path. Both launchers pass a stop signal on to uvx (`runUvx`), or the server outlives
-  them.
+  resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
+  overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
+  in the platform's separator, and the copy route registers `.serena\home` on Windows
+  (`@SERENA_HOME@`): serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
+  gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
+  launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them.
 - **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; serena's
   per-project memory (`.serena/memories/`) is the EPHEMERAL handoff bus between agents within one
   feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
-  `memory/*.md`) is SWITCHED OFF in every stack install (`autoMemoryEnabled: false`) after a
+  `memory/*.md`) is SWITCHED OFF by `/alfred-code:init` (`autoMemoryEnabled: false`) after a
   one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/baseline-project-related-context.md` (the
@@ -485,12 +467,11 @@ mirrored there in the same sitting.
   one exception, because this repo is also a consuming project: it stays machine-local and
   gitignored, and the temp-project matrix installs from `scripts/clean-export.js` so it cannot leak
   into a case.
-- **Parity / source-of-truth.** Behaviour lands only in `scripts/install/` - the frozen shell and
-  PowerShell twins are deleted (Phase 7b, R33, 2.0.0), so there is one route left, not two to keep in
-  step. `meta/stack-manifest.json` is hand-edited directly and carries the six lists the seed reads
-  (`npm run lint` enforces it against disk and the HTML, plus the skill count). A shared baseline
-  change is mirrored into cursor-stack in the same sitting. Never patch only a generated `.mcp.json`
-  or a consuming project's copy - the installer wipes it.
+- **Parity / source-of-truth.** Behaviour lands only in `scripts/install/`, the one route.
+  `meta/stack-manifest.json` is hand-edited and carries the six lists the seed reads (`npm run lint`
+  holds it to disk, the HTML and the skill count). A shared baseline change is mirrored into
+  cursor-stack in the same sitting. Never patch only a generated `.mcp.json` or a consuming
+  project's copy - the installer wipes it.
 - **Select a skill by DESCRIPTION, not by name.** Naming works only for a skill guaranteed alongside its
   citer (a frontmatter preload, an own-stack skill). Anything else - a skill no stack seeds, or one from a
   DIFFERENT stack - is described by what it covers. A guard phrase beside the name is not the remedy.
@@ -513,9 +494,8 @@ mirrored there in the same sitting.
   - Edge cases are REQUIRED, not optional: a fresh install; an update over an older install; a re-run
     (idempotent - a second run changes nothing); a project holding the user's own config the change must
     not clobber (hand-added MCP server, settings key, hook); missing, empty or malformed input (absent
-    file, garbage JSON, unset env); and every boundary the change introduces (at, one under, one over).
-    `ALFRED_CODE_SEED=shell` needs only its own refusal case - the frozen shell/PowerShell twins it used
-    to select are gone (Phase 7b, 2.0.0), so there is one route left to prove, not two.
+    file, garbage JSON, unset env); every scope the change touches (`project`, `user`, `local`); and
+    every boundary the change introduces (at, one under, one over).
   - Read the RESULT, never the exit code alone: open the written `.mcp.json` / `settings.json` / copied
     files and hook output, and assert they are what the change claims.
   - A bug found blocks the commit AND the release: fix it, add a regression test, re-run the whole
@@ -552,32 +532,27 @@ mirrored there in the same sitting.
   of `main`. A change ships only once merged to `main`; until then the per-file fail-soft keeps
   existing copies. Never reintroduce a raw fetch of a repo-owned file (per-file, stale, mixes
   revisions).
-- **The plugin cache IS the snapshot, so the common run downloads nothing but a newer release** (`pluginCache`,
-  `scripts/install/source.js`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/` is the whole
-  repo, because every marketplace entry is sourced from the repo ROOT - measured on a real install
-  (`stack/rules`, `stack/CLAUDE.template.md`, both hook engines, `meta/`, `scripts/`) - but NO
-  `RELEASE-SOURCE` and no `.git` (a GitHub marketplace writes the repo tree), so its revision is the
-  `v<version>` tag of its own `plugin.json` (`readRevision`, which `stamp-compare.js` shares). The NEWEST valid entry across marketplaces wins, by `sort -V` over the directory
-  names; an entry counts only with `stack/skills` + `stack/agents`, so a half-written one is rejected.
-  It is by construction the revision the enabled plugins run from, so seed and plugins can never be
-  two releases. The stack writes no cache of its own - the per-release `<config>/cache/stack-source/`
-  cache, its week-old promote, the `HEAD /releases/latest` probe, the marketplace-clone route and
-  `STACK_SOURCE_CACHE` are all RETIRED. A shape change is a THREE-site edit now
-  (`scripts/install/source.js`, the protocol's two snippets);
-  `scripts/source-cache.test.js` and `scripts/install-source.test.js` cover it. The install
-  BOOTSTRAPS on a first run: no cache and a plugin route means the core plugin is installed first so
-  its cache can serve the same run. And every run takes the LATEST: the seed (with no `--source`) and
-  both protocol snippets refresh the `alfred-code` catalog and `plugin update` EVERY installed stack
-  entry at its own scope BEFORE the cache is read - a refreshed catalog alone never moves the cache,
-  so without it 'newest entry' is the release being replaced, and an entry left behind would be
-  launched as the refreshed catalog declares it, naming files its older version lacks. `--print-plan`
-  changes no plugin.
+- **The plugin cache IS the snapshot, so the common run downloads nothing but a newer release**
+  (`pluginCache`, `scripts/install/source.js`): `<config>/plugins/cache/<marketplace>/alfred-code/<version>/`
+  is the whole repo, because every marketplace entry is sourced from the repo ROOT (measured on a real
+  install) - but with NO `RELEASE-SOURCE` and no `.git`, so its revision is the `v<version>` tag of its
+  own `plugin.json` (`readRevision`, shared with `stamp-compare.js`). The NEWEST valid entry across
+  marketplaces wins (`sort -V`); one counts only with `stack/skills` + `stack/agents`, so a
+  half-written one is rejected. It is by construction the revision the enabled plugins run from. The
+  stack writes no cache of its own (the old `stack-source` cache, its promote, the release probe and
+  `STACK_SOURCE_CACHE` are RETIRED). A shape change is a THREE-site edit (`scripts/install/source.js`,
+  the protocol's two snippets), covered by `scripts/source-cache.test.js` and
+  `scripts/install-source.test.js`. A first run BOOTSTRAPS: no cache on a plugin route installs the
+  core first so its cache serves the same run. Every run takes the LATEST: the seed (no `--source`)
+  and both protocol snippets refresh the catalog and `plugin update` EVERY installed stack entry at
+  its own scope BEFORE the cache is read - a refreshed catalog alone never moves the cache, and an
+  entry left behind would launch naming files its older version lacks. `--print-plan` changes no
+  plugin.
 - **One download per RUN.** The plugin commands resolve the snapshot themselves and pass it with
-  `--source`; a borrowed source is never deleted by the script (the resolved source's own `owned`
-  flag in `scripts/install/source.js` - false for `--source` and the plugin cache, true for a
-  download `cleanup()` removes) - the skills remove their `$TMP` on every exit path.
+  `--source`; the script never deletes a borrowed source (`owned` in `scripts/install/source.js` is
+  false for `--source` and the plugin cache), and the commands remove their `$TMP` on every exit path.
   Standalone (no `--source`) still resolves and cleans up what it fetched; keep that path working.
-  Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install, not a copy of it.
+  Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install.
 - **The install is versioned, not the file.** `version:` exists only in plugin.json - a `version:` key on
   a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit, or
   the `v<version>` tag when the snapshot names none, + release version); configure diffs it via the GitHub compare API. A run whose source never resolved

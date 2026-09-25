@@ -148,7 +148,7 @@ It prints, in order:
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
-  `env-rename-prefix:` / `env-reset:` / `env-remove:` lines - everything you act on. A detected entry joins the prune list labeled
+  `env-rename-prefix:` / `env-remove:` / `env-reset:` lines - everything you act on. A detected entry joins the prune list labeled
   `(migration: <why>)`. Do not open the catalog for any of it: an entry that did not fire prints
   nothing, and reading 'just that one entry by id' still pulls the whole file in (measured: 2,182
   of a 5,180-char read is the maintainer `_comment`, 42%, paid on every update of every project).
@@ -424,8 +424,9 @@ stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS l
 what was taken, what stays off or was left, each by name), and the restart line.
 
 - **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope
-  writes (`settings.json env: <old> renamed to <new>`, or `settings.local.json env: ...` at local
-  scope, `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
+  writes (`settings.json env: <old> renamed to <new>`, or `settings.local.json env: ...` for a key
+  that file holds - every key at local scope, and at project or user scope each stack key it already
+  held, since it applies over settings.json there; `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
   `--docs-versioning`), and the grep already caught
   them. Report those lines; when there are none, say 'env: nothing renamed, removed or seeded this
   run' - a claim you can make because the log is silent AND step 2's `env-keys:` set is the

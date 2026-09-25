@@ -31,17 +31,18 @@ workspace - `scaffold.sh` beside `case.yaml`, run only under `--scaffold`. The s
 is a library item, copied per project and never in the core, so no case here grades it (the library
 cases live in `meta/evals/library/`, run through the eval bundle).
 
-## Last recorded run
+## Last recorded run - 2026-09-12, before the 2.0.0 grader change
 
-2026-09-12, Claude Code 2.1.269, default model, `--judge-model claude-haiku-4-5`, 3 runs per arm.
+The cases were re-graded on 2026-09-25 (setup/init split). This run: Claude Code 2.1.269, default model, `--judge-model claude-haiku-4-5`, 3 runs per arm.
 
 | case | with | without | delta |
 |---|---|---|---|
 | `router-hands-back-one-command` | 1.00 | 0.00 | +1.00 |
 | `status-no-install` | 1.00 | 0.33 | +0.67 |
 
-Mean delta +0.83 over 12 runs, 112s, $0.84. Both cases then graded `/alfred-code:init`; 2.0.0 routes
-a project with nothing installed to `/alfred-code:setup`, so this table predates the current graders. The without-arm's one passing grader is
+Mean delta +0.83 over 12 runs, 112s, $0.84. Both cases then graded `/alfred-code:init`; 2.0.0 routes a
+project with nothing installed to `/alfred-code:setup`, so these numbers describe the old graders and
+are not re-run here (the run is billed). The without-arm's one passing grader is
 `no-invented-tables`, which a session with no plugin passes for free - it has no tables to invent.
 Re-record this table whenever a command body changes; a delta that falls is the command losing its
 own contract, and a `with` score under 1.00 is the command failing it outright.

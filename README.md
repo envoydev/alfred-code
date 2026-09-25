@@ -7,13 +7,13 @@ ONE source snapshot per run, and the common run downloads nothing - Claude Code'
 already holds this whole repo, because every marketplace entry is sourced from the repo root (a
 release archive, then a shallow git clone, are the fallbacks for a machine with no cache). Either
 way an install is a single source revision, recorded in `.claude/alfred-code.stamp`, and consuming
-projects pull from here rather than owning their copy. The **Cursor** twin stack lives in its own repo,
-[`cursor-stack`](https://github.com/envoydev/cursor-stack) - its installers clone THIS repo for
-the shared skills, so the baseline stays single-sourced here.
+projects pull from here rather than owning their copy. The **Cursor** twin lives in its own repo,
+[`cursor-stack`](https://github.com/envoydev/cursor-stack), with its own skills, agents and
+installers - it does not clone this one, so a change that maps to Cursor is mirrored there.
 
 What it gives a project: consistent house conventions that attach themselves to the right file
 types, single-chat and multi-agent build workflows with quality gates, per-project MCP wiring
-(docs lookup, symbol navigation, browser and mobile automation, error monitoring), and a guided
+(docs lookup, symbol navigation, shared memory, browser automation), and a guided
 install/update flow.
 
 ## Technologies
@@ -46,9 +46,9 @@ behind a flag.
 
 | | |
 | --- | --- |
-| **Writes, in the project** | `.claude/{skills,agents,rules,hooks}/` (hooks: the three engines and the model-window table only - the seventeen wired hooks come from the core `alfred-code` plugin; skills and agents: the library copies of this project's picks - the always-on ones come from the core plugin), the `.claude/settings.json` `env` block, the shared memory's `autoMemoryEnabled: false` and one-time note import (always in THIS project's own settings.json - even at global scope, never the account file), `.serena/project.yml`, and `alfred-code.stamp`; `<repo>/.mcp.json` only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
+| **Writes, in the project** | at every scope: `.claude/{skills,agents,rules,hooks}/` (hooks: the three engines and the model-window table only - the seventeen wired hooks come from the core `alfred-code` plugin; skills, agents and rules: the library copies of this project's picks - the always-on skills and seats come from the core plugin), the `env` block of `.claude/settings.json` (`settings.local.json` at local scope), `.serena/project.yml`, and `alfred-code.stamp`; `/alfred-code:init` then imports Claude's old memory notes once and, only after that import succeeds, writes `autoMemoryEnabled: false` into that same project file - never the account file; `<repo>/.mcp.json` only on the `ALFRED_CODE_MCPS_VIA_PLUGIN=false` route, which the default run instead PRUNES of every stack server |
 | **Writes, in the account dir** | `~/.claude/settings.json` `env` keys only (`CONTEXT7_API_KEY` - a secret is logged by length, never by value, and never asked for through the chat) - `autoMemoryEnabled` never lands here, whatever the install scope |
-| **Starts** | one `claude plugin install` call per plugin (the optional third-party picks the project kept, `claude-hud`, installed beside the core on every run, the stack's own core `alfred-code`, and one plugin per MCP server the project keeps), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to seven), and - once, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, twenty-four skills (only `project-agent-capabilities` ships a script), eight agents, three references and nineteen hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the seventeen stack hooks - with no MCP server, no `bin/` and no dependencies of its own |
+| **Starts** | one `claude plugin install` call per plugin (the optional third-party picks the project kept, `claude-hud`, installed beside the core on every run, the stack's own core `alfred-code`, and one plugin per MCP server the project keeps), no `claude mcp add` registration at all (the servers ride their own plugins; the opt-out route still makes up to seven), and - once, in `/alfred-code:init`, to import old notes into the shared memory - a `uvx ... memory server` launch plus a `node scripts/memory-import.js` importer talking to it; nothing else executes from the package itself, which is six command bodies, twenty-four skills (only `project-agent-capabilities` ships a script), eight agents, three references and nineteen hooks - the core's own two (`guard-layer-table.js`, the table-before-question gate, and `library-stamp.js`, the startup line saying the library copies are older than the stack) and the seventeen stack hooks - with no MCP server, no `bin/` and no dependencies of its own |
 | **You install by hand** | `csharp-ls` and `typescript-language-server` for the two LSP plugins; `security-guidance` fetches its own Python dependency at session start |
 | **Costs, per message** | the always-on floor - the pathless rules plus every agent and skill description - measured at 87k-134k tokens across nine installs. `/alfred-code:status` reports your own install's number |
 
@@ -87,8 +87,8 @@ done gate, plan format and root-cause loop).
 
 Then `/alfred-code:setup` runs a fresh install (it decides the selection FROM the project, with
 what the project needs and why shown first) and ends on a restart; `/alfred-code:init`, typed in the
-new session, bootstraps it once (the services the MCP servers need, the memory level, the captures,
-the CLAUDE.md fill),
+new session, bootstraps it once (the services the MCP servers need, the memory level with the
+one-time import of Claude's old notes and its own memory's switch-off, the captures, the CLAUDE.md fill),
 `/alfred-code:update` refreshes an existing one to the newest release and prunes what the stack
 removed upstream, `/alfred-code:configure` adjusts it (add or drop items), and
 `/alfred-code:validate` reconciles an install against THIS project - prunes what its frameworks do
@@ -122,8 +122,8 @@ node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .cl
 node .claude/alfred-code-src/scripts/install/alfred-code.js update --source .claude/alfred-code-src --installed-only # later refreshes - only what is already installed, from disk
 node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --skills-only   # just the skills, nothing else
 
-# Named flags (any order): --space, --scope, --docs-versioning, --memory-level, --github-cli, --keep-pins, --selection, --installed-only, --print-plan, --skills-only, --source
-node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope global --memory-level scoped
+# Named flags (any order): --space, --scope (project | user | local), --memory-level, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope user --memory-level scoped
 ```
 
 The same command runs verbatim on Windows under `node.exe`, PowerShell or cmd - one program, no
