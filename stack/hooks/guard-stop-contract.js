@@ -18,9 +18,9 @@
 //   one - so a long session is asked once per real cost step, not once per question.
 //   It also carries the DONE GATE: a close claiming the change done / fixed / passing / works / ready
 //   while a source edit (a file tool's, or a shell write read through shell-writes.js) landed after
-//   the turn's last run is held once per turn, naming `project-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
+//   the turn's last run is held once per turn, naming `alfred-habits-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
 // PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: INJECTION ONLY - a red build or test run
-//   points at `project-root-cause` once per failure streak; the streak ends when every command that
+//   points at `alfred-habits-root-cause` once per failure streak; the streak ends when every command that
 //   ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
@@ -133,7 +133,7 @@ function buildTestRun(command) {
 }
 const buildTestKind = (command) => (buildTestRun(command) || {}).kind || null;
 
-// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run -> project-root-cause -----
+// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run -> alfred-habits-root-cause -----
 // The fix that follows a red run is where a guess lands, and the method that stops it only ever sat
 // in a baseline line the session had to remember. A build or test command that FAILED injects the
 // pointer once per failure streak; the next green run of the same kind resets that streak. A piped run
@@ -188,12 +188,12 @@ if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'Po
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
       ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name, tool: payload.tool_name,
-      mode: 'inject', kind: 'root-cause', reason: `inject: a red ${kind} run - project-root-cause before the next fix`,
+      mode: 'inject', kind: 'root-cause', reason: `inject: a red ${kind} run - alfred-habits-root-cause before the next fix`,
     }) + '\n');
   } catch { /* a log row never changes the injection */ }
   process.stdout.write(JSON.stringify({ hookSpecificOutput: {
     hookEventName: payload.hook_event_name,
-    additionalContext: `The \`${kind}\` run failed - load \`project-root-cause\` (the Skill tool) before the next fix, `
+    additionalContext: `The \`${kind}\` run failed - load \`alfred-habits-root-cause\` (the Skill tool) before the next fix, `
       + 'and run its loop: the whole failure read and quoted, a repro, the cause localized and proven by one '
       + 'hypothesis per change, then one fix at the root. Said once per failure streak - it ends when every build or test run '
       + 'that failed in it has run green again.',
@@ -623,7 +623,7 @@ if (payload.hook_event_name === 'SubagentStop') {
 }
 
 // --- Stop: the done gate - a done claim over an edit nothing ran after ------------------------------
-// 'Fixed' typed over a change nothing ran is the claim `project-done-gate` exists to stop, and a
+// 'Fixed' typed over a change nothing ran is the claim `alfred-habits-done-gate` exists to stop, and a
 // baseline line alone never stopped it. The close is held ONCE per turn when it claims the change done,
 // fixed, passing, works or ready while a source edit landed after the turn's last run - or none ran.
 // The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger', 'the done gate', a
@@ -645,7 +645,7 @@ const RUN_OUTPUT_RE = /\.(?:log|out|err|tmp|temp|bak|orig|rej|pid|trx)$/i;
 const NO_CONTENT_VERB_RE = /^(?:mkdir|rmdir|touch|chmod|chown)$/;
 const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
 const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
-// the result line `project-done-gate` asks for in place of a claim
+// the result line `alfred-habits-done-gate` asks for in place of a claim
 const NOT_RUN_LINE_RE = /^not (?:yet )?(?:run|built|tested|verified)\b/i;
 // 'when you're ready', 'once you are done reviewing' - the user's state, not the change's
 const YOU_CLAUSE_RE = /\byou(?:'re|\u2019re|\s+are|\s+were|'ve been|\s+have been)\b[^,;]*/gi;
@@ -660,7 +660,7 @@ const CLAIM_RES = [
   // green only over a build or test subject - 'the header is green' is a colour
   /\b(?:tests?|suites?|specs?|builds?|ci|checks?|pipelines?|runs?)\s+(?:(?:is|are|'s|'re|was|were|looks?|seems?|stays?|now)\s+)*(?:all\s+)?(green)\b/i,
   /^all\s+(green)\b/i,
-  // the signs `project-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
+  // the signs `alfred-habits-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
   /(?<!\b(?:how|what|why|whether|if)\s)\b(?:this|that|it|which)\s+(?:should\s+|will\s+|now\s+)?(fix(?:es)?)\s+(?:it|this|that|the|a|an)\b/i,
   /\b(good to go)\b/i,
   /(?:^|\b(?:is|are|'s|'re)\s+)all\s+(set)\b/i,
@@ -935,7 +935,7 @@ if (payload.hook_event_name === 'Stop') {
         : 'was edited in this turn, and no shell command or dispatched agent after it ran anything that could build or test it';
       process.stderr.write(
         `This close says '${claim}', but ${work.lastEdit.rel} ${when}, so nothing has checked the\n` +
-        'change as it stands. Load `project-done-gate` (the Skill tool) and run its gate now: the build and\n' +
+        'change as it stands. Load `alfred-habits-done-gate` (the Skill tool) and run its gate now: the build and\n' +
         'the tests that cover the change, after the last edit, the result quoted. If they cannot run here,\n' +
         "say 'not run - <why>' in place of the claim. Held once per turn; ALFRED_CODE_DONE_GATE=0 in the\n" +
         'settings.json env turns it off.\n',

@@ -1,5 +1,5 @@
 ---
-name: project-plan-writing
+name: alfred-habits-plan-writing
 description: "Use when writing, stamping or reading an implementation plan file: the header lines, the task card, the status marks a build adds, the Decisions ledger, the resume line, and what a plan never carries. Not the design itself."
 ---
 

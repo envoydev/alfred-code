@@ -24,7 +24,7 @@ test('the core plugin is exactly the always closure - 27 skills, 8 agents', () =
 // install has them and every citer - a baseline pointer, a seat's preload, a flow's Skill call, a
 // hook's message - may name them. A library copy could be switched off per project.
 test('the five method skills land in the core, never the library', () => {
-    const five = ['project-root-cause', 'project-done-gate', 'project-test-first', 'project-plan-writing', 'project-clarify'];
+    const five = ['alfred-habits-root-cause', 'alfred-habits-done-gate', 'alfred-habits-test-first', 'alfred-habits-plan-writing', 'alfred-habits-clarify'];
     for (const s of five)
     {
         assert.ok(p.plugins[CORE].skills.includes(s), `${s} belongs to the core`);

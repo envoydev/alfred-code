@@ -23,10 +23,10 @@ test('rule skill edges resolve from the rule body', () => {
 });
 
 test('body-mentioned skills are no edge at all - naming a skill never reaches an install', () => {
-    // security-auditor names `project-done-gate` in its body and preloads nothing (the resolvers,
-    // this test's example until R106, preload project-root-cause now).
+    // security-auditor names `alfred-habits-done-gate` in its body and preloads nothing (the resolvers,
+    // this test's example until R106, preload alfred-habits-root-cause now).
     const r = graph.agents['security-auditor'];
-    assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'agents', 'security-auditor.md'), 'utf8'), /`project-done-gate`/);
+    assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'agents', 'security-auditor.md'), 'utf8'), /`alfred-habits-done-gate`/);
     assert.strictEqual(r.skillsSource, 'body');
     assert.deepStrictEqual(r.skills, [], 'no skills: frontmatter -> no hard skill edges');
     // the removed `suggests:` mechanism: it put dotnet-aspire on a project with no Aspire
@@ -83,8 +83,8 @@ test('a namespaced plugin:skill token resolves to its plugin, a house or unknown
     const plugins = new Set(['superpowers', 'csharp-lsp']);
     assert.strictEqual(pluginFromToken('superpowers:systematic-debugging', plugins), 'superpowers');
     assert.strictEqual(pluginFromToken('csharp-lsp', plugins), 'csharp-lsp');
-    assert.strictEqual(pluginFromToken('alfred-code:project-root-cause', plugins), null);
-    assert.strictEqual(pluginFromToken('project-root-cause', plugins), null);
+    assert.strictEqual(pluginFromToken('alfred-code:alfred-habits-root-cause', plugins), null);
+    assert.strictEqual(pluginFromToken('alfred-habits-root-cause', plugins), null);
 });
 
 // R72: the root-cause method is a house skill now. Both diagnoser seats preload it - a preload is a
@@ -95,7 +95,7 @@ test('both diagnosers preload the house root-cause skill, and nothing cites supe
     {
         const a = graph.agents[seat];
         assert.ok(a, `${seat} must be in the graph`);
-        assert.ok(a.skills.includes('project-root-cause'), `${seat} preloads project-root-cause (frontmatter skills:)`);
+        assert.ok(a.skills.includes('alfred-habits-root-cause'), `${seat} preloads alfred-habits-root-cause (frontmatter skills:)`);
     }
     for (const kind of ['rules', 'skills', 'agents'])
         for (const [name, node] of Object.entries(graph[kind]))
@@ -110,7 +110,7 @@ test('the root-cause loop keeps the step numbers its seats cite', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const root = path.join(__dirname, '..');
-    const body = fs.readFileSync(path.join(root, 'stack', 'skills', 'project-root-cause', 'SKILL.md'), 'utf8');
+    const body = fs.readFileSync(path.join(root, 'stack', 'skills', 'alfred-habits-root-cause', 'SKILL.md'), 'utf8');
     const loop = body.slice(body.indexOf('## The loop'), body.indexOf('## Where a seat'));
     const steps = [...loop.matchAll(/^(\d+)\. \*\*([^*]+)\*\*/gm)].map((m) => [Number(m[1]), m[2]]);
     assert.deepStrictEqual(steps.map(([n]) => n), [1, 2, 3, 4, 5, 6, 7], 'seven numbered steps, in order');
@@ -127,12 +127,12 @@ test('the root-cause loop keeps the step numbers its seats cite', () => {
     const agent = (n) => fs.readFileSync(path.join(root, 'stack', 'agents', `${n}.md`), 'utf8');
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver'])
     {
-        assert.match(agent(seat), /`project-root-cause`[^\n]*its steps 1-5 plus the one fix of step 6/, `${seat} cites steps 1-5 and step 6`);
+        assert.match(agent(seat), /`alfred-habits-root-cause`[^\n]*its steps 1-5 plus the one fix of step 6/, `${seat} cites steps 1-5 and step 6`);
         // step 7 is the whole stop: a fix that left the failure red counts, not only one that moved it
         assert.match(agent(seat), /Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere/, `${seat} carries the widened step 7`);
     }
     for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
-        assert.match(agent(seat), /`project-root-cause`[^\n]*steps 1-5/, `${seat} cites steps 1-5`);
+        assert.match(agent(seat), /`alfred-habits-root-cause`[^\n]*steps 1-5/, `${seat} cites steps 1-5`);
 });
 
 // The core's cross-marketplace companions travel in the catalog, so the walk can say 'carried with

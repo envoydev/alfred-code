@@ -5,7 +5,7 @@ description: Use when something breaks at runtime on your own machine and you ha
 
 # Failure Signatures - what the crash means and where the cause actually lives
 
-Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with `project-root-cause` - the disciplined hypothesis-and-test loop; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
+Every runtime failure has a signature, and the signature names where to look - which is almost never the line in the top frame. This is the single-chat form of the diagnoser seat's failure catalogue: match the evidence to a signature, then isolate at the place the signature points, not the place it threw. It pairs with `alfred-habits-root-cause` - the disciplined hypothesis-and-test loop; this one tells you which hypothesis the signature warrants. Read the evidence first and quote the exact frame, then match.
 
 ## The signatures - and where each isolates
 

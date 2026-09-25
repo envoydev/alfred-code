@@ -16,7 +16,7 @@ description: "House baseline - quality gates: code quality and the done-claim ga
 ### The done gate
 
 Before you claim your own change done, fixed, passing, works or ready - the FIRST action is the
-`project-done-gate` Skill call, before the claim lands.
+`alfred-habits-done-gate` Skill call, before the claim lands.
 
 ### Claims about the outside world
 

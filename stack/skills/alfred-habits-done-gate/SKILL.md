@@ -1,5 +1,5 @@
 ---
-name: project-done-gate
+name: alfred-habits-done-gate
 description: "Use before saying your own change is done, fixed, passing, works or ready: build and the relevant tests run after the last edit, output quoted, a green summary vs a red trace, scoped runs while iterating and the full suite once, never a gamed pass."
 ---
 

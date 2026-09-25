@@ -1,5 +1,5 @@
 ---
-name: project-root-cause
+name: alfred-habits-root-cause
 description: "Use when a bug, a failing test, a build error or unexpected behavior needs its cause found before any fix: read the whole failure, reproduce, localize, compare with a working case, one hypothesis per change, fix at the root. Not a signature lookup, not the gated investigation."
 ---
 
@@ -14,7 +14,7 @@ A fix aimed at a symptom moves the failure somewhere nobody is looking. This is 
 3. **Localize - walk back from where it threw.** The top frame is where the bad value landed, rarely where it was made. Follow it upstream across each boundary it crossed (a call, a process, a config load, a serialization) and check what actually crossed. Ask what changed: the diff, the last commits, a bumped dependency, the machine. In a single chat a probe settles which boundary: log what enters and leaves each one, run once, read it, then remove the probe.
 4. **Compare with a case that works.** A sibling path in the same code, a passing test, the last green commit. List every difference, small ones included - that list is where the hypotheses come from.
 5. **One hypothesis, one change.** Write it as one line - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next. Two changes at once prove nothing. A killed hypothesis is progress: revert its change before the next one, and note it so it is not tried twice.
-6. **Fix at the root, test first.** Where writing tests is in scope, a test that fails for the reason you found lands first. Then ONE fix for the cause - never a guard around the symptom, never a bundle of 'while I am here' edits - then the repro and the relevant suite, output quoted, per `project-done-gate`. The repro still red after the fix means the hypothesis was wrong: revert the fix and go back to step 3.
+6. **Fix at the root, test first.** Where writing tests is in scope, a test that fails for the reason you found lands first. Then ONE fix for the cause - never a guard around the symptom, never a bundle of 'while I am here' edits - then the repro and the relevant suite, output quoted, per `alfred-habits-done-gate`. The repro still red after the fix means the hypothesis was wrong: revert the fix and go back to step 3.
 7. **Three fixes that did not hold: stop.** Three fixes that left the repro red, or that each surfaced a failure somewhere else, mean the shape is wrong, not the line. Put the design question to whoever owns the design instead of forcing a fourth fix.
 
 No root cause in the code - the evidence points at the environment, timing or an outside service: say what was ruled out, then handle it where it surfaces (a retry, a timeout, a clear error) and add a log point that catches it next time.

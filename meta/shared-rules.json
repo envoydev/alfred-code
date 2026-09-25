@@ -3480,24 +3480,24 @@
       "_note": "R106: a baseline keeps ONE line per method it used to carry, and the method lives in a core skill. The line is the convention rules' imperative form - '<trigger> - the FIRST action is the `<skill>` Skill call, before <the act>' - never a 'see the skill' hint, because the weak phrasing is the one measured losing (convention-rule-first-action). Each pointer names a different skill, so each copy carries its own marker; a pointer reworded out of the form goes red here.",
       "owner": {
         "file": "stack/rules/baseline-quality-gates.md",
-        "marker": "the FIRST action is the `project-done-gate` Skill call, before the claim lands"
+        "marker": "the FIRST action is the `alfred-habits-done-gate` Skill call, before the claim lands"
       },
       "sites": [
         {
           "file": "stack/rules/baseline-interaction.md",
-          "marker": "the FIRST action is the `project-plan-writing` Skill call, before the plan file is written"
+          "marker": "the FIRST action is the `alfred-habits-plan-writing` Skill call, before the plan file is written"
         },
         {
           "file": "stack/rules/baseline-interaction.md",
-          "marker": "the FIRST action is the `project-test-first` Skill call, before the first production edit"
+          "marker": "the FIRST action is the `alfred-habits-test-first` Skill call, before the first production edit"
         },
         {
           "file": "stack/rules/baseline-interaction.md",
-          "marker": "the FIRST action is the `project-root-cause` Skill call, before the next fix lands"
+          "marker": "the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands"
         },
         {
           "file": "stack/rules/baseline-interaction.md",
-          "marker": "the FIRST action is the `project-clarify` Skill call, before the design or the first edit"
+          "marker": "the FIRST action is the `alfred-habits-clarify` Skill call, before the design or the first edit"
         }
       ]
     },
@@ -4072,44 +4072,44 @@
       "_note": "Each task is gated against its acceptance criterion by this session's run, and against the CURRENT contract_version - a divergence is CONTRACT_MISMATCH. Restated in every *-verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+        "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
+          "marker": "Gate each task against its acceptance criterion the way `alfred-habits-done-gate`"
         }
       ]
     },
@@ -4682,7 +4682,7 @@
       ]
     },
     "resolver-root-cause-method": {
-      "_note": "The four build/test resolvers drive localization with the house root-cause loop (project-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and runs its step 7 - questions the design after 3 fixes that each leave the failure red or surface a new one (pinned as resolver-root-cause-stop). The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
+      "_note": "The four build/test resolvers drive localization with the house root-cause loop (alfred-habits-root-cause, R72), cited as NAME + its content clause, and each skips that loop's write-a-test step (out of a resolver's scope) and runs its step 7 - questions the design after 3 fixes that each leave the failure red or surface a new one (pinned as resolver-root-cause-stop). The head is byte-identical across the four; the skipped-test clause and the noun (error / failure, tests / specs) are per-stack.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
         "marker": "one hypothesis at a time, one change per hypothesis, re-run before the next, root cause before symptom"
@@ -5143,20 +5143,20 @@
       "_note": "All four repair resolvers used to restate the done gate in full, forking the always-on quality-gates rule four ways. They now CITE the rule and keep only the shapes their own domain adds - one home for the gate, four homes for the domain detail.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
-        "marker": "`project-done-gate` binds here, and in this seat the shapes are"
+        "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
       },
       "sites": [
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
+          "marker": "`alfred-habits-done-gate` binds here, and in this seat the shapes are"
         }
       ]
     },

@@ -3,9 +3,9 @@
 // skill description alone never fires reliably.
 //   done gate  - Stop: a close claiming the session's own change done / fixed / passing / works /
 //                ready is held ONCE per turn when a source edit landed after the turn's last build or
-//                test run (or none ran), naming `project-done-gate`. A close with no edit never trips.
+//                test run (or none ran), naming `alfred-habits-done-gate`. A close with no edit never trips.
 //   root cause - PostToolUseFailure / PostToolUse on Bash and PowerShell: a build or test command that
-//                failed injects 'load `project-root-cause`' ONCE per failure streak; the next green run
+//                failed injects 'load `alfred-habits-root-cause`' ONCE per failure streak; the next green run
 //                of that command resets the streak. Injection only - never a block.
 // Both directions are pinned: a gate that also fires on the clean neighbour teaches a bypass.
 const test = require('node:test');
@@ -83,7 +83,7 @@ test('done gate: a done claim over an edit made after the turn\'s last test run 
     const r = stop(root, steps(root, [['prompt', 'fix the cart total'], ['run', 'npm test', true], ['edit', 'src/money.js']]),
         'Fixed - the cart total is right now.');
     assert.strictEqual(r.status, 2, r.stderr);
-    assert.match(r.stderr, /`project-done-gate`/);
+    assert.match(r.stderr, /`alfred-habits-done-gate`/);
     assert.match(r.stderr, /after the last build or test run/);
     const rows = ledger(root);
     assert.strictEqual(rows.length, 1, JSON.stringify(rows));
@@ -162,7 +162,7 @@ test('done gate: a dispatched agent after the edit counts as the run', () => {
 test('done gate: the claim shapes - what is no claim, and what the skill names as one', () => {
     const root = project();
     // judged by the gate's own message: 'let me know ...' is the prose-ask branch's to hold, not this one's
-    const held = (text) => (/`project-done-gate`/.test(stop(root, steps(root, [['prompt', `go ${text}`], ['edit', 'src/money.js']]), text).stderr) ? 2 : 0);
+    const held = (text) => (/`alfred-habits-done-gate`/.test(stop(root, steps(root, [['prompt', `go ${text}`], ['edit', 'src/money.js']]), text).stderr) ? 2 : 0);
     for (const text of ["Let me know when you're ready.", "Once you're done reviewing, I will squash the commits.", 'The header is green now.',
         'The dev server is ready at http://localhost:4200', "You're all set to review the diff.", 'If it works for you, I will open the PR.',
         'Set the flag to 1 before the next run.'])
@@ -245,7 +245,7 @@ test('root cause: a failing test command injects the skill once per streak, and 
     const out = injected(first);
     assert.ok(out, 'the first failure injects');
     assert.strictEqual(out.hookEventName, 'PostToolUseFailure');
-    assert.match(out.additionalContext, /load `project-root-cause`/);
+    assert.match(out.additionalContext, /load `alfred-habits-root-cause`/);
     assert.match(out.additionalContext, /before the next fix/);
     assert.strictEqual(injected(post(root, 'PostToolUseFailure', 'Bash', 'npm test 2>&1 | tail -20', { error: 'Exit code 1' })), null, 'a second failure in the streak is silent');
     assert.strictEqual(injected(post(root, 'PostToolUse', 'Bash', 'npm test', { tool_response: { stdout: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', stderr: '' } })), null, 'a green run says nothing');

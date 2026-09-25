@@ -421,7 +421,7 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
 
 // R72: superpowers is an optional pick, so nothing the stack ships may rest on one of its skills -
 // each one it leaned on has a house home now (the done gate, the plan format, the test-first line,
-// the clarify gate, project-root-cause). History keeps its words; the optional plugin row names the
+// the clarify gate, alfred-habits-root-cause). History keeps its words; the optional plugin row names the
 // plugin, never a skill of it. A `<docs-path>/superpowers/plans/` PATH is the stack's own folder.
 test('no shipped text cites a superpowers skill - by qualified name or in prose', () => {
     const fs = require('node:fs');

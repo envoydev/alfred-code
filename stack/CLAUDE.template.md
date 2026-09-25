@@ -81,7 +81,7 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`project-done-gate`), and claims about the outside world checked through `context7` |
+| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), and claims about the outside world checked through `context7` |
 | `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |

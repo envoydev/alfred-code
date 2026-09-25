@@ -232,7 +232,7 @@ const RC_SYMPTOM = '/work/project/src/cart.js';
 // `rejected` adds a write that errored ('String to replace not found', a hook deny) and so changed
 // nothing: 'retry' before its own retry, 'early' before the repro, 'symptom' as a guard in cart.js.
 function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.',
-    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null, loaded = 'project-root-cause' } = {})
+    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null, loaded = 'alfred-habits-root-cause' } = {})
 {
     const rows = [user('npm test is failing on the cart total - fix it.')];
     const reject = (file) => { const e = tool('Edit', { file_path: file, old_string: 'parseFloat(price )', new_string: 'x' }); rows.push(e, denied(e)); };
@@ -266,23 +266,23 @@ function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 2
 
 test('root-cause: a run that reproduces, states its hypothesis, fixes at the root and quotes the green run follows every step', () =>
 {
-    const r = sc.grade(expectOf('project-root-cause'), rootCauseRun());
+    const r = sc.grade(expectOf('alfred-habits-root-cause'), rootCauseRun());
     assert.deepStrictEqual(failing(r), []);
     assert.strictEqual(r.graded, 7);
 });
 
 test('root-cause: the method skill loads before the first fix; either arm\'s spelling of it counts', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: false }))), ['root-cause-loaded'], 'no method skill before the fix');
-    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-code:project-root-cause' }))), [], 'the core-scoped spelling');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-code:alfred-habits-root-cause' }))), [], 'the core-scoped spelling');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'superpowers:systematic-debugging' }))), [], 'the before arm\'s equivalent');
-    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'project-done-gate' }))), ['root-cause-loaded'], 'another skill is not this one');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-habits-done-gate' }))), ['root-cause-loaded'], 'another skill is not this one');
 });
 
 test('root-cause: each skipped part of the loop fails its own step', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: false }))), ['reproduce-first']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ hypothesis: false }))), ['one-hypothesis-per-change']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ twoChanges: true }))), ['one-hypothesis-per-change']);
@@ -296,7 +296,7 @@ test('root-cause: each skipped part of the loop fails its own step', () =>
 
 test('root-cause: a write that errored changed nothing - its retry is the same change, not a second one', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'retry' }))), []);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'early' }))), [], 'a rejected write before the repro is no source write yet');
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rejected: 'symptom' }))), [], 'a rejected guard in cart.js is no symptom fix');
@@ -304,7 +304,7 @@ test('root-cause: a write that errored changed nothing - its retry is the same c
 
 test('root-cause: a test run that was denied never ran; one that ran and exited red is the repro', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     // a hook or permission deny: nothing was reproduced, nothing was re-checked
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ repro: 'denied', rerun: true }))), ['reproduce-first']);
     assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ rerun: 'denied' }))), ['one-hypothesis-per-change', 'verified-after-last-change']);
@@ -325,7 +325,7 @@ test('the reader: a shell command that exited non-zero ran; a deny, a block or a
 
 test('root-cause: the cause stated in the shapes a run really uses counts; narration does not', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     for (const cause of [
         'The bug is in toCents: parseFloat stops at the comma in 1,299.00.',
         'Root cause: toCents hands 1,299.00 to parseFloat, which reads only 1.',
@@ -338,9 +338,9 @@ test('root-cause: the cause stated in the shapes a run really uses counts; narra
 
 test('compare: a step failing on both arms is INCONCLUSIVE, never not-worse; the ship rule holds only on a clean sheet', () =>
 {
-    const exp = expectOf('project-root-cause');
+    const exp = expectOf('alfred-habits-root-cause');
     const g = (o) => sc.grade(exp, rootCauseRun(o), { level: 'plain' });
-    const key = 'project-root-cause/plain';
+    const key = 'alfred-habits-root-cause/plain';
     const outcome = (c, step) => c.rows.find((r) => r.step === step).outcome;
 
     const blind = sc.compareArms({ [key]: g({ hypothesis: false }) }, { [key]: g({ hypothesis: false }) });
@@ -379,19 +379,19 @@ test('compare CLI: grades both arms\' transcripts with this tree\'s expectation 
     {
         const put = (arm, level, text) =>
         {
-            const d = path.join(dir, arm, 'project-root-cause', level);
+            const d = path.join(dir, arm, 'alfred-habits-root-cause', level);
             fs.mkdirSync(d, { recursive: true });
             fs.writeFileSync(path.join(d, 'transcript.jsonl'), text);
         };
         put('before', 'plain', rootCauseRun({ hypothesis: false }));
         put('after', 'plain', rootCauseRun({ hypothesis: false }));
-        const args = ['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'project-root-cause'];
+        const args = ['compare', path.join(dir, 'before'), path.join(dir, 'after'), '--skill', 'alfred-habits-root-cause'];
         const r = cli([...args, '--level', 'plain']);
         assert.strictEqual(r.code, 1, r.out + r.err);
-        assert.match(r.out, /project-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
+        assert.match(r.out, /alfred-habits-root-cause plain one-hypothesis-per-change: before FAIL, after FAIL -> INCONCLUSIVE/);
         assert.match(r.out, /^ship rule: NOT PROVEN - 0 worse, 1 inconclusive, 0 not run, 0 not graded$/m);
         const all = cli(args);
-        assert.match(all.out, /project-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
+        assert.match(all.out, /alfred-habits-root-cause explicit reproduce-first: before -, after - -> NOT RUN/);
         put('after', 'plain', rootCauseRun());
         const ok = cli([...args, '--level', 'plain']);
         assert.strictEqual(ok.code, 0, ok.out + ok.err);
@@ -510,7 +510,7 @@ test('grade CLI: a report per step, --json, and an empty or missing transcript i
 
 test('check: every shipped expectation is valid and its quotes are still in the skill', () =>
 {
-    assert.deepStrictEqual(sc.listSkills(), ['csharp', 'project-commit-checkpoint', 'project-root-cause', 'project-solve-task']);
+    assert.deepStrictEqual(sc.listSkills(), ['alfred-habits-root-cause', 'csharp', 'project-commit-checkpoint', 'project-solve-task']);
     const r = cli(['check']);
     assert.strictEqual(r.code, 0, r.out + r.err);
 });
@@ -600,17 +600,17 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
 
         // An A/B arm: --source names ANOTHER release, and the project gets what an init walk of THAT
         // release installs - its own recommendations, never this tree's (R72: the before arm carries no
-        // project-root-cause, the after arm does).
+        // alfred-habits-root-cause, the after arm does).
         const other = path.join(dir, 'other');
         fs.mkdirSync(path.join(other, 'scripts', 'install'), { recursive: true });
         fs.mkdirSync(path.join(other, 'meta'));
         fs.writeFileSync(path.join(other, 'scripts', 'install', 'alfred-code.js'), '');
         fs.writeFileSync(path.join(other, 'meta', 'recommendations.json'), JSON.stringify({ always: { skills: ['from-the-source'], rules: ['baseline-interaction'] }, stacks: {} }));
-        const arm = cli(['replay', '--dry-run', '--skill', 'project-root-cause', '--level', 'plain', '--source', other, '--out', out]);
+        const arm = cli(['replay', '--dry-run', '--skill', 'alfred-habits-root-cause', '--level', 'plain', '--source', other, '--out', out]);
         assert.strictEqual(arm.code, 0, arm.err);
         const armSel = JSON.parse(arm.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         assert.ok(armSel.skills.includes('from-the-source'), `the source's own always set: ${armSel.skills}`);
-        assert.ok(!armSel.skills.includes('project-root-cause'), 'never this tree\'s recommendations');
+        assert.ok(!armSel.skills.includes('alfred-habits-root-cause'), 'never this tree\'s recommendations');
         assert.ok(armSel.skills.includes('javascript'), 'the fixture\'s own selection still rides along');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }

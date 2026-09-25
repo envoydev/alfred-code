@@ -118,33 +118,33 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "project-root-cause",
+      "name": "alfred-habits-root-cause",
       "note": "the house root-cause loop (R72, written fresh): read, reproduce, localize, compare, one hypothesis per change, fix at the root test-first, question the design after three; preloaded by both diagnosers and the four resolvers, pointed at by baseline-interaction, injected once per failure streak by the stop contract's failing-run branch"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "project-done-gate",
+      "name": "alfred-habits-done-gate",
       "note": "the done gate (R106, moved out of baseline-quality-gates): build + relevant tests after the last edit, output quoted, green summary vs red trace, scoped runs then the full suite once, never a gamed pass; pointed at by baseline-quality-gates, preloaded by every verifier and implementer, held for by the stop contract's done-claim branch"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "project-test-first",
+      "name": "alfred-habits-test-first",
       "note": "test-first (R106): write the test, watch it fail for the expected reason, minimal code, green, refactor; pointed at by baseline-interaction, preloaded by every implementer, loaded by project-implementer"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "project-plan-writing",
+      "name": "alfred-habits-plan-writing",
       "note": "the plan file's one shape (R106, was project-solution-design's references/plan-format.md): header lines, task card, status marks, Decisions ledger, resume line; loaded by project-solution-design at step 4, project-verify-plan and project-implementer before reading a plan"
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "project-clarify",
+      "name": "alfred-habits-clarify",
       "note": "the clarify discipline's one home (R106): one AskUserQuestion at a time, 2-3 options with the recommended one marked, until one reading is left - the requirement, never the implementation; loaded by project-solve-task step 1, project-solve-cross-task and project-build-from-scratch before any design"
     },
     {
       "repo": "envoydev/alfred-code",
       "name": "project-runtime-failure-signatures",
-      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with project-root-cause"
+      "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with alfred-habits-root-cause"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -735,7 +735,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and the done gate - a done claim over a source edit (a file tool's or a shell write) that nothing ran after is held once per turn, naming project-done-gate (ALFRED_CODE_DONE_GATE=0 off)"
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and the done gate - a done claim over a source edit (a file tool's or a shell write) that nothing ran after is held once per turn, naming alfred-habits-done-gate (ALFRED_CODE_DONE_GATE=0 off)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -753,7 +753,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@PostToolUseFailure:Bash|PowerShell",
       "event": "",
-      "note": "PostToolUseFailure: INJECT once per failure streak: a build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) that exited non-zero points at project-root-cause before the next fix; never a block"
+      "note": "PostToolUseFailure: INJECT once per failure streak: a build or test run (npm / node --test / jest / vitest / pytest / dotnet / ng / go / cargo / mvn / gradle) that exited non-zero points at alfred-habits-root-cause before the next fix; never a block"
     },
     {
       "file": "guard-stop-contract.js",

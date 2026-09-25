@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "skill": "project-root-cause",
-  "sources": ["stack/skills/project-root-cause/SKILL.md", "stack/skills/project-done-gate/SKILL.md", "stack/rules/baseline-interaction.md"],
+  "skill": "alfred-habits-root-cause",
+  "sources": ["stack/skills/alfred-habits-root-cause/SKILL.md", "stack/skills/alfred-habits-done-gate/SKILL.md", "stack/rules/baseline-interaction.md"],
   "extracted": "2026-09-25",
-  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not. A write or a test run that FAILED (a rejected Edit, a hook or permission deny) changed and ran nothing, so it is no write or run here (succeeded); a test run that exited red did run. Ship rule, applied by 'skill-comply.js compare': per level, the after arm no worse than the before arm on every step, and a step that fails on BOTH arms is INCONCLUSIVE - a blind grader, never 'not worse' - and one graded by nothing offline is NOT GRADED. The after arm is the Task 20 head: project-root-cause and project-done-gate in the core, the root-cause pointer injected after the first red run, and the done gate held at Stop - root-cause-loaded grades that pointer, and on the before arm the optional plugin's systematic-debugging skill counts.",
+  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not. A write or a test run that FAILED (a rejected Edit, a hook or permission deny) changed and ran nothing, so it is no write or run here (succeeded); a test run that exited red did run. Ship rule, applied by 'skill-comply.js compare': per level, the after arm no worse than the before arm on every step, and a step that fails on BOTH arms is INCONCLUSIVE - a blind grader, never 'not worse' - and one graded by nothing offline is NOT GRADED. The after arm is the Task 20 head: alfred-habits-root-cause and alfred-habits-done-gate in the core, the root-cause pointer injected after the first red run, and the done gate held at Stop - root-cause-loaded grades that pointer, and on the before arm the optional plugin's systematic-debugging skill counts.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
@@ -33,7 +33,7 @@
       { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" }
     ] },
     "test_run": { "succeeded": true, "tool": "Bash", "field": "command", "text_match": "npm (run )?test|node --test" },
-    "method_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?(project-root-cause|systematic-debugging)$" },
+    "method_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?(alfred-habits-root-cause|systematic-debugging)$" },
     "hypothesis": { "tool": "@text", "text_match": "\\b([Bb]ecause|caused by|due to|comes from|[Rr]oot cause|[Ss]ince|stops at|returns)\\b|\\b[Tt]he (bug|issue|problem|cause) is\\b" },
     "weakened": { "succeeded": true, "any": [
       { "all": [{ "tool": "Edit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Edit", "field": "new_string", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
@@ -50,7 +50,7 @@
     {
       "id": "root-cause-loaded",
       "from": "stack/rules/baseline-interaction.md",
-      "quote": "Code fails - the FIRST action is the `project-root-cause` Skill call, before the next fix lands.",
+      "quote": "Code fails - the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands.",
       "graders": [
         {
           "type": "tool_order",
@@ -62,7 +62,7 @@
     },
     {
       "id": "reproduce-first",
-      "from": "stack/skills/project-root-cause/SKILL.md",
+      "from": "stack/skills/alfred-habits-root-cause/SKILL.md",
       "quote": "One command that shows it red every time.",
       "graders": [
         {
@@ -75,7 +75,7 @@
     },
     {
       "id": "one-hypothesis-per-change",
-      "from": "stack/skills/project-root-cause/SKILL.md",
+      "from": "stack/skills/alfred-habits-root-cause/SKILL.md",
       "quote": "Write it as one line - 'X fails because Y' - then make the smallest change or check that confirms or kills it, re-run, and read the result before the next.",
       "graders": [
         {
@@ -89,7 +89,7 @@
     },
     {
       "id": "fix-at-root",
-      "from": "stack/skills/project-root-cause/SKILL.md",
+      "from": "stack/skills/alfred-habits-root-cause/SKILL.md",
       "quote": "Then ONE fix for the cause - never a guard around the symptom",
       "graders": [
         { "type": "tool_used", "name": "the fix lands in toCents, where the cause is", "ref": "root_write" },
@@ -98,7 +98,7 @@
     },
     {
       "id": "no-weakened-test",
-      "from": "stack/skills/project-root-cause/SKILL.md",
+      "from": "stack/skills/alfred-habits-root-cause/SKILL.md",
       "quote": "A test weakened, skipped or re-baselined to turn the run green.",
       "graders": [
         { "type": "tool_used", "name": "no test skipped, marked todo or re-baselined off 130000", "ref": "weakened", "min": 0, "max": 0 }
@@ -106,7 +106,7 @@
     },
     {
       "id": "verified-after-last-change",
-      "from": "stack/skills/project-done-gate/SKILL.md",
+      "from": "stack/skills/alfred-habits-done-gate/SKILL.md",
       "quote": "build + relevant tests run after the last edit, output quoted",
       "graders": [
         {
@@ -119,7 +119,7 @@
     },
     {
       "id": "verification-quoted",
-      "from": "stack/skills/project-done-gate/SKILL.md",
+      "from": "stack/skills/alfred-habits-done-gate/SKILL.md",
       "quote": "Before typing 'done', 'fixed', 'passing', 'works', or 'ready' about your own change: STOP and satisfy this gate",
       "graders": [
         {

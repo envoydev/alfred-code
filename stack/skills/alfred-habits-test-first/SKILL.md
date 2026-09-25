@@ -1,5 +1,5 @@
 ---
-name: project-test-first
+name: alfred-habits-test-first
 description: "Use before writing the production code of a feature, a bug fix or a behavior change: write the test, watch it fail for the expected reason, write the minimal code that passes, see it green, then refactor. Not for a config-only or docs-only edit."
 ---
 
@@ -29,7 +29,7 @@ Then the next behavior, from step 1.
 
 ## A bug fix
 
-The test reproduces the bug first: it fails for the cause found (`project-root-cause`, step 6), then
+The test reproduces the bug first: it fails for the cause found (`alfred-habits-root-cause`, step 6), then
 the fix turns it green. A fix with no failing test first is a guess the suite cannot hold.
 
 ## When no test fits

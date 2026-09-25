@@ -50,7 +50,7 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // The resolver PRELOADS the core's root-cause and done-gate methods (R106) and NAMES the C# skills
     // in its body: the preloads are its edges, the body mentions pull nothing.
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
-    assert.deepStrictEqual([...resolver.skills].sort(), ['project-done-gate', 'project-root-cause'], 'a resolver locks only its preloaded method skills');
+    assert.deepStrictEqual([...resolver.skills].sort(), ['alfred-habits-done-gate', 'alfred-habits-root-cause'], 'a resolver locks only its preloaded method skills');
 });
 
 test('a rule pulls its skills', () => {

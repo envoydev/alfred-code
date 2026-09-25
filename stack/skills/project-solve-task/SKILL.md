@@ -110,7 +110,7 @@ runs the step off stale framing and freezes cost attribution on the wrong skill.
 a capture named in a close-out line (step 6) is a POINTER for the user to type, never a call this
 run makes.
 
-1. **DESIGN** - run `project-solution-design`, with `project-clarify` loaded first - it settles an
+1. **DESIGN** - run `project-solution-design`, with `alfred-habits-clarify` loaded first - it settles an
    ask with more than one reading and passes a clear one straight through. It writes the plan to
    the plans folder above; the file, not the chat, is the artifact - and that skill's design rules are settled
    IN it (every seam passes the decision-level rules, every task card carries its `log_points`, the
@@ -178,7 +178,7 @@ run makes.
    SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code.
    Stamp the verdict. *Stop.*
 6. **CLOSE** - apply any fixes the step-5 review handed back, then the done gate
-   (load `project-done-gate` - the whole feature's acceptance criteria, each one
+   (load `alfred-habits-done-gate` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
    into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next

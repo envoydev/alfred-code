@@ -100,8 +100,8 @@ change (see the invariants below).
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off).
     Done gate: a done claim over a source edit (file tool or shell write) nothing ran after is held ONCE
-    per turn, naming `project-done-gate` (`ALFRED_CODE_DONE_GATE=0` off); a red build or test run
-    injects `project-root-cause` once per failure streak (one per actor).
+    per turn, naming `alfred-habits-done-gate` (`ALFRED_CODE_DONE_GATE=0` off); a red build or test run
+    injects `alfred-habits-root-cause` once per failure streak (one per actor).
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
@@ -507,7 +507,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (112,738 on 2026-09-25: pathless rules 36,635, agent descriptions 28,530, skill descriptions 47,573). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (112,768 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,573). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

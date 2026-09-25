@@ -11,7 +11,7 @@ Use this skill to build a new application or a major new module from scratch, be
 ## Steps
 
 ### 1. DESIGN - in-session, on Opus
-Load `project-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step will run it producer-first per `project-solve-cross-task`.
+Load `alfred-habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step will run it producer-first per `project-solve-cross-task`.
 
 ### 2. THE PICK - hard gate
 Present the options, then put the pick through AskUserQuestion - one option per architecture, its stack and one-line tradeoff as the description, a custom direction always available via Other (plain-text options where the harness lacks the tool). Greenfield tech choices are the user's, never silently picked - nothing is scaffolded before this gate.

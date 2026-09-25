@@ -107,7 +107,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    'The stop contract' above (the stop hook already enforces the call; measured: one run skipped
    this checkpoint and ran GATHER straight into ROOT CAUSE as a single 36-call stretch).
 3. **ROOT CAUSE** - run the investigation through the hypothesis-and-test method
-   (`project-root-cause` - hypotheses first, each one confirmed or killed against the
+   (`alfred-habits-root-cause` - hypotheses first, each one confirmed or killed against the
    code): form the
    fewest hypotheses the evidence supports, then
    confirm or kill each against the located code and the reproduction - root cause before

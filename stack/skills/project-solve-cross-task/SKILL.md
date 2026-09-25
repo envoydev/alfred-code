@@ -24,7 +24,7 @@ Decide the family from the ask first:
 
 ## Clarify before you design (feature family)
 
-Before you scope a feature or dispatch any designer, load `project-clarify` (the Skill tool) and run it: an ambiguous, underspecified, or multi-reading ask is settled FIRST, and its answers are recorded as the `requirements_source` the designers build on. Clarification is an orchestrator gate, never a seat - only the main session can talk to the user. Backstop at the seat: a designer handed an ambiguous brief returns NEEDS_CONTEXT instead of guessing, and you run it again before re-dispatch.
+Before you scope a feature or dispatch any designer, load `alfred-habits-clarify` (the Skill tool) and run it: an ambiguous, underspecified, or multi-reading ask is settled FIRST, and its answers are recorded as the `requirements_source` the designers build on. Clarification is an orchestrator gate, never a seat - only the main session can talk to the user. Backstop at the seat: a designer handed an ambiguous brief returns NEEDS_CONTEXT instead of guessing, and you run it again before re-dispatch.
 
 ## Scope in-session - before any dispatch
 

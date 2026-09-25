@@ -54,10 +54,10 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
     try
     {
         fs.writeFileSync(path.join(dir, 'ci-failure-diagnoser.md'),
-            '---\nname: ci-failure-diagnoser\nskills:\n  - other-plugin:some-skill\n  - project-root-cause\n---\n\nbody\n');
+            '---\nname: ci-failure-diagnoser\nskills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n---\n\nbody\n');
         const [row] = scopedFor({ agentsDir: dir });
         assert.strictEqual(row.problem, null, row.problem);
-        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-code:project-root-cause\n',
+        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-code:alfred-habits-root-cause\n',
             'the foreign cite is untouched, the house one scoped');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -70,10 +70,10 @@ test('both diagnosers preload the house root-cause skill, scoped to the core', (
     {
         const r = rows.find(x => x.file === file);
         assert.ok(r, `${file} declares preloads`);
-        assert.match(r.block, /^\s*-\s*alfred-code:project-root-cause$/m, `${file} preloads alfred-code:project-root-cause`);
+        assert.match(r.block, /^\s*-\s*alfred-code:alfred-habits-root-cause$/m, `${file} preloads alfred-code:alfred-habits-root-cause`);
         assert.doesNotMatch(r.block, /superpowers/, `${file} still preloads a superpowers skill`);
     }
-    assert.ok(place.plugins[CORE].skills.includes('project-root-cause'), 'the core carries the skill both core seats preload');
+    assert.ok(place.plugins[CORE].skills.includes('alfred-habits-root-cause'), 'the core carries the skill both core seats preload');
 });
 
 test('a core agent cites no library skill - the core would not carry what it preloads', () => {

@@ -68,7 +68,7 @@
       "key": "ALFRED_CODE_DONE_GATE",
       "default": "1",
       "ask": false,
-      "what": "the stop contract's done gate: a close claiming the change done, fixed, passing, works or ready is held once per turn when a source edit landed after the turn's last build or test run (or none ran), naming project-done-gate. `0` turns it off.",
+      "what": "the stop contract's done gate: a close claiming the change done, fixed, passing, works or ready is held once per turn when a source edit landed after the turn's last build or test run (or none ran), naming alfred-habits-done-gate. `0` turns it off.",
       "validate": {
         "type": "enum",
         "values": [
