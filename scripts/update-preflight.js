@@ -159,7 +159,10 @@ const ITEM_PATHS = [
 // A rename (`renamed\t<new>\t<- <old>`) keeps its old name as `from`, and whether the old COPY is
 // on disk - that is what decides that the update carries it rather than offering it.
 const OLD_COPY = { skill: (d, n) => path.join(d, 'skills', n, 'SKILL.md'), agent: (d, n) => path.join(d, 'agents', `${n}.md`), rule: (d, n) => path.join(d, 'rules', `${n}.md`), hook: (d, n) => path.join(d, 'hooks', `${n}.js`) };
-function addedItems(compareLines, claudeDir)
+// A name the snapshot's `renamed` map (meta/stack-manifest.json) carries is the same item continuing
+// even when the compare saw only an add - git reports a rewritten folder as added plus removed.
+const RENAMED_KIND = { skill: 'skills', agent: 'agents' };
+function addedItems(compareLines, claudeDir, renamed = {})
 {
     const out = [];
     for (const line of compareLines)
@@ -172,7 +175,9 @@ function addedItems(compareLines, claudeDir)
             if (!hit || out.some((o) => o.category === category && o.name === hit[1])) continue;
             const item = { category, name: hit[1] };
             const old = m[3] ? re.exec(m[3]) : null;
-            if (old && old[1] !== hit[1]) { item.from = old[1]; item.oldOnDisk = fs.existsSync(OLD_COPY[category](claudeDir, old[1])); }
+            const mapped = Object.entries(renamed[RENAMED_KIND[category]] || {}).find(([, to]) => to === hit[1]);
+            const from = old && old[1] !== hit[1] ? old[1] : mapped && mapped[0];
+            if (from) { item.from = from; item.oldOnDisk = fs.existsSync(OLD_COPY[category](claudeDir, from)); }
             out.push(item);
         }
     }
@@ -218,7 +223,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
     const { pluginRoutes } = require('./install/plugins.js');
     // Only what this release actually ships, BEFORE the listing is read: a path that names no item
     // (an engine, a README) must not cost a `claude plugin list` call.
-    const found = addedItems(compareLines, claudeDir);
+    const found = addedItems(compareLines, claudeDir, (readJson(path.join(snapshot, 'meta', 'stack-manifest.json')) || {}).renamed || {});
     const shipped = new Set(classifyNew({ added: found, routes: {} }).map((r) => `${r.category} ${r.name}`));
     const added = found.filter((a) => shipped.has(`${a.category} ${a.name}`));
     if (!added.length) return ['new: none'];

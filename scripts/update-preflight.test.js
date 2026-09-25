@@ -371,6 +371,30 @@ test('new items: a real rename line carries its old name, and an old copy on dis
     assert.match(out, /^new: rule sql-conventions\trenamed\t-\tfrom=old-sql\told-on-disk$/m);
 });
 
+// Task 22: a skill the release RENAMED is the same item continuing whether or not the compare saw a
+// rename - git reports a rewritten folder as added plus removed - so the snapshot's `renamed` map
+// names its old spelling: a library copy on disk is carried (renamed), never offered, and a core one
+// arrives. The old names come from the map, never spelled here.
+test('new items: the snapshot\'s renamed map names the old spelling when the compare saw only an add', () => {
+    const { loadManifest } = require('./install/manifest.js');
+    const renamed = loadManifest(path.join(__dirname, '..')).renamed;
+    const oldOf = (to) => Object.keys(renamed.skills).find((k) => renamed.skills[k] === to);
+    const { snap, install, fixtureFile } = scaffold({ fixture: { files: [
+        { status: 'added', filename: 'stack/skills/alfred-capture-related-projects/SKILL.md' },
+        { status: 'added', filename: 'stack/skills/alfred-task-solve/SKILL.md' },
+    ] } });
+    fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
+    const old = oldOf('alfred-capture-related-projects');
+    fs.mkdirSync(path.join(install, '.claude', 'skills', old), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'skills', old, 'SKILL.md'), `---\nname: ${old}\n---\n`);
+    const listing = path.join(install, 'listing.json');
+    fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+    const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+    assert.strictEqual(code, 0, out);
+    assert.match(out, new RegExp(`^new: skill alfred-capture-related-projects\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
+    assert.match(out, new RegExp(`^new: skill alfred-task-solve\\tarrives\\talfred-code\\tfrom=${oldOf('alfred-task-solve')}$`, 'm'), out);
+});
+
 test('new items: global mode reads the account dir itself - its settings.json, not <account>/.claude/', () => {
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/agents/code-style-analyzer.md' }] } });
     const acct = path.join(install, '.claude-work');

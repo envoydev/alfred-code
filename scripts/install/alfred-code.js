@@ -293,14 +293,19 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         let answered = { hooks: true, agents: true };
         // R109: a former stack pick is dropped here, once per run, and never touched on the machine.
         const formerSaid = new Set();
-        args.add = selection.dropFormerPicks({ lines: args.add, log, said: formerSaid });
+        // Task 22: a skill or seat a release renamed is read under its new name wherever an older
+        // install or a caller names it the old way - the stamp's picks, a disk copy, a seat deny (in
+        // readBack) and these selection lines - with one line per rename per run.
+        const renaming = { renamed: manifest.renamed, log, said: new Set() };
+        args.add = selection.renameLines(selection.dropFormerPicks({ lines: args.add, log, said: formerSaid }), renaming);
+        args.drop = selection.renameLines(args.drop, renaming);
         if (args.installedOnly)
         {
             const raw = rawListing ?? readRaw();
             listing = plugins.parsePluginList(raw, projectRoot);
             selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
             const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: market });
-            const lastPicked = stampLayer.readPicked(stampFile);
+            const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
@@ -312,7 +317,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
                 stampPicked: lastPicked, stampEngines,
-                always, marketplace: market, log,
+                always, marketplace: market, said: renaming.said, log,
             });
             if (!back.installed)
             {
@@ -363,7 +368,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             let text;
             try { text = fs.readFileSync(args.selection, 'utf8'); }
             catch { err(`selection file not found: ${args.selection}\n`); return 1; }
-            picked = selection.parseSelection(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }).join('\n'));
+            picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);
@@ -897,6 +902,7 @@ function installHooksAndRules(ctx)
         // R99: at every other scope settings.local.json applies OVER settings.json, so a stack key it
         // holds is written back there - where the read-back found it and where it takes effect.
         localFile: ctx.args.scope === 'local' ? null : path.join(ctx.claudeDir, 'settings.local.json'),
+        renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });
 }

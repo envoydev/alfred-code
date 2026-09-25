@@ -274,15 +274,35 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
     return changed;
 }
 
+// A skill a release RENAMED keeps the user's `skillOverrides` value under its new name - a value
+// already set under the new name wins, and the old key goes either way.
+function rekeyOverrides(data, renamed, log, label)
+{
+    const o = data && data.skillOverrides;
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+    let changed = false;
+    for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
+    {
+        if (!Object.hasOwn(o, from)) continue;
+        if (!Object.hasOwn(o, to)) o[to] = o[from];
+        delete o[from];
+        changed = true;
+        log(`  ${label}: skillOverrides ${from} re-keyed ${to} (the skill was renamed)`);
+    }
+    return changed;
+}
+
 function writeSettings(opts)
 {
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], catalog = [], migrations = {},
-        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null,
+        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         log = () => {}, note = () => {},
     } = opts;
+    // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
+    const seatNow = (seat) => ((renamed && renamed.agents) || {})[seat] || seat;
 
     // M6: every log line names the file this run writes - settings.local.json at local scope.
     const label = path.basename(file);
@@ -323,7 +343,7 @@ function writeSettings(opts)
     {
         const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
         if (!m || !homes.includes(m[1])) continue;
-        const core = `Agent(${BRAND.core}:${m[2]})`;
+        const core = `Agent(${BRAND.core}:${seatNow(m[2])})`;
         const why = m[1] === LEGACY.core ? 'the core was renamed' : 'its entry retired';
         if (!deny.includes(core)) { deny.push(core); changed = true; log(`  ${label}: ${entry} also denied as ${core} (${why})`); }
         if (live(m[1])) continue;
@@ -331,6 +351,20 @@ function writeSettings(opts)
         changed = true;
         log(`  ${label}: ${entry} dropped - ${m[1] === LEGACY.core ? 'the old core name loads nowhere now' : 'its entry is uninstalled'}, ${core} keeps the seat off`);
     }
+
+    // A renamed seat's core deny is re-spelled in place, so the user's switch-off holds under the new
+    // name; the read-back already read it that way (selection.js renameDeny).
+    for (const entry of [...deny])
+    {
+        const m = /^Agent\(([a-z0-9-]+):([A-Za-z0-9_-]+)\)$/.exec(entry);
+        if (!m || m[1] !== BRAND.core || seatNow(m[2]) === m[2]) continue;
+        const now = `Agent(${BRAND.core}:${seatNow(m[2])})`;
+        if (deny.includes(now)) deny.splice(deny.indexOf(entry), 1);
+        else deny[deny.indexOf(entry)] = now;
+        changed = true;
+        log(`  ${label}: ${entry} re-spelled ${now} (the seat was renamed)`);
+    }
+    if (rekeyOverrides(data, renamed, log, label)) changed = true;
 
     // The agent off-list (Phase 8). Same array, two directions, and the ALLOW side runs last on
     // purpose: a seat named by both lists is a seat this run installed, and resolving toward the
@@ -375,7 +409,9 @@ function writeSettings(opts)
     const overlayBefore = overlay ? JSON.stringify(overlay) : null;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
-    const localChanged = Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore;
+    // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
+    const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed;
     if (localChanged) fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
 
     if (!changed) return { written: localChanged, refused: false };

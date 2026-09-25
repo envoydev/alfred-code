@@ -1724,3 +1724,17 @@ test('a 1.x session: its claude-stack scoped names join the bare inventory, and 
   assert.match(md, /\| Stack install \| v1\.3\.0 .*installed before this session ran \|/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// Task 22: the code-style capture was renamed, and a rule it generated before that names its old
+// spelling. Both count as a rule attach; the old spelling comes from the manifest's `renamed` map.
+test('style rule attaches: a rule generated under the capture\'s old name still counts', () => {
+  const renamed = require('../meta/stack-manifest.json').renamed.skills;
+  const old = Object.keys(renamed).find((k) => renamed[k] === 'alfred-capture-code-style');
+  assert.ok(old, 'the map names the capture\'s old spelling');
+  const dir = tmp();
+  const said = (ts, name) => ({ type: 'user', timestamp: ts, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
+  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'alfred-capture-code-style'),
+    { type: 'assistant', timestamp: '2026-07-15T07:00:02.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
+  try { assert.strictEqual(run([file]).main.styleRuleAttaches, 2); }
+  finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

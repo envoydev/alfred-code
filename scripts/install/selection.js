@@ -191,10 +191,12 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
-    let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped });
+    // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
+    const renaming = { renamed: manifest.renamed, log, said };
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -217,7 +219,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
     const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(r.name));
-    const stored = settings && typeof settings === 'object' ? settings : {};
+    const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, renaming);
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     // The playwright engines the last install INSTALLED (the stamp's `playwright-browsers:`): a
@@ -365,6 +367,52 @@ function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, 
         log(`plugin ${name}: no longer a stack pick (${FORMER_PLUGINS[name]}) - dropped from the picks; an installed copy stays as your own, never refreshed, disabled or uninstalled`);
     }
     return lines.filter((l) => !former(l));
+}
+
+// A skill or seat a release RENAMED (meta/stack-manifest.json `renamed`, old -> new). An older
+// install names it the old way in the stamp's picks, a copy on disk, a seat deny and a selection line
+// (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
+// switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
+// per run, whichever of those places names it first.
+const RENAMED_KIND = { skill: 'skills', agent: 'agents' };
+function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
+{
+    const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
+    if (!to) return name;
+    if (!said.has(`${kind} ${name}`)) { said.add(`${kind} ${name}`); log(`renamed: ${kind} ${name} -> ${to}`); }
+    return to;
+}
+
+function renameLines(lines = [], opts = {})
+{
+    return lines.map((l) =>
+    {
+        const m = /^\s*(skill|agent)\s+(\S+)\s*$/.exec(String(l));
+        return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
+    });
+}
+
+// The stamp's picks keep their `@home`: a later read-back decides from it whether the item moved.
+function renamePicked(picked, opts = {})
+{
+    if (!picked) return picked;
+    const each = (kind) => (entry) => { const { name, home } = splitPick(entry); const to = renamedTo({ ...opts, kind, name }); return home ? `${to}@${home}` : to; };
+    return { ...picked, skills: (picked.skills || []).map(each('skill')), agents: (picked.agents || []).map(each('agent')) };
+}
+
+// The read-back's VIEW of the settings: a stack seat deny under any stack spelling reads under the
+// new seat. The file itself is re-spelled by the writer (settings.js `renamed`).
+function renameDeny(settings, opts = {})
+{
+    const deny = settings && settings.permissions && Array.isArray(settings.permissions.deny) ? settings.permissions.deny : null;
+    if (!deny) return settings;
+    const mapped = deny.map((entry) =>
+    {
+        const seat = stackSeat(entry);
+        const to = seat ? renamedTo({ ...opts, kind: 'agent', name: seat }) : seat;
+        return to && to !== seat ? String(entry).replace(new RegExp(`:${seat}\\)$`), `:${to})`) : entry;
+    });
+    return { ...settings, permissions: { ...settings.permissions, deny: mapped } };
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -525,6 +573,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };
