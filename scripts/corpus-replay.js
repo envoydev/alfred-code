@@ -456,5 +456,5 @@ async function main() {
 }
 
 // The test pins ROUTES against the installer's wiring; running as a script still calls main().
-module.exports = { ROUTES, UNEXERCISED };
+module.exports = { ROUTES, UNEXERCISED, extract };
 if (require.main === module) main();

@@ -74,7 +74,7 @@ const RETIRED_DENY = [
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
-const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js'];
+const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'baseline-docs-root';

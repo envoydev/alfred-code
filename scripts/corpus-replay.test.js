@@ -142,6 +142,24 @@ test('corpus-replay: a shell call\'s RESULT is replayed on the PostToolUse route
   assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls inject nothing');
 });
 
+test('corpus-replay: the result rides where the hook reads it, and only a shell call gets a PostToolUse payload', () => {
+  // The route counts above cannot tell a dropped field from a silent hook; the extracted payload can.
+  const { extract } = require('./corpus-replay.js');
+  const use = (id, name, input) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
+  const dir = corpus([use('a', 'Bash', { command: 'npm test' }), res('a', 'Exit code 1\nnot ok 1 - cart', true),
+    use('b', 'PowerShell', { command: 'npm test | Select-Object -Last 3' }), res('b', 'ℹ pass 2\nℹ fail 1'),
+    use('c', 'Read', { file_path: '/tmp/p/a.js' }), res('c', 'Exit code 1', true), use('d', 'Grep', { pattern: 'x' }), res('d', 'ℹ fail 1')]);
+  const post = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /::PostToolUse/.test(j.route));
+  assert.deepStrictEqual(post.map((j) => j.payload.tool_name).sort(), ['Bash', 'PowerShell'], 'a Read or Grep result is no shell run');
+  const red = post.find((j) => j.payload.hook_event_name === 'PostToolUseFailure');
+  assert.strictEqual(red.payload.error, 'Exit code 1\nnot ok 1 - cart');
+  assert.strictEqual(red.payload.tool_response, undefined);
+  const green = post.find((j) => j.payload.hook_event_name === 'PostToolUse');
+  assert.deepStrictEqual(green.payload.tool_response, { stdout: 'ℹ pass 2\nℹ fail 1', stderr: '', interrupted: false });
+  assert.strictEqual(green.payload.error, undefined);
+});
+
 test('corpus-replay: a mid-turn answer is not a stop point', () => {
   // A Stop fires when the TURN ends. Counting every long assistant paragraph fed the gate mid-turn
   // prose - prose that legitimately ends on a question with work still pending, which is what the

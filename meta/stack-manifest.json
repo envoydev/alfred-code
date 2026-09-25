@@ -735,7 +735,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@Stop",
       "event": "",
-      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and the done gate - a done claim over a source edit no build or test run followed is held once per turn, naming project-done-gate (ALFRED_CODE_DONE_GATE=0 off)"
+      "note": "Stop event: block a turn ending on a decision-shaped question in prose - re-emit as AskUserQuestion (measured stalls 13min-37h); also carries the fresh-session offer, past the window's absolute trigger, re-armed at 1.5x growth; and the done gate - a done claim over a source edit (a file tool's or a shell write) that nothing ran after is held once per turn, naming project-done-gate (ALFRED_CODE_DONE_GATE=0 off)"
     },
     {
       "file": "guard-stop-contract.js",
@@ -759,7 +759,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "@PostToolUse:Bash|PowerShell",
       "event": "",
-      "note": "PostToolUse: the same streak read from a run that exited 0 - a red runner summary behind a pipe injects, a green run of that kind resets the streak"
+      "note": "PostToolUse: the same streak read from a run that exited 0 - a red runner summary behind a pipe injects; one streak per actor, ended when every run that went red in it is green again (or an hour with no red run)"
     },
     {
       "file": "guard-fresh-session-start.js",

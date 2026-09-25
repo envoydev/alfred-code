@@ -17,10 +17,11 @@
 //   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
 //   one - so a long session is asked once per real cost step, not once per question.
 //   It also carries the DONE GATE: a close claiming the change done / fixed / passing / works / ready
-//   while a source edit landed after the turn's last build or test run is held once per turn, naming
-//   `project-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
+//   while a source edit (a file tool's, or a shell write read through shell-writes.js) landed after
+//   the turn's last run is held once per turn, naming `project-done-gate` (ALFRED_CODE_DONE_GATE=0 off).
 // PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: INJECTION ONLY - a red build or test run
-//   points at `project-root-cause` once per failure streak; the next green run of that kind resets it.
+//   points at `project-root-cause` once per failure streak; the streak ends when every command that
+//   ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
@@ -98,8 +99,10 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 // --- build and test runs: one classifier for the two method triggers -----------------------------
 // A command is a build or test run when one of its segments STARTS with a known runner, after env
 // assignments and wrappers (npx, time, env). Quoted strings and heredoc bodies are arguments, never
-// the command: `grep -rn "npm test" docs` is a search. The kind names the streak - `npm test` piped
-// to `tail` is the same run as `npm test`.
+// the command: `grep -rn "npm test" docs` is a search. The KIND names the runner; the KEY is the run
+// as typed, less its wrappers and redirections - `npm test` piped to `tail` is the same run as
+// `npm test`, and `npm test -- -t cart` is a scoped run of it. This list is NARROW on purpose: a
+// runner it misses costs the root-cause pointer nothing. The done gate asks a wider question below.
 const SHELL_TOOL_RE = /^(?:Bash|PowerShell)$/;
 const RUNNERS = [
   [/^(jest|vitest|mocha|ava|karma|pytest|tsc|playwright\s+test|cypress\s+run)(?=\s|$)/, (m) => m[1].replace(/\s+/g, ' ')],
@@ -112,23 +115,23 @@ const RUNNERS = [
   [/^cargo\s+(build|test|check|clippy|nextest)(?=\s|$)/, (m) => `cargo ${m[1]}`],
   [/^(?:\.[\\/])?(mvnw?|gradlew?)(?:\.bat|\.cmd)?(?:\s+-[\w.=:-]+)*(?:\s+[\w:-]+)*?\s+(test|verify|package|install|compile|build|check|assemble)(?=\s|$)/, (m) => `${m[1].replace(/w$/, '')} ${m[2]}`],
 ];
-function buildTestKind(command) {
+const WRAPPER_RE = /^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx))\s+/;
+const stripWrappers = (seg, re) => { for (let prev = ''; prev !== seg;) { prev = seg; seg = seg.replace(re, ''); } return seg; };
+function buildTestRun(command) {
   const cmd = String(command || '')
     .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1(?=\s|$)/g, ' ')
-    .replace(/'[^'\n]*'|"(?:[^"\\\n]|\\.)*"/g, ' ');
+    .replace(/'[^'\n]*'|"(?:[^"\\\n]|\\.)*"/g, ' ')
+    .replace(/\d*[<>]&\d*-?|&>>?/g, ' ');
   for (const raw of cmd.split(/&&|\|\||[;|&\n]/)) {
-    let seg = raw.trim().replace(/^[({]+\s*/, '');
-    for (let prev = ''; prev !== seg;) {
-      prev = seg;
-      seg = seg.replace(/^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx))\s+/, '');
-    }
+    const seg = stripWrappers(raw.trim().replace(/^[({]+\s*/, ''), WRAPPER_RE);
     for (const [re, name] of RUNNERS) {
       const m = re.exec(seg);
-      if (m) return name(m);
+      if (m) return { kind: name(m), key: seg.replace(/\s*\d*>>?\s*\S+/g, '').replace(/\s+/g, ' ').trim() };
     }
   }
   return null;
 }
+const buildTestKind = (command) => (buildTestRun(command) || {}).kind || null;
 
 // --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run -> project-root-cause -----
 // The fix that follows a red run is where a guess lands, and the method that stops it only ever sat
@@ -136,35 +139,48 @@ function buildTestKind(command) {
 // pointer once per failure streak; the next green run of the same kind resets that streak. A piped run
 // (`npm test | tail`) exits 0 whatever the tests did, so a green exit is read for the runner's own red
 // summary too. Injection only, never a block; one `mode: inject` ledger row per injection, so the
-// rate is measurable. The streak is per session and per actor - a subagent's red run is its own.
-const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]/;
-function runFailed(p) {
+// rate is measurable. The streak is per session and per actor - a subagent's red run is its own -
+// and ONE per actor: a second spelling of the failing suite (`npm test`, then `npx vitest run`), or
+// another red run inside the same stretch, says nothing the first pointer did not. Each red run's KEY
+// stays open until that run is green again (an unscoped green also closes its scoped runs; a scoped
+// green never closes the full suite), and the pointer comes back only once no key is open. A key
+// with no red run for an hour lapses, so a suite the session stopped running never mutes it for good.
+const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]|\berror\[E\d{4}\]|\berror: could not compile\b/;
+// The Angular CLI's own verdict is a bare `Error:` line - too common in a passing run's logs to read
+// as red for any other runner.
+const NG_RED_RE = /(?:^|\n)Error: /;
+const STREAK_TTL_MS = 60 * 60 * 1000;
+function runFailed(p, kind) {
   if (p.hook_event_name === 'PostToolUseFailure') return p.is_interrupt ? null : true;
   const r = p.tool_response;
-  if (typeof r === 'string') return RED_SUMMARY_RE.test(r.slice(-4096));
+  const red = (text) => RED_SUMMARY_RE.test(text) || (/^(?:ng|nx) /.test(kind || '') && NG_RED_RE.test(text));
+  if (typeof r === 'string') return red(r.slice(-4096));
   if (!r || typeof r !== 'object' || r.interrupted) return null;
   const code = r.exitCode !== undefined ? r.exitCode : r.exit_code;
   if (typeof code === 'number' && code !== 0) return true;
-  return RED_SUMMARY_RE.test(`${r.stdout || ''}\n${r.stderr || ''}`.slice(-4096));
+  return red(`${r.stdout || ''}\n${r.stderr || ''}`.slice(-4096));
 }
 if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'PostToolUseFailure') {
   if (!SHELL_TOOL_RE.test(String(payload.tool_name || ''))) process.exit(0);
   const input = payload.tool_input;
-  const kind = buildTestKind(typeof input === 'string' ? input : input && input.command);
-  const failed = kind ? runFailed(payload) : null;
+  const runOf = buildTestRun(typeof input === 'string' ? input : input && input.command);
+  const kind = runOf ? runOf.kind : null;
+  const failed = kind ? runFailed(payload, kind) : null;
   if (failed === null) process.exit(0);
   const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
   const stateFile = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rootcause-${safe(payload.session_id || 'nosession')}-${safe(payload.agent_id || 'main')}.json`;
   let streaks = {};
   try { streaks = JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { /* no streak yet */ }
-  const save = () => { try { fs.writeFileSync(stateFile, JSON.stringify(streaks)); } catch { /* a lost marker re-injects once - never a block */ } };
+  const now = Date.now();
+  const open = Object.keys(streaks).filter((k) => now - Date.parse(streaks[k]) < STREAK_TTL_MS);
+  const save = (next) => { try { fs.writeFileSync(stateFile, JSON.stringify(next)); } catch { /* a lost marker re-injects once - never a block */ } };
   if (!failed) {
-    if (streaks[kind]) { delete streaks[kind]; save(); }
+    const left = open.filter((k) => k !== runOf.key && !k.startsWith(`${runOf.key} `));
+    if (left.length !== Object.keys(streaks).length) save(Object.fromEntries(left.map((k) => [k, streaks[k]])));
     process.exit(0);
   }
-  if (streaks[kind]) process.exit(0); // said once already in this streak
-  streaks[kind] = new Date().toISOString();
-  save();
+  save({ ...Object.fromEntries(open.map((k) => [k, streaks[k]])), [runOf.key]: new Date(now).toISOString() });
+  if (open.length) process.exit(0); // said once already in this streak
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -179,7 +195,8 @@ if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'Po
     hookEventName: payload.hook_event_name,
     additionalContext: `The \`${kind}\` run failed - load \`project-root-cause\` (the Skill tool) before the next fix, `
       + 'and run its loop: the whole failure read and quoted, a repro, the cause localized and proven by one '
-      + `hypothesis per change, then one fix at the root. Said once per failure streak; the next green \`${kind}\` run resets it.`,
+      + 'hypothesis per change, then one fix at the root. Said once per failure streak - it ends when every build or test run '
+      + 'that failed in it has run green again.',
   } }));
   process.exit(0);
 }
@@ -605,32 +622,57 @@ if (payload.hook_event_name === 'SubagentStop') {
   process.exit(2);
 }
 
-// --- Stop: the done gate - a done claim over an edit no build or test run followed -------------------
+// --- Stop: the done gate - a done claim over an edit nothing ran after ------------------------------
 // 'Fixed' typed over a change nothing ran is the claim `project-done-gate` exists to stop, and a
 // baseline line alone never stopped it. The close is held ONCE per turn when it claims the change done,
-// fixed, passing, works or ready while a source edit landed after the turn's last build or test run -
-// or none ran. The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger' and 'the
-// done gate' pass, and so does an honest 'not run - <why>'. A source edit is a file tool's write that
-// landed inside the project, outside `.claude/` and the docs root, on no prose file; a run is a shell
-// call the classifier above names, red or green, that was not denied before it ran (a missing result is
-// counted as run - the transcript can lag, and the gate fails open).
+// fixed, passing, works or ready while a source edit landed after the turn's last run - or none ran.
+// The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger', 'the done gate', a
+// second-person 'when you're ready' and a colour ('the header is green') pass, and a sentence saying
+// it did not run disarms itself - the skill's own 'not run - <why>' result line disarms the close.
+// A source edit is a write that landed inside the project, outside `.claude/` and the docs root, on no
+// prose file: a file tool's, or a shell write (redirection, `tee`, in-place `sed`/`perl`, a copy or
+// move destination, `rm`, an interpreter script's literal path) read through shell-writes.js - under a
+// Bash-first harness the shell IS the write route. A RUN is wider than the root-cause list above,
+// because here a miss holds an honest close: any shell command that is not a read, a write, git or a
+// package install counts, and so does a dispatched agent (its own runs are in its own transcript).
+// A run's own output file is no edit. A call a hook denied before it ran counts as neither.
 const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+// what a run leaves behind, never a source file: `make test > test.log`, `| tee run.out`
+const RUN_OUTPUT_RE = /\.(?:log|out|err|tmp|temp|bak|orig|rej|pid|trx)$/i;
+// a shell write that changes no source content: a directory, a mode, an empty file
+const NO_CONTENT_VERB_RE = /^(?:mkdir|rmdir|touch|chmod|chown)$/;
 const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
 const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
+// the result line `project-done-gate` asks for in place of a claim
+const NOT_RUN_LINE_RE = /^not (?:yet )?(?:run|built|tested|verified)\b/i;
+// 'when you're ready', 'once you are done reviewing' - the user's state, not the change's
+const YOU_CLAUSE_RE = /\byou(?:'re|\u2019re|\s+are|\s+were|'ve been|\s+have been)\b[^,;]*/gi;
+// 'once the cache warms', 'if it works for you' - a condition, never a claim
+const COND_CLAUSE_RE = /\b(?:when|whenever|once|until|unless|if|as soon as)\b[^,;]*/gi;
 const CLAIM_RES = [
-  /^(?:all |now |everything(?:'s| is) )?(done|fixed|ready|works|passing)\b/i,
-  /\b(?:is|are|'s|'re|was|were|be|been|now|looks?|seems?)\s+(?:now\s+|all\s+|fully\s+|already\s+)?(done|fixed|ready|working|passing|green)\b(?!\s+by\b)/i,
+  /^(?:all |now |everything(?:'s| is) )?(done|fixed|ready|works|passing|resolved)\b/i,
+  /\b(?:is|are|'s|'re|was|were|be|been|now|looks?|seems?)\s+(?:now\s+|all\s+|fully\s+|already\s+)?(done|fixed|ready|working|passing|resolved)\b(?!\s+(?:by|at|on)\b)/i,
   /(?<!\b(?:how|what|why|where|whether|if)\s)\b(?:tests?|suites?|specs?|builds?|checks?|it|this|that|everything|all)\s+(?:now\s+|all\s+|should\s+|will\s+)?(pass(?:es|ing)?|works?|succeeds?)\b/i,
   /\b(works|passes)\s+(?:now|again|fine|correctly|as expected)\b/i,
   /\bI(?:'ve| have)?\s+(?:now\s+|just\s+)?(fixed)\b/i,
+  // green only over a build or test subject - 'the header is green' is a colour
+  /\b(?:tests?|suites?|specs?|builds?|ci|checks?|pipelines?|runs?)\s+(?:(?:is|are|'s|'re|was|were|looks?|seems?|stays?|now)\s+)*(?:all\s+)?(green)\b/i,
+  /^all\s+(green)\b/i,
+  // the signs `project-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
+  /(?<!\b(?:how|what|why|whether|if)\s)\b(?:this|that|it|which)\s+(?:should\s+|will\s+|now\s+)?(fix(?:es)?)\s+(?:it|this|that|the|a|an)\b/i,
+  /\b(good to go)\b/i,
+  /(?:^|\b(?:is|are|'s|'re)\s+)all\s+(set)\b/i,
 ];
 function doneClaim(text) {
-  const t = String(text || '').replace(DONE_NOISE_RE, ' ');
-  if (NOT_RUN_RE.test(t)) return null; // the honest close the skill asks for
-  for (const raw of t.split(/(?<=[.!?])\s+|\n+/)) {
-    const s = raw.trim().replace(/^(?:[-*>]|\d+\.)\s+/, '').replace(/^\*\*|\*\*$/g, '');
-    if (!s || /\?["')\]*]*$/.test(s)) continue; // a question claims nothing
+  const sentences = String(text || '').replace(DONE_NOISE_RE, ' ').split(/(?<=[.!?])\s+|\n+/)
+    .map((raw) => raw.trim().replace(/^(?:[-*>]|\d+\.)\s+/, '').replace(/^\*\*|\*\*$/g, ''));
+  if (sentences.some((s) => NOT_RUN_LINE_RE.test(s))) return null; // the honest close the skill asks for
+  for (const whole of sentences) {
+    if (!whole || /\?["')\]*]*$/.test(whole)) continue; // a question claims nothing
+    if (NOT_RUN_RE.test(whole)) continue; // this sentence says it did not run
+    const s = whole.replace(YOU_CLAUSE_RE, ' ').replace(COND_CLAUSE_RE, ' ').replace(/^[\s,;:-]+/, '');
     for (const re of CLAIM_RES) {
       const m = re.exec(s);
       if (m && !/\b(?:not|never|no|nothing|yet to)\s+(?:\w+\s+)?$|n't\s+(?:\w+\s+)?$/i.test(s.slice(Math.max(0, m.index - 30), m.index + m[0].length - m[1].length))) return m[1];
@@ -638,7 +680,66 @@ function doneClaim(text) {
   }
   return null;
 }
-// The turn's source edits and build or test runs, in order, after its last TYPED row.
+
+// --- what ran: the done gate's own, wider question --------------------------------------------------
+// Not a run: a read, a navigation, a write verb, git, a shell keyword or builtin, and the PowerShell
+// cmdlets of the same families (Invoke-Pester and the like stay runs).
+const NOT_A_RUN_RE = new RegExp('^(?:' + [
+  'cat', 'bat', 'head', 'tail', 'less', 'more', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'find', 'fd', 'ls', 'll', 'dir', 'tree', 'wc', 'file',
+  'stat', 'du', 'df', 'echo', 'printf', 'pwd', 'which', 'where', 'whereis', 'type', 'cd', 'pushd', 'popd', 'true', 'false', ':', 'sleep', 'wait',
+  'date', 'whoami', 'hostname', 'uname', 'id', 'export', 'set', 'unset', 'alias', 'source', '\\.', 'diff', 'cmp', 'comm', 'sort', 'uniq', 'cut',
+  'tr', 'paste', 'column', 'nl', 'od', 'xxd', 'hexdump', 'strings', 'jq', 'yq', 'sed', 'awk', 'gawk', 'tee', 'cp', 'mv', 'rm', 'rmdir', 'mkdir',
+  'touch', 'truncate', 'chmod', 'chown', 'ln', 'install', 'rsync', 'git', 'gh', 'open', 'xdg-open', 'start', 'code', 'clear', 'basename',
+  'dirname', 'realpath', 'readlink', 'mktemp', 'history', 'kill', 'pkill', 'killall', 'ps', 'pgrep', 'lsof', 'xargs', 'base64', 'shasum',
+  'sha256sum', 'md5', 'md5sum', 'cksum', 'zip', 'unzip', 'tar', 'gzip', 'gunzip', 'exit', 'return', 'read', 'for', 'while', 'until', 'do',
+  'done', 'if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'in', 'function', 'test', '\\[\\[?',
+  '(?:get|set|add|out|write|select|where|foreach|measure|test|new|remove|copy|move|rename|resolve|split|join|format|sort|group|compare|convertto|convertfrom|clear|push|pop)-[a-z]+',
+].join('|') + ')$', 'i');
+// a package manager fetching or listing, never building or testing
+const NOT_A_RUN_CMD_RE = /^(?:(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove|rm|uninstall|un|view|info|ls|list|outdated|why|config|init|link|login|whoami|pack|publish|version)|pip3?\s+(?:install|uninstall|list|show|freeze|download)|(?:python3?|py)\s+-m\s+pip|dotnet\s+(?:restore|add|new|tool|nuget|remove|list|sln)|(?:uv|poetry|pdm)\s+(?:add|remove|sync|lock|install|pip|show)|cargo\s+(?:add|remove|install|update|fetch)|go\s+(?:get|mod)|brew|apt(?:-get)?)(?=\s|$)/i;
+const RUN_WRAPPER_RE = /^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx)|(?:uv|poetry|pipenv|hatch|pdm|rye)\s+run|bundle\s+exec|xvfb-run|then|do|else|if|while|until|!)\s+/;
+let shellWrites = null;
+try { shellWrites = require(require('path').join(__dirname, 'shell-writes.js')); } catch { /* a copy that runs before it lands counts no shell edit */ }
+// A shell call, as ordered steps: { index, run } for a segment that ran something, { index, file }
+// for a written path, resolved from `root` through the call's own `cd`s. Without shell-writes.js
+// beside the hook, the whole call is one run.
+function shellSteps(command, root) {
+  const cmd = String(command || '');
+  if (!shellWrites) return cmd.trim() ? [{ index: 0, run: cmd.trim().replace(/\s+/g, ' ').slice(0, 60) }] : [];
+  const scan = shellWrites.scanShell(cmd);
+  const chars = scan.command.split('');
+  for (const [a, b] of scan.quoted) for (let i = a; i < b; i += 1) if (chars[i] !== '\n') chars[i] = ' ';
+  const masked = chars.join('').replace(/\d*[<>]&\d*-?|&>>?/g, (m) => ' '.repeat(m.length));
+  const cuts = [...masked.matchAll(/&&|\|\||[;|&\n]/g)];
+  const out = [];
+  let from = 0;
+  for (const cut of cuts.concat([{ index: masked.length, 0: '' }])) {
+    const at = from;
+    const end = cut.index;
+    from = cut.index + cut[0].length;
+    const text = masked.slice(at, end);
+    if (!text.trim()) continue;
+    const mine = scan.targets.filter((t) => t.index >= at && t.index < end);
+    const kind = buildTestKind(text);
+    const head = stripWrappers(text.trim().replace(/^[({]+\s*/, ''), RUN_WRAPPER_RE);
+    const word = head.split(/\s+/)[0] || '';
+    const edits = mine.some((t) => t.what === 'an in-place edit' || t.what === 'an interpreter write');
+    if (kind || (!edits && word && !NOT_A_RUN_RE.test(word) && !NOT_A_RUN_CMD_RE.test(head))) {
+      out.push({ index: at, run: kind || scan.command.slice(at, end).trim().replace(/\s+/g, ' ').slice(0, 60) });
+      continue; // a run's own redirection is its output, never an edit
+    }
+    for (const t of mine) {
+      if (NO_CONTENT_VERB_RE.test(t.verb) || /^a git write/.test(t.what)) continue;
+      const raw = scan.expandVars(t.raw);
+      if (shellWrites.isVar(raw) || raw.startsWith('~')) continue;
+      const base = shellWrites.anchorAt(scan.cds, t.index, root);
+      if (base === null && !require('path').isAbsolute(raw)) continue; // relative to a cd it cannot follow
+      out.push({ index: t.index, file: require('path').resolve(base || root, raw) });
+    }
+  }
+  return out.sort((x, y) => x.index - y.index);
+}
+// The turn's source edits and runs, in order, after its last TYPED row.
 function turnWork() {
   const p = payload.transcript_path;
   if (!p) return null;
@@ -690,6 +791,9 @@ function turnWork() {
     }
     return null;
   };
+  // A red run RAN ('Exit code N'); a denial, a rejection or a timeout did not. A missing result counts
+  // as a run (the transcript can lag, and the gate fails open) but never as an edit.
+  const ranCode = (res) => /^\s*(?:Error:\s*)?Exit code -?\d+/i.test(res.text);
   let at = 0;
   let lastEdit = null;
   let lastRun = null;
@@ -700,13 +804,23 @@ function turnWork() {
       at += 1;
       const res = results.get(blk.id);
       const input = blk.input || {};
-      if (EDIT_TOOL_RE.test(String(blk.name))) {
+      const name = String(blk.name);
+      if (EDIT_TOOL_RE.test(name)) {
         const rel = res && !res.error ? sourceEdit(input.file_path || input.notebook_path) : null;
         if (rel) lastEdit = { at, rel };
-      } else if (SHELL_TOOL_RE.test(String(blk.name))) {
-        const kind = buildTestKind(typeof input === 'string' ? input : input.command);
-        // A red run RAN ('Exit code N'); a denial, a rejection or a timeout did not.
-        if (kind && (!res || !res.error || /^\s*(?:Error:\s*)?Exit code -?\d+/i.test(res.text))) lastRun = { at, kind };
+      } else if (DISPATCH_TOOL_RE.test(name)) {
+        if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
+      } else if (SHELL_TOOL_RE.test(name)) {
+        if (res && res.error && !ranCode(res)) continue;
+        const command = String(typeof input === 'string' ? input : input.command || '');
+        for (const step of shellSteps(command, root)) {
+          const pos = at + (step.index + 1) / (command.length + 2);
+          if (step.run) lastRun = { at: pos, kind: step.run };
+          else if (res && !RUN_OUTPUT_RE.test(step.file)) {
+            const rel = sourceEdit(step.file);
+            if (rel) lastEdit = { at: pos, rel };
+          }
+        }
       }
     }
   }
@@ -818,7 +932,7 @@ if (payload.hook_event_name === 'Stop') {
       blockDetail('done-gate', `${claim} | ${work.lastEdit.rel}`);
       const when = work.lastRun
         ? `was edited after the last build or test run in this turn (\`${work.lastRun.kind}\`)`
-        : 'was edited in this turn and no build or test run followed - none ran';
+        : 'was edited in this turn, and no shell command or dispatched agent after it ran anything that could build or test it';
       process.stderr.write(
         `This close says '${claim}', but ${work.lastEdit.rel} ${when}, so nothing has checked the\n` +
         'change as it stands. Load `project-done-gate` (the Skill tool) and run its gate now: the build and\n' +

@@ -55,13 +55,14 @@ const result = (id, content, isError) => ({ type: 'user', message: { content: [{
 const say = (text) => ({ type: 'assistant', message: { id: `m-${++n}`, content: [{ type: 'text', text }] } });
 function steps(root, list)
 {
-    // ['run', cmd, err?] | ['edit', file, err?] | ['text', s] | ['prompt', s]
+    // ['run', cmd, err?] | ['edit', file, err?] | ['agent', prompt, err?] | ['text', s] | ['prompt', s]
     const rows = [];
     for (const [kind, arg, err] of list)
     {
         if (kind === 'prompt') { rows.push(typed(arg)); continue; }
         if (kind === 'text') { rows.push(say(arg)); continue; }
         const c = kind === 'run' ? call('Bash', { command: arg })
+            : kind === 'agent' ? call('Agent', { subagent_type: 'web-angular-verifier', description: 'verify', prompt: arg })
             : call(kind === 'write' ? 'Write' : 'Edit', { file_path: path.isAbsolute(arg) ? arg : path.join(root, arg), old_string: 'a', new_string: 'b' });
         rows.push(c.row, result(c.id, err ? (typeof err === 'string' ? err : 'Exit code 1\nfailed') : 'ok', !!err));
     }
@@ -94,7 +95,81 @@ test('done gate: an edit and no run at all in the turn is held too', () => {
     const root = project();
     const r = stop(root, steps(root, [['prompt', 'rename the helper'], ['edit', 'src/cart.js'], ['edit', 'src/money.js']]), 'Done. Both call sites use the new name.');
     assert.strictEqual(r.status, 2, r.stderr);
-    assert.match(r.stderr, /none ran/);
+    assert.match(r.stderr, /no shell command or dispatched agent after it/);
+});
+
+// I1: the done gate asks 'did anything run after the edit', a wider question than the root-cause
+// pointer's 'which runner failed'. A run the narrow list cannot name is still a run, so the honest
+// close over it passes; only reads, writes and git after the edit leave the change unrun.
+test('done gate: a run the root-cause list cannot name still counts as the run', () => {
+    const root = project();
+    for (const cmd of ['make test', 'uv run pytest -q', 'poetry run pytest', 'bundle exec rspec', 'pnpm --filter web test', 'npm --prefix web test',
+        './scripts/test.sh', 'deno test', 'python manage.py test', 'msbuild App.sln', 'swift test', 'flutter test'])
+    {
+        const r = stop(root, steps(root, [['prompt', `fix it ${cmd}`], ['edit', 'src/money.js'], ['run', cmd]]), 'Fixed - 12 passed.');
+        assert.strictEqual(r.status, 0, `${cmd}: ${r.stderr}`);
+    }
+    assert.deepStrictEqual(ledger(root), []);
+});
+
+test('done gate: a read, a write, git or an install after the edit is no run, and the hold never says none ran', () => {
+    const root = project();
+    for (const cmd of ['git diff', 'cat src/money.js', 'grep -n toCents src/money.js', 'ls src', 'git status && git log -1', 'sed -n 1,20p src/money.js',
+        'npm install', 'cd src; ls', 'Get-Content src/money.js'])
+    {
+        const r = stop(root, steps(root, [['prompt', `fix it ${cmd}`], ['edit', 'src/money.js'], ['run', cmd]]), 'Fixed.');
+        assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
+        assert.doesNotMatch(r.stderr, /none ran/);
+        assert.match(r.stderr, /no shell command or dispatched agent after it/);
+    }
+    const r = stop(root, steps(root, [['prompt', 'fix again'], ['run', 'make test'], ['edit', 'src/money.js']]), 'Fixed.');
+    assert.strictEqual(r.status, 2, r.stderr);
+    assert.match(r.stderr, /after the last build or test run in this turn \(`make test`\)/, 'the missed run is named, never called none');
+});
+
+// I2: under a Bash-first harness the shell IS the write route, so a shell write to a source file is an
+// edit - read through the same detection the cross-project guard blocks with (shell-writes.js).
+test('done gate: a shell write to a source file is an edit', () => {
+    const root = project();
+    const held = (list, text) => stop(root, steps(root, [['prompt', `go ${JSON.stringify(list)}`], ...list]), text || 'Fixed.');
+    const r = held([['run', "sed -i '' 's/a/b/' src/a.js"]]);
+    assert.strictEqual(r.status, 2, 'sed -i then Fixed.');
+    assert.match(r.stderr, /src[\\/]a\.js was edited/);
+    for (const cmd of ["cat > src/new.js <<'EOF'\nexport const x = 1;\nEOF", 'echo "export {}" >> src/index.ts', "cd src && perl -pi -e 's/a/b/' money.js",
+        "python3 - <<'PY'\nfrom pathlib import Path\nPath('src/tax.py').write_text('x = 1')\nPY", 'cp templates/a.js src/b.js', 'rm src/old.js',
+        "npm test && sed -i 's/a/b/' src/a.js"])
+        assert.strictEqual(held([['run', cmd]]).status, 2, cmd);
+    assert.match(held([['run', "cd src && sed -i 's/a/b/' money.js"]]).stderr, /src[\\/]money\.js was edited/, 'a cd moves the anchor');
+    for (const cmd of ["sed -i 's/a/b/' src/a.js && npm test", 'npm test > build.log 2>&1', 'echo done > notes.log', 'echo x > /tmp/probe.js',
+        'git commit -qm wip', "sed -i 's/a/b/' README.md", 'mkdir -p src/new', 'echo "sed -i s/a/b/ src/a.js"', 'npm test 2>&1 | tee test-output.txt',
+        'make test > results.xml'])
+        assert.strictEqual(held([['run', cmd]]).status, 0, cmd);
+    assert.strictEqual(held([['run', "sed -i 's/a/b/' src/a.js"], ['run', 'npm test']]).status, 0, 'a run after the shell edit');
+    assert.strictEqual(held([['run', "sed -i 's/a/b/' src/a.js", 'Bash operation blocked by hook: outside']]).status, 0, 'a denied shell write changed nothing');
+});
+
+// M3: the dispatched seat's own run is inside its own transcript; the Agent call is the run as far as
+// this turn can see, and the gate fails open on it.
+test('done gate: a dispatched agent after the edit counts as the run', () => {
+    const root = project();
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'fix it'], ['edit', 'src/money.js'], ['agent', 'verify the cart fix']]), 'All tests passing.').status, 0);
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'fix it'], ['agent', 'verify the cart fix'], ['edit', 'src/money.js']]), 'All tests passing.').status, 2, 'an edit after the dispatch');
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'fix it'], ['edit', 'src/money.js'], ['agent', 'verify', 'Agent dispatch blocked by hook: no APPROVAL']]), 'All tests passing.').status, 2, 'a denied dispatch ran nothing');
+});
+
+// M1 / M2: the claim is a claim shape - a second-person subject, a when/once/until/if clause and a
+// colour are not claims; the skill's own named signs are.
+test('done gate: the claim shapes - what is no claim, and what the skill names as one', () => {
+    const root = project();
+    // judged by the gate's own message: 'let me know ...' is the prose-ask branch's to hold, not this one's
+    const held = (text) => (/`project-done-gate`/.test(stop(root, steps(root, [['prompt', `go ${text}`], ['edit', 'src/money.js']]), text).stderr) ? 2 : 0);
+    for (const text of ["Let me know when you're ready.", "Once you're done reviewing, I will squash the commits.", 'The header is green now.',
+        'The dev server is ready at http://localhost:4200', "You're all set to review the diff.", 'If it works for you, I will open the PR.',
+        'Set the flag to 1 before the next run.'])
+        assert.strictEqual(held(text), 0, text);
+    for (const text of ['This fixes it.', 'Should be good to go.', 'All set.', 'Resolved.', 'Fixed the parser. The legacy exporter stays untested.',
+        'The tests are green.', 'All green.', 'That should fix it.', 'Once the cache warms up the page is fast. Fixed.'])
+        assert.strictEqual(held(text), 2, text);
 });
 
 test('done gate: the same close with a run after the last edit passes', () => {
@@ -180,16 +255,43 @@ test('root cause: a failing test command injects the skill once per streak, and 
     for (const row of rows) { assert.strictEqual(row.mode, 'inject'); assert.strictEqual(row.kind, 'root-cause'); }
 });
 
-test('root cause: the streak is per command, per actor, and the shell tools both count', () => {
+// M6: one streak per actor. The pointer says 'load the method'; a second failing spelling of the same
+// suite, or another failing command inside the same red stretch, says nothing new. A green run closes
+// its own command (and the scoped runs of it, when it ran unscoped); the streak ends when none is open.
+test('root cause: one streak per actor - a scoped green never closes the full suite, and two spellings inject once', () => {
     const root = project();
-    assert.ok(injected(post(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1' })));
-    assert.ok(injected(post(root, 'PostToolUseFailure', 'Bash', 'dotnet build', { error: 'Exit code 1' })), 'another command is another streak');
-    assert.ok(injected(post(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1', agent_id: 'agent-7' })), 'a subagent keeps its own streak');
-    assert.ok(injected(post(root, 'PostToolUseFailure', 'PowerShell', 'dotnet test', { error: 'Exit code 1' })), 'PowerShell runs count');
-    // a green dotnet build resets that streak only
-    assert.strictEqual(injected(post(root, 'PostToolUse', 'Bash', 'dotnet build', { tool_response: { stdout: 'Build succeeded.\n    0 Error(s)', stderr: '' } })), null);
-    assert.ok(injected(post(root, 'PostToolUseFailure', 'Bash', 'dotnet build', { error: 'Exit code 1' })));
-    assert.strictEqual(injected(post(root, 'PostToolUseFailure', 'Bash', 'npm test', { error: 'Exit code 1' })), null, 'the npm test streak never reset');
+    const red = (cmd, extra) => injected(post(root, 'PostToolUseFailure', 'Bash', cmd, { error: 'Exit code 1', ...(extra || {}) }));
+    const green = (cmd) => injected(post(root, 'PostToolUse', 'Bash', cmd, { tool_response: { stdout: 'ℹ tests 3\nℹ pass 3\nℹ fail 0', stderr: '' } }));
+    assert.ok(red('npm test'));
+    assert.strictEqual(red('npx vitest run'), null, 'a second spelling of the failing suite is the same streak');
+    assert.strictEqual(red('dotnet build'), null, 'another red run inside the streak says nothing new');
+    assert.ok(red('npm test', { agent_id: 'agent-7' }), 'a subagent keeps its own streak');
+    assert.ok(injected(post(root, 'PostToolUseFailure', 'PowerShell', 'dotnet test', { error: 'Exit code 1', session_id: 'ps-1' })), 'PowerShell runs count');
+    for (const cmd of ['npm test -- -t cart', 'npx vitest run', 'dotnet build']) assert.strictEqual(green(cmd), null);
+    assert.strictEqual(red('npm test'), null, 'the scoped green left the full-suite streak open');
+    assert.strictEqual(green('npm test -- -t cart'), null);
+    assert.strictEqual(green('npm test 2>&1 | tail -3'), null, 'the unscoped green closes npm test and its scoped runs');
+    assert.ok(red('npm test -- -t tax'), 'nothing open - a new streak injects');
+});
+
+test('root cause: a streak left open for an hour lapses', () => {
+    const root = project();
+    const state = path.join(root, '.hooklog', 'guard-stop-rootcause-sess-1-main.json');
+    fs.mkdirSync(path.dirname(state), { recursive: true });
+    fs.writeFileSync(state, JSON.stringify({ 'npm test': new Date(Date.now() - 61 * 60 * 1000).toISOString() }));
+    assert.ok(injected(post(root, 'PostToolUseFailure', 'Bash', 'dotnet build', { error: 'Exit code 1' })), 'the stale open key no longer silences the pointer');
+    fs.writeFileSync(state, JSON.stringify({ 'npm test': new Date(Date.now() - 59 * 60 * 1000).toISOString() }));
+    assert.strictEqual(injected(post(root, 'PostToolUseFailure', 'Bash', 'go test ./...', { error: 'Exit code 1' })), null, 'one under the hour still holds');
+});
+
+test('root cause: a piped cargo or ng failure counts as red', () => {
+    const root = project();
+    let s = 0;
+    const piped = (cmd, stdout) => injected(post(root, 'PostToolUse', 'Bash', cmd, { session_id: `m6-${++s}`, tool_response: { stdout, stderr: '' } }));
+    assert.ok(piped('cargo build 2>&1 | tail -20', 'error[E0308]: mismatched types\n --> src/main.rs:4:5'));
+    assert.ok(piped('cargo test 2>&1 | tail -5', 'error: could not compile `app` (lib) due to 1 previous error'));
+    assert.ok(piped('ng build 2>&1 | tail -5', 'Error: Schema validation failed with the following errors:'));
+    assert.strictEqual(piped('node --test 2>&1 | tail -5', 'Error: logged by a passing test\nℹ pass 3\nℹ fail 0'), null, 'an Error line outside ng is no verdict');
 });
 
 test('root cause: a red run piped to a filter that exits 0 still counts as red', () => {
@@ -222,7 +324,8 @@ test('root cause: a runner counts at the start of a segment, never as an argumen
         'go vet ./...', 'ng test --watch=false', '.\\gradlew.bat build', 'FOO=1 npm test', 'env -u X node --test a.test.js', 'timeout 60 dotnet test',
         'cd web && npm test -- --run'])
         assert.ok(fires(cmd), `a build or test run: ${cmd}`);
-    for (const cmd of ['npm run lint', 'npm ci', 'npm install jest', 'echo npm test', 'git commit -m "npm test"', 'cat <<EOF\nnpm test\nEOF', 'node scripts/build-marketplace.js'])
+    for (const cmd of ['npm run lint', 'npm run lint-check', 'npm ci', 'npm install jest', 'echo npm test', 'echo "a; npm test --silent"', 'git commit -m "npm test"',
+        'cat <<EOF\nnpm test\nEOF', 'node scripts/build-marketplace.js'])
         assert.ok(!fires(cmd), `not a build or test run: ${cmd}`);
 });
 

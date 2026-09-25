@@ -2767,7 +2767,7 @@ function lintHooksEntry(liveIn)
         out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js']);
+    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js']);
     const wired = new Set();
     for (const blocks of Object.values(stack))
         for (const block of blocks)
