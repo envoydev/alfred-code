@@ -2156,6 +2156,26 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
     assert.strictEqual(edit(path.join(root, 'tsconfig.json'), '"strict": true', '"strict": false'), 0, 'the per-project hooks csv switches it off'));
 });
 
+// A heredoc body and a quoted span are TEXT the command carries - a runbook that describes the rm, a
+// commit message that names the file - and the siblings mask both for the same reason (a 47KB plan
+// write denied for its own prose cost ~44k tokens). Replayed: both shapes below exit 2 before the fix.
+test('guard-config-protection: a heredoc body or a quoted message naming a config is prose', () => {
+  const H = 'guard-config-protection.js';
+  const { root, at } = cfgProject('cfg-prose-');
+  const sh = (command, tool = 'Bash') => run(H, { tool_name: tool, cwd: root, tool_input: { command } });
+  withProject(root, {}, () => {
+    at('.eslintrc.json', '{}');
+    at('.editorconfig', 'root = true');
+    assert.strictEqual(sh("cat > runbook.md <<'EOF'\n## Reset lint\nrm .eslintrc.json\necho x > .editorconfig\nEOF"), 0, 'a heredoc body describing the rm');
+    assert.strictEqual(sh("git commit -m 'docs: explain why; rm .eslintrc.json is blocked'"), 0, 'a quoted commit message naming it');
+    assert.strictEqual(sh('echo "use tee .editorconfig | never" > notes.md'), 0, 'a quoted pipe is not a pipe');
+    // the real writes stay blocked, quoted targets included
+    assert.strictEqual(sh('rm ".eslintrc.json"'), 2, 'a quoted target is still the target');
+    assert.strictEqual(sh("cat > .editorconfig <<'EOF'\nroot = false\nEOF"), 2, "a heredoc's own redirect still writes");
+    assert.strictEqual(sh("git add -A && rm .eslintrc.json"), 2, 'a real second step');
+  });
+});
+
 test('guard-config-protection: the denial routes a wanted change through ONE ask and the receipt', () => {
   const { root, at } = cfgProject('cfg-msg-');
   const file = at('.editorconfig', 'root = true');
@@ -2165,6 +2185,8 @@ test('guard-config-protection: the denial routes a wanted change through ONE ask
   assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
   assert.match(r.stderr, /ONE AskUserQuestion/);
   assert.match(r.stderr, /\.claude\/docs\/flow\/CONFIG-EDIT-ALLOW/);
+  // the denial names the mandate it mechanizes, so the next maintainer (and the model) can read why
+  assert.match(r.stderr, /alfred-habits-done-gate/);
 });
 
 test('guard-config-protection: a block writes one ledger row naming the hook', () => {

@@ -130,9 +130,27 @@ function judgeFileTool() {
 
 const WRITE_VERB = new Set(['tee', 'rm', 'mv', 'truncate', 'set-content', 'add-content', 'out-file', 'clear-content', 'remove-item', 'move-item']);
 const COPY_VERB = new Set(['cp', 'copy-item']);
+// A heredoc body and a quoted span are text the command CARRIES (a runbook describing the rm, a commit
+// message naming the file), never a step of its own - the siblings mask both for the same reason. The
+// segments are cut at separators OUTSIDE quotes, over a copy with heredoc bodies blanked, using the
+// shared parser beside this hook; a copy that runs before it lands cuts the raw text as before.
+let shell = null;
+try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { shell = null; }
+function segments(command) {
+  if (!shell) return command.split(/&&|\|\||[;\n|]/);
+  const text = shell.blankHeredocs(command);
+  const chars = text.split('');
+  for (const [a, b] of shell.quotedSpans(text)) for (let i = a; i < b; i += 1) chars[i] = 'x';
+  const masked = chars.join('');
+  const out = [];
+  let from = 0;
+  for (const m of masked.matchAll(/&&|\|\||[;\n|]/g)) { out.push(text.slice(from, m.index)); from = m.index + m[0].length; }
+  out.push(text.slice(from));
+  return out;
+}
 function judgeShell() {
   const command = String((payload.tool_input || {}).command || '');
-  for (const seg of command.split(/&&|\|\||[;\n|]/)) {
+  for (const seg of segments(command)) {
     const toks = (seg.trim().match(/"[^"]*"|'[^']*'|\S+/g) || []);
     const verb = unq(toks[0] || '').toLowerCase();
     const inPlace = (verb === 'sed' && toks.some((t) => /^-i/.test(t))) || (verb === 'perl' && toks.some((t) => /^-\w*i/.test(t)));
@@ -180,7 +198,8 @@ global.BLOCK_DETAIL = { file: rel, why: hit.why };
 const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
 process.stderr.write(
   `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n` +
-  `go back to the code the check flagged.\n\n` +
+  `go back to the code the check flagged (alfred-habits-done-gate, step 4: 'Fix the cause - never suppress\n` +
+  `a warning, weaken a test, or stub code to go green').\n\n` +
   `If the TASK is this config (the user asked for the rule change), do not decide for them: end this turn\n` +
   `with ONE AskUserQuestion carrying, in this order -\n` +
   `  'Fix the code instead (Recommended)' - leave the check as it is\n` +
