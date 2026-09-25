@@ -1309,3 +1309,26 @@ test('seed install (plugin route): a library seat keeps its shipped alfred-code:
     });
     assert.match(result, /^ {2}- alfred-code:alfred-habits-root-cause$/m);
 });
+
+// Found in the F1 temp matrix (C10): an install asked `claude mcp get <name>` whether a server was
+// registered already, and the CLI answers from EVERY scope - so a user-scope serena from an earlier
+// user-scope run read as this project's, the add was skipped as 'already configured', and only the
+// verify pass wrote .mcp.json ('repaired (absent)'). At project scope the run reads .mcp.json itself.
+test('seed install (full copy route, project registrations): only .mcp.json says a server is configured here - a user-scope one of the same name does not (C10)', POSIX_ONLY, () =>
+{
+    const run = (mcpJson) => seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        env: COPY_ENV,
+        prepare: (repo, work) =>
+        {
+            accountMcp(work, { serena: STACK_SERENA });
+            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { serena: STACK_SERENA } }));
+        },
+    });
+    const fresh = run(false);
+    assert.ok(fresh.calls.some((c) => /^mcp add --scope project serena /.test(c)), `${fresh.calls.filter((c) => /^mcp /.test(c)).join('\n')}\n${fresh.out}`);
+    assert.doesNotMatch(fresh.out, /mcp serena already configured/);
+    assert.ok(!fresh.calls.some((c) => /^mcp get /.test(c)), 'a project-scope install asked the CLI, which answers from every scope');
+    const kept = run(true);
+    assert.ok(!kept.calls.some((c) => /^mcp add --scope project serena /.test(c)), kept.calls.join('\n'));
+    assert.match(kept.out, /mcp serena already configured - skipping/);
+});

@@ -988,7 +988,11 @@ function installMcps(ctx)
         const name = entry.split('|')[0];
         const args = entry.slice(entry.indexOf('|') + 1);
         if (ctx.args.action === 'update') { if (mayRemove(name, scope)) ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT }); }
-        else if (ctx.cli(['mcp', 'get', name], { quiet: true, expect: 'answer' })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
+        // `claude mcp get` answers from every scope, so at project scope .mcp.json itself is the answer -
+        // a user-scope server of the same name is not this project's registration.
+        else if (scope === 'project'
+            ? Boolean(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers[name])
+            : ctx.cli(['mcp', 'get', name], { quiet: true, expect: 'answer' })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
         ctx.log(`mcp [${scope}]: ${name}`);
         if (!ctx.cli(mcp.registerSpec({ name, args, scope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
             ctx.note(`mcp ${name} failed`);
