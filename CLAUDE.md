@@ -47,8 +47,8 @@ change (see the invariants below).
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `check-turn-build.js`'s 60, from the `HOOK_TIMEOUTS` table the seed
-  writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
+  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring only, from the
+  `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The four gates live in `hook-prelude.js`, never inlined: the csv opt-out;
@@ -68,8 +68,11 @@ change (see the invariants below).
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
   - `guard-protected-force-push.js` - blocks force-push to protected branches.
   - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
-    `git checkout --` / `restore` / `reset --hard` / `clean -f` only when the PATHSPEC the command names
-    is dirty (not the whole tree). A 'discard it' answer is honoured via `<docs-path>/flow/DISCARD-ALLOW`.
+    `git checkout --` / `restore` / `reset --hard` / `clean -f` / a forced `checkout` or `switch` only when
+    the PATHSPEC the command names is dirty (judged where git runs: cwd, a leading `cd`, `-C`), plus
+    `stash drop` / `stash clear` / `reflog expire` by what they destroy; PowerShell `Remove-Item -Recurse`
+    counts. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
+    is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
   - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). An unexpanded `$VAR` target is not judged; a
     leading `cd` moves the anchor; a counting expression is not a dump. Every denial carries the
@@ -550,7 +553,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (116,260 on 2026-09-25: pathless rules 36,725, agent descriptions 29,148, skill descriptions 50,387 - the habits descriptions spelled out when to load each, +1,807). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (114,000 on 2026-09-26: pathless rules 35,907, agent descriptions 29,148, skill descriptions 48,945 - the 2.0.0 audit tightened rules and skill descriptions, -2,260). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
