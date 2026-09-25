@@ -1459,6 +1459,52 @@ test('seed install (plugin route): a library seat keeps its shipped alfred-code:
     assert.match(result, /^ {2}- alfred-code:alfred-habits-root-cause$/m);
 });
 
+// F7 (F1 D, pre-existing since 1.3.0): every engine was re-spelled as `playwright`, a name no run
+// registers, so a copied seat kept `mcp__plugin_playwright-chrome_playwright-chrome__*` while the run
+// registered `playwright-chrome` bare - the seat lost playwright on the copy route. Each engine the run
+// registers bare takes its own bare name; an engine it does not register (not kept, or left off at user
+// scope, where the registration is the enable) keeps the plugin spelling. The mixed-pair line names the
+// engines for the same reason. Bare spellings are BUILT, never typed (lint check 54).
+const bareTools = (server) => ['mcp', server, '*'].join('__');
+const pluginTools = (server) => `mcp__plugin_${server}_${server}__*`;
+const SEATS = ['evidence-gatherer', 'integration-reviewer'];
+for (const [route, env, scope, registered] of [
+    ['MCP copy route', MCP_COPY_ENV, 'project', ['chrome', 'webkit']],
+    ['MCP copy route', MCP_COPY_ENV, 'user', ['chrome']],
+    ['full copy route', COPY_ENV, 'user', ['chrome', 'webkit']],
+])
+{
+    test(`seed install (${route}, ${scope} scope): a copied seat names each engine the run registered bare by its own bare name, and every other engine by its plugin name (F7, F1 D)`, POSIX_ONLY, () =>
+    {
+        const { result, out } = seedRun('install', `skill markdown-style\nrule markdown-docs\nmcp playwright\n${SEATS.map((s) => `agent ${s}\n`).join('')}`, {
+            env, args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
+            inspect: (repo) => Object.fromEntries(SEATS.map((s) => [s, fs.readFileSync(path.join(repo, '.claude', 'agents', `${s}.md`), 'utf8').split('\n').find((l) => l.startsWith('tools:'))])),
+        });
+        for (const seat of SEATS)
+            for (const engine of mcp.PW_ENGINES)
+            {
+                const server = `playwright-${engine}`;
+                const bare = registered.includes(engine);
+                assert.ok(result[seat].includes(bare ? bareTools(server) : pluginTools(server)), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
+                assert.ok(!result[seat].includes(bare ? pluginTools(server) : bareTools(server)), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
+            }
+    });
+}
+
+for (const [scope, named] of [['project', 'playwright-chrome playwright-webkit'], ['user', 'playwright-chrome']])
+{
+    test(`seed install (MCP copy route, skills on the plugin route, ${scope} scope): the mixed-pair line names the engines registered bare (F7, observation 2)`, POSIX_ONLY, () =>
+    {
+        const { out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+            env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+            args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
+        });
+        const line = out.split('\n').find((l) => l.includes('registered under their bare names'));
+        assert.ok(line, out);
+        assert.ok(line.includes(`which name the plugin spelling: ${named} - set ALFRED_CODE_SKILLS_VIA_PLUGIN=false too`), line);
+    });
+}
+
 // Found in the F1 temp matrix (C10): an install asked `claude mcp get <name>` whether a server was
 // registered already, and the CLI answers from EVERY scope - so a user-scope serena from an earlier
 // user-scope run read as this project's, the add was skipped as 'already configured', and only the

@@ -1221,10 +1221,13 @@ function importMemory(ctx)
     });
 }
 
-// The servers registered under their bare names, as the tool names spell them - every engine is
-// `playwright`. Empty on the plugin route.
+// The servers this run registers under their bare names - each engine under its own
+// (`playwright-<engine>`), the name its tools answer to. An engine left off at user or local scope is not
+// registered (the registration is the enable there), so it keeps the plugin spelling. Empty on the plugin
+// route. F7: every engine used to map to `playwright`, a name no run registers, so a copied seat kept
+// the plugin spelling of the engine the run had registered bare.
 const bareNames = (ctx) => mcp.bareNamedMcps({ routes: ctx.routes, mcps: ctx.lists.mcps })
-    .map((n) => n.replace(/^playwright-.*/, 'playwright'));
+    .filter((n) => !ctx.pw.mcpjson.unregistered.includes(n));
 
 // COPY ROUTE ONLY: a registered server answers `mcp__<server>__<tool>`, never the plugin spelling
 // the shipped files carry.
