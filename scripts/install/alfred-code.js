@@ -681,20 +681,37 @@ function installSkillsAndAgents(ctx)
         return;
     }
 
+    // C17: each copy is written as the text it holds on this route (copyRender) and only when that
+    // differs, so a re-run over unchanged skills and seats rewrites nothing.
     fs.mkdirSync(ctx.skillsDir, { recursive: true });
     for (const name of skillNames)
     {
         const src = path.join(ctx.source.dir, 'stack', 'skills', name);
         if (!fs.existsSync(src)) { ctx.note(`skill '${name}' not found in the stack source`); continue; }
-        fs.rmSync(path.join(ctx.skillsDir, name), { recursive: true, force: true });
-        fs.cpSync(src, path.join(ctx.skillsDir, name), { recursive: true });
-        ctx.log(`skill [${ctx.args.scope}]: ${name}`);
+        if (copy.syncTree({ src, dest: path.join(ctx.skillsDir, name), render: copyRender(ctx, 'skill') })) ctx.log(`skill [${ctx.args.scope}]: ${name}`);
+        else ctx.log(`  skill current: ${name}`);
     }
 
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'agents'), label: 'agent',
-        destDir: agentsDir, files: ctx.lists.agents, log: ctx.log, note: ctx.note,
+        destDir: agentsDir, files: ctx.lists.agents, render: copyRender(ctx, 'agent'), log: ctx.log, note: ctx.note,
     });
+}
+
+// C17 / B seam: what a copy-route copy holds - the shipped text with the MCP tool names this run
+// registers bare re-spelled to them (the rules render the same way), and on the FULL copy route a
+// seat's `alfred-code:<skill>` preloads bare, since no core plugin serves that spelling there. Null
+// when nothing changes - every plugin route.
+function copyRender(ctx, kind)
+{
+    const bare = ctx.routes.skills ? [] : bareNames(ctx);
+    const preloads = kind === 'agent' && !mcp.corePluginOn(ctx.routes);
+    if (!bare.length && !preloads) return null;
+    return (text) =>
+    {
+        const out = mcp.respellToolNames(text, bare);
+        return preloads ? copy.respellPreloads(out, CORE) : out;
+    };
 }
 
 function installPlugins(ctx)
@@ -1018,7 +1035,7 @@ function installHooksAndRules(ctx)
         : [...new Set(ctx.lists.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES);
     copy.installFromSource({
         sourceDir: ctx.source.dir, subdir: path.join('stack', 'hooks'), label: 'hook',
-        destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, log: ctx.log, note: ctx.note,
+        destDir: path.join(ctx.claudeDir, 'hooks'), files: hookFiles, exec: true, render: copyRender(ctx, 'hook'), log: ctx.log, note: ctx.note,
     });
     // N7: a copy error throws, so here every hook copy has landed - the copies are the record now, and
     // the line says so before the settings write below blanks the stored list on the full copy route. A

@@ -35,7 +35,14 @@ function sameContent(a, b)
     catch { return false; }
 }
 
-function installFromSource({ sourceDir, subdir, label, destDir, files, exec = false, log = () => {}, note = () => {} })
+// The text files a copy-time `render` applies to - the ones a shipped tool name or preload can sit in.
+const RENDER_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
+const rendered = (src, render) => (render && RENDER_EXT.includes(path.extname(src)) ? Buffer.from(render(fs.readFileSync(src, 'utf8'))) : null);
+const sameBytes = (body, dest) => { try { return fs.readFileSync(dest).equals(body); } catch { return false; } };
+
+// `render` (C17): a function of a text file's source, whose result is what the copy holds - compared
+// with the copy as it stands, and written only when they differ. Without it the bytes are copied.
+function installFromSource({ sourceDir, subdir, label, destDir, files, exec = false, render = null, log = () => {}, note = () => {} })
 {
     const copied = [];
     const skipped = [];
@@ -51,7 +58,8 @@ function installFromSource({ sourceDir, subdir, label, destDir, files, exec = fa
             continue;
         }
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        if (sameContent(src, dest))
+        const body = rendered(src, render);
+        if (body ? sameBytes(body, dest) : sameContent(src, dest))
         {
             // Unchanged content can still have lost its exec bit - re-assert it rather than leave a
             // hook that is present, current and unable to run.
@@ -60,12 +68,79 @@ function installFromSource({ sourceDir, subdir, label, destDir, files, exec = fa
             skipped.push(file);
             continue;
         }
-        fs.copyFileSync(src, dest);
+        if (body) fs.writeFileSync(dest, body);
+        else fs.copyFileSync(src, dest);
         if (exec) { try { fs.chmodSync(dest, 0o755); } catch { /* as above */ } }
         log(`  ${label} installed -> ${file}`);
         copied.push(file);
     }
     return { copied, skipped, missing };
+}
+
+// C17: one skill folder, file by file - each compared with the text it will hold (`render`, as above)
+// and written only when it differs, its mode kept; a file or folder the source no longer has goes.
+// Unlike the remove-then-copy it replaces, a re-run over an unchanged skill writes nothing. Returns the
+// number of files written or removed.
+function syncTree({ src, dest, render = null })
+{
+    let changed = 0;
+    const keep = new Set();
+    const put = (rel) =>
+    {
+        const from = path.join(src, rel);
+        const to = path.join(dest, rel);
+        for (const entry of fs.readdirSync(from, { withFileTypes: true }))
+        {
+            const r = path.join(rel, entry.name);
+            const s = path.join(src, r);
+            const d = path.join(dest, r);
+            keep.add(r);
+            let have = null;
+            try { have = fs.lstatSync(d); } catch { /* absent */ }
+            if (entry.isDirectory())
+            {
+                if (have && !have.isDirectory()) fs.rmSync(d, { recursive: true, force: true });
+                fs.mkdirSync(d, { recursive: true });
+                put(r);
+                continue;
+            }
+            if (have && have.isDirectory()) fs.rmSync(d, { recursive: true, force: true });
+            if (!entry.isFile()) { fs.cpSync(s, d, { recursive: true }); changed += 1; continue; }
+            const mode = fs.statSync(s).mode & 0o777;
+            const body = rendered(s, render) || fs.readFileSync(s);
+            if (sameBytes(body, d)) { if (have && (have.mode & 0o777) !== mode) fs.chmodSync(d, mode); continue; }
+            fs.mkdirSync(to, { recursive: true });
+            fs.writeFileSync(d, body);
+            fs.chmodSync(d, mode);
+            changed += 1;
+        }
+    };
+    const prune = (rel) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(path.join(dest, rel), { withFileTypes: true }); } catch { return; }
+        for (const entry of entries)
+        {
+            const r = path.join(rel, entry.name);
+            if (!keep.has(r)) { fs.rmSync(path.join(dest, r), { recursive: true, force: true }); changed += 1; }
+            else if (entry.isDirectory()) prune(r);
+        }
+    };
+    fs.mkdirSync(dest, { recursive: true });
+    put('');
+    prune('');
+    return changed;
+}
+
+// B seam (final review B): on the FULL copy route no core plugin is enabled, so a seat's preload spelled
+// `<core>:<skill>` names a skill nothing serves - the copy route installed it under its bare name. Only
+// the frontmatter's list items move; the body is prose.
+function respellPreloads(text, core)
+{
+    const m = /^---\r?\n[\s\S]*?\r?\n---/.exec(String(text));
+    if (!m) return text;
+    const re = new RegExp(`^([ \\t]*-[ \\t]*)${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:([A-Za-z0-9._-]+)([ \\t]*)$`, 'gm');
+    return m[0].replace(re, '$1$2$3') + String(text).slice(m[0].length);
 }
 
 // The docs root, resolved as the hooks will see it at this install's scope (R83 b / R87): at `local`
@@ -134,4 +209,4 @@ function removeDropped({ drop = [], dirs, shipped, log = () => {} })
     }
 }
 
-module.exports = { installFromSource, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, DOCS_ROOT_DEFAULT };
+module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, DOCS_ROOT_DEFAULT };

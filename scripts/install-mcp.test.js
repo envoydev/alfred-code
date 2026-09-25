@@ -1264,3 +1264,48 @@ test('seed update --scope user: an unreadable account .claude.json removes nothi
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove /.test(c)), [], out);
     assert.strictEqual((out.match(/\.claude\.json could not be read - no user-scope registration was removed/g) || []).length, 1, out);
 });
+
+// C17 ((i), Task 8a): the copy route copied each skill and seat with the plugin spelling, then re-spelled
+// it in place - so every run rewrote the same files and logged 're-spelled in N file(s)'. A copy is now
+// written as the text it holds (rendered at copy time) and only when that differs, so a re-run writes
+// nothing and says nothing.
+// B seam (final review B): on the FULL copy route no core plugin serves `alfred-code:<skill>`, so a seat's
+// preload in that spelling loaded nothing - the copy route installed the skill bare. The copied seat
+// preloads the bare name; the plugin route keeps the shipped text.
+test('seed install + re-run (full copy route): copies hold the registered tool names and bare preloads from the first write, and a re-run rewrites nothing (C17, B seam)', POSIX_ONLY, () =>
+{
+    const seat = path.join('.claude', 'agents', 'angular-test-resolver.md');
+    // The walk's closure brings a seat's preloaded skills along; a raw selection names them.
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nskill alfred-habits-root-cause\nskill alfred-habits-done-gate\nrule markdown-docs\nagent angular-test-resolver\n', {
+        env: COPY_ENV,
+        args: [[], ['--installed-only']],
+        each: (repo) =>
+        {
+            const skills = path.join(repo, '.claude', 'skills');
+            const stat = (rel) => fs.statSync(path.join(repo, rel)).mtimeMs;
+            const skillFiles = fs.readdirSync(skills, { recursive: true }).map(String).filter((f) => fs.statSync(path.join(skills, f)).isFile());
+            return {
+                seat: fs.readFileSync(path.join(repo, seat), 'utf8'),
+                mtimes: Object.fromEntries([seat, ...skillFiles.map((f) => path.join('.claude', 'skills', f))].map((f) => [f, stat(f)])),
+                preloaded: fs.existsSync(path.join(skills, 'alfred-habits-root-cause', 'SKILL.md')),
+            };
+        },
+    });
+    for (const [i, out] of outs.entries()) assert.doesNotMatch(out, /MCP tool names re-spelled/, `step ${i} re-spelled copies it had just written:\n${out}`);
+    const front = steps[0].seat.split('\n---')[0];
+    assert.match(front, /^ {2}- alfred-habits-root-cause$/m, front);
+    assert.doesNotMatch(front, /alfred-code:/, 'a preload still names the core plugin');
+    // Built, never written out: a bare spelling in a tracked file is lint check 54's finding.
+    assert.ok(front.includes(['mcp', 'serena', 'find_symbol'].join('__')), 'the tools list keeps the plugin spelling');
+    assert.ok(steps[0].preloaded, 'the preloaded skill is not installed as a copy');
+    const touched = Object.keys(steps[0].mtimes).filter((f) => steps[1].mtimes[f] !== steps[0].mtimes[f]);
+    assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
+});
+
+test('seed install (plugin route): a library seat keeps its shipped alfred-code: preloads (B seam)', POSIX_ONLY, () =>
+{
+    const { result } = seedRun('install', 'skill markdown-style\nrule markdown-docs\nagent angular-test-resolver\n', {
+        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'agents', 'angular-test-resolver.md'), 'utf8'),
+    });
+    assert.match(result, /^ {2}- alfred-code:alfred-habits-root-cause$/m);
+});
