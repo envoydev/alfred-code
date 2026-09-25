@@ -23,7 +23,7 @@
       "registration": {
         "package": "chrome-devtools-mcp"
       },
-      "addBack": "claude mcp add --scope <scope> chrome-devtools -- npx -y chrome-devtools-mcp"
+      "addBack": "claude mcp add --scope <scope> chrome-devtools -- npx -y chrome-devtools-mcp@1.9.0"
     },
     {
       "name": "appium-mcp",
@@ -32,7 +32,7 @@
       "registration": {
         "package": "appium-mcp"
       },
-      "addBack": "claude mcp add --scope <scope> appium-mcp -- npx -y appium-mcp"
+      "addBack": "claude mcp add --scope <scope> appium-mcp -- npx -y appium-mcp@1.94.3"
     },
     {
       "name": "sentry",
@@ -50,7 +50,7 @@
       "registration": {
         "package": "@upstash/context7-mcp"
       },
-      "addBack": "claude mcp add --scope <scope> context7-local -- npx -y @upstash/context7-mcp"
+      "addBack": "claude mcp add --scope <scope> context7-local -- npx -y @upstash/context7-mcp@4.1.1"
     }
   ]
 }
