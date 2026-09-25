@@ -230,6 +230,13 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   assert.equal(ctxOf(askIn(cycle('sf-bold',
     '**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
+  // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
+  const prefixed = transcript('sf-plugin', [
+    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:alfred-task-solve</command-name>' } },
+    assistantRow('sf-plugin', 'Task 2 landed, tests green.', { cache_read_input_tokens: 900 }),
+  ]);
+  assert.match(ctxOf(askIn(prefixed, oneQ)), /Result:.*Progress:.*Leftovers:/s,
+    'a plugin-prefixed solve-task slash command is a solve-task cycle too');
   const notACycle = transcript('sf-none', [
     { type: 'user', message: { role: 'user', content: 'fix the failing test' } },
     assistantRow('n1', 'Fixed it; the suite is green.', { cache_read_input_tokens: 900 }),

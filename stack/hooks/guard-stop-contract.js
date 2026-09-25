@@ -1288,7 +1288,7 @@ function solveTaskCycle() {
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
-    return /<command-name>\s*\/?alfred-task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*alfred-task-solve(-cross)?/.test(buf.toString('utf8'));
+    return /<command-name>\s*\/?(?:[a-z0-9-]+:)?alfred-task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*alfred-task-solve(-cross)?/.test(buf.toString('utf8'));
   } catch {
     return false;
   }
