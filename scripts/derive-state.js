@@ -267,8 +267,10 @@ function costOfTaking({ category, name, place, graph, enabled, copied })
 //              switched off before (`noneBefore` - the walk's None), a parked entry;
 //   unknown  - the plugin listing could not be read (`plugins` null); never offered on a guess.
 // A renamed item carries `from`, and `wasOff` when the OLD name was switched off - the installer
-// matches the off-state by name, so the new name comes on and the report must say so.
-function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, sourceDir = REPO } = {})
+// matches the off-state by name, so the new name comes on and the report must say so. M8: an offer
+// whose OLD name is neither on disk nor in `picked` (the stamp's picks by kind, null when it records
+// none) was declined under that name, so it is left out - never offered as new.
+function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, picked = null, sourceDir = REPO } = {})
 {
     const place = placement();
     const manifest = loadManifest(sourceDir);
@@ -311,6 +313,7 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         }
         if (from)
         {
+            if (row.verdict === 'offer' && !oldOnDisk && picked && picked[category] && !picked[category].has(from)) continue;
             row.from = from;
             // The old copy is pruned whatever the new name's verdict - an arriving rename leaves it too.
             if (oldOnDisk) row.oldOnDisk = true;

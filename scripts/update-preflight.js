@@ -217,9 +217,18 @@ function readListing(root, marketplace)
     return parsePluginList(text, root, { marketplace: marketplace || marketKey({ listing: ours }) });
 }
 
+// M8 (Task 22 fix round 1): the stamp's picks by kind, bare names - null when it records none, so a
+// renamed item is never judged declined on a stamp that could not say.
+function pickedByKind(stampFile, splitPick)
+{
+    const picks = require('./install/stamp.js').readPicked(stampFile);
+    const names = (list) => new Set(list.map((e) => splitPick(e).name));
+    return picks && { skill: names(picks.skills), agent: names(picks.agents) };
+}
+
 function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareLines })
 {
-    const { classifyNew } = require('./derive-state.js');
+    const { classifyNew, splitPick } = require('./derive-state.js');
     const { pluginRoutes } = require('./install/plugins.js');
     // Only what this release actually ships, BEFORE the listing is read: a path that names no item
     // (an engine, a README) must not cost a `claude plugin list` call.
@@ -256,6 +265,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
         always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
         hasHooks,
         copied: libraryCopies(claudeDir),
+        picked: pickedByKind(stampFile, splitPick),
     });
     if (!rows.length) return ['new: none'];
     return rows.map((r) => [

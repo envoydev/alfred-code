@@ -198,7 +198,8 @@ It prints, in order:
   it, on), `renamed` (a copied item whose old copy is on disk - the update carries it), `offer`
   (only a yes brings it), `off` (the user's own off-state names it - a denied seat, a hook in
   `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
-  not be read).
+  not be read). A rename whose old name the stamp's picks never named and the disk never held
+  prints no row - it was declined under that name.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. **Never dump that file** - a plain `cat` of it put a live 71-character

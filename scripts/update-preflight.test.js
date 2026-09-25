@@ -395,6 +395,33 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
     assert.match(out, new RegExp(`^new: skill alfred-task-solve\\tarrives\\talfred-code\\tfrom=${oldOf('alfred-task-solve')}$`, 'm'), out);
 });
 
+// M8 (Task 22 fix round 1): a renamed library item whose OLD name the stamp's picks never named and the
+// disk never held was declined under that name - offering it under the new one presents a declined item
+// as new. A picked old name with no copy is still offered, and a stamp with no picks line judges nothing.
+test('new items: a renamed library item the stamp never picked, with no old copy, is not offered as new', () => {
+    const { loadManifest } = require('./install/manifest.js');
+    const renamed = loadManifest(path.join(__dirname, '..')).renamed;
+    const old = Object.keys(renamed.skills).find((k) => renamed.skills[k] === 'alfred-capture-related-projects');
+    const fixture = { files: [{ status: 'added', filename: 'stack/skills/alfred-capture-related-projects/SKILL.md' }] };
+    const newLines = (stamp) =>
+    {
+        const { snap, install, fixtureFile } = scaffold({ fixture, stamp });
+        fs.writeFileSync(path.join(snap, 'meta', 'stack-manifest.json'), JSON.stringify({ renamed }));
+        const listing = path.join(install, 'listing.json');
+        fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
+        const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
+        assert.strictEqual(code, 0, out);
+        return out.split('\n').filter((l) => l.startsWith('new:')).join('\n');
+    };
+    const base = 'sha: aaa111\nversion: 0.2.60\n';
+    assert.strictEqual(newLines(`${base}picked-skills: markdown-style@alfred-code\n`), 'new: none',
+        'an old name the picks never named, with no copy, is not offered under its new one');
+    assert.match(newLines(`${base}picked-skills: ${old}\n`), new RegExp(`^new: skill alfred-capture-related-projects\\toffer\\t.*from=${old}`, 'm'),
+        'a picked old name with no copy on disk is still offered');
+    assert.match(newLines(base), /^new: skill alfred-capture-related-projects\toffer\t/m,
+        'a stamp with no picks line judges nothing - still an offer');
+});
+
 test('new items: global mode reads the account dir itself - its settings.json, not <account>/.claude/', () => {
     const { snap, install, fixtureFile } = scaffold({ fixture: { files: [{ status: 'added', filename: 'stack/agents/code-style-analyzer.md' }] } });
     const acct = path.join(install, '.claude-work');
