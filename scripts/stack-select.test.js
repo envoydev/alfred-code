@@ -47,8 +47,10 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // the house no-marker rule, 0 invocations in 115 sessions, and its ladder already inline in 34
     // agent bodies), so the seat's discipline paragraph is now its only home and pulls no plugin.
     assert.deepStrictEqual(impl.plugins, [], 'the implementer carries its discipline inline and pulls no plugin');
+    // The resolver PRELOADS the core's root-cause method (R106) and NAMES the C# skills in its body:
+    // the preload is its one edge, the body mentions pull nothing.
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
-    assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
+    assert.deepStrictEqual(resolver.skills, ['project-root-cause'], 'a resolver locks only its preloaded method skill');
 });
 
 test('a rule pulls its skills', () => {
