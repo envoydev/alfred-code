@@ -309,6 +309,7 @@ serena's local memory:
 | architecture/ARCHITECTURE.md | yes | main@a1b2c3d, 2026-07-24 | 2026-07-24 |
 | architecture/watch.json | yes | - | 2026-07-24 |
 | quality/ASSESSMENT.md | yes | as of main@a1b2c3d, 2026-07-24 (recomputed, not a domain) | 2026-07-24 |
+| quality/CODE-ASSESSMENT.md | no | - | - |
 | code-style/CODE-STYLE.md | yes | master@9a68219, 2026-07-25 | 2026-07-25 |
 | related-projects/RELATED-PROJECTS.md | no | - | - |
 | test-coverage/COVERAGE.md | yes | (bar 85%) | 2026-07-25 |
@@ -316,8 +317,8 @@ serena's local memory:
 | .serena/memories/ | yes | 4 notes | 2026-07-25 |
 
 `captured` is the doc's own `Captured:` stamp line read from the file (the related-projects doc
-stamps per entry - show the newest); `quality/ASSESSMENT.md` carries no `Captured:` stamp at all -
-it recomputes every run with no domain of its own, so this column shows its `As of:` freshness
+stamps per entry - show the newest); the two `quality/` docs carry no `Captured:` stamp at all -
+each recomputes every run with no domain of its own, so this column shows its `As of:` freshness
 line instead; `file updated` is the file's mtime date. A `Captured:` stamp older than the file
 mtime is normal (loops edit docs without re-capturing) - render both, judge nothing. Rows are
 fixed - a capture never run shows `no`, so the user sees what is MISSING as clearly as what

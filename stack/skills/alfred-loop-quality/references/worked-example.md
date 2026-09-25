@@ -1,7 +1,7 @@
 # Worked example and the convergence note
 
-Optional reading - a DELEGATED inner loop over one stage file, and why the stages are numbered the way
-they are. Nothing here is a rule the body does not already state.
+Optional reading for the staged run - a DELEGATED inner loop over one stage file, and why the stages are
+numbered the way they are. Nothing here is a rule `staged-mode.md` does not already state.
 
 ## Example - one file's inner loop
 

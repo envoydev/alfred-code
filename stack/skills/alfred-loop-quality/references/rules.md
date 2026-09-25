@@ -1,6 +1,6 @@
 # Quality-loop run rules
 
-The standing policy the autonomous run holds from Pass 1 of the first file to the Final report: what
+The standing policy the staged run (`staged-mode.md`) holds from Pass 1 of the first file to the Final report: what
 counts as a finding, how each one is resolved, and the honesty bars self-judgment cannot waive. Read
 once per run (INNER LOOP, before Pass 1 of the first file) and again after a compaction or a
 fresh-session resume; the Final report's References-read receipt records the read.

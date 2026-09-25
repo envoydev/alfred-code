@@ -10,9 +10,9 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   (`related-projects/RELATED-PROJECTS.md`), the quality-loop prompts (`loops/`), the coverage capture
   (`test-coverage/`), the usage-audit bundles (`alfred-code-usage-report/`), superpowers plans + specs,
   the instrumentation ledgers (`tools-usage/`), and the task cards handed to another repo
-  (`cross-project-tasks/`). Two folders hold no domain, by design: `quality/ASSESSMENT.md` is
+  (`cross-project-tasks/`). Two folders hold no domain, by design: `quality/ASSESSMENT.md` and `quality/CODE-ASSESSMENT.md` are
   recomputed fresh every run rather than versioned (no `watch.json`, so the engine never sections or
-  asks about it), and `related-context/` is a plain drop box for every OTHER sibling-repo doc - a
+  asks about them), and `related-context/` is a plain drop box for every OTHER sibling-repo doc - a
   cross-repo plan, a change request, an issue note, a run recipe - filed there by any session that
   produces one, with no `watch.json` either. Anything else generated lands under this root too. A doc
   outside it - or outside its own domain's folder - is invisible to every capture, status and prune

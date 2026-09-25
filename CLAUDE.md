@@ -186,7 +186,7 @@ change (see the invariants below).
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
   --hooks-answered`, setup only, which switches every hook off).
-- `stack/agents/` - 43 Claude-contract subagents, the core seats in the core plugin, the rest library copies:
+- `stack/agents/` - 44 subagents, core seats in the core plugin, the rest library copies:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
   - cross-cutting: `alfred-issue-diagnoser-ci`, `alfred-issue-diagnoser-runtime`, `security-auditor` (read-only
@@ -195,16 +195,16 @@ change (see the invariants below).
   - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
     across 10 stacks (ASP.NET, web Angular, WPF, WinForms, console, Windows Service, Ionic Angular, data,
     DevOps, browser extension);
-  - five read-only sonnet support seats: `evidence-gatherer`, `test-coverage-analyzer`,
-    `architecture-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
+  - six read-only support seats: `evidence-gatherer`, `test-coverage-analyzer`,
+    `architecture-analyzer`, `code-quality-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
-  `sonnet`/`medium`, support seats `sonnet`. The architecture capture is deliberate-only (the
-  `alfred-capture-architecture` skill writes `<docs-path>/architecture/ARCHITECTURE.md` and
-  `baseline-project-architecture.md`; the findings split out to `alfred-capture-architecture-quality`,
-  which writes `<docs-path>/quality/ASSESSMENT.md`; never in a build flow).
+  `sonnet`/`medium`, support seats `sonnet`. Captures are deliberate-only
+  (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
+  `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
+  (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`); never in a build flow).
   `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
-  `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
+  `integration-reviewer`). cursor-stack ships twins of all 44 - a protocol change here usually
   needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
@@ -435,9 +435,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
   deliberately (that skill or `alfred-loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `alfred-capture-code-style`). The findings (`<docs-path>/quality/ASSESSMENT.md`, owned by
-  `alfred-capture-architecture-quality`) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain at all. serena memory (`<feature>__<contract_version>__<seat>`,
+  (owned by `alfred-capture-code-style`). The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
+  two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
+  `quality/` carries no `watch.json` and is no docs domain. serena memory (`<feature>__<contract_version>__<seat>`,
   never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.
 - **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via serena
@@ -509,7 +509,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (113,204 on 2026-09-25: pathless rules 36,689, agent descriptions 28,612, skill descriptions 47,903). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (114,155 on 2026-09-25: pathless rules 36,725, agent descriptions 29,044, skill descriptions 48,386). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

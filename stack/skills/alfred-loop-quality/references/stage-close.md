@@ -2,7 +2,7 @@
 
 Read at every stage close (a file's inner loop reached its STOP and another stage remains), at a
 forced MID-STAGE pause (a pass done, FIX not started, the chat too heavy to continue well), and FIRST
-THING in a resumed session. The ask itself lives in SKILL.md; this file is the shape of what you write
+THING in a resumed session. The ask itself lives in `staged-mode.md`; this file is the shape of what you write
 before it and what the next session does with it.
 
 ## Before the ask - write the handoff, then ask
@@ -26,7 +26,8 @@ the next session nothing to start from.
 End the turn with a RESUME BLOCK the new session can start from alone, and nothing else - no 'one more
 step', no new work in this chat:
 
-- the exact invocation, naming `RUN-STATE.md` and the next stage number;
+- the exact invocation - `/alfred-loop-quality staged` - naming `RUN-STATE.md` and the next stage number,
+  so the new session resumes the staged run rather than starting the default loop;
 - one line on what that stage will do.
 
 ## The resumed session

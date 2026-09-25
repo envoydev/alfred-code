@@ -13,6 +13,10 @@
       "mcps": [],
       "plugins": []
     },
+    "alfred-capture-code-quality": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-capture-code-style": {
       "mcps": [],
       "plugins": []
@@ -476,6 +480,13 @@
         "typescript"
       ],
       "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "code-quality-analyzer": {
+      "skills": [],
+      "skillsSource": "none",
       "agents": [],
       "mcps": [],
       "plugins": []

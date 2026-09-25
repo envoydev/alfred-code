@@ -1001,6 +1001,10 @@
         {
           "file": "stack/agents/security-auditor.md",
           "marker": "Report lean.** Dense and factual - include every substantive item this section requires and nothing more"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "Report lean.** Dense and factual - every substantive item this section requires and nothing more"
         }
       ]
     },
@@ -1390,6 +1394,10 @@
         {
           "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
           "marker": "The main session is the only orchestrator for the whole vertical"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "marker": "The main session is the only orchestrator for the whole vertical"
         }
       ]
     },
@@ -1406,6 +1414,10 @@
         },
         {
           "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "fresh-session resume point"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
           "marker": "fresh-session resume point"
         }
       ]
@@ -1465,7 +1477,7 @@
         },
         {
           "file": "stack/skills/alfred-loop-quality/SKILL.md",
-          "marker": "ask ONE question before DISCOVERY"
+          "marker": "ask ONE question before ANALYZE"
         },
         {
           "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
@@ -1502,6 +1514,14 @@
         {
           "file": "stack/skills/alfred-issue-diagnoser/SKILL.md",
           "marker": "ask ONE question before the evidence pass"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "ask ONE question before GATHER"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "marker": "ask ONE question before DISCOVERY"
         }
       ]
     },
@@ -1569,6 +1589,10 @@
         {
           "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
           "marker": "an earlier session's leftover stamp is not consent"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "marker": "an earlier session's leftover stamp is not consent"
         }
       ]
     },
@@ -1581,6 +1605,10 @@
       "sites": [
         {
           "file": "stack/agents/architecture-analyzer.md",
+          "marker": "C# pass `depth: 2`"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
           "marker": "C# pass `depth: 2`"
         }
       ]
@@ -1814,6 +1842,10 @@
         {
           "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
           "marker": "never a prose 'your call' bullet"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "never a prose 'your call' bullet"
         }
       ]
     },
@@ -1826,6 +1858,10 @@
       "sites": [
         {
           "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "next: fresh-session | continue"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
           "marker": "next: fresh-session | continue"
         }
       ]
@@ -1852,6 +1888,10 @@
       "sites": [
         {
           "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "APPROVED small-tier"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
           "marker": "APPROVED small-tier"
         }
       ]
@@ -1932,7 +1972,7 @@
           "marker": "a `Leftovers:` line - what the instrumented runs started"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
           "marker": "Leftovers - what the pipeline's gate and audit runs started"
         },
         {
@@ -1946,6 +1986,10 @@
         {
           "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
           "marker": "names what this run started to build, test, or verify"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         }
       ]
     },
@@ -2016,6 +2060,10 @@
         {
           "file": "stack/agents/browser-extension-implementer.md",
           "marker": "a FILE path, never a directory"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "never a directory: list the directory first"
         }
       ]
     },
@@ -2170,6 +2218,10 @@
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
           "marker": "step zero is `git rev-parse HEAD` against the brief's pinned base sha"
         }
       ]
@@ -2361,6 +2413,10 @@
         {
           "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
           "marker": "memories purged: <names|none>"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "marker": "memories purged: <names|none>"
         }
       ]
     },
@@ -2381,6 +2437,10 @@
         },
         {
           "file": "stack/skills/alfred-task-build-from-scratch/references/domain-trio-protocol.md",
+          "marker": "The purge is counted, not claimed"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
           "marker": "The purge is counted, not claimed"
         }
       ]
@@ -2458,6 +2518,10 @@
         {
           "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
           "marker": "an output, never a target"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "an output, never a target"
         }
       ]
     },
@@ -2478,6 +2542,10 @@
         },
         {
           "file": "stack/skills/alfred-capture-test-coverage/references/weak-points.md",
+          "marker": "all four questions answered explicitly"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
           "marker": "all four questions answered explicitly"
         }
       ]
@@ -2924,6 +2992,14 @@
         {
           "file": "stack/agents/aspnet-solution-designer.md",
           "marker": "what it says it covers, never by a remembered name"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/domain-trio-protocol.md",
+          "marker": "match it from YOUR skill list by what each skill says it covers"
+        },
+        {
+          "file": "stack/agents/code-quality-analyzer.md",
+          "marker": "says it covers"
         }
       ]
     },
@@ -4584,6 +4660,10 @@
         {
           "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
           "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "a skill-level pin lasts only for the turn it activates in"
         }
       ]
     },
@@ -4615,8 +4695,12 @@
           "marker": "Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
           "marker": "written with the Write tool at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL`"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "Write the stamp at the ABSOLUTE path `$CLAUDE_PROJECT_DIR/<docs-path>/flow/APPROVAL` with the Write tool"
         }
       ]
     },
@@ -4842,6 +4926,14 @@
         },
         {
           "file": "stack/skills/alfred-capture-code-style/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         }
       ]

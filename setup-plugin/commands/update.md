@@ -50,6 +50,8 @@ docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `t
 old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
 A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
 with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
+`/alfred-loop-quality` now works a code-quality assessment by tier, with the `loops/`
+prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a project may rely on.
 
 | was | now |
 |---|---|

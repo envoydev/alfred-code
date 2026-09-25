@@ -1,6 +1,6 @@
 # Delegated mode - who does what (+ the INLINE domain conventions)
 
-The main session is the orchestrator for the whole pipeline; it hands off only the audit and the fix work, never the bookkeeping.
+Read by the staged run (`staged-mode.md`) only - the default loop's seat briefs live in `loop-mechanics.md`. The main session is the orchestrator for the whole pipeline; it hands off only the audit and the fix work, never the bookkeeping.
 
 ## Main session owns all bookkeeping
 

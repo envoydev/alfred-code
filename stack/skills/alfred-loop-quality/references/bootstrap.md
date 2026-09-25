@@ -1,8 +1,10 @@
 # Bootstrap - seeding `<docs-path>/loops/` from the starter set
 
-Read at DISCOVERY step 0, when LOOP_DIR (the resolved `<docs-path>/loops/` from INPUTS, or the folder
-the invocation named) does not exist or holds no `.md` files. A missing or empty folder is never a
-reason to pause: seed it silently as part of the run, then continue with DISCOVERY step 1.
+Read before the default loop's first ANALYZE, or at the staged run's DISCOVERY step 0, when LOOP_DIR
+(`<docs-path>/loops/`, or the folder the invocation named) does not exist or holds no `.md` files. A
+missing or empty folder is never a reason to pause: seed it silently as part of the run, then carry on.
+The same prompts serve both runs - the code-quality capture judges against them, and the staged run
+runs them one stage at a time.
 
 ## The starter set
 
@@ -30,12 +32,12 @@ plus five stage prompts, all audits:
    code-quality (it carries architecture-conformance), then naming, then logging (its messages are
    written against the settled names, and its edits - a log line added, a duplicate removed - move
    nothing a later stage keys on), then comments. Keep that order when you add a stage of your own.
-4. Record `bootstrap.md: yes` for the Final report's references-read receipt, then proceed to
-   DISCOVERY step 1 - the resolved run order is printed there.
+4. Record `bootstrap.md: yes` for the final report's receipt, then carry on - ANALYZE in the default
+   loop, DISCOVERY step 1 in the staged run (the resolved run order is printed there).
 
 ## A folder that already has files
 
 A folder that HAS `.md` files but no numbered stage file is neither missing nor yours to fill - the
-files are user-authored, so never seed the starter set around them: proceed to DISCOVERY, list them
-as skipped, and end with a report naming the fix (number the custom prompts to make them stages, or
+files are user-authored, so never seed the starter set around them: carry on (the capture judges
+without a loops rule source, the staged run lists them as skipped), and end with a report naming the fix (number the custom prompts to make them stages, or
 empty the folder to re-bootstrap from the starter set).

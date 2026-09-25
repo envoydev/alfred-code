@@ -273,6 +273,8 @@ test('every always-seeded capture skill seeds the seat it fans out', () => {
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const PAIRS = {
         'alfred-capture-architecture': 'architecture-analyzer',
+        'alfred-capture-architecture-quality': 'architecture-analyzer',
+        'alfred-capture-code-quality': 'code-quality-analyzer',
         'alfred-capture-code-style': 'code-style-analyzer',
         'alfred-capture-test-coverage': 'test-coverage-analyzer',
         'alfred-capture-related-projects': 'related-project-analyzer',

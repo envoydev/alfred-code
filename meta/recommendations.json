@@ -3,6 +3,7 @@
   "agents": [
    "alfred-issue-diagnoser-ci",
    "architecture-analyzer",
+   "code-quality-analyzer",
    "code-style-analyzer",
    "evidence-gatherer",
    "integration-reviewer",
@@ -57,6 +58,7 @@
    "alfred-capture-architecture",
    "alfred-capture-architecture-quality",
    "alfred-loop-architecture-quality",
+   "alfred-capture-code-quality",
    "alfred-capture-code-style",
    "alfred-habits-commit-checkpoint",
    "alfred-issue-diagnoser",

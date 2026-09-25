@@ -3,6 +3,10 @@
 The measured anecdotes behind this skill's rules, kept out of the run-time body so every session stops paying
 for them. Audit material: read it to learn WHY a rule is shaped the way it is, never to run the skill.
 
+Every section below measures the numbered-prompt run, which was this skill's whole body before 2.0.0 and is
+now its STAGED mode (`references/staged-mode.md`). The default analyze-triage-fix loop is new in 2.0.0 and
+has no measurements of its own yet.
+
 ## Intro - autonomy, pauses and the approval stamp
 - **every other decision ... you make yourself, apply, and log** - measured: one run asked the user a mid-stage FIX-mode question this line already forbade
 - **never a prose 'which do you want?' that ends the turn with the handoff unwritten** - measured: one mid-pass stop narrated two options and left RUN-STATE unwritten until the user asked what to paste into a new session

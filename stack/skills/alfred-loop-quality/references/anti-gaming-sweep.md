@@ -1,7 +1,9 @@
 # Anti-gaming sweep - the final-gate commands
 
-Run once, after the last file's STOP and the final GREEN BASELINE re-gate. `<BASE>` is the sha
-recorded at DISCOVERY step 3 (HEAD, or the `git stash create` sha on a dirty tree).
+Run once, at the end of the run, after the final build + tests: at the default loop's STOP when any
+fix shipped, or after the staged run's last file and its final GREEN BASELINE re-gate. `<BASE>` is the sweep
+baseline the run recorded at its start (round 1's ANALYZE, or the staged DISCOVERY step 3) - HEAD, or
+the `git stash create` sha on a dirty tree.
 
 1. `git diff -M --stat <BASE>` - the shape of the run. Rename detection is not optional: a structure
    stage makes the diff rename-heavy, and a pure rename (R100, no content change) is verified by name

@@ -21,9 +21,9 @@ const { spawnSync } = require('node:child_process');
 const SKILL_DIR = path.resolve(__dirname, '..');
 const TEMPLATE_REL = 'references/generated-rule-template.md';
 const RULE_REL = '.claude/rules/baseline-project-agent-capabilities.md';
-// The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture
-// loop can invoke them - they belong with the slash-only set in the rule, marked as the exception.
-const MODEL_INVOCABLE_BY_DESIGN = new Set(['alfred-capture-architecture', 'alfred-capture-architecture-quality']);
+// The orchestration skills that carry NO `disable-model-invocation` by design, so the architecture and
+// code-quality loops can invoke them - they belong with the slash-only set in the rule, marked as the exception.
+const MODEL_INVOCABLE_BY_DESIGN = new Set(['alfred-capture-architecture', 'alfred-capture-architecture-quality', 'alfred-capture-code-quality']);
 // One catalog server expands into one registration per kept browser; every installed-name reader
 // maps them back to the catalog name, and so does the routing row.
 const PLAYWRIGHT_SERVER = /^playwright-(chrome|msedge|firefox|webkit)$/;
