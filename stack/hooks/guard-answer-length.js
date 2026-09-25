@@ -312,7 +312,10 @@ if (payload.hook_event_name === 'SessionStart') {
 // (<docs-path>/hook-blocks/<session>.jsonl), so the row is the only cross-hook evidence there is -
 // the two run as separate processes in an order nothing guarantees. Read the tail of this session's
 // own file and accept a guard-stop-contract row from the last two minutes; anything older belongs
-// to an earlier turn. Best-effort in every direction: an unreadable ledger simply means no yield.
+// to an earlier turn. Only a BLOCK counts: a row carrying a `mode` (the red-run injection, the skip
+// at a tool-ended turn) blocked nothing, and yielding to it tells the model to obey a block it never
+// saw - measured in the A/B, where the rewrite dropped the verification line. Best-effort in every
+// direction: an unreadable ledger simply means no yield.
 function stopContractBlockedThisTurn() {
   try {
     const path = require('path');
@@ -322,7 +325,8 @@ function stopContractBlockedThisTurn() {
     for (const line of rows) {
       let o;
       try { o = JSON.parse(line); } catch { continue; }
-      if (!o || o.hook !== 'guard-stop-contract.js') continue;
+      if (!o || o.hook !== 'guard-stop-contract.js' || o.mode) continue;
+      if (o.event !== 'Stop' && o.event !== 'SubagentStop') continue;
       if (Date.now() - Date.parse(o.ts) <= 2 * 60 * 1000) return true;
     }
     return false;

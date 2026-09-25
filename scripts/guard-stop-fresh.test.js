@@ -362,6 +362,18 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   fs.writeFileSync(path.join(ledger, 'conf.jsonl'), stale);
   assert.match(stopAnswer().stderr, /Re-send the SAME answer/, "an earlier turn's block is not this turn's");
 
+  // Only a BLOCK yields. The contract also logs rows that block nothing - the red-run injection and
+  // the skip at a tool-ended turn - and the A/B's after arm lost its verification line when a fresh
+  // injection row read as a block: the model was told to obey a block it never received.
+  const now = new Date().toISOString();
+  for (const row of [
+    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'inject', kind: 'root-cause', reason: 'inject: a red npm test run' },
+    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call' },
+  ]) {
+    fs.writeFileSync(path.join(ledger, 'conf.jsonl'), JSON.stringify(row) + '\n');
+    assert.match(stopAnswer().stderr, /Re-send the SAME answer/, `a '${row.mode}' row blocked nothing, so the dash order stands`);
+  }
+
   // the LENGTH branch carries the same yield - 'Re-answer at budget' contradicts 'add nothing else'
   // exactly as the dash order did.
   const wall = transcript('conf-long', [
