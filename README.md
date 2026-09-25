@@ -1,5 +1,7 @@
 # Alfred Code
 
+<p align="center"><img src="docs/assets/alfred-code-icon.png" alt="Alfred Code" width="160"></p>
+
 The Claude Code half of a coding-agent setup - an installable stack of house skills,
 subagents, always-on and path-scoped rules, hooks, MCP servers, and plugins that gets applied to
 the projects you actually work in. This repo is the single source of truth: everything installs from
