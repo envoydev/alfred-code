@@ -363,6 +363,7 @@
   "agents": {
     "angular-test-resolver": {
       "skills": [
+        "project-done-gate",
         "project-root-cause"
       ],
       "skillsSource": "frontmatter",
@@ -580,6 +581,7 @@
     },
     "dotnet-build-error-resolver": {
       "skills": [
+        "project-done-gate",
         "project-root-cause"
       ],
       "skillsSource": "frontmatter",
@@ -589,6 +591,7 @@
     },
     "dotnet-test-failure-resolver": {
       "skills": [
+        "project-done-gate",
         "project-root-cause"
       ],
       "skillsSource": "frontmatter",
@@ -652,6 +655,7 @@
     },
     "ng-build-error-resolver": {
       "skills": [
+        "project-done-gate",
         "project-root-cause"
       ],
       "skillsSource": "frontmatter",
@@ -935,6 +939,7 @@
     },
     "baseline-interaction": {
       "skills": [
+        "project-clarify",
         "project-plan-writing",
         "project-root-cause",
         "project-test-first"

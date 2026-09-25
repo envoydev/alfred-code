@@ -21,19 +21,21 @@ test('each baseline keeps one pointer per method, in the pinned imperative form,
         assert.ok(!gates.includes(moved), `baseline-quality-gates still carries the done gate's method: '${moved}'`);
 
     const interaction = squash(read('stack/rules/baseline-interaction.md'));
-    for (const skill of ['project-plan-writing', 'project-test-first', 'project-root-cause'])
+    for (const skill of ['project-plan-writing', 'project-test-first', 'project-root-cause', 'project-clarify'])
         assert.match(interaction, new RegExp(`the FIRST action is the \`${skill}\` Skill call, before `), `${skill} pointer`);
     for (const moved of ['bite-sized', 'watch it fail', 'read the full error and quote'])
         assert.ok(!interaction.includes(moved), `baseline-interaction still carries method text: '${moved}'`);
 });
 
-test('every verifier and implementer preloads the done gate, every implementer test-first, the resolvers root-cause', () => {
+test('every verifier, implementer and resolver preloads the done gate, every implementer test-first, the resolvers root-cause', () => {
     const preloads = (seat) => graph.agents[seat].skills;
     const verifiers = agents.filter((a) => a.endsWith('-verifier'));
     const implementers = agents.filter((a) => a.endsWith('-implementer'));
     assert.strictEqual(verifiers.length, 10);
     assert.strictEqual(implementers.length, 10);
-    for (const seat of [...verifiers, ...implementers])
+    const resolvers = ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver'];
+    // a resolver's whole output is a 'green' claim, and the done gate is Stop-only - the preload is its trigger
+    for (const seat of [...verifiers, ...implementers, ...resolvers])
         assert.ok(preloads(seat).includes('project-done-gate'), `${seat} preloads project-done-gate`);
     for (const seat of implementers)
         assert.ok(preloads(seat).includes('project-test-first'), `${seat} preloads project-test-first`);
@@ -41,7 +43,7 @@ test('every verifier and implementer preloads the done gate, every implementer t
         'ci-failure-diagnoser', 'runtime-failure-diagnoser'])
         assert.ok(preloads(seat).includes('project-root-cause'), `${seat} preloads project-root-cause`);
     // Scoped to the core, the spelling a stale library copy cannot shadow (Spike S6).
-    for (const seat of [...verifiers, ...implementers])
+    for (const seat of [...verifiers, ...implementers, ...resolvers])
         assert.match(read(`stack/agents/${seat}.md`), /^\s*-\s*alfred-code:project-done-gate$/m, `${seat} scopes the preload to the core`);
 });
 

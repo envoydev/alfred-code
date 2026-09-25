@@ -3494,6 +3494,10 @@
         {
           "file": "stack/rules/baseline-interaction.md",
           "marker": "the FIRST action is the `project-root-cause` Skill call, before the next fix lands"
+        },
+        {
+          "file": "stack/rules/baseline-interaction.md",
+          "marker": "the FIRST action is the `project-clarify` Skill call, before the design or the first edit"
         }
       ]
     },

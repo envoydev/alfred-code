@@ -7,6 +7,7 @@ effort: high
 color: orange
 skills:
   - alfred-code:project-root-cause
+  - alfred-code:project-done-gate
 
 ---
 
