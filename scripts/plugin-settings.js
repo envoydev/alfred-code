@@ -29,10 +29,26 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-function arg(argv, name)
+// Strict, like hud-statusline.js: an argument this script does not know, a value flag with no value
+// or a flag given twice throws - never read as absent, which would apply to ~/.claude or to every
+// catalog row (C16).
+const VALUE_FLAGS = ['--catalog', '--config-dir', '--plugin', '--installed'];
+const SWITCHES = ['--apply', '--replace', '--check'];
+function parseArgs(argv)
 {
-    const i = argv.indexOf(name);
-    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
+    const args = {};
+    for (let i = 0; i < argv.length; i += 1)
+    {
+        const a = argv[i];
+        if (Object.hasOwn(args, a)) throw new Error(`${a} is given twice`);
+        if (SWITCHES.includes(a)) { args[a] = true; continue; }
+        if (!VALUE_FLAGS.includes(a)) throw new Error(`unknown argument '${a}'`);
+        const v = argv[i + 1];
+        if (v === undefined || v === '' || v.startsWith('--')) throw new Error(`${a} needs a value`);
+        args[a] = v;
+        i += 1;
+    }
+    return args;
 }
 
 function readJson(file)
@@ -234,13 +250,16 @@ function badConfigDir(argv)
 function main(argv)
 {
     if (badConfigDir(argv)) { console.error('plugin-settings: --config-dir needs a directory, as --config-dir <dir> - nothing written'); return 2; }
+    let args;
+    try { args = parseArgs(argv); }
+    catch (e) { console.error(`plugin-settings: ${e.message} - nothing written`); return 2; }
     const root = path.join(__dirname, '..');
-    const catalogPath = arg(argv, '--catalog') || path.join(root, 'meta', 'plugin-settings.json');
-    const configDir = arg(argv, '--config-dir') || path.join(os.homedir(), '.claude');
-    const only = arg(argv, '--plugin');
-    const installed = (arg(argv, '--installed') || '').split(',').map(s => s.trim()).filter(Boolean);
-    const doApply = argv.includes('--apply');
-    const replace = argv.includes('--replace');
+    const catalogPath = args['--catalog'] || path.join(root, 'meta', 'plugin-settings.json');
+    const configDir = args['--config-dir'] || path.join(os.homedir(), '.claude');
+    const only = args['--plugin'] || null;
+    const installed = (args['--installed'] || '').split(',').map(s => s.trim()).filter(Boolean);
+    const doApply = args['--apply'] === true;
+    const replace = args['--replace'] === true;
 
     const catalog = readJson(catalogPath);
     if (!catalog || !catalog.plugins) { console.error(`plugin-settings: unreadable catalog ${catalogPath}`); return 2; }

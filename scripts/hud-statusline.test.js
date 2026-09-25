@@ -485,13 +485,15 @@ test('claude-hud registered twice with one row switched off is still installed -
 });
 
 // I-4: a malformed flag never falls back to the env account. CLAUDE_CONFIG_DIR names an installed
-// stand-in account; each shape exits 2 and neither account is written.
+// stand-in account; each shape exits 2 and neither account is written. The run's cwd is an empty dir
+// that must stay empty: read as a value, a flag is a relative path (C14 - '--config-dir --space'
+// parses cleanly without the value guard, so it is the shape that proves the guard).
 for (const [name, args] of [
     ['an unknown argument', (iso) => ['--confg-dir', iso]],
     ['a stray positional', (iso) => ['--config-dir', iso, 'extra']],
     ['--config-dir with an empty value', () => ['--config-dir', '']],
     ['--config-dir with no value', () => ['--config-dir']],
-    ['--config-dir followed by another flag', () => ['--config-dir', '--space', 'work']],
+    ['--config-dir followed by another flag', () => ['--config-dir', '--space']],
     ['--space with an empty value', () => ['--space', '']],
     ['--space with no value', () => ['--space']],
     ['the --config-dir=<dir> form', (iso) => [`--config-dir=${iso}`]],
@@ -506,9 +508,11 @@ for (const [name, args] of [
         const iso = account();
         const home = path.join(TMP, `home-${seq++}`);
         fs.mkdirSync(path.join(home, '.claude-work'), { recursive: true });
-        const r = spawnSync(process.execPath, [SCRIPT, ...args(iso)], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: standin } });
+        const cwd = fs.mkdtempSync(path.join(TMP, 'cwd-'));
+        const r = spawnSync(process.execPath, [SCRIPT, ...args(iso)], { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: standin } });
         assert.strictEqual(r.status, 2, r.stdout + r.stderr);
         assert.match(r.stdout, /^hud: .*usage: node scripts\/hud-statusline\.js/m);
+        assert.deepStrictEqual(fs.readdirSync(cwd), [], 'nothing written where the run stood');
         for (const dir of [standin, iso, path.join(home, '.claude-work')])
         {
             assert.ok(!fs.existsSync(path.join(dir, 'settings.json')), `${dir}: no settings.json`);

@@ -215,3 +215,39 @@ for (const [name, args] of [
         for (const dir of [home, cwd, target]) assert.deepStrictEqual(fs.readdirSync(dir), [], `${dir} stays empty`);
     });
 }
+
+// C16 (R135 N-3): an argument the script does not know, a value flag with no value, or a flag given
+// twice is refused with ONE line and exit 2 - never read as absent, which applies to ~/.claude or to
+// every catalog row.
+for (const [name, args, msg] of [
+    ['a misspelt --configdir', (dir) => ['--configdir', dir, '--plugin', 'claude-hud', '--apply'], "unknown argument '--configdir'"],
+    ['a stray positional', (dir) => ['--config-dir', dir, 'claude-hud', '--apply'], "unknown argument 'claude-hud'"],
+    ['the --plugin=<name> form', (dir) => ['--config-dir', dir, '--plugin=claude-hud', '--apply'], "unknown argument '--plugin=claude-hud'"],
+    ['--plugin with no value', (dir) => ['--config-dir', dir, '--apply', '--plugin'], '--plugin needs a value'],
+    ['--installed followed by another flag', (dir) => ['--config-dir', dir, '--installed', '--apply'], '--installed needs a value'],
+    ['--config-dir given twice', (dir) => ['--config-dir', dir, '--config-dir', dir, '--apply'], '--config-dir is given twice'],
+])
+{
+    test(`CLI: ${name} exits 2 with one line and writes nothing`, () => {
+        const home = tmp();
+        const cwd = tmp();
+        const target = tmp();
+        const r = require('node:child_process').spawnSync(process.execPath, [SCRIPT, ...args(target)], { cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home } });
+        assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+        assert.strictEqual(r.stderr, `plugin-settings: ${msg} - nothing written\n`);
+        assert.strictEqual(r.stdout, '');
+        for (const dir of [home, cwd, target]) assert.deepStrictEqual(fs.readdirSync(dir), [], `${dir} stays empty`);
+    });
+}
+
+test('CLI: every flag the walks pass still parses', () => {
+    const dir = tmp();
+    const lines = [];
+    const log = console.log;
+    console.log = (s) => lines.push(String(s));
+    let code;
+    try { code = main(['--catalog', path.join(__dirname, '..', 'meta', 'plugin-settings.json'), '--config-dir', dir, '--installed', 'claude-hud', '--check', '--replace']); }
+    finally { console.log = log; }
+    assert.strictEqual(code, 0, lines.join('\n'));
+    assert.deepStrictEqual(fs.readdirSync(dir), [], 'no --apply, nothing written');
+});
