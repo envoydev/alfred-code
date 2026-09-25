@@ -225,3 +225,52 @@ test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked
   assert.equal(withCommit.status, 2, 'the add -N check fires before the commit gate is even reached');
   assert.match(withCommit.stderr, /git reset -q/);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 7. hidden characters on an added line (ECC comparison R9 - the Trojan Source class)
+// ---------------------------------------------------------------------------------------------
+// A bidi override, a tag-block character or a zero-width mark reads one way to the reviewer and
+// another to the compiler or the model. Written as escapes: lint check 32 sweeps scripts/ too.
+test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0 BOM does not', () => {
+  const clean = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-hidden-'));
+    const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+    git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n');
+    git('add', '-A'); git('commit', '-qm', 'seed');
+    return { dir, git };
+  };
+  const RLO = '\u202E';
+  const TAG_A = String.fromCodePoint(0xE0041);
+  const BOM = '\uFEFF';
+
+  for (const [name, text, hex] of [
+    ['bidi.js', `const access = 'user${RLO} // admin';\n`, '202E'],
+    ['tag.md', `Read me.${TAG_A}\n`, 'E0041'],
+    ['zw.cs', `var is\u200BAdmin = false;\n`, '200B'],
+    ['bom.cs', `using System;\nvar a = 1;${BOM}\n`, 'FEFF'],
+  ]) {
+    const { dir, git } = clean();
+    fs.writeFileSync(path.join(dir, name), text);
+    git('add', name);
+    const r = gateFull(dir, 'git commit -m one');
+    assert.equal(r.status, 2, `${name}: a hidden U+${hex} on an added line blocks`);
+    assert.match(r.stderr, new RegExp(`${name.replace('.', '\\.')}:\\d+ - a hidden character U\\+${hex}`), `${name}: the hit names file, line and code point`);
+    assert.match(r.stderr, /STAGED-SCAN-ALLOW/, `${name}: the same receipt route`);
+  }
+
+  const { dir, git } = clean();
+  fs.writeFileSync(path.join(dir, 'setup.ps1'), `${BOM}Write-Host 'hi'\n`);
+  fs.writeFileSync(path.join(dir, 'Program.cs'), `${BOM}using System;\nconst string Rlo = "\\u202E";\n`);
+  git('add', '-A');   // two files, so the trivial-diff exemption keeps the commit gate out of it
+  assert.equal(gateIn(dir, 'git commit -m bom'), 0, 'a byte-0 BOM (a .ps1, or an editor-written .cs) and an escape written as text pass');
+  git('commit', '-qm', 'bom');
+
+  fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${RLO}y';\n`);
+  assert.equal(gateIn(dir, 'git commit -m nothing-staged'), 0, 'an untracked file the commit does not take in is not scanned');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 2, 'a chained add takes it in, so it is scanned');
+  const allow = path.join(dir, '.claude', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, 'late.js:1\n');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');
+});

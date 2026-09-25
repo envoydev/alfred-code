@@ -560,8 +560,8 @@ if (publishMatch) {
 if (!commitMatch) process.exit(0);
 
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
-// Conflict markers, a debugger, a focused test and a credential-shaped literal on an ADDED line of
-// what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
+// Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character
+// (hidden-chars.js beside this hook, the lint's own class) on an ADDED line of what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
 // receipt - the review receipt is a different claim - and a hit the user means to keep is opened
 // only by its own STAGED-SCAN-ALLOW receipt. What the act commits: the index; plus the unstaged
 // tracked changes under `commit -a` or a chained `git add` (nothing is staged yet when this hook
@@ -573,9 +573,14 @@ const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0
 const PEM_PRIVATE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 const SCAN_LIMIT = 2 * 1024 * 1024;
 const TEST_FILE = /(^|\/)(__tests__|e2e|cypress)\/|\.(spec|test|cy|e2e)\.[cm]?[jt]sx?$/;
-function lineFinding(file, text) {
+// Any file may open with a byte-order mark (Visual Studio writes one on a new .cs); past byte 0 it is hidden text.
+let hiddenChars = null;
+try { hiddenChars = require(path.join(__dirname, 'hidden-chars.js')); } catch { /* a copy that runs before it lands scans without the class */ }
+function lineFinding(file, text, lineNo) {
   if (/^(<{7}|>{7}) /.test(text)) return 'a conflict marker';
   if (SECRET_SHAPE.test(text) || PEM_PRIVATE.test(text)) return 'a credential-shaped literal';
+  const hidden = hiddenChars ? hiddenChars.hiddenInLine(text, lineNo, file, () => true) : [];
+  if (hidden.length) return `a hidden character U+${hidden[0]} - write it as an escape`;
   if (/\.(md|mdx|txt|rst)$/i.test(file)) return '';
   if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && /(^|[^\w.'"`])debugger\s*;?\s*$/.test(text)) return 'a debugger statement';
   if (/\.cs$/.test(file) && /\bDebugger\.(Break|Launch)\s*\(/.test(text)) return 'Debugger.Break / Launch';
@@ -615,7 +620,7 @@ function stagedFindings() {
       const hunk = row.match(/^@@ -\S+ \+(\d+)/);
       if (hunk) { line = Number(hunk[1]); continue; }
       if (!row.startsWith('+')) continue;
-      const hit = lineFinding(file, row.slice(1));
+      const hit = lineFinding(file, row.slice(1), line);
       if (hit) out.push({ file, line, hit });
       line += 1;
     }
@@ -630,7 +635,7 @@ function stagedFindings() {
       const text = fs.readFileSync(path.join(root, f), 'utf8');
       budget -= Buffer.byteLength(text);
       if (budget < 0) return [];
-      text.split('\n').forEach((row, i) => { const hit = lineFinding(f, row); if (hit) out.push({ file: f, line: i + 1, hit }); });
+      text.split('\n').forEach((row, i) => { const hit = lineFinding(f, row, i + 1); if (hit) out.push({ file: f, line: i + 1, hit }); });
     }
   } catch { return []; } // no repo, git unavailable, or past the 2MB cap - never block on our own failure
   return out;

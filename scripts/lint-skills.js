@@ -563,25 +563,9 @@ function absentAgentsFor(closures, kind, name, agentNames)
 // actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
 // always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
 // matter, by description (checks 25 and 26), and reaches no install decision.
-// Characters a reader cannot see: zero-width and joiner marks, bidi overrides and isolates (the
-// Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0, and the Unicode
-// tag block (U+E0000-E007F), which carries invisible text a model reads and a reviewer does not.
-// Written as escapes here so this file passes its own sweep. A BOM at byte 0 of a .ps1 is kept:
-// Windows PowerShell 5.1 reads a BOM-less script as the ANSI code page.
-const HIDDEN_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
-function hiddenChars(text, file)
-{
-    const out = [];
-    String(text).split('\n').forEach((l, i) =>
-    {
-        for (const m of l.matchAll(HIDDEN_CHAR_RE))
-        {
-            if (i === 0 && m.index === 0 && m[0] === '\uFEFF' && /\.ps1$/i.test(file)) continue;
-            out.push({ line: i + 1, hex: m[0].codePointAt(0).toString(16).toUpperCase() });
-        }
-    });
-    return out;
-}
+// Characters a reader cannot see - the class lives in stack/hooks/hidden-chars.js, where the commit
+// gate scans a commit's added lines with it too. A BOM at byte 0 of a .ps1 is kept (the default).
+const { hiddenChars } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hidden-chars.js'));
 
 // 55. Our own workflows are checked the way a PR reviewer would not bother to: an event field
 // spliced into a `run` script is shell the PR author writes (a title of `"; curl ... | sh #` runs);
@@ -2768,7 +2752,7 @@ function lintHooksEntry(liveIn)
         out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js']);
+    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js']);
     const wired = new Set();
     for (const blocks of Object.values(stack))
         for (const block of blocks)
