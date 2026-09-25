@@ -1,7 +1,45 @@
 {
   "generatedBy": "stack-graph",
   "skills": {
+    "alfred-capture-agent-capabilities": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-architecture": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-architecture-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-code-style": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-first-look": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-related-projects": {
+      "mcps": [
+        "memory"
+      ],
+      "plugins": []
+    },
+    "alfred-capture-stack-usage": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-capture-test-coverage": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-habits-clarify": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-commit-checkpoint": {
       "mcps": [],
       "plugins": []
     },
@@ -22,6 +60,62 @@
       "plugins": []
     },
     "alfred-habits-test-first": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-issue-diagnoser": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-issue-signatures-ci": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-issue-signatures-runtime": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-loop-architecture-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-loop-quality": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-loop-test-coverage": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-build-from-scratch": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-design": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-implement": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-solve": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-solve-cross": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-verify-code": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-verify-plan": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-task-version-upgrade": {
       "mcps": [],
       "plugins": []
     },
@@ -253,100 +347,6 @@
       "mcps": [],
       "plugins": []
     },
-    "project-agent-capabilities": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-architecture-analyzer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-architecture-quality-analyzer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-architecture-quality-loop": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-build-from-scratch": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-ci-failure-signatures": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-code-style-analyzer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-commit-checkpoint": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-diagnose-failure": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-first-look": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-implementer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-quality-loop": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-related-context": {
-      "mcps": [
-        "memory"
-      ],
-      "plugins": []
-    },
-    "project-runtime-failure-signatures": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-solution-design": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-solve-cross-task": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-solve-task": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-stack-usage-analyzer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-test-coverage-analyzer": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-test-coverage-loop": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-verify-code": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-verify-plan": {
-      "mcps": [],
-      "plugins": []
-    },
-    "project-version-upgrade": {
-      "mcps": [],
-      "plugins": []
-    },
     "sqlite": {
       "mcps": [],
       "plugins": []
@@ -365,6 +365,26 @@
     }
   },
   "agents": {
+    "alfred-issue-diagnoser-ci": {
+      "skills": [
+        "alfred-habits-root-cause",
+        "alfred-issue-signatures-ci"
+      ],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-issue-diagnoser-runtime": {
+      "skills": [
+        "alfred-habits-root-cause",
+        "alfred-issue-signatures-runtime"
+      ],
+      "skillsSource": "frontmatter",
+      "agents": [],
+      "mcps": [],
+      "plugins": []
+    },
     "angular-test-resolver": {
       "skills": [
         "alfred-habits-done-gate",
@@ -399,10 +419,10 @@
     },
     "aspnet-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-web-backend",
-        "project-solution-design"
+        "dotnet-web-backend"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -438,8 +458,8 @@
     },
     "browser-extension-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "browser-extension",
-        "project-solution-design",
         "ts-js-testing"
       ],
       "skillsSource": "frontmatter",
@@ -454,16 +474,6 @@
         "javascript",
         "ts-js-testing",
         "typescript"
-      ],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
-    "ci-failure-diagnoser": {
-      "skills": [
-        "alfred-habits-root-cause",
-        "project-ci-failure-signatures"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -492,10 +502,10 @@
     },
     "console-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-hosted-services",
-        "dotnet-testing",
-        "project-solution-design"
+        "dotnet-testing"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -531,9 +541,9 @@
     },
     "data-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "database-conventions",
-        "dotnet-migrate",
-        "project-solution-design"
+        "dotnet-migrate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -565,8 +575,8 @@
     },
     "devops-solution-designer": {
       "skills": [
-        "devops",
-        "project-solution-design"
+        "alfred-task-design",
+        "devops"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -633,10 +643,10 @@
     },
     "ionic-angular-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "angular-conventions",
         "angular-testing",
-        "ionic",
-        "project-solution-design"
+        "ionic"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -674,16 +684,6 @@
       "mcps": [],
       "plugins": []
     },
-    "runtime-failure-diagnoser": {
-      "skills": [
-        "alfred-habits-root-cause",
-        "project-runtime-failure-signatures"
-      ],
-      "skillsSource": "frontmatter",
-      "agents": [],
-      "mcps": [],
-      "plugins": []
-    },
     "security-auditor": {
       "skills": [],
       "skillsSource": "body",
@@ -713,9 +713,9 @@
     },
     "web-angular-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "angular-conventions",
-        "angular-testing",
-        "project-solution-design"
+        "angular-testing"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -751,11 +751,11 @@
     },
     "windows-service-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service",
-        "project-solution-design"
+        "dotnet-windows-service"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -791,10 +791,10 @@
     },
     "winforms-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-winforms",
-        "project-solution-design"
+        "dotnet-winforms"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -829,10 +829,10 @@
     },
     "wpf-solution-designer": {
       "skills": [
+        "alfred-task-design",
         "csharp-design-patterns",
         "dotnet-testing",
-        "dotnet-wpf",
-        "project-solution-design"
+        "dotnet-wpf"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -881,7 +881,7 @@
     },
     "angular-repair-agents": {
       "skills": [
-        "project-solve-cross-task"
+        "alfred-task-solve-cross"
       ],
       "agents": [
         "angular-test-resolver",
@@ -934,7 +934,7 @@
     },
     "baseline-git": {
       "skills": [
-        "project-commit-checkpoint"
+        "alfred-habits-commit-checkpoint"
       ],
       "agents": [],
       "mcps": [],
@@ -984,7 +984,7 @@
     },
     "baseline-security": {
       "skills": [
-        "project-commit-checkpoint"
+        "alfred-habits-commit-checkpoint"
       ],
       "agents": [],
       "mcps": [],
@@ -1026,7 +1026,7 @@
     },
     "dotnet-repair-agents": {
       "skills": [
-        "project-solve-cross-task"
+        "alfred-task-solve-cross"
       ],
       "agents": [
         "dotnet-build-error-resolver",

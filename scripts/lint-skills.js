@@ -92,7 +92,7 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
-    // the commit-gate hook, referenced by name from baseline-git.md and project-verify-code - a hook, not a skill.
+    // the commit-gate hook, referenced by name from baseline-git.md and alfred-task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
     // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
     'instrument-tool-usage',
@@ -134,11 +134,11 @@ const NON_SKILL_TOKENS = new Set([
     'mat-flat-button',
     'mat-stroked-button',
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
-    // prose in project-solve-cross-task + the base template - a field name, not a skill.
+    // prose in alfred-task-solve-cross + the base template - a field name, not a skill.
     'disable-model-invocation',
     // the two GENERATED per-project awareness rules (written by the capture skills,
     // never in the installer manifest) - rule file names, not skills; referenced by
-    // project-solve-cross-task's in-session scoping step.
+    // alfred-task-solve-cross's in-session scoping step.
     'baseline-project-architecture',
     'baseline-project-related-context',
     // built-in Claude Code agent type named in the base template's navigation
@@ -548,7 +548,7 @@ function absentSkillsFor(closures, kind, name, skillDirs)
 }
 
 // 36. The same rule, for SEAT names. An agent name is cited exactly like a skill name and breaks the
-// same way: project-architecture-quality-loop (ALWAYS) routes a red to four per-stack resolvers, so
+// same way: alfred-loop-architecture-quality (ALWAYS) routes a red to four per-stack resolvers, so
 // every install is missing at least two of them, and the optional-cite machinery scanned skill names
 // only. A name inside the citer's own stack closure passes; anything else is described, not named.
 function absentAgentsFor(closures, kind, name, agentNames)
@@ -650,7 +650,7 @@ function lintSuggestionEdges(label, text)
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
 // availability guard, or the model calls Skill(<name>) in a project that never
 // installed it and gets 'Unknown skill: <name>' (measured 2026-09-04 in a
-// consuming project: project-architecture-analyzer told the session to load
+// consuming project: alfred-capture-architecture told the session to load
 // `dotnet-architecture-tests`, which meta/evidence.json installs only when
 // NetArchTest/ArchUnitNET is in the manifests). A cite that merely POINTS at a
 // skill ('boundary enforcement lives in `x`') is not a directive and is not
@@ -683,7 +683,7 @@ const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|
 // no verb at all, and the 2026-09-12 audits measured them walking straight past this scan: a
 // `Companions:` list in a description (dotnet-architecture-tests:3, postgres:3), a `Points at ...`
 // routing line (devops:3, ionic-security:3), a `routes to` / `routes through` sentence
-// (project-architecture-quality-loop:34, four resolver seats named in an ALWAYS skill), a
+// (alfred-loop-architecture-quality:34, four resolver seats named in an ALWAYS skill), a
 // `hands off to` / `dispatches` hand-over, and a `that mechanism is x` pointer. Each one tells the
 // reader which artifact owns the next step, which is a directive whatever the verb - and each one
 // names something most installs do not have. `routes to` is included beside the brief's
@@ -701,14 +701,14 @@ const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never 
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
 // line pairing a guard phrase with a common word ('every', 'rows', 'below'), which silenced
-// 13 of 263 files by accident - project-architecture-analyzer/SKILL.md among them, the very
+// 13 of 263 files by accident - alfred-capture-architecture/SKILL.md among them, the very
 // file whose unguarded cite produced the measured 'Unknown skill' error. Proven by mutation:
 // a fresh unguarded load directive added to a blanketed file was not flagged.
 const AVAILABILITY_BLANKET = /\*\*Availability\b/;
 
 // 38. The blanket covers the callout's OWN SECTION, never the whole file. The router hubs put the
 // callout at the top of the routing table it speaks for, and a whole-file blanket then silenced
-// every other cite in the file - project-build-from-scratch's line-22 setup-skill names sit ten
+// every other cite in the file - alfred-task-build-from-scratch's line-22 setup-skill names sit ten
 // lines above a callout that speaks only for the per-stack scaffolding table, and
 // dotnet-web-backend's runs from `## Deep specialists` at the bottom yet covered all 147 lines
 // above it. Coverage runs from the callout to the next heading of the SAME or a HIGHER level than
@@ -2038,10 +2038,10 @@ function main()
     //     `/alfred-code:validate` compares a project's copy against, so it has to be true here first.
     try
     {
-        const capPath = path.join(SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
+        const capPath = path.join(SKILLS_DIR, 'alfred-capture-agent-capabilities', 'SKILL.md');
         const capLines = fs.readFileSync(capPath, 'utf8').split('\n');
         const start = capLines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
-        if (start < 0) { flag('project-agent-capabilities/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
+        if (start < 0) { flag('alfred-capture-agent-capabilities/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
         else
         {
             const revLine = capLines[start + 1] || '';
@@ -2050,13 +2050,13 @@ function main()
             while (end < capLines.length && !capLines[end].startsWith('## ')) end += 1;
             const block = capLines.slice(start + 2, end).join('\n').trim();
             const actual = crypto.createHash('sha1').update(block).digest('hex').slice(0, 8);
-            if (!declared) flag('project-agent-capabilities/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
-            else if (declared !== actual) flag(`project-agent-capabilities/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
+            if (!declared) flag('alfred-capture-agent-capabilities/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
+            else if (declared !== actual) flag(`alfred-capture-agent-capabilities/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
         }
     }
     catch (err)
     {
-        flag(`project-agent-capabilities/SKILL.md is unreadable: ${err.message}`);
+        flag(`alfred-capture-agent-capabilities/SKILL.md is unreadable: ${err.message}`);
     }
 
     // 24. The shared-rules registry (meta/shared-rules.json) - the sanctioned multi-home

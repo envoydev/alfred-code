@@ -12,7 +12,7 @@ its already-produced raw coverage output plus the code and tests behind it - and
 structured digest. You write no files and you never run a test or coverage command: the
 instrumented run happened in the main session before you were dispatched, and your input names
 where its raw output landed. Your final message IS the deliverable - the
-project-test-coverage-analyzer skill that dispatched you (usually one of several, one per
+alfred-capture-test-coverage skill that dispatched you (usually one of several, one per
 surface) aggregates the digests, judges against the user's requirement, and writes the doc - so
 return raw structured data, not prose for a human.
 

@@ -269,7 +269,7 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
 function policyRevLine(root, snapshot)
 {
     const installedFile = path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md');
-    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md');
+    const snapshotFile = path.join(snapshot, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md');
     const readRev = f => { try { return (fs.readFileSync(f, 'utf8').match(/policy-rev: ([0-9a-f]+)/) || [])[1]; } catch { return undefined; } };
     if (!fs.existsSync(installedFile)) return 'policy-rev: none';
     const installed = readRev(installedFile);

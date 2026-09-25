@@ -34,6 +34,6 @@ edit, the house review, and the security review `baseline-security.md` defines f
 rule owns which review runs and how it is bounded) - and ends by writing the
 `<docs-path>/flow/COMMIT-GATE` receipt; `git push` and `gh pr merge` carry the
 same-shaped `<docs-path>/flow/PUSH-GATE` receipt. The protocol - what runs, the exemptions, the
-receipt's five lines and when it is cleared - is the `project-commit-checkpoint` skill: load it when
+receipt's five lines and when it is cleared - is the `alfred-habits-commit-checkpoint` skill: load it when
 a commit or a publish is the next act. `guard-ungated-commit` blocks both verbs without a fresh
 receipt, and its denial names the skill.

@@ -136,7 +136,7 @@ walk.md's Agents layer.
 
 ## 6. Skills
 
-walk.md's Skills layer, with the FRESH seed set (`always.skills`, `project-build-from-scratch` never
+walk.md's Skills layer, with the FRESH seed set (`always.skills`, `alfred-task-build-from-scratch` never
 seeded).
 
 ## 7. Hooks

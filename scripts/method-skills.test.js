@@ -40,7 +40,7 @@ test('every verifier, implementer and resolver preloads the done gate, every imp
     for (const seat of implementers)
         assert.ok(preloads(seat).includes('alfred-habits-test-first'), `${seat} preloads alfred-habits-test-first`);
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver',
-        'ci-failure-diagnoser', 'runtime-failure-diagnoser'])
+        'alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
         assert.ok(preloads(seat).includes('alfred-habits-root-cause'), `${seat} preloads alfred-habits-root-cause`);
     // Scoped to the core, the spelling a stale library copy cannot shadow (Spike S6).
     for (const seat of [...verifiers, ...implementers, ...resolvers])
@@ -48,26 +48,26 @@ test('every verifier, implementer and resolver preloads the done gate, every imp
 });
 
 test('the flows load their method skills by name, at the step that needs them', () => {
-    assert.match(squash(read('stack/skills/project-solution-design/SKILL.md')),
+    assert.match(squash(read('stack/skills/alfred-task-design/SKILL.md')),
         /4\. \*\*Decompose into an ordered, minimal plan\.\*\* Load `alfred-habits-plan-writing` first/, 'solution-design loads it at method step 4');
-    for (const skill of ['project-verify-plan', 'project-implementer'])
+    for (const skill of ['alfred-task-verify-plan', 'alfred-task-implement'])
         assert.ok(squash(read(`stack/skills/${skill}/SKILL.md`)).includes('Before reading the plan, load `alfred-habits-plan-writing`'), `${skill} loads the plan format before reading a plan`);
-    assert.ok(squash(read('stack/skills/project-implementer/SKILL.md')).includes('and `alfred-habits-test-first`, the loop every card\'s `test:` runs on'));
+    assert.ok(squash(read('stack/skills/alfred-task-implement/SKILL.md')).includes('and `alfred-habits-test-first`, the loop every card\'s `test:` runs on'));
 
-    assert.match(squash(read('stack/skills/project-solve-task/SKILL.md')), /1\. \*\*DESIGN\*\* - run `project-solution-design`, with `alfred-habits-clarify` loaded first/);
-    assert.match(squash(read('stack/skills/project-solve-cross-task/SKILL.md')), /## Clarify before you design \(feature family\) Before you scope a feature or dispatch any designer, load `alfred-habits-clarify`/);
-    assert.match(squash(read('stack/skills/project-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session, on Opus Load `alfred-habits-clarify` first/);
+    assert.match(squash(read('stack/skills/alfred-task-solve/SKILL.md')), /1\. \*\*DESIGN\*\* - run `alfred-task-design`, with `alfred-habits-clarify` loaded first/);
+    assert.match(squash(read('stack/skills/alfred-task-solve-cross/SKILL.md')), /## Clarify before you design \(feature family\) Before you scope a feature or dispatch any designer, load `alfred-habits-clarify`/);
+    assert.match(squash(read('stack/skills/alfred-task-build-from-scratch/SKILL.md')), /### 1\. DESIGN - in-session, on Opus Load `alfred-habits-clarify` first/);
 });
 
 test('the clarify discipline and the plan format each have one home', () => {
-    for (const file of ['stack/skills/project-solve-cross-task/SKILL.md', 'stack/skills/project-solve-task/SKILL.md', 'stack/skills/project-build-from-scratch/SKILL.md'])
+    for (const file of ['stack/skills/alfred-task-solve-cross/SKILL.md', 'stack/skills/alfred-task-solve/SKILL.md', 'stack/skills/alfred-task-build-from-scratch/SKILL.md'])
         for (const phrase of ['one question at a time', '2-3 concrete options', 'until one reading'])
             assert.ok(!squash(read(file)).toLowerCase().includes(phrase), `${file} restates the clarify loop: '${phrase}'`);
     const clarify = squash(read('stack/skills/alfred-habits-clarify/SKILL.md'));
     for (const phrase of ['Ask one question at a time.', '2-3 concrete options, the recommended one marked', 'Until one reading is left.'])
         assert.ok(clarify.includes(phrase), `alfred-habits-clarify carries '${phrase}'`);
 
-    assert.ok(!fs.existsSync(path.join(ROOT, 'stack/skills/project-solution-design/references/plan-format.md')), 'the plan format lives in alfred-habits-plan-writing now');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'stack/skills/alfred-task-design/references/plan-format.md')), 'the plan format lives in alfred-habits-plan-writing now');
     const stale = [];
     for (const dir of ['stack', 'setup-plugin'])
         (function walk(d) {
@@ -145,7 +145,7 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
         assert.ok(flat.includes(fact), `the habit states '${fact}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');
-    assert.match(read('setup-plugin/references/walk.md'), /the six `alfred-habits-\*` habits/, 'the walk counts six habits');
+    assert.match(read('setup-plugin/references/walk.md'), /the seven `alfred-habits-\*` habits/, 'the walk counts seven habits - the commit checkpoint joined them in the rename');
 });
 
 test('the skill-authoring rule attaches on skill files and its first action is the habit', () => {

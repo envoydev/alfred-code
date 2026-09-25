@@ -13,7 +13,7 @@ test('the core plugin is exactly the always closure - 28 skills, 8 agents', () =
     assert.ok(core, 'the core plugin must exist');
     assert.strictEqual(core.skills.length, 28);
     assert.strictEqual(core.agents.length, 8);
-    for (const s of ['project-agent-capabilities', 'project-solve-cross-task'])
+    for (const s of ['alfred-capture-agent-capabilities', 'alfred-task-solve-cross'])
         assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);
     for (const a of ['integration-reviewer', 'security-auditor'])
         assert.ok(core.agents.includes(a), `${a} is always-closure, so it belongs to the core`);
@@ -23,11 +23,11 @@ test('the core plugin is exactly the always closure - 28 skills, 8 agents', () =
 // R106: the method skills the superpowers pack used to carry each ride the CORE, so every install
 // has them and every citer - a baseline pointer, a seat's preload, a flow's Skill call, a hook's
 // message, a path-scoped rule - may name them. A library copy could be switched off per project.
-// Task 21 added the sixth, skill writing.
-test('the six habits land in the core, never the library', () => {
-    const six = ['alfred-habits-root-cause', 'alfred-habits-done-gate', 'alfred-habits-test-first', 'alfred-habits-plan-writing', 'alfred-habits-clarify',
-        'alfred-habits-skill-writing'];
-    for (const s of six)
+// Task 21 added the sixth, skill writing; Task 22 renamed the commit checkpoint into the group.
+test('the seven habits land in the core, never the library', () => {
+    const seven = ['alfred-habits-root-cause', 'alfred-habits-done-gate', 'alfred-habits-test-first', 'alfred-habits-plan-writing', 'alfred-habits-clarify',
+        'alfred-habits-skill-writing', 'alfred-habits-commit-checkpoint'];
+    for (const s of seven)
     {
         assert.ok(p.plugins[CORE].skills.includes(s), `${s} belongs to the core`);
         assert.ok(!p.library.skills.includes(s), `${s} is never a library copy`);
@@ -50,7 +50,7 @@ test('the core is the only plugin; every other item is library', () => {
 });
 
 test('the opt-in skills and the opt-in agent are library like every stack item', () => {
-    for (const s of ['plugin-authoring', 'postgres', 'project-related-context', 'dotnet-web-backend'])
+    for (const s of ['plugin-authoring', 'postgres', 'alfred-capture-related-projects', 'dotnet-web-backend'])
         assert.ok(p.library.skills.includes(s), `${s} is library`);
     assert.ok(p.library.agents.includes('related-project-analyzer'));
     assert.ok(!(LIBRARY in p.plugins), 'the library is a set of files, never a plugin entry');

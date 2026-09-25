@@ -112,7 +112,7 @@ Q-EVIDENCE  (always first, alone)
   a project with history and no bundles can only answer the first or third - say so instead of
   offering a choice that cannot run.
 - **Q-SECTIONS** (only when something is being generated) - `authored` - invoke
-  `/project-stack-usage-analyzer` so a model fills each report's judgment sections (slower, richer,
+  `/alfred-capture-stack-usage` so a model fills each report's judgment sections (slower, richer,
   needs a session inside that project) - or `skeleton` - `analyze-usage.js --report-md` only,
   judgment left unwritten because the audit re-derives it anyway (recommended for more than one
   project, and the only route that works from outside the project).
@@ -165,7 +165,7 @@ two ledgers per session from that same root (`tools-usage/<sid>.jsonl`, `hook-bl
 where the bundle does not already carry them. Nothing is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
 
-**Route 2 - generate, `authored` sections.** `/project-stack-usage-analyzer` must run in a fresh
+**Route 2 - generate, `authored` sections.** `/alfred-capture-stack-usage` must run in a fresh
 session INSIDE that project's root - it is the only route that fills the judgment sections. Invoke
 it with the scope answer, let it write one bundle per session plus its `SUMMARY.md` under the
 project's docs root, then copy the set as in route 1. For a project you are not in, name it as a
@@ -335,11 +335,11 @@ already has one is skipped on re-invocation.
   project's - re-run with `--inventory <that project's .claude>` before filing a non-use finding
   off it. Read the `how` column too: a skill preloaded by a dispatched seat's frontmatter was paid
   for in full with zero calls, which is a different finding from a skill nothing reached.
-- **`/project-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
+- **`/alfred-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
   phases it promises, the asks it must put through AskUserQuestion, the artifact it must write, the
   state file it resumes from, and whether it VERIFIED its result or asserted it. Report each as a
   row - skill, sessions seen, tokens, conformed / violated / conformed-into-a-bad-outcome, and the
-  one thing that would make it cheaper or more reliable. A `/project-*` run that produced its
+  one thing that would make it cheaper or more reliable. A `/alfred-*` run that produced its
   artifact but cost more than the work it saved is a MATERIAL token-waste finding against that
   skill, with the two numbers side by side.
 - **Report integrity.** Spot-check a model-written report's countable claims; a wrong number is
@@ -347,7 +347,7 @@ already has one is skipped on re-invocation.
 - **The audit file** `<AUDIT_DIR>/<session-id>.md`: header (id, date, stacks, task, headline
   numbers), one-line verdict, the TOKEN VERDICT and EFFECTIVENESS lines (delivered / cost / avoidable share; landed / corrections / unchecked claims / unheld stops), the scorecard rows quoted, the
   stack-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each
-  `/project-*` run with its conformance and cost), the findings ledger including positive findings,
+  `/alfred-*` run with its conformance and cost), the findings ledger including positive findings,
   report-integrity result, and `FIXED-SINCE` observations.
 
 Every finding, everywhere, uses one shape - the clustering depends on it:
@@ -377,7 +377,7 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
   the audit's OWN output. That last class is large and predictable - a defect in a bundle's
   `report-usage.md`, a `SUMMARY.md`, or the report-generation prompt is a local artifact, so close
   it `NOT-STACK` and route the durable half to the stack skill that owns that work
-  (`project-stack-usage-analyzer`), naming the rule that landed there.
+  (`alfred-capture-stack-usage`), naming the rule that landed there.
 - `OPEN` is a transient state, never a verdict. A finding is OPEN only between the audit that filed
   it and the routing answer that dispositions it - see Phase C's close-out.
 

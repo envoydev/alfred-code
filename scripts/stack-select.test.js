@@ -62,9 +62,9 @@ test('a rule pulls its skills', () => {
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['baseline-navigation'] });
     assert.ok(c.mcps.includes('serena'), 'baseline-navigation genuinely depends on serena');
-    // The routing-map mentions in project-agent-capabilities are subject matter, not needs -
+    // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['project-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
@@ -375,14 +375,14 @@ test('findJudgment: overlap only when both installed, dormant only when installe
 });
 
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
-    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'project-solve-cross-task': 'FAKE-SIGNAL-2' } };
+    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'alfred-task-solve-cross': 'FAKE-SIGNAL-2' } };
     const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
     const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
     assert.doesNotMatch(rowOf('dotnet-web-backend'), /FAKE-SIGNAL/, 'the lock reason wins the why column');
     assert.match(rowOf('dotnet-grpc'), /evidence +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'evidence row carries its signal');
-    assert.match(rowOf('project-solve-cross-task'), /evidence/, 'evidence beats the recommended seed label');
+    assert.match(rowOf('alfred-task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
     // configure's installed mode keeps yes/- states; the signal informs the why column
     const cfg = emitTable(graph, 'skills', { raw: {}, installed: { skills: ['csharp'] }, evidence });
     const cfgRow = name => cfg.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
@@ -566,12 +566,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }

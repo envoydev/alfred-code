@@ -10,7 +10,7 @@ fix-the-build goes to **`dotnet-build-error-resolver`** (MC#### errors = WPF XAM
 compile are its scope too), make-the-tests-pass goes to **`dotnet-test-failure-resolver`**
 once the build is green. A seat may register under a NAMESPACE (`<namespace>:<seat>`) rather than as a bare name. Where it does, only that spelling resolves - dispatch it exactly as the roster spells it. The subagent absorbs the repeated build/test output and returns
 only a diagnosis. A resolver that stops as BLOCKED_CONTRACT_CHANGE hit a fix needing a
-shared-contract change - outside its bounded scope by design; a running `project-solve-cross-task`
-flow handles it per its contract protocol - otherwise name `/project-solve-cross-task` as the
+shared-contract change - outside its bounded scope by design; a running `alfred-task-solve-cross`
+flow handles it per its contract protocol - otherwise name `/alfred-task-solve-cross` as the
 user's next step (the skill is manual-only; a model Skill call is blocked). Never edit the
 contract to go green. A seat with no Agent tool (an implementer or a resolver) does NOT delegate - this routing policy is the orchestrator's; run your own bounded fix loop and report the red per your cap. A diagnoser carries the Agent tool but its one sanctioned dispatch is the evidence-gatherer: it names the resolver in its report, never dispatches one.

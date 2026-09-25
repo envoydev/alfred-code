@@ -207,7 +207,7 @@ candidates, the signal as the reason - already deduped against the `missing:` li
 The tool already excludes shared items, deliberate non-stack extras, already-installed baseline,
 anything the scan matched, and the curated `general` set in recommendations.json (artifacts no stack owns: cross-stack skills a
 narrow seat happens to preload - e.g. dotnet-data-access - and the project-conditional opt-ins whose
-applicability no manifest can prove, e.g. the `project-related-context` / `related-project-analyzer`
+applicability no manifest can prove, e.g. the `alfred-capture-related-projects` / `related-project-analyzer`
 pair, which apply only where the project has sibling repos) - present its output as printed above.
 
 One addition of your own, in ONE call - never by opening the catalog, which is a maintainer file
@@ -249,7 +249,7 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 ---+------------------------+-----------+-----------------------------------
  1 | wpf-implementer        | REDUNDANT | owned by wpf, not detected
  2 | aspnet-verifier        | MISSING   | needed by aspnet
- 3 | ci-failure-diagnoser   | MISSING   | needed by baseline
+ 3 | alfred-issue-diagnoser-ci   | MISSING   | needed by baseline
 ```
 
 2. **One consent round through AskUserQuestion** - four options (the tool's cap), typed numbers via
@@ -515,13 +515,13 @@ profile), output to `$TMP/select.out` - then:
 
   ```bash
   grep -m1 -o 'policy-rev: [0-9a-f]*' .claude/rules/baseline-project-agent-capabilities.md
-  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/project-agent-capabilities/SKILL.md"
+  grep -m1 -o 'policy-rev: [0-9a-f]*' "$TMP/repo/stack/skills/alfred-capture-agent-capabilities/SKILL.md"
   ```
 
   Equal - say `capabilities policy: current`. Different, or the project's rule carries no rev at all
   (written before the stamp existed) - report it as a finding with both values and name the re-run as
   the fix. No rule on disk is not a finding here; it is the capture never having run.
-- Then name `/project-agent-capabilities` (when installed) in the post-check report as the
+- Then name `/alfred-capture-agent-capabilities` (when installed) in the post-check report as the
   USER's next step, so the generated awareness rule reflects the reconciled inventory - the
   skill is manual-only (`disable-model-invocation`), a Skill call from this run is denied by `guard-fresh-session-start.js`;
   never attempt it. `alfred-code.stamp` is rewritten ONLY by an installer invocation - the apply step's
@@ -530,11 +530,11 @@ profile), output to `$TMP/select.out` - then:
   fabricated install time that every later stamp compare then trusts (measured: one run did exactly this).
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and this run added or removed something it lists), a manual-only capture whose
 output this run made stale, the serena re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/project-agent-capabilities` - validate added 3 skills, so the generated rule's
+matters ('`/alfred-capture-agent-capabilities` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a
 write still gets its consent ask where it happens), and the closing ask over follow-ups was
 dropped as friction - the user's call, made knowing a prose next step was ignored 3 of 3 in one

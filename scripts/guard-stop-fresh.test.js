@@ -219,7 +219,7 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   // Measured across the collection: 13 sessions loaded the Result / Progress / Leftovers stop
   // contract, 5 used the fields even once, across 109 asks - one session missed all 12 of its stops.
   const cycle = (name, text) => transcript(name, [
-    { type: 'user', message: { role: 'user', content: '<command-name>/project-solve-task</command-name>' } },
+    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-task-solve</command-name>' } },
     assistantRow(name, text, { cache_read_input_tokens: 900 }),
   ]);
   assert.match(ctxOf(askIn(cycle('sf-bare', 'Task 2 landed, tests green.'), oneQ)), /Result:.*Progress:.*Leftovers:/s,
@@ -250,7 +250,7 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
   const slash = (tp, skill) => {
     const r = runIn('guard-fresh-session-start.js',
-      { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'project-solve-task'}</command-name>`, transcript_path: tp },
+      { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'alfred-task-solve'}</command-name>`, transcript_path: tp },
       { env: logEnv() });
     assert.equal(r.status, 0, 'the slash route never denies');
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
@@ -260,23 +260,23 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
     cmd('alfred-code:setup'), cmd('alfred-code:update'),
   ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
-    cmd('project-solve-task'), userRow('resume the build cycle, steps 1-3 are stamped'),
+    cmd('alfred-task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
   ])), '', "a re-typed run the model never answered is not a run this session already made");
 
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
-    cmd('project-architecture-analyzer'),
+    cmd('alfred-capture-architecture'),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
     assistantRow('r2', 'ok', COLD),
-    cmd('project-solve-task'),
+    cmd('alfred-task-solve'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
   // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
   // multi-phase runs, so both take the offer.
   for (const walk of ['alfred-code:init', 'alfred-code:setup'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
-      cmd('project-architecture-analyzer'),
+      cmd('alfred-capture-architecture'),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),
       assistantRow('i2', 'ok', COLD),

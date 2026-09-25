@@ -10,10 +10,10 @@
 2. Trim the ## Rules table to what the installer actually laid down - and drop any GENERATED
    row whose capture skill this install skipped (its /command will not resolve).
 3. Run the captures that write the rows marked GENERATED, in the post-install order:
-   /project-architecture-analyzer, /project-code-style-analyzer, /project-related-context ONLY
+   /alfred-capture-architecture, /alfred-capture-code-style, /alfred-capture-related-projects ONLY
    when this project has sibling repos (a standalone repo drops that row instead), then
-   /project-agent-capabilities LAST, so its generated inventory reflects the final install. All but
-   /project-architecture-analyzer are slash-only: the user types them - a model Skill call is refused.
+   /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
+   /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo's canonical agent instructions already live in an AGENTS.md (for other agent
 tooling), keep this file thin and import it with `@AGENTS.md` - written unbackticked on a live line,
 since backticks make a path literal - instead of filling the same content twice. But never
@@ -46,7 +46,7 @@ outline costs nothing even while it sits here.
 2. Stack - languages, frameworks and key libraries at their EXACT versions ('EF Core 10', not
    'EF Core'), test stack + coverage gate, the LSP plugin for the primary language(s). MCP routing
    is NOT hand-filled here - it lives in the generated
-   .claude/rules/baseline-project-agent-capabilities.md (user-run /project-agent-capabilities; if
+   .claude/rules/baseline-project-agent-capabilities.md (user-run /alfred-capture-agent-capabilities; if
    that skill was not installed, a lean hand-filled routing list here is the fallback).
 3. Commands - copy-pasteable build / test / run / migrate / publish, with any environment quirks - and
    beside the full-suite test command the SCOPED one (a single project, a test filter, a spec path)
@@ -83,10 +83,10 @@ running it.
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
 | `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), and claims about the outside world checked through `context7` |
 | `.claude/rules/baseline-security.md` | /security-review routing, PII/secret handling, the permissions.deny caveat |
-| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `project-commit-checkpoint` skill |
+| `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |
 | `.claude/rules/baseline-docs-root.md` | the generated-docs root - how `<docs-path>` resolves (`ALFRED_CODE_DOCS_PATH` env, stamped per install) and that every generated doc lives under it |
-| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /project-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
-| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /project-architecture-analyzer) | architecture docs pointer - where the docs live and how to read them by section; the orientation itself arrives through the docs hook |
-| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /project-related-context with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
-| `.claude/rules/project-code-style.md` (GENERATED - user-run /project-code-style-analyzer; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |
+| `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
+| `.claude/rules/baseline-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture docs pointer - where the docs live and how to read them by section; the orientation itself arrives through the docs hook |
+| `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/project-code-style.md` (GENERATED - user-run /alfred-capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

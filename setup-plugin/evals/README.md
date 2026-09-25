@@ -21,11 +21,11 @@ install to change.
 |---|---|---|
 | `status-no-install` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:setup` instead of rendering its fixed table shapes from the command body |
 | `router-hands-back-one-command` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
-| `size-first-trivial` | `/project-solve-task fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
-| `size-first-small` | `/project-solve-task the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
-| `size-first-floor` | `/project-solve-task add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
+| `size-first-trivial` | `/alfred-task-solve fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
+| `size-first-small` | `/alfred-task-solve the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
+| `size-first-floor` | `/alfred-task-solve add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
 
-The three `size-first-*` cases grade the `## Size first` section of `project-solve-task`. They are the
+The three `size-first-*` cases grade the `## Size first` section of `alfred-task-solve`. They are the
 only cases that write (`Edit` is granted, the floor case excepted), each into its own scaffolded
 workspace - `scaffold.sh` beside `case.yaml`, run only under `--scaffold`. The small row's verifier seat
 is a library item, copied per project and never in the core, so no case here grades it (the library
@@ -56,7 +56,7 @@ claude plugin eval alfred-code@envoydev --eval-dir setup-plugin/evals --case 'si
 ```
 
 The `size-first-*` cases need the CORE plugin as the target, because `setup-plugin/` alone does not
-carry `project-solve-task`. That target resolves the INSTALLED release; to grade a working tree, add
+carry `alfred-task-solve`. That target resolves the INSTALLED release; to grade a working tree, add
 it as the marketplace first (`claude plugin marketplace add <repo>`) in a throwaway config dir.
 
 Two things measured on 2.1.269 that the docs page does not spell out, so do not re-derive them: a

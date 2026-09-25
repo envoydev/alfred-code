@@ -18,7 +18,7 @@ function sel(lines)
 }
 
 test('a selection file enables the core and copies its library picks', () => {
-    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill project-solve-cross-task', '# a comment', '']));
+    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill alfred-task-solve-cross', '# a comment', '']));
     const { plugins, copy } = pluginsFor(picked);
     assert.deepStrictEqual(plugins, [CORE], 'the core carries the commands and the baseline; no stack plugin exists');
     assert.deepStrictEqual(copy.skills, ['dotnet-wpf'], 'a stack skill is a library copy');

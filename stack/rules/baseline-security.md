@@ -10,8 +10,8 @@ description: House baseline - security. Always-on (no paths), installer-managed 
 presenting it, over the FULL change set with the reset chained into the SAME call -
 `git add -N . && git diff HEAD; git reset -q` - because a diff-fed review silently skips brand-new
 files, the most security-relevant code in most changes. The method, the `/security-review` bound and
-the exemption logic live in `project-commit-checkpoint`'s security half. On these paths the review is
-part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (project-commit-checkpoint) is written `VERIFIED`
+the exemption logic live in `alfred-habits-commit-checkpoint`'s security half. On these paths the review is
+part of the pre-commit checkpoint: the `COMMIT-GATE` receipt (alfred-habits-commit-checkpoint) is written `VERIFIED`
 only after it ran - an auth-path diff committed on the code review alone shipped unreviewed to a
 shared branch.
 - Three honesty rules on that path. A skip on 'the diff is test-only' is a claim - verify it from
@@ -21,7 +21,7 @@ An inline review is a substantive checklist pass with per-category findings name
 issues' nod over a secrets-adjacent diff is not a review. The categories land in the COMMIT-GATE
 receipt as their own `security:` row (`security: auth ok, secrets ok, injection ok, data-access
 n/a`), never just in prose - a VERIFIED line claiming the review with an empty or category-less
-`security:` row is not a review either (`project-commit-checkpoint` owns the exact shape). And when the user overrides a security recommendation,
+`security:` row is not a review either (`alfred-habits-commit-checkpoint` owns the exact shape). And when the user overrides a security recommendation,
 proceed - their call - but the close and any receipt record the override with the risk named and
 their words quoted, so the decision is auditable.
 - Never log PII, tokens, passwords, or full payment data - and a change that WIDENS logging (a

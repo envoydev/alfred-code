@@ -144,7 +144,7 @@ It prints, in order:
   `develop` is invisible by design, never diff against it.
 - `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the delta bucketed by
   install class. This is what step 7 names as refreshed, and what gates the
-  `/project-agent-capabilities` suggestion; the installer's log tail counts every file it
+  `/alfred-capture-agent-capabilities` suggestion; the installer's log tail counts every file it
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
   followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
@@ -453,7 +453,7 @@ what was taken, what stays off or was left, each by name), and the restart line.
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
 The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
-`/project-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
+`/alfred-capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
 line shows `skills=` or `agents=` above 0 - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
@@ -474,7 +474,7 @@ frontmatter. Do not lean on the harness for it: measured both ways, one update r
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
 serena re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
@@ -485,7 +485,7 @@ ran without them with nothing reporting it) - -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/project-agent-capabilities` - the update refreshed 12 skill files, so the generated
+and the user ran that first) ('`/alfred-capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
 here it re-sends this walk's history on every one of its turns'. The guard cannot help with this

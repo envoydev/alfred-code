@@ -1,12 +1,12 @@
 {
-  "_comment": "Judgment catalog - data for validate's step-9 gates, so candidate DISCOVERY is mechanical and the model's judgment is confined to project-doc citations and consent. Item refs are '<category>:<name>' (skill:/agent:/mcp:/plugin:), lint-checked against the rosters. overlaps: same-capability pairs surfaced only when BOTH are installed - every item carries its unique gap (the one thing only it does; the keep decision hinges on it). versionConflicts: an installed item whose guidance targets a newer major than the project runs - scan-evidence.js compares the named package's found major (first integer of its version string) against 'below'; no version found = no claim. occasionBound: legitimately-installed items that fire on occasions, not daily - the dormant advisory's list, the cadence text is the citation; the project-* capture/method set is deliberately NOT listed (it is the workflow, not dormancy). Curation bar as evidence.json: only entries that hold on unrelated projects too.",
+  "_comment": "Judgment catalog - data for validate's step-9 gates, so candidate DISCOVERY is mechanical and the model's judgment is confined to project-doc citations and consent. Item refs are '<category>:<name>' (skill:/agent:/mcp:/plugin:), lint-checked against the rosters. overlaps: same-capability pairs surfaced only when BOTH are installed - every item carries its unique gap (the one thing only it does; the keep decision hinges on it). versionConflicts: an installed item whose guidance targets a newer major than the project runs - scan-evidence.js compares the named package's found major (first integer of its version string) against 'below'; no version found = no claim. occasionBound: legitimately-installed items that fire on occasions, not daily - the dormant advisory's list, the cadence text is the citation; the alfred-* task/capture/loop/habits set is deliberately NOT listed (it is the workflow, not dormancy). Curation bar as evidence.json: only entries that hold on unrelated projects too.",
   "overlaps": [],
   "versionConflicts": [],
   "occasionBound": {
     "skill:capacitor-release": "release-time - the store-submission pipeline",
     "skill:ilspy-decompile": "ad-hoc - decompile ground truth from a .dll",
-    "skill:project-version-upgrade": "upgrade-time - breaking version events",
-    "skill:project-build-from-scratch": "greenfield-time - starting a project from nothing",
+    "skill:alfred-task-version-upgrade": "upgrade-time - breaking version events",
+    "skill:alfred-task-build-from-scratch": "greenfield-time - starting a project from nothing",
     "skill:dotnet-project-setup": "setup-time - the solution build spine",
     "skill:dotnet-performance": "perf-work-time - deliberate optimization passes and benchmarks",
     "skill:dotnet-diagnostics": "diagnosis-time - benchmarks and crash/hang/leak dumps",

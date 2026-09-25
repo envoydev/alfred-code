@@ -9,7 +9,7 @@ test('agent skill edges come from the declared skills: frontmatter', () => {
     const a = graph.agents['aspnet-solution-designer'];
     assert.ok(a, 'aspnet-solution-designer must be in the graph');
     assert.strictEqual(a.skillsSource, 'frontmatter');
-    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing', 'project-solution-design'])
+    for (const s of ['csharp-design-patterns', 'dotnet-web-backend', 'dotnet-testing', 'alfred-task-design'])
     {
         assert.ok(a.skills.includes(s), `expected agent->skill edge to ${s}`);
     }
@@ -63,12 +63,12 @@ test('the committed stack-graph.json is in sync with a fresh build', () => {
         'run `node scripts/stack-graph.js --write` and commit the result');
 });
 
-test('project-agent-capabilities documents every MCP without pulling a single edge (doc-mention exception)', () => {
+test('alfred-capture-agent-capabilities documents every MCP without pulling a single edge (doc-mention exception)', () => {
     // Its body backticks all 8 servers as the routing map it stamps into the generated
     // rule - treating those as dependencies used to lock the whole MCP baseline into any
     // install that picked it. The graph builder strips the edges for doc-mention skills.
-    const s = graph.skills['project-agent-capabilities'];
-    assert.ok(s, 'project-agent-capabilities must be in the graph');
+    const s = graph.skills['alfred-capture-agent-capabilities'];
+    assert.ok(s, 'alfred-capture-agent-capabilities must be in the graph');
     assert.deepStrictEqual(s.mcps, [], 'no skill->mcp edges - the mentions are subject matter, not needs');
     assert.deepStrictEqual(s.plugins, [], 'no skill->plugin edges either');
 });
@@ -91,7 +91,7 @@ test('a namespaced plugin:skill token resolves to its plugin, a house or unknown
 // hard edge, so the closure of every install that keeps either seat carries it - and no rule, skill
 // or seat keeps an edge to superpowers, which is what lets it be an optional pick.
 test('both diagnosers preload the house root-cause skill, and nothing cites superpowers', () => {
-    for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
+    for (const seat of ['alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
     {
         const a = graph.agents[seat];
         assert.ok(a, `${seat} must be in the graph`);
@@ -131,7 +131,7 @@ test('the root-cause loop keeps the step numbers its seats cite', () => {
         // step 7 is the whole stop: a fix that left the failure red counts, not only one that moved it
         assert.match(agent(seat), /Its step 7 holds too: if 3 fixes each leave the failure red or surface a new one elsewhere/, `${seat} carries the widened step 7`);
     }
-    for (const seat of ['ci-failure-diagnoser', 'runtime-failure-diagnoser'])
+    for (const seat of ['alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
         assert.match(agent(seat), /`alfred-habits-root-cause`[^\n]*steps 1-5/, `${seat} cites steps 1-5`);
 });
 

@@ -328,7 +328,7 @@ A leftover architecture/BRANCH-DELTA.md from an older capture is listed as a not
 ## 5. Close
 
 One line, no summary prose: point unfinished captures at their skills (`architecture not
-captured - /project-architecture-analyzer`), a health failure or a `drift` / `behind` library row
+captured - /alfred-capture-architecture`), a health failure or a `drift` / `behind` library row
 at the sibling command that fixes it, and changes at the sibling commands. Nothing else - this
 command's output IS the tables.
 

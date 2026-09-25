@@ -245,17 +245,17 @@ test('the capabilities script and the reviewer protocol resolve to the NEWEST ca
             for (const v of versions)
             {
                 const skills = path.join(home, 'acct', 'plugins', 'cache', 'envoydev', 'alfred-code', v, 'stack', 'skills');
-                fs.mkdirSync(path.join(skills, 'project-agent-capabilities', 'scripts'), { recursive: true });
-                fs.writeFileSync(path.join(skills, 'project-agent-capabilities', 'scripts', 'capabilities-inventory.js'), '');
-                fs.mkdirSync(path.join(skills, 'project-solve-cross-task', 'references'), { recursive: true });
-                fs.writeFileSync(path.join(skills, 'project-solve-cross-task', 'references', 'contract-protocol.md'), '');
+                fs.mkdirSync(path.join(skills, 'alfred-capture-agent-capabilities', 'scripts'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'alfred-capture-agent-capabilities', 'scripts', 'capabilities-inventory.js'), '');
+                fs.mkdirSync(path.join(skills, 'alfred-task-solve-cross', 'references'), { recursive: true });
+                fs.writeFileSync(path.join(skills, 'alfred-task-solve-cross', 'references', 'contract-protocol.md'), '');
             }
             const newest = versions[versions.length - 1].replace(/\./g, '\\.');
             const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(home, 'acct') };
             // The capabilities block with its last line - the run - swapped for a print.
-            const caps = bodySnippet('stack/skills/project-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
+            const caps = bodySnippet('stack/skills/alfred-capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/);
             assert.match(execFileSync('bash', ['-c', `${caps}printf %s "$CAPS"`], { cwd: home, env, encoding: 'utf8' }),
-                new RegExp(`/${newest}/stack/skills/project-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
+                new RegExp(`/${newest}/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory\\.js$`), `capabilities: not the newest of ${versions}`);
             const rev = bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/);
             assert.match(execFileSync('bash', ['-c', rev], { cwd: home, env, encoding: 'utf8' }).trim(),
                 new RegExp(`/${newest}$`), `reviewer: not the newest of ${versions}`);
@@ -276,10 +276,10 @@ const LEGACY_DIR = 'claude-stack'; // legacy-name - the 1.x core's cache dir and
 // A bare cache entry: the two trees the validity test reads, and the RELEASE-SOURCE the snippets print.
 function plantBare(cfg, marketplace, plugin, version, { orphaned = false, file } = {}) {
     const dir = path.join(cfg, 'plugins', 'cache', marketplace, plugin, version);
-    for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/project-agent-capabilities/scripts', 'stack/skills/project-solve-cross-task/references'])
+    for (const sub of ['stack/skills', 'stack/agents', 'scripts', 'stack/skills/alfred-capture-agent-capabilities/scripts', 'stack/skills/alfred-task-solve-cross/references'])
         fs.mkdirSync(path.join(dir, sub), { recursive: true });
     fs.writeFileSync(path.join(dir, 'RELEASE-SOURCE'), `sha: x\nref: main\nversion: ${version}\n`);
-    for (const f of ['scripts/scan-evidence.js', 'stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js', 'stack/skills/project-solve-cross-task/references/contract-protocol.md'])
+    for (const f of ['scripts/scan-evidence.js', 'stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js', 'stack/skills/alfred-task-solve-cross/references/contract-protocol.md'])
         fs.writeFileSync(path.join(dir, f), file || '');
     if (orphaned) fs.writeFileSync(path.join(dir, '.orphaned_at'), '1790246851942');
     return dir;
@@ -436,9 +436,9 @@ test("the protocol's PowerShell snippet updates each 1.x row by its own id, read
 
 test('the four body snippets read the 1.x cache dir too, and never an orphaned one', () => {
     const snippets = {
-        capabilities: [bodySnippet('stack/skills/project-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/project-agent-capabilities/scripts/capabilities-inventory.js'],
-        firstLook: [bodySnippet('stack/skills/project-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
-        usage: [bodySnippet('stack/skills/project-stack-usage-analyzer/SKILL.md', /```bash\n(TMP=\$\(mktemp -d\)\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
+        capabilities: [bodySnippet('stack/skills/alfred-capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js'],
+        firstLook: [bodySnippet('stack/skills/alfred-capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
+        usage: [bodySnippet('stack/skills/alfred-capture-stack-usage/SKILL.md', /```bash\n(TMP=\$\(mktemp -d\)\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
         reviewer: [bodySnippet('stack/agents/integration-reviewer.md', /`(for d in [^`]*?cut -f2)`/), ''],
     };
     for (const [plant, want] of [

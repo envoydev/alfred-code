@@ -477,9 +477,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
     const at = (i) => `2026-07-15T07:${String(i).padStart(2, '0')}:00.000Z`;
     let body = '';
     // two Skill calls in one turn: the second reads as an in-protocol companion load
-    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'project-solve-task' } }] } });
-    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'project-solve-task', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'create-ticket' } }] } });
-    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'project-solve-task', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
+    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-task-solve' } }] } });
+    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'alfred-task-solve', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'create-ticket' } }] } });
+    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'alfred-task-solve', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
     // a big Bash result with its own description, and a failing one 30 minutes earlier in the day
     body += line({ type: 'assistant', timestamp: at(4), message: { id: 'm4', model: 'claude-opus-5', usage: usage(1, 0, 1200, 20), content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'cat meta/migrations.json', description: 'read the migrations catalog' } }] } });
     body += line({ type: 'user', timestamp: at(5), message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'x'.repeat(5180) }] } });
@@ -495,9 +495,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
 
     const { main, hookBlocks } = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
     // the companion's cost is charged to its parent, and the terminal row says so instead of 0
-    assert.strictEqual(main.companionOf['create-ticket'], 'project-solve-task', 'the second Skill call in one turn is a companion load');
+    assert.strictEqual(main.companionOf['create-ticket'], 'alfred-task-solve', 'the second Skill call in one turn is a companion load');
     const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
-    assert.match(text, /create-ticket\s+1\s+~\d+\s+folded -> project-solve-task/, 'the companion row names where its cost went, never a bare 0');
+    assert.match(text, /create-ticket\s+1\s+~\d+\s+folded -> alfred-task-solve/, 'the companion row names where its cost went, never a bare 0');
     // the unattributed denial is joined to the ledger row 300ms away
     assert.match(text, /joined by ledger timestamp \(within 300ms\): guard-stop-contract\.js×1/, 'the phantom guard becomes the one that actually fired');
     // the biggest results carry the call's own label

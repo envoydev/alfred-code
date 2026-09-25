@@ -128,10 +128,10 @@ carries. Its seat is installed (the plan checked), so a dispatch it names is mad
 `done` or `skip` line is one narration line each - a done capture is re-run later by the user, never
 here.
 
-`project-related-context` takes its sibling list as arguments: ONE AskUserQuestion first - type the
+`alfred-capture-related-projects` takes its sibling list as arguments: ONE AskUserQuestion first - type the
 siblings via Other in the capture's own form (`<name> - <local path or git URL>`, several separated
 by commas), or 'none - skip it' (recommended only when the repo names no sibling). 'none' skips the
-capture. `project-agent-capabilities` runs LAST, so its generated rule reflects everything the
+capture. `alfred-capture-agent-capabilities` runs LAST, so its generated rule reflects everything the
 captures above added; its own precheck decides whether the rule needs regenerating.
 
 ## 6. CLAUDE.md - the user's call

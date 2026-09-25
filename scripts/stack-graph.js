@@ -101,10 +101,10 @@ function hookCatalog(raw)
 }
 
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.
-// project-agent-capabilities documents the house routing map for every server so the
+// alfred-capture-agent-capabilities documents the house routing map for every server so the
 // generated rule can be stamped from it - selecting it must never lock the whole MCP
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
-const DOC_MENTION_SKILLS = new Set(['project-agent-capabilities']);
+const DOC_MENTION_SKILLS = new Set(['alfred-capture-agent-capabilities']);
 
 // Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
 // workspace also load `ionic`') and routing-away prose ('EF logic routes through

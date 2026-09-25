@@ -54,7 +54,7 @@ test('the core entry carries the commands, the router skill, the inline hook, an
 test('the core is the only generated entry, listing skill FOLDERS and agent FILES that exist', () => {
     assert.deepStrictEqual(entries.map(e => e.name), ['alfred-code'], 'every other skill and agent is library, listed by no entry');
     const core = byName['alfred-code'];
-    assert.ok(core.skills.includes('./stack/skills/project-solve-cross-task'));
+    assert.ok(core.skills.includes('./stack/skills/alfred-task-solve-cross'));
     assert.ok(core.agents.includes('./stack/agents/integration-reviewer.md'));
     assert.ok(!core.skills.includes('./stack/skills/angular-conventions'), 'a library skill is not in the core');
     for (const p of [...core.skills, ...core.agents])

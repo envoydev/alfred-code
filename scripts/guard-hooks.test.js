@@ -157,7 +157,7 @@ test('guard-stop-contract: a suggestion close that says nothing is pending on th
   // it), and the one line that resolves it is the disclaimer - without it the same card stays blocked.
   const card = 'Install complete - 9 skills, 4 agents, 11 hooks.\n\nSuggested next steps:\n'
     + '1. Reload the session - the next step everything else depends on; nothing installed this run is live until the MCPs connect.\n'
-    + '2. `/project-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
+    + '2. `/alfred-capture-agent-capabilities` - so the generated rule reflects the final inventory.\n\n'
     + 'Nothing is pending on this run - these are yours to run when you choose.';
   const sug = transcript('sug', [assistantRow('m6', card)]);
   assert.equal(run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: sug }), 0, 'the disclaimer line makes the close a finished one');
@@ -229,10 +229,10 @@ test('guard-fresh-session-start: gates orchestration runs only, and only past th
   const hot = (n) => transcript(`hot-${n}`, ctxRows(`m6-${n}`, 450000));
   const cold = transcript('cold', ctxRows('m7', 50000));
   const call = (skill, tp) => run('guard-fresh-session-start.js', { tool_name: 'Skill', tool_input: { skill }, transcript_path: tp });
-  assert.equal(call('project-quality-loop', hot('a')), 2, 'orchestration run on carried history');
-  assert.equal(call('alfred-code:project-quality-loop', hot('b')), 2, 'namespaced form');
-  assert.equal(call('project-diagnose-failure', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
-  assert.equal(call('project-quality-loop', cold), 0, 'under the threshold');
+  assert.equal(call('alfred-loop-quality', hot('a')), 2, 'orchestration run on carried history');
+  assert.equal(call('alfred-code:alfred-loop-quality', hot('b')), 2, 'namespaced form');
+  assert.equal(call('alfred-issue-diagnoser', hot('c')), 2, 'the gated diagnosis flow chained onto carried history');
+  assert.equal(call('alfred-loop-quality', cold), 0, 'under the threshold');
   assert.equal(call('csharp', hot('d')), 0, 'an ordinary skill is never gated');
 });
 
@@ -249,7 +249,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
   const tp = transcript('rearm', ctxRows('rearm', 450000));
   const grow = (ctx) => fs.writeFileSync(tp, ctxRows('rearm', ctx).map((r) => JSON.stringify(r)).join('\n') + '\n');
   const call = () => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, env).status;
+    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }, env).status;
   assert.equal(call(), 2, 'the offer is made once');
   assert.equal(call(), 0, 'the identical retry passes - the answer is honoured');
   grow(500000);
@@ -264,7 +264,7 @@ test('guard-fresh-session-start: the size offer is answerable - the retry passes
 test('guard-fresh-session-start: the trigger is the tier\'s own variable', () => {
   const at = (name, ctx) => transcript(name, ctxRows(name, ctx));
   const call = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp },
+    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp },
     { env: { ...process.env, ...(env || {}) } }).status;
 
   // The window comes from ONE place, model-windows.json, keyed by the session's model id (these
@@ -453,8 +453,8 @@ test('guard-ungated-commit: the receipt states', () => {
   const tp = transcript('no-skill', [assistantRow('m1', 'reviewed')]);
   const gateT = (cmd) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: tp },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
-  receipt(full({ first: 'VERIFIED project-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
-  receipt(full({ first: 'VERIFIED project-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
+  receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' })); assert.equal(gateT('git commit -am x'), 2, 'a verify skill named but never called');
+  receipt(full({ first: 'VERIFIED alfred-task-verify-code passed' }) + 'carried: cycle 3, reviewed 2026-09-05\n');
   assert.equal(gateT('git commit -am x'), 0, 'unless the receipt says the review is carried');
 
   receipt(full());
@@ -694,7 +694,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
   assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
   assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
-  assert.equal(disp('alfred-code:project-implementer'), 2, 'scoped to the core plugin');
+  assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
   // Gating this one would block a tool the user chose with a message about a flow it has no part
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
@@ -780,7 +780,7 @@ test('guard-stop-contract: prose offers, tool-call ends, continuations and unrea
 });
 
 test('guard-stop-contract: the quality loop\'s mode ask and stage-close ask in prose are sent to ONE AskUserQuestion; the same words through the tool pass', () => {
-  // project-quality-loop's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
+  // alfred-loop-quality's two structural pauses are sentences in its SKILL.md (improvement plan 2.5):
   // worded as a statement they end on no '?', so the question shape alone never caught them.
   const stop = (tp) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp });
   const prose = (id, text) => stop(transcript(id, [assistantRow('a', text)]));
@@ -817,12 +817,12 @@ test('guard-fresh-session-start: other tools, unreadable transcripts, the name f
   const call = (payload) => runIn('guard-fresh-session-start.js', payload,
     { env: { ...process.env, CLAUDE_CONFIG_DIR: accountDir('fs-thresh-200k', 'claude-haiku-4-5') } }).status;
   assert.equal(call({ tool_name: 'Read', tool_input: { file_path: 'x.ts' }, transcript_path: hot }), 0, 'not a Skill call');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
-  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'project-solve-task' }, transcript_path: hot }), 2, 'the name field spelling');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: path.join(TMP, 'absent-fs.jsonl') }), 0, 'no transcript - fail open');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { name: 'alfred-task-solve' }, transcript_path: hot }), 2, 'the name field spelling');
   const edge = transcript('fs-edge', ctxRows('m', 150000));
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-task-solve' }, transcript_path: edge }), 0, 'exactly 150k is not past it');
   const sum = transcript('fs-sum', [ctxRows('m', 0)[0], assistantRow('m', 'ok', { cache_read_input_tokens: 100000, cache_creation_input_tokens: 40000, input_tokens: 10001 })]);
-  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'project-solve-task' }, transcript_path: sum }), 2, 'the three usage fields add up');
+  assert.equal(call({ tool_name: 'Skill', tool_input: { skill: 'alfred-task-solve' }, transcript_path: sum }), 2, 'the three usage fields add up');
 });
 
 test('instrument-tool-usage: off by default, one JSONL row per call when switched on, never blocks', () => {
@@ -1254,7 +1254,7 @@ test('mount paths: a POSIX host still reads /c/... as a POSIX path', () => {
 // settings model id's own suffix and then the old inference, and an unresolved one gates nothing.
 const winEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'latch-')), ...(extra || {}) });
 const askLoop = (tp, env) => runIn('guard-fresh-session-start.js',
-    { tool_name: 'Skill', tool_input: { skill: 'project-quality-loop' }, transcript_path: tp }, { env }).status;
+    { tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }, { env }).status;
 const ctxAt = (name, ctx) => transcript(name, ctxRows(name, ctx));
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
@@ -1277,15 +1277,15 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
 
     // NEVER exit 2 on UserPromptSubmit: that erases the user's prompt and shows the reason to the
     // user only - the run would be lost and the model would never learn why.
-    const slash = ups('<command-name>/project-quality-loop</command-name>\nrun it', hot);
+    const slash = ups('<command-name>/alfred-loop-quality</command-name>\nrun it', hot);
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
-    assert.match(injected(ups('/project-agent-capabilities', hot)), /Do NOT start the run yet/, 'a hand-typed slash is the same intent');
+    assert.match(injected(ups('/alfred-capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a hand-typed slash is the same intent');
     assert.match(injected(ups('<command-name>/alfred-code:update</command-name>', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
-    assert.equal(injected(ups('<command-name>/project-quality-loop</command-name>', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
+    assert.equal(injected(ups('<command-name>/alfred-loop-quality</command-name>', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
     assert.equal(injected(ups('fix the failing test', hot)), '', 'an ordinary prompt is never touched');
     assert.equal(injected(ups('/help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(ups('/project-quality-loop', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(injected(ups('/alfred-loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
     // compaction event itself is the evidence.
@@ -1300,8 +1300,8 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     // the Skill route is unchanged, and the widened list reaches the review seats
     assert.equal(askLoop(hot, winEnv()), 2, 'the Skill route still BLOCKS');
     assert.equal(runIn('guard-fresh-session-start.js',
-        { tool_name: 'Skill', tool_input: { skill: 'project-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 2,
-        'project-verify-code is orchestration - measured starting at 364.6k ctx');
+        { tool_name: 'Skill', tool_input: { skill: 'alfred-task-verify-code' }, transcript_path: hot }, { env: winEnv() }).status, 2,
+        'alfred-task-verify-code is orchestration - measured starting at 364.6k ctx');
 });
 
 test('fresh-session window: the account settings model id names the tier before any usage proves it', () => {
@@ -1595,26 +1595,26 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    write('project-quality-loop', 'disable-model-invocation: true\n');
-    write('project-architecture-analyzer', '');   // deliberately model-invocable so the loop can call it
+    write('alfred-loop-quality', 'disable-model-invocation: true\n');
+    write('alfred-capture-architecture', '');   // deliberately model-invocable so the loop can call it
     write('csharp', '');
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
 
-    const blocked = skillCall('project-quality-loop');
+    const blocked = skillCall('alfred-loop-quality');
     assert.equal(blocked.status, 2, 'the model may not call a slash-only skill');
     assert.match(blocked.stderr, /disable-model-invocation/, 'the denial names why');
     assert.match(blocked.stderr, /hand the turn back/, 'and says what to do instead - not to retry');
     // No threshold involved: this payload carries no transcript at all, so a context-based block
     // could not have fired. The flag is the whole verdict.
-    assert.equal(skillCall('project-architecture-analyzer').status, 0, 'the unflagged capture stays callable');
+    assert.equal(skillCall('alfred-capture-architecture').status, 0, 'the unflagged capture stays callable');
     assert.equal(skillCall('csharp').status, 0, 'an ordinary skill is untouched');
     assert.equal(skillCall('not-installed-here').status, 0, 'a skill this project does not carry is not this guard\'s business');
 
     // The USER's own route is a different event and must stay open.
     const typed = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/project-quality-loop</command-name>', cwd: root, session_id: 'dmi' },
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/alfred-loop-quality</command-name>', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
 });
@@ -1633,14 +1633,14 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
     };
-    place('alfred-code', 'project-quality-loop', 'disable-model-invocation: true\n', ['stack', 'skills']);
+    place('alfred-code', 'alfred-loop-quality', 'disable-model-invocation: true\n', ['stack', 'skills']);
     place('claude-stack-wpf', 'dotnet-wpf', '', ['stack', 'skills']);
     const skillCall = (skill) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill }, cwd: root, session_id: 'dmip' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_CONFIG_DIR: cfg } });
 
-    assert.equal(skillCall('project-quality-loop').status, 2, 'a flagged skill served by a plugin is still denied');
-    assert.equal(skillCall('alfred-code:project-quality-loop').status, 2, 'and under its scoped spelling');
+    assert.equal(skillCall('alfred-loop-quality').status, 2, 'a flagged skill served by a plugin is still denied');
+    assert.equal(skillCall('alfred-code:alfred-loop-quality').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
 });
@@ -1664,7 +1664,7 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // an offer is injected context, so the helper returns that text ('' = no offer).
     const slash = (tp, env, skill) => {
       const r = runIn('guard-fresh-session-start.js',
-          { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'project-quality-loop'}</command-name>`, transcript_path: tp },
+          { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'alfred-loop-quality'}</command-name>`, transcript_path: tp },
           { env: env || winEnv() });
       assert.equal(r.status, 0, 'the slash route never denies');
       return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
@@ -1674,12 +1674,12 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
         { env: winEnv() }).status;
 
     // ONE run starting - its own marker is not a prior run.
-    assert.equal(slash(transcript('chain-first', [cmd('project-quality-loop')])), '', 'the run that is starting is not evidence against itself');
+    assert.equal(slash(transcript('chain-first', [cmd('alfred-loop-quality')])), '', 'the run that is starting is not evidence against itself');
 
     // A finished run, a human turn, then a second typed one: the whole measured shape.
     const second = transcript('chain-second', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(),
-      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
+      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(),
+      userRow('now run the quality loop'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
     ]);
     const env = winEnv();
     const offered = slash(second, env);
@@ -1692,16 +1692,16 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // human turn between them. Measured 2026-09-14: the build step of a single cycle was offered a
     // fresh session when Skill calls counted as runs.
     const cycle = transcript('chain-cycle', [
-      cmd('project-solve-task'), assistantRow('a0', 'reading the plan', FLOOR), skillRow('a1', 'project-solution-design'),
-      toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'project-implementer'),
+      cmd('alfred-task-solve'), assistantRow('a0', 'reading the plan', FLOOR), skillRow('a1', 'alfred-task-design'),
+      toolResult(), assistantRow('a2', 'approve the plan?', COLD), userRow('approved'), skillRow('a3', 'alfred-task-implement'),
     ]);
-    assert.equal(skillCall(cycle, 'project-implementer'), 0, 'a phase of a run in flight is not a second run');
-    assert.equal(skillCall(cycle, 'project-quality-loop'), 0, '... nor is any Skill-route call - only a typed run chains');
+    assert.equal(skillCall(cycle, 'alfred-task-implement'), 0, 'a phase of a run in flight is not a second run');
+    assert.equal(skillCall(cycle, 'alfred-loop-quality'), 0, '... nor is any Skill-route call - only a typed run chains');
 
     // Chaining the SAME command twice is still chaining.
     assert.match(slash(transcript('chain-twice', [
-      cmd('project-quality-loop'), assistantRow('a1', 'done', FLOOR), toolResult(),
-      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
+      cmd('alfred-loop-quality'), assistantRow('a1', 'done', FLOOR), toolResult(),
+      userRow('do it again'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
     ])), /ALREADY run one/, 'the same run a second time carries the same carried history');
 
     // The REAL slash shape: the harness writes the skill's body as an isMeta user record right after
@@ -1709,44 +1709,44 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     // are user-typed too. None is a human turn - measured 2026-09-14, a run started right after
     // /clear was offered a fresh session.
     assert.equal(slash(transcript('chain-harness-rows', [
-      assistantRow('a0', 'hello', FLOOR), assistantRow('a1', 'ok', COLD), cmd('project-solve-task'),
+      assistantRow('a0', 'hello', FLOOR), assistantRow('a1', 'ok', COLD), cmd('alfred-task-solve'),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: 'Base directory for this skill: x' }] } },
       userRow('<local-command-stdout>Set effort level</local-command-stdout>'),
       userRow('<task-notification>agent done</task-notification>'),
       { type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued' } },
-    ]), winEnv(), 'project-solve-task'), '', 'harness-written user records are not a human turn');
+    ]), winEnv(), 'alfred-task-solve'), '', 'harness-written user records are not a human turn');
 
     // The marker as TEXT is not a run: a tool result that printed a transcript or a test file, or the
     // model's own tool input writing one. Measured 2026-09-15: 28 of 73 markers in the corpus sat in
     // tool results, and a replayed session was offered a fresh session for a run nobody typed.
-    const markup = '<command-name>/project-architecture-analyzer</command-name>';
+    const markup = '<command-name>/alfred-capture-architecture</command-name>';
     assert.equal(slash(transcript('chain-in-tool-result', [
       assistantRow('a0', 'reading', FLOOR),
       { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: `const x = '${markup}';` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
     ])), '', 'a marker printed by a tool is not a prior run');
     assert.equal(slash(transcript('chain-in-tool-input', [
       { type: 'assistant', message: { id: 'a0', content: [{ type: 'tool_use', name: 'Write', input: { content: markup } }], usage: FLOOR } },
-      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+      toolResult(), userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
     ])), '', 'a marker the model wrote into a tool input is not a prior run');
     assert.equal(slash(transcript('chain-in-meta', [
       assistantRow('a0', 'hi', FLOOR),
       { type: 'user', isMeta: true, message: { role: 'user', content: [{ type: 'text', text: `skill body quoting ${markup}` }] } },
-      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('project-quality-loop'),
+      userRow('next'), assistantRow('a1', 'ok', COLD), cmd('alfred-loop-quality'),
     ])), '', 'a marker inside a harness-written row is not a prior run');
 
     // An ordinary skill after a deliberate run is not a run, and the off switch covers both triggers.
     const plain = transcript('chain-plain', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
+      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('dev-log-convert'),
     ]);
     assert.equal(slash(plain, winEnv(), 'dev-log-convert'), '', 'a non-orchestration skill is untouched');
     // A chain whose whole carry IS the install's own floor has nothing for a resume to recover.
     assert.equal(slash(transcript('chain-allfloor', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
-      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('project-quality-loop'),
+      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', { cache_read_input_tokens: 59000 }),
+      toolResult(), userRow('next'), assistantRow('a2', 'ok', COLD), cmd('alfred-loop-quality'),
     ])), '', 'a second run carrying only the cold floor is not worth a fresh session');
     assert.equal(slash(transcript('chain-off', [
-      cmd('project-architecture-analyzer'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('project-quality-loop'),
+      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), userRow('next'), cmd('alfred-loop-quality'),
     ]), winEnv({ ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '',
         'all three triggers off is the whole off switch - the chained one included');
 });
@@ -2215,7 +2215,7 @@ test('fresh-session engine: both hooks run silent when the engine file is missin
   const go = (hook, payload) => spawnSync(process.execPath, [path.join(dir, hook)], { input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
   const stop = go('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: 'Done.' });
   assert.equal(stop.status, 0, stop.stderr); assert.equal(stop.stderr, ''); assert.equal(stop.stdout, '');
-  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'project-verify-code' }, transcript_path: tp });
+  const skill = go('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', tool_name: 'Skill', tool_input: { skill: 'alfred-task-verify-code' }, transcript_path: tp });
   assert.equal(skill.status, 0, skill.stderr); assert.equal(skill.stderr, ''); assert.equal(skill.stdout, '');
 });
 

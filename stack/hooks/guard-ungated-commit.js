@@ -3,7 +3,7 @@
 // PreToolUse gate (matcher: Bash): the PUBLISH ceremony, mechanized - one hook because commit
 // and push are one gate family and share the receipt machinery, the heredoc blanking and the
 // quote masking below. A non-trivial
-// `git commit` runs only after the house review gate (project-verify-code, plus
+// `git commit` runs only after the house review gate (alfred-task-verify-code, plus
 // /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
 // commit events across 6 audited sessions, including one where baseline-git.md was
@@ -103,7 +103,7 @@ const scanned = command.replace(
 );
 // A QUOTED span is data for exactly the same reason a heredoc body is: a grep pattern, an echo
 // label or a search term that merely CONTAINS `git commit` invokes nothing. Blanking it matters
-// twice over. It blocked the stack's OWN mandated sweep (project-stack-usage-analyzer greps every
+// twice over. It blocked the stack's OWN mandated sweep (alfred-capture-stack-usage greps every
 // `git commit` event in a transcript) - and the session then completed that sweep by obfuscating
 // the token, which is the dangerous half: the evasion the false positive TAUGHT defeats this gate
 // on a genuine commit. Replayed on the pre-fix hook: `grep -o 'git commit' f` exit 2,
@@ -697,8 +697,8 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (the project-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
-    `the house review project-verify-code - plus /security-review when the diff touches\n` +
+    `The checkpoint (the alfred-habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
+    `the house review alfred-task-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${c.gate}\n` +
     `with these lines:\n` +

@@ -12,7 +12,7 @@
    ],
    "unwire_settings_hook": "inject-code-style.js",
    "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
-   "then": "re-run /project-code-style-analyzer so the replacement rule gets generated"
+   "then": "re-run /alfred-capture-code-style so the replacement rule gets generated"
   },
   {
    "id": "docs-path-env-rename",

@@ -7,7 +7,7 @@ description: "Use when writing, stamping or reading an implementation plan file:
 
 The plan file is the handoff: the build reads its task cards, the gates stamp its header, and a
 compacted or fresh session resumes from it. This is its one shape - the design writes it, the plan
-audit and the build read it, and the Example in `project-solution-design` is the same plan in chat
+audit and the build read it, and the Example in `alfred-task-design` is the same plan in chat
 shorthand.
 
 ## The file
@@ -60,8 +60,8 @@ The design writes the header, the fit, the cards at `status: TODO` and the ledge
 stamped later by the flow that owns it, never pre-filled:
 
 - `Gated: <verdict>` from the plan review, then ONE `Approved:` line under the header, in either of
-  two shapes: `Approved: <date> - mode <session|agents>` from `project-solve-task`'s approval ask, or
-  `Approved: <date> - "<the user's words, verbatim>"` when `project-implementer` runs on its own.
+  two shapes: `Approved: <date> - mode <session|agents>` from `alfred-task-solve`'s approval ask, or
+  `Approved: <date> - "<the user's words, verbatim>"` when `alfred-task-implement` runs on its own.
 - Each card's status: `IN_PROGRESS` before its code; `DONE (<the acceptance command's quoted
   result>)` after its gate; `IN_PROGRESS` plus `needs: <the run>` while a run it depends on has not
   happened; `FAILED` plus the ask.
@@ -73,5 +73,5 @@ stamped later by the flow that owns it, never pre-filled:
 
 - The execution mode, a banner, or advice on how to run it - that is the solve flow's mode ask.
 - A whole implementation pasted in - anchors and shapes, not code.
-- A library or vendor claim from memory - `project-solution-design`'s Plan format section says how
+- A library or vendor claim from memory - `alfred-task-design`'s Plan format section says how
   one is cited.

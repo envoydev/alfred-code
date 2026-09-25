@@ -384,7 +384,7 @@ except one the table showed as `dependency`, which is never proposed for removal
 install carries it beside the core, and the next run installs it again - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
 it for every project'), since account-wide and project-local are different consents and the wrong
 `--scope` fails with `not installed in project scope`. 'removals: none' when nothing was dropped;
-(3) the follow-through line - telling the USER to re-run `/project-agent-capabilities` (when
+(3) the follow-through line - telling the USER to re-run `/alfred-capture-agent-capabilities` (when
 installed, and ONLY when this run added or removed a skill, agent, MCP server or plugin - the
 inventory that rule lists; a run that changed only env or settings names none) so the generated awareness rule reflects the new inventory (the skill is manual-only,
 `disable-model-invocation` - a Skill call from this run is blocked; the line is addressed to the
@@ -422,11 +422,11 @@ projects' memories are not visible from this one. The run rewrites `alfred-code.
 revision it installed, so the next configure diffs from here.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
 run made stale, the serena re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
-matters ('`/project-agent-capabilities` - the selection changed, so the generated rule still
+matters ('`/alfred-capture-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the
 installer (a write still gets its consent ask where it happens - step 13's CLAUDE.md reconcile),
 and the closing ask over follow-ups was dropped as friction - the user's call, made knowing a

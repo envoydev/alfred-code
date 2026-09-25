@@ -124,7 +124,7 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
     { type: 'assistant', cwd: dir, message: { id: 'm0', content: [{ type: 'text', text: 'first turn' }], usage: floor } },
     { type: 'assistant', cwd: dir, message: { id: 'm1', content: [{ type: 'text', text: 'x'.repeat(300) }], usage: big } },
-    toolRow('Skill', { skill: 'project-solve-task' }, dir),
+    toolRow('Skill', { skill: 'alfred-task-solve' }, dir),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const { out } = run(dir, '--hook', 'guard-fresh-session-start.js::PreToolUse');
   const row = rowFor(out, 'guard-fresh-session-start.js::PreToolUse:Skill');

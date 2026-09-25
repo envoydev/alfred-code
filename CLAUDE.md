@@ -189,7 +189,7 @@ change (see the invariants below).
 - `stack/agents/` - 43 Claude-contract subagents, the core seats in the core plugin, the rest library copies:
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
-  - cross-cutting: `ci-failure-diagnoser`, `runtime-failure-diagnoser`, `security-auditor` (read-only
+  - cross-cutting: `alfred-issue-diagnoser-ci`, `alfred-issue-diagnoser-runtime`, `security-auditor` (read-only
     OWASP/CWE posture audit), `integration-reviewer` (mandatory read-only cross-domain final gate
     against the frozen contract);
   - 30 per-domain seats - `<stack>-solution-designer` -> `<stack>-implementer` -> `<stack>-verifier`
@@ -199,17 +199,17 @@ change (see the invariants below).
     `architecture-analyzer`, `code-style-analyzer`, `related-project-analyzer`.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`. The architecture capture is deliberate-only (the
-  `project-architecture-analyzer` skill writes `<docs-path>/architecture/ARCHITECTURE.md` and
-  `baseline-project-architecture.md`; the findings split out to `project-architecture-quality-analyzer`,
+  `alfred-capture-architecture` skill writes `<docs-path>/architecture/ARCHITECTURE.md` and
+  `baseline-project-architecture.md`; the findings split out to `alfred-capture-architecture-quality`,
   which writes `<docs-path>/quality/ASSESSMENT.md`; never in a build flow).
-  `project-solve-cross-task` is the single entry-point orchestrator (single-stack vertical per
+  `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
   needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `project-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
+  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
   the installer stamps its value over `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks serena).
@@ -286,7 +286,7 @@ change (see the invariants below).
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the seed's own (lint check 27).
   - `recommendations.json` - seeds + the never-flag `general` list (project-conditional opt-ins, e.g.
-    `project-related-context` / `related-project-analyzer`: addable, never seeded or re-added); its
+    `alfred-capture-related-projects` / `related-project-analyzer`: addable, never seeded or re-added); its
     `notes` give an opt-in row nothing selects its walk-table why.
   - `evidence.json` - need-signals `scripts/scan-evidence.js` matches against manifests; evidence rows
     arrive pre-selected, absence is advisory, evidence never creates a `required` lock.
@@ -305,7 +305,7 @@ change (see the invariants below).
   it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. `scripts/scan-evidence.js` - deterministic manifest-only
-  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `project-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
+  evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
 
@@ -425,16 +425,16 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/baseline-project-related-context.md` (the
-  `/project-related-context` skill), not memory. The session HISTORY (`<docs-path>/history/`,
+  `/alfred-capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
-  `project-architecture-analyzer`) are the DURABLE truth every seat reads to orient, refreshed
-  deliberately (that skill or `project-architecture-quality-loop`), never after each change. The code
+  `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
+  deliberately (that skill or `alfred-loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `project-code-style-analyzer`). The findings (`<docs-path>/quality/ASSESSMENT.md`, owned by
-  `project-architecture-quality-analyzer`) are the opposite of durable - recomputed fresh every run, so
+  (owned by `alfred-capture-code-style`). The findings (`<docs-path>/quality/ASSESSMENT.md`, owned by
+  `alfred-capture-architecture-quality`) are the opposite of durable - recomputed fresh every run, so
   `quality/` carries no `watch.json` and is no docs domain at all. serena memory (`<feature>__<contract_version>__<seat>`,
   never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.
@@ -507,7 +507,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (113,077 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,882). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (113,171 on 2026-09-25: pathless rules 36,689, agent descriptions 28,612, skill descriptions 47,870). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

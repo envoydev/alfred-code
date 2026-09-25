@@ -53,8 +53,8 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preload-foreign-'));
     try
     {
-        fs.writeFileSync(path.join(dir, 'ci-failure-diagnoser.md'),
-            '---\nname: ci-failure-diagnoser\nskills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n---\n\nbody\n');
+        fs.writeFileSync(path.join(dir, 'alfred-issue-diagnoser-ci.md'),
+            '---\nname: alfred-issue-diagnoser-ci\nskills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n---\n\nbody\n');
         const [row] = scopedFor({ agentsDir: dir });
         assert.strictEqual(row.problem, null, row.problem);
         assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-code:alfred-habits-root-cause\n',
@@ -66,7 +66,7 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
 // R72: the root-cause method is a CORE house skill, and both diagnosers are core seats - so each
 // preloads it scoped to the core, which Spike S6 showed is the spelling that cannot pick up a stale copy.
 test('both diagnosers preload the house root-cause skill, scoped to the core', () => {
-    for (const file of ['ci-failure-diagnoser.md', 'runtime-failure-diagnoser.md'])
+    for (const file of ['alfred-issue-diagnoser-ci.md', 'alfred-issue-diagnoser-runtime.md'])
     {
         const r = rows.find(x => x.file === file);
         assert.ok(r, `${file} declares preloads`);

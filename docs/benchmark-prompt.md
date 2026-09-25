@@ -17,7 +17,7 @@ visibly separate. Never fabricate a number.
 The stack lives in the `alfred-code` repo (referred to below as `<STACK>`). It provides, per consuming
 project: ~53 house **skills**, 32 **agents** (a `cross-stack-agents-flow` router over `main-stack-agents-flow`; per-domain
 `solution-designer -> implementer -> verifier` trios for asp.net/angular/wpf/mobile/data/devops; cross
-cutting `architecture-analyzer`, `task-analyzer`, `runtime-failure-diagnoser`, `ci-failure-diagnoser`,
+cutting `architecture-analyzer`, `task-analyzer`, `alfred-issue-diagnoser-runtime`, `alfred-issue-diagnoser-ci`,
 `cross-stack-contract-designer`, `integration-reviewer`, `security-auditor`, four build/test resolvers,
 and a read-only `evidence-gatherer` the diagnosers dispatch), 3 **hooks**, 8 path-scoped **rules**, 8
 **plugins** (incl. `caveman` terse-output), and 4 **MCPs** (`serena`,

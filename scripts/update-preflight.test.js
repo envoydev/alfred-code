@@ -187,12 +187,12 @@ test('policy-rev: none when the generated rule is not installed', () => {
 test('policy-rev: current when the stamped rev matches the shipped skill; stale otherwise', () => {
     const { snap, install, fixtureFile } = scaffold();
     fs.mkdirSync(path.join(install, '.claude', 'rules'), { recursive: true });
-    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities'), { recursive: true });
+    fs.mkdirSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities'), { recursive: true });
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'policy-rev: abc123\nsome text');
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: abc123\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: current$/m);
 
-    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'project-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
+    fs.writeFileSync(path.join(snap, 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md'), 'policy-rev: def456\nsome text');
     assert.match(run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]).out, /^policy-rev: stale installed=abc123 snapshot=def456$/m);
 
     fs.writeFileSync(path.join(install, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), 'no rev stamped here');
@@ -242,7 +242,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
               remove: ['.claude/hooks/inject-code-style.js'],
               unwire_settings_hook: 'inject-code-style.js::PostToolUse',
               why: 'style delivery moved to a generated rule',
-              then: 're-run /project-code-style-analyzer' },
+              then: 're-run /alfred-capture-code-style' },
             { id: 'env-one',
               detect: { settings_env_key: 'CLAUDE_DOCS_PATH' },
               rename_settings_env: { from: 'CLAUDE_DOCS_PATH', to: 'ALFRED_CODE_DOCS_PATH' },
@@ -264,7 +264,7 @@ test('a FIRED migration carries everything the caller acts on, so the catalog is
     const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.match(out, /^migration: fired-one\tfile_exists$/m, 'the id line is unchanged - existing branches still read');
     assert.match(out, /^ {2}why: style delivery moved to a generated rule$/m, 'the reason the report labels it with');
-    assert.match(out, /^ {2}then: re-run \/project-code-style-analyzer$/m, 'the follow-up the report prints');
+    assert.match(out, /^ {2}then: re-run \/alfred-capture-code-style$/m, 'the follow-up the report prints');
     assert.match(out, /^ {2}remove: \.claude\/hooks\/inject-code-style\.js$/m, 'what the prune list takes');
     assert.match(out, /^ {2}unwire: inject-code-style\.js::PostToolUse$/m, 'the exact settings.json entry to drop');
     assert.match(out, /^ {2}env-rename: CLAUDE_DOCS_PATH -> ALFRED_CODE_DOCS_PATH$/m, 'the env edit, on the entry that carries one');

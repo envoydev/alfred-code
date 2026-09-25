@@ -92,7 +92,7 @@ grep at 258k context to confirm this shape):
    [step 5/11 - agents] adjust the agent roster · next: skills
     # | agent                       | selected     | required by
    ---+-----------------------------+--------------+---------------------------
-    1 | ci-failure-diagnoser        | recommended  | -
+    1 | alfred-issue-diagnoser-ci        | recommended  | -
     2 | dotnet-build-error-resolver | stack:aspnet | rule dotnet-repair-agents
     3 | wpf-implementer             | -            | -
    ```
@@ -152,7 +152,7 @@ rule dotnet-repair-agents`). DELTA orphans here trace back to rule drops.
 
 ## Skills
 
-The full release catalog in one table - the generator `project-*` skills and every other house
+The full release catalog in one table - the generator `alfred-capture-*` / `alfred-loop-*` skills and every other house
 skill included, so THIS is the only place skills are ever chosen; later steps (CLAUDE.md included)
 never offer skill additions. Locked = every skill the kept rules and agents REQUIRE (rule
 attachments and `skills:` frontmatter preloads), each with the reason naming its dependent. A skill
@@ -164,10 +164,10 @@ the reason column ('MassTransit in src/Api/Api.csproj') - never hand-propose add
 what the table already shows.
 
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
-plus the manual `project-*` method skills (the inline execution twins, the capture/loop generators,
-the upgrade planner) and the six `alfred-habits-*` habits, all pre-selected `recommended` and droppable; their need is 'the stack is
+plus the manual `alfred-task-*` / `alfred-capture-*` / `alfred-loop-*` / `alfred-issue-*` skills (the inline execution twins, the capture/loop generators,
+the upgrade planner) and the seven `alfred-habits-*` habits, all pre-selected `recommended` and droppable; their need is 'the stack is
 installed', not anything a project manifest could prove, which is why they are seeded rather than
-evidence-scanned. The ONE deliberate exception is `project-build-from-scratch` - greenfield-only by
+evidence-scanned. The ONE deliberate exception is `alfred-task-build-from-scratch` - greenfield-only by
 its own description, dead weight on an existing project, so it is never seeded; offer it as an
 unselected row like any other, and only in a greenfield run is picking it natural. Beyond the seed
 set, selected = locked + whatever the user adds.

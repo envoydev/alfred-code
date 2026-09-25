@@ -211,7 +211,7 @@ const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m
 const ruleFieldName = (line) => { const m = /^\s*-?\s*name:\s*(.+?)\s*$/.exec(line); return m ? m[1].replace(/^['"]|['"]$/g, '').trim() : null; };
 const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boolean);
 
-// Names from the related-projects domain (shape: stack/skills/project-related-context/references/artifact-shapes.md):
+// Names from the related-projects domain (shape: stack/skills/alfred-capture-related-projects/references/artifact-shapes.md):
 // `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
 // the generated awareness rule `.claude/rules/baseline-project-related-context.md` (a 'name:' field per
 // sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,

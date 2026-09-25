@@ -779,7 +779,7 @@ const OLD = 'claude-stack'; // legacy-name
 
 test('read-back: a 1.x install - the old key, the core still named claude-stack - is the same install, and its stamp picks are kept', () => // legacy-name
 {
-    const stampPicked = { skills: [`project-solve-cross-task@${OLD}`], agents: [`security-auditor@${OLD}`] };
+    const stampPicked = { skills: [`alfred-task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
     // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
     const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
     const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
@@ -794,7 +794,7 @@ test('read-back: a 1.x install - the old key, the core still named claude-stack 
         assert.deepStrictEqual(r.answered, { hooks: true, agents: true }, listing[0].name);
         assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent code-style-analyzer'), 'the core seats, the 1.x deny honoured');
         assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
-        assert.ok(r.closeFrom.includes('skill project-solve-cross-task') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
+        assert.ok(r.closeFrom.includes('skill alfred-task-solve-cross') && r.closeFrom.includes('agent security-auditor'), 'the 1.x stamp picks are kept');
         assert.strictEqual(r.blind, false);
         assert.deepStrictEqual(r.lines.slice().sort(), now.lines.slice().sort(), 'the same read-back as the renamed install');
     }

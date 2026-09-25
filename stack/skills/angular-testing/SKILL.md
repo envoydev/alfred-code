@@ -6,7 +6,7 @@ description: "Load before writing, changing or reviewing Angular tests: TestBed 
 # Angular Testing
 
 Practices and tooling for Angular tests. This skill sets NO coverage percentage - the % bar is
-the user's, owned and recorded by the `project-test-coverage-analyzer` capture; what lives here
+the user's, owned and recorded by the `alfred-capture-test-coverage` capture; what lives here
 is how to write tests worth counting and which code coverage cannot meaningfully claim.
 
 Ionic/Capacitor apps share everything here; their extra layer - testing the native seams (the
@@ -78,7 +78,7 @@ it('boots from the real appConfig', () => {
 
 ## Coverage
 
-- The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture -
+- The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture -
   this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the catalog below is that list for Angular.

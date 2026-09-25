@@ -50,6 +50,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { loadManifest } = require('./install/manifest.js');
 
 // ---------- small helpers ----------
 
@@ -281,8 +282,13 @@ function readJsonl(file, onObj) {
 // rule's heading (current mechanism - see the skill's code-style-rule template) and the
 // retired inject-code-style hook's injected preamble (legacy sessions).
 
-const STYLE_RULE_MARKER = 'the project-code-style-analyzer skill owns this rule';
-const STYLE_INJECT_MARKER = 'maintained by the project-code-style-analyzer';
+// A rule or preamble written before the capture was renamed carries its old name, read from the
+// manifest's `renamed` map rather than spelled here.
+const STYLE_SKILL = 'alfred-capture-code-style';
+const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.skills)
+  .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
+const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
+const STYLE_INJECT_MARKERS = STYLE_SKILL_NAMES.map((n) => `maintained by the ${n}`);
 const docsPrefixes = ['/.claude/docs/'];
 // The same roots, spelled for the BASH route: no leading separator, because a command names the
 // path relative or absolute and the match anchors on a shell boundary instead. `--docs-root` used
@@ -767,7 +773,7 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
 
   // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
-  // plugin-scoped name (`alfred-code:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
+  // plugin-scoped name (`alfred-code:alfred-task-solve-cross`, `claude-stack-wpf:wpf-implementer`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
   // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session
@@ -1316,8 +1322,8 @@ async function analyzeTranscript(file, window) {
         }
       }
     }
-    if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
-    if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
+    if (STYLE_RULE_MARKERS.some((m) => raw.includes(m))) s.styleRuleAttaches++;
+    if (STYLE_INJECT_MARKERS.some((m) => raw.includes(m))) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
     // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
@@ -1966,7 +1972,7 @@ function summarizeCauses(pending) {
 
 async function analyzeSubagents(sessionFile, window) {
   // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
-  // project-stack-usage-analyzer skill archives) put subagents/ as a SIBLING of the
+  // alfred-capture-stack-usage skill archives) put subagents/ as a SIBLING of the
   // transcript - without the fallback a bundle re-analysis silently drops every seat.
   // Workflow-tool fan-outs nest under subagents/workflows/<wf-id>/agent-*.jsonl - a flat
   // scan silently dropped 703 transcripts (~35% of output) across two audited bundles,

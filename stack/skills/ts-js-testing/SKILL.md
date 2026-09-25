@@ -7,7 +7,7 @@ description: "Load before writing, changing or reviewing plain TypeScript/JavaSc
 
 Practices and tooling for plain TypeScript/JavaScript tests - libraries, Node CLIs and tooling,
 framework-free web code, and the browser-extension unit layer. This skill sets NO coverage
-percentage - the % bar is the user's, owned and recorded by the `project-test-coverage-analyzer`
+percentage - the % bar is the user's, owned and recorded by the `alfred-capture-test-coverage`
 capture; what lives here is how to write tests worth counting and which code coverage cannot
 meaningfully claim.
 
@@ -79,7 +79,7 @@ test('the real wiring boots and answers', async () => {
 
 ## Coverage
 
-- The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture -
+- The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture -
   this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the catalog below is that list for plain TS/JS.
