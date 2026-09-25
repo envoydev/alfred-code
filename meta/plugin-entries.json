@@ -5,7 +5,7 @@
     {
       "name": "alfred-code",
       "source": "./",
-      "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables.",
+      "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -40,7 +40,8 @@
         "./setup-plugin/commands/update.md",
         "./setup-plugin/commands/configure.md",
         "./setup-plugin/commands/validate.md",
-        "./setup-plugin/commands/status.md"
+        "./setup-plugin/commands/status.md",
+        "./setup-plugin/commands/uninstall.md"
       ],
       "skills": [
         "./setup-plugin/skills/alfred-code",
