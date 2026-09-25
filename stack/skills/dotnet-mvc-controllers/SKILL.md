@@ -1,13 +1,11 @@
 ---
 name: dotnet-mvc-controllers
-description: "Use before writing or editing ASP.NET Core API controllers and action filters. Controller-based Web API mechanics - the mainstream, brownfield alternative to minimal APIs - covering the ApiController attribute, attribute routing, ActionResult of T versus IActionResult versus typed HttpResults, suppressing the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter) for the house FluentValidation-in-a-filter convention, binding-source inference and explicit From-attributes, IAsyncActionFilter ordering, and thin controllers delegating to services. Floors at .NET 8 / C# 12; 9/10 deltas flagged optional. Do NOT use for minimal APIs (that is the minimal-API endpoint skill), MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
+description: "Use before writing or editing ASP.NET Core API controllers and action filters - the ApiController attribute, attribute routing, ActionResult of T versus IActionResult or typed HttpResults, the automatic 400 filter (ApiBehaviorOptions, SuppressModelStateInvalidFilter), binding sources and From-attributes, IAsyncActionFilter. Floors at .NET 8 / C# 12; 9/10 deltas flagged optional. Do NOT use for minimal APIs (that is the minimal-API endpoint skill), MVC views, Razor Pages, gRPC, SignalR, or non-HTTP code."
 ---
 
 # ASP.NET Core controllers - API controller mechanics
 
 This skill owns the shape of a controller-based Web API: how a controller is declared, how routes attach, what an action returns, how parameters bind, and how a cross-cutting concern hangs off an action. It is the mainstream, brownfield-friendly counterpart to the minimal-API surface - the same HTTP service, sliced into classes and methods instead of endpoint registrations. It stops at the controller boundary. The pipeline-wide concerns - validation library, OpenAPI document, resilience, observability, caching - belong to the ASP.NET Core cross-cutting hub; the failure-to-`ProblemDetails` contract and the FluentValidation filter to the HTTP error-handling skill; auth configuration to the .NET authentication skill. With none of those in your skill list the controller rules below still execute - keep the concern out of the action and report the surrounding wiring as unowned rather than restating it here. Floor is .NET 8 / C# 12; anything newer is marked optional. On .NET Framework 4.8 (MVC 5 / Web API 2) the two separate DI resolvers and the bind-DTOs-not-entities rule are in `references/net-framework-48.md`.
-
-When to reach for controllers over minimal APIs is a deliberate call - see the decision section at the end. The short version: greenfield prefers minimal APIs; controllers earn their place when an existing codebase, MVC views, or a convention-driven feature (OData, attribute-based API versioning) calls for them.
 
 ## The controller and the [ApiController] attribute
 
@@ -83,7 +81,7 @@ With it suppressed, the FluentValidation filter runs and produces the one canoni
 - `SuppressMapClientErrors` - stops `[ApiController]` from converting bare error status codes (a `NotFound()` with no body) into `ProblemDetails`. Leave it off; the mapping is what gives every 4xx/5xx an RFC-shaped body for free.
 - If you do keep model-state validation on a given action and need a *custom* 400 that matches the automatic one, call `ValidationProblem()` (which returns a `ValidationProblemDetails`), never `BadRequest(...)` with an ad-hoc object - that is how the two paths stay shape-consistent.
 
-Do not assemble the error body, the envelope, or the `ProblemDetails` shape here. That contract is owned by the HTTP error-handling skill; this skill only decides where the validation gate sits and how to stop the framework from competing with it.
+Do not assemble the error body here (see ProblemDetails below) - this section only decides where the validation gate sits and how to stop the framework from competing with it.
 
 ## Parameter binding sources
 
@@ -148,7 +146,7 @@ A thin action is testable through the service in isolation, keeps the controller
 
 ## ProblemDetails
 
-Errors leave a controller as RFC-shaped `ProblemDetails`. `[ApiController]` already maps bare error status codes to it, and the `ControllerBase.Problem(...)` / `ValidationProblem(...)` helpers produce it explicitly. The global exception handler, the envelope shape, the status-code mapping, and the FluentValidation filter that turns validation failures into `ValidationProblemDetails` are all owned by the skill covering HTTP error handling - reuse that contract, do not restate or re-assemble it here; where nothing covers it, define the map once in `Program.cs` and reuse it, still never per action. This skill only points the error path at it.
+Errors leave a controller as RFC-shaped `ProblemDetails`. `[ApiController]` already maps bare error status codes to it, and the `ControllerBase.Problem(...)` / `ValidationProblem(...)` helpers produce it explicitly. The global handler, the envelope, the status map and the validation filter are the HTTP error-handling contract named at the top - reuse it; where nothing covers it, define the map once in `Program.cs`, never per action.
 
 ## Controllers or minimal APIs - the decision
 

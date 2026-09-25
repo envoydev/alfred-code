@@ -1,6 +1,6 @@
 ---
 name: dotnet-authentication
-description: "Load before standing up a sign-in flow, wiring JWT or OIDC, writing an authorization policy, or protecting an endpoint. ASP.NET Core auth conventions covering both halves - authentication (who the caller is) and authorization (what they may do). Pick the scheme by surface: JWT bearer for stateless APIs, cookies for server-rendered apps, OpenID Connect for delegated SSO. Validate every token field, lean on ASP.NET Identity as the user store, and gate access with named policies and authorization handlers rather than scattered role strings. Floors at .NET 8 / C# 12. Do NOT load for the OWASP hardening sweep, secret placement, or crypto primitives - the .NET application-security and cryptography skills own those."
+description: "Load before standing up a sign-in flow, wiring JWT bearer, cookies or OpenID Connect, adding ASP.NET Identity, writing an authorization policy or handler, or protecting an endpoint - ASP.NET Core authentication (who the caller is) and authorization (what they may do). Floors at .NET 8 / C# 12. Do NOT load for the OWASP hardening sweep, secret placement, or crypto primitives - the .NET application-security and cryptography skills own those."
 ---
 
 # ASP.NET Core authentication and authorization
@@ -54,7 +54,7 @@ var claims = new[]
     new Claim(ClaimTypes.Email, user.Email),
     new Claim(ClaimTypes.Role, user.Role),
 };
-var now = timeProvider.GetUtcNow();   // injected TimeProvider, never DateTime.Now - see csharp
+var now = timeProvider.GetUtcNow();   // injected TimeProvider, never DateTime.Now
 var handler = new JsonWebTokenHandler();   // Microsoft.IdentityModel.JsonWebTokens - the handler .NET 8+ JwtBearer validates with
 string jwt = handler.CreateToken(new SecurityTokenDescriptor
 {
@@ -80,12 +80,12 @@ For an app the browser navigates, `AddAuthentication().AddCookie()` is the simpl
 Express access rules as named policies and apply the name. A policy is testable in isolation, composable, and changes in one place; `[Authorize(Roles = "Admin")]` sprinkled across handlers is a string match you cannot refactor.
 
 ```csharp
-builder.Services.AddAuthorizationBuilder()   // fluent, .NET 8+
+builder.Services.AddAuthorizationBuilder()   // fluent, .NET 7+ - on the floor
     .AddPolicy("CanPublish", p => p.RequireRole("Editor", "Admin"))
     .AddPolicy("AdultsOnly", p => p.AddRequirements(new MinimumAgeRequirement(18)));
 ```
 
-On targets before .NET 8, use `AddAuthorization(options => options.AddPolicy(...))` - same policies, older registration call.
+On targets before .NET 7, use `AddAuthorization(options => options.AddPolicy(...))` - same policies, older registration call.
 
 When a rule needs more than a claim check - comparing a date, reading the resource being acted on, calling a service - write a requirement and a handler:
 
@@ -98,7 +98,7 @@ public sealed class MinimumAgeHandler(TimeProvider clock) : AuthorizationHandler
         AuthorizationHandlerContext context, MinimumAgeRequirement requirement)
     {
         var dob = context.User.FindFirst(c => c.Type == ClaimTypes.DateOfBirth);
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);   // injected TimeProvider, never DateTime.UtcNow - see csharp
+        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);   // injected TimeProvider, never DateTime.UtcNow
         if (dob is not null && DateOnly.Parse(dob.Value) <= today.AddYears(-requirement.Age))
         {
             context.Succeed(requirement);

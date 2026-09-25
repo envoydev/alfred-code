@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET. Conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way; the full roster, the dead-algorithm list and the post-quantum ML-KEM / ML-DSA opt-in are in the body. Floors at .NET 8 / C# 12. Secret STORAGE belongs to your secrets/config layer, never source. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, or for the OWASP category checklist - those are the authentication and security-hardening skills."
+description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET - System.Security.Cryptography, AES-GCM, RSA / ECDSA, PBKDF2 / Argon2id password hashing, constant-time compare, post-quantum ML-KEM / ML-DSA. Floors at .NET 8 / C# 12. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, for where secrets are stored, or for the OWASP category checklist - those are the authentication and security-hardening skills."
 ---
 
 # .NET cryptography

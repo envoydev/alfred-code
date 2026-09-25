@@ -1,6 +1,6 @@
 ---
 name: dotnet-migrate
-description: "Use when running an EF Core migration, raising a target framework or SDK, or updating NuGet packages - migrate, upgrade, update packages. Safe playbook: preview the SQL, confirm the first apply, keep a rollback, one change per step. A breaking framework major goes to the version-upgrade flow."
+description: "Use when running an EF Core migration, raising a target framework or SDK, or updating NuGet packages - migrate, upgrade, update packages. Safe playbook: preview the SQL, confirm the first apply, keep a rollback, one change per step. A breaking framework major goes to the version-upgrade flow. Not for adding a new package or laying out a solution - that is the .NET solution and package setup skill."
 ---
 
 # Safe migration workflow (.NET)
@@ -25,6 +25,8 @@ Assess blast radius with serena (`find_symbol`, `find_referencing_symbols`) or t
 7. **Know the undo.** Roll the database back with `dotnet ef database update <PreviousMigration>`, then delete the migration files with `dotnet ef migrations remove` (which un-snapshots cleanly - never delete the files by hand). `remove` deletes source files, so run `dotnet ef migrations list` first and confirm the migration is the last one and unapplied everywhere; if it has reached any shared database, ask the user through AskUserQuestion before removing anything - roll forward (recommended) / remove it locally / stop. Never hand-edit an already-applied migration - add a new one. Once a migration has shipped to any shared environment its rollback is a *new* forward migration, not a `remove`. Query, tracking, and configuration mechanics belong to the skill covering the ORM layer - context lifetime, change tracking, loading strategy, projection; with nothing installed for that, keep the change to schema and leave query shape alone.
 
 ## Flow B - target framework / SDK upgrade
+
+A breaking major the user wants planned and gated stage by stage - a framework or runtime major, an EOL, a load-bearing package's breaking major - is the deliberate version-upgrade flow, which only the user starts, with `/alfred-task-version-upgrade`: name that command to them. The steps below are the per-stage mechanics either way.
 
 1. **Start clean.** Green tests and zero pending migrations before you touch a version - you want any new red to be unambiguously the upgrade's fault.
 2. **Move the SDK first.** Bump `global.json` if it pins one, then `<TargetFramework>` and `<LangVersion>` in each project. Sweep the whole solution for stragglers on the old TFM - a mixed-framework solution is its own class of bug.

@@ -1,6 +1,6 @@
 ---
 name: ilspy-decompile
-description: "Decompile a compiled .NET assembly with ilspycmd to read its real implementation. Use when you need ground truth from a .dll or NuGet package - what does this package actually do, where is this method implemented, did behavior change before an upgrade. Not for source you already have."
+description: "Decompiles a compiled .NET assembly with ilspycmd to read its real implementation. Use when you need ground truth from a .dll or NuGet package - what does this package actually do, where is this method implemented, did behavior change before an upgrade. Not for source you already have - navigate that with serena or the LSP."
 ---
 
 # ilspy-decompile

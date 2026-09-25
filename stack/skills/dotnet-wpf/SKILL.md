@@ -5,7 +5,7 @@ description: "WPF conventions - strict MVVM on the data-binding engine. Load bef
 
 # WPF conventions
 
-For any WPF or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
+For any WPF or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 WPF is a retained-mode XAML UI on the data-binding engine. The whole discipline below exists to keep
 view concerns (visuals, the visual tree, the dispatcher) on one side of a line and application state
@@ -133,9 +133,10 @@ private async Task LoadOrdersAsync(CancellationToken token)
   method through a thin private wrapper. No branching, no domain logic, no state in the handler.
 - **Cross-cutting interaction goes in a behavior**, not code-behind plumbing -
   `Microsoft.Xaml.Behaviors.Wpf`, one behavior per concern.
-- **No custom type on the clipboard or a drag payload.** On modern .NET `Clipboard.SetData`,
-  `SetDataObject` and `DoDragDrop` throw `PlatformNotSupportedException` for any non-intrinsic type -
-  put a string, an intrinsic, or JSON across the boundary instead.
+- **No custom type on the clipboard or a drag payload.** From .NET 9 a non-intrinsic type no longer
+  round-trips through `Clipboard.SetData`, `SetDataObject` or `DoDragDrop` - the `BinaryFormatter` fallback
+  throws `PlatformNotSupportedException`, or the reader gets a 'BinaryFormatter removed' string instead of
+  your object. Put a string, an intrinsic, or JSON across the boundary instead.
 
 **Read `references/interaction-layer.md` before writing a routed-event handler, reaching for a
 behavior, or moving a payload across the clipboard or a drag operation** - it carries the reasons,

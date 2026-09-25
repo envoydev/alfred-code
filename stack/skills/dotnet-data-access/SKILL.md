@@ -1,6 +1,6 @@
 ---
 name: dotnet-data-access
-description: "Use when configuring a DbContext or ISession, writing or reviewing an ORM query, picking a loading strategy, or designing a read/write store in .NET. The ORM / data-access layer (.NET 8 floor) - ORM-agnostic access principles here, per-ORM mechanics in references/: session or context lifetime and thread-safety, change tracking, loading strategy and N+1, projection to read models, bounded results and no-generic-repository, and the full-ORM-for-writes + micro-ORM-for-reads split. Read references/efcore.md for EF Core or references/nhibernate.md for NHibernate. Do NOT use for the engine side - raw SQL, indexes, the query planner - nor for the migration playbook, which is dotnet-migrate."
+description: "Use when configuring a DbContext or ISession, writing or reviewing an EF Core, NHibernate or Dapper query, picking a loading strategy, chasing an N+1, or designing a read/write store in .NET (.NET 8 floor). Do NOT use for the engine side - raw SQL, indexes, the query planner (the database skills) - nor for the migration playbook, which is dotnet-migrate."
 ---
 
 # dotnet-data-access (ORM hub)
@@ -56,4 +56,4 @@ Mutate set-based, not load-loop-save - one statement, no materialization. The co
 ## Full ORM plus micro-ORM
 
 - Full ORM (EF Core / NHibernate) for CRUD, validation-focused and domain-heavy writes; a micro-ORM (Dapper) for complex reads, reporting, and bulk. They coexist in one project - ORM for writes, Dapper for reads.
-- Dapper read store: inject a pooled `NpgsqlDataSource`, open a connection per call, map an internal row type to a domain DTO by hand. Parent + children in one round trip: `QueryMultipleAsync` returns both result sets, then stitch in memory - never materialize two tables and join them in C# (push the join into SQL; shaping it engine-side is the Postgres engine skill's).
+- Dapper read store: inject a pooled `DbDataSource` (`NpgsqlDataSource` on Postgres), open a connection per call, map an internal row type to a domain DTO by hand. Parent + children in one round trip: `QueryMultipleAsync` returns both result sets, then stitch in memory - never materialize two tables and join them in C# (push the join into SQL; shaping it engine-side is the Postgres engine skill's).

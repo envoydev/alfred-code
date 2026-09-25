@@ -1,11 +1,11 @@
 ---
 name: dotnet-aspire
-description: "Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. This is the local run, NOT production deployment or container publishing. Floors at .NET 8 / C# 12. Do NOT load for non-Aspire projects, production deployment, or publishing images."
+description: "Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. Services floor at .NET 8 / C# 12. Do NOT load for non-Aspire projects, production deployment, or publishing images - those are the DevOps skill's."
 ---
 
 # .NET Aspire - local orchestration
 
-Aspire describes a distributed app as one object graph and runs the whole thing with a single F5 - everything starts together with the right connection strings already threaded between resources, and one dashboard shows every process's traces, logs, and metrics. Floor is .NET 8 / C# 12.
+Aspire describes a distributed app as one object graph and runs the whole thing with a single F5 - everything starts together with the right connection strings already threaded between resources, and one dashboard shows every process's traces, logs, and metrics. Services floor at .NET 8 / C# 12; the AppHost itself needs a newer SDK than the services it runs, so confirm the current AppHost prerequisites through context7 before scaffolding one.
 
 Aspire is two cooperating pieces, and this skill is about both:
 - the **AppHost**, a small project that declares the topology and orchestrates the local run;
@@ -21,7 +21,7 @@ The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check pr
 
 ## The AppHost owns the topology
 
-One AppHost project is the single place that knows which resources exist and how they depend on each other. It is a normal console app whose `Program.cs` builds a `DistributedApplication`:
+One AppHost project is the single place that knows which resources exist and how they depend on each other. It is a normal console app whose entry file (`AppHost.cs` in current templates, `Program.cs` in older ones) builds a `DistributedApplication`:
 
 - Start with `DistributedApplication.CreateBuilder(args)`.
 - Declare infrastructure with the resource builders: `AddPostgres(...)`, `AddRedis(...)`, `AddRabbitMQ(...)`, `AddSqlServer(...)`. These return resource references you hold onto.

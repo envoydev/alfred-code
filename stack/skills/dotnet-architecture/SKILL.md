@@ -1,6 +1,6 @@
 ---
 name: dotnet-architecture
-description: "Choose and hold a .NET application architecture: where code belongs, layering or slicing, service and module boundaries, drift review. Use when the user says clean architecture, vertical slice, DDD, modular monolith, microservices or bounded context. Not for architecture tests or SQL tuning."
+description: "Use when choosing or holding a .NET application architecture - where code belongs, layering or slicing, service and module boundaries, drift review - or when the user says clean architecture, vertical slice, DDD, modular monolith, microservices or bounded context. Not for architecture tests (the architecture fitness-test skill) or SQL tuning (the database skills)."
 ---
 
 # dotnet-architecture (decision hub)

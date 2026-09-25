@@ -1,15 +1,13 @@
 ---
 name: dotnet
-description: "Router for .NET / C# work: maps a work area (endpoint, EF Core query, BackgroundService, messaging, testing, performance, WPF / WinForms) to the one specialist skill to load. Load when starting or navigating any .NET backend or desktop task. Not for front-end or non-.NET work, and never instead of the specialist it names."
+description: "Router for .NET / C# work: maps a work area (endpoint, EF Core query, BackgroundService, messaging, testing, performance, WPF / WinForms) to the one specialist skill to load. Load when starting or navigating any .NET backend or desktop task. Not for front-end work (the Angular / TypeScript conventions skills) or non-.NET work, and never instead of the specialist it names."
 ---
 
 # dotnet (skill router)
 
-**Availability - required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
+**Availability - required vs optional.** The always-on spine of any .NET work is three skills: this router, `csharp` (every `.cs` file - every row below is in addition to it, never instead), and `dotnet-testing` (the moment a test is written or changed - tests are part of the done gate). Add exactly one surface hub for the app under build - `dotnet-web-backend` (ASP.NET Core), `dotnet-console-apps` + `dotnet-hosted-services` (worker / CLI / bot / daemon), `dotnet-hosted-services` + `dotnet-windows-service` (a Windows Service under the SCM), or `dotnet-wpf` / `dotnet-winforms` (desktop). Every other row below is an optional specialist, loaded only when its area is in play - never up front - and installed only where the project's stack or evidence shows that area: a row whose skill is not in your skill list means the area is absent here, not a broken pointer - work from this router and skip the row.
 
 The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several.
-
-**Companion, not optional:** load `csharp` whenever you write or refactor any C# - naming, layout, modern syntax, async, dispose, exceptions/Result, logging, DI lifetimes. Every row below is *in addition to* the C# baseline, never instead of it.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
 
@@ -118,6 +116,6 @@ Maintaining or hardening a .NET Framework 4.8 codebase routes through a second t
 
 ## Notes
 
-- **Every target is house-owned.** This router points only to skills authored in this repo - hubs that carry a `references/` folder (`dotnet-architecture`, `dotnet-data-access`, `dotnet-project-setup`, `dotnet-performance`, `dotnet-diagnostics`) and the leaf specialists. Some rows route into a hub's reference file rather than a standalone skill - load the named skill and open that reference; nothing here installs from a third-party kit.
+- **Rows that name a reference file.** Some rows route into a hub's reference file rather than a standalone skill - load the named skill, then open that reference.
 - **Hubs vs leaves.** `csharp` is the C# baseline hub, `dotnet-web-backend` the web hub, `database-conventions` the data hub, `dotnet-testing` the test hub - a leaf specialist points UP to its hub, the hub points DOWN to its deep specialists, and this router indexes them all. Load the web hub before a web specialist; load the data hub before EF/SQL specialists.
-- **Out of this router's scope.** Web front-end and mobile work belong to the Angular, TypeScript and Ionic/Capacitor conventions skills, whose descriptions lead with their own triggers - not here. Cross-cutting flow that is not .NET-specific - `/security-review`, `alfred-task-verify-code`, context7 library docs, git - lives in the project's `CLAUDE.md`.
+- **Out of this router's scope.** Web front-end and mobile work belong to the Angular, TypeScript and Ionic/Capacitor conventions skills, whose descriptions lead with their own triggers - not here. Cross-cutting flow that is not .NET-specific - the security review, code verification, context7 library docs, git - lives in the project's `CLAUDE.md`.
