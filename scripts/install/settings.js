@@ -27,6 +27,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
+const { valueHash } = require('./stamp.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -317,6 +318,106 @@ function rekeyOverrides(data, renamed, log, label)
     return changed;
 }
 
+// --- R10 THE LEDGER ------------------------------------------------------------------------------
+// What this run MANAGES in the settings files, recorded in the stamp (`managed-env`, `managed-deny`,
+// `managed-hooks`): a key, entry or wiring the run wrote now, or one the last run recorded and nobody
+// changed since. What the last run recorded and this release no longer writes goes; a value changed
+// since it was written is the user's - kept, said once, and out of the ledger from then on. With no
+// ledger to read (a stamp from before R10) the stack's own shipped values are the evidence: a stack
+// key at a value the stack shipped, a secret or seat deny, a wiring exactly as the release writes it.
+const plain = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+const wiringId = (event, matcher, command) => valueHash(`${event}\u0000${matcher}\u0000${command}`);
+
+// Every command wiring in a hooks block, with its identity: event, matcher and command, never the timeout.
+function wiringsOf(hooks)
+{
+    const out = [];
+    for (const [event, entries] of Object.entries(plain(hooks) ? hooks : {}))
+        for (const entry of Array.isArray(entries) ? entries : [])
+            for (const h of entry && Array.isArray(entry.hooks) ? entry.hooks : [])
+                if (h && typeof h.command === 'string')
+                    out.push({ event, hook: fileOf(h.command), id: wiringId(event, (entry && entry.matcher) || '', h.command) });
+    return out;
+}
+
+// The wirings a RELEASE writes, from its catalog specs (`file::matcher::args`) - the identity set an
+// earlier run's wiring is checked against.
+function releaseWirings(specs)
+{
+    return new Set((specs || []).map((row) =>
+    {
+        const [file, matcher = '', args = ''] = String(row.file ?? row).split('::');
+        const m = row.matcher ?? matcher;
+        const { command } = hookCommand(row.file ?? file, row.args ?? args);
+        if (!m.startsWith('@')) return wiringId('PreToolUse', m, command);
+        const [event, eventMatcher = ''] = m.slice(1).split(':');
+        return wiringId(event, eventMatcher, command);
+    }));
+}
+
+// Remove the wirings whose identity is in `ids`, emptied entries and events with them.
+function unwireIds(data, ids)
+{
+    const gone = [];
+    if (!ids.size || !plain(data.hooks)) return gone;
+    for (const [event, entries] of Object.entries(data.hooks))
+    {
+        if (!Array.isArray(entries)) continue;
+        const had = gone.length;
+        for (const entry of [...entries])
+        {
+            const list = entry && Array.isArray(entry.hooks) ? entry.hooks : [];
+            const was = list.length;
+            for (const h of [...list])
+                if (h && typeof h.command === 'string' && fileOf(h.command) && ids.has(wiringId(event, entry.matcher || '', h.command)))   // a copied hook only
+                { list.splice(list.indexOf(h), 1); gone.push({ event, hook: fileOf(h.command) || h.command }); }
+            if (was && !list.length) entries.splice(entries.indexOf(entry), 1);
+        }
+        if (gone.length > had && !entries.length) delete data.hooks[event];
+    }
+    if (gone.length && !Object.keys(data.hooks).length) delete data.hooks;
+    return gone;
+}
+
+// The key a rename carried THIS key's value from this run, or null - ownership travels with the value.
+function renamedFrom(key, value, before, migrations)
+{
+    if (key in before) return null;
+    const olds = (migrations.renames || []).filter(([, n]) => n === key).map(([o]) => o)
+        .concat((migrations.prefixRenames || []).filter(([, to]) => key.startsWith(to)).map(([from, to]) => from + key.slice(to.length)));
+    return olds.find((old) => old in before && before[old] === value) || null;
+}
+
+// The env half, for one file: the drop, then the managed map. `release` is every key the catalog ships;
+// `seedsOf(key)` what the stack ever seeded it with (the fallback's evidence); `written` the keys this
+// run overwrites by contract, with the value it wrote.
+function ledgerEnv({ name, env, before, prior, release, seedsOf, written, migrations, log })
+{
+    let changed = false;
+    if (prior)
+        for (const [key, hash] of Object.entries(prior))
+        {
+            if (!isStackKey(key) || !Object.hasOwn(env, key) || release.has(key)) continue;   // a stack key only: the stamp is project text
+            if (valueHash(env[key]) === hash)
+            { delete env[key]; changed = true; log(`  ${name} env: ${key} removed - the stack wrote it and this release no longer does`); }
+            else log(`  ${name} env: ${key} kept - changed since the stack wrote it, so it is yours (${String(env[key]).length} chars)`);
+        }
+    const managed = {};
+    for (const key of Object.keys(env).filter(isStackKey))
+    {
+        const v = env[key];
+        const hash = valueHash(v);
+        const from = renamedFrom(key, v, before, migrations);
+        if (Object.hasOwn(written, key) && written[key] === v) { managed[key] = hash; continue; }
+        if (!from && (!Object.hasOwn(before, key) || before[key] !== v)) { managed[key] = hash; continue; }
+        const was = from || key;
+        if (!prior) { if (seedsOf(key).includes(String(v))) managed[key] = hash; continue; }
+        if (prior[was] === hash) managed[key] = hash;
+        else if (Object.hasOwn(prior, was)) log(`  ${name} env: ${key} changed since the stack wrote it - yours from here on, kept (${String(v).length} chars)`);
+    }
+    return { managed, changed };
+}
+
 function writeSettings(opts)
 {
     const {
@@ -324,9 +425,12 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null,
+        inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
+    // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
+    // wirings the RELEASE writes, whatever this run's selection wires.
+    const prior = ledger.prior || null;
     // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
     const seatNow = (seat) => ((renamed && renamed.agents) || {})[seat] || seat;
 
@@ -335,6 +439,9 @@ function writeSettings(opts)
     let data;
     try { ({ data } = readSettings(file)); }
     catch (err) { note(err.message); return { written: false, refused: true }; }
+    const envBefore = plain(data.env) ? { ...data.env } : {};
+    const denyBefore = plain(data.permissions) && Array.isArray(data.permissions.deny) ? [...data.permissions.deny] : [];
+    const wiredBefore = new Set(wiringsOf(data.hooks).map((w) => w.id));
 
     const specs = hookSpecs.map((row) =>
     {
@@ -411,8 +518,10 @@ function writeSettings(opts)
     }
     // C8: the memory database path has no other home, so a local file that is not there yet is made.
     else if (localFile && memoryDb) { local = {}; createdLocal = true; }
+    const localEnvBefore = local && plain(local.env) ? { ...local.env } : {};
     if (local && memoryDb && !(local.env && typeof local.env === 'object' && !Array.isArray(local.env))) local.env = {};
     const localDeny = local && local.permissions && Array.isArray(local.permissions.deny) ? local.permissions.deny : null;
+    const localDenyBefore = localDeny ? [...localDeny] : [];
     const localRespelled = Boolean(localDeny) && respellSeats(localDeny, path.basename(localFile));
     if (rekeyOverrides(data, renamed, log, label)) changed = true;
 
@@ -480,6 +589,7 @@ function writeSettings(opts)
 
     // baseline-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
     // a value the project set stays, and at local scope a settings.json value is never hidden by a seed.
+    const attrBefore = plain(data.attribution) ? Object.keys(data.attribution) : [];
     if (attribution && (data.attribution === undefined || (data.attribution && typeof data.attribution === 'object' && !Array.isArray(data.attribution))))
     {
         const inherited = attribution.inherited && typeof attribution.inherited === 'object' ? attribution.inherited : {};
@@ -496,7 +606,6 @@ function writeSettings(opts)
     // `worktree.baseRef` is "head" (code.claude.com/docs/en/worktrees), so it would build without the run's
     // own commits. Add-only, the attribution shape: a value the project set stays, other `worktree` keys
     // are kept, and at local scope a settings.json value is never hidden by a seed.
-    const plain = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
     if (worktreeBase && (data.worktree === undefined || plain(data.worktree)))
     {
         const inherited = plain(worktreeBase.inherited) ? worktreeBase.inherited : {};
@@ -511,6 +620,64 @@ function writeSettings(opts)
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
+    // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
+    const localName = localFile ? path.basename(localFile) : null;
+    const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
+    const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).map((r) => String(r.default)), ...reseeds(key),
+        ...(key === 'ALFRED_CODE_DOCS_VERSIONING' && docsVersioning && docsVersioning.seed ? [docsVersioning.seed] : [])];
+    const releaseEnv = new Set(catalog.map((r) => r.key));
+    const writtenNow = memoryDb ? { ALFRED_CODE_MEMORY_DB: memoryDb } : {};
+    const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
+    const managedEnv = {};
+    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, migrations, log });
+    if (envShared.changed) changed = true;
+    managedEnv[label] = envShared.managed;
+    if (overlay)
+    {
+        const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, migrations, log });
+        managedEnv[localName] = envLocal.managed;
+    }
+    const priorDeny = prior && prior.deny ? prior.deny : null;
+    const ownDeny = (entry) => denySpecs.includes(entry) || Boolean(stackSeat(entry));
+    for (const [list, name] of [[deny, label], [localDeny, localName]])
+    {
+        if (!list || !priorDeny) continue;
+        // Only an entry some release shipped: the stamp is project text, never a deny rule of the user's.
+        for (const d of priorDeny.filter((x) => x.file === name && !ownDeny(x.entry) && list.includes(x.entry) && (ledger.shippedDeny || []).includes(x.entry)))
+        {
+            list.splice(list.indexOf(d.entry), 1);
+            if (list === deny) changed = true; else localAllowed = true;
+            log(`  ${name}: deny ${d.entry} removed - the stack wrote it and this release no longer does`);
+        }
+    }
+    const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
+        || (priorDeny ? priorDeny.some((d) => d.entry === entry) : ownDeny(entry))).map((entry) => ({ file: label, entry }));
+    if (localDeny)
+        for (const entry of localDeny)
+            if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))
+                managedDeny.push({ file: localName, entry });
+    const release = releaseWirings(ledger.releaseHooks || hookSpecs);
+    const priorHooks = prior && prior.hooks ? prior.hooks : null;
+    if (priorHooks)
+    {
+        const gone = unwireIds(data, new Set(priorHooks.filter((h) => h.file === label && !release.has(h.id)).map((h) => h.id)));
+        for (const g of gone) log(`  ${label}: hook wiring ${g.hook} (${g.event}) removed - the stack wired it and this release no longer does`);
+        if (gone.length) changed = true;
+    }
+    const managedHooks = wiringsOf(data.hooks).filter((w) => w.hook && (!wiredBefore.has(w.id)
+        || (priorHooks ? priorHooks.some((h) => h.id === w.id) : release.has(w.id)))).map((w) => ({ file: label, hook: w.hook, id: w.id }));
+    // The attribution keys: seeded this run, or listed at the value written (no ledger: at the seed value).
+    const priorSettings = prior && prior.settings ? prior.settings[label] || {} : null;
+    const managedAttr = {};
+    for (const [key, value] of plain(data.attribution) ? ATTRIBUTION_OFF : [])
+    {
+        if (!Object.hasOwn(data.attribution, key)) continue;
+        const at = `attribution.${key}`;
+        const json = JSON.stringify(data.attribution[key]);
+        if (!attrBefore.includes(key) || (priorSettings ? priorSettings[at] === valueHash(json) : json === JSON.stringify(value))) managedAttr[at] = valueHash(json);
+    }
+    const managed = { env: managedEnv, deny: managedDeny, hooks: managedHooks, settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
+
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
     // C3 (R133 b): at local scope settings.json is never written, so an old key there cannot be re-keyed;
@@ -547,10 +714,10 @@ function writeSettings(opts)
     }
     const createdLocalFile = createdLocal && localChanged;
 
-    if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile };
+    if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile, managed };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    return { written: true, refused: false, createdLocal: createdLocalFile };
+    return { written: true, refused: false, createdLocal: createdLocalFile, managed };
 }
 
 // T16/R47 (I1): the ONE place that decides which file THIS run's own settings writes go to - a
@@ -629,7 +796,7 @@ function sharedOnlyDeny(claudeDir)
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
-function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], log = () => {}, note = () => {} })
+function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, log = () => {}, note = () => {} })
 {
     const localFile = path.join(claudeDir, 'settings.local.json');
     const sharedFile = path.join(claudeDir, 'settings.json');
@@ -653,7 +820,10 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
         // C8: a machine's own value lives in this file at every scope - nothing to move.
         if (PERSONAL_KEYS.includes(key)) continue;
         if (written.includes(key)) say(`${key} removed - the stack writes it every run, to settings.json from here on`);
-        else if (seeded(key, v)) seedsGone.push(key);
+        // R10: a stale seed is one the stack WROTE here (the ledger, exact - a seed value the user typed
+        // is theirs) and that is a seed rather than a decision (a walk's hooks-off answer is written by
+        // the stack but is the user's choice). With no ledger (an older stamp) the seed match alone.
+        else if (seeded(key, v) && (!recorded || recorded[key] === valueHash(v))) seedsGone.push(key);
         else
         {
             say(`${key} stays here (your value, ${String(v).length} chars) - it applies over settings.json, and later runs read and write it here`);
@@ -710,4 +880,77 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     return { moved: true };
 }
 
-module.exports = { isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+// R10 UNINSTALL, the settings half: every env key, deny entry and hook wiring the ledger lists for a
+// file, at the value it recorded - a value changed since is the user's and stays, said by its length
+// only. The .mcp.json approvals of the servers uninstall removed go with them. A file left holding
+// nothing goes; one that cannot be read is left exactly as it is.
+function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], log = () => {}, note = () => {} })
+{
+    for (const name of ['settings.json', 'settings.local.json'])
+    {
+        const file = path.join(claudeDir, name);
+        if (!fs.existsSync(file)) continue;
+        const keys = ((ledger.env || {})[name]) || {};
+        // A deny entry goes only when a release shipped it (a stack seat, or a spec in shippedDeny): the
+        // stamp is project text, so its ledger never names a deny rule of the user's for removal.
+        const denies = (ledger.deny || []).filter((d) => d.file === name && (shippedDeny.includes(d.entry) || Boolean(stackSeat(d.entry)))).map((d) => d.entry);
+        const ids = new Set((ledger.hooks || []).filter((h) => h.file === name).map((h) => h.id));
+        const attr = ((ledger.settings || {})[name]) || {};
+        let data;
+        try { ({ data } = readSettings(file)); }
+        catch (err) { note(`${err.message} - nothing of the stack's was removed from it`); continue; }
+        let changed = false;
+        if (plain(data.env))
+        {
+            for (const [key, hash] of Object.entries(keys))
+            {
+                if (!isStackKey(key) || !Object.hasOwn(data.env, key)) continue;
+                if (valueHash(data.env[key]) !== hash) { log(`  ${name} env: ${key} kept - changed since the stack wrote it, so it is yours (${String(data.env[key]).length} chars)`); continue; }
+                delete data.env[key];
+                changed = true;
+            }
+            if (changed && !Object.keys(data.env).length) delete data.env;
+        }
+        const perms = plain(data.permissions) ? data.permissions : null;
+        if (perms && Array.isArray(perms.deny))
+        {
+            const kept = perms.deny.filter((d) => !denies.includes(d));
+            if (kept.length !== perms.deny.length)
+            {
+                changed = true;
+                if (kept.length) perms.deny = kept; else delete perms.deny;
+                if (!Object.keys(perms).length) delete data.permissions;
+            }
+        }
+        if (unwireIds(data, ids).length) changed = true;
+        if (plain(data.attribution))
+        {
+            for (const [at, hash] of Object.entries(attr))
+            {
+                const key = at.split('.')[1];
+                if (!Object.hasOwn(data.attribution, key)) continue;
+                if (valueHash(JSON.stringify(data.attribution[key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
+                delete data.attribution[key];
+                changed = true;
+            }
+            if (changed && !Object.keys(data.attribution).length) delete data.attribution;
+        }
+        for (const listKey of ['enabledMcpjsonServers', 'disabledMcpjsonServers'])
+        {
+            const list = data[listKey];
+            if (!Array.isArray(list) || !list.some((n) => mcpRemoved.includes(n))) continue;
+            const kept = list.filter((n) => !mcpRemoved.includes(n));
+            if (kept.length) data[listKey] = kept; else delete data[listKey];
+            changed = true;
+        }
+        // An empty list or map sets nothing: the stack creates enabledMcpjsonServers on every write, and
+        // the plugin CLI leaves enabledPlugins as {} once the stack's rows are uninstalled.
+        for (const [key, empty] of [['enabledMcpjsonServers', (v) => Array.isArray(v) && !v.length], ['enabledPlugins', (v) => plain(v) && !Object.keys(v).length]])
+            if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
+        if (!changed) continue;
+        if (!Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
+        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution keys removed`); }
+    }
+}
+
+module.exports = { removeManagedSettings, isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

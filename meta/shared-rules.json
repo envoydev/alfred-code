@@ -1630,7 +1630,7 @@
       "_note": "The seed route: the installer is ONE `node scripts/install/alfred-code.js` command on every OS, and from 2.0.0 the frozen `scripts/os` twins no longer run: a run whose environment sets ALFRED_CODE_SEED (or its 1.x spelling) to shell - the snapshot resolve line reports it as `seed=<value>` - prints the D1 refusal and stops, as the seed itself does. The protocol file owns the rule; each command body carries the copy-ready call for its own action.",
       "owner": {
         "file": "setup-plugin/references/source-protocol.md",
-        "marker": "**ONE seed, one command on every OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" <install|update>"
+        "marker": "**ONE seed, one command on every OS:** `node \"$TMP/repo/scripts/install/alfred-code.js\" <install|update|uninstall>"
       },
       "sites": [
         {
@@ -1648,6 +1648,10 @@
         {
           "file": "setup-plugin/commands/validate.md",
           "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope <scope> --installed-only [--add"
+        },
+        {
+          "file": "setup-plugin/commands/uninstall.md",
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" uninstall --source \"$TMP/repo\" 2>&1 | tee"
         }
       ]
     },
@@ -3552,6 +3556,10 @@
         },
         {
           "file": "setup-plugin/commands/init.md",
+          "marker": "House voice in every line this run emits"
+        },
+        {
+          "file": "setup-plugin/commands/uninstall.md",
           "marker": "House voice in every line this run emits"
         }
       ]

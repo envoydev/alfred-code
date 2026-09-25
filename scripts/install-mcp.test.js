@@ -1432,7 +1432,7 @@ test('shadowingRegistrations: a registration above the plugins that replaces a p
     assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['context7'] }), [], 'no registrations read');
 });
 
-// The run at PROJECT scope prunes this project's .mcp.json by name, and never reads the account's user-
+// The run at PROJECT scope prunes what it wrote into this project's .mcp.json, and never reads the account's user-
 // or local-scope registrations - where context7's own README puts it (`claude mcp add --transport http
 // context7 <url>`). Each one that takes a plugin's place is named with its remove command, removed never:
 // a user-scope registration serves every project of the account.
@@ -1453,7 +1453,10 @@ test('seed install (plugin route, project scope): a user- or local-scope registr
     assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the context7 plugin, so Claude Code connects to it instead and the stack's mcp__plugin_context7_context7__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out);
     assert.strictEqual(line(/mcp serena \(user scope\) starts beside the serena plugin's own server - two serena servers in every session here; if nothing else needs it: claude mcp remove serena -s user/g), 1, out);
     assert.strictEqual(line(/mcp memory \(local scope\) starts beside the memory plugin's own server/g), 1, out);
-    assert.strictEqual(line(/mcp context7 \(project scope\)/g), 0, 'the prune removed the project registration - naming it too is noise');
+    // R10: no stamp yet means the stack wrote nothing here, so this project's context7 entry is the user's -
+    // kept, not pruned, and named like the account's with its remove command.
+    assert.strictEqual(line(/!! mcp context7 \(project scope\) calls the url of the context7 plugin.*claude mcp remove context7 -s project/g), 1, out);
+    assert.strictEqual(line(/mcp context7: kept - the \.mcp\.json entry is not the one the stack wrote/g), 1, out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s (user|local)$/.test(c)), [], 'a project-scope run removed an account registration');
 });
 
@@ -1663,4 +1666,43 @@ test('seed install (full copy route, project registrations): only .mcp.json says
     const kept = run(true);
     assert.ok(!kept.calls.some((c) => /^mcp add --scope project serena /.test(c)), kept.calls.join('\n'));
     assert.match(kept.out, /mcp serena already configured - skipping/);
+});
+
+// --- R10 THE LEDGER -----------------------------------------------------------------------------
+// The .mcp.json entries a run MANAGES: registered by it now, recorded by the last run and unchanged
+// since, or - no ledger yet - of a stack name and the stack's own shape. Uninstall removes exactly those.
+const { entryHash } = require('./install/stamp.js');
+
+test('mcp ledger: managed is what the run wrote, what the ledger recorded unchanged, or the stack\'s shape with no ledger (R10)', () =>
+{
+    const serena = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent@1.7.0', 'serena'] };
+    const mine = { type: 'stdio', command: 'node', args: ['mine.js'] };
+    const edited = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent@9', 'serena'] };
+    const servers = { serena, mine, memory: edited };
+    const adopt = (name) => name !== 'mine';
+    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: null, written: [], adopt }), { serena: entryHash(serena), memory: entryHash(edited) }, 'no ledger: the stack-shaped names are adopted');
+    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: { serena: entryHash(serena), memory: entryHash({ other: 1 }) }, written: [], adopt }),
+        { serena: entryHash(serena) }, 'a ledger: recorded and unchanged only - an edited entry is the user\'s');
+    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: {}, written: ['memory'], adopt }), { memory: entryHash(edited) }, 'registered this run');
+    assert.strictEqual(entryHash({ a: 1, b: [2, { d: 1, c: 2 }] }), entryHash({ b: [2, { c: 2, d: 1 }], a: 1 }), 'key order never changes the hash');
+});
+
+test('mcp ledger: removeManaged takes a recorded unchanged entry, keeps an edited or unlisted one, and the file goes only when nothing is left (R10)', () =>
+{
+    const serena = { command: 'uvx', args: ['serena'] };
+    const file = mcpFile({ serena, memory: { command: 'uvx', args: ['memory', 'edited'] }, mine: { command: 'node', args: ['mine.js'] } });
+    const logs = [];
+    const out = mcp.removeManagedMcp({ mcpFile: file, managed: { serena: entryHash(serena), memory: entryHash({ command: 'uvx', args: ['memory'] }) }, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(out.removed, ['serena']);
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers).sort(), ['memory', 'mine']);
+    assert.match(logs.join('\n'), /mcp memory: kept - changed since the stack registered it, so it is yours/);
+    const only = mcpFile({ serena });
+    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: only, managed: { serena: entryHash(serena) } }).removed, ['serena']);
+    assert.ok(!fs.existsSync(only), 'a .mcp.json holding nothing but the stack\'s entries goes with them');
+    const garbage = path.join(TMP, `garbage-${Date.now()}.json`);
+    fs.writeFileSync(garbage, '{nope');
+    const notes = [];
+    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: garbage, managed: { serena: 'x' }, note: (m) => notes.push(m) }).removed, []);
+    assert.strictEqual(fs.readFileSync(garbage, 'utf8'), '{nope', 'an unreadable file is left untouched');
+    assert.strictEqual(notes.length, 1);
 });

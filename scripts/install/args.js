@@ -102,8 +102,8 @@ function parseArgs(argv)
         out.action = arg;
     }
 
-    if (!out.action) fail(`an action is required, positional: install or update (named flags: ${FLAG_LIST})`);
-    if (!['install', 'update'].includes(out.action)) fail(`the action must be 'install' or 'update' (got '${out.action}')`);
+    if (!out.action) fail(`an action is required, positional: install, update or uninstall (named flags: ${FLAG_LIST})`);
+    if (!['install', 'update', 'uninstall'].includes(out.action)) fail(`the action must be 'install', 'update' or 'uninstall' (got '${out.action}')`);
     for (const flag of ['add', 'drop'])
         if (out[flag].length && !out.installedOnly) fail(`--${flag} needs --installed-only - a walk writes its picks into the --selection file`);
     if (out.planOut && !out.printPlan) fail('--plan-out needs --print-plan - it writes the inventory the plan prints');

@@ -43,12 +43,26 @@
 // stamp from before the line counts as initialised only when Claude's own memory is already off, which
 // the pre-2.0 installer did only after importing; the first run over it records that, dated.
 //
+// The `managed-*` lines are THE LEDGER (R10): what the run MANAGES beyond the library copies, so an
+// update removes exactly what the last run wrote and this release no longer writes, and uninstall
+// removes exactly what the stack put here - never the user's own key, hook or server. `managed-env` is
+// `<file>:<KEY>=<sha256 of the value written>` per settings file; `managed-deny` the permissions.deny
+// entries, `<file>:<entry>`; `managed-hooks` the copy route's hook wirings, `<file>:<hook file>:<sha256
+// of event, matcher and command>`; `managed-mcp` the .mcp.json entries, `<name>=<sha256 of the entry>`;
+// `managed-files` every copy outside the library (the engines, the copy route's hooks, skills and seats,
+// and a seeded `.claude/CLAUDE.md` until it is filled in), `<kind>/<name>=<sha256>`; `managed-settings`
+// the other settings keys it seeded, `<file>:attribution.<key>=<sha256 of the JSON value>`. A value whose
+// hash no longer matches was changed by hand since: it is the user's from then on, kept and logged. A
+// stamp with none of the lines (an older release) is the one case the old heuristics still answer; a
+// project with no stamp at all has managed nothing yet (emptyLedger), so nothing already there is adopted.
+//
 // `installed-always-rules` / `installed-always-mcps` record what the locked baseline actually
 // CARRIES as the run ends, never what shipped. A server counts either way - registered in the file,
 // or riding the plugin named for it - because on the plugin route there is no `.mcp.json` at all,
 // and a stamp that only read the file would record an install with none of the locked three.
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { stampFile, LEGACY } = require('./brand.js');
 // Fix round 1: inlined rather than `require('../derive-state.js')` - that module pulls in
 // selection-plugins.js, plugin-placement.js, install/manifest.js, hook-prelude.js and install/
@@ -109,9 +123,85 @@ function installedAlways({ recommendations, mcpFile, settingsFile, rulesDir })
     };
 }
 
+// --- the ledger (R10) ----------------------------------------------------------------------------
+const valueHash = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
+// An object with its keys sorted at every level, so one entry hashes the same whatever order a writer
+// (the CLI, the verify pass) put its keys in.
+const stable = (v) => (Array.isArray(v) ? v.map(stable)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable(v[k])])) : v);
+const entryHash = (entry) => valueHash(JSON.stringify(stable(entry)));
+const LEDGER_FILES = ['settings.json', 'settings.local.json'];
+const HEX = /^[0-9a-f]{64}$/;
+const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
+const FILE_KINDS = ['hooks', 'skills', 'agents'];
+const SETTINGS_PATH = /^attribution\.(commit|pr|sessionUrl)$/;
+const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, files: {}, settings: {} });
+
+function renderLedger(ledger)
+{
+    const { env = {}, deny = [], hooks = [], mcp = {}, files = {}, settings = {} } = ledger;
+    const pairs = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`);
+    return [
+        `managed-env: ${Object.entries(env).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
+        `managed-deny: ${deny.map((d) => `${d.file}:${d.entry}`).join(',')}`,
+        `managed-hooks: ${hooks.map((h) => `${h.file}:${h.hook}:${h.id}`).join(',')}`,
+        `managed-mcp: ${pairs(mcp).join(',')}`,
+        `managed-files: ${pairs(files).join(',')}`,
+        `managed-settings: ${Object.entries(settings || {}).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
+    ];
+}
+
+// The ledger a stamp recorded, each kind null when its line is absent; null as a whole when the stamp
+// has no ledger line at all (no stamp, or one from before R10). Every entry is checked against the
+// shape the installer writes and dropped otherwise (the N1 rule: a clone can fill a stamp with any
+// text, and these names reach path joins and settings writes).
+function readLedger(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    if (!/^managed-(env|deny|hooks|mcp|files|settings):/m.test(text)) return null;
+    const items = (key) =>
+    {
+        const m = new RegExp(`^managed-${key}: ?(.*)$`, 'm').exec(text);
+        return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
+    };
+    const cut = (s, sep) => { const i = s.indexOf(sep); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; };
+    const out = { env: null, deny: null, hooks: null, mcp: null, files: null, settings: null };
+    const perFile = (kind, valid) =>
+    {
+        const list = items(kind);
+        if (!list) return null;
+        const map = {};
+        for (const item of list)
+        {
+            const [f, rest] = cut(item, ':');
+            const [key, hash] = cut(rest, '=');
+            if (LEDGER_FILES.includes(f) && valid.test(key) && HEX.test(hash)) (map[f] ||= {})[key] = hash;
+        }
+        return map;
+    };
+    out.env = perFile('env', ENV_KEY);
+    out.settings = perFile('settings', SETTINGS_PATH);
+    const deny = items('deny');
+    if (deny) out.deny = deny.map((item) => { const [f, entry] = cut(item, ':'); return { file: f, entry }; })
+        .filter((d) => LEDGER_FILES.includes(d.file) && d.entry);
+    const hooks = items('hooks');
+    if (hooks) out.hooks = hooks.map((item) => { const [f, rest] = cut(item, ':'); const [hook, id] = cut(rest, ':'); return { file: f, hook, id }; })
+        .filter((h) => LEDGER_FILES.includes(h.file) && validItemName(h.hook) && HEX.test(h.id));
+    const mcp = items('mcp');
+    if (mcp) out.mcp = Object.fromEntries(mcp.map((item) => cut(item, '=')).filter(([n, h]) => validItemName(n) && HEX.test(h)));
+    const files = items('files');
+    if (files) out.files = Object.fromEntries(files.map((item) => cut(item, '=')).filter(([rel, h]) =>
+    {
+        const parts = rel.split('/');
+        return HEX.test(h) && (rel === 'CLAUDE.md' || (parts.length === 2 && FILE_KINDS.includes(parts[0]) && validItemName(parts[1])));
+    }));
+    return out;
+}
+
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {} } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -139,6 +229,7 @@ function renderStamp(fields)
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
         `library-rules: ${hashes(library.rules)}`,
+        ...(ledger ? renderLedger(ledger) : []),
         '',
     ].join('\n');
 }
@@ -161,7 +252,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, stoodDown, library,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -190,7 +281,7 @@ function writeStamp(opts)
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope, initialised,
             hooks: shippedHooks(hooksCatalog), hooksRoute,
-            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library,
+            alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
         }));
     }
     catch (err) { note(`stamp could not be written to ${dest} (${err.message})`); return null; }
@@ -536,7 +627,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, worktreeMain, installScope,
     accountDir,
 };

@@ -6,7 +6,7 @@ delta. Every run is a real, billed model call on your own account.
 ## Why this suite exists at all
 
 The standing excuse for not evaluating this plugin was that nothing in it is model-invocable: all
-six commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
+seven commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
 `prompt.md` is a USER turn, which is exactly how a manual-only command is invoked, so a read-only
 walk makes a valid case - and its without-arm cannot resolve the command at all, which is the
 cleanest delta a suite can produce.

@@ -118,7 +118,7 @@ test('the 1.x entry path is a shim - --help prints the same usage and exits the 
     const env = scrubbed();
     const seed = spawnSync(process.execPath, [SEED, '--help'], { encoding: 'utf8', env });
     const shim = spawnSync(process.execPath, [SHIM, '--help'], { encoding: 'utf8', env });
-    assert.match(seed.stderr, /Usage: node alfred-code\.js <install\|update>/);
+    assert.match(seed.stderr, /Usage: node alfred-code\.js <install\|update\|uninstall>/);
     assert.deepStrictEqual([shim.status, shim.stdout, shim.stderr], [seed.status, seed.stdout, seed.stderr]);
 });
 

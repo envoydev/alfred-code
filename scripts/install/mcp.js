@@ -25,6 +25,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { entryHash } = require('./stamp.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['serena', 'context7', 'memory'];
@@ -509,6 +510,47 @@ function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows 
     return out;
 }
 
+// R10 THE LEDGER: the .mcp.json entries this run MANAGES (`managed-mcp`, name -> hash of the entry) -
+// registered by it now, recorded by the last run and unchanged since, or, with no ledger to read (a
+// stamp from before R10), of a stack name and the stack's own shape (`adopt`). An entry changed since
+// the stack wrote it is the user's, like one it never wrote.
+function managedMcp({ servers = {}, prior = null, written = [], adopt = () => false })
+{
+    const out = {};
+    for (const [name, entry] of Object.entries(servers || {}))
+    {
+        const hash = entryHash(entry);
+        if (written.includes(name) || (prior ? prior[name] === hash : adopt(name, entry))) out[name] = hash;
+    }
+    return out;
+}
+
+// Uninstall's half: each managed entry whose hash still matches goes, and the file with them when
+// nothing else is left in it. A file that cannot be read is left exactly as it is. The installer
+// never hand-edits the ACCOUNT config, so this is .mcp.json alone - the one file the ledger records.
+function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => {} })
+{
+    const removed = [];
+    if (!Object.keys(managed).length || !fs.existsSync(mcpFile)) return { removed };
+    let data;
+    try { data = JSON.parse(fs.readFileSync(mcpFile, 'utf8').replace(/^\uFEFF/, '')); }
+    catch { note('.mcp.json is not valid JSON - left untouched, nothing of the stack\'s was removed from it; fix it and re-run'); return { removed }; }
+    const servers = data && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers) ? data.mcpServers : null;
+    if (!servers) return { removed };
+    for (const [name, hash] of Object.entries(managed))
+    {
+        if (!Object.hasOwn(servers, name)) continue;
+        if (entryHash(servers[name]) !== hash) { log(`  mcp ${name}: kept - changed since the stack registered it, so it is yours`); continue; }
+        delete servers[name];
+        removed.push(name);
+        log(`  mcp removed: ${name} (.mcp.json)`);
+    }
+    if (!removed.length) return { removed };
+    if (!Object.keys(servers).length && Object.keys(data).length === 1) { fs.rmSync(mcpFile, { force: true }); log('  .mcp.json removed - it held nothing but the stack\'s servers'); }
+    else fs.writeFileSync(mcpFile, `${JSON.stringify(data, null, 2)}\n`);
+    return { removed };
+}
+
 // The registrations one scope holds: `.mcp.json` at project scope; the account's `.claude.json` - its
 // top-level `mcpServers` at user scope, `projects[<root>].mcpServers` at local scope. `absent` (no
 // file) holds nothing; `unreadable` is said by the caller and removes nothing.
@@ -601,4 +643,5 @@ module.exports = {
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
     registrationScope, identityOf, packageName, stackIdentities, registrationsAt, shadowingRegistrations, ensurePlaywrightIgnore,
+    managedMcp, removeManagedMcp,
 };

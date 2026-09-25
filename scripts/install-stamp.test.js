@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -50,6 +50,7 @@ function write(p, opts = {})
         hooksCatalog: opts.hooksCatalog || [],
         picked: opts.picked,
         library: opts.library,
+        ledger: opts.ledger,
         hooksRoute: opts.hooksRoute,
         playwright: opts.playwright,
         playwrightEnabled: opts.playwrightEnabled,
@@ -329,6 +330,75 @@ test('install-stamp: a stamp with library-skills/agents but no library-rules lin
     const file = path.join(p.base, 'old.stamp');
     fs.writeFileSync(file, 'sha: abc\nversion: 1.4.0\nlibrary-skills: demo=aa\nlibrary-agents: seat=bb\n');
     assert.deepStrictEqual(readLibrary(file), { version: '1.4.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: {} });
+});
+
+// R10 THE LEDGER: what the run MANAGES beyond the copies - the env keys it wrote (a hash of the value,
+// per settings file), the deny entries, the copy route's hook wirings and .mcp.json entries, and every
+// copy outside the library, and the other settings keys it seeded (`attribution`). Update removes what
+// the prior stamp lists and this release no longer writes; uninstall removes it all; a value changed
+// since it was written is the user's.
+const LEDGER = {
+    env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0') }, 'settings.local.json': { ALFRED_CODE_MEMORY_DB: valueHash('/x/memory.db') } },
+    deny: [{ file: 'settings.json', entry: 'Read(.env)' }, { file: 'settings.json', entry: 'Agent(alfred-code:angular-verifier)' }],
+    hooks: [{ file: 'settings.json', hook: 'guard-secret-value.js', id: 'a'.repeat(64) }],
+    mcp: { serena: 'b'.repeat(64) },
+    files: { 'hooks/docs.js': 'c'.repeat(64), 'skills/csharp': 'd'.repeat(64), 'agents/angular-verifier.md': 'e'.repeat(64), 'CLAUDE.md': 'f'.repeat(64) },
+    settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
+};
+
+test('install-stamp: the ledger lines record what the run manages and read back exactly (R10)', () =>
+{
+    const p = project();
+    const { dest, text } = write(p, { ledger: LEDGER });
+    assert.match(text, /^managed-env: settings\.json:ALFRED_CODE_INSTRUMENT=[0-9a-f]{64},settings\.local\.json:ALFRED_CODE_MEMORY_DB=[0-9a-f]{64}$/m);
+    assert.match(text, /^managed-deny: settings\.json:Read\(\.env\),settings\.json:Agent\(alfred-code:angular-verifier\)$/m);
+    assert.match(text, /^managed-hooks: settings\.json:guard-secret-value\.js:a{64}$/m);
+    assert.match(text, /^managed-mcp: serena=b{64}$/m);
+    assert.match(text, /^managed-files: hooks\/docs\.js=c{64},skills\/csharp=d{64},agents\/angular-verifier\.md=e{64},CLAUDE\.md=f{64}$/m);
+    assert.match(text, /^managed-settings: settings\.json:attribution\.commit=[0-9a-f]{64},settings\.json:attribution\.sessionUrl=[0-9a-f]{64}$/m);
+    assert.deepStrictEqual(readLedger(dest), LEDGER);
+    assert.strictEqual(valueHash('0'), require('node:crypto').createHash('sha256').update('0').digest('hex'), 'a value hash is the sha256 of the value itself');
+});
+
+test('install-stamp: a stamp with no ledger line reads as null - the fallback; an empty line is an answer (R10)', () =>
+{
+    const p = project();
+    const { dest, text } = write(p);
+    assert.doesNotMatch(text, /^managed-/m, 'a caller that hands no ledger claims none');
+    assert.strictEqual(readLedger(dest), null);
+    assert.strictEqual(readLedger(path.join(p.base, 'absent.stamp')), null);
+    const empty = write(project(), { ledger: emptyLedger() });
+    assert.match(empty.text, /^managed-env: $/m);
+    assert.deepStrictEqual(readLedger(empty.dest), { env: {}, deny: [], hooks: [], mcp: {}, files: {}, settings: {} }, 'recorded none is not the same answer as no ledger');
+    const partial = path.join(p.base, 'partial.stamp');
+    fs.writeFileSync(partial, 'sha: abc\nmanaged-env: settings.json:ALFRED_CODE_X=' + 'f'.repeat(64) + '\n');
+    assert.deepStrictEqual(readLedger(partial), { env: { 'settings.json': { ALFRED_CODE_X: 'f'.repeat(64) } }, deny: null, hooks: null, mcp: null, files: null, settings: null }, 'a kind with no line reads null');
+});
+
+// N1's rule for the ledger: a stamp is a project file a clone can fill with any text, and every name it
+// records reaches a path join or a settings write - so an entry of any other shape is dropped on read.
+test('install-stamp: readLedger drops every entry of a shape the installer never writes (R10, N1)', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'hostile.stamp');
+    const h = '1'.repeat(64);
+    fs.writeFileSync(file, [
+        `managed-env: settings.json:ALFRED_CODE_OK=${h},../x.json:ALFRED_CODE_A=${h},settings.json:lower=${h},settings.json:ALFRED_CODE_B=nothex`,
+        'managed-deny: settings.json:Read(.env),other.json:Read(*.pem),settings.json:',
+        `managed-hooks: settings.json:guard-x.js:${h},settings.json:../../evil.js:${h},settings.json:guard-y.js:short`,
+        `managed-mcp: serena=${h},../evil=${h},Bad Name=${h}`,
+        `managed-files: hooks/docs.js=${h},hooks/../../etc=${h},../outside=${h},rules/x.md=${h},skills/a/b=${h},skills/..=${h},../CLAUDE.md=${h}`,
+        `managed-settings: settings.json:attribution.pr=${h},settings.json:attribution.__proto__=${h},settings.json:attribution.constructor=${h},settings.json:model=${h},x.json:attribution.pr=${h}`,
+        '',
+    ].join('\n'));
+    assert.deepStrictEqual(readLedger(file), {
+        env: { 'settings.json': { ALFRED_CODE_OK: h } },
+        deny: [{ file: 'settings.json', entry: 'Read(.env)' }],
+        hooks: [{ file: 'settings.json', hook: 'guard-x.js', id: h }],
+        mcp: { serena: h },
+        files: { 'hooks/docs.js': h },
+        settings: { 'settings.json': { 'attribution.pr': h } },
+    });
 });
 
 test('install-stamp: stampPath is where writeStamp writes - the project, whatever scope or configDir is handed in', () =>

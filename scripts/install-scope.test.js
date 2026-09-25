@@ -813,6 +813,10 @@ test('install-scope: a move off local removes an older shipped seed and the docs
             assert.strictEqual(local.env.ALFRED_CODE_DOCS_VERSIONING, 'local', 'the rule answered local for docs git ignores');
             local.env.ALFRED_CODE_FRESH_SESSION_DEFAULT = '250000';
             fs.writeFileSync(file, JSON.stringify(local));
+            // An older shipped seed on disk is an OLDER install's state - one from before the ledger
+            // (R10), which the seed match answers; with a ledger, a value changed by hand is the user's.
+            const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').split('\n').filter((l) => !l.startsWith('managed-')).join('\n'));
             return null;
         },
         inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),

@@ -1,6 +1,6 @@
 ---
 name: alfred-code
-description: "Route to the right Alfred Code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:setup (fresh install - the selection and the install), /alfred-code:init (the one-time bootstrap after setup's restart - services, memory level, captures, CLAUDE.md), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed). Trigger by invoking /alfred-code."
+description: "Route to the right Alfred Code action when unsure which fits - inspects the install state and answers with the exact command to run: /alfred-code:setup (fresh install - the selection and the install), /alfred-code:init (the one-time bootstrap after setup's restart - services, memory level, captures, CLAUDE.md), /alfred-code:update (no-questions refresh + prune of upstream removals), /alfred-code:configure (adjust an existing install - add or drop), /alfred-code:validate (reconcile an install against THIS project - prune what its frameworks do not use and add the detected stacks' missing artifacts), /alfred-code:status (read-only per-area tables of what is installed), /alfred-code:uninstall (remove the stack from this project, keeping the user's own config). Trigger by invoking /alfred-code."
 disable-model-invocation: true
 ---
 
@@ -44,6 +44,8 @@ Then:
   stacks' artifacts that are missing -> `/alfred-code:validate` (at any scope).
 - The ask is to SEE what is installed - inventory, versions, capture dates, 'what do I have?' -
   with nothing to change -> `/alfred-code:status` (read-only tables, per area or all).
+- Installed and the ask is to REMOVE the stack from this project -> `/alfred-code:uninstall` (the
+  install ledger says what the stack wrote; the user's own keys, hooks and servers stay).
 - The ask is whether THIS project's `CLAUDE.md` still matches the stack template, or needs an
   update -> `/alfred-code:update` (its step 6 compare) - never answer this from the
   template alone; a generic answer here has shipped a wrong 'no update needed'.

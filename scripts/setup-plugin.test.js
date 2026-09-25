@@ -16,7 +16,7 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     // live under stack/, outside that folder.
     const core = mp.plugins.find(x => x.name === 'alfred-code');
     assert.ok(core, 'the core entry must survive every generator run');
-    assert.ok(Array.isArray(core.commands) && core.commands.length === 6, 'the guided commands ship from the core - setup and init among them');
+    assert.ok(Array.isArray(core.commands) && core.commands.length === 7, 'the guided commands ship from the core - setup, init and uninstall among them');
     assert.ok(core.commands.includes('./setup-plugin/commands/init.md') && core.commands.includes('./setup-plugin/commands/setup.md'));
     for (const p of mp.plugins)
     {
@@ -30,7 +30,7 @@ test('marketplace.json is valid and every entry shares the repo root', () => {
     assert.ok(JSON.stringify(core.hooks).includes('stack/hooks/guard-secret-value.js'), 'the core declares the stack hooks INLINE, so nothing sits at the shared root');
 });
 
-test('plugin.json is valid, the six commands are listed, and the router skill exists', () => {
+test('plugin.json is valid, the seven commands are listed, and the router skill exists', () => {
     const pj = JSON.parse(fs.readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8'));
     assert.strictEqual(pj.name, 'alfred-code');
     assert.ok(typeof pj.version === 'string' && pj.version.trim() !== '');
@@ -38,8 +38,8 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
     // Plugin COMMANDS display namespaced-only (/alfred-code:setup); plugin SKILLS display bare -
     // so the workers must be commands and the router a skill named exactly like the plugin
     // (bare /alfred-code, no /alfred-code:alfred-code stutter). Empirically proven layout.
-    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md']);
-    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
+    assert.deepStrictEqual(pj.commands, ['./commands/init.md', './commands/setup.md', './commands/update.md', './commands/configure.md', './commands/validate.md', './commands/status.md', './commands/uninstall.md']);
+    for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
         assert.ok(fs.existsSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`)), `the /alfred-code:${name} command exists`);
     }
@@ -477,7 +477,7 @@ test('a single-stack (aspnet) recommendation does not pull cross-stack skills', 
     assert.ok(closed.skills.includes('csharp') && closed.skills.includes('dotnet-web-backend'), 'still pulls its own vertical');
 });
 
-for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'])
+for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status', 'uninstall'])
 {
     test(`the ${name} command exists with valid manual-only frontmatter`, () => {
         const cmd = path.join(PLUGIN_DIR, 'commands', `${name}.md`);
@@ -494,10 +494,10 @@ for (const name of ['init', 'setup', 'update', 'configure', 'validate', 'status'
 // edits any more; one that drops the switch's line strands the user who set it without a word.
 // The rule is pinned as `seed-route-selection` in meta/shared-rules.json.
 test('every command that runs the installer runs the SEED, and names the shell switch', () => {
-    for (const name of ['setup', 'init', 'update', 'configure', 'validate'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'uninstall'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update)/,
+        assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" (install|update|uninstall)/,
             `${name} does not run the Node seed`);
         assert.match(body, /ALFRED_CODE_SEED=shell/, `${name} does not name the shell switch`);
         assert.ok(!/- Unix: `bash "\$TMP\/repo\/scripts\/os\/alfred-code\.sh"/.test(body),
@@ -513,7 +513,7 @@ test('every command that runs the installer runs the SEED, and names the shell s
 // release. Every body names the refusal line the seed itself prints, and runs no twin.
 const D1 = 'the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer'; // legacy-name
 test('D1: on seed=shell every command body prints the refusal and runs no twin', () => {
-    for (const file of ['commands/setup.md', 'commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'references/source-protocol.md'])
+    for (const file of ['commands/setup.md', 'commands/init.md', 'commands/update.md', 'commands/configure.md', 'commands/validate.md', 'commands/uninstall.md', 'references/source-protocol.md'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, file), 'utf8');
         assert.ok(body.includes(D1), `${file} does not print the D1 refusal`);
@@ -553,7 +553,7 @@ test('every command gate and the router stop in a worktree of an installed check
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
     assert.match(router, /`worktree-of-installed <main>`/);
     assert.match(router, /Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which holds the install - run \/alfred-code:<the command the ask needs> from there'/);
-    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
         const body = flat(cmdBody(name));
         assert.match(body, /node "(\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/scripts\/install\/stamp\.js" state \./, `${name} reads the state`);
@@ -702,17 +702,29 @@ test('every path a shipped body cites through ${CLAUDE_PLUGIN_ROOT} exists in th
 });
 
 test('every command holds to the shared one-download protocol and the router skill names them all', () => {
-    for (const name of ['setup', 'init', 'update', 'configure'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'uninstall'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
         assert.match(body, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/source-protocol\.md/, `${name} cites the shared source-protocol.md via the plugin root`);
     }
     const router = fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8');
     assert.match(router.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1], /name:\s*alfred-code/, 'router skill named like the plugin -> displays bare /alfred-code');
-    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status'])
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status', 'uninstall'])
     {
         assert.match(router, new RegExp('/alfred-code:' + name), `/alfred-code routes to /alfred-code:${name}`);
     }
+});
+
+// R10: uninstall runs the seed's own uninstall over the run's snapshot and reports its lines - what went,
+// what was kept as the user's, and the commands it only PRINTED (a user-scope row, a third-party pick,
+// the marketplace), which the command never runs. A stamp from before the ledger routes to update once.
+test('uninstall runs the seed after one confirmation, and never runs a command the seed only printed (R10)', () => {
+    const body = flat(cmdBody('uninstall'));
+    assert.match(body, /node "\$TMP\/repo\/scripts\/install\/alfred-code\.js" uninstall --source "\$TMP\/repo" 2>&1 \| tee "\$TMP\/install\.log"/);
+    assert.match(body, /AskUserQuestion/);
+    assert.match(body, /predates the install ledger.*\/alfred-code:update/);
+    assert.match(body, /never run a printed command/i);
+    assert.match(body, /rm -rf "\$TMP" "\$MARK"|Clean up the temp dir/);
 });
 
 test('the walk and status REPORT the derivation - they never restate what the installer writes', () => {

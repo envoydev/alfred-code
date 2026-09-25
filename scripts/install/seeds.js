@@ -72,6 +72,18 @@ function accountKeyState(configDir, key)
 // INSTALL only, once. The H1 placeholder is stamped with the repo folder name - the same __TOKEN__
 // convention as the docs-root rule, and because the seed runs once a hand-written title is never
 // clobbered.
+// The body the seed writes into .claude/CLAUDE.md for this project, or null with no template - also the
+// ledger fallback's test that a CLAUDE.md is still the unfilled seed (R10).
+function claudeMdBody({ projectRoot, sourceDir })
+{
+    let body;
+    try { body = fs.readFileSync(path.join(sourceDir, 'stack', 'CLAUDE.template.md'), 'utf8'); } catch { return null; }
+    body = body.split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
+    // Claude reads a root AGENTS.md on its own only while no CLAUDE.md exists, so the seed would switch it
+    // off: a live import under the H1 keeps it loading (resolved against this file, hence the '../').
+    return fs.existsSync(path.join(projectRoot, 'AGENTS.md')) ? body.replace(/^(#[^\n]*\n)/, '$1\n@../AGENTS.md\n') : body;
+}
+
 function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
 {
     if (fs.existsSync(path.join(projectRoot, 'CLAUDE.md')) || fs.existsSync(path.join(projectRoot, '.claude', 'CLAUDE.md')))
@@ -79,17 +91,13 @@ function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
         log('  CLAUDE.md: already present - left as-is (finish its authoring outline if not done)');
         return false;
     }
-    const src = path.join(sourceDir, 'stack', 'CLAUDE.template.md');
-    if (!fs.existsSync(src)) { note('CLAUDE.template.md not found in the stack source'); return false; }
+    const body = claudeMdBody({ projectRoot, sourceDir });
+    if (body === null) { note('CLAUDE.template.md not found in the stack source'); return false; }
     const dest = path.join(projectRoot, '.claude', 'CLAUDE.md');
-    // Claude reads a root AGENTS.md on its own only while no CLAUDE.md exists, so the seed would switch it
-    // off: a live import under the H1 keeps it loading (resolved against this file, hence the '../').
     const agents = fs.existsSync(path.join(projectRoot, 'AGENTS.md'));
     try
     {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        let body = fs.readFileSync(src, 'utf8').split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
-        if (agents) body = body.replace(/^(#[^\n]*\n)/, '$1\n@../AGENTS.md\n');
         fs.writeFileSync(dest, body);
     }
     catch (err) { note(`CLAUDE.md could not be seeded (${err.message})`); return false; }
@@ -112,4 +120,4 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedClaudeMd, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };
+module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedClaudeMd, claudeMdBody, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };

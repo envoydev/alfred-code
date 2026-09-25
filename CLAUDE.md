@@ -33,7 +33,7 @@ change (see the invariants below).
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
   `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
-  `stamp`, `runtime`), plus `claude-stack.js`, the entry shim a 1.x command body still calls against <!-- legacy-name -->
+  `stamp`, `uninstall`, `runtime`), plus `claude-stack.js`, the entry shim a 1.x command body still calls against <!-- legacy-name -->
   a 2.0.0 snapshot (it runs `alfred-code.js`; keep it listed so it is never deleted as unlisted
   before the 2.x line ends). One `node` command on every OS, so no OS branch in the command bodies. The
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
@@ -241,7 +241,7 @@ change (see the invariants below).
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
   glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
-- `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
+- `setup-plugin/` - the Alfred Code plugin: seven COMMANDS and one router SKILL.
   - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
     bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
@@ -256,7 +256,8 @@ change (see the invariants below).
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
-    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed). In a git
+    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed), `/alfred-code:uninstall`
+    (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
@@ -285,7 +286,7 @@ change (see the invariants below).
     (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
-  - None of the six carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
+  - None of the seven carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
     restriction or a context saving.
 - `meta/` - never installed:
   - `shared-rules.json` pins every deliberate multi-home rule (owner + marker-pinned copies); the lint
@@ -349,8 +350,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Plugins | 4 OPTIONAL third-party picks (`claude plugin install`), each suggested on evidence (`meta/evidence.json`): claude-md-management, the `*-lsp` pair and security-guidance (`superpowers` left them in 2.0.0, never touched - R109) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
-| Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
+| Installer | `node scripts/install/alfred-code.js <install|update|uninstall>` from the snapshot, one command on every OS |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash: update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these, and refuses a stamp with none), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |

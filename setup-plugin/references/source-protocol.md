@@ -1,9 +1,9 @@
-# The one-download protocol - shared by the setup, init, update, configure, and validate commands
+# The one-download protocol - shared by the setup, init, update, configure, validate and uninstall commands
 
-The five downloading commands (`/alfred-code:setup` - fresh install, `/alfred-code:init` - the
+The six downloading commands (`/alfred-code:setup` - fresh install, `/alfred-code:init` - the
 one-time bootstrap after it, `/alfred-code:update` - refresh + prune, `/alfred-code:configure` -
-adjust the selection, `/alfred-code:validate` - reconcile to the project; `status` never
-downloads) drive their whole run from ONE
+adjust the selection, `/alfred-code:validate` - reconcile to the project, `/alfred-code:uninstall` -
+the stack out of the project; `status` never downloads) drive their whole run from ONE
 source snapshot. This file is the shared contract; each command's numbered steps say WHEN to
 apply it, this file says WHAT holds. It lives at `setup-plugin/references/` under the plugin root -
 every entry ships from the repo root, so that is where the cache holds it - and the commands cite it
@@ -344,7 +344,7 @@ roughly 882k tokens between them. So:
 
 ## Hand the same snapshot to the installer
 
-**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/alfred-code.js" <install|update>
+**ONE seed, one command on every OS:** `node "$TMP/repo/scripts/install/alfred-code.js" <install|update|uninstall>
 [flags]`, with the Unix flag spellings everywhere (`--scope`, `--selection`) because there is one
 program now and not two. A resolve line reporting `seed=shell` - `ALFRED_CODE_SEED=shell`, or a
 1.x `CLAUDE_STACK_SEED=shell`, in the environment this session started in - is refused: the frozen <!-- legacy-name -->

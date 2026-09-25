@@ -873,3 +873,209 @@ test('settings-writer: worktree.baseRef at local scope never hides a settings.js
     assert.ok(!again.logs.some((m) => /worktree/.test(m)), again.logs.join(' | '));
     assert.strictEqual(write(settingsFile({}), {}).data.worktree, undefined);
 });
+
+// --- R10 THE LEDGER -----------------------------------------------------------------------------
+// The run records what it MANAGES: each env key it wrote (a hash of the value, per file), each deny
+// entry, each hook wiring. What a prior run recorded and this release no longer writes goes; a value
+// changed since it was written is the user's - kept, logged once, and out of the ledger from then on.
+// A stamp with no ledger (an older release) is adopted by the values the stack itself shipped.
+const { valueHash } = require('./install/stamp.js');
+const idOf = (event, matcher, file, args) => valueHash(`${event}\u0000${matcher}\u0000${hookCommand(file, args).command}`);
+const noLedger = { env: {}, deny: [], hooks: [] };
+
+test('settings-ledger: a fresh write records the keys it seeded, the deny entries it added and the hooks it wired (R10)', () =>
+{
+    const file = settingsFile();
+    const { result } = write(file, {
+        hookSpecs: [HOOK('guard-a.js', 'Bash'), HOOK('guard-a.js', '@Stop')], denySpecs: ['Read(.env)'],
+        ledger: { prior: null, releaseHooks: ['guard-a.js::Bash::', 'guard-a.js::@Stop::'] },
+    });
+    const env = result.managed.env['settings.json'];
+    assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, valueHash('0'));
+    assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, valueHash(''));
+    assert.deepStrictEqual(result.managed.deny, [{ file: 'settings.json', entry: 'Read(.env)' }]);
+    assert.deepStrictEqual(result.managed.hooks.map((h) => [h.hook, h.id]).sort(),
+        [['guard-a.js', idOf('PreToolUse', 'Bash', 'guard-a.js')], ['guard-a.js', idOf('Stop', '', 'guard-a.js')]].sort());
+});
+
+test('settings-ledger: the user\'s own key, deny entry and hook are never managed - with a ledger, an unlisted value stays theirs (R10)', () =>
+{
+    const file = settingsFile({
+        env: { ALFRED_CODE_INSTRUMENT: '0', MY_KEY: 'x' },
+        permissions: { deny: ['Read(.env)', 'Bash(rm:*)'] },
+        hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node mine.js' }] }] },
+    });
+    const { result, data } = write(file, { denySpecs: ['Read(.env)'], ledger: { prior: noLedger, releaseHooks: [] } });
+    const env = result.managed.env['settings.json'];
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in env), 'it was there before the stack wrote anything, at the same value');
+    assert.ok(!('MY_KEY' in env));
+    assert.strictEqual(env.ALFRED_CODE_PUSH_GATE, valueHash('1'), 'a key seeded this run is the stack\'s');
+    assert.deepStrictEqual(result.managed.deny, [], 'an entry already there is the project\'s');
+    assert.deepStrictEqual(result.managed.hooks, []);
+    assert.deepStrictEqual(data.hooks.Stop, [{ hooks: [{ type: 'command', command: 'node mine.js' }] }]);
+});
+
+test('settings-ledger: a managed value changed since it was written is the user\'s - kept, logged once, out of the ledger (R10)', () =>
+{
+    const file = settingsFile({ env: { ALFRED_CODE_INSTRUMENT: '1' } });
+    const prior = { env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0') } }, deny: [], hooks: [] };
+    const { result, data, logs } = write(file, { ledger: { prior, releaseHooks: [] } });
+    assert.strictEqual(data.env.ALFRED_CODE_INSTRUMENT, '1');
+    assert.ok(!('ALFRED_CODE_INSTRUMENT' in result.managed.env['settings.json']));
+    assert.match(logs.join('\n'), /settings\.json env: ALFRED_CODE_INSTRUMENT changed since the stack wrote it - yours from here on, kept \(1 chars\)/);
+    const again = write(file, { ledger: { prior: { ...noLedger, env: result.managed.env }, releaseHooks: [] } });
+    assert.doesNotMatch(again.logs.join('\n'), /ALFRED_CODE_INSTRUMENT/, 'said once: the next run no longer lists it');
+});
+
+test('settings-ledger: what the prior run wrote and this release no longer writes goes; an edited value stays (R10)', () =>
+{
+    const old = hookCommand('old-hook.js').command;
+    const file = settingsFile({
+        env: { ALFRED_CODE_GONE: 'a', ALFRED_CODE_EDITED: 'b-edited', MY_KEY: 'x' },
+        permissions: { deny: ['Read(*.old)', 'Bash(rm:*)'] },
+        hooks: { Stop: [{ hooks: [{ type: 'command', command: old, timeout: 10 }] }, { hooks: [{ type: 'command', command: 'node mine.js' }] }] },
+    });
+    const prior = {
+        env: { 'settings.json': { ALFRED_CODE_GONE: valueHash('a'), ALFRED_CODE_EDITED: valueHash('b'), MY_KEY: valueHash('x') } },
+        // Bash(rm:*) is no entry the stack ever shipped: a stamp is project text, so its ledger never
+        // names a deny rule of the user's for removal.
+        deny: [{ file: 'settings.json', entry: 'Read(*.old)' }, { file: 'settings.json', entry: 'Bash(rm:*)' }],
+        hooks: [{ file: 'settings.json', hook: 'old-hook.js', id: idOf('Stop', '', 'old-hook.js') }],
+    };
+    const { data, logs, result } = write(file, { denySpecs: ['Read(.env)'], ledger: { prior, releaseHooks: [], shippedDeny: ['Read(.env)', 'Read(*.old)'] } });
+    assert.ok(!('ALFRED_CODE_GONE' in data.env), 'a managed key the catalog no longer ships goes');
+    assert.strictEqual(data.env.ALFRED_CODE_EDITED, 'b-edited', 'an edited one stays');
+    assert.strictEqual(data.env.MY_KEY, 'x');
+    assert.deepStrictEqual(data.permissions.deny, ['Bash(rm:*)', 'Read(.env)']);
+    assert.deepStrictEqual(data.hooks.Stop, [{ hooks: [{ type: 'command', command: 'node mine.js' }] }]);
+    const text = logs.join('\n');
+    assert.match(text, /settings\.json env: ALFRED_CODE_GONE removed - the stack wrote it and this release no longer does/);
+    assert.match(text, /settings\.json env: ALFRED_CODE_EDITED kept - changed since the stack wrote it, so it is yours \(8 chars\)/);
+    assert.match(text, /settings\.json: deny Read\(\*\.old\) removed - the stack wrote it and this release no longer does/);
+    assert.match(text, /settings\.json: hook wiring old-hook\.js \(Stop\) removed - the stack wired it and this release no longer does/);
+    assert.ok(!('ALFRED_CODE_EDITED' in result.managed.env['settings.json']));
+});
+
+test('settings-ledger: a stamp with no ledger adopts what the stack itself shipped, and nothing else (R10 fallback)', () =>
+{
+    const cmd = hookCommand('guard-a.js').command;
+    const file = settingsFile({
+        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '250000', ALFRED_CODE_MEMORY_DB: '/m.db', MY_KEY: 'x' },
+        permissions: { deny: ['Read(.env)', 'Agent(alfred-code:angular-verifier)', 'Bash(rm:*)'] },
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'node mine.js' }] }] },
+    });
+    const { result } = write(file, {
+        hookSpecs: [HOOK('guard-a.js', 'Bash')], denySpecs: ['Read(.env)'], memoryDb: '/m.db',
+        ledger: { prior: null, releaseHooks: ['guard-a.js::Bash::'] },
+    });
+    const env = result.managed.env['settings.json'];
+    assert.strictEqual(env.ALFRED_CODE_INSTRUMENT, valueHash('0'), 'at the catalog seed: the stack\'s');
+    assert.ok(!('ALFRED_CODE_PUSH_GATE' in env), 'a value the stack never shipped is the user\'s');
+    assert.strictEqual(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, valueHash('180000'), 'reseeded this run: written by the stack');
+    assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, valueHash('/m.db'), 'the written key is the stack\'s by contract');
+    assert.ok(!('MY_KEY' in env));
+    assert.deepStrictEqual(result.managed.deny.map((d) => d.entry).sort(), ['Agent(alfred-code:angular-verifier)', 'Read(.env)']);
+    assert.deepStrictEqual(result.managed.hooks.map((h) => h.id), [idOf('PreToolUse', 'Bash', 'guard-a.js')]);
+});
+
+test('settings-ledger: at project scope a key the run writes into settings.local.json is managed there, the user\'s local key is not (R10, R99)', () =>
+{
+    const file = settingsFile({});
+    const localFile = path.join(path.dirname(file), 'settings.local.json');
+    fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-x' } }));
+    const { result } = write(file, { localFile, memoryDb: '/m.db', ledger: { prior: noLedger, releaseHooks: [] } });
+    assert.deepStrictEqual(result.managed.env['settings.local.json'], { ALFRED_CODE_MEMORY_DB: valueHash('/m.db') });
+    assert.strictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).env.ALFRED_CODE_HOOKS_OFF, 'guard-x', 'R99: the local value still applies');
+});
+
+test('leaveLocalScope: with a ledger, the ledger decides - a local key at a seed the stack never wrote stays, one it wrote goes (R96 over R10)', () =>
+{
+    const dir = path.join(TMP, `leave-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({}));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_MONITOR: 'inject' } }));
+    const seeds = { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_MONITOR: 'log' };
+    const ledgerEnv = { ALFRED_CODE_INSTRUMENT: valueHash('0'), ALFRED_CODE_MONITOR: valueHash('log') };
+    const logs = [];
+    leaveLocalScope({ claudeDir: dir, seeds, ledgerEnv, log: (m) => logs.push(m) });
+    const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
+    assert.deepStrictEqual(local.env, { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_MONITOR: 'inject' },
+        'PUSH_GATE is at the seed but the stack never wrote it here - the user set it; MONITOR was edited since');
+    assert.match(logs.join('\n'), /1 stack env key removed - each held the stack's own seed.*: ALFRED_CODE_INSTRUMENT$/m);
+});
+
+// Uninstall's settings half: exactly what the ledger lists, at the value it recorded - never the user's
+// own key, deny entry or hook; a file left holding nothing goes, one that cannot be read is untouched.
+const { removeManagedSettings } = require('./install/settings.js');
+test('removeManagedSettings: the managed keys, denies and wirings go; the user\'s own and an edited value stay (R10 uninstall)', () =>
+{
+    const dir = path.join(TMP, `rm-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const cmd = hookCommand('guard-a.js').command;
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
+        env: { ALFRED_CODE_INSTRUMENT: '0', ALFRED_CODE_PUSH_GATE: '0', MY_KEY: 'x' },
+        permissions: { deny: ['Read(.env)', 'Bash(rm:*)'], allow: ['Bash(ls)'] },
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd, timeout: 10 }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'node mine.js' }] }] },
+        enabledMcpjsonServers: ['serena', 'mine'],
+    }));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/m.db' } }));
+    const ledger = {
+        env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0'), ALFRED_CODE_PUSH_GATE: valueHash('1'), MY_KEY: valueHash('x') }, 'settings.local.json': { ALFRED_CODE_MEMORY_DB: valueHash('/m.db') } },
+        deny: [{ file: 'settings.json', entry: 'Read(.env)' }, { file: 'settings.json', entry: 'Bash(rm:*)' }],
+        // The user's own wiring, listed by a stamp that is project text: never the stack's to unwire.
+        hooks: [{ file: 'settings.json', hook: 'guard-a.js', id: idOf('PreToolUse', 'Bash', 'guard-a.js') }, { file: 'settings.json', hook: 'mine.js', id: valueHash('PreToolUse\u0000Bash\u0000node mine.js') }],
+    };
+    const logs = [];
+    removeManagedSettings({ claudeDir: dir, ledger, shippedDeny: ['Read(.env)'], mcpRemoved: ['serena'], log: (m) => logs.push(m) });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), {
+        env: { ALFRED_CODE_PUSH_GATE: '0', MY_KEY: 'x' },
+        permissions: { deny: ['Bash(rm:*)'], allow: ['Bash(ls)'] },
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'node mine.js' }] }] },
+        enabledMcpjsonServers: ['mine'],
+    });
+    assert.ok(!fs.existsSync(path.join(dir, 'settings.local.json')), 'a settings file left empty goes');
+    assert.match(logs.join('\n'), /settings\.json env: ALFRED_CODE_PUSH_GATE kept - changed since the stack wrote it, so it is yours \(1 chars\)/);
+    const notes = [];
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '{nope');
+    removeManagedSettings({ claudeDir: dir, ledger, note: (m) => notes.push(m) });
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), '{nope');
+    assert.strictEqual(notes.length, 1, notes.join('\n'));
+});
+
+// The `attribution` keys the seed writes are the stack's too: seeded this run, or listed by the prior
+// ledger at the value written - never a key the project had before the stack wrote anything. With no
+// ledger at all (an older stamp) a key at the seed value is adopted, the env fallback's rule.
+test('settings-ledger: the attribution keys the run seeds are managed, the project\'s own are not (R10)', () =>
+{
+    const fresh = write(settingsFile({ attribution: { commit: '' } }), { attribution: {}, ledger: { prior: { ...noLedger, settings: {} }, releaseHooks: [] } });
+    assert.deepStrictEqual(fresh.result.managed.settings, { 'settings.json': { 'attribution.pr': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
+        'commit was the project\'s before the stack wrote anything, at the same value');
+    const listed = { ...noLedger, settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.pr': valueHash('""') } } };
+    const edited = write(settingsFile({ attribution: { commit: '', pr: 'mine', sessionUrl: false } }), { attribution: {}, ledger: { prior: listed, releaseHooks: [] } });
+    assert.deepStrictEqual(edited.result.managed.settings, { 'settings.json': { 'attribution.commit': valueHash('""') } }, 'pr was edited since; sessionUrl was never listed');
+    const fallback = write(settingsFile({ attribution: { commit: '', pr: 'mine' } }), { attribution: {}, ledger: { prior: null, releaseHooks: [] } });
+    assert.deepStrictEqual(fallback.result.managed.settings, { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } });
+});
+
+test('removeManagedSettings: the attribution keys it seeded go, an edited one stays, and the empty lists the stack and the plugin CLI leave go with them (R10 uninstall)', () =>
+{
+    const dir = path.join(TMP, `rm-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
+        env: { ALFRED_CODE_INSTRUMENT: '0' }, attribution: { commit: '', pr: 'mine', sessionUrl: false }, enabledMcpjsonServers: [], enabledPlugins: {},
+    }));
+    const ledger = {
+        env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0') } },
+        settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.pr': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
+    };
+    const logs = [];
+    removeManagedSettings({ claudeDir: dir, ledger, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { attribution: { pr: 'mine' } });
+    assert.match(logs.join('\n'), /settings\.json: attribution\.pr kept - changed since the stack wrote it, so it is yours/);
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ attribution: { commit: '', pr: '', sessionUrl: false }, enabledMcpjsonServers: [], enabledPlugins: {} }));
+    removeManagedSettings({ claudeDir: dir, ledger, log: () => {} });
+    assert.ok(!fs.existsSync(path.join(dir, 'settings.json')), 'a file left holding nothing but the stack\'s entries goes');
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ enabledMcpjsonServers: ['mine'], enabledPlugins: { 'x@y': true } }));
+    removeManagedSettings({ claudeDir: dir, ledger, log: () => {} });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { enabledMcpjsonServers: ['mine'], enabledPlugins: { 'x@y': true } }, 'a list that names something is never touched');
+});
