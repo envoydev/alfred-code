@@ -3578,6 +3578,10 @@
         {
           "file": "stack/rules/baseline-interaction.md",
           "marker": "the FIRST action is the `alfred-habits-clarify` Skill call, before the design or the first edit"
+        },
+        {
+          "file": "stack/rules/baseline-git.md",
+          "marker": "the FIRST action is the `alfred-habits-commit-checkpoint` Skill call, before the command runs"
         }
       ]
     },

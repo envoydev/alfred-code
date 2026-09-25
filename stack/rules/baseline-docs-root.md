@@ -8,7 +8,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   folder: the architecture map (`architecture/`), the code-style capture (`code-style/CODE-STYLE.md`),
   ADRs with no existing home (`decisions/`), the related-projects orientation doc
   (`related-projects/RELATED-PROJECTS.md`), the quality-loop prompts (`loops/`), the coverage capture
-  (`test-coverage/`), the usage-audit bundles (`alfred-code-usage-report/`), superpowers plans + specs,
+  (`test-coverage/`), the usage-audit bundles (`alfred-code-usage-report/`), implementation plans and
+  design specs (`superpowers/plans/`, `superpowers/specs/`, whatever wrote them),
   the instrumentation ledgers (`tools-usage/`), and the task cards handed to another repo
   (`cross-project-tasks/`). Two folders hold no domain, by design: `quality/ASSESSMENT.md` and `quality/CODE-ASSESSMENT.md` are
   recomputed fresh every run rather than versioned (no `watch.json`, so the engine never sections or
@@ -18,8 +19,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   outside it - or outside its own domain's folder - is invisible to every capture, status and prune
   step that reads `<docs-path>`, and to the next session.
 - Creating a doc OUTSIDE this root - a committed `docs/`, the repo root - happens only on the
-  user's asked-first approval of that exact location (AskUserQuestion, per the interaction
-  baseline); never silently, however conventional the spot looks. A sibling repo is never
+  user's asked-first approval of that exact location, through AskUserQuestion; never silently,
+  however conventional the spot looks. A sibling repo is never
   written from this session unless the user allows it in the cross-project write guard's own
   ask - its `<docs-path>/flow/CROSS-WRITE-ALLOW` receipt, this session only; by default a doc
   about it lives in `related-context/`, a change it must make is a task card in
@@ -31,9 +32,6 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means this root.
 - To move the docs, change that env value and nothing else - forward slashes on every OS. Existing
   docs do not move with it: they stay under the old root until moved by hand or re-captured.
-- Where the superpowers plugin is installed, it writes its implementation plans and design specs
-  under this same root - `<docs-path>/superpowers/plans/` and `<docs-path>/superpowers/specs/`,
-  never its own default location.
 - Reading a capture doc: every one opens with `Captured: <branch>@<short-sha>, <date>` (`+dirty` =
   the tree held uncommitted work), and every capture's docs follow the checked-out branch through the docs hook
   (`docs.js status` says how), so the stamp says which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -
@@ -49,7 +47,7 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
      installer's next-steps say the same thing at install time. -->
 
 <!-- Maintainer note: the env value is read as process.env.ALFRED_CODE_DOCS_PATH by the hooks and
-     $env:ALFRED_CODE_DOCS_PATH by the PowerShell installer twin; both also read the pre-0.2.43
+     the installer; both also read the pre-0.2.43
      CLAUDE_DOCS_PATH spelling as a fallback, and an install/update renames the key in place. That
      history changed no model behaviour, so it is not injected - meta/shared-rules.json's
      docs-root-resolution entry is where the fallback is recorded. -->

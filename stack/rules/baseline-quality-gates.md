@@ -1,5 +1,5 @@
 ---
-description: "House baseline - quality gates: code quality and the done-claim gate. Always-on (no paths), installer-managed - update overwrites local edits."
+description: "House baseline - quality gates: code quality, the done-claim gate, and long-running and leftover work. Always-on (no paths), installer-managed - update overwrites local edits."
 ---
 
 # Quality gates
@@ -36,6 +36,8 @@ then the query. context7 unreachable: say the claim is unverified rather than as
 
 State complete vs not vs why, then put continue / redirect / stop through the AskUserQuestion tool -
 one option each, recommendation marked (a prose-only ask gets skipped).
+
+## Long-running and leftover work
 
 ### Background work
 
