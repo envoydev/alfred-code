@@ -435,8 +435,12 @@ function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
 // committed file, and a value set locally is personal (a hooks-off list, a second writable tree). A
 // local key still holding the stack's own seed (`seeds`, what this run would seed) or one the stack
 // writes every run (`written`) is the stack's stale copy and goes; any other value stays in
-// settings.local.json untouched, still overriding settings.json, and each key is logged once with the
-// value that applies from here on (a credential-shaped key by its length). Everything else in the local
+// settings.local.json untouched, still overriding settings.json (R99: later runs read and write it
+// there), and each key is logged once. Fix round 2: a seed may be a LIST - every value the stack has
+// shipped for the key, a reseed migration's old one included (N2) - and a kept value is logged by its
+// length only, whatever the key's name (N3): it is the user's, and it can carry a credential under a
+// key that does not look like one. A removed key's line names the stack seed and what applies now
+// (a credential-shaped key by its length). Everything else in the local
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
@@ -457,16 +461,17 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     const env = isObj(local.env) ? local.env : null;
     const sharedEnv = isObj(shared.env) ? shared.env : {};
     const shown = (key, v) => (SECRET_KEY.test(key) ? `(set, ${String(v).length} chars)` : v === '' ? '(empty)' : `'${v}'`);
+    const seeded = (key, v) => Object.hasOwn(seeds, key) && [].concat(seeds[key]).includes(v);
     for (const key of Object.keys(env || {}).filter((k) => k.startsWith(ENV_PREFIX)))
     {
         const v = env[key];
         const has = Object.hasOwn(sharedEnv, key);
         if (written.includes(key)) say(`${key} removed - the stack writes it every run, to settings.json from here on`);
-        else if (Object.hasOwn(seeds, key) && seeds[key] === v)
-            say(`${key} removed - the stack's own seed (${shown(key, v)}); ${has ? `settings.json's ${shown(key, sharedEnv[key])} applies` : 'settings.json gets the same seed'}`);
+        else if (seeded(key, v))
+            say(`${key} removed - the stack's own seed (${shown(key, v)}); ${has ? `settings.json's ${shown(key, sharedEnv[key])} applies` : 'settings.json gets the current seed'}`);
         else
         {
-            say(`${key} stays here - your value ${shown(key, v)} applies over settings.json${has ? ` (${shown(key, sharedEnv[key])})` : ''}, and over what a later run writes there`);
+            say(`${key} stays here (your value, ${String(v).length} chars) - it applies over settings.json, and later runs read and write it here`);
             continue;
         }
         delete env[key];

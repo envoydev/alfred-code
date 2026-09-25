@@ -243,12 +243,15 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // R96: an env key the stack seeded there goes - `seeds` is what THIS run would seed in its
         // place (the catalog default, the docs-versioning rule's answer), `written` the keys it writes
         // every run - and a value the user set stays local; no env key moves into settings.json.
+        // N2: every seed the stack SHIPPED counts, so a reseed migration's old value is one too.
         const leavingLocal = Boolean(stampFile) && stampLayer.readStampScope(stampFile) === 'local' && args.scope !== 'local';
         if (leavingLocal && !args.printPlan)
         {
             const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
-            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, r.default]));
-            seeds.ALFRED_CODE_DOCS_VERSIONING = docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) });
+            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, [r.default]]));
+            seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
+            for (const [key, shippedSeed] of envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json'))).reseed)
+                (seeds[key] ??= []).push(shippedSeed);
             settings.leaveLocalScope({
                 claudeDir,
                 hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))],

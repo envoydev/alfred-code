@@ -12,8 +12,8 @@ yourself. The state is one script read of the project's `.claude/`, nothing infe
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` prints `not-installed`,
 `legacy-global`, `worktree-of-installed <main>`, `installed` or `initialised`.
 
-- **Installed** = an install record in this repo, its git top level or a worktree's main
-  checkout: `alfred-code.stamp`, the 1.x `claude-stack.stamp`, or a copied `hooks/docs.js`. <!-- legacy-name -->
+- **Installed** = an install record in this repo or its git top level: `alfred-code.stamp`,
+  the 1.x `claude-stack.stamp`, or a copied `hooks/docs.js`. <!-- legacy-name -->
 - **Worktree of an installed checkout** = a git worktree whose own `.claude/` holds no record,
   while its main checkout (`<main>`) does. The hooks count it set up; the commands cannot act on it.
 - **Legacy global** = no project record, but a 1.x global install's `claude-stack.stamp` in the <!-- legacy-name -->

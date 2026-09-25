@@ -651,7 +651,8 @@ test('install-scope: a local install moved to project scope drops its seeded key
     assert.deepStrictEqual(result.local.permissions.allow, ['Bash(ls)'], 'the user\'s own permissions stay');
     assert.deepStrictEqual((result.local.permissions.deny || []).filter((d) => /^Agent\(/.test(d)), [], 'no seat deny left in the local file');
     assert.ok((result.shared.permissions.deny || []).some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies moved into settings.json');
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here - your value 'guard-answer-length' applies over settings\.json/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 19 chars\) - it applies over settings\.json/, outs[1]);
+    assert.ok(!/stays here.*(guard-answer-length|\/elsewhere\/other-repo)/.test(outs[1]), 'a kept value reached the log');
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_INSTRUMENT removed - the stack's own seed/, outs[1]);
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run/, outs[1]);
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed/, outs[1]);
@@ -690,4 +691,36 @@ test('install-scope: after a move off local, configure reads the locally switche
     assert.ok(!off(result.shared.env).includes('guard-secret-value'), 'the drop went into settings.json, shadowed');
     assert.match(outs[3], /settings\.local\.json env: ALFRED_CODE_HOOKS_OFF = /, outs[3]);
     assert.deepStrictEqual(steps[4], steps[3], 'a re-run changes neither file');
+});
+
+// N2 and N4 (Task 18b fix round 2): at the move, a local value equal to ANY seed the stack shipped is
+// its stale copy - a seed a later release changed (the reseed migrations' old values) included, or it
+// would survive as 'your value' and no migration would ever reach it. The docs-versioning key's seed
+// is what the rule answers for this project, not the catalog constant: a project whose docs git
+// ignores seeded 'local', and that seed goes too.
+test('install-scope: a move off local removes an older shipped seed and the docs-versioning rule\'s own answer (N2, N4)', POSIX_ONLY, () =>
+{
+    const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
+        args: [['--scope', 'local'], ['--scope', 'project', '--installed-only']],
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/\n'),
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            const local = JSON.parse(fs.readFileSync(file, 'utf8'));
+            assert.strictEqual(local.env.ALFRED_CODE_DOCS_VERSIONING, 'local', 'the rule answered local for docs git ignores');
+            local.env.ALFRED_CODE_FRESH_SESSION_DEFAULT = '250000';
+            fs.writeFileSync(file, JSON.stringify(local));
+            return null;
+        },
+        inspect: (repo) => ({ shared: json(repo, path.join('.claude', 'settings.json')), local: json(repo, path.join('.claude', 'settings.local.json')) }),
+    });
+    const local = result.local.env || {};
+    assert.ok(!('ALFRED_CODE_FRESH_SESSION_DEFAULT' in local), `an older shipped seed survived the move: ${local.ALFRED_CODE_FRESH_SESSION_DEFAULT}`);
+    assert.ok(!('ALFRED_CODE_DOCS_VERSIONING' in local), 'the rule\'s own seed survived the move as a user value');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_FRESH_SESSION_DEFAULT removed - the stack's own seed \('250000'\)/, outs[1]);
+    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed \('local'\)/, outs[1]);
 });

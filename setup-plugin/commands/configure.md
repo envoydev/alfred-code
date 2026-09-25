@@ -347,9 +347,9 @@ written (the shared contract is in `source-protocol.md`'s 'Capture the installer
   into settings.json, the copied-hook wiring and `.mcp.json` approvals go, and so does every
   `ALFRED_CODE_*` key still holding the stack's seed (`<key> removed - the stack's own seed ...`). No
   env key ever moves into the committed settings.json: a value the user set locally stays in
-  `settings.local.json` and keeps applying (`<key> stays here - your value <v> applies over
-  settings.json ...`) - report each kept key with that value, as logged (a credential-shaped key by
-  its length).
+  `settings.local.json` and keeps applying (`<key> stays here (your value, <n> chars) - it applies
+  over settings.json ...`), and every later run reads and writes that key there - report each kept key
+  by name and length, as logged, never its value.
 
 The run refreshes EVERY installed item, in every category, whether or not its area was walked this
 run - the area picker decides which tables you page through, never which files the installer

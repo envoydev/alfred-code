@@ -147,7 +147,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
 // The router's three states, each read from a file rather than inferred.
 test('the router: nothing installed -> setup, installed but never initialised -> init, initialised -> no bootstrap', () => {
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
-    assert.match(router, /\*\*Installed\*\* = an install record in this repo, its git top level or a worktree's main checkout: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
+    assert.match(router, /\*\*Installed\*\* = an install record in this repo or its git top level: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
     // R90 N1: a 1.x global install is routed to update, which moves it into the project.
     assert.match(router, /`legacy-global`/);
     assert.match(router, /Legacy global -> `\/alfred-code:update`, whatever the ask/);
@@ -557,6 +557,25 @@ test('every command gate and the router stop in a worktree of an installed check
     assert.ok(!/grep -m1 '\^scope:'/.test(validate), 'no grep of one stamp name');
     // The installer refuses the same tree, so a gate skipped by hand cannot restart the loop either.
     assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'alfred-code.js'), 'utf8'), /this is a git worktree of \$\{worktreeOf\}, which holds the install - run the installer from there/);
+});
+
+// Task 18b fix round 2. N5: 'Installed' no longer counts a worktree's main checkout - that tree prints
+// its own state, defined in the next bullet. R99: at every scope the stack keys settings.local.json
+// holds apply over settings.json, so status reads them that way, and configure reports a key the move
+// kept by its length (N3), never its value.
+test('router, status and configure read the local stack keys at every scope, and a worktree is its own state (N5, R99, N3)', () =>
+{
+    const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
+    const installed = (/- \*\*Installed\*\* = ([^]*?)- \*\*Worktree/.exec(router) || [])[1] || '';
+    assert.ok(installed, 'the Installed definition is there');
+    assert.ok(!/worktree/i.test(installed), `Installed still counts a worktree's main checkout: ${installed}`);
+    const status = flat(cmdBody('status'));
+    assert.match(status, /at EVERY scope a stack key `settings\.local\.json` holds applies over `settings\.json`/);
+    assert.match(status, /\*\*Environment\*\* - the install's knobs, one row each, from the STACK VIEW/);
+    assert.match(status, /`ALFRED_CODE_HOOKS_OFF` read from the stack view/);
+    const configure = flat(cmdBody('configure'));
+    assert.match(configure, /`<key> stays here \(your value, <n> chars\)/);
+    assert.ok(!/your value <v>/.test(configure), 'configure still reports a kept value');
 });
 
 // Task 18b: status runs the RUNNING plugin's own scripts (no snapshot), finds the install by the

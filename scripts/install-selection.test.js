@@ -550,6 +550,24 @@ test('read-back: a copy-route install that kept no hook reads back `hook none` o
     assert.ok(!plugin.lines.includes('hook none'), 'the plugin route reads its hooks from the core and ALFRED_CODE_HOOKS_OFF');
 });
 
+// N4 (Task 18b fix round 2): R94 infers the last route as 'copy' from a stored switch, but only the
+// literal stamp line makes an EMPTY folder a None (R55). A 1.x copy install - the switch stored false,
+// no route line, no hook left on disk, nothing named off - reads as every hook on, never as `hook none`
+// with every guard silent.
+test('read-back: a stored copy-route switch under a stamp with no hooks route never makes an empty folder a None (R55, N4)', () =>
+{
+    const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const core = row('alfred-code@envoydev');
+    const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook '));
+    for (const routes of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
+        for (const key of ['ALFRED_CODE_HOOKS_VIA_PLUGIN', 'CLAUDE_STACK_HOOKS_VIA_PLUGIN']) // legacy-name
+        {
+            const r = readBackCase({ listing: [core], routes, hooks: ['hook-prelude'], stampHooks: shipped, lastHooksRoute: null, settings: { env: { [key]: 'false' } } });
+            assert.deepStrictEqual(hookLines(r), [], `${key}=false, no route line: nothing stored is every hook, never a None`);
+            assert.strictEqual(r.answered.hooks, false);
+        }
+});
+
 // m8 (fix round 5): stack hooks on disk under a stamp that says 'plugin' are a copy-route switch that
 // died part way - the plugin route prunes every copy - so they are set aside for the stored list.
 // m12 (Task 16b): on the mixed route and the full copy route alike.
