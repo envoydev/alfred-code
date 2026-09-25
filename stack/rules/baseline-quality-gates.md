@@ -15,18 +15,8 @@ description: "House baseline - quality gates: code quality and the done-claim ga
 
 ### The done gate
 
-Before typing 'done', 'fixed', 'passing', 'works', or 'ready' about your own change: STOP and
-satisfy this gate: build + relevant tests run after the last edit, output quoted - an earlier run
-proves the earlier code.
-Bound that output: a GREEN run needs the summary line, not `--verbose` - tail long runs to the
-verdict; a RED run is the opposite case - its stack traces and parse errors are the diagnosis,
-earned cost, never trimmed to the verdict line. While iterating on a failure, run the ONE failing
-test, file or project - the SCOPED test command this project's CLAUDE.md records beside the
-full-suite one (a single project, a test filter, a spec path); the whole suite runs once, at the
-gate, and its output is the summary line - the analyzer's test-run row counts scoped against
-whole-suite runs per session. Satisfy the gate honestly - fix the cause, never suppress a warning,
-weaken a test, or stub code to go green. Report what changed and what deliberately did not. Cannot
-run it? Say so, never silently skip.
+Before you claim your own change done, fixed, passing, works or ready - the FIRST action is the
+`project-done-gate` Skill call, before the claim lands.
 
 ### Claims about the outside world
 

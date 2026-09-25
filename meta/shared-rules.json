@@ -3476,6 +3476,27 @@
         }
       ]
     },
+    "baseline-skill-pointer": {
+      "_note": "R106: a baseline keeps ONE line per method it used to carry, and the method lives in a core skill. The line is the convention rules' imperative form - '<trigger> - the FIRST action is the `<skill>` Skill call, before <the act>' - never a 'see the skill' hint, because the weak phrasing is the one measured losing (convention-rule-first-action). Each pointer names a different skill, so each copy carries its own marker; a pointer reworded out of the form goes red here.",
+      "owner": {
+        "file": "stack/rules/baseline-quality-gates.md",
+        "marker": "the FIRST action is the `project-done-gate` Skill call, before the claim lands"
+      },
+      "sites": [
+        {
+          "file": "stack/rules/baseline-interaction.md",
+          "marker": "the FIRST action is the `project-plan-writing` Skill call, before the plan file is written"
+        },
+        {
+          "file": "stack/rules/baseline-interaction.md",
+          "marker": "the FIRST action is the `project-test-first` Skill call, before the first production edit"
+        },
+        {
+          "file": "stack/rules/baseline-interaction.md",
+          "marker": "the FIRST action is the `project-root-cause` Skill call, before the next fix lands"
+        }
+      ]
+    },
     "gitbash-mount-path": {
       "_note": "Git Bash / MSYS spell a Windows path in POSIX mount form (/c/..., /cygdrive/c/...), which node on win32 resolves against the CURRENT drive - the falsehood that made the cross-project guard block a session cleaning its own temp scratch. Every guard that resolves a path off a Bash command line translates it the SAME way before any resolution, so a fix to the spelling lands in all four at once; each hook is a standalone file with no shared module, which is why the copies are inline.",
       "owner": {
@@ -4047,44 +4068,44 @@
       "_note": "Each task is gated against its acceptance criterion by this session's run, and against the CURRENT contract_version - a divergence is CONTRACT_MISMATCH. Restated in every *-verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+        "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Gate each task against its acceptance criterion the way the done gate in `baseline-quality-gates.md`"
+          "marker": "Gate each task against its acceptance criterion the way `project-done-gate`"
         }
       ]
     },
@@ -5118,20 +5139,20 @@
       "_note": "All four repair resolvers used to restate the done gate in full, forking the always-on quality-gates rule four ways. They now CITE the rule and keep only the shapes their own domain adds - one home for the gate, four homes for the domain detail.",
       "owner": {
         "file": "stack/agents/dotnet-build-error-resolver.md",
-        "marker": "done gate binds here, and in this seat the shapes are"
+        "marker": "`project-done-gate` binds here, and in this seat the shapes are"
       },
       "sites": [
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "done gate binds here, and in this seat the shapes are"
+          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "done gate binds here, and in this seat the shapes are"
+          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "done gate binds here, and in this seat the shapes are"
+          "marker": "`project-done-gate` binds here, and in this seat the shapes are"
         }
       ]
     },

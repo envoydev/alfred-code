@@ -110,10 +110,9 @@ runs the step off stale framing and freezes cost attribution on the wrong skill.
 a capture named in a close-out line (step 6) is a POINTER for the user to type, never a call this
 run makes.
 
-1. **DESIGN** - run `project-solution-design`, after clarifying an ask with more than one reading:
-   one AskUserQuestion at a time, 2-3 concrete options with the recommended one marked, until one
-   reading is left - the requirement, never the implementation. It writes the plan to the plans
-   folder above; the file, not the chat, is the artifact - and that skill's design rules are settled
+1. **DESIGN** - run `project-solution-design`, with `project-clarify` loaded first - it settles an
+   ask with more than one reading and passes a clear one straight through. It writes the plan to
+   the plans folder above; the file, not the chat, is the artifact - and that skill's design rules are settled
    IN it (every seam passes the decision-level rules, every task card carries its `log_points`, the
    `## Decisions` ledger holds every judgment call with its precedent or an explicit none), so step 5
    reviews the built code against a plan that already decided all three. *Stop.*
@@ -178,8 +177,8 @@ run makes.
    Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the
    SAME reviewer again before anything is stamped `Completed`: a punch-list fix is unreviewed code.
    Stamp the verdict. *Stop.*
-6. **CLOSE** - apply any fixes the step-5 review handed back, then the done-gate
-   (the done gate in `baseline-quality-gates.md` - the whole feature's acceptance criteria, each one
+6. **CLOSE** - apply any fixes the step-5 review handed back, then the done gate
+   (load `project-done-gate` - the whole feature's acceptance criteria, each one
    demonstrated by a run this session, quoted, not assumed). Stamp `Completed: <date>` with the
    per-task evidence table, and name the `## Decisions` ledger by its entry count - never re-pasted
    into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next

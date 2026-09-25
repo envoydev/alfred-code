@@ -7,6 +7,8 @@ effort: medium
 color: green
 skills:
   - devops
+  - alfred-code:project-done-gate
+  - alfred-code:project-test-first
 
 ---
 
@@ -53,7 +55,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 4. Run the check. Green -> report. Red -> fix and re-check. **Hard cap: 3 attempts.** If the task's contract is wrong or a dependency another task owns is missing, stop and report rather than reach outside the boundary.
 
 ## Don't game it
-Fix the real thing - never unpin a base image or action to dodge a digest mismatch, never fall back to :latest to skip a pin, never disable a failing lint or security gate, and never hide a leaked secret by deleting the log line instead of the leak; the cross-stack reward-hacking refusals are the `.claude/rules/baseline-quality-gates.md` done-gate's - obey them. Stay inside the contract even when the fix would be easier outside it.
+Fix the real thing - never unpin a base image or action to dodge a digest mismatch, never fall back to :latest to skip a pin, never disable a failing lint or security gate, and never hide a leaked secret by deleting the log line instead of the leak; the cross-stack reward-hacking refusals are `project-done-gate`'s - obey them. Stay inside the contract even when the fix would be easier outside it.
 
 ## Report
 

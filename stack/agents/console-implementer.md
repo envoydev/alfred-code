@@ -9,6 +9,8 @@ skills:
   - csharp
   - dotnet-hosted-services
   - dotnet-testing
+  - alfred-code:project-done-gate
+  - alfred-code:project-test-first
 
 ---
 
@@ -57,7 +59,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 4. Run the check (dotnet build / dotnet test). The test gate is the SOLUTION's - run it at the solution root so every test project runs, the architecture/fitness test project included - but the FAST projects only: an integration or replay project the brief excludes stays excluded, since a seat gate is never a minutes-long run; scope to a single project only when the brief names one explicitly. A red that traces to code OUTSIDE your boundary - a sibling's in-flight task failing the shared suite - is not yours to fix and does not burn your attempts: report it as BLOCKED, naming the failing project. Green -> report. Red -> fix and re-check. **Hard cap: 3 attempts.** If the task's contract is wrong or a dependency another task owns is missing, stop and report rather than reach outside the boundary.
 
 ## Don't game it
-Fix the real thing - the reward-hacking refusals (no weakening a test or type, no suppressing a warning, no stubbing production code, no faking timing) are carried by the loaded skills and the `.claude/rules/baseline-quality-gates.md` done-gate; obey them. Stay inside the contract even when the fix would be easier outside it. In particular, never make a flaky timing test pass by widening a real `Task.Delay`.
+Fix the real thing - the reward-hacking refusals (no weakening a test or type, no suppressing a warning, no stubbing production code, no faking timing) are carried by the loaded skills, `project-done-gate` among them; obey them. Stay inside the contract even when the fix would be easier outside it. In particular, never make a flaky timing test pass by widening a real `Task.Delay`.
 
 ## Report
 

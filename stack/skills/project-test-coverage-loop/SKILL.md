@@ -62,5 +62,5 @@ INLINE, one round over a two-surface workspace:
 ## Rules
 - The main session is the only orchestrator; the seats it dispatches carry no Agent tool, so the fan-out stays flat.
 - The instrumented run never enters a seat's dispatch brief - measurement is the capture's, in the main session, in both modes.
-- Implementers keep writing each task's tests in every build flow (the `.claude/rules/baseline-quality-gates.md` done bar) - this loop is the deliberate catch-up cadence, not a substitute for that.
+- Implementers keep writing each task's tests in every build flow (the `project-done-gate` bar) - this loop is the deliberate catch-up cadence, not a substitute for that.
 - Keep this skill orchestration only: measurement judgment lives in the capture; build knowledge lives in the domain seats and house skills. A pure code-quality polish is `project-quality-loop`; architecture weaknesses are `project-architecture-quality-loop`'s.

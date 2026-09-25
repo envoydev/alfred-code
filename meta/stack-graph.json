@@ -362,8 +362,10 @@
   },
   "agents": {
     "angular-test-resolver": {
-      "skills": [],
-      "skillsSource": "body",
+      "skills": [
+        "project-root-cause"
+      ],
+      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -381,7 +383,9 @@
         "dotnet-data-access",
         "dotnet-testing",
         "dotnet-web-backend",
-        "dotnet-web-error-handling"
+        "dotnet-web-error-handling",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -406,7 +410,8 @@
         "dotnet-code-quality",
         "dotnet-data-access",
         "dotnet-testing",
-        "dotnet-web-backend"
+        "dotnet-web-backend",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -417,6 +422,8 @@
       "skills": [
         "browser-extension",
         "javascript",
+        "project-done-gate",
+        "project-test-first",
         "typescript"
       ],
       "skillsSource": "frontmatter",
@@ -439,6 +446,7 @@
       "skills": [
         "browser-extension",
         "javascript",
+        "project-done-gate",
         "ts-js-testing",
         "typescript"
       ],
@@ -468,7 +476,9 @@
       "skills": [
         "csharp",
         "dotnet-hosted-services",
-        "dotnet-testing"
+        "dotnet-testing",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -492,7 +502,8 @@
         "csharp",
         "dotnet-code-quality",
         "dotnet-hosted-services",
-        "dotnet-testing"
+        "dotnet-testing",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -504,7 +515,9 @@
         "csharp",
         "database-conventions",
         "dotnet-data-access",
-        "dotnet-testing"
+        "dotnet-testing",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -526,7 +539,8 @@
       "skills": [
         "database-conventions",
         "dotnet-migrate",
-        "dotnet-testing"
+        "dotnet-testing",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -535,7 +549,9 @@
     },
     "devops-implementer": {
       "skills": [
-        "devops"
+        "devops",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -554,7 +570,8 @@
     },
     "devops-verifier": {
       "skills": [
-        "devops"
+        "devops",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -562,15 +579,19 @@
       "plugins": []
     },
     "dotnet-build-error-resolver": {
-      "skills": [],
-      "skillsSource": "body",
+      "skills": [
+        "project-root-cause"
+      ],
+      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": []
     },
     "dotnet-test-failure-resolver": {
-      "skills": [],
-      "skillsSource": "body",
+      "skills": [
+        "project-root-cause"
+      ],
+      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -594,6 +615,8 @@
         "angular-conventions",
         "ionic",
         "javascript",
+        "project-done-gate",
+        "project-test-first",
         "typescript"
       ],
       "skillsSource": "frontmatter",
@@ -619,6 +642,7 @@
         "angular-testing",
         "ionic",
         "javascript",
+        "project-done-gate",
         "typescript"
       ],
       "skillsSource": "frontmatter",
@@ -627,8 +651,10 @@
       "plugins": []
     },
     "ng-build-error-resolver": {
-      "skills": [],
-      "skillsSource": "body",
+      "skills": [
+        "project-root-cause"
+      ],
+      "skillsSource": "frontmatter",
       "agents": [],
       "mcps": [],
       "plugins": []
@@ -668,6 +694,8 @@
       "skills": [
         "angular-conventions",
         "javascript",
+        "project-done-gate",
+        "project-test-first",
         "typescript"
       ],
       "skillsSource": "frontmatter",
@@ -691,6 +719,7 @@
         "angular-conventions",
         "angular-testing",
         "javascript",
+        "project-done-gate",
         "typescript"
       ],
       "skillsSource": "frontmatter",
@@ -703,7 +732,9 @@
         "csharp",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service"
+        "dotnet-windows-service",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -729,7 +760,8 @@
         "dotnet-code-quality",
         "dotnet-hosted-services",
         "dotnet-testing",
-        "dotnet-windows-service"
+        "dotnet-windows-service",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -740,7 +772,9 @@
       "skills": [
         "csharp",
         "dotnet-testing",
-        "dotnet-winforms"
+        "dotnet-winforms",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -764,7 +798,8 @@
         "csharp",
         "dotnet-code-quality",
         "dotnet-testing",
-        "dotnet-winforms"
+        "dotnet-winforms",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -775,7 +810,9 @@
       "skills": [
         "csharp",
         "dotnet-testing",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "project-done-gate",
+        "project-test-first"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -799,7 +836,8 @@
         "csharp",
         "dotnet-code-quality",
         "dotnet-testing",
-        "dotnet-wpf"
+        "dotnet-wpf",
+        "project-done-gate"
       ],
       "skillsSource": "frontmatter",
       "agents": [],
@@ -897,8 +935,9 @@
     },
     "baseline-interaction": {
       "skills": [
+        "project-plan-writing",
         "project-root-cause",
-        "project-solution-design"
+        "project-test-first"
       ],
       "agents": [],
       "mcps": [],
@@ -924,7 +963,9 @@
       "paths": []
     },
     "baseline-quality-gates": {
-      "skills": [],
+      "skills": [
+        "project-done-gate"
+      ],
       "agents": [],
       "mcps": [
         "context7"

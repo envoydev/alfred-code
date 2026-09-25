@@ -46,7 +46,8 @@ syntax, factual questions, and casual conversation are exempt: just answer.
 
 ## Planning and execution
 
-- Non-trivial code (new feature, refactor, 3+ files): plan and write tests first - a plan file of bite-sized tasks, each naming the files to touch and how to test them, before any edit lands (the format is `project-solution-design`'s), then test-first: write the test, watch it fail, then the minimal code that passes it. Routine requests: apply-then-summarize.
+- Non-trivial code (new feature, refactor, 3+ files) is planned first - the FIRST action is the `project-plan-writing` Skill call, before the plan file is written. Routine requests: apply-then-summarize.
+- Non-trivial code is written test-first - the FIRST action is the `project-test-first` Skill call, before the first production edit.
 - Mid-size mechanical change (rename touching 10+ files): confirm the scope list, skip the full plan; skip planning entirely for typos, one-line fixes, formatting, dep bumps, single-file rename.
-- Code fails: read the full error and quote the relevant part before fixing - the full method is `project-root-cause`: root cause before any fix, because a symptom fix is a failure.
+- Code fails - the FIRST action is the `project-root-cause` Skill call, before the next fix lands.
 - Inherited code: codebase conventions win over these rules unless broken or unsafe.

@@ -9,6 +9,8 @@ skills:
   - browser-extension
   - typescript
   - javascript
+  - alfred-code:project-done-gate
+  - alfred-code:project-test-first
 
 ---
 
@@ -55,7 +57,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 4. Run the check (the workspace's build - `wxt build` / `vite build` - and `vitest run`). Green -> report. Red -> fix and re-check. **Hard cap: 3 attempts.** If the task's contract is wrong or a dependency is missing, stop and report rather than reach outside the boundary.
 
 ## Don't game it
-Fix the real thing. The reward-hacking refusals - no weakening a test or type, no suppressing a warning, no stubbing production code, no faking timing - are carried by the loaded skills and the `.claude/rules/baseline-quality-gates.md` done-gate; obey them. Stay inside the contract even when a fix would be easier outside it.
+Fix the real thing. The reward-hacking refusals - no weakening a test or type, no suppressing a warning, no stubbing production code, no faking timing - are carried by the loaded skills, `project-done-gate` among them; obey them. Stay inside the contract even when a fix would be easier outside it.
 
 ## Report
 

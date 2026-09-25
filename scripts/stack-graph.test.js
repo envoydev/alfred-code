@@ -23,7 +23,10 @@ test('rule skill edges resolve from the rule body', () => {
 });
 
 test('body-mentioned skills are no edge at all - naming a skill never reaches an install', () => {
-    const r = graph.agents['dotnet-build-error-resolver'];
+    // security-auditor names `project-done-gate` in its body and preloads nothing (the resolvers,
+    // this test's example until R106, preload project-root-cause now).
+    const r = graph.agents['security-auditor'];
+    assert.match(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'stack', 'agents', 'security-auditor.md'), 'utf8'), /`project-done-gate`/);
     assert.strictEqual(r.skillsSource, 'body');
     assert.deepStrictEqual(r.skills, [], 'no skills: frontmatter -> no hard skill edges');
     // the removed `suggests:` mechanism: it put dotnet-aspire on a project with no Aspire
