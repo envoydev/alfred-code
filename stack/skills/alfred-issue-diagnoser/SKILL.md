@@ -145,10 +145,9 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    the next phase - writing the report, building the tasks, reading the new logs - starts in a
    FRESH session resumed from that path, and this stop offers it as an option in its own words
    ('resume from `<findings path>` in a fresh session'). Recommend it once the chat has run for
-   hours or past that same trigger (measured: one 17h15m diagnosis chat carried FOUR
-   auto-compactions - ~1.46M tokens of context dropped at 360-371k each - with the findings file
-   durable from early in the run; every message after the cause was proven re-sent a history the
-   file already held, and no `Stop` gate can catch it because that session never closed).
+   hours or past that same trigger (measured: a 17h15m diagnosis chat carried
+   four auto-compactions, ~1.46M tokens dropped, while the findings file already held the history
+   it re-sent - no `Stop` gate catches it, since that session never closed).
    *Stop* - and this close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`

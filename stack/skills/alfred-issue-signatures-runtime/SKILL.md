@@ -29,7 +29,6 @@ evidence-gatherers - the inherit-or-ask rule, the four dispatch triggers, the st
 and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
 never start on your own say-so.
 
-
 ## How to use it
 
 Match the evidence to one signature, form the fewest hypotheses it warrants, and confirm each against located code before you touch anything - root cause before symptom, never a plausible guess. State the match in three lines - the quoted evidence, the signature, the isolation point (and the hypothesis it warrants) - then run the loop:
