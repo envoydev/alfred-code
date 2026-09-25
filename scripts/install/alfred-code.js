@@ -975,8 +975,13 @@ function installMcps(ctx)
     // command, and keeps its approval.
     if (ctx.cliScope === 'user' && mcp.registrationScope(ctx.routes, ctx.cliScope) !== 'project')
     {
+        // I-F7-1: never a bare `playwright` - no user-scope run writes one there, and its identity is the
+        // package name only, so one in the file is the user's own (often a committed team file).
         const held = registrationsAt(ctx, 'project');
-        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS])];
+        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS])]
+            .filter((name) => name !== 'playwright');
+        // ... and it keeps its approval, like any server kept as the user's own.
+        if (held.servers.playwright) ctx.mcpForeign.set('playwright', 'project');
         // An unreadable file is said once (registrationOf's line) and nothing in it is removed.
         if (held.state === 'unreadable') registrationOf(ctx, names[0], 'project', false);
         for (const name of names)

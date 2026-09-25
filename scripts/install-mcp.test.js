@@ -1308,6 +1308,30 @@ test('seed update --scope user: the prune of this project\'s .mcp.json keeps the
     assert.deepStrictEqual(userCallsOf(calls), [], out);
 });
 
+// I-F7-1 (re-review of F7): no user-scope run writes a bare `playwright` into the project's .mcp.json, and
+// its identity is the package name only - so the README shape `npx @playwright/mcp@latest` a user (or a
+// team, in a committed file) registered there reads as the stack's. The prune must leave it alone.
+test('seed update --scope user: the prune of this project\'s .mcp.json never removes a bare playwright - no user-scope run writes one there (I-F7-1)', POSIX_ONLY, () =>
+{
+    const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(USER_ROWS()), tools: { claude: MCPJSON_CLI },
+        args: ['--scope', 'user'],
+        prepare: (repo) =>
+        {
+            pwProject(repo);
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: {
+                playwright: { type: 'stdio', command: 'npx', args: ['@playwright/mcp@latest'], env: {} },
+            } }, null, 2)}\n`);
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['playwright'] }, null, 2)}\n`);
+        },
+        inspect: (repo) => ({ mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), trusted: trusted(repo) }),
+    });
+    assert.deepStrictEqual(projectRemovesOf(calls), [], `${projectRemovesOf(calls).join('\n')}\n${out}`);
+    assert.deepStrictEqual(result.mcp, ['playwright'], 'the user\'s own playwright was removed from the project .mcp.json');
+    assert.deepStrictEqual(result.trusted, ['playwright'], 'the user\'s own playwright lost its approval');
+    assert.deepStrictEqual(userCallsOf(calls), [], out);
+});
+
 // A-M2 (final review A): at user scope every run removed each stack name from the account's own
 // registrations - a server of the user's own under the same name went with them. Only a registration of
 // the stack's own shape (the package it launches, or the url it calls) is removed; another is kept and
