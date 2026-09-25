@@ -519,6 +519,46 @@ test('migrateLegacyGlobal (I6): the log names the override risk and a removal co
     assert.ok(summary.includes(path.join(acct, 'skills', 'demo')), summary);
 });
 
+// M5 (Task 22 fix round 1): a RENAMED name's account copy overrides nothing - the project loads the new
+// name, so the old copy loads BESIDE it, under the old name, in every project. The line names it apart,
+// with a removal command of its own, and never files it under OVERRIDE.
+test('migrateLegacyGlobal (M5): a renamed account skill is named as loading BESIDE the new name, with its own rm', () =>
+{
+    const run = (picks) =>
+    {
+        const p = project();
+        const acct = path.join(p.base, 'acct');
+        for (const n of picks)
+        {
+            fs.mkdirSync(path.join(acct, 'skills', n), { recursive: true });
+            fs.writeFileSync(path.join(acct, 'skills', n, 'SKILL.md'), `---\nname: ${n}\n---\nbody\n`);
+        }
+        fs.writeFileSync(path.join(acct, OLD_STAMP), `sha: abc\nversion: 1.3.0\npicked-skills: ${picks.join(',')}\n`);
+        const logs = [];
+        migrateLegacyGlobal({ configDir: acct, projectRoot: p.base, log: (m) => logs.push(m),
+            renamed: { skills: { 'project-solve-task': 'alfred-task-solve' }, agents: {} } });
+        const summary = logs.find((m) => /were moved from/.test(m));
+        assert.ok(summary, logs.join(' | '));
+        return { summary, dir: (n) => `'${path.join(acct, 'skills', n)}'` };
+    };
+
+    const both = run(['demo', 'project-solve-task']);
+    const at = both.summary.indexOf('BESIDE');
+    assert.ok(at > 0, `the renamed copy is said to load BESIDE the new name: ${both.summary}`);
+    const over = both.summary.slice(0, at);
+    const beside = both.summary.slice(at);
+    assert.match(over, /OVERRIDE the migrated ones/);
+    assert.ok(over.includes(`rm -rf ${both.dir('demo')}`), over);
+    assert.ok(!over.includes(both.dir('project-solve-task')), `the renamed copy is filed under OVERRIDE: ${over}`);
+    assert.match(both.summary, /project-solve-task \(now alfred-task-solve\)/);
+    assert.ok(beside.includes(`rm -rf ${both.dir('project-solve-task')}`), beside);
+    assert.ok(!beside.includes(both.dir('demo')), beside);
+
+    const only = run(['project-solve-task']);
+    assert.doesNotMatch(only.summary, /OVERRIDE/, `a renamed copy alone overrides nothing: ${only.summary}`);
+    assert.ok(only.summary.includes(`BESIDE`) && only.summary.includes(`rm -rf ${only.dir('project-solve-task')}`), only.summary);
+});
+
 // I3 (R47): the stamp's own `scope:` line, read back verbatim (the resolution of '' into that value
 // is args.js/alfred-code.js's job, not this reader's).
 test('readStampScope: reads the scope line back, and empty when the file is absent or has none', () =>

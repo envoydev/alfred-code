@@ -432,7 +432,7 @@ function markInitialised(claudeDir, now = new Date())
 // `fs.cpSync` of every entry copied those into the repo too, and force-overwrote a project skill of
 // the same name in place. A name the stamp records but the project already has is left alone and
 // logged - the account copy is never allowed to clobber a project file.
-function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = () => {} })
+function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () => {}, note = () => {} })
 {
     if (!configDir || !projectRoot) return false;
     const acctLegacy = path.join(configDir, LEGACY.stamp);
@@ -481,11 +481,25 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
     // - so every name just migrated is still what actually loads, from the account, until it is
     // removed by hand. Name the exact command rather than a wholesale `rm -rf` of the account
     // skills dir, which may hold other, unrelated personal skills.
-    const rmCmd = shadow.length ? `rm -rf ${shadow.map((n) => `'${path.join(acctSkills, n)}'`).join(' ')}` : '';
+    // M5 (Task 22 fix round 1): a RENAMED name overrides nothing - the project now loads the new name, so
+    // the account copy loads BESIDE it under the old one, in every project. Named apart, own command.
+    const renames = (renamed && renamed.skills) || {};
+    const beside = shadow.filter((n) => Object.hasOwn(renames, n));
+    const over = shadow.filter((n) => !Object.hasOwn(renames, n));
+    const rmOf = (list) => `rm -rf ${list.map((n) => `'${path.join(acctSkills, n)}'`).join(' ')}`;
+    const rmCmd = over.length ? rmOf(over) : '';
     log(`  a 1.x global install's stamp and ${moved} skill(s) were moved from ${configDir} into the project - `
-        + 'the account copies stay in place and OVERRIDE the migrated ones (Claude Code runs a personal skill '
-        + 'over a project one of the same name) - once every project has updated, remove them:'
-        + (rmCmd ? ` ${rmCmd}` : ' (nothing was actually copied - no removal needed)'));
+        + (over.length || !beside.length
+            ? 'the account copies stay in place and OVERRIDE the migrated ones (Claude Code runs a personal skill '
+                + 'over a project one of the same name) - once every project has updated, remove them:'
+                + (rmCmd ? ` ${rmCmd}` : ' (nothing was actually copied - no removal needed)')
+                + (beside.length ? '; ' : '')
+            : '')
+        + (beside.length
+            ? `the account copies of the renamed ${beside.map((n) => `${n} (now ${renames[n]})`).join(', ')} override `
+                + 'nothing - they load BESIDE the new names, under the old ones, in every project - once every '
+                + `project has updated, remove them: ${rmOf(beside)}`
+            : ''));
     return true;
 }
 

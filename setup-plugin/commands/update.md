@@ -48,6 +48,8 @@ prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each -
 docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
 `related-projects/`, `quality/`, `loops/`), and so do the generated rules whose FILE names embed an
 old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
+A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
+with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
 
 | was | now |
 |---|---|
@@ -320,7 +322,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired

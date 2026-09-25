@@ -233,7 +233,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // is reported, and after the refusal above (m4). C1/m1: a failed copy goes through `note`.
         if (args.action === 'update' && !args.printPlan && unmigrated)
         {
-            stampLayer.migrateLegacyGlobal({ configDir, projectRoot, log, note });
+            stampLayer.migrateLegacyGlobal({ configDir, projectRoot, renamed: manifest.renamed, log, note });
             stampFile = projectStamp();
         }
 
