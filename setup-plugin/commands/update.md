@@ -340,7 +340,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -512,7 +512,9 @@ what was taken, what stays off or was left, each by name), and the restart line.
   the user's OTHER projects, not this one), the `context7-local removed - if you ran /mcp disable
   context7 for it, run /mcp enable context7` line, and the `claude-hud has no status line yet - run
   /alfred-code:init to set it up` line (add `/alfred-code:init` to the suggestion card when this one
-  printed). None caught: say nothing about any of the four.
+  printed). None caught: say nothing about any of the four. The last three carry the `!!` marker (the
+  1.x update body a first run executes surfaces only its grep and the `!!` lines), so each also
+  arrives as a `warn:` line - report it once, here, not again under RESTART / WARN.
 - **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
   `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
   skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason

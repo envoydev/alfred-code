@@ -830,6 +830,104 @@ test('update: the post-install grep passes every retirement line the installer w
     }
 });
 
+// A 1.x install's FIRST 2.0.0 run is driven by the 1.x update command's own body (v1.3.0), which no
+// release can edit. It reports from ONE grep of the installer log - the pattern below, frozen as it
+// shipped - and pastes verbatim every `warn:` line `update-preflight.js --log` prints: one per `!!` line
+// of the log, from the snapshot the run installs from (this repo's script). A line only the 2.0.0 grep
+// carries is never seen on that run, so each line a user must act on carries the `!!` marker both read.
+const GREP_1X = /installed\/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy/;
+const OLD_KEY = 'claude-stack'; // legacy-name
+const COPY_ENV = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+
+// What each update body shows of one installer log: `first` - the 1.x body's grep and the `warn:` lines
+// the preflight prints over the log; `current` - the lines update.md's own grep keeps.
+function reportOf(out)
+{
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'update-report-'));
+    try
+    {
+        const log = path.join(dir, 'install.log');
+        fs.writeFileSync(log, out);
+        const warn = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'update-preflight.js'), '--log', log], { encoding: 'utf8' })
+            .split('\n').filter((l) => l.startsWith('warn: ')).map((l) => l.slice('warn: '.length));
+        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+        const current = new RegExp(body.match(/grep -aE '([^']+)' "\$TMP\/install\.log"/)[1]);
+        const lines = out.split('\n');
+        return { lines, first: { grep: lines.filter((l) => GREP_1X.test(l)), warn }, current: lines.filter((l) => current.test(l)) };
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+// The line of `out` carrying `text` reaches the user through both bodies - the 1.x one's grep AND its
+// pasted `warn:` lines - with the wording after the marker unchanged (`start` is the line's own first
+// words when `text` is only its tail). `firstRun: false` is a line the 1.x body cannot meet, checked
+// against the current grep alone.
+function assertSurfaced(report, text, { firstRun = true, start = text } = {})
+{
+    const line = report.lines.find((l) => l.includes(text));
+    assert.ok(line, `no log line carries '${text}':\n${report.lines.join('\n')}`);
+    assert.ok(report.current.includes(line), `update.md's grep drops: ${line}`);
+    if (!firstRun) return;
+    const marked = line.indexOf('!! ') > -1 ? line.slice(line.indexOf('!! ') + 3).trimEnd() : '';
+    assert.ok(marked.startsWith(start) && marked.endsWith(text), `not marked for the 1.x body, or reworded after the marker: ${line}`);
+    assert.ok(report.first.grep.includes(line), `the 1.x body's grep drops: ${line}`);
+    assert.ok(report.first.warn.includes(line.trim()), `update-preflight --log does not forward: ${line}\nwarn: ${report.first.warn.join('\nwarn: ')}`);
+}
+
+// A-I2 / A-I3 / A-I4 (re-review): the three migration lines print on the first 2.0.0 run of a 1.x global
+// install - the run the 1.x body drives, passing a model-judged --scope.
+test('update: a 1.x install\'s first 2.0.0 run shows the migration lines through the 1.x body\'s own filters (A-I2, A-I3, A-I4)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        args: ['--scope', 'project'],
+        plugins: JSON.stringify([OLD_KEY, `${OLD_KEY}-hooks`, 'context7-local'].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'user', enabled: true }))),
+        prepare: (repo, work) =>
+        {
+            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
+            fs.writeFileSync(path.join(work, 'acct', `${OLD_KEY}.stamp`), 'sha: abc\nversion: 1.3.0\nscope: global\n');
+            fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
+        },
+    });
+    const report = reportOf(out);
+    assertSurfaced(report, 'context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
+    assertSurfaced(report, 'core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
+    assertSurfaced(report, 'claude-hud has no status line yet - run /alfred-code:init to set it up');
+});
+
+// N1 (re-review): C10's stale user-scope registration (the line carrying the command to run), A-M2's kept
+// and unreadable lines and C11's here-only switch-off reach neither body without a marker. C12's move
+// off local scope cannot meet the 1.x body: 1.x wrote no local scope (its --scope took project or
+// global), and the move fires only on a stamp that says local - so the current grep alone carries it.
+test('update: the stale-registration, kept, unreadable and here-only lines reach both update bodies; the local move reaches the current one (N1)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const P = require('./install/plugins.js');
+    const account = (work, text) => { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), text); };
+    const serena = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
+    const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
+        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { serena, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
+    }).out;
+    const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
+        prepare: (repo, work) => account(work, '{not json'),
+    }).out;
+    const logs = [];
+    const row = (scope, enabled = true) => ({ name: 'playwright-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
+    P.moveLocalRows({ plugins: ['serena@envoydev'], rows: [{ ...row('local'), name: 'serena' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
+    const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
+    assertSurfaced(report, 'mcp: serena still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove serena -s user');
+    assertSurfaced(report, 'mcp memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove memory -s user');
+    assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
+    assertSurfaced(report, 'plugin disabled [project]: playwright-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
+    assertSurfaced(report, 'plugin moved [local -> project]: serena@envoydev', { firstRun: false });
+});
+
 // The way back from the 2.0.0 cut is printed text the user runs as-is, at whatever scope the install
 // has. A retired-plugins row's add-back is substituted per run; a migration's `then` is not, so one
 // naming a project scope names the global install's user scope beside it. A local-mode context7 user

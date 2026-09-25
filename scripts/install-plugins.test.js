@@ -2120,7 +2120,7 @@ test('migrate: a 1.x hooks id at another scope is named with its uninstall comma
 // a seat deny spelled for the 1.x core stops matching there until that project's own update re-spells it.
 test('migrate: a user-scope move of the core says every other project keeps its 1.x seat denies until its own update (A-I3)', () =>
 {
-    const line = 'core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update';
+    const line = '  !! core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update';
     const user = migrate([row1x(OLD, 'user'), row1x(OLD_HOOKS, 'user')], { scope: 'user', carriers: [] });
     assert.strictEqual(user.logs.filter((m) => m === line).length, 1, user.logs.join(' | '));
     const project = migrate([row1x(OLD, 'project')], { carriers: [] });
@@ -2135,7 +2135,7 @@ test('migrate: a user-scope move of the core says every other project keeps its 
 // context7-local leaves that switch-off in place, so the locked docs server is gone with no line saying so.
 test('retired: a context7-local prune says how to switch the hosted context7 back on (A-I2)', () =>
 {
-    const line = 'context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7';
+    const line = '  !! context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7';
     const logs = [];
     const gone = P.prunedRetired({ rows: [prow('context7-local', 'envoydev', 'project'), prow('sentry', 'envoydev', 'project')], retired: ['context7-local', 'sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: cli(), log: (m) => logs.push(m) });
     assert.deepStrictEqual(gone, ['context7-local', 'sentry']);

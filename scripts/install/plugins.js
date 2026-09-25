@@ -495,7 +495,7 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
             if (!on.has(row) || isOn(spec, at) === false) continue;
             if (cli(['plugin', 'disable', spec, '--scope', at], { quiet: true, expect: 'reported' }))
             {
-                log(`plugin disabled [${at}]: ${spec} (the copy route registers it in .mcp.json; this project only - the ${scope}-scope install stays on for every other project)`);
+                log(`  !! plugin disabled [${at}]: ${spec} (the copy route registers it in .mcp.json; this project only - the ${scope}-scope install stays on for every other project)`);
                 off.push({ scope: at, spec });
             }
             else note(`plugin disable failed: ${spec} - it loads beside its .mcp.json registration; disable it by hand: claude plugin disable ${spec} --scope ${at}`);
@@ -607,7 +607,9 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
                 const back = addBack(item.name);
                 if (back) log(`    add it back: ${back.split('<scope>').join(scope)}`);
                 // A-I2: 1.x local mode had the user switch the hosted server off, and nothing else turns it on.
-                if (item.name === 'context7-local') log('context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
+                // `!!` (F5): the first 2.0.0 run is the 1.x update body's, which surfaces only its own grep
+                // and the `!!` lines update-preflight --log forwards - both carry this marker.
+                if (item.name === 'context7-local') log('  !! context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
                 gone.push(item.name);
             }
             else next.push(item);
@@ -670,8 +672,9 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
         }
     // A-I3: a user-scope core serves every project on the account, and a seat deny is matched by the
     // exact home name - another project's `Agent(<1.x core>:<seat>)` stops matching until its own update.
+    // `!!`: this move runs under the 1.x update body, which surfaces only its grep and the `!!` lines.
     if (core && scope === 'user')
-        log('core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
+        log('  !! core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
     return out;
 }
 

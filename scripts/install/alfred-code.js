@@ -757,11 +757,13 @@ function installPlugins(ctx)
         : { moved: [], dropped: [] };
     for (const row of listing)
         if ([...relocated.moved, ...relocated.dropped].includes(`${row.name}@${row.marketplace}`)) row.scope = ctx.cliScope;
-    // A-I4: said once, after the plugin pass on either action.
+    // A-I4: said once, after the plugin pass on either action. Marked `!!`, like every line a user acts
+    // on: a 1.x install's first 2.0.0 run is the 1.x update body's, which shows only its own grep and
+    // the `!!` lines update-preflight --log forwards.
     const hudLine = () =>
     {
         if (plugins.hudStatusLineMissing({ plugins: set, listing, settingsFile: path.join(ctx.configDir, 'settings.json') }))
-            ctx.log('claude-hud has no status line yet - run /alfred-code:init to set it up');
+            ctx.log('  !! claude-hud has no status line yet - run /alfred-code:init to set it up');
     };
     // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
     // only this route copies their picks before they go. The ones still installed after this run are
@@ -928,7 +930,7 @@ function registrationOf(ctx, name, scope)
     const once = (key, line) => { if (!ctx.mcpSaid.has(key)) ctx.log(line); ctx.mcpSaid.add(key); };
     if (regs.state === 'unreadable')
     {
-        once(`unreadable:${scope}`, `  mcp: ${regs.file} could not be read - no ${scope}-scope registration was removed; fix the file and re-run`);
+        once(`unreadable:${scope}`, `  !! mcp: ${regs.file} could not be read - no ${scope}-scope registration was removed; fix the file and re-run`);
         return 'unreadable';
     }
     const entry = regs.servers[name];
@@ -937,7 +939,7 @@ function registrationOf(ctx, name, scope)
         catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir),
     });
     if ((ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry))) return 'stack';
-    once(`${scope}:${name}`, `  mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
+    once(`${scope}:${name}`, `  !! mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
     ctx.mcpForeign.set(name, scope);
     return 'foreign';
 }
@@ -982,7 +984,7 @@ function installMcps(ctx)
     if (scope !== ctx.cliScope && ctx.cliScope === 'user')
         for (const name of live.map((e) => e.split('|')[0]))
             if (registrationOf(ctx, name, 'user') === 'stack')
-                ctx.log(`  mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
+                ctx.log(`  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     for (const entry of live)
     {
         const name = entry.split('|')[0];
