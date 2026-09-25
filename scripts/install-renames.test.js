@@ -448,6 +448,32 @@ test('seed update --installed-only (I2): the 1.3.0-seeded CLAUDE.md and a genera
     assert.deepStrictEqual(lines(outs[1]), [], 'and prints no line');
 });
 
+// M1: at local scope the shared settings.json is a file the run never writes - an old seat name only
+// it holds is no rename this run made, so it gets a note on every run, never a `renamed:` line.
+test('seed update --installed-only --scope local (M1): an old seat deny only settings.json holds is noted, never reported as renamed, and the seat stays off', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })));
+    const shared = JSON.stringify({ permissions: { deny: [`Agent(${OLD_KEY}:ci-failure-diagnoser)`] } }, null, 2);
+    const prepare = (repo) =>
+    {
+        write(repo, '.claude/rules/baseline-interaction.md');
+        write(repo, '.claude/alfred-code.stamp', 'version: 2.0.0\nsha: 0000000\npicked-skills: markdown-style@alfred-code\npicked-agents: security-auditor@alfred-code\n');
+        write(repo, '.claude/settings.json', shared);
+    };
+    const each = (repo) => ({
+        sharedRaw: fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8'),
+        local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
+    });
+    const { steps, outs } = seedRun(['update', 'update'], 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--scope', 'local'], prepare, each });
+    for (const [i, out] of outs.entries())
+    {
+        assert.deepStrictEqual(renamedLines(out), [], `run ${i + 1}: nothing this run wrote was renamed\n${out}`);
+        assert.match(out, new RegExp(`settings\\.json still names Agent\\(${OLD_KEY}:ci-failure-diagnoser\\) - read as alfred-issue-diagnoser-ci`), `run ${i + 1}`);
+        assert.strictEqual(steps[i].sharedRaw, shared, 'a local-scope run never writes the shared file');
+        assert.ok(steps[i].local.permissions.deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)'), `run ${i + 1}: the seat stays off for this user: ${JSON.stringify(steps[i].local.permissions)}`);
+    }
+});
+
 // Shape 3: the full copy route - every skill and seat is a project copy under its old name.
 test('seed update --installed-only on the copy route: the old copies become new copies and none is left behind', POSIX_ONLY, () =>
 {

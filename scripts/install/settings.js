@@ -477,6 +477,15 @@ function readBackSettings(claudeDir, scope, { sharedOnly = false } = {})
     };
 }
 
+// M1 (Task 22 fix round 1): the deny entries only settings.json holds - at local scope, what the read
+// sees that this run never writes.
+function sharedOnlyDeny(claudeDir)
+{
+    const deny = (name) => { try { const d = JSON.parse(fs.readFileSync(path.join(claudeDir, name), 'utf8')); return Array.isArray(d.permissions.deny) ? d.permissions.deny : []; } catch { return []; } };
+    const personal = new Set(deny('settings.local.json'));
+    return deny('settings.json').filter((d) => !personal.has(d));
+}
+
 // R78 (Task 16 round 5): an install moved from `local` scope back to project or user scope. Claude
 // Code lays settings.local.json over settings.json, so every stack entry the local install wrote there
 // would keep overriding the file the install now lives in - and no later run clears them, since only a
@@ -576,4 +585,4 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     return { moved: true };
 }
 
-module.exports = { isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };
+module.exports = { isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

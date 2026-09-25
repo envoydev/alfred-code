@@ -191,7 +191,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -219,7 +219,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
     const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(r.name));
-    const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, renaming);
+    const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     // The playwright engines the last install INSTALLED (the stamp's `playwright-browsers:`): a
@@ -401,15 +401,20 @@ function renamePicked(picked, opts = {})
 }
 
 // The read-back's VIEW of the settings: a stack seat deny under any stack spelling reads under the
-// new seat. The file itself is re-spelled by the writer (settings.js `renamed`).
+// new seat. The file itself is re-spelled by the writer (settings.js `renamed`). M1: `sharedOnly` -
+// at local scope, the entries only settings.json holds - is a file that run never writes, so no
+// rename happens there: each gets a note, never a `renamed:` line.
 function renameDeny(settings, opts = {})
 {
     const deny = settings && settings.permissions && Array.isArray(settings.permissions.deny) ? settings.permissions.deny : null;
     if (!deny) return settings;
+    const untouched = new Set(opts.sharedOnly || []);
     const mapped = deny.map((entry) =>
     {
         const seat = stackSeat(entry);
-        const to = seat ? renamedTo({ ...opts, kind: 'agent', name: seat }) : seat;
+        const held = untouched.has(entry);
+        const to = seat ? renamedTo({ ...opts, kind: 'agent', name: seat, ...(held ? { log: () => {}, said: new Set() } : {}) }) : seat;
+        if (held && to !== seat) (opts.log || (() => {}))(`installed-only: settings.json still names ${entry} - read as ${to}; a local-scope run never writes that file, a project-scope update re-spells it`);
         return to && to !== seat ? String(entry).replace(new RegExp(`:${seat}\\)$`), `:${to})`) : entry;
     });
     return { ...settings, permissions: { ...settings.permissions, deny: mapped } };

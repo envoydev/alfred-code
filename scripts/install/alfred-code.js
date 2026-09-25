@@ -318,6 +318,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
                 stampPicked: lastPicked, stampEngines,
                 always, marketplace: market, said: renaming.said, log,
+                sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
             });
             if (!back.installed)
             {
