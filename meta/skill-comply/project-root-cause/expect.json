@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "skill": "project-root-cause",
-  "sources": ["stack/skills/project-root-cause/SKILL.md", "stack/skills/project-done-gate/SKILL.md"],
+  "sources": ["stack/skills/project-root-cause/SKILL.md", "stack/skills/project-done-gate/SKILL.md", "stack/rules/baseline-interaction.md"],
   "extracted": "2026-09-25",
-  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not. A write or a test run that FAILED (a rejected Edit, a hook or permission deny) changed and ran nothing, so it is no write or run here (succeeded); a test run that exited red did run. Ship rule, applied by 'skill-comply.js compare': per level, the after arm no worse than the before arm on every step, and a step that fails on BOTH arms is INCONCLUSIVE - a blind grader, never 'not worse' - and one graded by nothing offline is NOT GRADED.",
+  "note": "R72's owed A/B fixture. The run reaches a real failure and its fix with no stop in between - the root-cause loop has no user gate - so the two things superpowers used to carry are graded on what the run DID: one hypothesis per change (a stated cause before each source write, a test run after it) and verification quoted before done (a test run after the last write, its numbers in the close). The cart total fails where the lines are summed, but the cause is upstream in toCents, so a write to cart.js is the symptom fix. No prompt names a skill, so the same file grades a release that carries superpowers and one that does not. A write or a test run that FAILED (a rejected Edit, a hook or permission deny) changed and ran nothing, so it is no write or run here (succeeded); a test run that exited red did run. Ship rule, applied by 'skill-comply.js compare': per level, the after arm no worse than the before arm on every step, and a step that fails on BOTH arms is INCONCLUSIVE - a blind grader, never 'not worse' - and one graded by nothing offline is NOT GRADED. The after arm is the Task 20 head: project-root-cause and project-done-gate in the core, the root-cause pointer injected after the first red run, and the done gate held at Stop - root-cause-loaded grades that pointer, with superpowers' systematic-debugging counted on the before arm.",
   "run": {
     "max_turns": 30,
     "stacks": ["javascript"],
@@ -33,6 +33,7 @@
       { "tool": "Write", "field": "file_path", "text_match": "(^|/)src/cart\\.js$" }
     ] },
     "test_run": { "succeeded": true, "tool": "Bash", "field": "command", "text_match": "npm (run )?test|node --test" },
+    "method_loaded": { "tool": "Skill", "field": "skill", "text_match": "^([^:]*:)?(project-root-cause|systematic-debugging)$" },
     "hypothesis": { "tool": "@text", "text_match": "\\b([Bb]ecause|caused by|due to|comes from|[Rr]oot cause|[Ss]ince|stops at|returns)\\b|\\b[Tt]he (bug|issue|problem|cause) is\\b" },
     "weakened": { "succeeded": true, "any": [
       { "all": [{ "tool": "Edit", "field": "file_path", "text_match": "(^|/)test/" }, { "tool": "Edit", "field": "new_string", "text_match": "\\.(skip|todo)\\b|\\b(skip|todo)\\s*:" }] },
@@ -46,6 +47,19 @@
     ] }
   },
   "steps": [
+    {
+      "id": "root-cause-loaded",
+      "from": "stack/rules/baseline-interaction.md",
+      "quote": "Code fails - the FIRST action is the `project-root-cause` Skill call, before the next fix lands.",
+      "graders": [
+        {
+          "type": "tool_order",
+          "name": "the debugging method skill is loaded before the first source write",
+          "before": { "ref": "method_loaded" },
+          "after": { "ref": "src_write" }
+        }
+      ]
+    },
     {
       "id": "reproduce-first",
       "from": "stack/skills/project-root-cause/SKILL.md",

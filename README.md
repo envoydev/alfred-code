@@ -83,7 +83,7 @@ claude plugin install alfred-code@envoydev
 
 The first line makes the official marketplace known: the optional third-party picks live there,
 `superpowers` among them (suggested, no longer installed by default - the stack carries its own
-done gate, plan format and root-cause loop).
+plan-writing, test-first, root-cause, done-gate and clarify skills).
 
 Then `/alfred-code:setup` runs a fresh install (it decides the selection FROM the project, with
 what the project needs and why shown first) and ends on a restart; `/alfred-code:init`, typed in the

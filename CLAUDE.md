@@ -93,18 +93,18 @@ change (see the invariants below).
     chained `git add` takes in; at most 2MB): a conflict marker, a debugger, a focused test or a
     credential-shaped literal blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
-  - `guard-stop-contract.js` (`Stop` + `SubagentStop`, plus an INJECTION-ONLY PreToolUse `AskUserQuestion`
-    branch that never denies) - blocks a turn ending on a decision-shaped question in prose (the quality
-    loop's mode and stage-close asks worded as statements included), or a 'done, next step
-    pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
-    ScheduleWakeup) with no background work of its own - a fork read its parent's pending fork as its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
+  - `guard-stop-contract.js` (`Stop` + `SubagentStop`; INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`,
+    `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose, or a 'done, next step pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
+    ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
     finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off).
+    Done gate: a done claim over a source edit no build or test run followed is held ONCE per turn,
+    naming `project-done-gate` (`ALFRED_CODE_DONE_GATE=0` off); a red build or test run injects
+    `project-root-cause` once per failure streak.
     Fresh-session offer on a clean close past the window's ABSOLUTE trigger:
     `ALFRED_CODE_FRESH_SESSION_200K` (default 150000), `_1M` (400000), `_DEFAULT` (180000, any other or
     unreadable window); `0` switches that case off; seeded absent-only. The window comes from ONE table (the session
     model's row in the shipped `model-windows.json`, else `ALFRED_CODE_DEFAULT_CONTEXT_WINDOW`, seeded 1000000; no id
-    suffix, carry or compaction is read), never declared (the percentage and window overrides and the
-    `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` seed are retired). A trigger at or above its window is clamped
+    suffix, carry or compaction is read), never declared. A trigger at or above its window is clamped
     inside it, and `_DEFAULT` must stay below the smallest window it can land on. The offer fires only
     when a resume recovers something (carry minus the session's first-message floor >= 40% of carry),
     re-arms at 1.5x growth, and never mid-response. A long-idle or long-span session takes the same
@@ -314,7 +314,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core carries its plan, test-first, root-cause and done-gate steps; nothing shipped cites `superpowers:`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is uninstalled by update (`meta/retired-entries.json`) |
+| Plugins | 5 OPTIONAL third-party picks via `claude plugin install` - claude-md-management, the `*-lsp` pair and security-guidance suggested on evidence (`meta/evidence.json`), `superpowers` suggested but never pre-selected and never uninstalled (R72: the core's method skills replace it; nothing shipped cites `superpowers:`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core on every run (`CORE_DEP_PLUGINS` in `install/plugins.js`, matched to the manifest's parked rows by lint check 51) and never re-enabled once the user disables it (`install` would - measured on 2.1.282), plus the core itself. The core declares NO `dependencies`: `plugin update` installs none a release adds, and a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once and reads each plugin by its full `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is); a per-stack entry an older release installed is uninstalled by update (`meta/retired-entries.json`) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the shell twins are deleted) |
@@ -508,7 +508,7 @@ mirrored there in the same sitting.
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (112,611 on 2026-09-25: pathless rules 37,525, agent descriptions 28,530, skill descriptions 46,556; an optional superpowers adds 5,707 outside it). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (112,651 on 2026-09-25: pathless rules 36,548, agent descriptions 28,530, skill descriptions 47,573; an optional superpowers adds 5,707 outside it). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 

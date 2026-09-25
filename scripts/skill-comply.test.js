@@ -232,7 +232,7 @@ const RC_SYMPTOM = '/work/project/src/cart.js';
 // `rejected` adds a write that errored ('String to replace not found', a hook deny) and so changed
 // nothing: 'retry' before its own retry, 'early' before the repro, 'symptom' as a guard in cart.js.
 function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 200 instead of 130000 because toCents calls parseFloat, which stops at the comma in 1,299.00.',
-    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null } = {})
+    target = RC_ROOT, twoChanges = false, rerun = true, quoted = true, weaken = false, rebaseline = false, rejected = null, loaded = 'project-root-cause' } = {})
 {
     const rows = [user('npm test is failing on the cart total - fix it.')];
     const reject = (file) => { const e = tool('Edit', { file_path: file, old_string: 'parseFloat(price )', new_string: 'x' }); rows.push(e, denied(e)); };
@@ -244,6 +244,8 @@ function rootCauseRun({ repro = true, hypothesis = true, cause = 'The total is 2
         if (repro === 'red') rows.push(exited(run, 1, '✖ a thousand-priced item totals in cents\nℹ tests 3\nℹ pass 2\nℹ fail 1'));
         if (repro === 'denied') rows.push(denied(run));
     }
+    // the pointer the red run injects (guard-stop-contract.js) - the method skill loads before any fix
+    if (loaded) rows.push(tool('Skill', { skill: loaded }));
     rows.push(tool('Read', { file_path: RC_SYMPTOM }), tool('Read', { file_path: RC_ROOT }));
     if (hypothesis) rows.push(say(cause));
     if (rejected === 'retry') reject(target);
@@ -266,7 +268,16 @@ test('root-cause: a run that reproduces, states its hypothesis, fixes at the roo
 {
     const r = sc.grade(expectOf('project-root-cause'), rootCauseRun());
     assert.deepStrictEqual(failing(r), []);
-    assert.strictEqual(r.graded, 6);
+    assert.strictEqual(r.graded, 7);
+});
+
+test('root-cause: the method skill loads before the first fix; either arm\'s spelling of it counts', () =>
+{
+    const exp = expectOf('project-root-cause');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: false }))), ['root-cause-loaded'], 'no method skill before the fix');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'alfred-code:project-root-cause' }))), [], 'the core-scoped spelling');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'superpowers:systematic-debugging' }))), [], 'the before arm\'s equivalent');
+    assert.deepStrictEqual(failing(sc.grade(exp, rootCauseRun({ loaded: 'project-done-gate' }))), ['root-cause-loaded'], 'another skill is not this one');
 });
 
 test('root-cause: each skipped part of the loop fails its own step', () =>
