@@ -1057,6 +1057,17 @@ test('settings-ledger: the attribution keys the run seeds are managed, the proje
     assert.deepStrictEqual(fallback.result.managed.settings, { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } });
 });
 
+test('settings-ledger: worktree.baseRef is managed when this run seeded it or the ledger listed it, never the project\'s own', () =>
+{
+    const seeded = write(settingsFile({}), { worktreeBase: {}, ledger: { prior: null, releaseHooks: [] } });
+    assert.strictEqual(seeded.result.managed.settings['settings.json']['worktree.baseRef'], valueHash('"head"'));
+    const own = write(settingsFile({ worktree: { baseRef: 'head' } }), { worktreeBase: {}, ledger: { prior: null, releaseHooks: [] } });
+    assert.ok(!('worktree.baseRef' in ((own.result.managed.settings || {})['settings.json'] || {})), 'the project set it before the stack wrote anything');
+    const listed = { ...noLedger, settings: { 'settings.json': { 'worktree.baseRef': valueHash('"head"') } } };
+    const again = write(settingsFile({ worktree: { baseRef: 'head' } }), { worktreeBase: {}, ledger: { prior: listed, releaseHooks: [] } });
+    assert.strictEqual(again.result.managed.settings['settings.json']['worktree.baseRef'], valueHash('"head"'), 'listed at the value written');
+});
+
 test('removeManagedSettings: the attribution keys it seeded go, an edited one stays, and the empty lists the stack and the plugin CLI leave go with them (R10 uninstall)', () =>
 {
     const dir = path.join(TMP, `rm-${seq++}`, '.claude');

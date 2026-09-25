@@ -134,7 +134,7 @@ const LEDGER_FILES = ['settings.json', 'settings.local.json'];
 const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
-const SETTINGS_PATH = /^attribution\.(commit|pr|sessionUrl)$/;
+const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef)$/;
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, files: {}, settings: {} });
 
 function renderLedger(ledger)

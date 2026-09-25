@@ -1361,13 +1361,13 @@ function ledgerOf(ctx)
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
-    const attrNow = (name) => { const a = readJson(path.join(ctx.claudeDir, name)).attribution; return a && typeof a === 'object' ? a : {}; };
+    const holderNow = (name, obj) => { const a = readJson(path.join(ctx.claudeDir, name))[obj]; return a && typeof a === 'object' && !Array.isArray(a) ? a : {}; };
     const settingsKeys = { ...(part.settings || {}) };
     for (const [name, keys] of Object.entries(prior.settings || {}))
         if (!settingsKeys[name]) settingsKeys[name] = Object.fromEntries(Object.entries(keys).filter(([at, h]) =>
         {
-            const key = at.split('.')[1];
-            return Object.hasOwn(attrNow(name), key) && stampLayer.valueHash(JSON.stringify(attrNow(name)[key])) === h;
+            const [obj, key] = at.split('.');
+            return Object.hasOwn(holderNow(name, obj), key) && stampLayer.valueHash(JSON.stringify(holderNow(name, obj)[key])) === h;
         }));
     const servers = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers;
     return {

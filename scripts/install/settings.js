@@ -606,6 +606,7 @@ function writeSettings(opts)
     // `worktree.baseRef` is "head" (code.claude.com/docs/en/worktrees), so it would build without the run's
     // own commits. Add-only, the attribution shape: a value the project set stays, other `worktree` keys
     // are kept, and at local scope a settings.json value is never hidden by a seed.
+    const baseRefBefore = plain(data.worktree) && Object.hasOwn(data.worktree, 'baseRef');
     if (worktreeBase && (data.worktree === undefined || plain(data.worktree)))
     {
         const inherited = plain(worktreeBase.inherited) ? worktreeBase.inherited : {};
@@ -675,6 +676,13 @@ function writeSettings(opts)
         const at = `attribution.${key}`;
         const json = JSON.stringify(data.attribution[key]);
         if (!attrBefore.includes(key) || (priorSettings ? priorSettings[at] === valueHash(json) : json === JSON.stringify(value))) managedAttr[at] = valueHash(json);
+    }
+    // worktree.baseRef: seeded this run, or listed at the value written. No release before this one seeded
+    // it, so a stamp with no ledger adopts nothing here.
+    if (plain(data.worktree) && Object.hasOwn(data.worktree, 'baseRef'))
+    {
+        const json = JSON.stringify(data.worktree.baseRef);
+        if (!baseRefBefore || (priorSettings && priorSettings['worktree.baseRef'] === valueHash(json))) managedAttr['worktree.baseRef'] = valueHash(json);
     }
     const managed = { env: managedEnv, deny: managedDeny, hooks: managedHooks, settings: Object.keys(managedAttr).length ? { [label]: managedAttr } : {} };
 
@@ -923,17 +931,15 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             }
         }
         if (unwireIds(data, ids).length) changed = true;
-        if (plain(data.attribution))
+        for (const [at, hash] of Object.entries(attr))
         {
-            for (const [at, hash] of Object.entries(attr))
-            {
-                const key = at.split('.')[1];
-                if (!Object.hasOwn(data.attribution, key)) continue;
-                if (valueHash(JSON.stringify(data.attribution[key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
-                delete data.attribution[key];
-                changed = true;
-            }
-            if (changed && !Object.keys(data.attribution).length) delete data.attribution;
+            const [obj, key] = at.split('.');
+            const holder = plain(data[obj]) ? data[obj] : null;
+            if (!holder || !Object.hasOwn(holder, key)) continue;
+            if (valueHash(JSON.stringify(holder[key])) !== hash) { log(`  ${name}: ${at} kept - changed since the stack wrote it, so it is yours`); continue; }
+            delete holder[key];
+            changed = true;
+            if (!Object.keys(holder).length) delete data[obj];
         }
         for (const listKey of ['enabledMcpjsonServers', 'disabledMcpjsonServers'])
         {
@@ -949,7 +955,7 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
         if (!Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
-        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution keys removed`); }
+        else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree keys removed`); }
     }
 }
 
