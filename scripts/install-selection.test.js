@@ -329,10 +329,11 @@ test('read-back: an engine the stamp picked stays picked while disabled; one it 
     const blind = readBackCase({ listing: [], stampEngines: ['webkit'] });
     assert.deepStrictEqual(blind.engines, ['webkit']);
     assert.ok(blind.lines.includes('mcp playwright'));
-    // On the MCP copy route a registration is the record, never the stamp.
+    // On the MCP copy route too (R116): a switch onto it has no registration yet, and the stamp's
+    // record carries over rather than being written blank.
     const copy = readBackCase({ listing, stampEngines: ['chrome'], routes: { ...ALL, mcps: false } });
-    assert.deepStrictEqual(copy.engines, []);
-    assert.ok(!copy.lines.includes('mcp playwright'));
+    assert.deepStrictEqual(copy.engines, ['chrome']);
+    assert.ok(copy.lines.includes('mcp playwright'));
 });
 
 // Round 2, minor 1: a dropped engine whose uninstall failed, was refused, or sits at another scope is

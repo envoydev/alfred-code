@@ -302,7 +302,7 @@ function writeSettings(opts)
     const {
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
-        mcpNames = [], mcpOff = [], catalog = [], migrations = {},
+        mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         log = () => {}, note = () => {},
     } = opts;
@@ -419,6 +419,27 @@ function writeSettings(opts)
     // that reads like a working knob.
     for (const name of mcpOff) if (enabled.includes(name))
     { enabled.splice(enabled.indexOf(name), 1); changed = true; log(`  ${label}: dropped enabledMcpjsonServers entry ${name} (no longer registered here)`); }
+
+    // R116 (j): disabledMcpjsonServers - a playwright engine left off is registered AND named here, which
+    // rejects a .mcp.json server in every permission mode. The caller passes only what the user's enable
+    // choice moved (and what no longer has a registration), so an entry the user took out by hand stays
+    // out. A list this run empties goes; one the user left empty stays.
+    if (mcpjsonDisable.length || mcpjsonEnable.length)
+    {
+        const had = data.disabledMcpjsonServers;
+        if (had !== undefined && !Array.isArray(had)) note(`${label}: disabledMcpjsonServers is not a list - left as it is, and no playwright engine is switched off through it`);
+        else
+        {
+            const off = had || [];
+            let dropped = false;
+            for (const name of mcpjsonDisable) if (!off.includes(name))
+            { off.push(name); changed = true; log(`  ${label}: disabledMcpjsonServers + ${name} (left off - registered, not loaded)`); }
+            for (const name of mcpjsonEnable) if (off.includes(name))
+            { off.splice(off.indexOf(name), 1); changed = true; dropped = true; log(`  ${label}: disabledMcpjsonServers - ${name}`); }
+            if (!had && off.length) data.disabledMcpjsonServers = off;
+            if (had && dropped && !off.length) delete data.disabledMcpjsonServers;
+        }
+    }
 
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay ? JSON.stringify(overlay) : null;

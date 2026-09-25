@@ -170,6 +170,26 @@ test('settings-writer: enabledMcpjsonServers gains what we register and loses wh
         'a leftover entry names a .mcp.json server that no longer exists - dead config that reads like a knob');
 });
 
+// R116 (j): disabledMcpjsonServers holds a playwright engine left off on the copy route. The writer
+// adds and drops only the names it is handed, keeps the user's own, creates no empty list, removes a
+// list only when it emptied it itself, and never rewrites a value that is not a list.
+test('settings-writer: disabledMcpjsonServers gains and loses only the names handed in, and a non-list is left alone', () =>
+{
+    const fresh = write(settingsFile({}), { mcpjsonDisable: ['playwright-webkit'] });
+    assert.deepStrictEqual(fresh.data.disabledMcpjsonServers, ['playwright-webkit']);
+    const none = write(settingsFile({}), { mcpjsonEnable: ['playwright-webkit'] });
+    assert.strictEqual(none.data.disabledMcpjsonServers, undefined, 'an empty list was created');
+    const theirs = write(settingsFile({ disabledMcpjsonServers: ['theirs', 'playwright-webkit'] }), { mcpjsonEnable: ['playwright-webkit'] });
+    assert.deepStrictEqual(theirs.data.disabledMcpjsonServers, ['theirs']);
+    const emptied = write(settingsFile({ disabledMcpjsonServers: ['playwright-webkit'] }), { mcpjsonEnable: ['playwright-webkit'] });
+    assert.strictEqual(emptied.data.disabledMcpjsonServers, undefined, 'a list this run emptied stays behind');
+    const leftEmpty = write(settingsFile({ disabledMcpjsonServers: [] }), { mcpjsonEnable: ['playwright-webkit'] });
+    assert.deepStrictEqual(leftEmpty.data.disabledMcpjsonServers, [], 'the user\'s own empty list was removed');
+    const garbage = write(settingsFile({ disabledMcpjsonServers: 'playwright-webkit' }), { mcpjsonDisable: ['playwright-firefox'] });
+    assert.strictEqual(garbage.data.disabledMcpjsonServers, 'playwright-webkit');
+    assert.ok(garbage.notes.some((n) => /disabledMcpjsonServers is not a list - left as it is/.test(n)), garbage.notes.join('\n'));
+});
+
 test('settings-writer: a retired deny entry goes, and only that exact string', () =>
 {
     const file = settingsFile({ permissions: { deny: ['Read(./old-secret)', 'Read(./mine)'] } });

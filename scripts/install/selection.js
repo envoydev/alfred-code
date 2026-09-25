@@ -224,9 +224,10 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
     // The playwright engines the last install INSTALLED (the stamp's `playwright-browsers:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
-    // a parked entry - and the listing's flag is no evidence either way (S22). Plugin route only: on
-    // the copy route a registration is the record.
-    const pickedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : [];
+    // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
+    // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
+    // the engines and wrote the stamp's two lines blank.
+    const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
     const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(r.name))).map((r) => currentName(r.name));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
     const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes, sourceDir });

@@ -356,8 +356,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
     session. Setup/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
-    on at install, none flipped by update); the stamp's two lines are the record, and a stamped engine a
-    run drops is uninstalled. A legacy `playwright` server migrates. The playwright agents grant all four.
+    on at install, none flipped by update); the stamp's two lines are the record on EVERY route (a
+    switch onto the copy route carries them over, R116), and a stamped engine a run drops is
+    uninstalled. On the copy route an engine's plugin row is uninstalled, on or off, and at project
+    scope one left off is registered AND named in `disabledMcpjsonServers` (it rejects a `.mcp.json`
+    server only - measured; no settings key reaches a local- or user-scope registration, so the run
+    names `/mcp` there); the list moves only when the enable answer does. A legacy `playwright` server
+    migrates. The playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,

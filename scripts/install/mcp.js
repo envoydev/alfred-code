@@ -317,16 +317,18 @@ function expandPlaywright({ mcps = [], browsers = [], registered = [] })
 
 // Which of the kept engines are ENABLED (R67). `flag` is the user's answer - `all`, a set, or [] for
 // none - and is APPLIED to engines already installed. With no answer (null) nothing is applied: an
-// engine the stamp recorded keeps its last choice, one it recorded nothing for is enabled. `off` is
-// what an engine this run installs is switched to right after; `outside` names what the flag asks to
-// enable but this run does not install, which the caller refuses.
-function playwrightEnabled({ kept = [], flag = null, prior = {} })
+// engine `live` has a word on keeps it (R116: one registered in .mcp.json is on unless
+// disabledMcpjsonServers names it - the user's own switch on the copy route), else the one the stamp
+// recorded keeps its last choice, and one recorded nowhere is enabled. `off` is what an engine this run
+// installs is switched to right after; `outside` names what the flag asks to enable but this run does
+// not install, which the caller refuses.
+function playwrightEnabled({ kept = [], flag = null, prior = {}, live = () => undefined })
 {
     const recorded = (e) => Array.isArray(prior.browsers) && Array.isArray(prior.enabled) && prior.browsers.includes(e);
     let enabled;
     if (flag === 'all') enabled = [...kept];
     else if (Array.isArray(flag)) enabled = kept.filter((e) => flag.includes(e));
-    else enabled = kept.filter((e) => !recorded(e) || prior.enabled.includes(e));
+    else enabled = kept.filter((e) => { const on = live(e); return on === undefined ? !recorded(e) || prior.enabled.includes(e) : on; });
     return {
         enabled,
         off: kept.filter((e) => !enabled.includes(e)),
@@ -345,6 +347,28 @@ function playwrightLive({ kept = [], prior = {}, live = () => undefined })
     return {
         installed: [...kept],
         enabled: kept.filter((e) => { const on = live(e); return on === undefined ? recorded.includes(e) : on; }),
+    };
+}
+
+// R116 (j): what disabledMcpjsonServers gains and loses this run. On the copy route at project scope an
+// engine left off is registered AND listed, and the list moves only when the enable choice does: an
+// answer (`apply`) sets every kept engine, and with none only an engine registered NOW that is off is
+// listed - so one the user took out by hand stays out. A name with no registration here any more (a
+// dropped engine, or every engine on the plugin route, where .mcp.json holds none) leaves the list. At
+// local and user scope the registration is not in .mcp.json and no settings key reaches it (measured on
+// 2.1.282: this list rejects only .mcp.json servers, and disabledMcpServers is read from the account
+// config alone, which the installer never edits) - `unreachable` names the engines left off there.
+function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = [], apply = false, registered = [] })
+{
+    const name = (e) => `playwright-${e}`;
+    const gone = PW_SERVERS.filter((n) => routes.mcps || !kept.map(name).includes(n));
+    const off = routes.mcps ? [] : kept.filter((e) => !enabled.includes(e));
+    if (routes.mcps) return { disable: [], enable: gone, off, unreachable: [] };
+    if (scope !== 'project') return { disable: [], enable: [], off, unreachable: off };
+    return {
+        disable: off.filter((e) => apply || !registered.includes(e)).map(name),
+        enable: [...gone, ...(apply ? kept.filter((e) => enabled.includes(e)).map(name) : [])],
+        off, unreachable: [],
     };
 }
 
@@ -432,5 +456,5 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive,
+    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch,
 };

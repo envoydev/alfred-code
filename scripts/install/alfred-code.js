@@ -272,11 +272,18 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         };
         // The playwright engines the last install INSTALLED, and the ones the user chose to enable (R67) -
         // the stamp's word, never the listing's flag: an engine left off is still installed, and a
-        // project-scope flag can read a stale false (S22). Kept on the plugin route only; on the copy
-        // route the registrations in .mcp.json are the record.
+        // project-scope flag can read a stale false (S22). On EVERY route (R116): a switch onto the copy
+        // route finds no registration yet, and read from .mcp.json alone it wrote both lines blank - the
+        // record a later switch back installs the engines from.
         const priorPw = { browsers: stampLayer.readPlaywright(stampFile), enabled: stampLayer.readPlaywrightEnabled(stampFile) };
         // null when the stamp has no such line (1.x, no stamp): nothing recorded, and the listing speaks.
-        const stampEngines = routes.mcps ? priorPw.browsers : null;
+        const stampEngines = priorPw.browsers;
+        // The copy route's own switch (R116 j): the engines .mcp.json registers before this run, and on
+        // each the settings files' disabledMcpjsonServers - an entry in any of them rejects the server.
+        const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
+            .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
+        const mcpjsonEngines = registeredEngines(mcpFile);
+        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`playwright-${e}`) : undefined);
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -398,13 +405,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const pw = mcp.expandPlaywright({
             mcps: lists.mcps,
             browsers: args.playwrightBrowsers,
-            registered: [...new Set([...registeredEngines(mcpFile), ...listedEngines, ...(stampEngines || [])])],
+            registered: [...new Set([...mcpjsonEngines, ...listedEngines, ...(stampEngines || [])])],
         });
         lists.mcps = pw.mcps;
         // Which of them are ENABLED: the user's answer when given, else each keeps its last recorded
         // choice and a new one is on. An answer naming an engine this run does not install is refused
         // here, before anything is written.
-        const pwOn = mcp.playwrightEnabled({ kept: pw.browsers, flag: args.playwrightEnabled, prior: priorPw });
+        const pwOn = mcp.playwrightEnabled({ kept: pw.browsers, flag: args.playwrightEnabled, prior: priorPw, live: liveCopy });
         if (pwOn.outside.length)
         {
             err(`error: --playwright-enabled names ${pwOn.outside.join(',')}, which this run does not install (installs: ${pw.browsers.join(',') || 'none'}) - enable only an engine being installed\n`);
@@ -447,7 +454,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const specOf = (e) => `playwright-${e}@${market}`;
                 inv.playwright = mcp.playwrightLive({
                     kept: pw.browsers, prior: priorPw,
-                    live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : undefined),
+                    live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : liveCopy(e)),
                 });
                 fs.writeFileSync(args.planOut, JSON.stringify(inv, null, 2) + '\n');
             }
@@ -478,10 +485,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args, env, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets, retiredMcpsDue, pw: { prior: priorPw, ...pwOn },
+            market, marketSeen, readMarkets, retiredMcpsDue,
+            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: cliScope, kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
         };
-        if (!routes.mcps && pwOn.apply && pw.browsers.length)
-            log('playwright: --playwright-enabled is recorded but not applied on the MCP copy route - the engines are .mcp.json servers, /mcp switches them');
+        // R116 (j): an engine left off does not load. At project scope the copy route lists it in
+        // disabledMcpjsonServers; at local and user scope no settings key reaches the registration.
+        if (ctx.pw.mcpjson.unreachable.length)
+            for (const e of ctx.pw.mcpjson.unreachable)
+                note(`playwright: ${e} left off, but registered at ${cliScope} scope, where no settings key switches a server off - run /mcp and disable playwright-${e} there`);
+        else if (ctx.pw.mcpjson.off.length)
+            log(`playwright: ${ctx.pw.mcpjson.off.join(',')} left off - disabledMcpjsonServers keeps it from loading (taking it out of that list, or /alfred-code:configure, turns it on)`);
 
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -925,6 +938,7 @@ function installHooksAndRules(ctx)
         },
         mcpNames: ctx.routes.mcps ? [] : ctx.lists.mcps.map((e) => e.split('|')[0]),
         mcpOff: (ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : []).concat(ctx.retiredMcpsDue),
+        mcpjsonDisable: ctx.pw.mcpjson.disable, mcpjsonEnable: ctx.pw.mcpjson.enable,
         memoryDb: ctx.level.dbPath,
         hooksOff, hooksAnswered,
         // N6: at local scope settings.json still applies beneath the local file, so what it holds is no

@@ -400,20 +400,24 @@ function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, lock
 }
 
 // THE PLAYWRIGHT ENGINES the copy route registers in .mcp.json load as nothing else (R111): each one's
-// `playwright-<engine>@<stack key>` row that is on at the run's scope is UNINSTALLED before the
-// registration. Not disabled - a disabled engine is the user's own off-state, which the plugin route
+// `playwright-<engine>@<stack key>` row at the run's scope is UNINSTALLED before the registration - on
+// or off (R116). Not disabled: a disabled engine is the user's own off-state, which the plugin route
 // never switches back without an answer, while an absent one it installs back as last chosen (the
-// stamp's two playwright lines), so a later switch back keeps the user's choice. A row at another scope
-// serves other projects: named with its command. One already off does not load, and stays.
+// stamp's two playwright lines). A row left off goes too, so the stamp is the ONE record a later switch
+// back reads - kept, it would overrule a choice the user made on the copy route, where the on/off lives
+// in disabledMcpjsonServers. A row at another scope serves other projects: named with its command when on.
 function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const gone = [];
-    for (const row of rowsOn({ rows, names: engines.map((e) => `playwright-${e}`), market, isOn }))
+    const names = engines.map((e) => `playwright-${e}`);
+    const on = new Set(rowsOn({ rows, names, market, isOn }));
+    const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
+    for (const row of ours)
     {
         const spec = `${row.name}@${market}`;
         if (row.scope !== scope)
         {
-            log(`  ${spec} is enabled at ${row.scope} scope, not this run's - it loads beside its .mcp.json registration; if nothing else needs it: claude plugin uninstall ${spec} --scope ${row.scope}`);
+            if (on.has(row)) log(`  ${spec} is enabled at ${row.scope} scope, not this run's - it loads beside its .mcp.json registration; if nothing else needs it: claude plugin uninstall ${spec} --scope ${row.scope}`);
             continue;
         }
         if (cli(['plugin', 'uninstall', spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))

@@ -1705,13 +1705,17 @@ test('seed install on a listing it cannot read: the stamp says which engines are
     assert.deepStrictEqual(pwMoves(old.calls), ['plugin install playwright-chrome@envoydev --scope project -y']);
 });
 
-test('seed install on the MCP copy route: --playwright-enabled is recorded, and said not applied - /mcp switches a registered server', POSIX_ONLY, () =>
+// R116 (j): applied on the MCP copy route too - an engine left off is registered AND named in
+// disabledMcpjsonServers, so it does not load (install-mcp.test.js has the re-run and the user's own switch).
+test('seed install on the MCP copy route: --playwright-enabled is applied through disabledMcpjsonServers, never an engine plugin', POSIX_ONLY, () =>
 {
     const { calls, out, result } = seedRun('install', PW_SELECTION, { env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
-        args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'], inspect: stampOf });
+        args: ['--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'],
+        inspect: (repo) => ({ stamp: stampOf(repo), settings: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')) }) });
     assert.deepStrictEqual(pwMoves(calls), [], 'the copy route installed or switched an engine plugin');
-    assert.match(out, /playwright: --playwright-enabled is recorded but not applied on the MCP copy route - the engines are \.mcp\.json servers, \/mcp switches them/);
-    assert.match(result, /^playwright-browsers: chrome,firefox\nplaywright-enabled: chrome$/m);
+    assert.match(out, /playwright: firefox left off - disabledMcpjsonServers keeps it from loading/);
+    assert.deepStrictEqual(result.settings.disabledMcpjsonServers, ['playwright-firefox']);
+    assert.match(result.stamp, /^playwright-browsers: chrome,firefox\nplaywright-enabled: chrome$/m);
 });
 
 // --- round 2 ---------------------------------------------------------------------------------------

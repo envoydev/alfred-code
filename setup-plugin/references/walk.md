@@ -215,7 +215,8 @@ from the LIVE install, never by hand: `jq -c '.playwright' "$TMP/installed.json"
 prints `{"installed": [...], "enabled": [...]}`:
 `installed` is the kept browsers (the stamp's record; for a 1.x install, what the listing or
 `.mcp.json` carries - a legacy single `playwright` server is migrated by the run), and `enabled` is
-what the settings files say is ON NOW, a `/plugin` toggle included. Never pre-select from the
+what the settings files say is ON NOW, a `/plugin` toggle included (on the MCP copy route: every
+registered browser `disabledMcpjsonServers` does not name). Never pre-select from the
 stamp's own `playwright-enabled:` line - it is the last answer, and a toggle made since would be
 reverted.
 
@@ -235,9 +236,11 @@ Each installed browser is its own plugin (`playwright-chrome`, `playwright-firef
 number can be enabled together, and one left unticked is installed, then disabled. Pass the answers
 to the installer as `--playwright-browsers <csv>` (a browser left out is uninstalled by the run) and
 `--playwright-enabled <csv|none>`; in DELTA an unchanged answer passes nothing, and the run switches
-only an engine whose live state the answer changes. `/plugin` toggles them later (on the MCP copy
-route they are `.mcp.json` servers, toggled with `/mcp`, and the enable answer is recorded but not
-applied).
+only an engine whose live state the answer changes. `/plugin` toggles them later. On the MCP copy
+route they are `.mcp.json` servers: at project scope one left unticked is registered AND named in
+`disabledMcpjsonServers`, which keeps it from loading, and taking it out of that list turns it on;
+at local and user scope no settings key reaches the registration, so the run names the `/mcp`
+switch instead.
 
 ## Plugins
 
