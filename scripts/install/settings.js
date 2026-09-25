@@ -27,7 +27,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
-const { SECRET_KEY } = require('./seeds.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -182,6 +181,10 @@ function renameEnv(env, migrations, log, label = 'settings.json')
 // The env keys the stack owns, under either name - what R99 reads from and writes to settings.local.json.
 const isStackKey = (key) => /^(ALFRED_CODE_|CLAUDE_STACK_)/.test(key) || key === 'CLAUDE_DOCS_PATH'; // legacy-name
 
+// C8 (R100, R101): keys that hold a value of THIS machine - the memory database's absolute path. At
+// every scope they live in settings.local.json, never in the committed settings.json.
+const PERSONAL_KEYS = ['ALFRED_CODE_MEMORY_DB'];
+
 // Steps 2 and 3 of the env pass, in place, over the keys `only` admits.
 function retireAndReseed(env, migrations, log, label, only = () => true)
 {
@@ -210,7 +213,12 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // run over its stack keys too, a key it holds counts as present for every seed (a copy here would be
 // shadowed), and every decision below lands in it, where it takes effect - never in this file, where
 // it would look applied and change nothing. The caller writes the overlay back to its own file.
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+// C6 (R101 N7): the absent-only SEEDS are the exception - they fill THIS file against itself (and the
+// file beneath), because it is what every teammate reads; the runner's own value still wins over it.
+// C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
+// `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
+// holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
+function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -221,8 +229,8 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
         renameEnv(held, migrations, log, overlayLabel);
         retireAndReseed(held, migrations, log, overlayLabel, isStackKey);
     }
-    const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held;
-    const present = (key) => key in env || key in beneath || heldHere(key);
+    const heldHere = (key) => Boolean(held) && isStackKey(key) && key in held && !sharedKeys.includes(key);
+    const present = (key) => key in env || key in beneath;
     // Where a decision about `key` lands: the overlay when it holds the key, else this file.
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
@@ -260,8 +268,11 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
     // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
     for (const [key, value, shown] of [['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb]])
     {
-        const { into, lab, mine } = at(key);
+        const personal = Boolean(held) && PERSONAL_KEYS.includes(key);
+        const { into, lab, mine } = personal ? { into: held, lab: overlayLabel, mine: false } : at(key);
         if (value && into[key] !== value) { into[key] = value; if (mine) changed = true; log(`  ${lab} env: ${key} -> ${shown}`); }
+        if (personal && value && key in env)
+        { delete env[key]; changed = true; log(`  ${label} env: ${key} removed - this machine's database path, kept in ${overlayLabel} from here on`); }
     }
 
     // ALFRED_CODE_HOOKS_OFF: a walk that answered the hooks layer THIS run wins over the stored
@@ -304,6 +315,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        inheritedOverrides = null, sharedKeys = [],
         log = () => {}, note = () => {},
     } = opts;
     // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
@@ -381,11 +393,15 @@ function writeSettings(opts)
     // file, so the env pass writes a key it holds back into it (`applyEnv` `overlay`). A malformed one
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
     let local = null;
+    let createdLocal = false;
     if (localFile && fs.existsSync(localFile))
     {
         try { ({ data: local } = readSettings(localFile)); }
         catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; }
     }
+    // C8: the memory database path has no other home, so a local file that is not there yet is made.
+    else if (localFile && memoryDb) { local = {}; createdLocal = true; }
+    if (local && memoryDb && !(local.env && typeof local.env === 'object' && !Array.isArray(local.env))) local.env = {};
     const localDeny = local && local.permissions && Array.isArray(local.permissions.deny) ? local.permissions.deny : null;
     const localRespelled = Boolean(localDeny) && respellSeats(localDeny, path.basename(localFile));
     if (rekeyOverrides(data, renamed, log, label)) changed = true;
@@ -409,6 +425,17 @@ function writeSettings(opts)
         if (!deny.includes(rule) && !(localDeny && localDeny.includes(rule))) { deny.push(rule); changed = true; log(`  ${label}: agent denied ${rule}`); }
     }
     for (const rule of agentAllow) dropSeat(rule, null);
+    // C4 (R133 N1): a seat denied only in settings.local.json stays off whatever settings.json says, so
+    // the allow drops it there too - the one entry of that file this run removes.
+    let localAllowed = false;
+    if (localDeny)
+    {
+        for (const rule of agentAllow)
+            for (const entry of [...localDeny]) if (stackSeat(entry) && stackSeat(entry) === stackSeat(rule))
+            { localDeny.splice(localDeny.indexOf(entry), 1); localAllowed = true; log(`  ${path.basename(localFile)}: agent allowed again ${entry}`); }
+        if (localAllowed && !localDeny.length) delete local.permissions.deny;
+        if (localAllowed && !Object.keys(local.permissions).length) delete local.permissions;
+    }
 
     // enabledMcpjsonServers: pre-approve exactly the .mcp.json servers we register, so there is no
     // per-launch trust prompt - never blanket enableAllProjectMcpServers.
@@ -442,11 +469,24 @@ function writeSettings(opts)
     }
 
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
-    const overlayBefore = overlay ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, log, label,
+    const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
+    // C3 (R133 b): at local scope settings.json is never written, so an old key there cannot be re-keyed;
+    // its value is set under the new name in THIS file - the deny half's shape - and the entry is named.
+    if (inheritedOverrides && typeof inheritedOverrides === 'object' && !Array.isArray(inheritedOverrides))
+        for (const [from, to] of Object.entries((renamed && renamed.skills) || {}))
+        {
+            if (!Object.hasOwn(inheritedOverrides, from) || Object.hasOwn(inheritedOverrides, to)) continue;
+            const mine = (data.skillOverrides && typeof data.skillOverrides === 'object' && !Array.isArray(data.skillOverrides)) ? data.skillOverrides : null;
+            if (mine && Object.hasOwn(mine, to)) continue;
+            if (data.skillOverrides !== undefined && !mine) break;
+            (data.skillOverrides ??= {})[to] = inheritedOverrides[from];
+            changed = true;
+            log(`  ${label}: settings.json still names skillOverrides ${from} - set as ${to} in ${label}; a local-scope run never writes settings.json, a project-scope update re-keys it`);
+        }
     // M1 (R132): an entry in ANY settings file rejects a .mcp.json server, and Claude Code's approval
     // dialog writes its rejection to settings.local.json - so an engine this run enables leaves that
     // list too. Only the names the answer moved: another entry, or a key of the user's own, stays.
@@ -460,13 +500,18 @@ function writeSettings(opts)
         else if (moved.length) delete local.disabledMcpjsonServers;
         localListChanged = moved.length > 0;
     }
-    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localListChanged;
-    if (localChanged) fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
+    const localChanged = (Boolean(overlay) && JSON.stringify(overlay) !== overlayBefore) || localRekeyed || localRespelled || localListChanged || localAllowed;
+    if (localChanged)
+    {
+        fs.mkdirSync(path.dirname(localFile), { recursive: true });
+        fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
+    }
+    const createdLocalFile = createdLocal && localChanged;
 
-    if (!changed) return { written: localChanged, refused: false };
+    if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile };
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
-    return { written: true, refused: false };
+    return { written: true, refused: false, createdLocal: createdLocalFile };
 }
 
 // T16/R47 (I1): the ONE place that decides which file THIS run's own settings writes go to - a
@@ -540,8 +585,8 @@ function sharedOnlyDeny(claudeDir)
 // there), and each key is logged once. Fix round 2: a seed may be a LIST - every value the stack has
 // shipped for the key, a reseed migration's old one included (N2) - and a kept value is logged by its
 // length only, whatever the key's name (N3): it is the user's, and it can carry a credential under a
-// key that does not look like one. A removed key's line names the stack seed and what applies now
-// (a credential-shaped key by its length). Everything else in the local
+// key that does not look like one. The removed seeds are one line naming each key, never a value
+// (C18). A PERSONAL_KEYS value stays (C8). Everything else in the local
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
@@ -560,16 +605,16 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     let sharedChanged = false;
 
     const env = isObj(local.env) ? local.env : null;
-    const sharedEnv = isObj(shared.env) ? shared.env : {};
-    const shown = (key, v) => (SECRET_KEY.test(key) ? `(set, ${String(v).length} chars)` : v === '' ? '(empty)' : `'${v}'`);
     const seeded = (key, v) => Object.hasOwn(seeds, key) && [].concat(seeds[key]).includes(v);
+    // C18 (R98): the seeds leave as ONE line - a count and the keys - not a line per key.
+    const seedsGone = [];
     for (const key of Object.keys(env || {}).filter((k) => k.startsWith(ENV_PREFIX)))
     {
         const v = env[key];
-        const has = Object.hasOwn(sharedEnv, key);
+        // C8: a machine's own value lives in this file at every scope - nothing to move.
+        if (PERSONAL_KEYS.includes(key)) continue;
         if (written.includes(key)) say(`${key} removed - the stack writes it every run, to settings.json from here on`);
-        else if (seeded(key, v))
-            say(`${key} removed - the stack's own seed (${shown(key, v)}); ${has ? `settings.json's ${shown(key, sharedEnv[key])} applies` : 'settings.json gets the current seed'}`);
+        else if (seeded(key, v)) seedsGone.push(key);
         else
         {
             say(`${key} stays here (your value, ${String(v).length} chars) - it applies over settings.json, and later runs read and write it here`);
@@ -578,6 +623,8 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
         delete env[key];
         localChanged = true;
     }
+    if (seedsGone.length)
+        say(`${seedsGone.length} stack env key${seedsGone.length === 1 ? '' : 's'} removed - each held the stack's own seed, so settings.json's value or its seed applies from here on: ${seedsGone.join(', ')}`);
     if (env && !Object.keys(env).length) delete local.env;
 
     const perms = isObj(local.permissions) ? local.permissions : null;

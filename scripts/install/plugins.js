@@ -58,6 +58,29 @@ const pluginRoutes = (env = {}) => ({
 
 const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes.mcps);
 
+// C5 (R101 N6, widened by final review A): at project and user scope the routes decide COMMITTED state -
+// the hooks wired in settings.json, the core switched off there on the full copy route. Claude Code puts
+// settings.local.json's env into every process it starts, so a switch the runner holds there reaches
+// this run looking like a deliberate one. Where the run's value IS the local file's and settings.json
+// says otherwise, settings.json decides (unset = the plugin route), with one line. A shell export the
+// local file does not hold is the invocation's own and stands; at local scope the local file is the
+// install's own settings, so the run's value stands there too.
+function committedRoutes({ env = {}, shared = {}, personal = {}, scope, log = () => {} })
+{
+    const routes = pluginRoutes(env);
+    if (scope === 'local') return routes;
+    for (const [route, suffix] of [['hooks', 'HOOKS_VIA_PLUGIN'], ['skills', 'SKILLS_VIA_PLUGIN'], ['mcps', 'MCPS_VIA_PLUGIN']])
+    {
+        const run = envOf(env, suffix);
+        if (run === undefined || run === '' || run !== envOf(personal || {}, suffix)) continue;
+        const committed = envOf(shared || {}, suffix);
+        if (committed === run) continue;
+        routes[route] = committed !== 'false';
+        log(`routes: ALFRED_CODE_${suffix}=${run} comes from settings.local.json - personal, so this ${scope}-scope run follows settings.json (${committed === undefined || committed === '' ? 'unset' : committed}${routes[route] ? ' - the plugin route' : ' - the copy route'})`);
+    }
+    return routes;
+}
+
 // `claude plugin list --json` -> one row per plugin NAME. A row carrying a projectPath belongs to
 // that project and is dropped unless it is this one; where both exist, THIS project's row wins over
 // the account-level one. Anything unparseable is an empty listing, never a crash: the callers all
@@ -641,7 +664,7 @@ function parseMarketplaces(json)
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
-    pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
+    pluginRoutes, committedRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn,

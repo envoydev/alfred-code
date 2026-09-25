@@ -504,8 +504,11 @@ test('settings-writer: at project scope a write to a stack key settings.local.js
         ALFRED_CODE_DOCS_VERSIONING: 'git', ALFRED_CODE_MONITOR: 'inject', MY_OWN: 'x',
     }, 'the answer, the decision, the reseed and the rename land where the key applies');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'] }, 'nothing else of the local file is touched');
-    for (const key of ['ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_FRESH_SESSION_DEFAULT', 'ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_MONITOR'])
-        assert.ok(!(key in shared.env), `${key} reached settings.json, where the local value shadows it`);
+    for (const key of ['ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DOCS_VERSIONING'])
+        assert.ok(!(key in shared.env), `the decision on ${key} reached settings.json, where the local value shadows it`);
+    // C6 (R101 N7): a SEED is absent-only against settings.json itself - what every teammate reads.
+    assert.strictEqual(shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
+    assert.strictEqual(shared.env.ALFRED_CODE_MONITOR, 'log');
     assert.strictEqual(shared.env.ALFRED_CODE_PUSH_GATE, '1', 'a key the local file lacks is seeded in settings.json as before');
     assert.strictEqual(shared.env.TEAM, 'y');
     const text = logs.join('\n');
@@ -635,8 +638,8 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     assert.deepStrictEqual(local.env, {
         ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length',
         ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo', ALFRED_CODE_API_TOKEN: 'abc123', ALFRED_CODE_TURN_CHECK: 0, MY_OWN: 'x',
-        ALFRED_CODE_REPO_URL: 'https://user:tok3n@host/fork',
-    }, 'a value the user set stays local, untouched; a seed-valued key (an older shipped seed too) and a written key leave');
+        ALFRED_CODE_REPO_URL: 'https://user:tok3n@host/fork', ALFRED_CODE_MEMORY_DB: '/elsewhere/.memory-mcp/memory.db',
+    }, 'a value the user set stays local, untouched; a seed-valued key (an older shipped seed too) leaves; the machine\'s memory path stays (C8)');
     assert.deepStrictEqual(shared.env, { ALFRED_CODE_PUSH_GATE: '1', ALFRED_CODE_MONITOR: 'inject', TEAM: 'y' }, 'no env key ever moves into settings.json');
     assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'], deny: ['Bash(rm:*)'] });
     assert.deepStrictEqual(local.enabledMcpjsonServers, ['mine']);
@@ -653,11 +656,11 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     assert.strictEqual((text.match(/ALFRED_CODE_HOOKS_OFF/g) || []).length, 1, 'logged once');
     for (const value of ['guard-answer-length', '/elsewhere/other-repo', 'abc123', 'tok3n', 'docs/mine'])
         assert.ok(!text.includes(value), `a kept value reached the log: ${value}`);
-    // A removed key names what applies from here on.
-    assert.match(text, /settings\.local\.json: ALFRED_CODE_MONITOR removed - the stack's own seed \('log'\); settings\.json's 'inject' applies/);
-    assert.match(text, /settings\.local\.json: ALFRED_CODE_INSTRUMENT removed - the stack's own seed \('0'\); settings\.json gets the current seed/);
-    assert.match(text, /settings\.local\.json: ALFRED_CODE_FRESH_SESSION_DEFAULT removed - the stack's own seed \('250000'\); settings\.json gets the current seed/);
-    assert.match(text, /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run, to settings\.json from here on/);
+    // C18 (R98): the removed seeds are ONE line - a count and the keys - never a line per key.
+    assert.match(text, /^  settings\.local\.json: 3 stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: ALFRED_CODE_INSTRUMENT, ALFRED_CODE_MONITOR, ALFRED_CODE_FRESH_SESSION_DEFAULT$/m);
+    assert.strictEqual(logs.filter((l) => / removed/.test(l)).length, 1, logs.join('\n'));
+    // C8: the memory path lives in settings.local.json at every scope, so the move leaves it silently.
+    assert.doesNotMatch(text, /MEMORY_DB/);
 
     // Idempotent: a second move finds nothing to carry and writes nothing.
     const before = fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8');
@@ -697,4 +700,89 @@ test('settings-writer env: the rename log says renamed only when the value moved
     assert.match(text, /settings\.json env: CLAUDE_STACK_MONITOR dropped - ALFRED_CODE_MONITOR is already set and wins/); // legacy-name
     assert.doesNotMatch(text, /CLAUDE_STACK_PUSH_GATE renamed/); // legacy-name
     assert.match(text, /settings\.json env: CLAUDE_STACK_PUSH_GATE dropped - it was empty/); // legacy-name
+});
+
+// Two settings files in one .claude dir, for the project-scope cases below.
+function pair(shared, local)
+{
+    const dir = path.join(TMP, `pair-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const sharedFile = path.join(dir, 'settings.json');
+    const localFile = path.join(dir, 'settings.local.json');
+    if (shared !== undefined) fs.writeFileSync(sharedFile, JSON.stringify(shared));
+    if (local !== undefined) fs.writeFileSync(localFile, JSON.stringify(local));
+    const read = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : undefined);
+    return { dir, sharedFile, localFile, shared: () => read(sharedFile), local: () => read(localFile) };
+}
+
+// C6 (R101 N7): a stack key the runner's settings.local.json holds is still SEEDED into the committed
+// settings.json - absent-only against settings.json itself. The shadowed seed costs the runner nothing
+// and is what every teammate reads; before, the committed file depended on who ran the install.
+test('settings-writer: at project scope a key settings.local.json holds is still seeded into settings.json, and the local value is untouched (C6)', () =>
+{
+    const p = pair({ env: { TEAM: 'y' } }, { env: { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' } });
+    const logs = [];
+    writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' }, log: (m) => logs.push(m) });
+    const shared = p.shared().env;
+    assert.strictEqual(shared.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW, '1000000', 'the committed file lacks the seed because the runner holds a personal value');
+    assert.strictEqual(shared.ALFRED_CODE_MONITOR, 'log');
+    assert.strictEqual(shared.ALFRED_CODE_HOOKS_OFF, '', 'the unanswered HOOKS_OFF seed');
+    assert.strictEqual(shared.ALFRED_CODE_DOCS_VERSIONING, 'git', 'the docs-versioning seed');
+    assert.deepStrictEqual(p.local().env, { ALFRED_CODE_DEFAULT_CONTEXT_WINDOW: '200000', ALFRED_CODE_MONITOR: 'inject', ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_DOCS_VERSIONING: 'local' });
+    assert.match(logs.join('\n'), /settings\.json env: ALFRED_CODE_MONITOR seeded \(log\)/);
+    // Idempotent.
+    const before = [fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')];
+    assert.strictEqual(writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, docsVersioning: { seed: 'git' } }).written, false);
+    assert.deepStrictEqual([fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')], before);
+});
+
+// C8 (R100, R101): ALFRED_CODE_MEMORY_DB is this machine's database path, so it goes to
+// settings.local.json at EVERY scope - never into the committed settings.json. An older install's copy
+// there leaves it, with one line; a local file that does not exist yet is created for it.
+test('settings-writer: ALFRED_CODE_MEMORY_DB goes to settings.local.json at project scope and leaves settings.json (C8)', () =>
+{
+    const p = pair({ env: { ALFRED_CODE_MEMORY_DB: '/old/machine/memory.db', TEAM: 'y' } });
+    const logs = [];
+    const opts = { file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, memoryDb: '/home/me/.memory-mcp/memory.db' };
+    writeSettings({ ...opts, log: (m) => logs.push(m) });
+    assert.ok(!('ALFRED_CODE_MEMORY_DB' in p.shared().env), `a machine path stayed in the committed file: ${JSON.stringify(p.shared().env)}`);
+    assert.strictEqual(p.shared().env.TEAM, 'y');
+    assert.deepStrictEqual(p.local(), { env: { ALFRED_CODE_MEMORY_DB: '/home/me/.memory-mcp/memory.db' } }, 'the local file is created holding the key');
+    const text = logs.join('\n');
+    assert.match(text, /settings\.local\.json env: ALFRED_CODE_MEMORY_DB -> \/home\/me\/\.memory-mcp\/memory\.db/);
+    assert.match(text, /settings\.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings\.local\.json from here on/);
+    // Idempotent: nothing to write the second time.
+    const before = [fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')];
+    assert.strictEqual(writeSettings(opts).written, false);
+    assert.deepStrictEqual([fs.readFileSync(p.sharedFile, 'utf8'), fs.readFileSync(p.localFile, 'utf8')], before);
+    // A local file holding the user's own keys keeps them.
+    const q = pair({}, { env: { MY_OWN: 'x' }, permissions: { allow: ['Bash(ls)'] } });
+    writeSettings({ ...opts, file: q.sharedFile, localFile: q.localFile });
+    assert.deepStrictEqual(q.local(), { env: { MY_OWN: 'x', ALFRED_CODE_MEMORY_DB: '/home/me/.memory-mcp/memory.db' }, permissions: { allow: ['Bash(ls)'] } });
+    assert.ok(!('ALFRED_CODE_MEMORY_DB' in q.shared().env));
+    // No memoryDb this run: an existing shared copy is left alone (nothing to put in its place).
+    const r = pair({ env: { ALFRED_CODE_MEMORY_DB: '/x.db' } });
+    writeSettings({ ...opts, file: r.sharedFile, localFile: r.localFile, memoryDb: undefined });
+    assert.strictEqual(r.shared().env.ALFRED_CODE_MEMORY_DB, '/x.db');
+    assert.strictEqual(r.local(), undefined, 'no local file is created for nothing');
+});
+
+// C4 (R133 N1): at project or user scope `--add agent X` for a seat denied ONLY in settings.local.json
+// took nothing and said nothing - the local deny applies over the shared file. The allow drops it there.
+test('settings-writer: an allowed seat leaves settings.local.json\'s deny list too, with a line (C4)', () =>
+{
+    const seat = 'Agent(alfred-code:evidence-gatherer)';
+    const p = pair({ permissions: { deny: ['Read(secret)'] } }, { permissions: { deny: [seat, 'Bash(rm:*)'], allow: ['Bash(ls)'] } });
+    const logs = [];
+    writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, agentAllow: [seat], log: (m) => logs.push(m) });
+    assert.deepStrictEqual(p.local().permissions, { deny: ['Bash(rm:*)'], allow: ['Bash(ls)'] }, 'the local deny still keeps the seat off');
+    assert.deepStrictEqual(p.shared().permissions.deny, ['Read(secret)']);
+    assert.match(logs.join('\n'), /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/);
+    // A list the drop empties goes, and a re-run writes nothing.
+    const q = pair({}, { permissions: { deny: [seat] } });
+    writeSettings({ file: q.sharedFile, localFile: q.localFile, catalog: CATALOG, migrations: MIGRATIONS, agentAllow: [seat] });
+    assert.deepStrictEqual(q.local(), {});
+    const before = fs.readFileSync(q.localFile, 'utf8');
+    writeSettings({ file: q.sharedFile, localFile: q.localFile, catalog: CATALOG, migrations: MIGRATIONS, agentAllow: [seat] });
+    assert.strictEqual(fs.readFileSync(q.localFile, 'utf8'), before);
 });

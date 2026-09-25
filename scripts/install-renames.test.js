@@ -584,3 +584,52 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     assert.deepStrictEqual(hits, [], 'an old name is back outside its homes');
     assert.deepStrictEqual(tableRows.sort(), Object.keys(pairs).sort(), 'update.md\'s upgrade table names every rename, each as the map\'s own pair');
 });
+
+// C3 (R133 b): at local scope settings.json is never written, so an old-keyed skillOverrides there was
+// neither re-keyed nor reported - the switch-off silently stopped applying. The deny half's shape: the
+// new key goes into settings.local.json with the same value, and one line names the shared entry.
+test('settings writer: at local scope an old skillOverrides key in settings.json is set under the new name in settings.local.json, with a line (C3)', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-c3-'));
+    try
+    {
+        const sharedFile = path.join(dir, 'settings.json');
+        const localFile = path.join(dir, 'settings.local.json');
+        const shared = { skillOverrides: { 'project-quality-loop': 'off', 'project-first-look': 'off', 'my-own-skill': 'off' } };
+        fs.writeFileSync(sharedFile, JSON.stringify(shared));
+        fs.writeFileSync(localFile, JSON.stringify({ skillOverrides: { 'alfred-capture-first-look': 'on' } }));
+        const logs = [];
+        const opts = { file: localFile, renamed: RENAMED, inheritedOverrides: shared.skillOverrides, note: (m) => assert.fail(m) };
+        writeSettings({ ...opts, log: (m) => logs.push(m) });
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')).skillOverrides, { 'alfred-capture-first-look': 'on', 'alfred-loop-quality': 'off' }, 'the user\'s switch-off stopped applying');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(sharedFile, 'utf8')), shared, 'settings.json is never written at local scope');
+        const text = logs.join('\n');
+        assert.match(text, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as alfred-loop-quality in settings\.local\.json; a local-scope run never writes settings\.json, a project-scope update re-keys it/);
+        assert.doesNotMatch(text, /project-first-look/, 'a new name the local file already sets wins, silently');
+        const before = fs.readFileSync(localFile, 'utf8');
+        const again = [];
+        writeSettings({ ...opts, log: (m) => again.push(m) });
+        assert.strictEqual(fs.readFileSync(localFile, 'utf8'), before, 'a re-run writes nothing');
+        assert.doesNotMatch(again.join('\n'), /still names skillOverrides/, 'a re-run says nothing');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('seed: a local-scope update carries settings.json\'s old skillOverrides key into settings.local.json under the new name (C3)', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun('install', 'skill markdown-style\n', {
+        args: ['--scope', 'local'],
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ skillOverrides: { 'project-quality-loop': 'off' } }));
+        },
+        inspect: (repo) => ({
+            shared: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+            local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
+        }),
+    });
+    assert.deepStrictEqual(result.local.skillOverrides, { 'alfred-loop-quality': 'off' });
+    assert.deepStrictEqual(result.shared, { skillOverrides: { 'project-quality-loop': 'off' } }, 'a local-scope run never writes settings.json');
+    assert.match(out, /settings\.local\.json: settings\.json still names skillOverrides project-quality-loop - set as alfred-loop-quality in settings\.local\.json/, out);
+});

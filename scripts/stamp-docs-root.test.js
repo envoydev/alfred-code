@@ -396,3 +396,28 @@ test('a local-scope install: the root and the versioning seed come from, and go 
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+// C7 (R101 N9): at project scope the stored decision is read from settings.json ALONE (the shared-only
+// read in scopedSettings). A personal ALFRED_CODE_DOCS_VERSIONING in settings.local.json must not make
+// --seed-versioning answer 'already decided': the committed file would never get the key, and every
+// teammate would run on the fallback. The personal value is left as it is.
+test('--seed-versioning at project scope seeds settings.json even when settings.local.json holds a value (C7)', () => {
+    const root = makeProject(JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }));
+    const claudeDir = path.join(root, '.claude');
+    const localFile = path.join(claudeDir, 'settings.local.json');
+    try
+    {
+        writeStamp(claudeDir, {});
+        fs.writeFileSync(localFile, JSON.stringify({ env: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }));
+        gitIn(root, 'init', '-q', '-b', 'develop', '.');
+        fs.writeFileSync(path.join(root, 'README.md'), '# repo\n');
+        gitIn(root, 'add', 'README.md');
+        gitIn(root, 'commit', '-qm', 'seed');
+        const out = seed(root);
+        assert.doesNotMatch(out, /already 'local'/, 'the personal value answered for the committed file');
+        assert.match(out, /settings\.json env: ALFRED_CODE_DOCS_VERSIONING seeded 'git' at docs\//);
+        assert.strictEqual(envOf(root).ALFRED_CODE_DOCS_VERSIONING, 'git');
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(localFile, 'utf8')), { env: { ALFRED_CODE_DOCS_VERSIONING: 'local' } }, 'the personal file is untouched');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

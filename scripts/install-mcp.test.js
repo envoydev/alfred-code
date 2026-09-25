@@ -975,7 +975,8 @@ test('seed update (MCP copy route): an enable answer takes the engine out of set
     });
     const [, answered, again] = steps;
     assert.deepStrictEqual(answered.local, undefined, `the local rejection survived the enable answer:\n${outs[1]}`);
-    assert.deepStrictEqual(answered.localKeys, ['permissions'], 'the user\'s own local key went');
+    // C8: `env` is the machine's memory path, which settings.local.json holds at every scope.
+    assert.deepStrictEqual(answered.localKeys, ['permissions', 'env'], 'the user\'s own local key went');
     assert.ok(!(answered.disabled || []).includes('playwright-webkit'), outs[1]);
     assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - playwright-webkit/);
     assert.match(outs[1], /playwright-firefox is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);

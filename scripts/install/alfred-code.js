@@ -251,7 +251,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
 
         const manifest = loadManifest(resolved.dir);
-        const routes = plugins.pluginRoutes(env);
+        // C5: at project and user scope a route switch only settings.local.json holds is personal, and
+        // never decides what this run commits (plugins.js committedRoutes).
+        const sharedEnv = settings.readBackSettings(claudeDir, 'project', { sharedOnly: true }).env || {};
+        const routes = plugins.committedRoutes({
+            env, shared: sharedEnv, scope: args.scope, log,
+            personal: (() => { try { return JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')).env || {}; } catch { return {}; } })(),
+        });
         // I5 (R47, fix round 2): memory is a LOCKED server - it bakes ONE path into a user-scope
         // registration only on the FULL copy route, where the installer registers it itself
         // (`claude mcp add -s user -e MCP_MEMORY_SQLITE_PATH=<path>`); on the MCP-copy-route-alone
@@ -367,6 +373,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 stampPicked: lastPicked, stampEngines,
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
+                // C5: the copy route's hooks are committed wiring - read from settings.json alone there.
+                committedEnv: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? null : settings.readBackSettings(claudeDir, 'project', { sharedOnly: true }).env || {},
             });
             if (!back.installed)
             {
@@ -1005,6 +1013,8 @@ function installHooksAndRules(ctx)
     // to settings.local.json, never the shared settings.json; every other scope keeps the shared
     // file. settingsTarget is the one helper every write site names, so this and importMemory's own
     // target cannot drift apart.
+    const localSettings = path.join(ctx.claudeDir, 'settings.local.json');
+    const hadLocal = fs.existsSync(localSettings);
     settings.writeSettings({
         file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
         catalog, migrations, hookSpecs: wired,
@@ -1034,9 +1044,19 @@ function installHooksAndRules(ctx)
         // R99: at every other scope settings.local.json applies OVER settings.json, so a stack key it
         // holds is written back there - where the read-back found it and where it takes effect.
         localFile: ctx.args.scope === 'local' ? null : path.join(ctx.claudeDir, 'settings.local.json'),
+        // C5: on the hooks copy route HOOKS_OFF mirrors the committed wiring, so it lands in settings.json
+        // even where the runner's local file holds a value of their own (which keeps applying to them).
+        sharedKeys: !ctx.routes.hooks && ctx.args.scope !== 'local' ? ['ALFRED_CODE_HOOKS_OFF'] : [],
+        // C3: at local scope an old skillOverrides key in settings.json is set under its new name here.
+        inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });
+    // C8: Claude Code keeps settings.local.json out of commits only when IT creates the file
+    // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named.
+    if (!hadLocal && fs.existsSync(localSettings)
+        && ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, localSettings)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
+        ctx.log(`  settings.local.json: created for this machine's own values (the memory database path) - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
     // M1 (R132): the account file rejects a .mcp.json server as well, and the installer never edits it -
     // an engine this run enabled that it still lists is named with its file, never left to look on.
     const accountFile = path.join(ctx.configDir, 'settings.json');

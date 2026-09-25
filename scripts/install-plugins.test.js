@@ -2024,3 +2024,81 @@ test('seed: a plugin-to-copy run that dies before the first hook copy never read
     }
     finally { s.cleanup(); }
 });
+
+// C5 (R101 N6, widened by final review A): at project (and user) scope the routes and the copy route's
+// HOOKS_OFF decide COMMITTED state - the hooks wired in settings.json, the core switched off there. A
+// value settings.local.json holds is the runner's own: Claude Code puts it into every process it starts
+// here, so where the run's value IS the local file's, settings.json decides. A shell export the local
+// file does not hold is the invocation's own and stands; at local scope the local file is the install's.
+test('routes: at project scope a route switch only settings.local.json holds is read from settings.json (C5)', () =>
+{
+    const logs = [];
+    const log = (m) => logs.push(m);
+    const personal = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
+    const env = { ...personal, ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'project', log }), { hooks: true, skills: true, mcps: false },
+        'the two switches the local file holds came from it; the shell export stands');
+    assert.strictEqual(logs.length, 2, logs.join('\n'));
+    assert.match(logs[0], /^routes: ALFRED_CODE_HOOKS_VIA_PLUGIN=false comes from settings\.local\.json - personal, so this project-scope run follows settings\.json \(unset - the plugin route\)$/);
+    // settings.json holding the same value: nothing to override, nothing said.
+    const quiet = [];
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: env, personal, scope: 'project', log: (m) => quiet.push(m) }), P.pluginRoutes(env));
+    assert.deepStrictEqual(quiet, []);
+    // settings.json naming the other route: its value decides.
+    assert.strictEqual(P.committedRoutes({ env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }, shared: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, personal: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'true' }, scope: 'user' }).hooks, false);
+    // Local scope: the local file IS the install's settings.
+    assert.deepStrictEqual(P.committedRoutes({ env, shared: {}, personal, scope: 'local' }), P.pluginRoutes(env));
+    // The 1.x spelling in the local file is the same switch.
+    assert.strictEqual(P.committedRoutes({ env: { CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' }, shared: {}, personal: { CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false' }, scope: 'project' }).hooks, true); // legacy-name
+});
+
+test('seed: a personal ALFRED_CODE_HOOKS_VIA_PLUGIN=false in settings.local.json does not move the committed settings.json onto the hooks copy route (C5)', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: listing, args: [[], ['--installed-only']],
+        // Claude Code puts the local file's env into the run's process: the second step carries it.
+        env: [{}, { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const file = path.join(repo, '.claude', 'settings.local.json');
+            fs.writeFileSync(file, JSON.stringify({ env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' } }));
+            return null;
+        },
+        inspect: (repo) => ({
+            hooks: fs.existsSync(path.join(repo, '.claude', 'hooks')) ? fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => /^guard-/.test(f)) : [],
+            wiring: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).hooks,
+            stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+        }),
+    });
+    assert.deepStrictEqual(result.hooks, [], 'the runner\'s personal switch copied the hooks into the project');
+    assert.ok(!JSON.stringify(result.wiring || {}).includes('/.claude/hooks/'), 'the committed settings.json wires copied hooks');
+    assert.match(result.stamp, /^hooks-route: plugin$/m);
+    assert.match(outs[1], /routes: ALFRED_CODE_HOOKS_VIA_PLUGIN=false comes from settings\.local\.json - personal, so this project-scope run follows settings\.json \(unset - the plugin route\)/, outs[1]);
+});
+
+test('seed: on a switch to the hooks copy route the committed wiring follows settings.json\'s ALFRED_CODE_HOOKS_OFF, never the runner\'s local one (C5, N6)', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const { result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: listing, args: [[], ['--installed-only']],
+        env: [{}, { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }],
+        each: (repo, i) =>
+        {
+            if (i === 0) fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }));
+            return null;
+        },
+        inspect: (repo) => ({
+            onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
+            shared: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+            local: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')),
+        }),
+    });
+    assert.deepStrictEqual(result.onDisk, shipped.map((h) => `${h}.js`).sort(), `the runner's local HOOKS_OFF decided the committed copies: ${result.onDisk.length} of ${shipped.length}`);
+    assert.ok(JSON.stringify(result.shared.hooks).includes('/.claude/hooks/guard-answer-length.js'), 'the committed wiring left out the hook the runner switched off for themselves');
+    assert.strictEqual(result.shared.env.ALFRED_CODE_HOOKS_OFF, '', 'the complement of the committed wiring lands in settings.json');
+    assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the runner\'s own switch-off stays theirs, and still applies to them');
+});

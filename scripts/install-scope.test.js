@@ -57,20 +57,33 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, '.claude/docs', 'the env seed landed in the local file');
 });
 
-test('install-scope: --scope project and --scope user both write the shared settings.json, never settings.local.json', POSIX_ONLY, () =>
+// C8 (R100, R101): the one exception is this machine's memory database path - settings.local.json holds
+// it at every scope, and nothing else of the run lands there.
+test('install-scope: --scope project and --scope user write the shared settings.json, and settings.local.json only the machine\'s memory path (C8)', POSIX_ONLY, () =>
 {
     for (const scope of ['project', 'user'])
     {
         const { result } = seedRun('install', SELECTION, {
             args: ['--scope', scope],
             inspect: (repo) => ({
-                hasShared: exists(repo, '.claude', 'settings.json'),
-                hasLocal: exists(repo, '.claude', 'settings.local.json'),
+                shared: exists(repo, '.claude', 'settings.json') ? json(repo, '.claude/settings.json') : null,
+                local: exists(repo, '.claude', 'settings.local.json') ? json(repo, '.claude/settings.local.json') : null,
             }),
         });
-        assert.strictEqual(result.hasShared, true, `--scope ${scope} did not write settings.json`);
-        assert.strictEqual(result.hasLocal, false, `--scope ${scope} wrote settings.local.json - it must not`);
+        assert.ok(result.shared, `--scope ${scope} did not write settings.json`);
+        assert.ok(!('ALFRED_CODE_MEMORY_DB' in (result.shared.env || {})), `--scope ${scope} put this machine's memory path in the committed settings.json`);
+        assert.deepStrictEqual(Object.keys(result.local || {}), ['env'], `--scope ${scope} wrote more than the memory path to settings.local.json`);
+        assert.deepStrictEqual(Object.keys(result.local.env), ['ALFRED_CODE_MEMORY_DB']);
+        assert.ok(path.isAbsolute(result.local.env.ALFRED_CODE_MEMORY_DB));
     }
+    // Claude Code ignores settings.local.json only when it creates the file itself, so a file this run
+    // created is named when git would commit it - and not when the repo already ignores it.
+    const said = /settings\.local\.json: created for this machine's own values \(the memory database path\) - git does not ignore it here; add \.claude\/settings\.local\.json to \.gitignore/;
+    const bare = seedRun(['install', 'update'], SELECTION, {});
+    assert.match(bare.outs[0], said, bare.outs[0]);
+    assert.doesNotMatch(bare.outs[1], said, 'the file already existed on the second run');
+    const ignored = seedRun('install', SELECTION, { prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/settings.local.json\n') });
+    assert.doesNotMatch(ignored.out, said, 'the repo already ignores it');
 });
 
 // R29: a 1.x GLOBAL install's stamp and skills sat in the account dir (CLAUDE_CONFIG_DIR). The
@@ -699,7 +712,8 @@ test('install-scope: a local install moved to project scope drops its seeded key
         }),
     });
     assert.match(outs[1], /action: update \[scope=project,/, outs[1]);
-    assert.deepStrictEqual(result.local.env, {
+    const { ALFRED_CODE_MEMORY_DB: _db, ...localEnv } = result.local.env;
+    assert.deepStrictEqual(localEnv, {
         MY_OWN: 'x', ALFRED_CODE_DOCS_PATH: 'docs/mine', ALFRED_CODE_PUSH_GATE: '0',
         ALFRED_CODE_HOOKS_OFF: 'guard-answer-length', ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '/elsewhere/other-repo',
     }, 'the user\'s values stay local, untouched, and every seeded stack key left');
@@ -715,9 +729,12 @@ test('install-scope: a local install moved to project scope drops its seeded key
     assert.ok((result.shared.permissions.deny || []).some((d) => /^Agent\(alfred-code:/.test(d)), 'the seat denies moved into settings.json');
     assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_HOOKS_OFF stays here \(your value, 19 chars\) - it applies over settings\.json/, outs[1]);
     assert.ok(!/stays here.*(guard-answer-length|\/elsewhere\/other-repo)/.test(outs[1]), 'a kept value reached the log');
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_INSTRUMENT removed - the stack's own seed/, outs[1]);
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_MEMORY_DB removed - the stack writes it every run/, outs[1]);
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed/, outs[1]);
+    // C18: one line for every removed seed. C8: the memory path stays local, so the move leaves it.
+    assert.match(outs[1], /settings\.local\.json: \d+ stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: [A-Z_, ]*ALFRED_CODE_INSTRUMENT/, outs[1]);
+    assert.match(outs[1], /stack env keys removed - [^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
+    assert.strictEqual((outs[1].match(/^==> +settings\.local\.json: .* removed/gm) || []).length, 1, outs[1]);
+    assert.ok(String(result.local.env.ALFRED_CODE_MEMORY_DB || '').endsWith('memory.db'), 'the machine\'s memory path left settings.local.json (C8)');
+    assert.ok(!('ALFRED_CODE_MEMORY_DB' in result.shared.env), 'the machine\'s memory path reached the committed settings.json (C8)');
 });
 
 // R99 (Task 18b fix round 2), the re-review's N1 measured end to end: a walk at local scope names an
@@ -783,8 +800,8 @@ test('install-scope: a move off local removes an older shipped seed and the docs
     assert.ok(!('ALFRED_CODE_DOCS_VERSIONING' in local), 'the rule\'s own seed survived the move as a user value');
     assert.strictEqual(result.shared.env.ALFRED_CODE_FRESH_SESSION_DEFAULT, '180000');
     assert.strictEqual(result.shared.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_FRESH_SESSION_DEFAULT removed - the stack's own seed \('250000'\)/, outs[1]);
-    assert.match(outs[1], /settings\.local\.json: ALFRED_CODE_DOCS_VERSIONING removed - the stack's own seed \('local'\)/, outs[1]);
+    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_FRESH_SESSION_DEFAULT/, outs[1]);
+    assert.match(outs[1], /stack env keys removed - each held the stack's own seed[^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
 });
 
 // Safety ticket (R132): with no HOME, no USERPROFILE and no CLAUDE_CONFIG_DIR the account dir resolved
@@ -832,7 +849,7 @@ for (const [label, args, refused] of [['the default level', [], true], ['--memor
             },
             inspect: (repo) => ({
                 claude: exists(repo, '.claude'),
-                db: exists(repo, '.claude', 'settings.json') ? (json(repo, '.claude/settings.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
+                db: exists(repo, '.claude', 'settings.local.json') ? (json(repo, '.claude/settings.local.json').env || {}).ALFRED_CODE_MEMORY_DB || null : null,
             }),
         });
         if (!refused)
@@ -849,3 +866,31 @@ for (const [label, args, refused] of [['the default level', [], true], ['--memor
         assert.strictEqual(run.result.claude, false, 'the project was written');
     });
 }
+
+// C4 (R133 N1) end to end: a core seat the user denied for themselves in settings.local.json, then
+// added back through configure's `--add agent`, loads again - the local deny goes, with a line.
+test('install-scope: --add agent at project scope drops the seat\'s deny from settings.local.json (C4)', POSIX_ONLY, () =>
+{
+    const seat = 'Agent(alfred-code:evidence-gatherer)';
+    const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true }]),
+        args: [[], ['--installed-only', '--add', 'agent evidence-gatherer']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const shared = path.join(repo, '.claude', 'settings.json');
+            const s = JSON.parse(fs.readFileSync(shared, 'utf8'));
+            s.permissions.deny = s.permissions.deny.filter((d) => d !== seat);
+            fs.writeFileSync(shared, JSON.stringify(s, null, 2));
+            const localFile = path.join(repo, '.claude', 'settings.local.json');
+            const l = JSON.parse(fs.readFileSync(localFile, 'utf8'));
+            l.permissions = { deny: [seat] };
+            fs.writeFileSync(localFile, JSON.stringify(l, null, 2));
+            return null;
+        },
+        inspect: (repo) => ({ shared: json(repo, '.claude/settings.json'), local: json(repo, '.claude/settings.local.json') }),
+    });
+    assert.ok(!((result.local.permissions || {}).deny || []).includes(seat), 'the seat stays off through the local deny');
+    assert.ok(!(result.shared.permissions.deny || []).includes(seat));
+    assert.match(outs[1], /settings\.local\.json: agent allowed again Agent\(alfred-code:evidence-gatherer\)/, outs[1]);
+});

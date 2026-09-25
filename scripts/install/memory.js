@@ -256,28 +256,39 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
         return 1;
     }
 
-    // The key, and the switch-off after it, go to the file this install's other settings writes use
-    // (R47): the stamp's scope names it; with no readable stamp, the file that already holds the key.
+    // The switch-off goes to the file this install's other settings writes use (R47): the stamp's scope
+    // names it; with no readable stamp, the file that already holds the key. C8 (R100, R101): the key
+    // itself is this machine's database path, so it goes to settings.local.json at every scope, and a
+    // copy an older run left in settings.json leaves it - unless settings.json is a file this install
+    // never writes (the local scope).
     const local = path.join(claudeDir, 'settings.local.json');
+    const shared = path.join(claudeDir, 'settings.json');
     const localRead = readObject(local);
     const scope = stampScope(claudeDir);
     const target = scope ? require('./settings.js').settingsTarget(claudeDir, scope)
-        : (localRead.data && localRead.data.env && localRead.data.env.ALFRED_CODE_MEMORY_DB !== undefined ? local : path.join(claudeDir, 'settings.json'));
-    const read = target === local ? localRead : readObject(target);
-    if (read.error)
+        : (localRead.data && localRead.data.env && localRead.data.env.ALFRED_CODE_MEMORY_DB !== undefined ? local : shared);
+    const targetRead = target === local ? localRead : readObject(target);
+    const failed = localRead.error || targetRead.error;
+    if (failed)
     {
-        log(`  !! ${read.error} - the memory level was not written; fix it and run /alfred-code:init again`);
+        log(`  !! ${failed} - the memory level was not written; fix it and run /alfred-code:init again`);
         return 1;
     }
-    const data = read.data || {};
-    data.env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {};
-    if (data.env.ALFRED_CODE_MEMORY_DB !== dbPath)
+    const envOfData = (data) => { data.env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; return data.env; };
+    const localData = localRead.data || {};
+    if (envOfData(localData).ALFRED_CODE_MEMORY_DB !== dbPath)
     {
-        data.env.ALFRED_CODE_MEMORY_DB = dbPath;
+        localData.env.ALFRED_CODE_MEMORY_DB = dbPath;
         fs.mkdirSync(claudeDir, { recursive: true });
-        fs.writeFileSync(target, `${JSON.stringify(data, null, 2)}\n`);
+        fs.writeFileSync(local, `${JSON.stringify(localData, null, 2)}\n`);
     }
-    log(`memory: level ${level} -> ${dbPath} (${path.basename(target)} env ALFRED_CODE_MEMORY_DB)`);
+    if (target === shared && targetRead.data && targetRead.data.env && typeof targetRead.data.env === 'object' && 'ALFRED_CODE_MEMORY_DB' in targetRead.data.env)
+    {
+        delete targetRead.data.env.ALFRED_CODE_MEMORY_DB;
+        fs.writeFileSync(shared, `${JSON.stringify(targetRead.data, null, 2)}\n`);
+        log("  settings.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings.local.json from here on");
+    }
+    log(`memory: level ${level} -> ${dbPath} (settings.local.json env ALFRED_CODE_MEMORY_DB)`);
     if (level === 'project') ensureProjectIgnore(projectRoot, log);
 
     const settingsFile = target;
