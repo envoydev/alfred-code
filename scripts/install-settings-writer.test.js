@@ -767,6 +767,27 @@ test('settings-writer: ALFRED_CODE_MEMORY_DB goes to settings.local.json at proj
     assert.strictEqual(r.local(), undefined, 'no local file is created for nothing');
 });
 
+// N7 (re-review): a settings.local.json that cannot be read is no overlay, so the memory path - the one key
+// with no other home - went back into the committed settings.json (project and user scope alike: both
+// write settings.json with settings.local.json over it). It is left unwritten with one line, the way
+// `memory.js init` refuses: settings.json keeps what it held, and the malformed file is not touched.
+test('settings-writer: a malformed settings.local.json never sends ALFRED_CODE_MEMORY_DB into settings.json (N7)', () =>
+{
+    for (const [label, shared] of [['no copy in settings.json', { env: { TEAM: 'y' } }], ['an older copy in settings.json', { env: { TEAM: 'y', ALFRED_CODE_MEMORY_DB: '/old.db' } }]])
+    {
+        const p = pair(shared);
+        fs.writeFileSync(p.localFile, '{not json');
+        const logs = [];
+        writeSettings({ file: p.sharedFile, localFile: p.localFile, catalog: CATALOG, migrations: MIGRATIONS, memoryDb: '/home/me/.memory-mcp/memory.db', log: (m) => logs.push(m), note: () => {} });
+        assert.strictEqual(p.shared().env.ALFRED_CODE_MEMORY_DB, shared.env.ALFRED_CODE_MEMORY_DB, `${label}: ${JSON.stringify(p.shared().env)}`);
+        assert.strictEqual(p.shared().env.TEAM, 'y');
+        assert.strictEqual(fs.readFileSync(p.localFile, 'utf8'), '{not json', 'the malformed file is left as it is');
+        const said = logs.filter((m) => /the memory level was not written/.test(m));
+        assert.strictEqual(said.length, 1, `${label}: ${logs.join(' | ')}`);
+        assert.match(said[0], /^ {2}!! settings\.local\.json could not be read - the memory level was not written \(ALFRED_CODE_MEMORY_DB stays out of settings\.json\); fix it and re-run$/);
+    }
+});
+
 // C4 (R133 N1): at project or user scope `--add agent X` for a seat denied ONLY in settings.local.json
 // took nothing and said nothing - the local deny applies over the shared file. The allow drops it there.
 test('settings-writer: an allowed seat leaves settings.local.json\'s deny list too, with a line (C4)', () =>

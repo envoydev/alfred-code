@@ -218,7 +218,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -268,6 +268,13 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
     // 5. WRITTEN keys - they track a choice this run just made, so they overwrite.
     for (const [key, value, shown] of [['ALFRED_CODE_MEMORY_DB', memoryDb, memoryDb]])
     {
+        // N7: an overlay that could not be read is no home for it, and this file never is - the value is
+        // left unwritten and said once, the way `memory.js init` refuses; what this file held stays.
+        if (!held && overlayUnreadable && PERSONAL_KEYS.includes(key))
+        {
+            if (value) log(`  !! ${overlayLabel} could not be read - the memory level was not written (${key} stays out of ${label}); fix it and re-run`);
+            continue;
+        }
         const personal = Boolean(held) && PERSONAL_KEYS.includes(key);
         const { into, lab, mine } = personal ? { into: held, lab: overlayLabel, mine: false } : at(key);
         if (value && into[key] !== value) { into[key] = value; if (mine) changed = true; log(`  ${lab} env: ${key} -> ${shown}`); }
@@ -394,10 +401,11 @@ function writeSettings(opts)
     // is no overlay: Claude Code cannot read it either, so it is named and left as it is.
     let local = null;
     let createdLocal = false;
+    let localUnreadable = false;
     if (localFile && fs.existsSync(localFile))
     {
         try { ({ data: local } = readSettings(localFile)); }
-        catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; }
+        catch (err) { note(`${err.message} - its stack keys are not read or written this run`); local = null; localUnreadable = true; }
     }
     // C8: the memory database path has no other home, so a local file that is not there yet is made.
     else if (localFile && memoryDb) { local = {}; createdLocal = true; }
@@ -470,7 +478,7 @@ function writeSettings(opts)
 
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // A personal skillOverrides switch-off follows a renamed skill the same way as a shared one.
     const localRekeyed = Boolean(local) && rekeyOverrides(local, renamed, log, path.basename(localFile));
