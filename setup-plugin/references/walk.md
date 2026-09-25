@@ -165,9 +165,11 @@ what the table already shows.
 
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
 plus the manual `alfred-task-*` / `alfred-capture-*` / `alfred-loop-*` / `alfred-issue-*` skills (the inline execution twins, the capture/loop generators,
-the upgrade planner) and the seven `alfred-habits-*` habits, all pre-selected `recommended` and droppable; their need is 'the stack is
-installed', not anything a project manifest could prove, which is why they are seeded rather than
-evidence-scanned. The ONE deliberate exception is `alfred-task-build-from-scratch` - greenfield-only by
+the upgrade planner) and the seven `alfred-habits-*` habits, all pre-selected `recommended` - LOCKED
+on the plugin route (they ride the core plugin, which carries no per-skill deny, so a drop there logs
+'not applied'), droppable only on the `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` copy route; their need is
+'the stack is installed', not anything a project manifest could prove, which is why they are seeded
+rather than evidence-scanned. The ONE deliberate exception is `alfred-task-build-from-scratch` - greenfield-only by
 its own description, dead weight on an existing project, so it is never seeded; offer it as an
 unselected row like any other, and only in a greenfield run is picking it natural. Beyond the seed
 set, selected = locked + whatever the user adds.
@@ -265,8 +267,10 @@ answer is applied after the installer runs, exactly like the environment choices
 
 No kept plugin with a row: skip this silently, ask nothing. A target that needs a block the
 plugin's own setup owns (claude-hud's `statusLine`, which carries the refresh interval) reports
-itself as `skipped` rather than inventing it - say so once, and point at `/claude-hud:setup`.
+itself as `skipped` rather than inventing it - say so once; the block lands once a statusLine
+exists, whether `/alfred-code:init` writes claude-hud's own or the user already has one of their own.
 
 After the installer, re-run the same call with `--apply` (plus `--replace` for the overwrite answer)
-and paste the closing `applied:` line. A run that dropped the plugin asked nothing and applies
-nothing.
+and paste the closing `applied:` line, plus the `backup:` line right after it when one is printed
+(the account `settings.json` was copied to `settings.json.bak.<time>` before this run's first write
+to it). A run that dropped the plugin asked nothing and applies nothing.
