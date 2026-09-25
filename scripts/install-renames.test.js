@@ -10,6 +10,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const { loadManifest } = require('./install/manifest.js');
@@ -68,6 +69,9 @@ test('the renamed map: every old name is retired, every new name ships, and no n
         assert.ok(m.retired.agents.includes(`${from}.md`), `${from} is retired`);
         assert.ok(agents.has(to) && !agents.has(from), `${from} -> ${to}`);
     }
+    // M2: a new name is never retired - every run would prune the copy it just carried across.
+    for (const to of Object.values(RENAMED.skills)) assert.ok(!m.retired.skills.includes(to), `${to} is a rename target and retired too`);
+    for (const to of Object.values(RENAMED.agents)) assert.ok(!m.retired.agents.includes(`${to}.md`), `${to} is a rename target and retired too`);
 });
 
 // ---------- the read-side helpers ----------
@@ -512,6 +516,16 @@ test('seed install --selection and update --add: a line naming an old item insta
     const add = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only', '--add', 'skill project-stack-usage-analyzer'], prepare, inspect });
     assert.ok(add.result.skills.includes('alfred-capture-stack-usage'), add.result.skills.join(' '));
     assert.ok(!add.out.includes('names nothing this release ships'), 'an old name is carried, never reported as unknown');
+
+    // M3: a --drop naming the old item drops the new one - its copy, its pick, a seat's switch-off.
+    const drop = seedRun(['install', 'update'], 'skill markdown-style\nskill alfred-capture-related-projects\nagent alfred-issue-diagnoser-ci\nrule markdown-docs\n', {
+        plugins: listing, args: [[], ['--installed-only', '--drop', 'skill project-related-context', '--drop', 'agent ci-failure-diagnoser']], each: inspect,
+    });
+    const [before, after] = drop.steps;
+    assert.ok(before.skills.includes('alfred-capture-related-projects') && before.pickedAgents.includes('alfred-issue-diagnoser-ci@alfred-code'), 'the install carries both');
+    assert.ok(!after.skills.includes('alfred-capture-related-projects') && !after.pickedSkills.includes('alfred-capture-related-projects'), `the dropped copy and pick are gone: ${after.skills} | ${after.pickedSkills}`);
+    assert.ok(!after.pickedAgents.some((e) => /diagnoser/.test(e)), after.pickedAgents.join(','));
+    assert.ok(after.settings.permissions.deny.includes('Agent(alfred-code:alfred-issue-diagnoser-ci)'), `the dropped core seat is denied under its new name\n${drop.outs[1]}`);
 });
 
 // ---------- the old names stay in their homes ----------
@@ -528,32 +542,45 @@ test('no surface names an old skill or seat outside the rename\'s own homes', ()
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     assert.ok(old.test(JSON.stringify(manifest.renamed)) && old.test(JSON.stringify(manifest.retired)), 'positive control: the scan sees the map and the retired lists');
     old.lastIndex = 0;
-    const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', '.serena', '.superpowers', '.memory-mcp', '.playwright']);
+    const SKIP_DIRS = new Set(['.git', 'node_modules', '.claude', '.serena', '.superpowers', '.memory-mcp', '.playwright', '.idea']);
     const hits = [];
     const tableRows = [];
-    const scan = (dir) =>
+    const scanFile = (full) =>
+    {
+        const rel = path.relative(ROOT, full).split(path.sep).join('/');
+        if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'scripts/install-renames.test.js') return;
+        const buf = fs.readFileSync(full);
+        if (buf.includes(0)) return;
+        let text = buf.toString('utf8');
+        if (rel === 'meta/stack-manifest.json') { const m = JSON.parse(text); delete m.retired; delete m.renamed; text = JSON.stringify(m, null, 2); }
+        text.split('\n').forEach((line, i) =>
+        {
+            const found = line.match(old);
+            if (!found) return;
+            const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
+            if (rel === 'setup-plugin/commands/update.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
+            hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
+        });
+    };
+    const walk = (dir) =>
     {
         for (const e of fs.readdirSync(dir, { withFileTypes: true }))
         {
-            const full = path.join(dir, e.name);
-            const rel = path.relative(ROOT, full).split(path.sep).join('/');
-            if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) scan(full); continue; }
-            if (/^docs\/[^/]*-evidence\.md$/.test(rel) || rel === 'scripts/install-renames.test.js') continue;
-            const buf = fs.readFileSync(full);
-            if (buf.includes(0)) continue;
-            let text = buf.toString('utf8');
-            if (rel === 'meta/stack-manifest.json') { const m = JSON.parse(text); delete m.retired; delete m.renamed; text = JSON.stringify(m, null, 2); }
-            text.split('\n').forEach((line, i) =>
-            {
-                const found = line.match(old);
-                if (!found) return;
-                const row = /^\| (?:seat )?`\/?([a-z0-9-]+)` \| (?:seat )?`\/?([a-z0-9-]+)` \|$/.exec(line);
-                if (rel === 'setup-plugin/commands/update.md' && row && pairs[row[1]] === row[2]) { tableRows.push(row[1]); return; }
-                hits.push(`${rel}:${i + 1}: ${found.join(', ')}`);
-            });
+            if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) walk(path.join(dir, e.name)); }
+            else scanFile(path.join(dir, e.name));
         }
     };
-    scan(ROOT);
+    // M4: in a git work tree of its own, the TRACKED files - an untracked or ignored file is no
+    // surface the repo ships. An export (no work tree, or one whose top is elsewhere) walks the disk.
+    let tracked = null;
+    try
+    {
+        const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20 });
+        if (fs.realpathSync(git('rev-parse', '--show-toplevel').trim()) === fs.realpathSync(ROOT)) tracked = git('ls-files', '-z').split('\0').filter(Boolean);
+    }
+    catch { tracked = null; }
+    if (tracked) for (const rel of tracked) { const full = path.join(ROOT, rel); if (fs.existsSync(full) && fs.statSync(full).isFile()) scanFile(full); }
+    else walk(ROOT);
     assert.deepStrictEqual(hits, [], 'an old name is back outside its homes');
     assert.deepStrictEqual(tableRows.sort(), Object.keys(pairs).sort(), 'update.md\'s upgrade table names every rename, each as the map\'s own pair');
 });
