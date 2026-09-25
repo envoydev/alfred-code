@@ -734,6 +734,30 @@ test('hook-blocks: correction probe rows are counted, split by whether the save 
   assert.deepStrictEqual(roll.probes.correction, { turns: 3, injected: 1 }, 'the rollup sums the corpus');
 });
 
+// R8 (ECC comparison): guard-stop-contract.js writes one `kind: rationalization` probe row when a close
+// dismisses a failure in a turn that had a red run, a skipped test or an added skip marker.
+test('hook-blocks: rationalization probe rows split by the evidence and by the kind of dismissal', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  const rat = (phrase, evidence) => line({ ts: '2026-07-15T07:00:04.000Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'rationalization',
+    reason: 'probe: a dismissal after a red run - logged, not held', detail: { phrase, evidence, red: evidence === 'red' ? ['npm test'] : [], skipped: [], skipEdit: evidence === 'skip-edit' } });
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    rat('unrelated to my change', 'red'), rat('pre-existing failure', 'red'), rat('is flaky', 'skipped'),
+    rat('transient connection failures', 'red'), rat('Skipping the e2e tests for now', 'skip-edit'),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.rationalization, { closes: 5, red: 3, skipped: 1, skipEdit: 1, preExisting: 1, unrelated: 1, flaky: 2, deferred: 1 });
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /RATIONALIZATION \(probe\): 5 close\(s\) dismissing a failure - 3 after a red run, 1 after a skipped test, 1 after an added skip marker; 1 pre-existing, 1 unrelated to the change, 2 flaky or transient, 1 deferred/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| rationalization \| 5 \| 3 \| 1 \| 1 \| 1 \| 1 \| 2 \| 1 \|/);
+  const roll = JSON.parse(execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+  assert.deepStrictEqual(roll.probes.rationalization, { closes: 5, red: 3, skipped: 1, skipEdit: 1, preExisting: 1, unrelated: 1, flaky: 2, deferred: 1 });
+});
+
 test('hook-blocks: done-gate probe rows split into ran, and unrun by rule, no tests, skill loaded and missed', () => {
   const dir = tmp();
   const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);

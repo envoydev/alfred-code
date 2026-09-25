@@ -2416,6 +2416,7 @@ function readBlockLedger(target, sessionId) {
         if (o.mode === 'probe' && o.kind === 'done-gate' && o.detail) (out.doneGateRows || (out.doneGateRows = [])).push({ ...o.detail, ts: o.ts || null });
         if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
         if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
+        if (o.mode === 'probe' && o.kind === 'rationalization') tallyRationalization(out.rationalization || (out.rationalization = newRationalization()), o.detail || {});
         continue;
       }
       out.rows += 1;
@@ -2593,6 +2594,22 @@ const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - $
 // read from the transcript with the same test.
 const newCorrection = () => ({ turns: 0, injected: 0 });
 const correctionLine = (t) => `CORRECTION NUDGE (probe): ${t.turns} correction turn(s) - ${t.injected} with the save line injected, ${t.turns - t.injected} logged only`;
+
+// The rationalization probe (guard-stop-contract.js, log-only): a close dismissing a failure in a turn
+// that had one to dismiss. Split two ways - by the evidence (a red run first, then a skipped test, then
+// an added skip marker) and by what the phrase claims - so the rate of each is its own number.
+const newRationalization = () => ({ closes: 0, red: 0, skipped: 0, skipEdit: 0, preExisting: 0, unrelated: 0, flaky: 0, deferred: 0 });
+function tallyRationalization(t, d) {
+  t.closes += 1;
+  if (d.evidence === 'red') t.red += 1; else if (d.evidence === 'skipped') t.skipped += 1; else t.skipEdit += 1;
+  const p = String(d.phrase || '');
+  if (/pre[- ]?existing/i.test(p)) t.preExisting += 1;
+  else if (/unrelated|caused by|related to|introduced by|\bfrom (?:my|this|the|our)\b/i.test(p)) t.unrelated += 1;
+  else if (/flak|transient|intermittent/i.test(p)) t.flaky += 1;
+  else t.deferred += 1;
+}
+const rationalizationLine = (t) => `RATIONALIZATION (probe): ${t.closes} close(s) dismissing a failure - ${t.red} after a red run, ${t.skipped} after a skipped test, ${t.skipEdit} after an added skip marker; `
+  + `${t.preExisting} pre-existing, ${t.unrelated} unrelated to the change, ${t.flaky} flaky or transient, ${t.deferred} deferred`;
 
 // Resolves a session's probe rows in place; the raw rows never reach a report.
 function finishProbes(ledger, sessionFile) {
@@ -3030,6 +3047,7 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
   if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
   if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
   if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
+  if (blockLedger && blockLedger.rationalization) console.log((blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction ? '' : '\n') + rationalizationLine(blockLedger.rationalization));
   if (blockLedger && blockLedger.probes) console.log('\nPROBES ' + blockLedger.probes + ' row(s), log-only - denied nothing: ' + Object.entries(blockLedger.probeKinds).map(([k, n]) => k + ' x' + n).join(', ') + ' (a probe row is a measurement of how often the gate WOULD fire; judge its rate before it becomes a denial)');
 
   if (main.spikes.length) {
@@ -3340,8 +3358,8 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
-  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction)) {
-    out.push('## Skill probes - log-only (where a method skill was needed, and what the session did)', '');
+  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction || blockLedger.rationalization)) {
+    out.push('## Probes - log-only (where a method skill or a habit was needed, and what the session did)', '');
     const dg = blockLedger.doneGate;
     if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
       `| done gate | ${dg.claims} | ${dg.ran} | ${dg.byRule} | ${dg.noTests} | ${dg.skillLoaded} | ${dg.inContext} | ${dg.missed} |`, '');
@@ -3351,6 +3369,9 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     const co = blockLedger.correction;
     if (co) out.push('| probe | correction turns | save line injected | logged only |', '|---|---|---|---|',
       `| correction nudge | ${co.turns} | ${co.injected} | ${co.turns - co.injected} |`, '');
+    const ra = blockLedger.rationalization;
+    if (ra) out.push('| probe | dismissing closes | after a red run | after a skipped test | after a skip marker | pre-existing | unrelated | flaky or transient | deferred |', '|---|---|---|---|---|---|---|---|---|',
+      `| rationalization | ${ra.closes} | ${ra.red} | ${ra.skipped} | ${ra.skipEdit} | ${ra.preExisting} | ${ra.unrelated} | ${ra.flaky} | ${ra.deferred} |`, '');
   }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
@@ -3576,7 +3597,7 @@ async function runAnalysis() {
     const acc = newInventoryUse(loadPlugins(pluginsFile));
     const rollupJson = { sessions: [] };
     // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
-    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection() } : null;
+    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() } : null;
     for (const f of files) {
       if (probeSum) {
         const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
@@ -3615,6 +3636,7 @@ async function runAnalysis() {
     if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
     if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
     if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
+    if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;

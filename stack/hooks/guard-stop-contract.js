@@ -19,7 +19,8 @@
 //   It also carries the DONE-GATE PROBE, log-only: a close claiming the change done / fixed / passing /
 //   works / ready over a turn with a source edit (a file tool's, or a shell write read through
 //   shell-writes.js) writes one row per turn - `unrun` when the edit landed after the turn's last run
-//   (ALFRED_CODE_DONE_GATE=0 off).
+//   (ALFRED_CODE_DONE_GATE=0 off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
+//   failure in a turn with a red run, a skipped test or an added skip marker writes one row per turn.
 // PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: LOG-ONLY - a red build or test run writes one
 //   probe row per failure streak (where `alfred-habits-root-cause` was needed); the streak ends when every
 //   command that ran red in it has run green again, or after an hour with no red run.
@@ -165,6 +166,11 @@ const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:fail
 // The Angular CLI's own verdict is a bare `Error:` line - too common in a passing run's logs to read
 // as red for any other runner.
 const NG_RED_RE = /(?:^|\n)Error: /;
+// A run that SKIPPED tests says so in its own summary (node --test, jest, vitest, pytest, mocha's
+// 'pending', dotnet's 'Skipped:'); an edit that adds a skip marker skips one at the source. Both are
+// what the rationalization probe below counts as something to dismiss, beside a red run.
+const SKIPPED_RE = /(?:^|\n)\s*(?:ℹ|#)\s*(?:skipped|skip)\s+[1-9]|\b[1-9]\d*\s+(?:skipped|pending)\b|\bSkipped:\s*[1-9]/;
+const SKIP_MARKER_RE = /\b(?:it|test|describe|context)\.skip\s*\(|\bx(?:it|test|describe)\s*\(|\bSkip\s*=\s*["']|@pytest\.mark\.skip|\bt\.skip\s*\(|\[Ignore\b|@Disabled\b|\{\s*skip\s*:\s*true/;
 const STREAK_TTL_MS = 60 * 60 * 1000;
 function runFailed(p, kind) {
   if (p.hook_event_name === 'PostToolUseFailure') return p.is_interrupt ? null : true;
@@ -843,6 +849,9 @@ function turnWork() {
   const edits = []; // { at, rel, file, make, del, mkdir }, in order
   let lastRun = null;
   let skill = false;
+  const red = [];      // build / test runs of this turn that went red (the root-cause list's runners)
+  const skipped = [];  // ... and those whose summary reports a skipped test
+  let skipEdit = false; // a source edit this turn that ADDED a skip marker
   for (const o of turn) {
     const c = o.type === 'assistant' && Array.isArray(o.message.content) ? o.message.content : [];
     for (const blk of c) {
@@ -857,11 +866,21 @@ function turnWork() {
         const file = input.file_path || input.notebook_path;
         const rel = res && !res.error ? sourceEdit(file) : null;
         if (rel) edits.push({ at, rel, file: path.resolve(root, file), make: name === 'Write' });
+        const multi = Array.isArray(input.edits) ? input.edits : [];
+        const added = [input.new_string, input.content, ...multi.map((e) => e && e.new_string)].filter((x) => typeof x === 'string').join('\n');
+        const removed = [input.old_string, ...multi.map((e) => e && e.old_string)].filter((x) => typeof x === 'string').join('\n');
+        if (rel && SKIP_MARKER_RE.test(added) && !SKIP_MARKER_RE.test(removed)) skipEdit = true;
       } else if (DISPATCH_TOOL_RE.test(name)) {
         if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
       } else if (SHELL_TOOL_RE.test(name)) {
         if (res && res.error && !ranCode(res)) continue;
         const command = String(typeof input === 'string' ? input : input.command || '');
+        const bt = res ? buildTestRun(command) : null;
+        if (bt) {
+          const out = res.text.slice(-4096);
+          if ((res.error && ranCode(res)) || RED_SUMMARY_RE.test(out) || (/^(?:ng|nx) /.test(bt.kind) && NG_RED_RE.test(out))) red.push(bt.kind);
+          if (SKIPPED_RE.test(out)) skipped.push(bt.kind);
+        }
         for (const step of shellSteps(command, root)) {
           const pos = at + (step.index + 1) / (command.length + 2);
           if (step.run) lastRun = { at: pos, kind: step.run };
@@ -889,8 +908,22 @@ function turnWork() {
   const lastEdit = left.length ? left[left.length - 1] : null;
   const first = b >= 0 ? rows[b] : null;
   return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun,
-    lastKept: kept.length ? kept[kept.length - 1] : null, skill };
+    lastKept: kept.length ? kept[kept.length - 1] : null, skill, red, skipped, skipEdit };
 }
+
+// --- rationalization phrases (ECC comparison R8; LOG-ONLY - never holds, never injects) --------
+// ECC's delivery gate warns on a regex over the close: 'skipping tests for now', 'pre-existing bug',
+// 'tests are failing but I'll fix', 'leaving the failing tests'. Its four, plus the dismissals the
+// local corpus replay found after a red run ('unrelated to this change', 'not related to this change',
+// 'flaky', 'transient ... failures'). A phrase counts only beside something to dismiss in the SAME
+// turn (the Stop branch checks that), so the replay wrote no row on any other close; a negated
+// 'not a pre-existing failure' says the opposite and is no match.
+const RATIONALIZATION_RE = /\b(?:this|that|it|these|those)(?:'s| is| are| was| were) (?:a |an )?pre[- ]?existing\b|(?<!\bnot (?:a |an )?)\bpre[- ]?existing\b[^.\n]{0,30}?\b(?:issue|bug|failure|problem|error|flak\w*)s?\b|\b(?:skip(?:ping|ped)?|disabl(?:e|ed|ing)|comment(?:ed|ing)? out) (?:the |this |that |these |those )?(?:\w+ )?(?:tests?|lint|coverage|type[- ]?check|specs?)\b[^.\n]{0,30}\bfor now\b|\b(?:tests?|coverage|build)\s+(?:are|is)\s+(?:still )?(?:failing|broken|red)\s+but\s+(?:i|we)\s*(?:'ll|can|will)\s+(?:fix|address|resolve|handle)|\b(?:not addressing|won'?t fix|leaving|ignoring) the (?:failing|broken|red|flaky) (?:tests?|builds?|specs?|integration tests?)\b|\bunrelated to (?:my|this|the|our) (?:change|changes|edit|edits|fix|work|diff|pr)\b|\b(?:not|isn'?t|aren'?t|wasn'?t|weren'?t) (?:caused by|related to|from|introduced by) (?:my|this|the|our) (?:change|changes|edit|edits|fix|diff)\b|\b(?:a |the |this |that |is |are |was |were |seems |looks |likely |probably |just )flaky\b|\bgood enough for now\b|\b(?:transient|intermittent)(?:ly)?\b[^.\n]{0,40}?\b(?:fail\w*|error\w*|flak\w*)\b/i;
+function rationalization(text) {
+  const m = String(text || '').replace(/`[^`\n]*`/g, ' ').replace(/[‘’]/g, "'").match(RATIONALIZATION_RE);
+  return m ? m[0].replace(/\s+/g, ' ').slice(0, 60) : null;
+}
+// --- end rationalization phrases
 
 // What the analyzer splits an unrun claim by - the user's two named exceptions. Both read the disk
 // only when a row is written, at most once per turn.
@@ -1022,6 +1055,25 @@ if (payload.hook_event_name === 'Stop') {
       });
     }
   } catch { /* an unreadable turn is no proof of an edit - no row, and the branches below still run */ }
+  // The RATIONALIZATION probe, log-only (the user's 'count first' ruling): a close dismissing a
+  // failure ('unrelated to my change', 'pre-existing', 'flaky', 'skipping the tests for now') in a
+  // turn that had a red build or test run, a run reporting a skipped test, or an edit adding a skip
+  // marker writes one row per turn. The phrase is read first, so a close without one reads no
+  // transcript. It sits before every holding branch for the done gate's reason.
+  try {
+    const phrase = rationalization(prose);
+    const work = phrase ? turnWork() : null;
+    const evidence = !work ? null : work.red.length ? 'red' : work.skipped.length ? 'skipped' : work.skipEdit ? 'skip-edit' : null;
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const probed = evidence && `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rationalization-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.probed`;
+    if (probed && !fs.existsSync(probed)) {
+      try { fs.writeFileSync(probed, new Date().toISOString()); } catch { /* a lost marker logs the turn twice at most */ }
+      ledgerRow({
+        tool: '', mode: 'probe', kind: 'rationalization', reason: `probe: a dismissal after ${evidence === 'red' ? 'a red run' : 'a skipped test'} - logged, not held`,
+        detail: { phrase, evidence, red: work.red, skipped: work.skipped, skipEdit: work.skipEdit },
+      });
+    }
+  } catch { /* an unreadable turn logs nothing, and the branches below still run */ }
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.

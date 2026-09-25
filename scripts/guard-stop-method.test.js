@@ -535,3 +535,90 @@ test('garbage in fails open', () => {
         assert.strictEqual(r.status, 0, `${input.slice(0, 40)}: ${r.stderr}`);
     }
 });
+
+// --- rationalization: Stop (log-only probe, ECC comparison R8) ----------------------------------
+// ECC's delivery gate warns on a regex over the close ('skipping tests for now', 'pre-existing bug').
+// Here the phrase counts only when the SAME turn had something to dismiss: a red build or test run, a
+// run that reported a skipped test, or an edit that added a skip marker. One `kind: rationalization`
+// row per turn; the close is never held and nothing is injected.
+const rationalizations = (root) => ledger(root).filter((r) => r.mode === 'probe' && r.kind === 'rationalization');
+const ratStop = (root, rows, text, extra) =>
+{
+    const before = rationalizations(root).length;
+    const r = stop(root, rows, text, undefined, extra);
+    assert.strictEqual(r.status, 0, `the probe never holds: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /rationaliz/i, 'nothing reaches the model');
+    const after = rationalizations(root);
+    return after.length > before ? after[after.length - 1] : null;
+};
+const RED = 'Exit code 1\n  2 failing\n  auth.spec.js';
+
+test('rationalization: a dismissal after a red run in the same turn writes one row', () => {
+    const root = project();
+    const row = ratStop(root, steps(root, [['prompt', 'fix the cart total'], ['run', 'npm test', RED]]),
+        'The cart total is fixed. The auth suite still fails, but that failure is unrelated to my change.');
+    assert.ok(row, 'a row');
+    assert.strictEqual(row.hook, 'guard-stop-contract.js');
+    assert.strictEqual(row.event, 'Stop');
+    assert.strictEqual(row.detail.phrase, 'unrelated to my change');
+    assert.strictEqual(row.detail.evidence, 'red');
+    assert.deepStrictEqual(row.detail.red, ['npm test']);
+    assert.strictEqual(ledger(root).filter((r) => !r.mode).length, 0, 'no block row');
+});
+
+test('rationalization: every listed phrase counts after a red run', () => {
+    for (const close of [
+        'This is a pre-existing issue, so I left it.',
+        'The two red specs are a pre-existing failure on main.',
+        'Skipping the e2e tests for now - they need a browser.',
+        'I commented out the flaky spec for now.',
+        'Tests are failing but I will fix them in the next pass.',
+        'Not addressing the failing integration tests here.',
+        'The timeout is not caused by this change.',
+        'That spec is flaky, it passed on the rerun.',
+        'It is good enough for now.',
+        'The run hit transient connection failures from the container.',
+    ])
+    {
+        const root = project();
+        assert.ok(ratStop(root, steps(root, [['prompt', 'ship it'], ['run', 'npm test', RED]]), close), close);
+    }
+});
+
+test('rationalization: a skipped test in the run, or a skip marker the turn added, is evidence too', () => {
+    const root = project();
+    const c = call('Bash', { command: 'node --test' });
+    const rows = [typed('make the suite pass'), c.row, result(c.id, 'ℹ tests 14\nℹ pass 12\nℹ skipped 2\nℹ fail 0')];
+    const row = ratStop(root, rows, 'Green. The two skipped cases are a pre-existing issue.');
+    assert.strictEqual(row && row.detail.evidence, 'skipped');
+    assert.deepStrictEqual(row.detail.skipped, ['node --test']);
+    const root2 = project();
+    const e = call('Edit', { file_path: path.join(root2, 'src', 'cart.test.js'), old_string: "it('rounds', () => {", new_string: "it.skip('rounds', () => {" });
+    const row2 = ratStop(root2, [typed('make the suite pass'), e.row, result(e.id, 'ok')], 'Skipping the rounding test for now.');
+    assert.strictEqual(row2 && row2.detail.evidence, 'skip-edit');
+});
+
+test('rationalization: no row without the evidence, without the phrase, or on a negated phrase', () => {
+    const root = project();
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'npm test']]), 'Green. The old flake is unrelated to my change.'), null,
+        'a green run leaves nothing to dismiss');
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'npm test', RED], ['prompt', 'and now?']]),
+        'The failure is unrelated to my change.'), null, 'the red run was an earlier turn');
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'npm test', RED], ['edit', 'src/cart.js'], ['run', 'npm test']]),
+        'Fixed the rounding bug; the suite is green now.'), null, 'a red run and an honest close');
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'npm test', RED]]),
+        'This is not a pre-existing failure - my change caused it, and I fixed the cause.'), null, 'a negated phrase');
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'npm test', RED]]),
+        'Renamed the `unrelated to my change` fixture.\n```\n// flaky, skip for now\n```'), null, 'code spans and fences are payload');
+    assert.strictEqual(ratStop(root, steps(root, [['prompt', 'fix it'], ['run', 'git status', 'Exit code 1\nfatal']]),
+        'The failure is unrelated to my change.'), null, 'a red command that is no build or test run');
+});
+
+test('rationalization: one row per turn, and none on the continuation a block caused', () => {
+    const root = project();
+    const rows = steps(root, [['prompt', 'fix it'], ['run', 'npm test', RED]]);
+    assert.ok(ratStop(root, rows, 'The failure is unrelated to my change.'));
+    assert.strictEqual(ratStop(root, rows, 'The failure is unrelated to my change.'), null, 'the same turn logs once');
+    const root2 = project();
+    assert.strictEqual(ratStop(root2, rows, 'The failure is unrelated to my change.', { stop_hook_active: true }), null, 'a continuation is not a new close');
+});
