@@ -1,6 +1,6 @@
 ---
 name: nx
-description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, serena answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them.
+description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, serena answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them. Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
 ---
 
 # Nx Monorepo
@@ -69,7 +69,7 @@ or you pay for the wrong tool:
   with the CLI above rather than passing `--no-minimal` to expose them) and prune tools with
   `--tools` globs so its schemas do not bloat every request; reserve it for Nx Cloud connectivity
   and running processes, not workspace analysis.
-- `npx nx configure-ai-agents` lays down the agent config once - keep the MCP minimal afterward.
+- `npx nx configure-ai-agents` lays down the agent config once - guideline files (`CLAUDE.md` / `AGENTS.md`), Nx's own agent skills and the Nx MCP entry - so keep the MCP minimal afterward.
 
 ## Keep the output quiet
 - Nx output is context you pay for: run tasks with `--output-style=static` so the captured log is

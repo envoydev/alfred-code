@@ -6,10 +6,9 @@ description: "Load before writing, changing or reviewing plain TypeScript/JavaSc
 # TypeScript Testing
 
 Practices and tooling for plain TypeScript/JavaScript tests - libraries, Node CLIs and tooling,
-framework-free web code, and the browser-extension unit layer. This skill sets NO coverage
-percentage - the % bar is the user's, owned and recorded by the `alfred-capture-test-coverage`
-capture; what lives here is how to write tests worth counting and which code coverage cannot
-meaningfully claim.
+framework-free web code, and the browser-extension unit layer: how to write tests worth
+counting, and which code coverage cannot meaningfully claim (the % bar itself is not this
+skill's - see Coverage).
 
 Plain-JavaScript projects (`.js`/`.mjs`, with or without JSDoc/checkJs) share everything here -
 the published-type-surface section is the only TS-only part; a checked-JS project keeps

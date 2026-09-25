@@ -3082,7 +3082,7 @@
       ]
     },
     "context7-fetch-at-use": {
-      "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the context7 MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Seven house skills carry it inline so the sentence changes in lockstep - angular-conventions in its own variant, which adds the Angular CLI MCP as a second live source and bans grepping node_modules bundles (it is also where a describe-vs-lock decision on context7 would land).",
+      "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the context7 MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Seven house skills carry it inline so the sentence changes in lockstep - angular-conventions in its own variant, which also bans grepping node_modules bundles (it is also where a describe-vs-lock decision on context7 would land).",
       "owner": {
         "file": "stack/skills/csharp/SKILL.md",
         "marker": "`context7` MCP rather than memory"
@@ -3110,7 +3110,7 @@
         },
         {
           "file": "stack/skills/angular-conventions/SKILL.md",
-          "marker": "reach for the `context7` MCP or the Angular CLI MCP (angular.dev content) rather than memory"
+          "marker": "reach for the `context7` MCP rather than memory - and never by grepping"
         }
       ]
     },

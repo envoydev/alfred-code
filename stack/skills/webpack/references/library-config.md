@@ -69,7 +69,7 @@ Config typing options: `defineConfig` (plain-JS autocomplete, runtime no-op - it
 | `'modern-module'` | experimental | tree-shakeable ESM variant |
 | `'umd'` | legacy | only for `<script>`/AMD consumers; no consumer tree-shaking |
 
-Dual builds run as a multi-compiler array (two factory calls with a format override; no cache sharing between them). Whether to dual-publish at all, the exports-map conditions ordering, and the dual-package hazard live in the `npm` skill's publishing reference - webpack only produces the files.
+Dual builds run as a multi-compiler array (two factory calls with a format override; no cache sharing between them). Whether to dual-publish at all, the exports-map conditions ordering, and the dual-package hazard belong to the npm packaging and publishing skill where the install has one - webpack only produces the files.
 
 ## Declarations
 
