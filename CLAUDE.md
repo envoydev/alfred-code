@@ -281,7 +281,9 @@ change (see the invariants below).
     a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md` S11,
     S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
   - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN and listed under a RETIRED
-    description through 2.0.0 (lint 49 counts them as generated), so an installed one keeps working
+    description until evidence shows no install still resolves through them, never on a release cadence
+    (an unlisted entry still enabled silently stops loading, `docs/rebrand-evidence.md` S25; lint 49 counts
+    them as generated), so an installed one keeps working
     until update copies its picks and uninstalls it (leaves first); a PARKED one, or one at another
     scope, is kept and logged with its uninstall command. The FILE stays while the names are retired:
     it is the only record of what each entry carried.

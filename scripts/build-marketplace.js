@@ -132,7 +132,8 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
-// The retired per-stack entries, listed for their last release under a RETIRED description. The
+// The retired per-stack entries, listed under a RETIRED description until evidence shows no install
+// still resolves through them - an unlisted one still enabled silently stops loading (S25). The
 // shape is the one 1.2.0 shipped, so an installed entry resolves the same files until update
 // removes it - its dependencies included, verbatim: the 1.x core they name is listed again as the
 // alias below, so an entry `plugin update`d before the seed runs still resolves them.
