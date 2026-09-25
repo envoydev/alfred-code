@@ -628,25 +628,34 @@ if (payload.hook_event_name === 'SubagentStop') {
 // fixed, passing, works or ready while a source edit landed after the turn's last run - or none ran.
 // The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger', 'the done gate', a
 // second-person 'when you're ready' and a colour ('the header is green') pass, and a sentence saying
-// it did not run disarms itself - the skill's own 'not run - <why>' result line disarms the close.
+// it did not run disarms itself - only the skill's own 'not run - <why>' result line (a dash or colon
+// after 'not run') disarms the close; 'Not tested on Windows.' is a caveat, never that line (C1).
 // A source edit is a write that landed inside the project, outside `.claude/` and the docs root, on no
-// prose file: a file tool's, or a shell write (redirection, `tee`, in-place `sed`/`perl`, a copy or
-// move destination, `rm`, an interpreter script's literal path) read through shell-writes.js - under a
-// Bash-first harness the shell IS the write route. A RUN is wider than the root-cause list above,
+// prose file and none of git's own (`.gitignore`, `.gitattributes`, `.git/`): a file tool's, or a shell
+// write (redirection, `tee`, in-place `sed`/`perl`, a copy or move destination, `rm`, an interpreter
+// script's literal path) read through shell-writes.js - under a Bash-first harness the shell IS the
+// write route. What a rule-following close writes after its check is none either (C2): a path git
+// ignores (one `git check-ignore`, at a Stop that holds a claim over edits past the last run), and a
+// path this turn created and then deleted - the scratch the quality-gates baseline says to delete.
+// A RUN is wider than the root-cause list above,
 // because here a miss holds an honest close: any shell command that is not a read, a write, git or a
 // package install counts, and so does a dispatched agent (its own runs are in its own transcript).
 // A run's own output file is no edit. A call a hook denied before it ran counts as neither.
 const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
 const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
 const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+// git's own bookkeeping, never a build input: setup's git-hygiene write lands here (B-M5)
+const GIT_OWN_RE = /(?:^|[\\/])\.git(?:[\\/]|$|ignore$|attributes$)/i;
+// a shell write that makes the whole file, so deleting that path later in the turn undoes it (C2)
+const MAKES_WHAT_RE = /^(?:a shell redirection|a `tee` write|a copy\/move destination|an interpreter write)$/;
 // what a run leaves behind, never a source file: `make test > test.log`, `| tee run.out`
 const RUN_OUTPUT_RE = /\.(?:log|out|err|tmp|temp|bak|orig|rej|pid|trx)$/i;
 // a shell write that changes no source content: a directory, a mode, an empty file
 const NO_CONTENT_VERB_RE = /^(?:mkdir|rmdir|touch|chmod|chown)$/;
 const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
 const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
-// the result line `alfred-habits-done-gate` asks for in place of a claim
-const NOT_RUN_LINE_RE = /^not (?:yet )?(?:run|built|tested|verified)\b/i;
+// the result line `alfred-habits-done-gate` asks for in place of a claim: 'not run - <why>' (C1)
+const NOT_RUN_LINE_RE = /^not (?:yet )?run\**\s*[-:\u2013\u2014]/i;
 // 'when you're ready', 'once you are done reviewing' - the user's state, not the change's
 const YOU_CLAUSE_RE = /\byou(?:'re|\u2019re|\s+are|\s+were|'ve been|\s+have been)\b[^,;]*/gi;
 // 'once the cache warms', 'if it works for you' - a condition, never a claim
@@ -700,9 +709,10 @@ const NOT_A_RUN_CMD_RE = /^(?:(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove
 const RUN_WRAPPER_RE = /^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx)|(?:uv|poetry|pipenv|hatch|pdm|rye)\s+run|bundle\s+exec|xvfb-run|then|do|else|if|while|until|!)\s+/;
 let shellWrites = null;
 try { shellWrites = require(require('path').join(__dirname, 'shell-writes.js')); } catch { /* a copy that runs before it lands counts no shell edit */ }
-// A shell call, as ordered steps: { index, run } for a segment that ran something, { index, file }
-// for a written path, resolved from `root` through the call's own `cd`s. Without shell-writes.js
-// beside the hook, the whole call is one run.
+// A shell call, as ordered steps: { index, run } for a segment that ran something, { index, file,
+// make, del, mkdir } for a written path, resolved from `root` through the call's own `cd`s - `make` a
+// whole-file write, `del` a removal (`rm`, a move's source), `mkdir` a directory made (no edit, only
+// what a later removal can undo). Without shell-writes.js beside the hook, the whole call is one run.
 function shellSteps(command, root) {
   const cmd = String(command || '');
   if (!shellWrites) return cmd.trim() ? [{ index: 0, run: cmd.trim().replace(/\s+/g, ' ').slice(0, 60) }] : [];
@@ -729,16 +739,43 @@ function shellSteps(command, root) {
       continue; // a run's own redirection is its output, never an edit
     }
     for (const t of mine) {
-      if (NO_CONTENT_VERB_RE.test(t.verb) || /^a git write/.test(t.what)) continue;
+      const mkdir = t.verb === 'mkdir';
+      if ((NO_CONTENT_VERB_RE.test(t.verb) && !mkdir) || /^a git write/.test(t.what)) continue;
       const raw = scan.expandVars(t.raw);
       if (shellWrites.isVar(raw) || raw.startsWith('~')) continue;
       const base = shellWrites.anchorAt(scan.cds, t.index, root);
       if (base === null && !require('path').isAbsolute(raw)) continue; // relative to a cd it cannot follow
-      out.push({ index: t.index, file: require('path').resolve(base || root, raw) });
+      out.push({ index: t.index, file: require('path').resolve(base || root, raw), make: MAKES_WHAT_RE.test(t.what),
+        del: t.verb === 'rm' || /^a move OUT/.test(t.what), mkdir });
     }
   }
   return out.sort((x, y) => x.index - y.index);
 }
+// C2: the edits git ignores, asked ONCE for every candidate. A deleted directory no longer says it was
+// one, and `node_modules/` matches only the slash form, so a removal is asked both ways (a deleted
+// TRACKED file an ignore pattern also matches answers to the slash form too - the one miss, accepted).
+// Git echoes each ignored path as asked. No git, no repo (exit 128) or a timeout ignores nothing,
+// which is the gate as it was.
+function ignoredEdits(root, edits) {
+  const byQuery = new Map();
+  const ask = (q, e) => { if (!byQuery.has(q)) byQuery.set(q, []); byQuery.get(q).push(e); };
+  for (const e of edits) {
+    const q = e.rel.split(/[\\/]/).join('/');
+    ask(q, e);
+    if (e.del) ask(`${q}/`, e);
+  }
+  let out = '';
+  try {
+    const r = require('child_process').spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+      cwd: root, input: [...byQuery.keys()].join('\0') + '\0', encoding: 'utf8', timeout: 3000, windowsHide: true,
+    });
+    if (!r.error && r.status === 0) out = r.stdout || '';
+  } catch { /* no git: nothing is ignored */ }
+  const hit = new Set();
+  for (const q of out.split('\0')) for (const e of byQuery.get(q) || []) hit.add(e);
+  return hit;
+}
+
 // The turn's source edits and runs, in order, after its last TYPED row.
 function turnWork() {
   const p = payload.transcript_path;
@@ -786,7 +823,7 @@ function turnWork() {
     for (const base of [root, realRoot]) {
       const rel = relIn(base, f);
       if (!rel) continue;
-      if (rel.split(/[\\/]/)[0] === '.claude' || relIn(path.resolve(base, docsRootEnv()), f)) return null;
+      if (rel.split(/[\\/]/)[0] === '.claude' || GIT_OWN_RE.test(rel) || relIn(path.resolve(base, docsRootEnv()), f)) return null;
       return rel;
     }
     return null;
@@ -795,7 +832,7 @@ function turnWork() {
   // as a run (the transcript can lag, and the gate fails open) but never as an edit.
   const ranCode = (res) => /^\s*(?:Error:\s*)?Exit code -?\d+/i.test(res.text);
   let at = 0;
-  let lastEdit = null;
+  const edits = []; // { at, rel, file, make, del, mkdir }, in order
   let lastRun = null;
   for (const o of turn) {
     const c = o.type === 'assistant' && Array.isArray(o.message.content) ? o.message.content : [];
@@ -806,8 +843,9 @@ function turnWork() {
       const input = blk.input || {};
       const name = String(blk.name);
       if (EDIT_TOOL_RE.test(name)) {
-        const rel = res && !res.error ? sourceEdit(input.file_path || input.notebook_path) : null;
-        if (rel) lastEdit = { at, rel };
+        const file = input.file_path || input.notebook_path;
+        const rel = res && !res.error ? sourceEdit(file) : null;
+        if (rel) edits.push({ at, rel, file: path.resolve(root, file), make: name === 'Write' });
       } else if (DISPATCH_TOOL_RE.test(name)) {
         if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
       } else if (SHELL_TOOL_RE.test(name)) {
@@ -818,12 +856,26 @@ function turnWork() {
           if (step.run) lastRun = { at: pos, kind: step.run };
           else if (res && !RUN_OUTPUT_RE.test(step.file)) {
             const rel = sourceEdit(step.file);
-            if (rel) lastEdit = { at: pos, rel };
+            if (rel) edits.push({ at: pos, rel, file: step.file, make: step.make, del: step.del, mkdir: step.mkdir });
           }
         }
       }
     }
   }
+  // A removal of a path this turn made (or of one inside a directory it made) undoes that path's
+  // writes: neither they nor the removal changed the tree. Any other removal is an edit.
+  const inside = (p, dir) => p === dir || p.startsWith(dir + path.sep);
+  const made = [];
+  let kept = [];
+  for (const e of edits) {
+    if (e.del && made.some((m) => inside(e.file, m))) { kept = kept.filter((k) => !inside(k.file, e.file)); continue; }
+    if (e.make || e.mkdir) made.push(e.file);
+    if (!e.mkdir) kept.push(e);
+  }
+  const since = lastRun ? kept.filter((e) => e.at > lastRun.at) : kept;
+  const ignored = since.length ? ignoredEdits(root, since) : new Set();
+  const left = since.filter((e) => !ignored.has(e));
+  const lastEdit = left.length ? left[left.length - 1] : null;
   const first = b >= 0 ? rows[b] : null;
   return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun };
 }

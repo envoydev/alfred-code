@@ -210,6 +210,83 @@ test('done gate: what does not count as a source edit, or as a claim, passes', (
     assert.strictEqual(held([['edit', 'src/money.js'], ['run', 'npm test', 'Bash operation blocked by hook: no receipt']], 'Fixed.'), 2, 'a run a hook blocked never ran');
 });
 
+// C1 (R117): only the skill's own result line - 'not run' then a dash or colon - disarms the whole
+// close. 'Not tested on Windows.' is a scope caveat: it disarms its own sentence, never the claim before it.
+test('done gate: only a not-run result line disarms the close, never a not-tested caveat', () => {
+    const root = project();
+    const held = (text) => stop(root, steps(root, [['prompt', `go ${text}`], ['edit', 'src/money.js']]), text).status;
+    for (const text of ['Fixed the path bug. Not tested on Windows.', 'Fixed the path bug.\nNot tested on Windows.', 'Fixed the parser. Not run on CI yet.',
+        'Done. Not verified against the staging data.', 'Fixed. Not built for release.', 'Fixed. Not yet tested on the old schema.'])
+        assert.strictEqual(held(text), 2, text);
+    for (const text of ['Fixed the parser. Not run - no node on this machine.', 'Fixed the parser.\nNot run: the suite needs Docker.',
+        'Fixed.\n- **Not run** - no emulator here.', 'Fixed. Not yet run - the CI runner is down.', 'Fixed. Not run \u2013 no node here.'])
+        assert.strictEqual(held(text), 0, text);
+});
+
+// C2 + B-M5 (R117): what a rule-following close writes after its check is no source edit - a path git
+// ignores (asked once, at Stop), a scratch path this turn created and then deleted, and git's own files.
+function gitProject()
+{
+    const root = project();
+    execFileSync('git', ['init', '-q', root]);
+    fs.writeFileSync(path.join(root, '.gitignore'), 'node_modules/\nbin/\nobj/\n.env\nscratch/\n*.gen.js\n');
+    fs.writeFileSync(path.join(root, 'src', 'vendored.gen.js'), 'x');
+    execFileSync('git', ['-C', root, 'add', '-f', '.gitignore', 'src/vendored.gen.js']);
+    return root;
+}
+test('done gate: a gitignored write, the turn\'s own scratch deleted after its check, and git\'s own files are no source edit', () => {
+    const root = gitProject();
+    const held = (list, text) => stop(root, steps(root, [['prompt', `go ${JSON.stringify(list)}`], ...list]), text || 'Fixed - tests pass.');
+    // a gitignored target, after the run
+    for (const [list, text, why] of [
+        [[['edit', 'src/money.js'], ['run', 'npm test'], ['run', "cat > scratch/probe.js <<'EOF'\nconsole.log(1)\nEOF"]], null, 'a probe in a gitignored dir'],
+        [[['edit', 'src/money.js'], ['run', 'npm test'], ['write', 'scratch/probe.js']], null, 'the same probe through the Write tool'],
+        [[['run', 'rm -rf node_modules && npm install']], 'Done - a clean reinstall.', 'a deleted dependency dir'],
+        [[['run', 'rm -rf bin obj']], 'Done.', 'deleted build output'],
+        [[['run', 'cp .env.example .env']], 'Ready.', 'a local env file'],
+        // the turn's own scratch, not ignored, deleted after its check
+        [[['edit', 'src/money.js'], ['write', 'probe.js'], ['run', 'node probe.js'], ['run', 'rm probe.js']], null, 'scratch deleted after the check'],
+        [[['edit', 'src/money.js'], ['run', 'npm test'], ['run', 'mkdir -p tmp-probe && echo 1 > tmp-probe/p.js && node tmp-probe/p.js && rm -rf tmp-probe']], null, 'a scratch dir made and removed'],
+        [[['run', 'npm test'], ['write', 'probe.js'], ['run', 'rm -f probe.js']], null, 'created and deleted with nothing between'],
+        // git's own files (B-M5): setup's git-hygiene write
+        [[['run', "printf '.claude/\\n' >> .gitignore"]], 'Installed - the stack is ready.', '.gitignore'],
+        [[['edit', 'sub/.gitignore'], ['edit', '.gitattributes']], 'Ready.', 'a nested .gitignore and .gitattributes'],
+        [[['run', "echo '.claude/' >> .git/info/exclude"]], 'Ready.', '.git/info/exclude'],
+    ])
+        assert.strictEqual(held(list, text).status, 0, why);
+    // still source edits
+    for (const [list, why] of [
+        [[['run', 'npm test'], ['edit', 'src/money.js']], 'a source edit after the run'],
+        [[['run', 'npm test'], ['edit', 'src/vendored.gen.js']], 'a TRACKED file an ignore pattern also matches'],
+        [[['run', 'npm test'], ['run', 'rm src/old.js']], 'deleting a source file this turn did not create'],
+        [[['run', 'npm test'], ['edit', 'src/money.js'], ['run', 'rm src/money.js']], 'deleting a file this turn only edited'],
+        [[['run', 'npm test'], ['write', 'probe.js']], 'scratch written after the run and left in place'],
+    ])
+        assert.strictEqual(held(list).status, 2, why);
+    const r = held([['run', 'npm test'], ['edit', 'src/money.js'], ['run', 'echo 1 > scratch/p.js']]);
+    assert.strictEqual(r.status, 2, 'an ignored write never hides the source edit before it');
+    assert.match(r.stderr, /src[\\/]money\.js was edited/);
+    // no git, no ignore rules: the same probe is an edit
+    const plain = project();
+    assert.strictEqual(stop(plain, steps(plain, [['prompt', 'go'], ['run', 'npm test'], ['write', 'scratch/probe.js']]), 'Fixed.').status, 2, 'outside a git repo nothing is ignored');
+});
+
+test('done gate: git check-ignore is asked at most once, and only for a claim over edits after the last run', { skip: process.platform === 'win32' && 'a POSIX shell stub for git' }, () => {
+    const root = gitProject();
+    const bin = fs.mkdtempSync(path.join(TMP, 'bin-'));
+    const log = path.join(bin, 'calls.log');
+    const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "$*" >> '${log}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : []);
+    const three = [['run', 'npm test'], ['edit', 'src/money.js'], ['write', 'scratch/a.js'], ['run', 'rm -rf node_modules']];
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'a'], ...three]), 'Changed toCents.', env).status, 0, 'no claim');
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'b'], ['edit', 'src/money.js'], ['run', 'npm test']]), 'Fixed.', env).status, 0, 'no edit after the run');
+    assert.deepStrictEqual(calls(), [], 'nothing to ask git about');
+    assert.strictEqual(stop(root, steps(root, [['prompt', 'c'], ...three]), 'Fixed.', env).status, 2);
+    assert.deepStrictEqual(calls().map((c) => c.split(' ')[0]), ['check-ignore'], 'one spawn for every candidate');
+});
+
 test('done gate: held once per turn, re-armed by the next typed turn', () => {
     const root = project();
     const rows = steps(root, [['prompt', 'fix it'], ['edit', 'src/money.js']]);
