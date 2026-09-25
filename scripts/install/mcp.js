@@ -357,19 +357,32 @@ function playwrightLive({ kept = [], prior = {}, live = () => undefined })
 // dropped engine, or every engine on the plugin route, where .mcp.json holds none) leaves the list. At
 // local and user scope the registration is not in .mcp.json and no settings key reaches it (measured on
 // 2.1.282: this list rejects only .mcp.json servers, and disabledMcpServers is read from the account
-// config alone, which the installer never edits) - `unreachable` names the engines left off there.
+// config alone, which the installer never edits) - so there the registration IS the enable (R124 l):
+// `unregistered` names the engines left off, which the run does not register and removes if an earlier
+// run did. The stamp still records each as installed-off, so a later enable answer registers it.
 function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = [], apply = false, registered = [] })
 {
     const name = (e) => `playwright-${e}`;
     const gone = PW_SERVERS.filter((n) => routes.mcps || !kept.map(name).includes(n));
     const off = routes.mcps ? [] : kept.filter((e) => !enabled.includes(e));
-    if (routes.mcps) return { disable: [], enable: gone, off, unreachable: [] };
-    if (scope !== 'project') return { disable: [], enable: [], off, unreachable: off };
+    if (routes.mcps) return { disable: [], enable: gone, off, unregistered: [] };
+    if (scope !== 'project') return { disable: [], enable: [], off, unregistered: off.map(name) };
     return {
         disable: off.filter((e) => apply || !registered.includes(e)).map(name),
         enable: [...gone, ...(apply ? kept.filter((e) => enabled.includes(e)).map(name) : [])],
-        off, unreachable: [],
+        off, unregistered: [],
     };
+}
+
+// R124 (m): the names enabledMcpjsonServers pre-approves - the .mcp.json servers THIS run registers and
+// does not name in disabledMcpjsonServers. Only a project-scope copy-route run writes .mcp.json, and a
+// locked server rides its plugin while the core is on, so neither a plugin-carried name nor an engine
+// left off is ever trusted here.
+function mcpjsonTrusted({ routes = {}, scope = 'project', mcps = [], off = [] })
+{
+    if (routes.mcps || scope !== 'project') return [];
+    const offNames = off.map((e) => `playwright-${e}`);
+    return bareNamedMcps({ routes, mcps }).filter((n) => !offNames.includes(n));
 }
 
 // The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine.
@@ -456,5 +469,5 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch,
+    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
 };

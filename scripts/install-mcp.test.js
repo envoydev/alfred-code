@@ -856,14 +856,96 @@ test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE o
     assert.deepStrictEqual(planFor([], 'chrome'), { installed: ['chrome', 'webkit'], enabled: ['chrome', 'webkit'] });
 });
 
-test('seed install (MCP copy route, local scope): no settings key switches a local-scope server off, so an engine left off is named with /mcp and no list is written (R116 j)', POSIX_ONLY, () =>
+// R124 (Task 8a concern l): at local and user scope no settings key reaches a registration - measured,
+// disabledMcpjsonServers rejects only .mcp.json servers - so there the registration IS the enable. An
+// engine left off is NOT registered (an earlier registration of it is removed), the stamp still records it
+// installed-off, its browser is still downloaded, and a later enable answer registers it.
+const engineAdds = (calls) => calls.filter((c) => /^mcp add /.test(c)).map((c) => (/\bplaywright-(chrome|msedge|firefox|webkit)\b/.exec(c) || [])[1]).filter(Boolean);
+for (const scope of ['user', 'local'])
 {
-    const { out, result } = seedRun('install', 'skill markdown-style\nmcp playwright\n', {
-        env: MCP_COPY_ENV,
-        args: ['--scope', 'local', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
-        inspect: (repo) => pwState(repo, 'settings.local.json'),
+    test(`seed install + update (MCP copy route, ${scope} scope): an engine left off is not registered, the stamp keeps it installed-off, and no /mcp line is printed (R124 l)`, POSIX_ONLY, () =>
+    {
+        const settingsFile = scope === 'local' ? 'settings.local.json' : 'settings.json';
+        const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp playwright\n', {
+            env: MCP_COPY_ENV,
+            args: [['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--scope', scope, '--installed-only']],
+            each: (repo) => ({ ...pwState(repo, settingsFile), calls: stepCalls(repo) }),
+        });
+        for (const [i, step] of steps.entries())
+        {
+            // The recording stub answers `mcp get`, so an install reads every name as configured already
+            // and adds none; an update removes and re-adds, so its adds are the whole registration.
+            const looked = [...new Set(step.calls.filter((c) => /^mcp get playwright-/.test(c)).map((c) => c.split(' ')[2]))];
+            assert.deepStrictEqual(i === 0 ? looked : engineAdds(step.calls), i === 0 ? ['playwright-chrome'] : ['chrome'],
+                `step ${i} registered an engine left off:\n${step.calls.join('\n')}\n${outs[i]}`);
+            assert.ok(step.calls.includes(`mcp remove playwright-webkit -s ${scope}`), `step ${i} left an earlier webkit registration in place:\n${step.calls.join('\n')}`);
+            assert.deepStrictEqual(step.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome'], `step ${i}: ${outs[i]}`);
+            assert.strictEqual(step.disabled, undefined, 'no settings key reaches a local- or user-scope registration');
+            assert.doesNotMatch(outs[i], /run \/mcp and disable/, `step ${i} named a /mcp switch for an engine it did not register`);
+            assert.match(outs[i], new RegExp(`playwright: webkit left off - not registered at ${scope} scope`), outs[i]);
+            assert.match(outs[i], /playwright: downloading the webkit build the server launches/, `step ${i} dropped the browser download`);
+        }
     });
-    assert.strictEqual(result.disabled, undefined, 'disabledMcpjsonServers rejects only .mcp.json servers - measured, a local-scope one still connects');
-    assert.match(out, /playwright: webkit left off, but registered at local scope, where no settings key switches a server off - run \/mcp and disable playwright-webkit there/);
-    assert.deepStrictEqual(result.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome']);
+}
+
+test('seed update (MCP copy route, user scope): a later enable answer registers the engine left off, and turning it off again removes it (R124 l)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+        env: MCP_COPY_ENV,
+        args: [['--scope', 'user', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
+            ['--scope', 'user', '--installed-only', '--playwright-enabled', 'all'], ['--scope', 'user', '--installed-only', '--playwright-enabled', 'chrome']],
+        each: (repo) => ({ ...pwState(repo), calls: stepCalls(repo) }),
+    });
+    const [, on, off] = steps;
+    assert.deepStrictEqual(engineAdds(on.calls), ['chrome', 'webkit'], `the enable did not register webkit:\n${on.calls.join('\n')}\n${outs[1]}`);
+    assert.deepStrictEqual(on.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome,webkit']);
+    assert.deepStrictEqual(engineAdds(off.calls), ['chrome'], outs[2]);
+    assert.ok(off.calls.includes('mcp remove playwright-webkit -s user'), off.calls.join('\n'));
+    assert.deepStrictEqual(off.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome']);
 });
+
+// R124 (Task 8a concern m): enabledMcpjsonServers pre-approves the .mcp.json servers THIS run registered,
+// and nothing else - never the locked three on a route where they ride the plugins, never an engine it
+// names in disabledMcpjsonServers, and nothing at local or user scope, where no server lands in .mcp.json.
+// A name the user put there is theirs.
+const trusted = (repo, file = 'settings.json') => jsonAt(repo, `.claude/${file}`).enabledMcpjsonServers;
+const withTrust = (file, list) => (repo) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', file), `${JSON.stringify({ enabledMcpjsonServers: list }, null, 2)}\n`);
+};
+test('seed install (MCP copy route): enabledMcpjsonServers names only the engines registered and loading - no locked three, no engine left off (R124 m)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp playwright\n', {
+        env: MCP_COPY_ENV,
+        args: [['--playwright-browsers', 'chrome,firefox,webkit', '--playwright-enabled', 'chrome,firefox'], ['--installed-only']],
+        prepare: withTrust('settings.json', ['serena', 'mine', 'playwright-webkit']),
+        each: (repo) => ({ trusted: trusted(repo), disabled: pwState(repo).disabled }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        assert.deepStrictEqual(step.trusted, ['mine', 'playwright-chrome', 'playwright-firefox'], `step ${i}:\n${outs[i]}`);
+        assert.deepStrictEqual(step.disabled, ['playwright-webkit'], `step ${i}`);
+    }
+});
+
+test('seed install (full copy route): the locked three are registered in .mcp.json, so enabledMcpjsonServers names them (R124 m)', POSIX_ONLY, () =>
+{
+    const { result, out } = seedRun('install', 'skill markdown-style\n', { env: COPY_ENV, inspect: (repo) => trusted(repo) });
+    assert.deepStrictEqual([...result].sort(), [...mcp.LOCKED].sort(), out);
+});
+
+for (const scope of ['user', 'local'])
+{
+    test(`seed install (MCP copy route, ${scope} scope): nothing lands in .mcp.json, so enabledMcpjsonServers gains no stack name and loses the ones it held (R124 m)`, POSIX_ONLY, () =>
+    {
+        const file = scope === 'local' ? 'settings.local.json' : 'settings.json';
+        const { result, out } = seedRun('install', 'skill markdown-style\nmcp playwright\n', {
+            env: MCP_COPY_ENV,
+            args: ['--scope', scope, '--playwright-browsers', 'chrome'],
+            prepare: withTrust(file, ['serena', 'mine', 'playwright-chrome']),
+            inspect: (repo) => trusted(repo, file),
+        });
+        assert.deepStrictEqual(result, ['mine'], out);
+    });
+}

@@ -489,10 +489,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: cliScope, kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
         };
         // R116 (j): an engine left off does not load. At project scope the copy route lists it in
-        // disabledMcpjsonServers; at local and user scope no settings key reaches the registration.
-        if (ctx.pw.mcpjson.unreachable.length)
-            for (const e of ctx.pw.mcpjson.unreachable)
-                note(`playwright: ${e} left off, but registered at ${cliScope} scope, where no settings key switches a server off - run /mcp and disable playwright-${e} there`);
+        // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
+        // there the registration is the enable and an engine left off is not registered (R124 l).
+        if (ctx.pw.mcpjson.unregistered.length)
+            log(`playwright: ${ctx.pw.mcpjson.off.join(',')} left off - not registered at ${cliScope} scope, where the registration is the enable (the stamp keeps it installed; /alfred-code:configure turns it on)`);
         else if (ctx.pw.mcpjson.off.length)
             log(`playwright: ${ctx.pw.mcpjson.off.join(',')} left off - disabledMcpjsonServers keeps it from loading (taking it out of that list, or /alfred-code:configure, turns it on)`);
 
@@ -811,10 +811,14 @@ function installMcps(ctx)
         ctx.log('mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here');
         return;
     }
-    for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }))
+    // R124 (l): at local and user scope an engine left off is not registered - one an earlier run
+    // registered goes with the dropped engines.
+    const unregistered = ctx.pw.mcpjson.unregistered;
+    for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered))
         if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
 
-    const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)));
+    const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
+        .filter((e) => !unregistered.includes(e.split('|')[0]));
     for (const entry of live)
     {
         const name = entry.split('|')[0];
@@ -912,6 +916,7 @@ function installHooksAndRules(ctx)
     // the core on, ALFRED_CODE_HOOKS_OFF is the complement of what the run wires and is written EVERY
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
+    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: ctx.cliScope, mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off });
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
     const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
@@ -936,8 +941,12 @@ function installHooksAndRules(ctx)
             value: ctx.args.docsVersioning,
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope) }),
         },
-        mcpNames: ctx.routes.mcps ? [] : ctx.lists.mcps.map((e) => e.split('|')[0]),
-        mcpOff: (ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : []).concat(ctx.retiredMcpsDue),
+        // R124 (m): trust exactly the .mcp.json servers this run registered and lets load; every other
+        // stack name leaves the list (a plugin-carried locked server, an engine left off, anything at
+        // local or user scope). A name the user added is not a stack name and stays.
+        mcpNames: trusted,
+        mcpOff: ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS)
+            .filter((n) => !trusted.includes(n)).concat(ctx.retiredMcpsDue),
         mcpjsonDisable: ctx.pw.mcpjson.disable, mcpjsonEnable: ctx.pw.mcpjson.enable,
         memoryDb: ctx.level.dbPath,
         hooksOff, hooksAnswered,

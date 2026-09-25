@@ -364,8 +364,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
     uninstalled. On the copy route an engine's plugin row is uninstalled, on or off, and at project
     scope one left off is registered AND named in `disabledMcpjsonServers` (it rejects a `.mcp.json`
-    server only - measured; no settings key reaches a local- or user-scope registration, so the run
-    names `/mcp` there); the list moves only when the enable answer does. A legacy `playwright` server
+    server only - measured); the list moves only when the enable answer does. No settings key reaches a
+    local- or user-scope registration, so there the registration IS the enable: one left off is not
+    registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
+    registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
+    and lets load - never a plugin-carried locked server or an engine left off. A legacy `playwright` server
     migrates. The playwright agents grant all four.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
