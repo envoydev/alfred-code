@@ -419,3 +419,37 @@ for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
         assert.ok(result.includes('angular-cli'), JSON.stringify(result));
     });
 }
+
+// R83 a (Task 16b concern a): the locked three are every install's. On a plugin route `pluginSet` adds
+// their plugins whatever the selection says; on the FULL copy route the registrations come from the
+// live list alone, and a selection or read-back with no `mcp` line left it empty - so a plugin-route
+// install switched to the copies registered none of them ('mcps=0', and the notes import skipped
+// 'the memory MCP is not part of this install'). Reproduced at 7dd1249 and at v1.3.0 alike.
+test('withLocked: every locked catalog entry the list lacks is added, once, and nothing else', () =>
+{
+    const logs = [];
+    const out = mcp.withLocked({ mcps: [CATALOG[3], CATALOG[1]], catalog: CATALOG, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(out, [CATALOG[3], CATALOG[1], CATALOG[0], CATALOG[2]]);
+    assert.strictEqual(logs.length, 2, logs.join('\n'));
+    assert.match(logs.join('\n'), /mcp serena: locked/);
+    assert.deepStrictEqual(mcp.withLocked({ mcps: out, catalog: CATALOG }), out, 'idempotent');
+    assert.deepStrictEqual(mcp.withLocked({ mcps: [], catalog: [CATALOG[3]] }), [], 'a catalog without them adds nothing');
+});
+
+test('seed update --installed-only (full copy route): a plugin-route install whose selection named no server gets the locked three registered (R83 a)', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const { calls, out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: listing,
+        env: [{}, COPY_ENV],
+        args: [[], ['--installed-only']],
+        // Only the second run's CLI calls are this case's evidence.
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+        inspect: (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+    });
+    const adds = calls.filter((c) => /^mcp add /.test(c));
+    for (const name of mcp.LOCKED) assert.ok(adds.some((c) => c.split(' ').includes(name)), `${name} not registered:\n${adds.join('\n')}\n${out}`);
+    assert.doesNotMatch(out, /mcps=0\b/);
+    assert.doesNotMatch(out, /the memory MCP is not part of this install/);
+    assert.match(result, /^installed-always-mcps: .*\bserena\b/m, result);
+});

@@ -101,8 +101,10 @@ const listDir = (dir, test) =>
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
 // excluded; a playwright engine server collapses back to the one manifest entry it expands from.
-// `skillsDir`: a global install keeps its skills in the account dir, everything else in the project.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [] })
+// `skillsDir`: a 1.x global install kept its skills in the account dir, everything else in the project.
+// `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
+// of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null })
 {
     const lines = [];
     for (const name of listDir(skillsDir, (d) => d.isDirectory()))
@@ -117,7 +119,7 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     for (const f of listDir(path.join(claudeDir, 'hooks'), (d) => d.isFile() && d.name.endsWith('.js')))
     {
         const name = f.replace(/\.js$/, '');
-        if (!HOOK_EXCLUDE.test(name)) lines.push(`hook ${name}`);
+        if (!HOOK_EXCLUDE.test(name) && (!shippedHooks || shippedHooks.includes(name))) lines.push(`hook ${name}`);
     }
     const seenMcp = new Set();
     for (const server of mcpServers)
@@ -191,7 +193,8 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // call) switches nothing off instead of switching everything off for good.
 function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, log = () => {} })
 {
-    let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
+    const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
+    let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped });
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -277,15 +280,15 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // a leftover prelude is no evidence): the copy route ran last, so the user kept NONE; otherwise the
     // plugin route made this install, or the route is unknown (1.x, 2.0.0 before the line), and its
     // ALFRED_CODE_HOOKS_OFF is carried across, read the way that route reads it - nothing stored is
-    // every hook, never a None. Only a STACK hook is evidence: the user's own file there reads back
-    // as a `hook` line too, and taken as a pick it had adoptHooks count every stack hook as dropped -
-    // so beside one, 'every hook' is spelled out.
-    const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
+    // every hook, never a None. Only a STACK hook is a hook line at all (R56, deriveFromDisk above):
+    // the user's own file there is neither evidence nor a pick.
     const stackHook = (l) => l.startsWith('hook ') && shipped.includes(l.slice(5));
     // m8: a stamp that says 'plugin' means the last FINISHED run left no stack hook here - the plugin
     // route prunes every copy - so one on disk now is a switch to the copy route that died part way,
     // never a pick. Its files are set aside and the rule above reads the stored list instead. An
-    // unknown route (1.x, 2.0.0 before the line) keeps the disk: its copies were the picks.
+    // unknown route (1.x, 2.0.0 before the line) keeps the disk: its copies were the picks (a pre-11b
+    // copy route left the unpicked out). A folder holding only the user's own files, or a leftover
+    // prelude, carries no hook line at all (R56), so under any route it is never read as the picks.
     if (!routes.hooks && lastHooksRoute === 'plugin' && lines.some(stackHook))
     {
         lines = lines.filter((l) => !stackHook(l));
@@ -296,8 +299,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     {
         const keptNone = lastHooksRoute === 'copy';
         const off = String(envOf(env, 'HOOKS_OFF') || '');
-        const own = lines.some((l) => l.startsWith('hook '));
-        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : own ? shipped : null;
+        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
         if (on)
         {
             lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));

@@ -227,6 +227,20 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             stampFile = projectStamp();
         }
 
+        // R78: an install moved off `local` scope carries the stack's own entries out of
+        // settings.local.json first, so the read-back below and every write after it find them in
+        // the file this run writes. A --print-plan moves nothing and reads the local overlay instead.
+        const leavingLocal = Boolean(stampFile) && stampLayer.readStampScope(stampFile) === 'local' && args.scope !== 'local';
+        if (leavingLocal && !args.printPlan)
+        {
+            settings.leaveLocalScope({
+                claudeDir,
+                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))],
+                mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS),
+                denySpecs: SECRET_DENY, log, note,
+            });
+        }
+
         // --- the six lists, narrowed to this project -------------------------------
         let lists = {
             skills: manifest.skills, agents: manifest.agents, rules: manifest.rules,
@@ -270,7 +284,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
-                settings: settings.readBackSettings(claudeDir, args.scope),
+                settings: settings.readBackSettings(claudeDir, leavingLocal && args.printPlan ? 'local' : args.scope),
                 routes, manifest, sourceDir: resolved.dir,
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
@@ -330,6 +344,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
         if (picked) lists = selection.applySelection(lists, picked);
+        // R83 a: the locked three are every install's. A plugin route adds their plugins in `pluginSet`;
+        // the FULL copy route registers only what this list names, so they are put back here, before
+        // the plan is printed, so the plan, the registrations and the stamp agree.
+        if (!plugins.corePluginOn(routes)) lists.mcps = mcp.withLocked({ mcps: lists.mcps, catalog: manifest.catalogs.mcps, log });
         for (const line of args.add)
         {
             const [category, name] = line.split(' ');
@@ -486,7 +504,7 @@ function runLayers(ctx)
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     installHooksAndRules(ctx);
     importMemory(ctx);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot), log: ctx.log });
+    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope), log: ctx.log });
     if (args.action === 'install') seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     serena.seedProject({
         projectRoot: ctx.projectRoot,
@@ -805,7 +823,7 @@ function installHooksAndRules(ctx)
         stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
-    copy.stampDocsRoot(ctx.projectRoot, { log: ctx.log, note: ctx.note });
+    copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, log: ctx.log, note: ctx.note });
     // stampDocsRoot rewrites baseline-docs-root.md IN PLACE, after copyLibrary already hashed it -
     // re-hash the one file it touches, or `drift` fires on every check from here on.
     if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
@@ -844,7 +862,7 @@ function installHooksAndRules(ctx)
             : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
         docsVersioning: {
             value: ctx.args.docsVersioning,
-            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot) }),
+            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope) }),
         },
         mcpNames: ctx.routes.mcps ? [] : ctx.lists.mcps.map((e) => e.split('|')[0]),
         mcpOff: (ctx.routes.mcps ? ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS) : []).concat(ctx.retiredMcpsDue),

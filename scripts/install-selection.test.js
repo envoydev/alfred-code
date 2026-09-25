@@ -116,6 +116,18 @@ test('derive: generated project-owned files and the engine modules are NOT items
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('hook ')), ['hook docs-session']);
 });
 
+// R56: `.claude/hooks/` is the user's folder too. With the shipped catalog to go by, only a STACK hook
+// is a hook item - a user's own file there is never read back as an unknown `hook` pick, which
+// configure and validate then offered to drop and the hooks layer counted every stack hook against.
+test('derive: with the shipped catalog, only a stack hook is a hook item - a user\'s own file is none (R56)', () =>
+{
+    const dir = target({ hooks: ['docs-session', 'my-own-check', 'docs'] });
+    const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [], shippedHooks: ['docs-session', 'guard-catastrophic-rm'] });
+    assert.deepStrictEqual(lines.filter((l) => l.startsWith('hook ')), ['hook docs-session']);
+    const own = target({ hooks: ['my-own-check'] });
+    assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [], shippedHooks: ['docs-session'] }), [], 'a lone user file is no install evidence');
+});
+
 test('derive: a skill folder without a SKILL.md is not a skill', () =>
 {
     const dir = target({ skills: ['project-aspnet'] });
@@ -563,6 +575,33 @@ test('read-back: a partial hook folder under a plugin stamp is no pick - the sto
             assert.deepStrictEqual(hookLines(disk), partial.map((h) => `hook ${h}`).sort(), `${route}, ${lastHooksRoute}: the disk is the record`);
         }
     }
+});
+
+// R56, carried from 11b re-review 2: on the default plugin route a user's own `.js` in `.claude/hooks/`
+// beside a failing or core-less `claude plugin list` read back as a hook pick, the hooks layer counted
+// every stack hook as dropped, and the run wrote all of them off - the guards silenced. A user file
+// is no hook item, so neither surface is answered and nothing is written back.
+test('read-back: a user\'s own hook file never answers the hooks layer - a blind or core-less listing switches nothing off (R56)', () =>
+{
+    for (const listing of [[], [row('serena@envoydev')]])
+    {
+        const r = readBackCase({ listing, hooks: ['my-own-check'] });
+        assert.ok(!r.lines.some((l) => l.startsWith('hook ')), `${JSON.stringify(listing)}: ${r.lines.join(', ')}`);
+        assert.strictEqual(r.answered.hooks, false);
+    }
+    // On the copy route, beside no stack hook, it is no 'every hook' either: the stored list, else nothing.
+    const copy = readBackCase({ listing: [row('alfred-code@envoydev')], routes: { hooks: false, skills: true, mcps: true }, hooks: ['my-own-check'], lastHooksRoute: 'copy' });
+    assert.deepStrictEqual(copy.lines.filter((l) => l.startsWith('hook ')), ['hook none'], 'the copy route kept no stack hook - the user file does not change that');
+    // No `hooks-route:` line: a folder holding the user's own file and a leftover prelude is no record
+    // of the picks either - the stored list decides, and with none stored nothing is answered.
+    const copyRoute = { hooks: false, skills: true, mcps: true };
+    const unknown = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copyRoute, hooks: ['my-own-check', 'hook-prelude'], lastHooksRoute: null });
+    assert.deepStrictEqual(unknown.lines.filter((l) => l.startsWith('hook ')), [], unknown.lines.join(', '));
+    assert.strictEqual(unknown.answered.hooks, false);
+    const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const stored = readBackCase({ listing: [row('alfred-code@envoydev')], routes: copyRoute, hooks: ['my-own-check'], lastHooksRoute: null, stampHooks: shipped,
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+    assert.deepStrictEqual(stored.lines.filter((l) => l.startsWith('hook ')).sort(), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort());
 });
 
 // A flip from the plugin route to the copies leaves no hook on disk and the off-state in

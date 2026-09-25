@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT, settingsTarget, readBackSettings } = require('./install/settings.js');
+const { writeSettings, applyEnv, hookCommand, HOOK_TIMEOUT, settingsTarget, readBackSettings, leaveLocalScope } = require('./install/settings.js');
 const { envMigrations } = require('./install/env-migrations.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-settings-'));
@@ -469,4 +469,84 @@ test('settings-writer: writeSettings passes inheritedEnv through - the local fil
     assert.strictEqual(env.ALFRED_CODE_PUSH_GATE, '0');
     assert.strictEqual(env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length');
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), shared, 'settings.json was written');
+});
+
+// R54 M6: a local-scope run writes settings.local.json, so a log line saying `settings.json` named a
+// file the run never touched. Every line names the file it wrote.
+test('settings-writer: every log line names the file the run writes (M6)', () =>
+{
+    const dir = path.join(TMP, `label-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const logs = [];
+    writeSettings({
+        file: path.join(dir, 'settings.local.json'), catalog: CATALOG, migrations: MIGRATIONS,
+        agentDeny: ['Agent(alfred-code:evidence-gatherer)'], memoryDb: '/db', log: (m) => logs.push(m),
+    });
+    assert.ok(logs.length > 3, logs.join('\n'));
+    assert.deepStrictEqual(logs.filter((l) => /settings\.json/.test(l)), [], 'a line names settings.json at local scope');
+    assert.ok(logs.every((l) => /settings\.local\.json/.test(l)), logs.join('\n'));
+    // The shared file keeps its own name.
+    const shared = [];
+    writeSettings({ file: path.join(dir, 'settings.json'), catalog: CATALOG, migrations: MIGRATIONS, log: (m) => shared.push(m) });
+    assert.ok(shared.length && shared.every((l) => /settings\.json/.test(l)), shared.join('\n'));
+    // A malformed local file is named as itself too.
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '{ nope');
+    const notes = [];
+    writeSettings({ file: path.join(dir, 'settings.local.json'), catalog: CATALOG, note: (m) => notes.push(m) });
+    assert.match(notes.join('\n'), /^settings\.local\.json is not valid JSON/);
+});
+
+// R78 (Task 16 round 5): a local install moved to project or user scope carries the stack's keys and
+// seat denies out of settings.local.json - left there, they keep overriding the file the install now
+// lives in, and no project-scope run ever reads the local file to clear them.
+test('leaveLocalScope: stack keys and seat denies move to settings.json, the user\'s own entries stay (R78)', () =>
+{
+    const dir = path.join(TMP, `leave-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const cmd = hookCommand('guard-catastrophic-rm.js').command;
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '1', TEAM: 'y' }, permissions: { deny: ['Read(secret)'] } }));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({
+        env: { ALFRED_CODE_PUSH_GATE: '0', ALFRED_CODE_DOCS_PATH: 'docs/mine', MY_OWN: 'x' },
+        permissions: { allow: ['Bash(ls)'], deny: ['Agent(alfred-code:evidence-gatherer)', 'Read(.env)', 'Bash(rm:*)'] },
+        enabledMcpjsonServers: ['serena', 'mine'],
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: cmd }] }, { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] },
+        autoMemoryEnabled: false,
+    }));
+    const logs = [];
+    const out = leaveLocalScope({ claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'], log: (m) => logs.push(m) });
+    assert.strictEqual(out.moved, true);
+    const local = JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
+    const shared = JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'));
+    assert.deepStrictEqual(local.env, { MY_OWN: 'x' });
+    assert.deepStrictEqual(local.permissions, { allow: ['Bash(ls)'], deny: ['Bash(rm:*)'] });
+    assert.deepStrictEqual(local.enabledMcpjsonServers, ['mine']);
+    assert.deepStrictEqual(local.hooks, { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo mine' }] }] });
+    assert.strictEqual(local.autoMemoryEnabled, false, 'a key the stack does not own by name is left alone');
+    assert.deepStrictEqual(shared.env, { ALFRED_CODE_PUSH_GATE: '1', TEAM: 'y', ALFRED_CODE_DOCS_PATH: 'docs/mine' });
+    assert.deepStrictEqual(shared.permissions.deny, ['Read(secret)', 'Agent(alfred-code:evidence-gatherer)', 'Read(.env)']);
+    // Named by key, never by value.
+    assert.match(logs.join('\n'), /settings\.local\.json: ALFRED_CODE_DOCS_PATH moved to settings\.json/);
+    assert.match(logs.join('\n'), /settings\.local\.json: ALFRED_CODE_PUSH_GATE dropped - settings\.json holds its own value/);
+    assert.ok(!/docs\/mine/.test(logs.join('\n')), 'a value reached the log');
+
+    // Idempotent: a second move finds nothing to carry and writes nothing.
+    const before = fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8');
+    assert.strictEqual(leaveLocalScope({ claudeDir: dir, hookFiles: ['guard-catastrophic-rm.js'], mcpNames: ['serena'], denySpecs: ['Read(.env)'] }).moved, false);
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), before);
+});
+
+test('leaveLocalScope: no local file, a malformed one, or a malformed settings.json moves nothing (R78)', () =>
+{
+    const dir = path.join(TMP, `leave-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    assert.strictEqual(leaveLocalScope({ claudeDir: dir }).moved, false, 'no local file');
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '{ nope');
+    const notes = [];
+    assert.strictEqual(leaveLocalScope({ claudeDir: dir, note: (m) => notes.push(m) }).moved, false);
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), '{ nope', 'a malformed local file is left untouched');
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_PUSH_GATE: '0' } }));
+    fs.writeFileSync(path.join(dir, 'settings.json'), '[1]');
+    assert.strictEqual(leaveLocalScope({ claudeDir: dir, note: (m) => notes.push(m) }).moved, false);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8')), { env: { ALFRED_CODE_PUSH_GATE: '0' } }, 'nothing leaves a file that cannot receive it');
+    assert.strictEqual(notes.length, 2, notes.join('\n'));
 });

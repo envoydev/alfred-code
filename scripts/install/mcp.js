@@ -400,8 +400,27 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 // where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
 const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };
 
+// R83 a: every LOCKED server's catalog entry, added where `mcps` lacks it. On the FULL copy route the
+// registrations come from this list alone, and a selection or read-back with no `mcp` line (the
+// always-on adoption fills only a layer that has one) left it empty - a plugin-route install switched
+// to the copies registered none of the three. Logged by name.
+function withLocked({ mcps = [], catalog = [], log = () => {} })
+{
+    const have = new Set(mcps.map((e) => String(e).split('|')[0]));
+    const out = [...mcps];
+    for (const entry of catalog)
+    {
+        const name = String(entry).split('|')[0];
+        if (!isLocked(name) || have.has(name)) continue;
+        out.push(entry);
+        have.add(name);
+        log(`  mcp ${name}: locked - registered on the full copy route whatever the selection names`);
+    }
+    return out;
+}
+
 module.exports = {
-    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
+    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive,

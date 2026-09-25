@@ -289,9 +289,12 @@ test('install-entry: an update over an install carrying no server plans all thre
         assert.ok(mcps.includes(name), `${name} is not in the plan: ${mcps.join(' ')}`);
 });
 
-test('install-entry: an install whose picks need no server stays without one - the layer is still not carried', () =>
+// R83 a (Task 18b) supersedes dce452e's 'an install whose picks need no server still gets none': on the
+// FULL copy route the registrations come from this plan alone, so an install whose picks need no
+// server still registers the locked three - every install carries them - and nothing else.
+test('install-entry: an install whose picks need no server still plans the locked three on the full copy route (R83 a)', () =>
 {
-    assert.deepStrictEqual(planOverSkillOnly('markdown-style'), []);
+    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['context7', 'memory', 'serena']);
 });
 
 // 2.0.0 cut the sentry and context7-local servers (R26, R32): their flags are refused in one line
