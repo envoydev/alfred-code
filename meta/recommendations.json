@@ -18,7 +18,8 @@
    "baseline-navigation",
    "baseline-quality-gates",
    "baseline-security",
-   "markdown-docs"
+   "markdown-docs",
+   "skill-authoring"
   ],
   "mcps": [
    "serena",
@@ -50,6 +51,7 @@
    "alfred-habits-done-gate",
    "alfred-habits-plan-writing",
    "alfred-habits-root-cause",
+   "alfred-habits-skill-writing",
    "alfred-habits-test-first",
    "project-agent-capabilities",
    "project-architecture-analyzer",

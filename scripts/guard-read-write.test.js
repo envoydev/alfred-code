@@ -55,6 +55,24 @@ test('guard-read-whole-file: the convention rule is announced for the WRITE TARG
   assert.match(ng, /typescript-conventions\.md/, '... and the TypeScript baseline beside it');
 });
 
+test('guard-read-whole-file: a shell write to a skill file names the skill-authoring rule, a project skill under .claude included', () => {
+  // Twin of skill-authoring.md's `paths:` - a run authoring a skill through the shell gets no attach
+  // until it uses a file tool, so the hook names the rule on the first shell write, as it does for
+  // every other convention rule. The markdown rule still attaches beside it on a tracked skill file.
+  const both = announce("sed -i '' 's/a/b/' stack/skills/foo/SKILL.md", sid());
+  assert.match(both, /skill-authoring\.md/, 'a SKILL.md edit');
+  assert.match(both, /markdown-docs\.md/, 'the markdown rule on the same touch');
+  assert.match(announce('printf x > skills/foo/references/api.md', sid()), /skill-authoring\.md/, 'a reference under a skill');
+  // `.claude/skills/` is where a project keeps its own skills - authoring there is skill writing, even
+  // though the markdown rule leaves the install's own tree alone.
+  const own = announce('printf x > .claude/skills/mine/SKILL.md', sid());
+  assert.match(own, /skill-authoring\.md/, 'a project skill under .claude');
+  assert.doesNotMatch(own, /markdown-docs\.md/, 'the markdown rule still leaves .claude alone');
+  assert.doesNotMatch(announce('printf x > README.md', sid()), /skill-authoring/, 'a plain doc is not a skill');
+  assert.doesNotMatch(announce('printf x > docs/skills.md', sid()), /skill-authoring/, 'nor a doc that is only named for skills');
+  assert.equal(announce('printf x > .claude/docs/notes.md', sid()), '', 'the install tree outside a skill stays silent');
+});
+
 test('guard-read-whole-file: only a rule this install actually has is announced', () => {
   // One measured bundle was told to read `.claude/rules/javascript-conventions.md` in a project
   // that holds 0 JS files and never installed that rule. The hook's own sibling directory IS the

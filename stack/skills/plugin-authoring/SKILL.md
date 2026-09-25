@@ -20,7 +20,8 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
 Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
-and not for a single house skill's body - a skill is authored the same way inside or outside a plugin.
+and not for a single skill's body - that is `alfred-habits-skill-writing`, the same inside or
+outside a plugin.
 
 ## The manifest - `.claude-plugin/plugin.json`
 
@@ -106,15 +107,16 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   so a multi-turn walk gains nothing from it. Commands and skills are both listed as slash entries;
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
-- **Skills** (`skills/<name>/SKILL.md`): the description is the trigger - third person, what it
-  covers and when to use it, under the harness's listing budget, since every installed skill's
-  description is loaded on every message: the listing is capped at 1% of the context window by
-  default (`skillListingBudgetFraction`), each entry at 1,536 characters, and over budget the
-  descriptions of the least-used skills are dropped first while the names stay - `/doctor` shows the
-  cost and the biggest contributors. Body under 500 lines, references one level deep, each
-  reference over ~100 lines opening with a contents list. `disable-model-invocation: true` makes
-  a skill the USER's to type and keeps its description OUT of context (the model cannot see or
-  call it); `user-invocable: false` hides it from the slash list and keeps the description in.
+- **Skills** (`skills/<name>/SKILL.md`): writing one - its description as the trigger, a lean
+  body, `references/` read on demand, and the without / with proof - is the skill-writing habit:
+  load `alfred-habits-skill-writing` before the first write. What a plugin adds on top is the
+  listing cost: every installed skill's description is loaded on every message, the listing is
+  capped at 1% of the context window by default (`skillListingBudgetFraction`), each entry at 1,536
+  characters, and over budget the descriptions of the least-used skills are dropped first while the
+  names stay - `/doctor` shows the cost and the biggest contributors.
+  `disable-model-invocation: true` makes a skill the USER's to type and keeps its description OUT of
+  context (the model cannot see or call it); `user-invocable: false` hides it from the slash list
+  and keeps the description in.
 - **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist, a model / effort pin
   with the measurement that justifies it, and no `hooks` / `mcpServers` / `permissionMode`.
 - **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's 600s

@@ -207,16 +207,16 @@ change (see the invariants below).
   `integration-reviewer`). cursor-stack ships adapted twins of all 43 - a protocol change here usually
   needs the same edit there (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).
-- `stack/rules/` - nineteen single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
+- `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
   `project-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
   the installer stamps its value over `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks serena).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
-  Twelve path-scoped: `markdown-docs.md`, the repair routers (`dotnet-repair-agents.md`,
-  `angular-repair-agents.md`) and nine convention rules, each glob-attaching ONE file family to its
-  house-style skill. Every convention rule uses the imperative form pinned as
+  Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
+  (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
+  glob-attaching ONE file family to its house-style skill. Every convention rule uses the imperative form pinned as
   `convention-rule-first-action` in shared-rules.json - a new one copies that form, never paraphrases it.
 - `setup-plugin/` - the Alfred Code plugin: six COMMANDS and one router SKILL.
   - `/alfred-code:setup` is the selection walk and the install (reports `derive-state.js`'s `written`
@@ -507,7 +507,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (112,768 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,573). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (113,112 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,917). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
@@ -557,7 +557,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit, or
   the `v<version>` tag when the snapshot names none, + release version); configure diffs it via the GitHub compare API. A run whose source never resolved
   writes NO stamp.
-- Authoring a skill in `stack/skills/`: superpowers writing-skills is a reference - take its testing
-  discipline, subordinate it to the parity lint, HTML + count sync and house voice.
+- Authoring a skill in `stack/skills/`: the method is `alfred-habits-skill-writing` (the
+  `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`); on top of it here - the
+  parity lint, HTML + count sync, house voice.
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.

@@ -113,3 +113,58 @@ test('the five method skills are the habits group, and no shipped surface names 
         if (fs.existsSync(path.join(ROOT, rel))) scan(path.join(ROOT, rel));
     assert.deepStrictEqual(hits, [], 'a shipped surface still names a habit by its old spelling');
 });
+
+// Task 21: the sixth habit, skill writing, replaces the optional plugin's skill-authoring method.
+// Its fixed trigger is a path-scoped rule on skill files in the pinned convention-rule form, installed
+// everywhere like the markdown rule (a path-scoped rule costs nothing until a matching file is
+// touched), and plugin-authoring points at it for the skill half instead of restating it.
+test('the skill-writing habit is the sixth habit, in the core, and says what a skill is for and how it is proven', () => {
+    const body = read('stack/skills/alfred-habits-skill-writing/SKILL.md');
+    assert.match(body, /^name: alfred-habits-skill-writing$/m, 'it names itself');
+    const desc = (body.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
+    assert.match(desc, /^Use when /, 'the description opens on its trigger');
+    assert.match(desc, /\bNot for\b/, 'and says what must not fire it');
+    const flat = squash(body);
+    for (const heading of ['## Is it a skill at all', '## The description is the trigger', '## One home per piece', '## The body', '## Prove it before shipping'])
+        assert.ok(flat.includes(heading), `the habit carries '${heading}'`);
+    for (const phrase of ['WITHOUT the skill', 'WITH it', 'adverse', 'explicit, plain and adverse'])
+        assert.ok(flat.includes(phrase), `the proof names '${phrase}'`);
+    const recs = JSON.parse(read('meta/recommendations.json'));
+    assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');
+    assert.match(read('setup-plugin/references/walk.md'), /the six `alfred-habits-\*` habits/, 'the walk counts six habits');
+});
+
+test('the skill-authoring rule attaches on skill files and its first action is the habit', () => {
+    const rule = read('stack/rules/skill-authoring.md');
+    assert.match(rule, /^paths: \["\*\*\/SKILL\.md", "\*\*\/skills\/\*\*\/\*\.md"\]$/m, 'the two skill-file globs');
+    assert.ok(squash(rule).includes('the FIRST action after this rule attaches is the `alfred-habits-skill-writing` Skill call, before the NEXT write'),
+        'the pinned convention-rule first-action form, naming the habit');
+    const pin = JSON.parse(read('meta/shared-rules.json')).rules['convention-rule-first-action'];
+    assert.ok(pin.sites.some((s) => s.file === 'stack/rules/skill-authoring.md'), 'the form is pinned in this rule too');
+
+    const recs = JSON.parse(read('meta/recommendations.json'));
+    assert.ok(recs.always.rules.includes('skill-authoring'), 'installed on every install, like markdown-docs');
+    const manifest = JSON.parse(read('meta/stack-manifest.json'));
+    assert.ok(manifest.rules.some((r) => r.file === 'skill-authoring.md'), 'the manifest ships it');
+    assert.deepStrictEqual(graph.rules['skill-authoring'].skills, ['alfred-habits-skill-writing'], 'the rule pulls the habit');
+    assert.deepStrictEqual(graph.rules['skill-authoring'].paths, ['**/SKILL.md', '**/skills/**/*.md']);
+
+    // The attach, through the analyzer's own model of a `paths:` glob (the subset the harness honours).
+    const { globToRe } = require('./analyze-usage.js');
+    const attaches = (p) => graph.rules['skill-authoring'].paths.some((g) => globToRe(g).test(p));
+    for (const p of ['stack/skills/csharp/SKILL.md', '.claude/skills/my-skill/SKILL.md', 'SKILL.md', '/work/app/skills/api/references/endpoints.md',
+        'stack/skills/devops/references/compose.md'])
+        assert.ok(attaches(p), `attaches on ${p}`);
+    for (const p of ['README.md', 'docs/skills.md', 'stack/skills/csharp/scripts/run.js', 'stack/rules/csharp-conventions.md', 'skill.md'])
+        assert.ok(!attaches(p), `does not attach on ${p}`);
+});
+
+test('plugin-authoring points at the habit for a skill body, and the repo notes name it instead of the plugin method', () => {
+    const pa = squash(read('stack/skills/plugin-authoring/SKILL.md'));
+    assert.ok(pa.includes('load `alfred-habits-skill-writing`'), 'plugin-authoring loads the habit where it covers skills');
+    for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers'])
+        assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's method: '${moved}'`);
+    const md = squash(read('CLAUDE.md'));
+    assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is `alfred-habits-skill-writing`'), 'CLAUDE.md points at the habit');
+    assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
+});

@@ -17,6 +17,10 @@
       "mcps": [],
       "plugins": []
     },
+    "alfred-habits-skill-writing": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-habits-test-first": {
       "mcps": [],
       "plugins": []
@@ -1067,6 +1071,18 @@
       "plugins": [],
       "paths": [
         "**/*.md"
+      ]
+    },
+    "skill-authoring": {
+      "skills": [
+        "alfred-habits-skill-writing"
+      ],
+      "agents": [],
+      "mcps": [],
+      "plugins": [],
+      "paths": [
+        "**/SKILL.md",
+        "**/skills/**/*.md"
       ]
     },
     "sql-conventions": {

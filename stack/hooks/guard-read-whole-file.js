@@ -187,6 +187,7 @@ const CONVENTION_RULES = [
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
   [/\.sql\b/i, 'sql-conventions.md'],
   [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b/i, 'devops-conventions.md'],
+  [/(?:^|\/)SKILL\.md\b|(?:^|\/)skills\/\S*\.md\b/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md
   [/\.md\b/i, 'markdown-docs.md'],
 ];
 // The announcement is HELD until the call is allowed, and only then marked as said: a denial and an
@@ -252,7 +253,9 @@ const ruleInstalled = (rule) => {
   return !known;
 };
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
-// neither is the install's own `.claude/` tree. A `.md` hit whose targets all live there is dropped.
+// neither is the install's own `.claude/` tree, so a markdown-docs.md hit on a target there is
+// dropped. That carve-out is the markdown rule's alone: `.claude/skills/` is where a project keeps its
+// own skills, and skill-authoring.md governs a skill file wherever it lives.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
 // ALFRED_CODE_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
 // to `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
@@ -261,11 +264,12 @@ const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
 function announceRules(text) {
   const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
-  const targets = writeTargets(String(text)).filter((t) => !(/\.md\b/i.test(t)
-    && (UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`))));
+  const ungoverned = (t) => UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`);
+  const targets = writeTargets(String(text));
   if (!targets.length) return;
   const hit = [];
-  for (const t of targets) for (const [re, rule] of CONVENTION_RULES) if (re.test(t) && !hit.includes(rule)) hit.push(rule);
+  for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
+    if (re.test(t) && !hit.includes(rule) && !(rule === 'markdown-docs.md' && ungoverned(t))) hit.push(rule);
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();

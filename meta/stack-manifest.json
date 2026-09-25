@@ -143,6 +143,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "alfred-habits-skill-writing",
+      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file, pointed at by plugin-authoring"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "project-runtime-failure-signatures",
       "note": "single-chat diagnoser twin: local-runtime crash signatures (null-ref/DI/deadlock/disposed/config-drift/boundary/HTTP-status) -> where to isolate each; pairs with alfred-habits-root-cause"
     },
@@ -630,6 +635,10 @@
     {
       "file": "markdown-docs.md",
       "note": "markdown-style routing, path-scoped **/*.md"
+    },
+    {
+      "file": "skill-authoring.md",
+      "note": "skill-writing routing, path-scoped **/SKILL.md + **/skills/**/*.md"
     },
     {
       "file": "javascript-conventions.md",

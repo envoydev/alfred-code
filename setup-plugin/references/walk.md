@@ -165,7 +165,7 @@ what the table already shows.
 
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
 plus the manual `project-*` method skills (the inline execution twins, the capture/loop generators,
-the upgrade planner) and the five `alfred-habits-*` habits, all pre-selected `recommended` and droppable; their need is 'the stack is
+the upgrade planner) and the six `alfred-habits-*` habits, all pre-selected `recommended` and droppable; their need is 'the stack is
 installed', not anything a project manifest could prove, which is why they are seeded rather than
 evidence-scanned. The ONE deliberate exception is `project-build-from-scratch` - greenfield-only by
 its own description, dead weight on an existing project, so it is never seeded; offer it as an

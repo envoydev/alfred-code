@@ -3432,7 +3432,7 @@
       ]
     },
     "convention-rule-first-action": {
-      "_note": "A convention rule's load is the FIRST action after the attach, not a 'before the edit' hint - the weak phrasing lost across 12 measured edits with two rule bodies in context, while the strong form held. Restated in each rule that carries it, because a project installs only the rules for the stacks it has. markdown-docs.md carries it too: it is the same attach, for the .md family, and its own docs-as-code half was the measured miss (3 loads against 22 matching edits).",
+      "_note": "A convention rule's load is the FIRST action after the attach, not a 'before the edit' hint - the weak phrasing lost across 12 measured edits with two rule bodies in context, while the strong form held. Restated in each rule that carries it, because a project installs only the rules for the stacks it has. markdown-docs.md carries it too: it is the same attach, for the .md family, and its own docs-as-code half was the measured miss (3 loads against 22 matching edits). skill-authoring.md carries it for skill files, where the load is the skill-writing habit.",
       "owner": {
         "file": "stack/rules/csharp-conventions.md",
         "marker": "the FIRST action after this rule attaches is"
@@ -3472,6 +3472,10 @@
         },
         {
           "file": "stack/rules/markdown-docs.md",
+          "marker": "the FIRST action after this rule attaches is"
+        },
+        {
+          "file": "stack/rules/skill-authoring.md",
           "marker": "the FIRST action after this rule attaches is"
         }
       ]
