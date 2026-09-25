@@ -1,6 +1,6 @@
 ---
 name: devops
-description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost. DevOps reference scoped to .NET / Angular / SQL delivery surfaces - on another runtime take the container and pipeline rules and treat the examples as illustrative - organized by the surface a change touches: container builds, Compose local topology, GitHub Actions CI/CD, and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code."
+description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, or an env/secret template. DevOps reference scoped to .NET / Angular / SQL delivery surfaces - on another runtime take the container and pipeline rules and treat the examples as illustrative - organized by the surface a change touches: container builds, Compose local topology, GitHub Actions CI/CD, and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code, or for editing the Aspire AppHost itself (the .NET orchestration skill owns it)."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
