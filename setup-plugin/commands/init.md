@@ -130,8 +130,8 @@ not `global`, the close names the restart.
 ## 5. Captures - each SKILL.md followed inline
 
 For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` and follow it
-inline, start to finish - never a Skill call: the captures are manual-only, and a model's Skill call
-on one is denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
+inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
+are denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
 its relative `references/` and `scripts/` paths resolve from the SKILL.md's own directory, and a
 plugin-root placeholder in it arrives unexpanded - read it as the plugin root the plan's path
 carries. Its seat is installed (the plan checked), so a dispatch it names is made as written. A
