@@ -285,15 +285,25 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const stackHook = (l) => l.startsWith('hook ') && shipped.includes(l.slice(5));
     // m8: a stamp that says 'plugin' means the last FINISHED run left no stack hook here - the plugin
     // route prunes every copy - so one on disk now is a switch to the copy route that died part way,
-    // never a pick. Its files are set aside and the rule above reads the stored list instead. An
-    // unknown route (1.x, 2.0.0 before the line) keeps the disk: its copies were the picks (a pre-11b
-    // copy route left the unpicked out). A folder holding only the user's own files, or a leftover
-    // prelude, carries no hook line at all (R56), so under any route it is never read as the picks.
-    if (!routes.hooks && lastHooksRoute === 'plugin' && lines.some(stackHook))
+    // never a pick. Its files are set aside and the rule above reads the stored list instead.
+    // R94: with no `hooks-route:` line (1.x, 2.0.0 before the line) the last route is inferred from what
+    // the copy route leaves behind - the STORED hooks switch set to false (either spelling; the run's
+    // own switch says only where this run goes), or the folder's stack hooks wired as
+    // `.claude/hooks/<name>.js`, since a copy route wires what it copies. Either one: the copies were the
+    // picks (a pre-11b copy route left the unpicked out). Neither: the plugin route, set aside as above.
+    // A folder holding only the user's own files, or a leftover prelude, carries no hook line at all
+    // (R56), so under any route it is never read as the picks. `keptNone` below stays on the literal
+    // stamp line (R55): an inferred route never makes an empty folder a None.
+    const viaOff = String(envOf(env, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
+    const wiring = JSON.stringify(stored.hooks && typeof stored.hooks === 'object' ? stored.hooks : {});
+    const wiredCopy = lines.some((l) => stackHook(l) && wiring.includes(`/.claude/hooks/${l.slice(5)}.js`));
+    const lastRoute = lastHooksRoute || (viaOff || wiredCopy ? 'copy' : 'plugin');
+    if (!routes.hooks && lastRoute === 'plugin' && lines.some(stackHook))
     {
         lines = lines.filter((l) => !stackHook(l));
         for (let i = closeFrom.length - 1; i >= 0; i--) if (stackHook(closeFrom[i])) closeFrom.splice(i, 1);
-        log('installed-only: the hooks copied here are an unfinished switch to the copy route, not a pick - reading ALFRED_CODE_HOOKS_OFF instead');
+        log(lastHooksRoute ? 'installed-only: the hooks copied here are an unfinished switch to the copy route, not a pick - reading ALFRED_CODE_HOOKS_OFF instead'
+            : 'installed-only: the stamp names no hooks route, and nothing stored or wired says the copy route made the hooks copied here - read as the plugin route\'s leftovers, not a pick; reading ALFRED_CODE_HOOKS_OFF instead');
     }
     if (!routes.hooks && !lines.some(stackHook))
     {

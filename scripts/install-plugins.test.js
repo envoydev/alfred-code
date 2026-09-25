@@ -1309,6 +1309,36 @@ test('seed update --installed-only: a pre-11b hooks-copy-route install - its pic
     assert.deepStrictEqual(flip.off, [...kept].sort(), 'and keeps the ones it had named off');
 });
 
+// R94 (Task 18b fix round 1), the R56 probe end to end: a stamp with no `hooks-route:` line, ONE stack
+// hook left in the folder and wired nowhere, the off list stored, the run on the hooks copy route. No
+// stored switch and no wiring say the copy route made that file, so it is the plugin route's leftover:
+// 16 of 17 hooks end on, never 1 of 17 with the other 16 named off.
+test('seed update --installed-only: an unwired stack hook under a stamp with no hooks route is no pick - 16 of 17 stay on (R94)', POSIX_ONLY, () =>
+{
+    const { loadManifest } = require('./install/manifest.js');
+    const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
+    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const { result } = seedRun('update', 'skill markdown-style\n', {
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' }, plugins: listing, args: ['--installed-only'],
+        prepare: (repo) =>
+        {
+            const claude = path.join(repo, '.claude');
+            fs.mkdirSync(path.join(claude, 'rules'), { recursive: true });
+            fs.mkdirSync(path.join(claude, 'hooks'), { recursive: true });
+            fs.writeFileSync(path.join(claude, 'rules', 'baseline-interaction.md'), 'x\n');
+            fs.writeFileSync(path.join(claude, 'hooks', 'guard-secret-value.js'), '// x\n');
+            fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), `version: 1.3.0\nsha: 0000000\nshipped-hooks: ${shipped.join(',')}\n`);
+            fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } }, null, 2));
+        },
+        inspect: (repo) => ({
+            onDisk: fs.readdirSync(path.join(repo, '.claude', 'hooks')).filter((f) => shipped.includes(f.replace(/\.js$/, ''))).sort(),
+            off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF).split(',').filter(Boolean).sort(),
+        }),
+    });
+    assert.deepStrictEqual(result.off, ['guard-answer-length'], 'only the hook the user switched off is named off');
+    assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), '16 of 17 hooks copied and on');
+});
+
 // Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js) are no catalog hook,
 // so a plugin-route stint that pruned only the catalog left them behind - and the next copy-route run
 // read that leftover prelude as the copy route's own None, switching every hook off. The plugin route

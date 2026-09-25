@@ -551,30 +551,55 @@ test('read-back: a copy-route install that kept no hook reads back `hook none` o
 });
 
 // m8 (fix round 5): stack hooks on disk under a stamp that says 'plugin' are a copy-route switch that
-// died part way - the plugin route prunes every copy - so they are set aside for the stored list. Under
-// 'copy' or an unknown route the disk is the record, as before.
+// died part way - the plugin route prunes every copy - so they are set aside for the stored list.
 // m12 (Task 16b): on the mixed route and the full copy route alike.
-test('read-back: a partial hook folder under a plugin stamp is no pick - the stored list decides, the disk only under copy or an unknown route', () =>
+// R94 (Task 18b fix round 1): with NO `hooks-route:` line the last route is inferred. It was the copy
+// route when the stored hooks switch is false (either spelling) or the folder's stack hooks are wired as
+// `.claude/hooks/<name>.js` - a copy route wires what it copies - and the disk is the record then.
+// Otherwise it was the plugin route, and the folder is set aside exactly as under a 'plugin' stamp.
+test('read-back: a partial hook folder is no pick unless the copy route made it - the stamp, else the stored switch or the wiring (R94)', () =>
 {
     const shipped = [...new Set(MANIFEST.catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const partial = shipped.slice(0, 5);
     const core = row('alfred-code@envoydev');
     const hookLines = (r) => r.lines.filter((l) => l.startsWith('hook ')).sort();
+    const offOne = shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort();
+    const wiring = (names) => ({ PreToolUse: names.map((h) => ({ matcher: 'Bash', hooks: [{ type: 'command', command: `"$CLAUDE_PROJECT_DIR/.claude/hooks/${h}.js"`, timeout: 10 }] })) });
     for (const copy of [{ hooks: false, skills: true, mcps: true }, { hooks: false, skills: false, mcps: false }])
     {
         const route = copy.skills ? 'mixed' : 'full copy';
-        const bare = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin' });
-        assert.deepStrictEqual(hookLines(bare), [], `${route}, nothing stored: every hook stays on`);
-        assert.ok(!bare.closeFrom.some((l) => l.startsWith('hook ')), `${route}: a set-aside file never reaches the closure`);
-        const stored = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'plugin',
-            settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
-        assert.deepStrictEqual(hookLines(stored), shipped.filter((h) => h !== 'guard-answer-length').map((h) => `hook ${h}`).sort(), `${route}: the stored list`);
-        for (const lastHooksRoute of ['copy', null])
+        for (const lastHooksRoute of ['plugin', null])
         {
-            const disk = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute });
-            assert.deepStrictEqual(hookLines(disk), partial.map((h) => `hook ${h}`).sort(), `${route}, ${lastHooksRoute}: the disk is the record`);
+            const at = `${route}, ${lastHooksRoute}`;
+            const bare = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute });
+            assert.deepStrictEqual(hookLines(bare), [], `${at}, nothing stored: every hook stays on`);
+            assert.ok(!bare.closeFrom.some((l) => l.startsWith('hook ')), `${at}: a set-aside file never reaches the closure`);
+            const stored = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute,
+                settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+            assert.deepStrictEqual(hookLines(stored), offOne, `${at}: the stored list`);
         }
+        const disk = partial.map((h) => `hook ${h}`).sort();
+        const copyStamp = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: 'copy' });
+        assert.deepStrictEqual(hookLines(copyStamp), disk, `${route}, copy: the disk is the record`);
+        for (const key of ['ALFRED_CODE_HOOKS_VIA_PLUGIN', 'CLAUDE_STACK_HOOKS_VIA_PLUGIN']) // legacy-name
+        {
+            const switchOff = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { env: { [key]: 'false' } } });
+            assert.deepStrictEqual(hookLines(switchOff), disk, `${route}, no line, ${key}=false stored: the copy route ran - the disk is the record`);
+        }
+        const wired = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { hooks: wiring(partial) } });
+        assert.deepStrictEqual(hookLines(wired), disk, `${route}, no line, the folder wired as copies: the disk is the record`);
+        const userWired = readBackCase({ listing: [core], routes: copy, hooks: partial, stampHooks: shipped, lastHooksRoute: null, settings: { hooks: wiring(['my-own-check']) } });
+        assert.deepStrictEqual(hookLines(userWired), [], `${route}, no line, only the user's own hook wired: no copy-route evidence`);
     }
+    // The R56 probe the review measured: no line, ONE stack hook left in the folder, the stored off list,
+    // the run on the hooks copy route - 16 of 17 hooks on, never 1 of 17.
+    const probe = readBackCase({ listing: [core], routes: { hooks: false, skills: true, mcps: true }, hooks: ['guard-secret-value'], stampHooks: shipped, lastHooksRoute: null,
+        settings: { env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } } });
+    assert.strictEqual(hookLines(probe).length, shipped.length - 1, hookLines(probe).join(', '));
+    assert.deepStrictEqual(hookLines(probe), offOne);
+    const said = [];
+    readBackCase({ listing: [core], routes: { hooks: false, skills: true, mcps: true }, hooks: ['guard-secret-value'], stampHooks: shipped, lastHooksRoute: null, log: (m) => said.push(m) });
+    assert.ok(said.some((m) => /the stamp names no hooks route, and nothing stored or wired says the copy route made the hooks copied here/.test(m)), said.join('\n'));
 });
 
 // R56, carried from 11b re-review 2: on the default plugin route a user's own `.js` in `.claude/hooks/`
