@@ -1147,6 +1147,28 @@ test('seed install + update --scope user (full copy route): every stack server l
     assert.ok(steps[1].calls.some((c) => /^mcp add --scope project serena /.test(c)), steps[1].calls.join('\n'));
 });
 
+// N5 (re-review): on that route the drop loop removes at the scope the route registers at - this project's
+// .mcp.json - so an engine an earlier user-scope run registered and this run drops, or a 1.x single
+// `playwright`, stayed at user scope with nothing said. Each is named with its command like C10's stale
+// names, and never removed (another user-scope install may still load it); a server of the user's own
+// under a dropped engine's name gets the kept line instead.
+test('seed update --scope user (full copy route): a dropped engine and a legacy playwright still registered at user scope are named with their command, never removed (N5)', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        env: COPY_ENV, args: ['--scope', 'user', '--playwright-browsers', 'chrome'],
+        prepare: (repo, work) =>
+        {
+            pwProject(repo);
+            accountMcp(work, { 'playwright-webkit': STACK_PW('webkit'), playwright: STACK_PW('chrome'), 'playwright-firefox': { type: 'stdio', command: 'node', args: ['my-firefox.js'], env: {} } });
+        },
+    });
+    const still = (name) => (out.match(new RegExp(`!! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`, 'g')) || []).length;
+    for (const name of ['playwright-webkit', 'playwright']) assert.strictEqual(still(name), 1, `${name}:\n${out}`);
+    assert.strictEqual(still('playwright-firefox'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
+    assert.strictEqual((out.match(/!! mcp playwright-firefox: the user-scope registration is not the stack's/g) || []).length, 1, out);
+    assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s user$/.test(c)), [], `a user-scope registration was removed:\n${calls.join('\n')}`);
+});
+
 // C11 (R137 N1): on that route engineStandDown UNINSTALLED a user-scope playwright engine - every project
 // on the account lost it. It is switched off in THIS project only, recorded in the stamp's stood-down
 // line, and the switch back enables it there.

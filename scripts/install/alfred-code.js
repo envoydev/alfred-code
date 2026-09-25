@@ -970,7 +970,8 @@ function installMcps(ctx)
     // R124 (l): at local and user scope an engine left off is not registered - one an earlier run
     // registered goes with the dropped engines.
     const unregistered = ctx.pw.mcpjson.unregistered;
-    for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered))
+    const dropped = mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered);
+    for (const name of dropped)
         if (mayRemove(name, scope) && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
 
     // A user-scope registration of the user's own under a stack name stays theirs: not re-registered,
@@ -980,9 +981,10 @@ function installMcps(ctx)
         .filter((e) => scope !== 'user' || registrationOf(ctx, e.split('|')[0], 'user') !== 'foreign');
     // C10: a user-scope run on the full copy route registers in .mcp.json; what an earlier one registered
     // at user scope still reaches every project on the account, and another user-scope install there
-    // still loads it until its own update - so it is named with its command, never removed here.
+    // still loads it until its own update - so it is named with its command, never removed here. N5: so is
+    // an engine this run drops (or a 1.x single `playwright`) - the drop above removed it from .mcp.json.
     if (scope !== ctx.cliScope && ctx.cliScope === 'user')
-        for (const name of live.map((e) => e.split('|')[0]))
+        for (const name of [...new Set([...live.map((e) => e.split('|')[0]), ...dropped])])
             if (registrationOf(ctx, name, 'user') === 'stack')
                 ctx.log(`  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     for (const entry of live)
