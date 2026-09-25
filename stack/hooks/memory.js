@@ -127,15 +127,17 @@ function memoryEnvPath(entry, home) {
 // The settings.json `env` key the PLUGIN route writes first, then the registration route's own
 // files. From 1.0.0 the memory server arrives through a plugin and there is no `.mcp.json` entry to
 // read: the install writes its resolved db path to ALFRED_CODE_MEMORY_DB in the project's
-// settings.json (the account file for a global install), which is exactly what the plugin's
-// launcher reads at start-up - so this resolver and the running server agree by construction.
-// The registration lookups below stay for the copy route and for every install made before 1.0.0.
+// settings.local.json at every scope (C8 - this machine's path, never the committed settings.json),
+// which is exactly what the plugin's launcher reads at start-up - so this resolver and the running
+// server agree by construction. settings.json and the account settings are still read after it,
+// because an install made before C8 wrote the key there. The registration lookups below stay for
+// the copy route and for every install made before 1.0.0.
 // Never throws - every read is its own try/catch, and a missing or unreadable file is simply
 // "not registered here".
 function settingsEnvDbPath(projectRoot, home, configDir) {
   const files = [
-    // settings.local.json first - Claude Code's own precedence, and the only file a local-scope
-    // install (T16) writes ALFRED_CODE_MEMORY_DB into (memory-launch.js resolves it the same order).
+    // settings.local.json first - Claude Code's own precedence, and the file every install writes
+    // ALFRED_CODE_MEMORY_DB into since C8 (memory-launch.js resolves it in the same order).
     path.join(projectRoot, '.claude', 'settings.local.json'),
     path.join(projectRoot, '.claude', 'settings.json'),
     path.join(configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json'),

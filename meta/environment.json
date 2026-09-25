@@ -29,7 +29,7 @@
       "key": "ALFRED_CODE_INSTRUMENT",
       "default": "0",
       "ask": true,
-      "what": "the tool-usage instrumentation switch. `0` costs a shell test per call and records nothing; `1` logs every tool call as one JSONL row for a measured run, then goes back to `0`. Flipping it takes effect on the next tool call; no session restart is needed.",
+      "what": "the tool-usage instrumentation switch. `0` costs a node start per call that exits at the switch check and records nothing; `1` logs every tool call as one JSONL row for a measured run, then goes back to `0`. Flipping it takes effect on the next tool call; no session restart is needed.",
       "validate": {
         "type": "enum",
         "values": [

@@ -343,10 +343,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
   playwright, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
-  names a registration writes - the agents' own `alfred-code:<skill>` preloads re-spelled to the bare
-  skill included, since on the full copy route nothing serves the qualified name - that needs the
-  FILES, so the switch belongs with
-  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). The LOCKED THREE
+  names a registration writes - that needs the FILES, so the switch belongs with
+  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). On the FULL copy
+  route alone (all three switches `false`, so no core plugin) the copied agents' `alfred-code:<skill>`
+  preloads are re-spelled to the bare skill too - nothing serves the qualified name there; with the
+  core on they stay and resolve. The LOCKED THREE
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
   twice. They come back to `.mcp.json` only on the FULL copy route, at every scope - never `mcp add

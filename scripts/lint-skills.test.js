@@ -50,6 +50,37 @@ test('N8: README.md names installed_plugins.json/the plugin cache and .claude.js
     assert.match(readme, /Nothing is written outside the project and the account-dir writes named above/, 'the closing claim must still point at this row');
 });
 
+// F4 re-review M-F4-1: the instrument hook is a plain node launch that exits at its switch check (its
+// own header, instrument-tool-usage.js), yet the catalog row the walks print to the user still said a
+// shell test - the claim item 5 removed everywhere else.
+test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node start, never a shell test', () => {
+    const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8')).env;
+    const row = rows.find((r) => r.key === 'ALFRED_CODE_INSTRUMENT');
+    assert.ok(row, 'the instrument row must still exist');
+    assert.doesNotMatch(row.what, /shell/, row.what);
+    assert.match(row.what, /node start per call/, row.what);
+});
+
+// F4 re-review M-F4-2: since C8 every scope writes ALFRED_CODE_MEMORY_DB into settings.local.json, and the
+// hook engine reads that file first - its comments still said the key lands in settings.json (the account
+// file for a global install), and that only a local-scope install writes the local file.
+test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.json\'s at every scope', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8');
+    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsEnvDbPath')));
+    assert.doesNotMatch(block, /in the project's\s*\/\/\s*settings\.json|the only file a local-scope/, 'a pre-C8 layout is still described');
+    assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
+});
+
+// F4 re-review M-F4-3: the copied agents' `alfred-code:<skill>` preloads are re-spelled only where no core
+// plugin serves them - the FULL copy route (copyRender, `!corePluginOn`) - not whenever the MCP route is off.
+test('M-F4-3: CLAUDE.md conditions the preload re-spell on the full copy route alone', () => {
+    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
+    assert.ok(sentence, 'the MCP copy-route sentence must still exist');
+    assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
+    assert.match(claudeMd, /On the FULL copy\s+route alone[^.]*`alfred-code:<skill>`\s+preloads are re-spelled/, 'the preload re-spell names its own condition');
+});
+
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
     const lint = require('./lint-skills.js');
     assert.strictEqual(typeof lint.manifestFlatSet, 'function');
