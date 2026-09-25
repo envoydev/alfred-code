@@ -2102,3 +2102,101 @@ test('seed: on a switch to the hooks copy route the committed wiring follows set
     assert.strictEqual(result.shared.env.ALFRED_CODE_HOOKS_OFF, '', 'the complement of the committed wiring lands in settings.json');
     assert.strictEqual(result.local.env.ALFRED_CODE_HOOKS_OFF, 'guard-answer-length', 'the runner\'s own switch-off stays theirs, and still applies to them');
 });
+
+// C13 (Task 22 (d)): a 1.x project install moved to LOCAL scope left the 1.x hooks id enabled at project
+// scope and said nothing - the core got its 'kept' line, the hooks id none. Both are named now.
+test('migrate: a 1.x hooks id at another scope is named with its uninstall command, like the core (C13)', () =>
+{
+    const { moves, logs } = migrate([row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project')], { scope: 'local', carriers: [] });
+    assert.deepStrictEqual(moves, [], 'nothing of another scope is moved');
+    for (const id of [OLD, OLD_HOOKS])
+        assert.strictEqual(logs.filter((m) => m.includes(`claude plugin uninstall ${id}@${OLD} --scope project`)).length, 1, `${id}: ${logs.join(' | ')}`);
+    // A move at this scope names the hooks id at another scope once, never twice.
+    const both = migrate([row1x(OLD, 'project'), row1x(OLD_HOOKS, 'project'), row1x(OLD_HOOKS, 'user')], { carriers: [] });
+    assert.strictEqual(both.logs.filter((m) => m.includes(`claude plugin uninstall ${OLD_HOOKS}@${OLD} --scope user`)).length, 1, both.logs.join(' | '));
+});
+
+// A-I3 (final review A): a user-scope move of the core renames it for every project on the account, and
+// a seat deny spelled for the 1.x core stops matching there until that project's own update re-spells it.
+test('migrate: a user-scope move of the core says every other project keeps its 1.x seat denies until its own update (A-I3)', () =>
+{
+    const line = 'core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update';
+    const user = migrate([row1x(OLD, 'user'), row1x(OLD_HOOKS, 'user')], { scope: 'user', carriers: [] });
+    assert.strictEqual(user.logs.filter((m) => m === line).length, 1, user.logs.join(' | '));
+    const project = migrate([row1x(OLD, 'project')], { carriers: [] });
+    assert.ok(!project.logs.includes(line), 'a project-scope move reaches no other project');
+    const failed = migrate([row1x(OLD, 'user')], { scope: 'user', carriers: [], fails: ['install'] });
+    assert.ok(!failed.logs.includes(line), 'nothing moved');
+    const retry = migrate([row1x(OLD, 'user'), NEW_CORE('user')], { scope: 'user', carriers: [] });
+    assert.ok(!retry.logs.includes(line), 'a retry moves nothing new');
+});
+
+// A-I2 (final review A): 1.x local mode printed `/mcp disable context7` for the hosted server. The prune of
+// context7-local leaves that switch-off in place, so the locked docs server is gone with no line saying so.
+test('retired: a context7-local prune says how to switch the hosted context7 back on (A-I2)', () =>
+{
+    const line = 'context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7';
+    const logs = [];
+    const gone = P.prunedRetired({ rows: [prow('context7-local', 'envoydev', 'project'), prow('sentry', 'envoydev', 'project')], retired: ['context7-local', 'sentry'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: cli(), log: (m) => logs.push(m) });
+    assert.deepStrictEqual(gone, ['context7-local', 'sentry']);
+    assert.strictEqual(logs.filter((m) => m === line).length, 1, logs.join(' | '));
+    const refused = [];
+    P.prunedRetired({ rows: [prow('context7-local', 'envoydev', 'project')], retired: ['context7-local'], retiredRows: RETIRED_ROWS, market: 'envoydev', scope: 'project', cli: cli(['uninstall']), log: (m) => refused.push(m) });
+    assert.ok(!refused.includes(line), 'nothing was removed');
+});
+
+// C12 (Task 8a concern 5): an install moved off local scope carried its settings out of settings.local.json
+// (R78) but left every plugin row at local scope, where only this checkout sees it - a teammate cloning the
+// project-scope install got no plugins, and each update went on updating the local rows. A row of the run's
+// set found only at local scope is installed at the new scope, then uninstalled at local; a playwright
+// engine left off stays off (the user's own off-state). claude-hud keeps its user scope.
+test('seed update: a move off local scope moves each plugin row found only at local scope to the new one, an engine left off staying off (C12)', POSIX_ONLY, () =>
+{
+    const rows = [
+        ...['alfred-code', 'serena', 'context7', 'memory', 'playwright-chrome'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'local', enabled: true })),
+        { id: 'playwright-firefox@envoydev', version: '2.0.0', scope: 'local', enabled: false },
+        { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'local', enabled: true },
+        { id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: true },
+    ];
+    const { calls, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nplugin typescript-lsp\nmcp playwright\n', {
+        plugins: JSON.stringify(rows),
+        args: [['--scope', 'local', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'chrome'], ['--scope', 'project']],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+    });
+    const out = outs[1];
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) /.test(c) && !/claude-hud/.test(c));
+    const specs = ['alfred-code', 'serena', 'context7', 'memory', 'playwright-chrome', 'playwright-firefox'].map((n) => `${n}@envoydev`).concat('typescript-lsp@claude-plugins-official');
+    for (const spec of specs)
+    {
+        const inst = moves.indexOf(`plugin install ${spec} --scope project -y`);
+        const gone = moves.indexOf(`plugin uninstall ${spec} --scope local -y`);
+        assert.ok(inst > -1 && gone > inst, `${spec} was not moved:\n${moves.join('\n')}\n${out}`);
+        assert.ok(out.includes(`plugin moved [local -> project]: ${spec}`), out);
+    }
+    assert.ok(moves.includes('plugin disable playwright-firefox@envoydev --scope project'), `the engine's off-state was lost:\n${moves.join('\n')}`);
+    assert.ok(!moves.includes('plugin disable playwright-chrome@envoydev --scope project'), 'an engine left on was switched off');
+    assert.deepStrictEqual(moves.filter((c) => / --scope local/.test(c) && !/^plugin uninstall /.test(c)), [], 'a local row was still acted on');
+    assert.ok(!calls.some((c) => /^plugin (install|uninstall) claude-hud@claude-hud --scope (project|local)/.test(c)), 'claude-hud left user scope');
+});
+
+// A-I4 (final review A): claude-hud is installed beside the core every run, while its status line is set by
+// /alfred-code:init alone - an account init never reached shows no HUD, and nothing said why. With no
+// statusLine in the account settings the run says so once; a statusLine of the user's own (another tool's)
+// is their choice, and a claude-hud they switched off stays off - neither says anything.
+test('seed install: claude-hud with no status line in the account settings names /alfred-code:init; a foreign status line or a user-disabled HUD says nothing (A-I4)', POSIX_ONLY, () =>
+{
+    const LINE = /claude-hud has no status line yet - run \/alfred-code:init to set it up/g;
+    const run = (accountSettings, plugins = '[]') => seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins,
+        prepare: (repo, work) =>
+        {
+            if (!accountSettings) return;
+            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
+            fs.writeFileSync(path.join(work, 'acct', 'settings.json'), JSON.stringify(accountSettings));
+        },
+    }).out;
+    assert.strictEqual((run(null).match(LINE) || []).length, 1, 'no account settings file');
+    assert.strictEqual((run({ env: {} }).match(LINE) || []).length, 1, 'an account settings file with no statusLine');
+    assert.doesNotMatch(run({ statusLine: { type: 'command', command: 'my-line' } }), LINE);
+    assert.doesNotMatch(run(null, JSON.stringify([{ id: 'claude-hud@claude-hud', version: '0.8.0', scope: 'user', enabled: false }])), LINE);
+});

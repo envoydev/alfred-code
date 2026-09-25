@@ -393,6 +393,16 @@ const withStamp = (version) => (repo) =>
     fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['angular-cli', 'mine'] }, null, 2)}\n`);
 };
 
+// The account's own MCP registrations: `<CLAUDE_CONFIG_DIR>/.claude.json` - top-level `mcpServers` at
+// user scope, `projects[<root>].mcpServers` at local scope. The sandbox's account dir is `<work>/acct`.
+const accountMcp = (work, servers, projects = {}) =>
+{
+    fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
+    fs.writeFileSync(path.join(work, 'acct', '.claude.json'), JSON.stringify({ mcpServers: servers, projects }, null, 2));
+};
+const STACK_SERENA = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
+const STACK_PW = (e) => ({ type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@0.0.80', '--browser', e], env: {} });
+
 for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
 {
     test(`seed update (${route} route): a 1.x install's cut registration goes with its add-back line, and leaves the trust list`, POSIX_ONLY, () =>
@@ -401,8 +411,9 @@ for (const [route, env] of [['plugin', {}], ['copy', COPY_ENV]])
             env, prepare: withStamp('1.3.0'),
             inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).enabledMcpjsonServers,
         });
-        for (const name of ['angular-cli', 'chrome-devtools', 'appium-mcp', 'sentry', 'context7-local'])
-            assert.ok(calls.includes(`mcp remove ${name} -s project`), `${name}:\n${calls.filter((c) => /^mcp /.test(c)).join('\n')}`);
+        // A-M3: only the registration .mcp.json holds is removed - an absent name costs no call.
+        const removes = calls.filter((c) => /^mcp remove (angular-cli|chrome-devtools|appium-mcp|sentry|context7-local) /.test(c));
+        assert.deepStrictEqual(removes, ['mcp remove angular-cli -s project'], `${calls.filter((c) => /^mcp /.test(c)).join('\n')}`);
         assert.match(out, /mcp pruned: angular-cli\n==>     add it back: claude mcp add --scope project angular-cli -- npx -y @angular\/cli mcp\n/);
         assert.ok(!result.includes('angular-cli') && result.includes('mine'), JSON.stringify(result));
     });
@@ -1020,6 +1031,9 @@ for (const scope of ['user', 'local'])
         const settingsFile = scope === 'local' ? 'settings.local.json' : 'settings.json';
         const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp playwright\n', {
             env: MCP_COPY_ENV,
+            // A-M2: a user-scope removal takes only a registration of the stack's own shape, so the
+            // earlier webkit registration is laid out in the account file.
+            prepare: (repo, work) => { if (scope === 'user') accountMcp(work, { 'playwright-webkit': STACK_PW('webkit') }); },
             args: [['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--scope', scope, '--installed-only']],
             each: (repo) => ({ ...pwState(repo, settingsFile), calls: stepCalls(repo) }),
         });
@@ -1044,6 +1058,8 @@ test('seed update (MCP copy route, user scope): a later enable answer registers 
 {
     const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
         env: MCP_COPY_ENV,
+        // A-M2: the registrations the account holds, of the stack's own shape - the stub writes none.
+        prepare: (repo, work) => accountMcp(work, { 'playwright-chrome': STACK_PW('chrome'), 'playwright-webkit': STACK_PW('webkit') }),
         args: [['--scope', 'user', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
             ['--scope', 'user', '--installed-only', '--playwright-enabled', 'all'], ['--scope', 'user', '--installed-only', '--playwright-enabled', 'chrome']],
         each: (repo) => ({ ...pwState(repo), calls: stepCalls(repo) }),
@@ -1101,3 +1117,150 @@ for (const scope of ['user', 'local'])
         assert.deepStrictEqual(result, ['mine'], out);
     });
 }
+
+// C10 (R136 q): on the user-scope FULL copy route the stack's servers were registered with
+// `mcp add --scope user`, which reaches every project on the account - another project's context7 tools
+// turned bare, and its serena and memory ran twice beside their plugins. They go to THIS project's
+// .mcp.json in the project-scope shape, a project-level memory database included (the refusal that
+// guarded the user-scope registration has no premise left). A stack registration an earlier run left at
+// user scope is named, never removed: another user-scope project still loads it until its own update.
+test('seed install + update --scope user (full copy route): every stack server lands in this project\'s .mcp.json, none at user scope (C10)', POSIX_ONLY, () =>
+{
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        env: COPY_ENV,
+        args: [['--scope', 'user', '--memory-level', 'project', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only']],
+        prepare: (repo, work) => accountMcp(work, { serena: STACK_SERENA, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } }),
+        each: (repo) => ({ calls: stepCalls(repo), mcp: jsonAt(repo, '.mcp.json').mcpServers || {}, trusted: trusted(repo), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'), real: fs.realpathSync(repo) }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        const userCalls = step.calls.filter((c) => /^mcp (add|remove) .*(--scope user|-s user)/.test(c));
+        assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
+        for (const name of ['serena', 'memory', 'context7', 'playwright-chrome'])
+            assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
+        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.memory-mcp', 'memory.db'), 'the project-level database is this project\'s');
+        for (const name of ['serena', 'memory', 'context7', 'playwright-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
+        assert.match(step.stamp, /^scope: user$/m);
+        assert.match(outs[i], /mcp: serena still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove serena -s user/, outs[i]);
+        assert.doesNotMatch(outs[i], /mcp: [^\n]*memory still registered at user scope/, 'another server under the stack\'s name is not the stack\'s');
+    }
+    assert.ok(steps[1].calls.some((c) => /^mcp add --scope project serena /.test(c)), steps[1].calls.join('\n'));
+});
+
+// C11 (R137 N1): on that route engineStandDown UNINSTALLED a user-scope playwright engine - every project
+// on the account lost it. It is switched off in THIS project only, recorded in the stamp's stood-down
+// line, and the switch back enables it there.
+test('seed update --scope user (full copy route): a user-scope playwright engine is switched off in this project only, and the switch back enables it (C11)', POSIX_ONLY, () =>
+{
+    const rows = [...USER_ROWS(), { id: 'playwright-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        plugins: JSON.stringify(rows),
+        env: [{}, COPY_ENV, COPY_ENV, {}],
+        args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only']],
+        each: (repo, i) =>
+        {
+            const state = { calls: stepCalls(repo), stood: stoodDownLine(repo) };
+            if (i === 1) settingsWord(repo, { ...offWord(), 'playwright-chrome@envoydev': false });
+            return state;
+        },
+    });
+    const [, down, again, back] = steps;
+    assert.ok(!down.calls.some((c) => /^plugin uninstall playwright-chrome@envoydev --scope user/.test(c)), `the account's engine was uninstalled:\n${down.calls.join('\n')}`);
+    assert.ok(down.calls.includes('plugin disable playwright-chrome@envoydev --scope project'), `${down.calls.join('\n')}\n${outs[1]}`);
+    assert.match(down.stood, /project:playwright-chrome@envoydev/, down.stood);
+    assert.deepStrictEqual(again.calls.filter((c) => /^plugin (disable|enable|uninstall) /.test(c)), [], `a re-run switched something:\n${outs[2]}`);
+    assert.strictEqual(again.stood, down.stood);
+    assert.ok(back.calls.includes('plugin enable playwright-chrome@envoydev --scope project'), `${back.calls.join('\n')}\n${outs[3]}`);
+    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) playwright-chrome@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
+});
+
+// A-M2 (final review A): at user scope every run removed each stack name from the account's own
+// registrations - a server of the user's own under the same name went with them. Only a registration of
+// the stack's own shape (the package it launches, or the url it calls) is removed; another is kept and
+// named once, and a name the account does not register costs no call.
+test('seed update --scope user (plugin route): only a stack-shaped user-scope registration is removed, the user\'s own under the same name is kept and named once (A-M2)', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(USER_ROWS()),
+        args: ['--scope', 'user'],
+        prepare: (repo, work) =>
+        {
+            pwProject(repo);
+            accountMcp(work, { serena: STACK_SERENA, 'playwright-webkit': STACK_PW('webkit'), context7: { type: 'http', url: 'https://docs.example.test/mcp' } });
+        },
+    });
+    const removes = calls.filter((c) => /^mcp remove /.test(c));
+    assert.deepStrictEqual(removes.sort(), ['mcp remove playwright-webkit -s user', 'mcp remove serena -s user'], `${removes.join('\n')}\n${out}`);
+    assert.strictEqual((out.match(/mcp context7: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove context7 -s user/g) || []).length, 1, out);
+    assert.doesNotMatch(out, /docs\.example\.test/, 'a registration of the user\'s own is never printed');
+});
+
+// A-M3 (final review A): the first update past a retirement removed any registration under a retired name -
+// one the user added by hand with the add-back line, which the stack never wrote, included. Only the
+// shape the stack wrote goes.
+test('seed update: a retired name is pruned only where the registration is the stack\'s own shape (A-M3)', POSIX_ONLY, () =>
+{
+    const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')),
+        inspect: (repo) => trusted(repo),
+        prepare: (repo) =>
+        {
+            pwProject(repo);
+            fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 1.3.0\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ enabledMcpjsonServers: ['sentry', 'angular-cli', 'mine'] }));
+            fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: {
+                'angular-cli': { type: 'stdio', command: 'npx', args: ['-y', '@angular/cli', 'mcp'], env: {} },
+                sentry: { type: 'http', url: 'https://mcp.sentry.dev/mcp' },
+                'chrome-devtools': { type: 'stdio', command: 'node', args: ['./my-devtools.js'], env: {} },
+            } }));
+        },
+    });
+    const removes = calls.filter((c) => /^mcp remove (angular-cli|sentry|chrome-devtools|appium-mcp|context7-local) /.test(c));
+    assert.deepStrictEqual(removes, ['mcp remove angular-cli -s project'], `${removes.join('\n')}\n${out}`);
+    for (const name of ['sentry', 'chrome-devtools'])
+        assert.strictEqual((out.match(new RegExp(`mcp ${name}: the project-scope registration is not the stack's`, 'g')) || []).length, 1, out);
+    assert.match(out, /mcp pruned: angular-cli\n==> +add it back: claude mcp add --scope project angular-cli/, out);
+    assert.deepStrictEqual([...(result || [])].sort(), ['mine', 'sentry'], 'the kept server lost its approval, or the pruned one kept it');
+});
+
+// A-M2 / A-M3: which server a registration runs - the package or the url - read through the pin, the
+// extras, a manifest placeholder, a trailing slash and the Windows `cmd /c` wrapper.
+test('identityOf / stackIdentities: a registration is the stack\'s by the package it launches or the url it calls, never by its pin or wrapper', () =>
+{
+    const id = mcp.identityOf;
+    assert.strictEqual(id({ command: 'uvx', args: ['--python', '3.13', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==10.1.0', 'memory', 'server'] }), 'stdio:mcp-memory-service');
+    assert.strictEqual(id({ command: 'cmd', args: ['/c', 'npx', '-y', '@playwright/mcp@0.0.82', '--browser', 'chrome'] }), 'stdio:@playwright/mcp');
+    assert.strictEqual(id({ command: 'npx', args: ['-y', 'chrome-devtools-mcp@0.9.0'] }), 'stdio:chrome-devtools-mcp');
+    assert.strictEqual(id({ type: 'http', url: 'https://mcp.context7.com/mcp/' }), 'http:https://mcp.context7.com/mcp');
+    assert.strictEqual(id({ command: 'node', args: ['./my-server.js'] }), 'stdio:./my-server.js');
+    assert.strictEqual(id(null), '');
+    const catalog = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).catalogs.mcps;
+    const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
+    const ids = mcp.stackIdentities({ catalog, remotes: { context7: mcp.CONTEXT7_REMOTE }, tokens: { PW_PIN: '@0.0.82' }, retiredRows: rows });
+    assert.ok(ids.serena.has('stdio:serena-agent'), [...ids.serena].join(','));
+    assert.ok(ids['playwright-webkit'].has('stdio:@playwright/mcp') && ids.playwright.has('stdio:@playwright/mcp'));
+    assert.deepStrictEqual([...ids.context7].sort(), ['http:https://mcp.context7.com/mcp', 'stdio:@upstash/context7-mcp']);
+    assert.deepStrictEqual([...ids.sentry], ['http:https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'], 'the add-back url is the user\'s, never the stack\'s');
+    // Every retired server names what the stack registered, or its prune could never tell its own from the user's.
+    const { loadManifest } = require('./install/manifest.js');
+    for (const name of loadManifest(path.join(__dirname, '..')).retired.mcps)
+        assert.ok(ids[name] && ids[name].size, `${name}: no registration row in meta/retired-plugins.json`);
+});
+
+// A-M2: an account file the run cannot read is no list of registrations - nothing is removed at user
+// scope, and the run says so once.
+test('seed update --scope user: an unreadable account .claude.json removes nothing and is said once (A-M2)', POSIX_ONLY, () =>
+{
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        plugins: JSON.stringify(USER_ROWS()),
+        args: ['--scope', 'user'],
+        prepare: (repo, work) =>
+        {
+            pwProject(repo);
+            fs.mkdirSync(path.join(work, 'acct'), { recursive: true });
+            fs.writeFileSync(path.join(work, 'acct', '.claude.json'), '{not json');
+        },
+    });
+    assert.deepStrictEqual(calls.filter((c) => /^mcp remove /.test(c)), [], out);
+    assert.strictEqual((out.match(/\.claude\.json could not be read - no user-scope registration was removed/g) || []).length, 1, out);
+});

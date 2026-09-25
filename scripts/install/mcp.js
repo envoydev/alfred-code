@@ -441,6 +441,87 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
     return changed;
 }
 
+// C10 (R136 q): the scope the copy route registers at. The run's own, except at user scope on the FULL
+// copy route: there the locked three went to `mcp add --scope user`, which reaches every project on the
+// account - another project's serena and memory ran twice beside its plugins and its context7 tools
+// turned bare. Every server that route registers goes to THIS project's .mcp.json instead.
+const registrationScope = (routes, scope) => (scope === 'user' && !corePluginOn(routes) ? 'project' : scope);
+
+// A-M2 / A-M3: WHICH server a registration runs - the url it calls, or the package it launches - the
+// part of its shape that does not move with a pin, a flag, a path or the Windows `cmd /c` wrapper. A
+// registration of the stack's own shape is the stack's to remove; another under the same name is the
+// user's. '' when the entry names neither.
+const VALUED_FLAGS = ['--python', '--with', '--from', '--package', '-p', '--index-url', '--extra-index-url'];
+function packageName(word)
+{
+    let w = String(word || '').replace(/@[A-Z][A-Z0-9_]*@/g, '').replace(/\[[^\]]*\]/, '');
+    w = w.split(/==|>=|<=|~=/)[0];
+    const at = w.lastIndexOf('@');
+    return at > 0 ? w.slice(0, at) : w;
+}
+function identityOf(entry)
+{
+    if (!entry || typeof entry !== 'object') return '';
+    if (entry.url || entry.type === 'http' || entry.type === 'sse') return `http:${String(entry.url || '').replace(/\/+$/, '')}`;
+    let words = [String(entry.command ?? ''), ...(Array.isArray(entry.args) ? entry.args.map(String) : [])];
+    if (/^cmd(\.exe)?$/i.test(words[0]) && /^\/c$/i.test(words[1] || '')) words = words.slice(2);
+    const rest = words.slice(1);
+    const from = rest.findIndex((w) => w === '--from' || w === '--package' || w === '-p');
+    let pkg = from > -1 ? rest[from + 1] : '';
+    for (let i = 0; !pkg && i < rest.length; i += 1)
+    {
+        if (VALUED_FLAGS.includes(rest[i])) { i += 1; continue; }
+        if (!rest[i].startsWith('-')) pkg = rest[i];
+    }
+    return pkg ? `stdio:${packageName(pkg)}` : '';
+}
+
+// Every identity the stack has registered under each name: the catalog's own (a pin never counts), each
+// playwright engine and the 1.x single `playwright`, the 1.x local context7 (`--context7 local` put the
+// npx transport under the context7 name itself), and each retired server's `registration`
+// (meta/retired-plugins.json) - what the stack wrote, never the add-back line the user may have run.
+function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows = [] })
+{
+    const out = {};
+    const add = (name, id) => { if (id) (out[name] ||= new Set()).add(id); };
+    for (const entry of catalog)
+    {
+        const text = String(entry);
+        const name = text.split('|')[0];
+        const id = identityOf(wantFor(expectShape({ name, args: text.slice(text.indexOf('|') + 1), remotes, tokens })));
+        add(name, id);
+        if (name === 'playwright') for (const n of PW_SERVERS) add(n, id);
+    }
+    add('context7', 'stdio:@upstash/context7-mcp');
+    for (const row of retiredRows)
+    {
+        const reg = row && row.registration;
+        if (reg && reg.url) add(row.name, `http:${String(reg.url).replace(/\/+$/, '')}`);
+        else if (reg && reg.package) add(row.name, `stdio:${packageName(reg.package)}`);
+    }
+    return out;
+}
+
+// The registrations one scope holds: `.mcp.json` at project scope; the account's `.claude.json` - its
+// top-level `mcpServers` at user scope, `projects[<root>].mcpServers` at local scope. `absent` (no
+// file) holds nothing; `unreadable` is said by the caller and removes nothing.
+function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
+{
+    const file = scope === 'project' ? mcpFile : accountFile;
+    let data;
+    try { const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
+    catch (err) { return err.code === 'ENOENT' ? { state: 'absent', servers: {}, file } : { state: 'unreadable', servers: {}, file }; }
+    let servers = data && data.mcpServers;
+    if (scope === 'local')
+    {
+        const projects = (data && data.projects) || {};
+        let real = projectRoot;
+        try { real = fs.realpathSync(projectRoot); } catch { /* the path as given */ }
+        servers = (projects[projectRoot] || projects[real] || {}).mcpServers;
+    }
+    return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, file };
+}
+
 // The hosted context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the context7
 // plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
 // where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
@@ -470,4 +551,5 @@ module.exports = {
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
+    registrationScope, identityOf, packageName, stackIdentities, registrationsAt,
 };

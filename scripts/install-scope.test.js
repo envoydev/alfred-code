@@ -340,19 +340,21 @@ test('install-scope: update --installed-only --print-plan reads a 1.x account st
     assert.strictEqual(result.projectStamp, false, 'a --print-plan run must never write the project its own stamp');
 });
 
-// I5 (R47, fix round 2): memory is LOCKED - it bakes one path into a user-scope `claude mcp add -s
-// user` only on the FULL copy route, where the installer registers it itself. The MCP-copy-route-
-// ALONE mix is safe (memory still rides its own plugin, re-read per project by the launcher), so
-// the refusal keys on `!corePluginOn(routes)`, never `!routes.mcps` alone.
-test('install-scope: --memory-level project at --scope user is refused on the FULL copy route (I5)', POSIX_ONLY, () =>
+// C10 (R136 q), replacing I5's refusal: memory baked ONE path into a user-scope `claude mcp add -s user`
+// on the FULL copy route, the one route that registers it itself, so a project level was refused there.
+// That route now registers in this project's .mcp.json (mcp.registrationScope), so the path is this
+// project's alone and the level runs.
+const memoryIn = (repo) => ((JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}).memory || {}).env || {};
+test('install-scope: --memory-level project at --scope user on the FULL copy route registers memory in this project\'s .mcp.json (C10)', POSIX_ONLY, () =>
 {
-    assert.throws(
-        () => seedRun('install', SELECTION, {
-            args: ['--scope', 'user', '--memory-level', 'project'],
-            env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
-        }),
-        (e) => /--memory-level project is refused at --scope user on the full copy route/.test(e.stderr || e.message),
-    );
+    const { out, calls, result } = seedRun('install', SELECTION, {
+        args: ['--scope', 'user', '--memory-level', 'project'],
+        env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' },
+        inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
+    });
+    assert.match(out, /memory=project \(/, out);
+    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), out);
+    assert.deepStrictEqual(calls.filter((c) => /^mcp add .*--scope user/.test(c)), []);
 });
 
 // I5: the MCP copy route ALONE (hooks and skills still riding the plugin) is the safe mix the
@@ -368,15 +370,14 @@ test('install-scope: --memory-level project at --scope user is NOT refused on th
 
 const FULL_COPY = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
 
-// m4 (fix round 4): the refusal runs BEFORE the 1.x migration, so a refused update has moved nothing -
-// with --scope user given, and with no --scope at all (the account stamp's own 'global' is read in
-// place to resolve it).
-test('install-scope: a refused user-scope update has migrated nothing from a 1.x global install (m4)', POSIX_ONLY, () =>
+// m4 / m5, after C10: nothing refuses a project memory level at user scope on the full copy route any
+// more - a 1.x global install updated with one is migrated (its scope kept, A-I1), and a project-level
+// path its .mcp.json already holds is kept, each registered in this project's .mcp.json.
+test('install-scope: a 1.x global install updated with --memory-level project on the full copy route migrates, memory in this project\'s .mcp.json (m4, C10)', POSIX_ONLY, () =>
 {
     for (const scopeArgs of [['--scope', 'user'], []])
     {
-        const { code, err, out, result } = seedRun('update', SELECTION, {
-            failOk: true,
+        const { out, result } = seedRun('update', SELECTION, {
             args: [...scopeArgs, '--memory-level', 'project'],
             env: FULL_COPY,
             prepare: (repo, work) =>
@@ -387,25 +388,22 @@ test('install-scope: a refused user-scope update has migrated nothing from a 1.x
                 fs.writeFileSync(path.join(acct, 'claude-stack.stamp'), 'sha: abc\nscope: global\nversion: 1.3.0\npicked-skills: demo\n'); // legacy-name
             },
             inspect: (repo) => ({
-                stamp: exists(repo, '.claude', 'claude-stack.stamp') || exists(repo, '.claude', 'alfred-code.stamp'), // legacy-name
+                stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
                 skill: exists(repo, '.claude', 'skills', 'demo'),
+                env: memoryIn(repo), real: fs.realpathSync(repo),
             }),
         });
         const label = scopeArgs.join(' ') || 'no --scope';
-        assert.strictEqual(code, 1, `${label}: the run was not refused\n${out}`);
-        assert.match(err, /--memory-level project is refused at --scope user on the full copy route/, `${label}: ${err}`);
-        assert.doesNotMatch(out, /were moved from/, `${label}: a refused run migrated`);
-        assert.deepStrictEqual(result, { stamp: false, skill: false }, `${label}: a refused run left a migrated copy in the project`);
+        assert.match(out, /were moved from/, `${label}: the 1.x install was not migrated\n${out}`);
+        assert.strictEqual(result.skill, true, label);
+        assert.match(result.stamp, /^scope: user$/m, label);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), `${label}\n${out}`);
     }
 });
 
-// m5 (fix round 4): the refusal keys on the RESOLVED level, not only the flag - an update with no
-// --memory-level keeps the level its .mcp.json registration already holds, and a project-level path
-// there would be baked into the user-scope registration just the same.
-test('install-scope: a project-level memory path already registered in .mcp.json is refused at --scope user on the full copy route (m5)', POSIX_ONLY, () =>
+test('install-scope: a project-level memory path already in .mcp.json is kept at --scope user on the full copy route (m5, C10)', POSIX_ONLY, () =>
 {
-    const { code, err, out } = seedRun('update', SELECTION, {
-        failOk: true,
+    const { out, result } = seedRun('update', SELECTION, {
         args: ['--scope', 'user'],
         env: FULL_COPY,
         prepare: (repo) =>
@@ -416,9 +414,10 @@ test('install-scope: a project-level memory path already registered in .mcp.json
                 mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } },
             }));
         },
+        inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
     });
-    assert.strictEqual(code, 1, `the run was not refused\n${out}`);
-    assert.match(err, /the memory level project \(read from \.mcp\.json\) is refused at --scope user on the full copy route/, err);
+    assert.match(out, /memory=project \(/, out);
+    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), out);
 });
 
 test('install-scope: --memory-level project at --scope project is never refused on the MCP copy route (I5)', POSIX_ONLY, () =>

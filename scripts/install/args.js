@@ -131,13 +131,11 @@ function parseArgs(argv)
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);
 
-    // R29 (T16) / I5 (R47): the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
-    // reads the CURRENT project's settings.json/settings.local.json at launch, never a value baked
-    // into the registration) - so `--memory-level project` is safe at every CLI scope while memory
-    // rides its plugin. Only the FULL copy route (hooks, skills and mcps all off the plugin) registers
-    // memory itself, baking ONE path into `claude mcp add -s user` for every project of the account -
-    // so alfred-code.js refuses a project level at user scope there, once `routes` and the resolved
-    // level are known (this file resolves flags, not plugin routes, so it cannot see either yet).
+    // R29 (T16) / I5 (R47) / C10: the memory db path is resolved PER PROJECT by the PLUGIN launcher (it
+    // reads the CURRENT project's settings at launch, never a value baked into the registration), and
+    // the FULL copy route - the one route that registers memory itself - registers it in THIS project's
+    // .mcp.json at every scope (mcp.registrationScope). So `--memory-level project` is safe at every
+    // CLI scope, and nothing here or in alfred-code.js refuses it.
     out.playwrightBrowsers = [];
     if (out.playwrightBrowsersRaw)
     {

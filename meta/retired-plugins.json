@@ -1,5 +1,5 @@
 {
-  "note": "The plugins a release took out of the stack, read by the Node seed alone. Update uninstalls each one only by its full spec - the name under the key the core is listed under (the 1.x key on a migrated install), or the `marketplace` its row names - so a same-named plugin from another marketplace (the official catalog ships a `sentry`) is never touched, and a row at another scope is kept and logged with its uninstall command. After each uninstall it prints the row's `addBack` line, `<scope>` replaced by the scope it went from. A cut MCP server is also named in the manifest's `retired.mcps`, which prunes a copy-route registration of it - only on the first update past `retiredIn`, because from then on a registration under that name is the user's own, made with this line. Keep a row while its name is retired: it is the only record of the way back.",
+  "note": "The plugins a release took out of the stack, read by the Node seed alone. Update uninstalls each one only by its full spec - the name under the key the core is listed under (the 1.x key on a migrated install), or the `marketplace` its row names - so a same-named plugin from another marketplace (the official catalog ships a `sentry`) is never touched, and a row at another scope is kept and logged with its uninstall command. After each uninstall it prints the row's `addBack` line, `<scope>` replaced by the scope it went from. A cut MCP server is also named in the manifest's `retired.mcps`, which prunes a copy-route registration of it - only on the first update past `retiredIn`, because from then on a registration under that name is the user's own, made with this line. Its `registration` is what the stack itself registered (the package it launched, or the url it called): the prune removes only a registration of that shape, so a server the user added back under the name - with the addBack line or by hand - is kept. Keep a row while its name is retired: it is the only record of the way back.",
   "plugins": [
     {
       "name": "ponytail",
@@ -11,30 +11,45 @@
       "name": "angular-cli",
       "retiredIn": "2.0.0",
       "why": "the MCP cut (R26) - framework tooling the Angular skills cover, loaded into every session of the projects that picked it",
+      "registration": {
+        "package": "@angular/cli"
+      },
       "addBack": "claude mcp add --scope <scope> angular-cli -- npx -y @angular/cli mcp"
     },
     {
       "name": "chrome-devtools",
       "retiredIn": "2.0.0",
       "why": "the MCP cut (R26) - playwright drives the browser, and this one needed a full Chrome on the machine",
+      "registration": {
+        "package": "chrome-devtools-mcp"
+      },
       "addBack": "claude mcp add --scope <scope> chrome-devtools -- npx -y chrome-devtools-mcp"
     },
     {
       "name": "appium-mcp",
       "retiredIn": "2.0.0",
       "why": "the MCP cut (R26) - needed Xcode and/or the Android SDK plus Java, and no stack seeded it",
+      "registration": {
+        "package": "appium-mcp"
+      },
       "addBack": "claude mcp add --scope <scope> appium-mcp -- npx -y appium-mcp"
     },
     {
       "name": "sentry",
       "retiredIn": "2.0.0",
       "why": "the MCP cut (R26) - a hosted server with its own sign-in, which the stack only wrapped",
+      "registration": {
+        "url": "https://mcp.sentry.dev/mcp/${SENTRY_SLUG}"
+      },
       "addBack": "claude mcp add --transport http --scope <scope> sentry https://mcp.sentry.dev/mcp"
     },
     {
       "name": "context7-local",
       "retiredIn": "2.0.0",
       "why": "the MCP cut (R32) - context7 is the hosted server only; the local npx transport doubled its tool schemas beside it. A local-mode install printed a `/mcp disable context7` line: whoever ran it runs `/mcp enable context7` to switch the hosted one back on",
+      "registration": {
+        "package": "@upstash/context7-mcp"
+      },
       "addBack": "claude mcp add --scope <scope> context7-local -- npx -y @upstash/context7-mcp"
     }
   ]

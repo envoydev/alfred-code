@@ -20,6 +20,7 @@
 //     <other>` is a silent no-op, so passing the INSTALL's scope left every user-scoped plugin on
 //     its old version under a project install.
 //   - VERSIONS ARE READ BACK. `claude plugin update` reports success whether or not anything moved.
+const fs = require('node:fs');
 const path = require('node:path');
 const { BRAND, LEGACY, alwaysOn, marketOf, marketKey } = require('./brand.js');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
@@ -466,18 +467,38 @@ function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}
 // stamp's two playwright lines). A row left off goes too, so the stamp is the ONE record a later switch
 // back reads - kept, it would overrule a choice the user made on the copy route, where the on/off lives
 // in disabledMcpjsonServers. A row at another scope serves other projects: named with its command when on.
-function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], isOn, cli, log = () => {}, note = () => {} })
+//
+// C11 (R137 N1): AT USER SCOPE ON THE FULL COPY ROUTE (`hereOnly`) the engine is registered in this
+// project's .mcp.json (mcp.registrationScope) while its user-scope row serves every project of the
+// account - an uninstall took it from all of them. It is switched off HERE ONLY, the way the core is
+// (copyRouteStandDown): `disable --scope project`, returned as `{ scope, spec }` for the stamp's
+// `stood-down` record, which the switch back enables (restoreStoodDown). One already off here, or off
+// at user scope, calls nothing. Returns `{ gone, off }`.
+function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], hereOnly = false, isOn, cli, log = () => {}, note = () => {} })
 {
     const gone = [];
+    const off = [];
     const names = engines.map((e) => `playwright-${e}`);
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
+    const at = standDownScope(scope);
     for (const row of ours)
     {
         const spec = `${row.name}@${market}`;
         if (row.scope !== scope)
         {
             if (on.has(row)) log(`  ${spec} is enabled at ${row.scope} scope, not this run's - it loads beside its .mcp.json registration; if nothing else needs it: claude plugin uninstall ${spec} --scope ${row.scope}`);
+            continue;
+        }
+        if (hereOnly && at !== scope)
+        {
+            if (!on.has(row) || isOn(spec, at) === false) continue;
+            if (cli(['plugin', 'disable', spec, '--scope', at], { quiet: true, expect: 'reported' }))
+            {
+                log(`plugin disabled [${at}]: ${spec} (the copy route registers it in .mcp.json; this project only - the ${scope}-scope install stays on for every other project)`);
+                off.push({ scope: at, spec });
+            }
+            else note(`plugin disable failed: ${spec} - it loads beside its .mcp.json registration; disable it by hand: claude plugin disable ${spec} --scope ${at}`);
             continue;
         }
         if (cli(['plugin', 'uninstall', spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
@@ -487,7 +508,60 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
         }
         else note(`plugin uninstall failed: ${spec} - it loads beside its .mcp.json registration; remove it by hand: claude plugin uninstall ${spec} --scope ${scope}`);
     }
-    return gone;
+    return { gone, off };
+}
+
+// C12 (Task 8a concern 5): an install moved OFF local scope. Its settings leave settings.local.json
+// (settings.js leaveLocalScope), but a plugin row at local scope stays where only this checkout sees
+// it - a clone of the project-scope install got none, and every update went on updating the local
+// rows. Each spec of the run's set whose only row here is at local scope is installed at the new scope,
+// then uninstalled at local; one with a row at the new scope already loses only its local row. A
+// playwright engine left off locally arrives off (the user's own off-state); claude-hud keeps its user
+// scope. Returns `{ moved, dropped }`: the specs installed this run, and the ones whose local row went.
+function moveLocalRows({ plugins = [], rows = [], scope, engines = [], isOn = () => undefined, cli, log = () => {}, note = () => {} })
+{
+    const moved = [];
+    const dropped = [];
+    const unLocal = (spec) => cli(['plugin', 'uninstall', spec, '--scope', 'local', '-y'], { quiet: true, expect: 'reported' })
+        || (note(`plugin uninstall failed: ${spec} at local scope - it loads there beside the ${scope}-scope install; remove it by hand: claude plugin uninstall ${spec} --scope local`), false);
+    for (const spec of plugins)
+    {
+        const [name, market] = String(spec).split('@');
+        if (USER_SCOPE_PLUGINS.includes(name)) continue;
+        const mine = rows.filter((r) => r.name === name && r.marketplace === market);
+        const local = mine.find((r) => r.scope === 'local');
+        if (!local) continue;
+        if (mine.some((r) => r.scope === scope))
+        {
+            if (unLocal(spec)) { log(`plugin moved [local -> ${scope}]: ${spec} (installed at ${scope} scope already - the local row went)`); dropped.push(spec); }
+            continue;
+        }
+        if (!cli(['plugin', 'install', spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
+        {
+            note(`plugin move failed: ${spec} - it stays at local scope; to move it: claude plugin install ${spec} --scope ${scope}, then claude plugin uninstall ${spec} --scope local`);
+            continue;
+        }
+        const said = isOn(spec, 'local');
+        if (engines.includes(spec) && !(said === undefined ? local.enabled : said)) switchOff(spec, scope, { cli, log, note });
+        unLocal(spec);
+        log(`plugin moved [local -> ${scope}]: ${spec}`);
+        moved.push(spec);
+    }
+    return { moved, dropped };
+}
+
+// A-I4 (final review A): claude-hud draws nothing until its status line is set, which /alfred-code:init
+// does - so a claude-hud installed (this run, or before) with NO `statusLine` in the account settings is
+// said once. A statusLine that is there, whoever set it, is the user's choice; a claude-hud the user
+// switched off stays off (USER_OFF_WINS); an account file that cannot be read says nothing.
+function hudStatusLineMissing({ plugins = [], listing = [], settingsFile })
+{
+    const spec = CORE_DEP_PLUGINS.find((s) => bareName(s) === 'claude-hud');
+    if (!spec || (!plugins.includes(spec) && !fieldOf(listing, spec, 'version')) || offByUser(spec, listing)) return false;
+    let data = {};
+    try { const raw = fs.readFileSync(settingsFile, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
+    catch (err) { if (err.code !== 'ENOENT') return false; }
+    return Boolean(data) && typeof data === 'object' && !Array.isArray(data) && !('statusLine' in data);
 }
 
 // UPDATE: uninstall the retired plugins this project carries AT THIS RUN'S SCOPE, each by its full
@@ -532,6 +606,8 @@ function prunedRetired({ rows, listing, retired = [], retiredRows = [], carriers
                 log(`  plugin pruned (retired upstream) [${scope}]: ${item.spec}`);
                 const back = addBack(item.name);
                 if (back) log(`    add it back: ${back.split('<scope>').join(scope)}`);
+                // A-I2: 1.x local mode had the user switch the hosted server off, and nothing else turns it on.
+                if (item.name === 'context7-local') log('context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7');
                 gone.push(item.name);
             }
             else next.push(item);
@@ -559,7 +635,9 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     const named = (name, key) => rows.filter((r) => r.name === name && (!key || r.marketplace === key));
     const here = (name, key) => named(name, key).some((r) => r.scope === scope);
     const kept = (r) => log(`  ${r.name}@${r.marketplace} is installed at ${r.scope} scope, not this run's - kept for the projects that use it; the update run at that scope moves it across: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope}`);
-    for (const r of named(LEGACY.core).filter((x) => x.scope !== scope)) kept(r);
+    // C13: the 1.x hooks id at another scope is named the same way - a move to local scope left it on
+    // at project scope with no line.
+    for (const r of [...named(LEGACY.core), ...named(LEGACY.hooks)].filter((x) => x.scope !== scope)) kept(r);
     const core = named(LEGACY.core).find((r) => r.scope === scope && !here(BRAND.core, r.marketplace));
     const left = core ? null : [...named(LEGACY.core), ...named(LEGACY.hooks)].find((r) => r.scope === scope && here(BRAND.core, r.marketplace));
     if (!core && !left) return out;
@@ -584,12 +662,16 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     for (const name of [LEGACY.hooks, LEGACY.core])
         for (const r of named(name, key))
         {
-            if (r.scope !== scope) { if (name === LEGACY.hooks) kept(r); continue; }
+            if (r.scope !== scope) continue;
             const id = `${name}@${key}`;
             if (cli(['plugin', 'uninstall', id, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
             { log(`  plugin removed (a 1.x id, now a retired alias) [${scope}]: ${id}`); out.removed.push(r); }
             else note(`plugin uninstall failed: ${id} - its hooks run beside the new core's until it goes; the next update retries it, or: claude plugin uninstall ${id} --scope ${scope}`);
         }
+    // A-I3: a user-scope core serves every project on the account, and a seat deny is matched by the
+    // exact home name - another project's `Agent(<1.x core>:<seat>)` stops matching until its own update.
+    if (core && scope === 'user')
+        log('core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies until each runs /alfred-code:update');
     return out;
 }
 
@@ -667,5 +749,5 @@ module.exports = {
     pluginRoutes, committedRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn,
+    copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,
 };

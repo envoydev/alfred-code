@@ -258,26 +258,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             env, shared: sharedEnv, scope: args.scope, log,
             personal: (() => { try { return JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')).env || {}; } catch { return {}; } })(),
         });
-        // I5 (R47, fix round 2): memory is a LOCKED server - it bakes ONE path into a user-scope
-        // registration only on the FULL copy route, where the installer registers it itself
-        // (`claude mcp add -s user -e MCP_MEMORY_SQLITE_PATH=<path>`); on the MCP-copy-route-alone
-        // combination memory still rides its own plugin, re-read per project by the launcher, so
-        // that mix is safe. `!plugins.corePluginOn(routes)` is the full copy route - every one of
-        // hooks/skills/mcps riding a copy instead of a plugin - exactly what R29's own refusal used
-        // to guard, on the ONE route the plugin launcher's per-project re-read cannot cover.
-        // m5: keyed on the RESOLVED level - with no flag, the .mcp.json registration's own path.
-        if (level.level === 'project' && args.scope === 'user' && !plugins.corePluginOn(routes))
-        {
-            const what = level.from === 'flag' ? '--memory-level project' : `the memory level project (read from ${registeredMemoryPath(mcpFile) ? path.basename(mcpFile) : 'the settings env'})`;
-            err(`error: ${what} is refused at --scope user on the full copy route `
-                + "(ALFRED_CODE_HOOKS_VIA_PLUGIN=false, ALFRED_CODE_SKILLS_VIA_PLUGIN=false and ALFRED_CODE_MCPS_VIA_PLUGIN=false) - "
-                + 'the registration bakes one path into every project of the account; use --scope project, pass --memory-level global or scoped, or keep any one route on the plugin\n');
-            return 1;
-        }
+        // C10: the project memory level needs no refusal at user scope any more - on the full copy route,
+        // the one route that registers memory itself, the registration lands in this project's .mcp.json
+        // (mcp.registrationScope), so its path is this project's alone.
 
         // T16/R47 (I4): the migration is a WRITE - a real `update` only, never `--print-plan`
         // (configure and validate call it as a run that writes nothing), inside the try so an EACCES
-        // is reported, and after the refusal above (m4). C1/m1: a failed copy goes through `note`.
+        // is reported. C1/m1: a failed copy goes through `note`.
         if (args.action === 'update' && !args.printPlan && unmigrated)
         {
             stampLayer.migrateLegacyGlobal({ configDir, projectRoot, renamed: manifest.renamed, log, note });
@@ -476,7 +463,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const planned = [];
                 // The recording cli answers every call as done, so the lines a run prints AFTER a
                 // removal would claim one that never ran: a plan keeps only what describes the move.
-                const OUTCOME = /plugin pruned|add it back:|plugin removed/;
+                const OUTCOME = /plugin pruned|add it back:|plugin removed|core moved to|context7-local removed/;
                 const planLog = (m) => { if (!OUTCOME.test(m)) plain(`plan note: ${String(m).trim()}`); };
                 plugins.migrateLegacy({
                     rows: plugins.parsePluginList(raw, projectRoot, { everyScope: true }),
@@ -529,8 +516,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets, retiredMcpsDue,
-            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: cliScope, kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
+            market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal,
+            // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
+            // read from each scope (once per run), and the names kept as another server's.
+            accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'),
+            mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
+            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
             // own stand-down, and what a switch back could not enable yet.
             standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
@@ -729,13 +720,32 @@ function installPlugins(ctx)
     const copyRoute = !plugins.corePluginOn(ctx.routes);
     const stand = { rows, market: ctx.market, scope: ctx.cliScope, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note };
     if (blind && (copyRoute || !ctx.routes.mcps)) ctx.note(blindStandDown(ctx, copyRoute));
-    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED }); };
-    if (!ctx.routes.mcps && !blind) plugins.engineStandDown({ ...stand, engines: pwEngines(ctx) });
+    // C11: at user scope on the full copy route an engine's user-scope row is switched off here only, and
+    // joins the core's in the stamp's stood-down record.
+    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), hereOnly: copyRoute }).off : [];
+    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED })]; };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
     });
     const marketplaces = plugins.extraMarketplaces(ctx.manifest.rows.plugins, set);
+    // C12: an install moved off local scope takes its plugin rows along - installed at the new scope, the
+    // local row uninstalled. What moved is installed this run (`fresh`); the listing reads each at its
+    // new scope from here on.
+    const relocated = ctx.leavingLocal && !blind
+        ? plugins.moveLocalRows({
+            plugins: set, rows, scope: ctx.cliScope, engines: pwEngines(ctx).map((e) => `playwright-${e}@${ctx.market}`),
+            isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        })
+        : { moved: [], dropped: [] };
+    for (const row of listing)
+        if ([...relocated.moved, ...relocated.dropped].includes(`${row.name}@${row.marketplace}`)) row.scope = ctx.cliScope;
+    // A-I4: said once, after the plugin pass on either action.
+    const hudLine = () =>
+    {
+        if (plugins.hudStatusLineMissing({ plugins: set, listing, settingsFile: path.join(ctx.configDir, 'settings.json') }))
+            ctx.log('claude-hud has no status line yet - run /alfred-code:init to set it up');
+    };
     // The per-stack entries retired in 1.3.0 come from the seed's own file, never the twins' lists:
     // only this route copies their picks before they go. The ones still installed after this run are
     // what the settings writer keeps a seat's old deny spelling for; an unreadable listing says
@@ -753,6 +763,7 @@ function installPlugins(ctx)
     // A failed move leaves the old core carrying the guards; a second install of the new one beside it
     // would run both, and leave nothing for the next update to move.
     if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
+    const fresh = [...moved.fresh, ...relocated.moved];
     // The 1.x core counts as a live home of its seat denies while any scope still carries its old id.
     const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
     const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
@@ -769,9 +780,10 @@ function installPlugins(ctx)
         ctx.liveCarriers = installed(gone);
         standDown();
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh, restored: back.restored, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
+        hudLine();
         for (const row of ctx.dropEntries || [])
         {
             const spec = `${row.name}@${row.marketplace}`;
@@ -786,8 +798,9 @@ function installPlugins(ctx)
     }
     standDown();
     plugins.installPlugins({
-        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+        plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
+    hudLine();
 }
 
 // M4 (R132): the one line for a listing the run could not read on a copy route - what would have been
@@ -797,7 +810,9 @@ function blindStandDown(ctx, copyRoute)
     const at = plugins.standDownScope(ctx.cliScope);
     const cmds = [
         ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
-        ...pwEngines(ctx).map((e) => `claude plugin uninstall playwright-${e}@${ctx.market} --scope ${ctx.cliScope}`),
+        ...pwEngines(ctx).map((e) => (copyRoute && at !== ctx.cliScope
+            ? `claude plugin disable playwright-${e}@${ctx.market} --scope ${at}`
+            : `claude plugin uninstall playwright-${e}@${ctx.market} --scope ${ctx.cliScope}`)),
     ];
     return `the plugin listing could not be read, so no stack plugin was switched off before the copy route registers its servers - any still enabled runs beside its registration; check /plugin, or: ${cmds.join('; ')}`;
 }
@@ -879,13 +894,48 @@ function listingRead(raw)
 // is nothing to report (measured on 2.1.282: '... in .mcp.json', '... in local scope', '... in user scope').
 const MCP_ABSENT = /No MCP server named/;
 
+// The registrations one scope holds, read once per run (mcp.registrationsAt).
+function registrationsAt(ctx, scope)
+{
+    ctx.mcpRegs[scope] ||= mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot });
+    return ctx.mcpRegs[scope];
+}
+
+// A-M2 / A-M3: 'stack' when `name` at `scope` is a registration of the stack's own shape (the package it
+// launches, or the url it calls - mcp.identityOf), 'absent' when the scope holds none under the name (no
+// call to make), 'foreign' when it is another server the user registered under the same name - kept and
+// named once per run - and 'unreadable' when the file cannot be read, which removes nothing, said once.
+function registrationOf(ctx, name, scope)
+{
+    const regs = registrationsAt(ctx, scope);
+    const once = (key, line) => { if (!ctx.mcpSaid.has(key)) ctx.log(line); ctx.mcpSaid.add(key); };
+    if (regs.state === 'unreadable')
+    {
+        once(`unreadable:${scope}`, `  mcp: ${regs.file} could not be read - no ${scope}-scope registration was removed; fix the file and re-run`);
+        return 'unreadable';
+    }
+    const entry = regs.servers[name];
+    if (!entry) return 'absent';
+    ctx.mcpIdentities ||= mcp.stackIdentities({
+        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir),
+    });
+    if ((ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry))) return 'stack';
+    once(`${scope}:${name}`, `  mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
+    ctx.mcpForeign.set(name, scope);
+    return 'foreign';
+}
+
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
     const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue });
     const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
+    // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
+    // registration of the stack's own shape - another under the name is the user's (a server added back
+    // with the add-back line included). An absent one costs no call.
+    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name)) || registrationOf(ctx, name, scope) === 'stack';
     for (const name of retired)
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT }))
+        if (mayRemove(name, ctx.cliScope) && ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT }))
         {
             ctx.log(`  mcp pruned: ${name}`);
             const back = ctx.retiredMcpsDue.includes(name) && addBack(name);
@@ -897,22 +947,33 @@ function installMcps(ctx)
         ctx.log('mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here');
         return;
     }
+    const scope = mcp.registrationScope(ctx.routes, ctx.cliScope);
     // R124 (l): at local and user scope an engine left off is not registered - one an earlier run
     // registered goes with the dropped engines.
     const unregistered = ctx.pw.mcpjson.unregistered;
     for (const name of mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered))
-        if (ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
+        if (mayRemove(name, scope) && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
 
+    // A user-scope registration of the user's own under a stack name stays theirs: not re-registered,
+    // not verified (the verify's re-register would remove it).
     const live = ctx.lists.mcps.filter((e) => !(mcp.isLocked(e.split('|')[0]) && mcp.corePluginOn(ctx.routes)))
-        .filter((e) => !unregistered.includes(e.split('|')[0]));
+        .filter((e) => !unregistered.includes(e.split('|')[0]))
+        .filter((e) => scope !== 'user' || registrationOf(ctx, e.split('|')[0], 'user') !== 'foreign');
+    // C10: a user-scope run on the full copy route registers in .mcp.json; what an earlier one registered
+    // at user scope still reaches every project on the account, and another user-scope install there
+    // still loads it until its own update - so it is named with its command, never removed here.
+    if (scope !== ctx.cliScope && ctx.cliScope === 'user')
+        for (const name of live.map((e) => e.split('|')[0]))
+            if (registrationOf(ctx, name, 'user') === 'stack')
+                ctx.log(`  mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     for (const entry of live)
     {
         const name = entry.split('|')[0];
         const args = entry.slice(entry.indexOf('|') + 1);
-        if (ctx.args.action === 'update') ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT });
+        if (ctx.args.action === 'update') { if (mayRemove(name, scope)) ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT }); }
         else if (ctx.cli(['mcp', 'get', name], { quiet: true, expect: 'answer' })) { ctx.plain(`  mcp ${name} already configured - skipping`); continue; }
-        ctx.log(`mcp [${ctx.args.scope}]: ${name}`);
-        if (!ctx.cli(mcp.registerSpec({ name, args, scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
+        ctx.log(`mcp [${scope}]: ${name}`);
+        if (!ctx.cli(mcp.registerSpec({ name, args, scope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
             ctx.note(`mcp ${name} failed`);
     }
 
@@ -920,15 +981,15 @@ function installMcps(ctx)
     const expects = live.map((e) => mcp.expectShape({
         name: e.split('|')[0], args: e.slice(e.indexOf('|') + 1), remotes: ctx.remotes, tokens: ctx.tokens,
     }));
-    if (ctx.args.scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
+    if (scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
     else mcp.verifyUser({
-        expects, scope: ctx.cliScope,
+        expects, scope,
         getShape: (name) => ctx.rt.capture('claude', ['mcp', 'get', name], { cwd: ctx.projectRoot, env: ctx.cliEnv }),
         reregister: (name) =>
         {
             const entry = live.find((e) => e.split('|')[0] === name);
-            ctx.cli(['mcp', 'remove', name, '-s', ctx.cliScope], { quiet: true, expect: MCP_ABSENT });
-            ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope: ctx.cliScope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
+            ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT });
+            ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
         },
         log: ctx.log, note: ctx.note,
     });
@@ -1002,7 +1063,7 @@ function installHooksAndRules(ctx)
     // the core on, ALFRED_CODE_HOOKS_OFF is the complement of what the run wires and is written EVERY
     // run - a bare install wires every hook, so it writes an empty list over whatever was stored.
     const state = ctx.picked ? deriveState({ selectionText: [...ctx.picked].join('\n'), sourceDir: ctx.source.dir }) : null;
-    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: ctx.cliScope, mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off });
+    const trusted = mcp.mcpjsonTrusted({ routes: ctx.routes, scope: mcp.registrationScope(ctx.routes, ctx.cliScope), mcps: ctx.lists.mcps, off: ctx.pw.mcpjson.off });
     const hookName = (e) => e.split('::')[0].replace(/\.js$/, '');
     const { hooksOff, hooksAnswered, agentDeny, agentAllow } = writable(state, {
         routes: ctx.routes, answered: ctx.answered,
@@ -1033,8 +1094,10 @@ function installHooksAndRules(ctx)
         // stack name leaves the list (a plugin-carried locked server, an engine left off, anything at
         // local or user scope). A name the user added is not a stack name and stays.
         mcpNames: trusted,
+        // A-M3: a .mcp.json server kept as the user's own under a retired name keeps its approval too.
         mcpOff: ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS)
-            .filter((n) => !trusted.includes(n)).concat(ctx.retiredMcpsDue),
+            .filter((n) => !trusted.includes(n)).concat(ctx.retiredMcpsDue)
+            .filter((n) => ctx.mcpForeign.get(n) !== 'project'),
         mcpjsonDisable: ctx.pw.mcpjson.disable, mcpjsonEnable: ctx.pw.mcpjson.enable,
         memoryDb: ctx.level.dbPath,
         hooksOff, hooksAnswered,
