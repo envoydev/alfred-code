@@ -1146,7 +1146,7 @@ test('inventory vs use: every layer scores what was used, HOW it was observed, a
     'the shell route attaches no rule, so the guard notice is the only record there is');
   assert.strictEqual(invRow(inventory.rules, 'other-conventions.md').used, 'no');
 
-  // --- plugins: a namespace, an LSP call, and one that ships only hooks and can never score
+  // --- plugins: a namespace, an LSP call, and one that ships only hooks and left no hook row
   assert.deepStrictEqual(invRow(inventory.plugins, 'demo-plugin').how.sort(), ['namespaced skill/command x1', 'preloaded skill x1'],
     "a plugin skill named in a seat's preload list is that plugin's body entering the seat, on its own evidence line");
   assert.deepStrictEqual(invRow(inventory.plugins, 'typescript-lsp').how, ['LSP call x1']);

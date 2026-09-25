@@ -319,7 +319,9 @@ change (see the invariants below).
   a session transcript (+ `subagents/`), with an EFFICIENCY scorecard (one measured number per practice);
   it reads `PowerShell` as a shell route, writes with `--out <file>` (never a `>` redirect), and
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
-  machine row of that same report. `scripts/scan-evidence.js` - deterministic manifest-only
+  machine row of that same report. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
+  `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
+  `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
