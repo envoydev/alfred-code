@@ -513,3 +513,113 @@ test('seed update (full copy route): a stack row already off is left alone, and 
     assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], `a re-run disables nothing:\n${calls.join('\n')}`);
     assert.match(out, /memory@envoydev is enabled at user scope, not this run's - .*claude plugin disable memory@envoydev --scope user/);
 });
+
+// R111 (Task 8a concern b): the stand-down named the 2.x core only. A 1.3.0 plugin-route install
+// updated straight onto the full copy route never gets the 1.x move (it runs on the plugin route), so
+// its 1.x ids - the old core and the old hooks id - stayed enabled at 1.3.0, and a session listed 21
+// of the old core's items beside the copies (the R22c probe). They are DISABLED, never uninstalled: a
+// later switch back to the plugin route finds the old core's row, and with it the key and scope, and
+// runs the 1.x move from there (the switch-back test below).
+const LEGACY_ROWS = (over = {}) => ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory'] // legacy-name
+    .map((n) => ({ id: `${n}@claude-stack`, version: '1.3.0', scope: 'project', enabled: true, ...(over[n] || {}) })); // legacy-name
+
+test('seed update (full copy route): a 1.3.0 plugin-route install switched straight to the copies has its 1.x ids disabled too, under the stack key only (R111)', POSIX_ONLY, () =>
+{
+    const rows = [...LEGACY_ROWS(),
+        { id: 'claude-stack-hooks@a-fork', version: '1.0.0', scope: 'project', enabled: true }, // legacy-name
+        { id: 'memory@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }];
+    const { calls, out, result } = switchRun(rows);
+    const disables = calls.filter((c) => /^plugin disable /.test(c));
+    assert.deepStrictEqual([...disables].sort(), ['claude-stack', 'claude-stack-hooks', 'context7', 'memory', 'serena'] // legacy-name
+        .map((n) => `plugin disable ${n}@claude-stack --scope project`).sort(), `the stack's own rows only:\n${disables.join('\n')}\n${out}`); // legacy-name
+    assert.deepStrictEqual(calls.filter((c) => /^plugin (install|uninstall) (alfred-code|claude-stack)/.test(c)), [], 'disabled, never moved or removed on the copy route'); // legacy-name
+    const lastDisable = calls.map((c) => /^plugin disable /.test(c)).lastIndexOf(true);
+    assert.ok(calls.findIndex((c) => /^mcp add /.test(c)) > lastDisable, `a registration ran before the plugins were off:\n${calls.join('\n')}`);
+    assert.match(out, /plugin disabled \[project\]: claude-stack@claude-stack \(a 1\.x id/); // legacy-name
+    // 1.3.0 declares the old hooks id dependent on the old core, and the CLI refuses to disable a plugin an
+    // enabled one depends on - measured on 2.1.282, the P111 proof: the dependent goes first.
+    assert.ok(disables.indexOf('plugin disable claude-stack-hooks@claude-stack --scope project') < disables.indexOf('plugin disable claude-stack@claude-stack --scope project'), `the old core went before the id that depends on it:\n${disables.join('\n')}`); // legacy-name
+    for (const name of mcp.LOCKED) assert.ok(result.includes(name), `${name} missing from .mcp.json: ${result.join(',')}`);
+});
+
+test('seed update (plugin route): a copy-route install whose 1.x ids were disabled switches back through the 1.x move (R111)', POSIX_ONLY, () =>
+{
+    const rows = LEGACY_ROWS({ 'claude-stack': { enabled: false }, 'claude-stack-hooks': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { enabled: false } }); // legacy-name
+    const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows),
+        env: [COPY_ENV, {}],
+        args: [[], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+    });
+    const moves = calls.filter((c) => /^plugin (install|uninstall|enable) /.test(c));
+    const at = (line) => moves.indexOf(line);
+    assert.ok(at('plugin install alfred-code@claude-stack --scope project -y') === 0, `the move installs the new core first:\n${moves.join('\n')}\n${out}`); // legacy-name
+    assert.ok(at('plugin uninstall claude-stack-hooks@claude-stack --scope project -y') > 0, moves.join('\n')); // legacy-name
+    assert.ok(at('plugin uninstall claude-stack@claude-stack --scope project -y') > at('plugin uninstall claude-stack-hooks@claude-stack --scope project -y'), moves.join('\n')); // legacy-name
+    for (const name of mcp.LOCKED) assert.ok(moves.includes(`plugin enable ${name}@claude-stack --scope project`), `${name} was not switched back on:\n${moves.join('\n')}`); // legacy-name
+});
+
+// The listing's own flag is not the word on whether a row runs: it read a running project-scope core
+// as off (docs/rebrand-evidence.md S22), and a no-op disable exits 1 (S28). The settings file at the
+// row's scope is, when it names the plugin - the same read the playwright engines take.
+test('seed update (full copy route): the settings file, not the listing flag, says which stack rows are on (R111)', POSIX_ONLY, () =>
+{
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: true } });
+    const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows),
+        env: [{}, COPY_ENV],
+        args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), '');
+            const file = path.join(repo, '.claude', 'settings.json');
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            data.enabledPlugins = { ...(data.enabledPlugins || {}), 'alfred-code@envoydev': true, 'serena@envoydev': false };
+            fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+            return null;
+        },
+    });
+    const disables = calls.filter((c) => /^plugin disable /.test(c)).sort();
+    assert.deepStrictEqual(disables, ['alfred-code', 'context7', 'memory'].map((n) => `plugin disable ${n}@envoydev --scope project`), `${disables.join('\n')}\n${out}`);
+});
+
+// R111 (Task 8a concern c): wherever the copy route registers a playwright engine in .mcp.json, that
+// engine's plugin row loaded beside it - the same tools twice. Its row at this scope is UNINSTALLED
+// first, under the stack key only: a disabled engine is the user's own off-state, which the plugin
+// route never switches back without an answer, while an absent one it installs back in its last
+// chosen state (install-plugins.test.js, 'an engine uninstalled by hand comes back').
+const PW_ROWS = [
+    ...STACK_ROWS('envoydev'),
+    { id: 'playwright-chrome@envoydev', version: '1.0.0', scope: 'project', enabled: true },
+    { id: 'playwright-firefox@envoydev', version: '1.0.0', scope: 'user', enabled: true },
+    { id: 'playwright-webkit@envoydev', version: '1.0.0', scope: 'project', enabled: false },
+    { id: 'playwright-chrome@a-fork', version: '1.0.0', scope: 'project', enabled: true },
+];
+const pwProject = (repo) =>
+{
+    fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), '# rule\n');
+    fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'sha: abc\nversion: 2.0.0\nplaywright-browsers: chrome,firefox,webkit\nplaywright-enabled: chrome,firefox\n');
+};
+const MCP_COPY_ENV = { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
+
+for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route', COPY_ENV]])
+{
+    test(`seed update (${route}): a playwright engine registered in .mcp.json has its plugin row at this scope uninstalled first, under the stack key only (R111)`, POSIX_ONLY, () =>
+    {
+        const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+            plugins: JSON.stringify(PW_ROWS), env, args: ['--playwright-browsers', 'chrome,firefox,webkit'], prepare: pwProject,
+            inspect: (repo) => Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}),
+        });
+        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`playwright-${e}`), `playwright-${e} not registered: ${result.join(',')}\n${out}`);
+        const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) playwright-/.test(c));
+        assert.deepStrictEqual(engineMoves, ['plugin uninstall playwright-chrome@envoydev --scope project -y'], `${engineMoves.join('\n')}\n${out}`);
+        const gone = calls.indexOf('plugin uninstall playwright-chrome@envoydev --scope project -y');
+        assert.ok(calls.findIndex((c) => /^mcp add .*playwright-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
+        assert.match(out, /plugin uninstalled \[project\]: playwright-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
+        assert.match(out, /playwright-firefox@envoydev is enabled at user scope, not this run's - .*claude plugin uninstall playwright-firefox@envoydev --scope user/);
+        const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|serena|context7|memory)@/.test(c));
+        assert.strictEqual(stackDisables.length, route === 'full copy route' ? 4 : 0, `${stackDisables.join('\n')}`);
+    });
+}

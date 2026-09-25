@@ -366,6 +366,15 @@ function playwrightDrop({ routes, browsers = [] })
 const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
 const DOWNCONVERT_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
 
+// One text re-spelled: each plugin tool name whose server is in `bare` takes the registered spelling.
+// The rules copy renders through this too, so a rule is compared with the text it will hold (R111).
+function respellToolNames(body, bare = [])
+{
+    const names = new Set(bare);
+    if (!names.size) return body;
+    return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
+}
+
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 {
     const names = new Set(bare);
@@ -384,7 +393,7 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
             let body;
             try { body = fs.readFileSync(full, 'utf8'); }
             catch { continue; }
-            const fixed = body.replace(TOOL_NAME_RE, (full_, server) => (names.has(server) ? `mcp__${server}__` : full_));
+            const fixed = respellToolNames(body, bare);
             if (fixed === body) continue;
             try { fs.writeFileSync(full, fixed); changed += 1; }
             catch { /* a read-only tree says so elsewhere */ }
@@ -423,5 +432,5 @@ module.exports = {
     CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive,
+    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive,
 };

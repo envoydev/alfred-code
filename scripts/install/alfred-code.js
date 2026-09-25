@@ -656,10 +656,14 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const engines = playwrightMoves(ctx, { blind: !listingRead(raw), rows });
-    // R107: on the full copy route the stack's own plugins go off first - installMcps registers the
-    // locked three after this layer, and they must never run twice.
-    if (!plugins.corePluginOn(ctx.routes))
-        plugins.copyRouteStandDown({ rows, market: ctx.market, scope: ctx.cliScope, locked: mcp.LOCKED, cli: ctx.cli, log: ctx.log, note: ctx.note });
+    // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
+    // a plugin. On the full copy route the stack's own rows go off first (the core, its 1.x ids and the
+    // locked three); wherever the copy route registers a playwright engine, that engine's row goes.
+    // Which rows are on is the settings file's word at each scope before the listing's (S22, S28).
+    const isOn = engineOn(ctx);
+    const stand = { rows, market: ctx.market, scope: ctx.cliScope, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note };
+    if (!plugins.corePluginOn(ctx.routes)) plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED });
+    if (!ctx.routes.mcps) plugins.engineStandDown({ ...stand, engines: pwEngines(ctx) });
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -862,11 +866,18 @@ function installHooksAndRules(ctx)
     ctx.library = ctx.library || { skills: {}, agents: {} };
     // The docs-root rule is compared and written with its root already substituted, so an update
     // that changes nothing about it neither rewrites it nor says it did (Task 8a concern 7).
+    // On the copy route the tool-name re-spelling is rendered the same way, for every rule, so a rule
+    // the re-spelling touches is not rewritten and logged on every run (R111).
     const docsRoot = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    const bare = ctx.routes.skills ? [] : bareNames(ctx);
+    const respell = (text) => mcp.respellToolNames(text, bare);
+    const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
+    const render = { [`rules/${DOCS_ROOT_RULE}`]: (text) => respell(text.split('__DOCS_ROOT__').join(docsRoot)) };
+    if (bare.length) for (const name of ruleNames) if (name !== DOCS_ROOT_RULE) render[`rules/${name}`] = respell;
     const rulesLibrary = library.copyLibrary({
         sourceDir: ctx.source.dir, rulesDir: path.join(ctx.claudeDir, 'rules'),
-        rules: ctx.lists.rules.map((f) => f.replace(/\.md$/, '')),
-        render: { [`rules/${DOCS_ROOT_RULE}`]: (text) => text.split('__DOCS_ROOT__').join(docsRoot) },
+        rules: ruleNames,
+        render,
         stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
     });
     ctx.library.rules = rulesLibrary.rules;
@@ -965,12 +976,16 @@ function importMemory(ctx)
     });
 }
 
+// The servers registered under their bare names, as the tool names spell them - every engine is
+// `playwright`. Empty on the plugin route.
+const bareNames = (ctx) => mcp.bareNamedMcps({ routes: ctx.routes, mcps: ctx.lists.mcps })
+    .map((n) => n.replace(/^playwright-.*/, 'playwright'));
+
 // COPY ROUTE ONLY: a registered server answers `mcp__<server>__<tool>`, never the plugin spelling
 // the shipped files carry.
 function downconvert(ctx)
 {
-    const bare = mcp.bareNamedMcps({ routes: ctx.routes, mcps: ctx.lists.mcps })
-        .map((n) => n.replace(/^playwright-.*/, 'playwright'));
+    const bare = bareNames(ctx);
     if (!bare.length) return;
     if (ctx.routes.skills)
     {

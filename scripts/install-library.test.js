@@ -264,3 +264,28 @@ test('baseline-docs-root is logged as rewritten only when its content changed', 
     assert.ok(said(outs[2]), 'a new docs root is a rewrite, and says so');
     assert.match(steps[2], /This install's root: `docs-moved`/);
 });
+
+// R111 (Task 8a concern a): on the copy route the tool-name re-spelling rewrote each rule carrying a
+// plugin tool name AFTER copyLibrary had compared it with its source - so the next run found it
+// different, copied the plugin spelling back and re-spelled it again: three rules logged as rewritten
+// on every run with nothing changed. The re-spelling is part of the rendered text now, like the docs
+// root, so only a real change is a write and a log line.
+test('copy route: a rule is logged as rewritten only when its content changed - the tool-name re-spelling alone is none (R111)', POSIX_ONLY, () =>
+{
+    const env = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
+    const rule = (repo) => path.join(repo, '.claude', 'rules', 'baseline-navigation.md');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule baseline-navigation\nrule baseline-quality-gates\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n', {
+        env,
+        each: (repo, i) => { const text = fs.readFileSync(rule(repo), 'utf8'); if (i === 1) fs.appendFileSync(rule(repo), '\na hand edit\n'); return text; },
+    });
+    const logged = (out) => out.split('\n').filter((l) => /rule \[library\]: /.test(l)).map((l) => l.replace(/^.*rule \[library\]: /, ''));
+    // The bare spelling is BUILT, never typed: lint check 54 bans the literal under scripts/.
+    const bareTool = (server, tool) => `mcp__${server}__${tool}`;
+    assert.ok(steps[0].includes(bareTool('serena', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
+    assert.doesNotMatch(steps[0], /mcp__plugin_serena_serena__/);
+    assert.deepStrictEqual(logged(outs[1]), [], 'an update that changes no rule logs none as rewritten');
+    assert.strictEqual(steps[1], steps[0], 'and leaves the re-spelled rule as it was');
+    assert.deepStrictEqual(logged(outs[2]), ['baseline-navigation'], 'a hand-edited rule is rewritten, and says so - alone');
+    assert.match(outs[2], /overwriting a hand-edited copy: rule baseline-navigation/);
+    assert.strictEqual(steps[2], steps[0], 'restored to the re-spelled text');
+});

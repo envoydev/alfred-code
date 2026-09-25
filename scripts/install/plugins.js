@@ -354,33 +354,76 @@ function retiredSpec(name, market, retiredRows = [])
     return `${name}@${(row && row.marketplace) || market}`;
 }
 
+// The rows of `name@<market>` for each name, at any scope, that are ON: the settings file's word at the
+// row's scope when it names the plugin, else the listing's flag - which read a running project-scope
+// core as off (docs/rebrand-evidence.md S22), while a switch the file shows made already exits 1 (S28).
+function rowsOn({ rows = [], names = [], market, isOn = () => undefined })
+{
+    const on = (r) => { const said = isOn(`${r.name}@${r.marketplace}`, r.scope); return said === undefined ? Boolean(r.enabled) : said; };
+    return names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market && on(r)));
+}
+
 // THE FULL COPY ROUTE runs beside none of the stack's own plugins (R107): the locked servers come back
 // to .mcp.json there, and a core or locked-server plugin left enabled would run each server twice and
 // list every core skill beside its copy. A switch from a plugin route disables them BEFORE anything is
-// registered - the core and the locked three, only as `name@<stack key>` (a same-named plugin of
-// another marketplace is not ours) and only at the run's scope (a row at another scope serves other
-// projects: named with its command, never disabled). A row already off is left alone, so a re-run
-// calls nothing.
-function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, locked = [], cli, log = () => {}, note = () => {} })
+// registered - the core, its two 1.x ids (R111: a 1.3.0 install switched straight across never took
+// the 1.x move) and the locked three, only as `name@<stack key>` (a same-named plugin of another
+// marketplace is not ours) and only at the run's scope (a row at another scope serves other projects:
+// named with its command, never disabled). A row already off is left alone, so a re-run calls nothing.
+// The 1.x ids are DISABLED, not uninstalled: a later switch back to the plugin route reads the old
+// core's row - its key and scope - and moves the install across from there (migrateLegacy). The old
+// hooks id goes BEFORE the old core: 1.3.0 declares it dependent on the core, and the CLI refuses to
+// disable a plugin an enabled one depends on (measured on 2.1.282) - the order migrateLegacy removes them.
+function copyRouteStandDown({ rows = [], market = BRAND.marketplace, scope, locked = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const off = [];
-    for (const name of [BRAND.core, ...locked])
-        for (const row of rows.filter((r) => r.name === name && r.marketplace === market && r.enabled))
+    const legacy = [LEGACY.hooks, LEGACY.core];
+    for (const row of rowsOn({ rows, names: [...legacy, BRAND.core, ...locked], market, isOn }))
+    {
+        const spec = `${row.name}@${market}`;
+        if (row.scope !== scope)
         {
-            const spec = `${name}@${market}`;
-            if (row.scope !== scope)
-            {
-                log(`  ${spec} is enabled at ${row.scope} scope, not this run's - the full copy route runs beside it; if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`);
-                continue;
-            }
-            if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true, expect: 'reported' }))
-            {
-                log(`plugin disabled [${scope}]: ${spec} (the full copy route carries it as copies)`);
-                off.push(spec);
-            }
-            else note(`plugin disable failed: ${spec} - it runs beside the full copy route; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
+            log(`  ${spec} is enabled at ${row.scope} scope, not this run's - the full copy route runs beside it; if nothing else needs it: claude plugin disable ${spec} --scope ${row.scope}`);
+            continue;
         }
+        const why = legacy.includes(row.name)
+            ? 'a 1.x id - the full copy route carries it as copies; a switch back to the plugin route moves it across'
+            : 'the full copy route carries it as copies';
+        if (cli(['plugin', 'disable', spec, '--scope', scope], { quiet: true, expect: 'reported' }))
+        {
+            log(`plugin disabled [${scope}]: ${spec} (${why})`);
+            off.push(spec);
+        }
+        else note(`plugin disable failed: ${spec} - it runs beside the full copy route; disable it by hand: claude plugin disable ${spec} --scope ${scope}`);
+    }
     return off;
+}
+
+// THE PLAYWRIGHT ENGINES the copy route registers in .mcp.json load as nothing else (R111): each one's
+// `playwright-<engine>@<stack key>` row that is on at the run's scope is UNINSTALLED before the
+// registration. Not disabled - a disabled engine is the user's own off-state, which the plugin route
+// never switches back without an answer, while an absent one it installs back as last chosen (the
+// stamp's two playwright lines), so a later switch back keeps the user's choice. A row at another scope
+// serves other projects: named with its command. One already off does not load, and stays.
+function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], isOn, cli, log = () => {}, note = () => {} })
+{
+    const gone = [];
+    for (const row of rowsOn({ rows, names: engines.map((e) => `playwright-${e}`), market, isOn }))
+    {
+        const spec = `${row.name}@${market}`;
+        if (row.scope !== scope)
+        {
+            log(`  ${spec} is enabled at ${row.scope} scope, not this run's - it loads beside its .mcp.json registration; if nothing else needs it: claude plugin uninstall ${spec} --scope ${row.scope}`);
+            continue;
+        }
+        if (cli(['plugin', 'uninstall', spec, '--scope', scope, '-y'], { quiet: true, expect: 'reported' }))
+        {
+            log(`plugin uninstalled [${scope}]: ${spec} (the copy route registers it in .mcp.json; the plugin route installs it back as last chosen)`);
+            gone.push(spec);
+        }
+        else note(`plugin uninstall failed: ${spec} - it loads beside its .mcp.json registration; remove it by hand: claude plugin uninstall ${spec} --scope ${scope}`);
+    }
+    return gone;
 }
 
 // UPDATE: uninstall the retired plugins this project carries AT THIS RUN'S SCOPE, each by its full
@@ -558,5 +601,5 @@ module.exports = {
     pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown,
+    copyRouteStandDown, engineStandDown,
 };
