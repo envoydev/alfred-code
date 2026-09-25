@@ -15,6 +15,7 @@ changed since the run started.
 | `arms/<arm>.json` | an arm: its pin, setup commands, onboarding prompts and its own env - never a session field |
 | `arms/harness.settings.json` | the sandbox layer every session runs inside |
 | `arms/ecc-vocabulary.txt` | ECC's skill, agent and command names at the commit `arms/ecc.json` pins, for the prompt lint |
+| `arms/ours-vocabulary.txt` | our names at the release `arms/ours.json` pins, for the prompt lint - this tree may carry an older release |
 | `tasks/<id>/` | `prompt.md`, `meta.json`, `hidden/` (the acceptance tests and `grade.json`, never in a session's clone), `reference.patch` (a correct solution, for the proof only) and any setup patches `meta.setup` names |
 | `drive.js`, `grade.js`, `aggregate.js` | run, grade, report |
 | `lint-prompts.js` | refuses a prompt naming either stack's machinery; part of `npm test` |
@@ -74,8 +75,92 @@ which holds its raw account dir - is deleted as soon as the cell ends.
 - **D8, workspace trust.** A subagent hook fires in `ours` under print mode. If it stays silent,
   write Claude Code's trust entry into every cell, for every arm alike.
 - Every arm's machinery loaded: ten transcripts read end to end.
-- The setup routes: `ours`' selection matches a real `/claude-stack:init` walk on the fixture, and
-  ECC's hook-profile variables reach its hooks.
+- The setup routes: `ours`' selection matches a real `/alfred-code:setup` walk on the fixture; its
+  onboarding, `/alfred-code:init`, runs the captures it carries in print mode, where its asks cannot
+  be answered (its onboarding transcript, and `architecture/ARCHITECTURE.md` under the template's
+  docs root); ECC's hook options, stored as `pluginConfigs` by `--config`, reach its hooks.
+- The third-party plugins each template pulls at build time (`claude-hud`, the two LSP plugins) are
+  not covered by the arm's pin: record `claude plugin list --json` per template beside its READY file.
 - A copied account dir resolves: each arm's plugins load from the cell's own config.
 - Package restore time per cell, with a HOME of its own.
 - `--mode flow` stays refused until its scripted approver is built from what these transcripts show.
+
+## What runs free, and what runs billed
+
+Free - no model, no credential. Run before any billed phase; the prove step needs Docker.
+
+```
+node --test bench/*.test.js bench/lib/*.test.js bench/fixture/*.test.js
+node bench/lint-prompts.js
+node bench/prove-tasks.js --tasks all
+```
+
+Every billed phase needs, in the shell that runs `drive.js`:
+
+- **A credential, by name:** `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, exported by the user in
+  their own terminal (never pasted into a session). `drive.js` refuses without one; `grade.js`,
+  `aggregate.js` and `prove-tasks.js` never read it.
+- **Docker running:** `open -a Docker` on macOS, then wait until `docker info` exits 0. Every task's
+  suite runs the fixture's integration tests on Testcontainers, so `grade.js` and `prove-tasks.js`
+  fail without it. Sessions do not need it.
+- **One Claude Code version for the whole phase:** `claude --version` at the start; a resume refuses
+  when it changed.
+- A billed run that stops part-way is finished with `node bench/drive.js --run <id> --resume`. Grade
+  again until `results/<id>/regrade.json` is empty: each pass re-grades the infrastructure cells.
+
+The task ids: headline 12 - `api-01-loan-renewal`, `api-02-last-copy-race`, `api-03-member-notices`,
+`api-04-member-self-lending`, `web-01-loan-date-rules`, `web-02-members-store`,
+`web-03-check-in-guard`, `data-01-item-retired-at`, `data-02-loans-cursor-feed`,
+`devops-01-worker-image`, `cross-01-overdue-contacts`, `cross-02-late-return-event`; `guard` 3 -
+`group:guard`; `home-advantage` 5 - the `home-*` ids.
+
+### B3 task 11 - the billed solvability proof
+
+`bare` on Opus at high effort, every task once, graded. Plan estimate: about $60-90. Duration, from
+the task limits (the plan gives none): 20 cells of 30-40 minutes at parallel 3 is at most about 4.5
+hours of sessions, then serial grading. One cell first, to read its transcript for the D4 sandbox
+check before paying for twenty.
+
+```
+node bench/drive.js --run b3-probe --model claude-opus-5-5 --effort high --arms bare --tasks api-01-loan-renewal --reps 1
+node bench/grade.js b3-probe
+node bench/drive.js --run b3-proof --model claude-opus-5-5 --effort high --arms bare --tasks all --reps 1 --parallel 3
+node bench/grade.js b3-proof
+```
+
+A task no correct Opus run solves inside its limit is rewritten, or its limit revisited, before B4 -
+and either change re-hashes `PREREGISTRATION.md`.
+
+### B4 - the pilot
+
+Needs the `v2.0.0` tag in this clone (`git tag -l v2.0.0`), because `ours` clones it: until the
+release is tagged, its template fails at its first step. 3 arms x 6 tasks (one per group) x 2 reps =
+36 cells plus two onboardings. Plan estimate: about $110-150 and 5-6 hours at parallel 3.
+
+```
+node bench/drive.js --run b4-pilot --arms ours,ecc,bare --tasks api-01-loan-renewal,web-01-loan-date-rules,data-01-item-retired-at,devops-01-worker-image,cross-01-overdue-contacts,guard-01-member-reinstate --reps 2 --parallel 3
+node bench/grade.js b4-pilot
+node bench/aggregate.js b4-pilot
+```
+
+Then the checks in 'What B4 must verify' above, ten transcripts read end to end. A harness fix after
+this point is fine; a change to a task or an arm re-hashes the pre-registration.
+
+### B5 - the measured run
+
+After B4 is closed and 2.0.0 is released. The pre-registration hash is recorded at the run's start and
+`aggregate.js` refuses a copy changed since.
+
+```
+node bench/drive.js --run b5 --arms ours,ecc,bare,baseline --tasks all --reps 3 --parallel 3
+node bench/drive.js --run b5-opus --model claude-opus-5-5 --effort high --arms bare --tasks api-01-loan-renewal,api-02-last-copy-race,api-03-member-notices,api-04-member-self-lending,web-01-loan-date-rules,web-02-members-store,web-03-check-in-guard,data-01-item-retired-at,data-02-loans-cursor-feed,devops-01-worker-image,cross-01-overdue-contacts,cross-02-late-return-event --reps 2 --parallel 3
+node bench/grade.js b5
+node bench/grade.js b5-opus
+node bench/aggregate.js b5 --reference b5-opus
+```
+
+Plan estimate, tail included: $1,370 with `baseline` (316 cells), $1,050 without it (243 cells, drop
+`baseline` from `--arms`), 30-40 hours of wall time at parallel 3 with serial grading. Those totals
+include the `flow` block (48 cells with `baseline`, 36 without), which stays refused until B4 builds
+its scripted approver (D11) - until then the runnable part is that much smaller. The cheaper cut,
+about $600: `--arms ours,ecc,bare` over the twelve headline ids plus the three `guard-*` ids.
