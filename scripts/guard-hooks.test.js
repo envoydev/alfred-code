@@ -667,6 +667,101 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
   assert.equal(rm('git checkout -- .').status, 2, 'a receipt older than 8h reads as absent');
 });
 
+test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear and a reflog expire lose work too', () => {
+  // Five verbs with no undo walked past the four the gate knew (reproduced on a dirty tree): a forced
+  // branch change overwrites the tree, a dropped stash and an expired reflog are the recovery points.
+  // The same arithmetic: gated on what the call would actually destroy, answered by DISCARD-ALLOW.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('branch', 'other');
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+
+  for (const c of ['git checkout -f other', 'git switch -f other', 'git switch --discard-changes other', 'git stash clear', 'git stash drop'])
+    assert.equal(rm(c).status, 0, `nothing to lose yet: ${c}`);
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
+  for (const c of ['git checkout -f other', 'git checkout --force', 'git checkout -qf other', 'git switch -f other',
+    'git switch --force other', 'git switch --discard-changes other', 'git -C . checkout -f other'])
+    assert.equal(rm(c).status, 2, `a dirty tree is overwritten: ${c}`);
+  assert.match(rm('git switch -f other').stderr, /DISCARD-ALLOW/, 'the denial names the receipt');
+  for (const c of ['git switch -c fresh', 'git checkout other', 'git switch other', 'git stash list', 'git stash push -m keep'])
+    assert.equal(rm(c).status, 0, `keeps the work: ${c}`);
+
+  git('stash', 'push', '-qm', 'keep');                            // the tree is clean, one stash holds the work
+  for (const c of ['git stash clear', 'git stash drop', 'git stash drop stash@{0}', 'git stash drop 0', "git stash drop 'stash@{0}'"])
+    assert.equal(rm(c).status, 2, `a stash with work in it: ${c}`);
+  assert.equal(rm('git stash drop stash@{4}').status, 0, 'an entry that does not exist loses nothing');
+  assert.equal(rm('git stash pop').status, 0, 'pop drops only what it applied');
+  assert.match(rm('git stash clear').stderr, /stash@\{0\}/, 'the denial lists the entries it would destroy');
+  assert.equal(rm('echo "then git stash clear"').status, 0, 'a quoted mention is prose');
+
+  assert.equal(rm('git reflog expire --expire=now --all').status, 2, 'expiring every reflog entry now removes the recovery points');
+  assert.equal(rm('git reflog expire --all').status, 0, 'the default 90-day window prunes nothing in a fresh repo');
+  assert.equal(rm('git reflog show').status, 0, 'reading the reflog loses nothing');
+
+  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
+  assert.equal(rm('git stash drop').status, 0, 'the receipt names the entry the user chose to drop');
+  assert.equal(rm('git reflog expire --expire=now --all').status, 2, 'and covers nothing else');
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
+  assert.equal(rm('git reflog expire --expire=now --all').status, 0, 'the * line does');
+});
+
+test('guard-catastrophic-rm: a SQL DROP or an EF database drop is counted, never denied', () => {
+  // Count first (the user's direction): a probe row per call, so the block rate a gate would have is
+  // measured before one is built.
+  const dir = cleanRepo();
+  const sid = 'probe-sql';
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { session_id: sid, tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  const ledger = path.join(dir, '.claude', 'docs', 'hook-blocks', `${sid}.jsonl`);
+  const rows = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+
+  assert.equal(rm('psql -c "DROP TABLE users"').status, 0, 'a probe never denies');
+  assert.equal(rm('dotnet ef database drop --force').status, 0);
+  assert.equal(rm('sqlite3 app.db "drop database x"').status, 0);
+  assert.equal(rm('ls -la').status, 0);
+  const got = rows();
+  assert.equal(got.length, 3, 'one row per drop-shaped call, none for the rest');
+  for (const r of got) {
+    assert.equal(r.mode, 'probe');
+    assert.match(r.reason, /^probe: /);
+  }
+  assert.deepStrictEqual(got.map((r) => r.kind), ['sql-drop', 'ef-database-drop', 'sql-drop']);
+  assert.equal(got[0].detail.client, 'psql', 'the client that ran it is named, so prose can be told from execution');
+});
+
+test('guard-catastrophic-rm: the pathspec is judged where the command runs - its cwd, a cd, a -C', () => {
+  // Judged from the project root, a dirty file one folder down read as absent, so the discard passed.
+  const dir = cleanRepo();
+  const sub = path.join(dir, 'sub');
+  fs.mkdirSync(sub);
+  fs.writeFileSync(path.join(sub, 'a.txt'), 'one\n');
+  spawnSync('git', ['-C', dir, 'add', '-A'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', dir, 'commit', '-qm', 'sub'], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(sub, 'a.txt'), 'changed\n');
+  const rm = (command, cwd) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', cwd, tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+
+  assert.equal(rm('git checkout -- a.txt', sub), 2, 'the payload cwd is where git resolves the path');
+  assert.equal(rm('git -C sub restore a.txt', dir), 2, 'a -C moves it');
+  assert.equal(rm('cd sub && git checkout -- a.txt', dir), 2, 'a cd before it moves it');
+  assert.equal(rm('git checkout -- seed.txt', dir), 0, 'a clean path at the root still passes');
+});
+
+test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', () => {
+  for (const c of ['Remove-Item -Recurse -Force ~', 'Remove-Item -Recurse -Force $HOME', 'Remove-Item -Recurse -Force C:\\',
+    'rm -r -fo $env:USERPROFILE', 'ri -Recurse C:/', 'Remove-Item C:\\* -Recurse', 'del -Recurse -Force .'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['rm -rf C:/', 'rm -rf /c/', 'rm -rf /c', 'rm -rf /cygdrive/c', 'rm -rf /mnt/c/'])
+    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['Remove-Item -Recurse -Force ./dist', 'Remove-Item -Force *', 'rm -Force *.log', 'Remove-Item -Recurse ./logs -Include *',
+    'Remove-Item -Recurse -Force C:\\build\\out'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+  assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf \\*'), 0, 'a backslash-escaped star is a file named *, not a glob');
+});
+
 test('guard-read-whole-file: the extension is judged against the PATH, not the whole line', () => {
   // Every one of these was replayed as a false positive: GATED_EXT_ANY was tested against the WHOLE
   // compound command at three sites, and the sweep test ran above the per-segment loop.
@@ -1129,7 +1224,7 @@ test('block telemetry never interferes with the gate', () => {
   });
   const blocked = run('rm -rf /');
   assert.equal(blocked.status, 2, 'still blocks when the ledger cannot be written');
-  assert.match(blocked.stderr, /Refusing/, 'and the model still gets the reason');
+  assert.match(blocked.stderr, /^Blocked: a recursive rm/, 'and the model still gets the reason, under the word the analyzer counts');
   assert.equal(run('npm test').status, 0, 'and an ordinary command still passes');
 });
 

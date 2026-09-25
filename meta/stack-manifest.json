@@ -705,7 +705,7 @@
       "file": "guard-catastrophic-rm.js",
       "matcher": "Bash|PowerShell",
       "event": "",
-      "note": "block recursive rm of /, ~, $HOME, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once"
+      "note": "block recursive rm (Remove-Item -Recurse too) of /, ~, $HOME, a Windows drive, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work"
     },
     {
       "file": "guard-read-whole-file.js",

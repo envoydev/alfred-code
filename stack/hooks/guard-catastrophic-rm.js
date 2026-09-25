@@ -21,6 +21,9 @@
 // /var`) - the multi-arg system wipe each dir dodges individually.
 // An ordinary `rm -rf bin obj node_modules .playwright` is left alone - blocking it
 // would be a false positive. Non-recursive rm, and rm of any single specific path, pass.
+// The PowerShell spellings count the same (Remove-Item / ri / del / erase / rd / rmdir with -Recurse),
+// and so do the Windows roots: a drive (C:\, C:/), its Git Bash / Cygwin / WSL mounts (/c, /cygdrive/c,
+// /mnt/c) and $env:USERPROFILE / $env:HOME.
 // Out of scope (same honesty as the force-push guard): indirection that deletes
 // without a literal recursive `rm` of one of these targets - `find ... -delete`,
 // `xargs rm`, `eval`, a subshell, or rm via a wrapper script - is NOT caught here;
@@ -60,12 +63,21 @@ const stripHeredocs = (c) => String(c).replace(
 // inspected on its own. Best-effort: subshell/expansion forms fall through to allow.
 const SEPARATORS = /[;|&]{1,2}|\n/;
 
-// A recursive flag: --recursive, or a combined short cluster containing r/R
-// (-r, -R, -rf, -fr, -Rf, -rfv). --force alone never recurses, so it does not count.
+// A recursive flag: --recursive, a short cluster of rm's own letters containing r/R (-r, -R, -rf,
+// -fr, -Rf, -rfv), or PowerShell's -Recurse and its prefixes. --force alone never recurses - and
+// PowerShell's -Force is one word, not a cluster: read as letters it carried an r, so `rm -Force *`
+// was judged a recursive wipe.
 function hasRecursive(args)
 {
-    return args.some(t => t === '--recursive' || (/^-[A-Za-z]+$/.test(t) && /[rR]/.test(t)));
+    return args.some(t => t === '--recursive' || (/^-[fiIrRdv]+$/.test(t) && /[rR]/.test(t))
+        || /^-rec(?:u(?:r(?:se?)?)?)?(?::\$true)?$/i.test(t));
 }
+
+// The command words that delete: rm, and the PowerShell cmdlet with its aliases.
+const REMOVE_VERBS = new Set(['rm', 'remove-item', 'ri', 'del', 'erase', 'rd', 'rmdir']);
+// PowerShell parameters whose VALUE is a pattern or a name, never a target: `-Include *` narrows the
+// delete to what matches under the path, so the `*` is not the cwd.
+const VALUE_PARAMS = /^-(?:filter|include|exclude|credential|stream)$/i;
 
 // Strip one layer of surrounding quotes.
 function unquote(tok)
@@ -88,6 +100,9 @@ function unquote(tok)
 function cleanTarget(tok)
 {
     let t = unquote(tok).replace(/['"]/g, '');
+    // A Windows spelling uses backslashes: fold them only where the token is plainly a Windows path
+    // (a drive, $env:, or ~\ / $HOME\) - in bash `\*` escapes the glob and names a file called '*'.
+    if (/^(?:[A-Za-z]:|\$\{?env:|~\\|\$\{?HOME\}?\\)/i.test(t)) t = t.replace(/\\/g, '/');
     const absolute = t.startsWith('/');
     const trailingGlob = /\/\*$/.test(t);
     // Collapse '..' against earlier segments; '/home/..' -> '', './a/..' -> '.', 'a/../..' -> '..'.
@@ -121,6 +136,9 @@ function isCatastrophic(tok)
     const cleaned = (cleanTarget(tok) || '/').split('/').filter(s => s !== '.').join('/');
     const t = cleaned === '' ? '.' : cleaned;
 
+    if (/^[A-Za-z]:(?:\/\*)?$/.test(t)) return true;                             // C:\  C:/  C:\*
+    if (/^\/(?:cygdrive\/|mnt\/)?[A-Za-z](?:\/\*)?$/.test(t)) return true;            // /c  /cygdrive/c  /mnt/c
+    if (/^\$\{?env:(?:userprofile|home|homedrive|systemdrive|systemroot|windir)\}?(?:\/\*)?$/i.test(t)) return true;
     return t === '/' || t === '/*' || t === '/.'
         || t === '~' || t === '~/*'
         || t === '$HOME' || t === '${HOME}' || t === '$HOME/*' || t === '${HOME}/*'
@@ -152,7 +170,7 @@ function isCatastrophicRm(command)
         }
 
         const cmd = tokens[i];
-        if (!cmd || !(cmd === 'rm' || cmd.endsWith('/rm')))
+        if (!cmd || !(REMOVE_VERBS.has(cmd.toLowerCase()) || cmd.endsWith('/rm')))
         {
             continue;
         }
@@ -163,7 +181,7 @@ function isCatastrophicRm(command)
             continue;
         }
 
-        const paths = args.filter(a => !a.startsWith('-'));
+        const paths = args.filter((a, k) => !a.startsWith('-') && !(k > 0 && VALUE_PARAMS.test(args[k - 1])));
         if (paths.some(isCatastrophic) || paths.filter(isTopLevelDir).length >= 2)
         {
             return true;
@@ -234,6 +252,38 @@ function main()
 
     const command = stripHeredocs(payload?.tool_input?.command ?? '');
 
+    // COUNT FIRST, never deny: a SQL `DROP` and `dotnet ef database drop` are the database's rm -rf,
+    // but whether a gate would earn its keep is a rate nobody has measured - so each call writes one
+    // log-only `mode: 'probe'` row and passes. The SQL usually sits in a quoted argument or a heredoc,
+    // so the raw text is scanned; the client that ran it is recorded, so prose can be told from
+    // execution when the rows are read.
+    (() => {
+        if (unsetRepo) return;
+        try
+        {
+            const raw = String(payload?.tool_input?.command ?? '');
+            const bare = raw.replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x')).replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
+            const ef = /(?:^|[\s;&|(])dotnet\s+ef\s+database\s+drop\b/.exec(bare);
+            const sql = ef ? null : /\bdrop\s+(?:table|database|schema|view|index|user|role)\b[^;\n'"]{0,80}/i.exec(raw);
+            if (!ef && !sql) return;
+            const client = (/(?:^|[\s;&|(/])(psql|mysql|mariadb|sqlite3|sqlcmd|sqlplus|mongosh|duckdb|clickhouse(?:-client)?|cockroach|snowsql|bq|dotnet)(?=\s|$)/.exec(bare) || [])[1] || '';
+            const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+            const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+                ts: new Date().toISOString(),
+                hook: path.basename(__filename),
+                event: payload.hook_event_name || payload.tool_name || '',
+                tool: payload.tool_name || '',
+                mode: 'probe',
+                kind: ef ? 'ef-database-drop' : 'sql-drop',
+                reason: `probe: ${ef ? 'dotnet ef database drop' : `a SQL ${sql[0].split(/\s+/).slice(0, 2).join(' ').toUpperCase()}`}${client && !ef ? ` through ${client}` : ''} - logged, not denied`,
+                detail: { client, matched: (ef ? ef[0] : sql[0]).trim().slice(0, 120) },
+            }) + '\n');
+        }
+        catch { /* a probe never changes a verdict and never throws */ }
+    })();
+
     // Git destroys uncommitted work with no undo, and this guard had ZERO git coverage: 225 lines
     // with no occurrence of `git`, so a destructive `git checkout --` replayed exit 0 against every
     // guard in the stack. These four verbs are the same class as a recursive rm - the working tree
@@ -241,7 +291,13 @@ function main()
     // Gated on ACTUAL loss: a clean tree has nothing to destroy, so the command passes. That is the
     // same arithmetic the commit gate's trivial-diff exemption uses, and it keeps the guard silent
     // in the overwhelmingly common case of resetting an already-clean checkout.
-    const destructiveGit = /(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(?:checkout\s+(?:--\s|\.(?:\s|$))|restore\s+(?!(?:--staged|--source)\b)|reset\s+--hard\b|clean\s+-\S*[fx])/;
+    // The same class, one step further: a FORCED checkout or switch overwrites the tree on its way to
+    // another branch, and `stash drop` / `stash clear` / `reflog expire` destroy the recovery points
+    // themselves - a dropped stash and an expired reflog entry are what every other undo leans on.
+    // Each is judged by what it would actually destroy: the dirty paths, the stash entries it names,
+    // the reflog entries a dry run of the same expire would prune.
+    const FORCED = String.raw`\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)(?=\s|$)`;
+    const destructiveGit = new RegExp(String.raw`(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(?:checkout\s+(?:--\s|\.(?:\s|$))|restore\s+(?!(?:--staged|--source)\b)|reset\s+--hard\b|clean\s+-\S*[fx]|checkout\b[^\n;&|]*${FORCED}|switch\b[^\n;&|]*(?:${FORCED}|\s--discard-changes(?=\s|$))|stash\s+(?:clear|drop)\b|reflog\s+expire\b)`);
     // A QUOTED span is data, exactly as it is in the commit guard: an echo, a plan sentence or a
     // grep pattern that merely CONTAINS `git reset --hard` invokes nothing, and denying it teaches
     // the obfuscation that then defeats this gate on a real one. The fill is a NON-space so the
@@ -249,57 +305,89 @@ function main()
     const gitScan = command
         .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
         .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
-    if (destructiveGit.test(gitScan))
+    const hit = gitScan.match(destructiveGit);
+    if (hit)
     {
+        const { execFileSync } = require('child_process');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-
-        // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty',
-        // which made its own prescribed escape - 'name the ONE file to revert instead of the whole
-        // tree' - unreachable: `git restore .gitignore` was denied with all seven dirty files
-        // listed, six of which the command never touched (measured live, twice in one session).
-        // `reset --hard` and `checkout .` / `checkout --` with no path are whole-tree by nature and
-        // keep the old arithmetic; anything that names paths is judged on THOSE paths only.
-        const pathspec = (() => {
-            const m = command.match(/git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(checkout|restore|reset|clean)\b([^\n;&|]*)/);
-            if (!m) return [];
-            const verb = m[1];
-            if (verb === 'reset') return [];                       // takes a commit, never a pathspec
-            let rest = m[2] || '';
-            rest = rest.replace(/^\s*--\s/, ' ');                  // the `--` separator itself
-            const args = (rest.match(/"[^"]*"|'[^']*'|\S+/g) || [])
-                .map((a) => a.replace(/^["']|["']$/g, ''))
-                .filter((a) => a && !a.startsWith('-') && a !== '--');
-            // `.` is the whole tree spelled as a path, and an unexpanded variable is unknowable -
-            // both fall back to the whole-tree check rather than a guess.
-            if (!args.length || args.some((a) => a === '.' || /\$\{?[A-Za-z_]/.test(a))) return [];
-            return args;
-        })();
-
-        let dirty = '';
-        try
+        // WHERE git runs decides what a pathspec names: the call's own cwd, then a `cd` before it in the
+        // same command, then its `-C`. Judged from the project root, a dirty file one folder down read
+        // as absent and its discard passed. An unexpanded variable is not guessed - the anchor stays.
+        const at = hit.index;
+        const call = command.slice(at).match(/git((?:\s+-[cC]\s*\S+|\s+--\S+)*)\s+(checkout|restore|reset|clean|switch|stash|reflog)\b([^\n;&|]*)/);
+        let gitCwd = path.resolve(payload.cwd || root);
+        for (const c of gitScan.slice(0, at).matchAll(/(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?(\S+)/gi))
         {
-            // argv, never a shell string: the pathspec used to be single-quoted into an execSync
-            // line, and on win32 that line runs through cmd.exe, where a single quote is a literal
-            // character - git was asked about a file named 'seed.txt' with the quotes, found it
-            // clean, and `git restore <dirty file>` passed on every Windows install (measured: the
-            // release CI's windows job, both pathspec tests, 0 where 2 was expected).
-            const { execFileSync } = require('child_process');
-            // stdio: git's own stderr is CAPTURED, not inherited. Left inherited, a non-repo path
-            // printed `fatal: not a git repository` to the user on a call this gate then PASSED -
-            // noise that reads as a hook failure on a clean pass.
-            dirty = execFileSync('git', ['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])],
-                { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+            const dest = command.substr(c.index + c[0].length - c[1].length, c[1].length).replace(/^["']|["']$/g, '');
+            if (/\$/.test(dest)) continue;
+            gitCwd = path.resolve(gitCwd, dest.replace(/^~(?=$|[\\/])/, require('os').homedir()));
         }
-        catch { dirty = ''; } // not a git repo / git unavailable - never block on our own failure
+        for (const c of ((call && call[1]) || '').matchAll(/-C\s*("[^"]+"|'[^']+'|\S+)/g))
+        {
+            const dest = c[1].replace(/^["']|["']$/g, '');
+            if (!/\$/.test(dest)) gitCwd = path.resolve(gitCwd, dest);
+        }
+        const git = (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+        const verb = call ? call[2] : '';
+        const args = call ? ((call[3] || '').match(/"[^"]*"|'[^']*'|\S+/g) || []).map((a) => a.replace(/^["']|["']$/g, '')) : [];
+
+        // What the call destroys, as the rows the denial lists and the targets a receipt must name.
+        // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
+        const loss = (() => {
+            try
+            {
+                if (verb === 'stash')
+                {
+                    const entries = git(['stash', 'list']).split('\n').filter(Boolean);
+                    if (args[0] === 'clear') return { kind: 'stash', rows: entries, targets: entries.map((e) => e.split(':')[0]) };
+                    const named = args.slice(1).find((a) => !a.startsWith('-')) || '0';
+                    const ref = /^\d+$/.test(named) ? `stash@{${named}}` : named;
+                    return { kind: 'stash', rows: entries.filter((e) => e.startsWith(`${ref}:`)), targets: [ref] };
+                }
+                if (verb === 'reflog')
+                {
+                    const rest = args.slice(1).filter((a) => a !== '-n' && a !== '--dry-run' && a !== '--verbose');
+                    const out = git(['reflog', 'expire', '--dry-run', '--verbose', ...rest]);
+                    return { kind: 'reflog', rows: out.split('\n').filter((l) => /^would prune\b/.test(l)), targets: ['*'] };
+                }
+                // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty',
+                // which made its own prescribed escape - 'name the ONE file to revert instead of the whole
+                // tree' - unreachable: `git restore .gitignore` was denied with all seven dirty files
+                // listed, six of which the command never touched (measured live, twice in one session).
+                // `reset --hard`, `checkout .` / `checkout --` with no path, and a forced checkout or
+                // switch (whose argument is a branch) are whole-tree by nature; anything that names
+                // paths is judged on THOSE paths only.
+                const pathspec = (() => {
+                    if (verb === 'reset' || verb === 'switch') return [];   // a commit or a branch, never a pathspec
+                    const sep = args.indexOf('--');
+                    if (verb === 'checkout' && sep < 0) return args[0] === '.' ? [] : (args.some((a) => /^-/.test(a)) ? [] : args);
+                    const named = (sep >= 0 ? args.slice(sep + 1) : args).filter((a) => a && !a.startsWith('-'));
+                    // `.` is the whole tree spelled as a path, and an unexpanded variable is unknowable -
+                    // both fall back to the whole-tree check rather than a guess.
+                    if (!named.length || named.some((a) => a === '.' || /\$\{?[A-Za-z_]/.test(a))) return [];
+                    return named;
+                })();
+                // argv, never a shell string: the pathspec used to be single-quoted into an execSync
+                // line, and on win32 that line runs through cmd.exe, where a single quote is a literal
+                // character - git was asked about a file named 'seed.txt' with the quotes, found it
+                // clean, and `git restore <dirty file>` passed on every Windows install (measured: the
+                // release CI's windows job, both pathspec tests, 0 where 2 was expected). stdio: git's
+                // own stderr is CAPTURED - inherited, a non-repo path printed `fatal: not a git
+                // repository` to the user on a call this gate then PASSED.
+                const rows = git(['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])]).split('\n').filter(Boolean);
+                return { kind: 'tree', pathspec, rows, targets: pathspec.length ? pathspec : rows.map((r) => r.slice(3).trim()) };
+            }
+            catch { return { kind: '', rows: [], targets: [] }; }
+        })();
 
         // The user's own 'discard it' for THIS session. Every other blocking guard in the stack
         // honours an answer; this one had none, so it re-blocked a discard the user had just
         // chosen through AskUserQuestion, and the chosen action was silently substituted with a
         // `git stash push -u` (measured: answer at 06:54:14, block at 06:54:22, 142,674 cache-read
-        // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path per line or `*` for the
-        // whole tree, this session's own, under 8h.
+        // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path (or stash entry) per line,
+        // or `*` for everything, this session's own, under 8h.
         const allowed = (() => {
-            if (!dirty) return false;
+            if (!loss.rows.length) return false;
             try
             {
                 const receipt = path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
@@ -314,30 +402,42 @@ function main()
                 if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
                 const lines = fs.readFileSync(receipt, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
                 if (lines.includes('*')) return true;
-                const targets = pathspec.length ? pathspec : dirty.split('\n').map((r) => r.slice(3).trim());
-                return targets.length > 0 && targets.every((f) => lines.some((l) => l === f || f.startsWith(`${l}/`)));
+                return loss.targets.length > 0 && loss.targets.every((f) => f !== '*' && lines.some((l) => l === f || f.startsWith(`${l}/`)));
             }
             catch { return false; } // absent or unreadable - no allowance recorded
         })();
 
-        if (dirty && !allowed)
+        if (loss.rows.length && !allowed)
         {
-            const rows = dirty.split('\n');
-            const scope = pathspec.length ? `the path(s) this command names` : `the working tree`;
+            const rows = loss.rows;
             const receiptRel = path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
+            const head = loss.kind === 'stash'
+                ? `Blocked: this destroys ${rows.length} stash entr${rows.length === 1 ? 'y' : 'ies'}, and a dropped stash leaves no\n` +
+                  `reflog entry to recover it from. A house rule enforced here, no prose copy to consult.\n`
+                : loss.kind === 'reflog'
+                    ? `Blocked: this expires ${rows.length} reflog entr${rows.length === 1 ? 'y' : 'ies'} - the reflog is the one record of\n` +
+                      `commits no branch reaches, and gc deletes them once it is gone. A house rule enforced here.\n`
+                    : `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${loss.pathspec.length ? 'the path(s) this command names' : 'the working tree'}, and there is\n` +
+                      `no reflog for a working tree - once it is gone it is gone. A house rule enforced here, no prose\n` +
+                      `copy to consult - same class as the recursive-rm gate in this file.\n`;
+            const keep = loss.kind === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
+                : loss.kind === 'reflog' ? `'Keep the reflog (Recommended)' - skip the expire`
+                    : `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`;
+            const narrow = loss.kind === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
+                : loss.kind === 'reflog' ? '' : `'Narrow it' - name the ONE file to revert instead of the whole tree`;
+            const spell = loss.kind === 'stash' ? 'one entry per line as `stash@{N}`, or `*` for every one'
+                : loss.kind === 'reflog' ? 'the single line `*`'
+                    : 'one path per line exactly as the\ncommand spells them, or `*` for everything';
             process.stderr.write(
-                `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${scope}, and there is\n` +
-                `no reflog for a working tree - once it is gone it is gone. A house rule enforced here, no prose\n` +
-                `copy to consult - same class as the recursive-rm gate in this file.\n` +
+                head +
                 rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
                 (rows.length > 10 ? `\n  ... and ${rows.length - 10} more` : '') +
                 `\n\nDo not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
-                `  'Keep the work (Recommended)' - \`git stash -u\`, or commit it\n` +
+                `  ${keep}\n` +
                 `  'Discard it' - the loss is intended and the user says so\n` +
-                `  'Narrow it' - name the ONE file to revert instead of the whole tree\n` +
-                `On 'Discard it', write the receipt ${receiptRel} - one path per line exactly as the\n` +
-                `command spells them, or \`*\` for everything - then retry the SAME command. It is honoured\n` +
-                `for this session only, under 8h. A clean path passes this gate untouched.`,
+                (narrow ? `  ${narrow}\n` : '') +
+                `On 'Discard it', write the receipt ${receiptRel} - ${spell} - then retry the SAME command. It is honoured\n` +
+                `for this session only, under 8h. Nothing to lose passes this gate untouched.`,
             );
             process.exit(2);
         }
@@ -349,7 +449,7 @@ function main()
     }
 
     process.stderr.write(
-        'Refusing a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
+        'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
         'parent, a bare *, or several top-level system dirs at once) - the filesystem has no reflog. A house ' +
         'rule enforced here, no prose copy to consult. ' +
         'Delete a specific subdirectory by name instead.\n');
