@@ -5,12 +5,14 @@
 // running, say so once per session - to the user (who runs the update) and to the model (so it does
 // not trust a copy's content as current). Silent in every other case, and never fails a session.
 //
-// The project's own stamp first; a project with none of its own falls back to the account dir - a
-// 1.x GLOBAL install kept its stamp there, and this project has not yet run the `update` that moves
-// it (migrateLegacyGlobal, stamp.js). Every 2.x install writes its stamp into the project at every
-// scope, so this fallback only ever fires in that migration window. Each under either name: a
-// project the 1.x release installed holds the old stamp until its first update (brand.js stampFile -
-// the new name wins).
+// The project's own stamp first. A project with none of its own reads the ACCOUNT stamp only when it
+// is `legacy-global` - the same test stamp.js installState uses: an install record in the project plus
+// the 1.x account stamp. A 1.x GLOBAL install kept its stamp there until the project's first `update`
+// moves it (migrateLegacyGlobal), and that move never deletes the account copy, because another project
+// not yet updated still reads it - so the fallback is gated per project, never by a migration window: a
+// repo never set up, with the same account stamp beside it, gets silence (B-I1). The project stamp is
+// read under either name: a project the 1.x release installed holds the old stamp until its first
+// update (brand.js stampFile - the new name wins).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -22,10 +24,10 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary, validItemName, stampFile;
+    let readLibrary, validItemName, installState, legacyAccountStamp, stampFile;
     try
     {
-        ({ readLibrary, validItemName } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ readLibrary, validItemName, installState, legacyAccountStamp } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
         ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
     }
     catch { return; }
@@ -34,7 +36,9 @@ function main()
     // falls back to the ACCOUNT one, and in that case the account copy is the only one running, not
     // a shadow of a project copy that does not exist yet.
     const projectStampFile = stampFile(path.join(project, '.claude')).read;
-    const lib = readLibrary(projectStampFile || stampFile(account).read);
+    const legacyFile = !projectStampFile && installState(project, process.env) === 'legacy-global'
+        ? legacyAccountStamp({ claudeDir: path.join(project, '.claude'), env: process.env }) : null;
+    const lib = readLibrary(projectStampFile || legacyFile);
     if (!lib || !lib.version) return;
     let stack = '';
     try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }
