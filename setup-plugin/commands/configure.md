@@ -199,10 +199,10 @@ Whenever `memory` is PRESENT after this round - kept from before, or newly pulle
 `baseline-memory` at step 3 - ask the shared memory level. Read what is registered today first:
 `node "$TMP/repo/stack/hooks/memory.js" level` prints `<level> <dbPath>` or `none` (no prior
 registration - a fresh add, default to `global`). Paste the level table init uses - `global` /
-`scoped` / `project`, who shares each and where its database lives - but at `--scope user` on the
-FULL copy route (all three `ALFRED_CODE_*_VIA_PLUGIN=false`) drop the `project` row: the installer
-refuses it there, because that route bakes one database path into a registration every project of
-the account shares, so only offer `global` and `scoped` in that one case.
+`scoped` / `project`, who shares each and where its database lives - all three offered at every
+scope, `--scope user` on the FULL copy route (all three `ALFRED_CODE_*_VIA_PLUGIN=false`) included:
+that route registers memory in THIS project's own `.mcp.json`, never one path baked into an
+account-wide registration, so `project` is safe there too.
 Pre-select the level just read back, and ask ONE AskUserQuestion: keep it, or change to the
 other one(s) shown. Picking or keeping `project` while this project's related-projects domain
 already names sibling repos (`<docs-path>/related-projects/RELATED-PROJECTS.md`, or the generated

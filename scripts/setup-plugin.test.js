@@ -861,3 +861,24 @@ test('superpowers is on no stack selection surface', () => {
     assert.doesNotMatch(html, /"superpowers":\s*\{/, 'the HTML plugin card');
     assert.doesNotMatch(html, /\["superpowers:/, 'the HTML skill rows');
 });
+
+// F4 re-review N2: C10 (registrationScope, mcp.js) removed the --scope user full-copy-route refusal
+// on `--memory-level project` - configure.md must not tell the model to hide that row any more, and
+// the HTML catalog must not repeat the same stale claim.
+test('N2: configure.md and the HTML catalog no longer claim --memory-level project is refused at --scope user', () => {
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    assert.doesNotMatch(configure, /drop the `project` row/, 'configure.md must not tell the walk to hide the project level');
+    assert.doesNotMatch(configure, /the installer\s*\nrefuses it there/, 'configure.md must not claim a user-scope refusal');
+    assert.match(configure, /project.*is safe there too/s, 'configure.md must say the project level is safe at every scope');
+
+    const html = fs.readFileSync(path.join(ROOT, 'docs', 'alfred-code.html'), 'utf8');
+    assert.doesNotMatch(html, /only the full copy route refuses it at user scope/, 'the HTML memory row must not repeat the stale refusal claim');
+});
+
+// F4 re-review N9: hudStatusLineMissing (plugins.js) fires whenever claude-hud is installed - this
+// run OR already - and the account has no statusLine, not only on a fresh install this run.
+test('N9: update.md states the claude-hud status-line line prints on every run, not only when installed this run', () => {
+    const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
+    assert.doesNotMatch(body, /When claude-hud is installed this run and the account has no/, 'update.md must not narrow the trigger to a fresh install this run');
+    assert.match(body, /claude-hud is installed - this run or already/, 'update.md must say the line fires on every run while claude-hud is installed and statusLine is missing');
+});

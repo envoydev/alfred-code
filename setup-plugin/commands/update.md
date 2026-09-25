@@ -319,7 +319,7 @@ the log), because `claude mcp add` over a name the preceding `remove` did not cl
 exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
 update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
-each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. When claude-hud is installed this run and the account has no `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. On EVERY run where claude-hud is installed - this run or already - and the account has no `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
 line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned
