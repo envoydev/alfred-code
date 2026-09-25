@@ -5210,6 +5210,51 @@
         }
       ]
     },
+    "verifier-memory-before-report": {
+      "_note": "A verifier writes its serena hand-off note BEFORE it composes the report, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 10 copies, one per trio verifier.",
+      "owner": {
+        "file": "stack/agents/aspnet-verifier.md",
+        "marker": "Memory writes come BEFORE the report"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/browser-extension-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/console-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/data-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/devops-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/ionic-angular-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/web-angular-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/windows-service-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "Memory writes come BEFORE the report"
+        }
+      ]
+    },
     "verifier-left-running-line": {
       "_note": "A seat that starts a dev server, an emulator or a container must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the four verifiers whose gates start something, plus the integration reviewer.",
       "owner": {
