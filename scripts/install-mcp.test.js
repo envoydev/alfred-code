@@ -651,6 +651,33 @@ for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['claude-stack'
     });
 }
 
+// What a switch copies becomes the disk the copy route reads its picks from - so the switch records
+// it as picked in the same run. Recorded only by the next run, the stamp changed on a re-run that
+// changed nothing else (the R22c matrix case, a710c6b).
+test('seed update (full copy route): the switch stamps what it copied as picked - a re-run leaves the stamp as it was (R116)', POSIX_ONLY, () =>
+{
+    const picks = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').filter((l) => /^picked-(skills|agents):/.test(l));
+    const { steps, out } = seedRun(['install', 'update', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')),
+        env: [{}, COPY_ENV, COPY_ENV],
+        args: [[], ['--installed-only'], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            // The disables the switch ran, as the CLI writes them - the stub CLI writes nothing.
+            if (i === 1)
+            {
+                const file = path.join(repo, '.claude', 'settings.json');
+                const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+                data.enabledPlugins = { ...(data.enabledPlugins || {}), ...Object.fromEntries(['alfred-code', ...mcp.LOCKED].map((n) => [`${n}@envoydev`, false])) };
+                fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+            }
+            return picks(repo);
+        },
+    });
+    assert.ok(steps[2].some((l) => l.includes('project-first-look')), `the copy route reads its copies as picks:\n${steps[2].join('\n')}`);
+    assert.deepStrictEqual(steps[2], steps[1], `the re-run rewrote the picks:\n${out}`);
+});
+
 // R111 (Task 8a concern c): wherever the copy route registers a playwright engine in .mcp.json, that
 // engine's plugin row loaded beside it - the same tools twice. Its row at this scope is UNINSTALLED
 // first, under the stack key only: a disabled engine is the user's own off-state, which the plugin

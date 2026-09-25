@@ -279,6 +279,11 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // the enabled entries carry are the best evidence of what was picked - that release enabled them
     // for its selection. Taken as picks once, so the stamp this run writes records them, instead of an
     // empty line that would leave a moved item nothing to carry it across.
+    // What a switch onto the full copy route copies is the disk that route reads its picks from - so
+    // it is picked from this run on, or the next run's stamp would differ from this one's.
+    if (leaving)
+        for (const line of installed)
+            if (/^(skill|agent) /.test(line) && lines.includes(line) && !closeFrom.includes(line)) closeFrom.push(line);
     if (stampPicked === null && ours.length)
     {
         const adopted = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
