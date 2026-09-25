@@ -1619,7 +1619,7 @@
         },
         {
           "file": "setup-plugin/commands/validate.md",
-          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope project --installed-only [--add"
+          "marker": "`node \"$TMP/repo/scripts/install/alfred-code.js\" update --source \"$TMP/repo\" --scope <scope> --installed-only [--add"
         }
       ]
     },
@@ -2746,19 +2746,6 @@
         {
           "file": "stack/rules/baseline-interaction.md",
           "marker": "about 900 characters of prose"
-        }
-      ]
-    },
-    "guided-layer-table-shape": {
-      "_note": "The setup/configure fenced layer-table contract - identical by design, since either command may be the only one a run loads.",
-      "owner": {
-        "file": "setup-plugin/commands/setup.md",
-        "marker": "a layer turn missing the fenced table is invalid"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/configure.md",
-          "marker": "a layer turn missing the fenced table is invalid"
         }
       ]
     },
@@ -4534,19 +4521,6 @@
         {
           "file": "setup-plugin/commands/configure.md",
           "marker": "The skeleton is INVARIANT - the stability contract"
-        }
-      ]
-    },
-    "guided-plugin-settings-turn": {
-      "_note": "The plugin-settings delta is reported and asked inside the plugins layer turn (plugin-settings.js output pasted, one three-option ask) and applied after the installer has put the plugin on disk. setup and configure carry the block verbatim.",
-      "owner": {
-        "file": "setup-plugin/commands/setup.md",
-        "marker": "Plugin settings - part of this layer's turn"
-      },
-      "sites": [
-        {
-          "file": "setup-plugin/commands/configure.md",
-          "marker": "Plugin settings - part of this layer's turn"
         }
       ]
     },

@@ -229,8 +229,9 @@ change (see the invariants below).
     `memory.js init`), `/alfred-code:update` (refresh + prune from the stamp compare; its ONE ask offers
     what the release ADDED - `update-preflight.js`'s `new:` lines, classified by
     `derive-state.classifyNew` - and a yes is `--add '<category> <name>'` on `--installed-only`),
-    `/alfred-code:configure` (add or drop), `/alfred-code:status` (read-only tables plus the install's
-    always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
+    `/alfred-code:configure` (add or drop), `/alfred-code:status` (read-only, no snapshot: general info, a
+    health column from the CLI's own error fields, usage from `analyze-usage.js --inventory`, plus the
+    install's always-on FLOOR, the stack's share counted by `derive-state.js --floor`), `/alfred-code:validate`
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
@@ -323,7 +324,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Hooks | the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 43 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update>` from the snapshot, one command on every OS; `ALFRED_CODE_SEED=shell` refuses (the frozen `scripts/os` twins it used to select were deleted in 2.0.0) |
-| Install stamp | `alfred-code.stamp` (project `.claude/`, or the account dir for global) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release - takes what the enabled entries carry as its picks) and `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each library copy as written); configure diffs it against `main`. A global install keeps its skills and the stamp in the account dir and its rules, agents, hooks and settings.json in the project; every plugin / MCP call it makes is user-scoped |
+| Install stamp | `alfred-code.stamp` (the project's `.claude/`, at every scope) - source commit, plus `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves to another entry is kept; a stamp with neither line - an older release - takes what the enabled entries carry as its picks) and `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each library copy as written); configure diffs it against `main`. The stamp and every copy live in the PROJECT at every scope (the stack's settings keys in `settings.local.json` at `local`); the scope says only where the plugin rows are enabled, and a `user` install makes every plugin / MCP call user-scoped. A 1.x global stamp left in the account dir is read by update alone, which moves it into the project |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |

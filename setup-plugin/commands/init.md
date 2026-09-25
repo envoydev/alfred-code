@@ -7,12 +7,16 @@ disable-model-invocation: true
 
 You are bootstrapping an install `/alfred-code:setup` laid down, in a session started AFTER its
 restart - the plugins, servers and seats it installed load at session start, and this run uses
-them. Three checks come first, in order, each one line:
+them. Three checks come first, in order, each one line. The first is one script read,
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .`, which reads the same install
+records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied <!-- legacy-name -->
+`hooks/docs.js`) in this repo, its git top level or a worktree's main checkout:
 
-- **Nothing installed** - no install record in the project's `.claude/` (`alfred-code.stamp`, the
-  1.x `claude-stack.stamp`, or a copied `hooks/docs.js`): stop and name `/alfred-code:setup` for the
-  USER to type, then end the turn. It is `disable-model-invocation` - the user's to type, never a
-  Skill call from this run - and it belongs in its own session.
+- **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
+  then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
+  dir): stop the same way on `/alfred-code:update`, which moves it into the project. Both are
+  `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
+  belongs in its own session.
 - **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
   session. What setup installed is on disk but not loaded here.
 - **Run before** - go on: every step below reads what is already in place and skips it

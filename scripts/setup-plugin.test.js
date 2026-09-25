@@ -51,6 +51,9 @@ test('plugin.json is valid, the six commands are listed, and the router skill ex
 // user types in the session after setup's restart. Two jobs, two bodies - never one pointing at the other.
 const cmdBody = (name) => fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
 const flat = (text) => text.replace(/\s+/g, ' ');
+// Task 18b: setup (FRESH) and configure (DELTA) run ONE walk text, so the layer rules live there.
+const walkBody = () => fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
+const STATE_READ = /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./;
 
 test('setup is the walk and init the bootstrap - both manual-only, neither a pointer to the other', () => {
     const setup = cmdBody('setup');
@@ -60,9 +63,14 @@ test('setup is the walk and init the bootstrap - both manual-only, neither a poi
     assert.match(setup, /^## 11\. Install$/m, 'the walk lives in setup');
     assert.ok(!/^## \d+\. Install$/m.test(init), 'init never installs');
     assert.ok(!/commands\/(init|setup)\.md/.test(setup + init), 'neither reads the other as its instructions');
-    // Over an existing install setup routes to configure; with none, init routes to setup.
-    assert.match(flat(setup), /If the stack is already installed here - an install record .*stop and route to `\/alfred-code:configure`/);
-    assert.match(flat(init), /\*\*Nothing installed\*\* - no install record in the project's `\.claude\/` .*stop and name `\/alfred-code:setup`/);
+    // Over an existing install setup routes to configure, over a 1.x global one to update; with
+    // none, init routes to setup. Both read the install the way the hooks do - the stamp state.
+    assert.match(setup, STATE_READ);
+    assert.match(init, STATE_READ);
+    assert.match(flat(setup), /`installed` or `initialised` -> stop and route to `\/alfred-code:configure`/);
+    assert.match(flat(setup), /`legacy-global` \(a 1\.x global install whose stamp still sits in the account dir\) -> stop and route to `\/alfred-code:update`/);
+    assert.match(flat(init), /\*\*Nothing installed\*\* - `not-installed`: stop and name `\/alfred-code:setup`/);
+    assert.match(flat(init), /`legacy-global` \(a 1\.x global install whose stamp still sits in the account dir\): stop the same way on `\/alfred-code:update`/);
     assert.match(flat(init), /\*\*Setup ran in THIS session\*\* - stop: name the restart/);
 });
 
@@ -81,7 +89,7 @@ test('setup: the suggestions are validate\'s checks in fresh-install mode, paste
     assert.match(flat(block), /ONE `baseline: <n> item\(s\)` count line/, 'M1: the baseline is a count, not 59 rows');
     // M1: what 3a says the walk pre-selects agrees with step 9 - superpowers is suggested, never pre-selected.
     assert.match(flat(block), /`superpowers` is never among them; it is step 9's suggestion, never pre-selected/);
-    assert.match(flat(setup), /`superpowers` is an OPTIONAL pick \(R72\): suggested, never seeded or pre-selected/);
+    assert.match(flat(walkBody()), /`superpowers` is an OPTIONAL pick \(R72\): suggested, never seeded or pre-selected/);
     assert.match(setup, /--found "\$TMP\/found\.json"/, 'the tables still carry the scan\'s evidence labels');
 });
 
@@ -97,19 +105,22 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
     assert.ok(!/## \d+\. CLAUDE\.md/.test(setup) && /## 6\. CLAUDE\.md/.test(cmdBody('init')), 'the CLAUDE.md fill moved to init');
 });
 
-// R77: the ENABLE question pre-selects the LIVE state (plan-out) whenever a stamp exists - never the
-// stamp's own line - and every installed engine only on a first install.
-test('setup: the playwright ENABLE pre-selection reads plan-out\'s live state when a stamp exists (R77)', () => {
-    const mcps = flat(cmdBody('setup').slice(cmdBody('setup').indexOf('## 8. MCPs'), cmdBody('setup').indexOf('## 9. Plugins')));
-    assert.match(mcps, /whenever a stamp exists/);
-    assert.match(mcps, /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
-    assert.match(mcps, /jq -c '\.playwright' "\$TMP\/installed\.json"/);
-    assert.match(mcps, /pre-selected: `enabled` plus any newly added one when a stamp exists - never the stamp's own `playwright-enabled:` line/);
-    assert.match(mcps, /every one only on a first install/);
+// R77: the ENABLE question pre-selects the LIVE state (plan-out) over an install - never the
+// stamp's own line - and every installed engine only on a first install. Setup never meets a stamp
+// any more (a 1.x global one routes to update first), so the live read is the DELTA walk's.
+test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
+    const walk = walkBody();
+    const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
+    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `jq -c '\.playwright' "\$TMP\/installed\.json"`/);
+    assert.match(mcps, /Never pre-select from the stamp's own `playwright-enabled:` line/);
+    assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
     // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.
-    assert.match(mcps, /Picking one IS installing it, and the question says so in one line: this run's install downloads a picked `firefox` \/ `webkit` now/);
+    assert.match(mcps, /Picking one IS installing it, and the question says so in one line: the install downloads a picked `firefox` \/ `webkit`/);
     assert.match(mcps, /`\/alfred-code:init` reports one that is not there/);
+    assert.match(flat(cmdBody('setup')), /references\/walk\.md` before step 4 and run it in \*\*FRESH\*\*/);
+    assert.match(flat(cmdBody('configure')), /references\/walk\.md` before step 3 and run it in \*\*DELTA\*\*/);
+    assert.match(cmdBody('configure'), /--installed-only --print-plan --plan-out "\$TMP\/installed\.json"/, 'the DELTA walk reads the plan configure wrote');
 });
 
 test('init: the bootstrap order - read, plan, one machine ask, memory, captures inline, CLAUDE.md; no sentry', () => {
@@ -117,7 +128,7 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
     assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
     // The hook count, stated once per table: the manifest ships seventeen.
-    assert.match(flat(cmdBody('setup')), /Recommended = all seventeen:.*\*\*None\*\* names all seventeen/);
+    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all seventeen:.*\*\*None\*\* names all seventeen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);
@@ -136,7 +147,11 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
 // The router's three states, each read from a file rather than inferred.
 test('the router: nothing installed -> setup, installed but never initialised -> init, initialised -> no bootstrap', () => {
     const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
-    assert.match(router, /\*\*Installed\*\* = an install record: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
+    assert.match(router, /\*\*Installed\*\* = an install record in this repo, its git top level or a worktree's main checkout: `alfred-code\.stamp`, the 1\.x `claude-stack\.stamp`, or a copied `hooks\/docs\.js`/); // legacy-name
+    // R90 N1: a 1.x global install is routed to update, which moves it into the project.
+    assert.match(router, /`legacy-global`/);
+    assert.match(router, /Legacy global -> `\/alfred-code:update`, whatever the ask/);
+    assert.ok(!/project mode only/.test(router), 'validate runs at every scope');
     // I1: the state is ONE script read - the stamp's `initialised:` line only init writes - never the
     // memory switch alone, which an update or the user's own settings could flip.
     assert.match(router, /node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/install\/stamp\.js" state \./);
@@ -181,7 +196,7 @@ test('the plugin evals pass their offline checks, and the routing graders match 
     }
     const pattern = (c, g) => JSON.parse(/^pattern: (".*")$/m.exec(fs.readFileSync(path.join(dir, c, 'graders', g), 'utf8'))[1]);
     assert.strictEqual(pattern('status-no-install', 'routes-to-setup.md'), '/alfred-code:setup');
-    assert.match(flat(cmdBody('status')), /Nothing installed in either place -> say so and route to `\/alfred-code:setup`/);
+    assert.match(flat(cmdBody('status')), /`not-installed` -> say so and route to `\/alfred-code:setup`/);
     assert.strictEqual(pattern('router-hands-back-one-command', 'names-the-command.md'), '/alfred-code:setup');
     assert.match(flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8')), /Not installed -> `\/alfred-code:setup`/);
 });
@@ -298,16 +313,20 @@ test('the related-context capture is optional, never an always-baseline seed', (
 // so pasting it needed a read-back step the prescribed command never contained, and all six layer
 // questions were asked with no catalog on screen. The table must come back in the tool result.
 test('the layer table is never redirected to a file - the tool result is what gets pasted', () => {
+    // The table command lives in the ONE walk text both walks read (Task 18b).
+    const body = walkBody();
+    const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
+    assert.ok(tableCmds.length >= 2, 'the walk prescribes the table command for FRESH and DELTA');
+    for (const line of tableCmds)
+    {
+        assert.ok(!/--table <layer>[^`]*>\s*"?\$TMP/.test(line), `the walk must not redirect the table into a file: ${line.trim().slice(0, 120)}`);
+    }
+    assert.match(body, /total: N <layer>/, 'the walk carries the footer self-check');
     for (const name of ['setup', 'configure'])
     {
-        const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
-        const tableCmds = body.split('\n').filter(l => l.includes('--table <layer>'));
-        assert.ok(tableCmds.length, `${name} prescribes the table command`);
-        for (const line of tableCmds)
-        {
-            assert.ok(!/--table <layer>[^`]*>\s*"?\$TMP/.test(line), `${name} must not redirect the table into a file: ${line.trim().slice(0, 120)}`);
-        }
-        assert.match(body, /total: N <layer>/, `${name} carries the footer self-check`);
+        const cmd = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
+        assert.match(cmd, /\$\{CLAUDE_PLUGIN_ROOT\}\/setup-plugin\/references\/walk\.md/, `${name} runs the shared walk`);
+        assert.ok(!cmd.split('\n').some((l) => l.includes('--table <layer>')), `${name} restates no table command of its own`);
     }
 });
 
@@ -318,6 +337,19 @@ test('the layer table is never redirected to a file - the tool result is what ge
 // by NAME and tied together by the apply subsection's own number: the ladders renumber whenever a
 // step is inserted, and what this pins is where the two halves sit, not what they are numbered.
 test('both walks ask the plugin-settings question in the plugins layer and apply it after install', () => {
+    // The ASK is the shared walk's Plugins layer; everything before its 'After the installer'
+    // paragraph is the layer turn, which must not write.
+    const walk = walkBody();
+    const walkLayer = walk.slice(walk.indexOf('## Plugins'));
+    const ask = walkLayer.slice(0, walkLayer.indexOf('After the installer'));
+    assert.ok(ask.length > 0 && ask.length < walkLayer.length, 'the walk names the after-install apply');
+    assert.match(ask, /Plugin settings - part of this layer's turn/, 'the walk asks inside the plugins layer');
+    assert.match(ask, /plugin-settings\.js/, 'the walk reports with the tool, never a hand edit');
+    assert.match(ask, /meta\/plugin-settings\.json/, 'the walk reads the snapshot catalog');
+    assert.match(ask, /Apply recommended/, 'the walk offers apply');
+    assert.match(ask, /Apply and replace differing/, 'the walk offers replace');
+    assert.match(ask, /\*\*Skip\*\*/, 'the walk offers skip');
+    assert.ok(!/--apply/.test(ask), 'the walk does not write before the plugin is installed');
     for (const name of ['setup', 'configure'])
     {
         const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', `${name}.md`), 'utf8');
@@ -326,12 +358,7 @@ test('both walks ask the plugin-settings question in the plugins layer and apply
         const rest = body.slice(pluginsAt + 1);
         const nextHeading = rest.search(/^## /m);
         const layer = nextHeading >= 0 ? rest.slice(0, nextHeading) : rest;
-        assert.match(layer, /Plugin settings - part of this layer's turn/, `${name} asks inside the plugins layer`);
-        assert.match(layer, /plugin-settings\.js/, `${name} reports with the tool, never a hand edit`);
-        assert.match(layer, /meta\/plugin-settings\.json/, `${name} reads the snapshot catalog`);
-        assert.match(layer, /Apply recommended/, `${name} offers apply`);
-        assert.match(layer, /Apply and replace differing/, `${name} offers replace`);
-        assert.match(layer, /\*\*Skip\*\*/, `${name} offers skip`);
+        assert.match(layer, /walk\.md's Plugins layer, the plugin-settings ask included/, `${name} points its plugins step at the walk`);
         assert.ok(!/--apply/.test(layer), `${name} does not write before the plugin is installed`);
 
         const applyHeading = body.match(/^### (\d+)a\. Plugin settings.*$/m);
@@ -508,6 +535,34 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
     }
 });
 
+// Task 18b: status runs the RUNNING plugin's own scripts (no snapshot), finds the install by the
+// stamp state, and reports health from the CLI's own error fields, usage, and credentials by presence.
+test('status: read-only from the running plugin - stamp state, health columns, usage, presence only', () =>
+{
+    const status = cmdBody('status');
+    const f = flat(status);
+    assert.match(status, STATE_READ, 'status finds the install by the stamp state');
+    assert.ok(!/\$TMP\/repo/.test(status), 'status resolves no snapshot - every script is the running plugin\'s');
+    assert.ok(!/global mode|project mode/i.test(status), 'status has no global mode');
+    assert.match(f, /Never test for `\.claude\/skills` or `\.claude\/agents`: a plugin-route install can have neither/);
+    assert.match(f, /`legacy-global` -> a 1\.x global install whose stamp still sits in the account dir: say so and route to `\/alfred-code:update`/);
+    assert.match(status, /"\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/library-check\.js" --project \. --source "\$\{CLAUDE_PLUGIN_ROOT\}" --json/);
+    assert.match(f, /When `invalid` is above 0, one more line: `invalid: <n> stamp name\(s\) are not valid item names/);
+    assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
+    assert.match(f, /The `health` column is ONE `claude mcp list` call/);
+    assert.match(status, /scripts\/analyze-usage\.js" "\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/\$\(pwd \| sed 's\/\[\^a-zA-Z0-9\]\/-\/g'\)" --inventory \.claude/);
+    assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
+    for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
+        assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);
+    // The transcript folder is named the way the memory import names it - one encoding, two readers.
+    const sedClass = /sed 's\/(\[\^a-zA-Z0-9\])\/-\/g'/.exec(status)[1];
+    const { slugify } = require('./memory-import.js');
+    for (const sample of ['/Users/x/My Repo', 'C:\\work\\app.v2', '/tmp/a_b-c'])
+        assert.strictEqual(sample.replace(new RegExp(sedClass, 'g'), '-'), slugify(sample), `status and the memory import name ${sample}'s transcript folder alike`);
+    // validate reports the same invalid line.
+    assert.match(flat(cmdBody('validate')), /An `invalid: N stamp name\(s\) \.\.\.` line is a finding too/);
+});
+
 test('the guided walks hold the layer order, the step banners, and the cascade machinery', () => {
     for (const name of ['setup', 'configure', 'validate'])
     {
@@ -518,6 +573,12 @@ test('the guided walks hold the layer order, the step banners, and the cascade m
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
     assert.match(configure, /--dropped/, 'configure drives the drop cascade through stack-select --dropped');
     assert.match(configure, /orphan:/, 'configure consumes the orphan: lines');
+    // The shared walk text carries the same machinery for both modes.
+    const walk = flat(walkBody());
+    assert.match(walk, /rules -> agents -> skills -> hooks -> MCPs -> plugins/, 'the walk holds the layer order');
+    assert.match(walk, /DELTA: `node stack-select\.js --selection raw\.json --dropped dropped\.json`/, 'the DELTA walk drives the drop cascade');
+    assert.match(walk, /An `orphan: <category> <name> - <why> \(dropped\); nothing kept still needs it` line/, 'the DELTA walk consumes the orphan: lines');
+    assert.match(walk, /a layer turn missing the fenced table is invalid/, 'the table-before-question rule rides the walk');
 });
 
 // The install-time twin of validate's judgment gate: a typed add that conflicts with the
@@ -532,13 +593,18 @@ test('setup and configure carry the brownfield convention-conflict warning gate'
     }
 });
 
-test('validate reconciles both ways (--redundant + --missing), walks layers, is project-mode-only', () => {
+test('validate reconciles both ways (--redundant + --missing), walks layers, runs at every scope', () => {
     const body = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'validate.md'), 'utf8');
     assert.match(body, /--redundant/, 'validate drives the remove side through stack-select --redundant');
     assert.match(body, /--missing/, 'validate drives the add side through stack-select --missing');
     assert.match(body, /\[step \d+\/\d+ - /, 'validate announces every step with the n/total banner');
-    assert.match(body, /project mode only/i, 'validate refuses outside a project');
-    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope project --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back');
+    // Task 18b: every scope keeps its install in the project, so validate refuses none of them.
+    assert.ok(!/project mode only/i.test(body), 'validate runs at every scope');
+    assert.match(flat(body), /\*\*Every scope\.\*\* A project, user or local install keeps its stamp, its library copies and its settings in the project's `\.claude\/`/);
+    assert.match(flat(body), /Find the install with `node "\$TMP\/repo\/scripts\/install\/stamp\.js" state \.`/);
+    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only --print-plan --plan-out/, 'validate reads the install back at its own scope');
+    assert.match(body, /install\/alfred-code\.js" update --source "\$TMP\/repo" --scope <scope> --installed-only \[--add/, 'validate applies the accepted adds and removes via the seed, over the read-back, at its own scope');
+    assert.ok(!/--scope project --installed-only/.test(body), 'no apply pinned to project scope');
     assert.match(body, /ALFRED_CODE_SEED=shell/, '... and still names the shell switch it refuses');
     // the judgment step: two gates (code-corroborated non-use, verbatim doc conflict), never
     // mixed with signal tiers
@@ -644,12 +710,16 @@ test('configure and validate inventory through --print-plan --plan-out and apply
     }
 });
 
-test('configure emits hook none when its Hooks area was walked, and update reads a global install\'s settings from the project', () =>
+test('configure emits hook none when its Hooks area was walked, and update finds a 1.x global install through the preflight', () =>
 {
     const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
     assert.match(configure, /--emit "\$TMP\/selection\.txt" --check \[--hooks-answered\]/);
-    const update = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8');
-    assert.match(update, /Global mode: `--root <account dir> --settings \.claude\/settings\.json`/);
+    // R51 / I8: the preflight reads the account's 1.x stamp itself - update has no global mode.
+    const update = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'update.md'), 'utf8'));
+    assert.ok(!/Global mode:/.test(update), 'update has no global mode left');
+    assert.match(update, /A `--space` install passes `--config-dir ~\/\.claude-<space>`, so a 1\.x global stamp is looked for in that account/);
+    assert.match(update, /A `legacy-stamp: <file> - a 1\.x global install; \.\.\.` line means the baseline is the account's 1\.x stamp: say once that this update moves it into the project/);
+    assert.match(update, /`settings\.local\.json` laid over `settings\.json` at local scope/);
 });
 
 // A hand-edited library copy is overwritten by the next installer run - never silently: validate

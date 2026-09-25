@@ -1,5 +1,5 @@
 ---
-description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (the init step-3 scan), inventory what is installed, then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. Project mode only. This is the project-relative two-way audit that init (fresh), update (refresh), and configure (manual add/drop) do not do."
+description: "RECONCILE an existing Alfred Code install to THIS project - detect the project's real stacks by artifact (setup's step-3 scan), inventory what is installed at any scope (project, user or local), then walk the selection one layer at a time (rules -> agents -> skills -> hooks -> MCPs -> plugins) showing, per layer, what is REDUNDANT (installed but its whole owning stack is absent - remove?) and what is MISSING (the detected stacks' + baseline closure not installed here - add?), each pre-marked with its reason and taken on per-item consent. Shared items, deliberate non-stack extras, and the always-baseline already installed are never touched. Detection evidence for every absent stack is shown BEFORE the walk so a mis-detection is vetoable. After the mechanical walk, a JUDGMENT step corroborates the advisory items' non-use in the code (named greps for the skill's domain, its own do-not-load exclusions, the docs' own citations of it) reviews the remainder against the project's stated conventions incl. version pins (a latest-major guidance tool fights a project pinned older - a citable conflict), mirrors gate 1 for ADDS (an uninstalled skill whose domain the code provably touches though no manifest signal covers it - only from trails the run itself surfaced, never a speculative catalog sweep), and hunts functional OVERLAP among kept items (two items covering one capability, the project docs citing only one - proposed only with the survivor's unique gap named) - drops and adds proposed only with gate evidence, each RANKED (MATERIAL/MINOR) and readable as what-it-does / why-marginal-here / the-keep-exception / recommendation, visibly labeled as judgment, never mixed with the signal tiers; plus a plain-text DORMANT advisory naming installed occasion-bound items (their own descriptions mark them release-/upgrade-/audit-time) with each one's honest idle cost and off lever - informational, acted on only by explicit request. Accepted adds and removes apply in ONE installer run over the read-back (--add / --drop) - the path configure uses; only a plugin uninstall and a copy-route MCP removal stay explicit. This is the project-relative two-way audit that setup (fresh), update (refresh), and configure (manual add/drop) do not do."
 disable-model-invocation: true
 ---
 
@@ -44,10 +44,19 @@ the installer `--source "$TMP/repo"` in step 11, and remove `$TMP` per the 'Clea
 EVERY exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per
 recompute, no pasted tool output, one narration line between steps.
 
-**Project mode only.** This command needs a project to reconcile against. If cwd is not a project
-root with a populated `.claude/` (or the install lives in an account dir), stop and say so - a
-global adjust is the sibling `/alfred-code:configure`. Detect the OS too (`darwin`/`linux` -> the
-sh installer; Windows -> ps1 via `pwsh`).
+**Every scope.** A project, user or local install keeps its stamp, its library copies and its
+settings in the project's `.claude/`, so validate reconciles all three the same way - there is no
+account-only install to refuse. Find the install with `node "$TMP/repo/scripts/install/stamp.js"
+state .`, which reads the install records the hooks read (`alfred-code.stamp`, the 1.x
+`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main
+checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
+`not-installed` -> stop and route to `/alfred-code:setup`; `legacy-global` (a 1.x global install
+whose stamp is still in the account dir) -> stop and route to `/alfred-code:update`, which moves it
+into the project first; `installed` / `initialised` -> go on. `<scope>` below is the stamp's own
+`scope:` line (`grep -m1 '^scope:' .claude/alfred-code.stamp`; absent = `project`), passed to every
+installer call so the read-back and the apply read and write the settings file that scope uses
+(`.claude/settings.local.json` laid over `.claude/settings.json` at local scope). One installer on
+every OS.
 
 **Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one
 marked, free text via Other; a prose question or a bare stop-and-wait is invalid (measured: prose asks
@@ -72,14 +81,14 @@ Twelve user-facing steps; the machinery between them runs silently. One banner l
 
 ## 1. Find the install and inventory it
 
-Confirm the install (project mode, above), then **inventory the installed set through the
+Confirm the install (above), then **inventory the installed set through the
 installer's own read-back**, exactly as configure does - never by hand, from disk or from memory.
 It is the SAME read an `update` writes back, so a seat or hook the user switched off stays out of
 it (a hand inventory unioned what the plugin entries carry, and the apply switched every such seat
 back on). One call from the snapshot, on every OS and seed - a `--print-plan` run writes nothing:
 
 ```bash
-node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
+node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1
 ```
 
 `$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks, mcps,
@@ -102,21 +111,25 @@ hooks=<yes|no> agents=<yes|no>` says which off-states the read found evidence of
 report which, since every carried seat would read as missing; `hooks=no` means the hooks layer is
 not reconciled this run.
 
-Then check the LIBRARY copies now, before anything writes - the apply in step 11 is an installer run,
-and it overwrites a copy edited in the project:
+Then check the LIBRARY copies now, before anything writes - every skill, agent and RULE copy the
+stamp hashed (no plugin carries a rule, so the whole rules layer is library). The apply in step 11 is
+an installer run, and it overwrites a copy edited in the project:
 
 ```bash
 node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo"
 ```
 
-On a global install add `--scope global --config-dir <the account dir>`. Paste a `drift` row to the
-user in this step's report, with what it means: the step-11 apply and every update overwrite that
-copy, so the edit belongs upstream or in a skill of the project's own. Step 12 runs the same check
+Paste a `drift` row to the user in this step's report, with what it means: the step-11 apply and
+every update overwrite that copy, so the edit belongs upstream or in a skill of the project's own.
+An `invalid: N stamp name(s) ...` line is a finding too (the check exits 1 on it): the stamp names
+an item that failed the name check - a hand edit or a bad merge - and the check withholds the name
+rather than joining it into a path. Report the count and route it to `/alfred-code:update`, whose
+next stamp rewrite drops it; never go looking for the withheld name. Step 12 runs the same check
 again over the result.
 
 ## 2. Detect the project's stacks - and show the evidence
 
-The init step-3 artifact scan:
+Setup's step-3 artifact scan:
 
 - `*.csproj` / `*.sln` -> .NET, split by content, per project: `Microsoft.NET.Sdk.Web` -> `aspnet`;
   `<UseWPF>true` -> `wpf`; `<UseWindowsForms>true` -> `winforms`; a
@@ -293,7 +306,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 
 The one layer that is not an artifact: the values this stack owns in the scope's settings.json
 `env`. Read the rows from the snapshot's `$TMP/repo/meta/environment.json` and the current block
-from the file (project mode: `.claude/settings.json`; global: the account file), then show one
+from the scope's file (`.claude/settings.local.json` laid over `.claude/settings.json` at local
+scope, else `.claude/settings.json`), then show one
 table of the actionable rows only - an install whose env already matches gets the single line
 `environment: nothing to reconcile` and you move on. **Never print, echo back, or ask for a credential VALUE.** A key matching the catalog's `secret_key_pattern`, or a row flagged `secret: true`, is reported as `set (N chars)` or `absent` and nothing else - not as a shown default, not in a table, not in a question. A value that must be set is set by the user in the file itself, or with a copy-ready command they run in their own terminal; it never travels through the chat. Measured: seven credential exposures in one corpus.
 
@@ -305,7 +319,7 @@ table of the actionable rows only - an install whose env already matches gets th
   `ALFRED_CODE_DOCS_VERSIONING` is the ONE exception to 'offer the catalog default': its value is DETECTED, not
   constant, so writing the constant over a project whose docs are kept out of git is the exact silent switch
   the rule exists to prevent. PREVIEW it read-only before the table - `node .claude/hooks/docs.js status`
-  (project mode; with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
+  (with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
   kept out of git - ...)` or `overlay (docs are kept out of git - ...)` names the probed value (`git`/`local`) and
   the reason in one line; show THAT value in the table, never the catalog's `git`. Reason column: `not set -
   probed '<value>': <the mode line's own parenthetical>`. Every other MISSING row still offers the catalog
@@ -440,7 +454,7 @@ session (lever: remove, or accept it); an MCP costs its server launch + tools ev
 (`claude plugin disable <name>`). Act on a lever only on an explicit user request in this run -
 dormancy alone is never a removal argument.
 
-## 11. Apply - the same paths init/configure use
+## 11. Apply - the same paths setup/configure use
 
 Build the final selection = the installed set, PLUS every accepted add, MINUS every accepted
 remove, written to `$TMP/final.json` in the inventory's shape. Step 9's accepted environment rows
@@ -448,7 +462,7 @@ are applied here too, as a merge on the scope's settings.json touching ONLY thos
 renames included - and named in the post-check the same way an added artifact is. An accepted
 MISSING `ALFRED_CODE_DOCS_VERSIONING` row is the one exception: never fold it into that generic
 merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <project root> --seed-versioning`
-(project mode only, per its own message), which re-probes at the write instead of trusting the
+(it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
 `node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
@@ -462,7 +476,7 @@ profile), output to `$TMP/select.out` - then:
   closure re-requires but no accepted add names - report it as staying off) and `keep-parked plugin
   <name>` (a parked plugin the read-back would enable - a `--drop` whenever the installer runs, no
   reason on its own to run it). Otherwise:
-  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope project --installed-only [--add '<line>']... [--drop '<line>']... [--playwright-browsers <csv> --playwright-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
+  `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--playwright-browsers <csv> --playwright-enabled <csv|none>] 2>&1 | tee "$TMP/install.log"`
   - one `--add` per `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted,
   applied on top of the same read-back, so nothing the reconcile did not touch moves. Never
   `--selection` on this seed: that route neither removes nor disables what the reconcile dropped,
@@ -562,11 +576,11 @@ wrote:
 node "$TMP/repo/scripts/library-check.js" --project . --source "$TMP/repo"
 ```
 
-On a global install add `--scope global --config-dir <the account dir>` - its skills live there.
 Paste the output byte-for-byte in the same fenced block. A `drift` row is a copy edited in the
 project: the next update overwrites it and says so, so the edit belongs upstream or in a skill of
 the project's own, never in the copy. `behind` rows and the `stale stamp` line are what
-`/alfred-code:update` takes. `library: no library stamp` is the whole paste on an install older
+`/alfred-code:update` takes, and so is an `invalid:` line (exit 1 - a stamp name that failed
+validation, reported by count). `library: no library stamp` is the whole paste on an install older
 than the library route.
 
 ## Clean up the temp dir - ALWAYS
