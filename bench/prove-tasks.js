@@ -20,8 +20,9 @@ const { removeTree } = require('./lib/remove-tree.js');
 
 const BENCH_DIR = __dirname;
 // What a session never gets, the proof does not need either: the commands run with the caller's
-// warm package caches, minus every credential the arm files name.
-const DROP = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY', 'CLAUDE_PROJECT_DIR', 'CLAUDE_STACK_DOCS_PATH'];
+// warm package caches, minus every name common.json keeps from a session - its auth and its scrub,
+// read from the one list rather than copied, so a name added there is dropped here too.
+const DROP = (({ auth, scrub }) => [...auth, ...scrub])(JSON.parse(fs.readFileSync(path.join(BENCH_DIR, 'arms', 'common.json'), 'utf8')));
 
 function cloneAt({ dest, task, taskDir, fixtureSource, lock })
 {
@@ -124,7 +125,7 @@ function proveTasks({ tasksDir = path.join(BENCH_DIR, 'tasks'), tasks = 'all', b
     return { dir, tasks: rows };
 }
 
-module.exports = { proveTasks, proveTask };
+module.exports = { proveTasks, proveTask, DROP };
 
 if (require.main === module)
 {

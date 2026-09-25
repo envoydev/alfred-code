@@ -38,6 +38,47 @@ test('the four shipped arm files load against the shared session', () =>
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
 
+test('ours installs Alfred Code 2.0.0 by its README route, and onboards through its init', () =>
+{
+    const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
+    assert.deepStrictEqual(ours.pin, { kind: 'tag', value: 'v2.0.0' });
+    const at = (argv) => ours.setup.findIndex((s) => s.join(' ') === argv);
+    const market = at('claude plugin marketplace add {src}');
+    const core = at('claude plugin install alfred-code@envoydev --scope project');
+    const installer = ours.setup.findIndex((s) => s[1] === '{src}/scripts/install/alfred-code.js');
+    assert.ok(market >= 0 && core > market, 'the core is installed from the pinned clone before anything else of the stack');
+    assert.ok(installer > core, 'the installer runs after the core, so it reads the pinned marketplace key rather than adding the published one');
+    assert.deepStrictEqual(ours.setup[installer].slice(2), ['install', '--source', '{src}', '--scope', 'project', '--selection', '{template}/selection.txt']);
+    assert.deepStrictEqual(ours.onboarding, ['/alfred-code:init']);
+});
+
+test('baseline stays on v1.0.0 and its own installer', () =>
+{
+    const { arms: [baseline] } = load({ dir: ARMS_DIR, names: ['baseline'] });
+    assert.deepStrictEqual(baseline.pin, { kind: 'tag', value: 'v1.0.0' });
+    assert.ok(baseline.setup.some((s) => s[1] === '{src}/scripts/install/claude-stack.js'));
+});
+
+test('ecc is pinned to a named commit, never to a release a later tag could move', () =>
+{
+    const { arms: [ecc] } = load({ dir: ARMS_DIR, names: ['ecc'] });
+    assert.deepStrictEqual(ecc.pin, { kind: 'commit', value: 'e482e579415fde18357cafce70f177ae19fd7f03' });
+    assert.ok(ecc.setup.some((s) => s.join(' ') === 'git -C {src} checkout --quiet {pin}'));
+});
+
+test('ecc stores its hook options the way its own setup does, never through an env its users do not have', () =>
+{
+    const { arms: [ecc] } = load({ dir: ARMS_DIR, names: ['ecc'] });
+    assert.ok(ecc.setup.some((s) => s.join(' ') === 'claude plugin install ecc@ecc --scope user --config hooks_enabled=true --config hook_profile=standard'));
+    assert.deepStrictEqual(ecc.env, {});
+});
+
+test('an arm cannot set either spelling of the stack docs-path variable', () =>
+{
+    const { session } = load({ dir: ARMS_DIR, names: ['bare'] });
+    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH']) assert.ok(session.scrub.includes(name), name);
+});
+
 test('an arm naming a model, an effort or a permission mode is refused, by name', (t) =>
 {
     for (const key of ['model', 'effort', 'permissionMode'])

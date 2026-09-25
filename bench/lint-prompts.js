@@ -2,8 +2,10 @@
 'use strict';
 // A task prompt that names either stack's machinery tells the session which arm it is in, and a
 // prompt written in one stack's words favours that stack. Every bench/tasks/<id>/prompt.md is
-// checked against our skill, agent and command names (read from the tree at lint time), ECC's (the
-// pinned list in arms/ecc-vocabulary.txt) and the generic phrases below. A hyphenated name is
+// checked against our skill, agent and command names - read from the tree at lint time AND from
+// the pinned list of the release under test (arms/ours-vocabulary.txt), because this tree may carry
+// an older release than the one ours.json installs - ECC's (the pinned list in
+// arms/ecc-vocabulary.txt) and the generic phrases below. A hyphenated name is
 // flagged as a whole token; a single-word name ('plan', 'dotnet') only as a slash command, because
 // as a plain word it is ordinary English a user would type.
 //
@@ -13,6 +15,7 @@ const path = require('node:path');
 
 const BENCH_DIR = __dirname;
 const ECC_FILE = path.join(BENCH_DIR, 'arms', 'ecc-vocabulary.txt');
+const OURS_FILE = path.join(BENCH_DIR, 'arms', 'ours-vocabulary.txt');
 
 const GENERIC = [
     [/\bskills?\b/i, 'names the skill machinery'],
@@ -24,7 +27,7 @@ const GENERIC = [
     [/\bplugins?\b/i, 'names the plugin machinery'],
     [/\buse the docs\b/i, 'steers toward the docs'],
     [/\barchitecture docs?\b/i, 'steers toward the docs'],
-    [/\b(?:serena|context7|claude-stack|ECC)\b/i, 'names a stack or its server'],
+    [/\b(?:serena|context7|claude-stack|alfred(?:-code)?|ECC)\b/i, 'names a stack or its server'],
 ];
 
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -51,10 +54,21 @@ function ourNames(root)
     ])].sort();
 }
 
+// A pinned list: one name per line, '#' lines are its header (where it was read from).
+function pinnedList(file, what, how)
+{
+    if (!fs.existsSync(file)) throw new Error(`no ${what} at ${file} - ${how}`);
+    return fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+}
+
 function eccNames(file = ECC_FILE)
 {
-    if (!fs.existsSync(file)) throw new Error(`no ECC vocabulary at ${file} - regenerate it from the commit bench/arms/ecc.json pins`);
-    return fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    return pinnedList(file, 'ECC vocabulary', 'regenerate it from the commit bench/arms/ecc.json pins');
+}
+
+function pinnedOurNames(file = OURS_FILE)
+{
+    return pinnedList(file, 'vocabulary for the stack under test', 'regenerate it from the release bench/arms/ours.json pins');
 }
 
 // One finding per distinct word, in the order the text holds them; a generic word inside a name
@@ -86,7 +100,7 @@ function checkText(text, names)
 
 function lintTasks({ tasksDir = path.join(BENCH_DIR, 'tasks'), names } = {})
 {
-    const all = names || [...ourNames(path.join(BENCH_DIR, '..')), ...eccNames()];
+    const all = names || [...new Set([...ourNames(path.join(BENCH_DIR, '..')), ...pinnedOurNames(), ...eccNames()])];
     const out = [];
     if (!fs.existsSync(tasksDir)) return out;
     for (const id of dirNames(tasksDir).sort())
@@ -98,7 +112,7 @@ function lintTasks({ tasksDir = path.join(BENCH_DIR, 'tasks'), names } = {})
     return out;
 }
 
-module.exports = { checkText, ourNames, eccNames, lintTasks };
+module.exports = { checkText, ourNames, eccNames, pinnedOurNames, lintTasks };
 
 if (require.main === module)
 {

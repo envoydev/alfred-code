@@ -1,5 +1,6 @@
-# ECC's skill, agent and command names, read from https://github.com/affaan-m/ECC at commit 934195f955cf0da847d59fcd6f68856bce112d8b
-# (the commit bench/arms/ecc.json pins). One name per line; regenerate when that pin moves.
+# ECC's skill, agent and command names, read from https://github.com/affaan-m/ECC at commit e482e579415fde18357cafce70f177ae19fd7f03
+# (the commit bench/arms/ecc.json pins): skills/<name>/SKILL.md, agents/<name>.md and commands/<name>.md, one name per line.
+# Regenerate when that pin moves. Unchanged from 934195f, the commit read on 2026-09-20.
 a11y-architect
 accessibility
 agent-architecture-audit

@@ -9,13 +9,20 @@ if (POSIX_ONLY)
 }
 const fs = require('node:fs');
 const path = require('node:path');
-const { proveTasks } = require('./prove-tasks.js');
+const { proveTasks, DROP } = require('./prove-tasks.js');
 const { makeWorld } = require('./test/world.js');
 
 const addFile = (name, body) => `diff --git a/${name} b/${name}\nnew file mode 100644\n--- /dev/null\n+++ b/${name}\n@@ -0,0 +1 @@\n+${body}\n`;
 const EDIT_APP = 'diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-app\n+broken\n';
 const HIDDEN = { hidden: [['node', 'check.js']], suite: [['node', '-e', "process.exit(require('fs').readFileSync('app.txt', 'utf8') === 'app\\n' ? 0 : 1)"]], timeoutMin: 1 };
 const CHECK = "process.exit(require('fs').existsSync('made.txt') ? 0 : 1);\n";
+
+test('the proof drops every name common.json keeps from a session, both docs-path spellings included', () =>
+{
+    const common = JSON.parse(fs.readFileSync(path.join(__dirname, 'arms', 'common.json'), 'utf8'));
+    assert.deepStrictEqual([...DROP].sort(), [...common.auth, ...common.scrub].sort());
+    for (const name of ['CLAUDE_STACK_DOCS_PATH', 'ALFRED_CODE_DOCS_PATH', 'ANTHROPIC_API_KEY']) assert.ok(DROP.includes(name), name);
+});
 
 function world(t, tasks)
 {

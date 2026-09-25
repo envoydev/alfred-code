@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { checkText, ourNames, eccNames, lintTasks } = require('./lint-prompts.js');
+const { checkText, ourNames, eccNames, pinnedOurNames, lintTasks } = require('./lint-prompts.js');
 
 const NAMES = ['dotnet-minimal-api', 'project-solve-task', 'codebase-onboarding', 'tdd-workflow', 'plan', 'dotnet', 'init'];
 const words = (text) => checkText(text, NAMES).map((f) => f.word);
@@ -40,6 +40,31 @@ test('our names are read from the tree, ECC\'s from the pinned list, and an abse
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-lint-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     assert.throws(() => eccNames(path.join(dir, 'none.txt')), /no ECC vocabulary at .*none\.txt/);
+});
+
+test('the stack under test is read from its own pinned list, because this tree may carry an older release', () =>
+{
+    const pinned = pinnedOurNames(path.join(__dirname, 'arms', 'ours-vocabulary.txt'));
+    for (const n of ['alfred-capture-architecture', 'alfred-task-solve', 'code-quality-analyzer', 'init', 'alfred-code']) assert.ok(pinned.includes(n), n);
+    assert.ok(!pinned.some((n) => n.startsWith('#')));
+    assert.throws(() => pinnedOurNames(path.join(os.tmpdir(), 'bench-no-ours-vocabulary.txt')), /no vocabulary for the stack under test at .*bench-no-ours-vocabulary\.txt/);
+});
+
+test('each pinned list names what its arm pins, so a moved pin forces a regenerated list', () =>
+{
+    const arm = (name) => JSON.parse(fs.readFileSync(path.join(__dirname, 'arms', `${name}.json`), 'utf8'));
+    const header = (file) => fs.readFileSync(path.join(__dirname, 'arms', file), 'utf8').split('\n').filter((l) => l.startsWith('#')).join('\n');
+    assert.ok(header('ecc-vocabulary.txt').includes(`commit ${arm('ecc').pin.value}`), 'the ECC list names the commit ecc.json pins');
+    assert.ok(header('ours-vocabulary.txt').includes(arm('ours').pin.value), 'our list names the release ours.json pins');
+});
+
+test('by default the lint flags a name only the pinned release carries, and the stack by name', (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-lint-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(dir, 'x1'));
+    fs.writeFileSync(path.join(dir, 'x1', 'prompt.md'), 'Ask the code-quality-analyzer first, as Alfred Code would.\n');
+    assert.deepStrictEqual(lintTasks({ tasksDir: dir }).map((f) => f.word), ['code-quality-analyzer', 'Alfred']);
 });
 
 test('lintTasks names the file and the word, over prompt.md only', (t) =>

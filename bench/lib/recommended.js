@@ -1,7 +1,8 @@
 'use strict';
-// The selection a user gets from `/claude-stack:init` by taking every recommended option: the
-// always set, each confirmed stack's seeds, and what the evidence scan found in the project's own
-// manifests - the three sources init pre-selects - run through the release's own closure. The
+// The selection a user gets from the stack's guided fresh install by taking every recommended option
+// (`/alfred-code:setup` from 2.0.0, `/claude-stack:init` before it): the always set, each confirmed
+// stack's seeds, and what the evidence scan found in the project's own manifests - the three sources
+// that walk pre-selects - run through the release's own closure. The
 // scripts come from the PINNED source, so the selection logic is the release's, never this tree's.
 const fs = require('node:fs');
 const path = require('node:path');

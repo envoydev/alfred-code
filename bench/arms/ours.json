@@ -1,13 +1,15 @@
 {
-  "_note": "The documented route, non-interactive: the pinned release cloned from this repo's own tag, its marketplace added from that clone, the selection a user gets by taking every recommended option of /claude-stack:init for the fixture's four stacks (bench/lib/recommended.js, run on the release's own scripts), the installer at project scope, then the architecture capture the stack tells a new project to run. B4 checks the selection against a real init walk and that the capture completes in print mode.",
+  "_note": "Alfred Code 2.0.0 by its README route, non-interactive: the pinned release cloned from this repo's own tag; the official marketplace, then the stack's marketplace added from that clone (key envoydev) and the core alfred-code@envoydev installed from it at project scope - BEFORE the installer, which reads the stack's marketplace key off the installed core and would otherwise register the published envoydev/alfred-code; the selection a user gets by taking every recommended option of /alfred-code:setup for the fixture's four stacks (bench/lib/recommended.js, run on the release's own scripts); the installer at project scope; then /alfred-code:init, the one-time bootstrap setup's closing card ends on, which runs the captures the install carries (related projects, architecture, code style, agent capabilities). No capture prompt of its own: 2.0.0's setup names init, never a capture, and init refuses to re-run a done one. B4 checks the selection against a real setup walk, and that init completes its captures in print mode, where its asks cannot be answered.",
   "name": "ours",
-  "pin": { "kind": "tag", "value": "v1.2.0" },
+  "pin": { "kind": "tag", "value": "v2.0.0" },
   "setup": [
     ["git", "clone", "--quiet", "--depth", "1", "--branch", "{pin}", "file://{root}", "{src}"],
+    ["claude", "plugin", "marketplace", "add", "anthropics/claude-plugins-official"],
     ["claude", "plugin", "marketplace", "add", "{src}"],
+    ["claude", "plugin", "install", "alfred-code@envoydev", "--scope", "project"],
     ["node", "{bench}/lib/recommended.js", "--src", "{src}", "--root", "{repo}", "--stacks", "aspnet,web-angular,data,devops", "--out", "{template}/selection.txt"],
-    ["node", "{src}/scripts/install/claude-stack.js", "install", "--source", "{src}", "--scope", "project", "--selection", "{template}/selection.txt"]
+    ["node", "{src}/scripts/install/alfred-code.js", "install", "--source", "{src}", "--scope", "project", "--selection", "{template}/selection.txt"]
   ],
-  "onboarding": ["/claude-stack:project-architecture-analyzer"],
+  "onboarding": ["/alfred-code:init"],
   "env": {}
 }
