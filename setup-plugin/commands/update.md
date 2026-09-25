@@ -30,7 +30,12 @@ A 1.x install upgrades through its OWN update command - `/claude-stack:update`, 
 
 1. The refresh lands 2.0.0 under the old names: 2.0.0 lists `claude-stack` and `claude-stack-hooks` <!-- legacy-name -->
    as retired aliases, so `plugin update` of each old id takes the new release into the cache.
-2. The 2.0.0 installer installs `alfred-code` at the old core's scope and marketplace key, and only
+2. The 2.0.0 installer installs `alfred-code` at the old core's scope and marketplace key - a 1.x
+   GLOBAL install (its stamp lives in the account dir, not the project yet) keeps USER scope on this
+   first run whatever `--scope` the 1.3.0 update body itself passed, logging
+   `scope: this project is a 1.x global install - migrated at user scope (the passed --scope <x> is
+   ignored on this first run)` when a different one was passed (`node
+   "$TMP/repo/scripts/install/stamp.js" scope .` reads `user` for it from then on) - and only
    once that took, removes the old entries - the retired per-stack ones first, then both aliases. It
    also renames every `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces <!-- legacy-name -->
    `claude-stack.stamp` with `alfred-code.stamp`. <!-- legacy-name -->
@@ -301,7 +306,9 @@ fix they name, and never continue to the prune, the close, or ad-hoc repair work
 breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 and then changed 226
 files under the user's `.claude` with no ask.
 
-`<scope>` is the stamp's own `scope:` line (`project`, `user` or `local`) and `--space` the profile
+`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` - the same script
+validate.md uses, reading the stamp under either name, a 1.x `global` as `user`, anything else as
+`project` (`project`, `user` or `local`) - and `--space` the profile
 that owns the install; `--keep-pins` is the default here - a fast
 refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP
 and then READS BACK what landed: at project scope the installer compares every stack-owned entry in
@@ -310,10 +317,16 @@ the log), because `claude mcp add` over a name the preceding `remove` did not cl
 exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
 update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
-each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. When claude-hud is installed this run and the account has no `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
 is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
 scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
-line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. Playwright keeps its browsers the same
+line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned
+`context7-local` also logs `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7`
+- paste that line too, since the hosted server stays disabled by the user's own earlier command
+otherwise. A user-scope core move (this run's own, not a prior one) logs
+`core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies
+until each runs /alfred-code:update` - paste it and name that as a follow-up for the user's other
+projects. Playwright keeps its browsers the same
 way: every browser the stamp's `playwright-browsers:` names is updated in place, never installed over (a legacy single `playwright` server
 migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
@@ -325,7 +338,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -337,7 +350,9 @@ moved folder switched on as a domain (`docs migration` / `docs domain:` - report
 memory registration line and the importer's own `memory import:` line or error text (present whenever
 `--memory-level` was passed, the level changed, or an install gained the memory MCP for the first
 time this run - now the fast path's own default outcome whenever it was absent, not a special case),
-the credential presence lines, and the serena re-index hint. Add a marker to the pattern when the report needs another
+the credential presence lines, the serena re-index hint, the 1.x-global-install scope line, the
+user-scope core-move line, the pruned `context7-local`'s `/mcp enable context7` line, and the
+claude-hud 'no status line yet' line. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
 
@@ -488,6 +503,14 @@ what was taken, what stays off or was left, each by name), and the restart line.
   closed with no restart step, having re-registered all seven servers) and every `warn: <line>` (a
   fail-soft that fell back and continued - not a re-run trigger, see Do not below; an audited run
   surfaced its only `!!` in 1 of 4 runs that had one, buried in a raw grep dump). Report both verbatim.
+- **1.x MIGRATION** - when the grep caught them, report each verbatim: the `scope: this project is a
+  1.x global install - migrated at user scope ...` line (this project's own first run, not a status to
+  infer from the stamp), the `core moved to alfred-code at user scope - other projects on this account
+  keep their 1.x seat denies until each runs /alfred-code:update` line (name that as a follow-up for
+  the user's OTHER projects, not this one), the `context7-local removed - if you ran /mcp disable
+  context7 for it, run /mcp enable context7` line, and the `claude-hud has no status line yet - run
+  /alfred-code:init to set it up` line (add `/alfred-code:init` to the suggestion card when this one
+  printed). None caught: say nothing about any of the four.
 - **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
   `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
   skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason
