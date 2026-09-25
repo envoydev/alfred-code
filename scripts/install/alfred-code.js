@@ -1202,6 +1202,8 @@ function installHooksAndRules(ctx)
         sharedKeys: !ctx.routes.hooks && ctx.args.scope !== 'local' ? ['ALFRED_CODE_HOOKS_OFF'] : [],
         // C3: at local scope an old skillOverrides key in settings.json is set under its new name here.
         inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
+        // baseline-git's no-attribution rule, enforced by the setting; at local scope settings.json's own value stays.
+        attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });

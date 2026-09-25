@@ -815,3 +815,34 @@ test('settings-writer: an allowed seat leaves settings.local.json\'s deny list t
     writeSettings({ file: q.sharedFile, localFile: q.localFile, catalog: CATALOG, migrations: MIGRATIONS, agentAllow: [seat] });
     assert.strictEqual(fs.readFileSync(q.localFile, 'utf8'), before);
 });
+
+// baseline-git forbids AI attribution in commits and PRs; the `attribution` setting enforces it (code.claude.com
+// settings reference: `commit` / `pr` strings, empty hides; `sessionUrl` false omits the session link).
+test('settings-writer: attribution is seeded off, key by key, never over a value the project set', () =>
+{
+    const fresh = write(settingsFile({}), { attribution: {} }).data;
+    assert.deepStrictEqual(fresh.attribution, { commit: '', pr: '', sessionUrl: false });
+
+    const mine = write(settingsFile({ attribution: { commit: 'Signed-off-by: me' } }), { attribution: {} }).data;
+    assert.deepStrictEqual(mine.attribution, { commit: 'Signed-off-by: me', pr: '', sessionUrl: false });
+
+    const odd = write(settingsFile({ attribution: 'x' }), { attribution: {} }).data;
+    assert.strictEqual(odd.attribution, 'x', 'a value that is not an object is the user\'s - left as-is');
+});
+
+test('settings-writer: attribution at local scope never hides a settings.json value', () =>
+{
+    const { data } = write(settingsFile({}), { attribution: { inherited: { pr: 'team line' } } });
+    assert.deepStrictEqual(data.attribution, { commit: '', sessionUrl: false });
+});
+
+test('settings-writer: attribution seeding is idempotent, and absent when not asked for', () =>
+{
+    const file = settingsFile({});
+    write(file, { attribution: {} });
+    const before = fs.readFileSync(file, 'utf8');
+    const again = write(file, { attribution: {} });
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+    assert.ok(!again.logs.some((m) => /attribution/.test(m)), again.logs.join(' | '));
+    assert.strictEqual(write(settingsFile({}), {}).data.attribution, undefined);
+});

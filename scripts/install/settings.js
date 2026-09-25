@@ -38,6 +38,8 @@ const HOOK_TIMEOUT = 10;
 // other hook. The plugin entry's generator reads the same table (build-marketplace.js).
 const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
+// The `attribution` keys the seed writes when absent (code.claude.com settings reference).
+const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
 
 const HOOKS_DIR_MARK = '/.claude/hooks/';
 
@@ -322,7 +324,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedKeys = [],
+        inheritedOverrides = null, sharedKeys = [], attribution = null,
         log = () => {}, note = () => {},
     } = opts;
     // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
@@ -476,6 +478,20 @@ function writeSettings(opts)
         }
     }
 
+    // baseline-git forbids AI attribution; the `attribution` setting enforces it. Key by key and add-only:
+    // a value the project set stays, and at local scope a settings.json value is never hidden by a seed.
+    if (attribution && (data.attribution === undefined || (data.attribution && typeof data.attribution === 'object' && !Array.isArray(data.attribution))))
+    {
+        const inherited = attribution.inherited && typeof attribution.inherited === 'object' ? attribution.inherited : {};
+        const seeded = [];
+        for (const [key, value] of ATTRIBUTION_OFF)
+        {
+            if ((data.attribution && Object.hasOwn(data.attribution, key)) || Object.hasOwn(inherited, key)) continue;
+            (data.attribution ??= {})[key] = value;
+            seeded.push(key);
+        }
+        if (seeded.length) { changed = true; log(`  ${label}: attribution off (${seeded.join(', ')}) - no AI attribution in commits or PRs`); }
+    }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
     if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
