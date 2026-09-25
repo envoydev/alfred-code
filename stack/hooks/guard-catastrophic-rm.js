@@ -294,10 +294,12 @@ function main()
     // The same class, one step further: a FORCED checkout or switch overwrites the tree on its way to
     // another branch, and `stash drop` / `stash clear` / `reflog expire` destroy the recovery points
     // themselves - a dropped stash and an expired reflog entry are what every other undo leans on.
+    // `gc --prune=now|all` and `prune` (whose default expiry is everything) delete the unreachable
+    // objects those undos recover, ending the grace window at once.
     // Each is judged by what it would actually destroy: the dirty paths, the stash entries it names,
-    // the reflog entries a dry run of the same expire would prune.
+    // the reflog entries or objects a dry run of the same call would prune.
     const FORCED = String.raw`\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)(?=\s|$)`;
-    const destructiveGit = new RegExp(String.raw`(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(?:checkout\s+(?:--\s|\.(?:\s|$))|restore\s+(?!(?:--staged|--source)\b)|reset\s+--hard\b|clean\s+-\S*[fx]|checkout\b[^\n;&|]*${FORCED}|switch\b[^\n;&|]*(?:${FORCED}|\s--discard-changes(?=\s|$))|stash\s+(?:clear|drop)\b|reflog\s+expire\b)`);
+    const destructiveGit = new RegExp(String.raw`(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(?:checkout\s+(?:--\s|\.(?:\s|$))|restore\s+(?!(?:--staged|--source)\b)|reset\s+--hard\b|clean\s+-\S*[fx]|checkout\b[^\n;&|]*${FORCED}|switch\b[^\n;&|]*(?:${FORCED}|\s--discard-changes(?=\s|$))|stash\s+(?:clear|drop)\b|reflog\s+expire\b|gc\b[^\n;&|]*\s--prune=(?:now|all)(?=\s|$)|prune(?=\s|$))`);
     // A QUOTED span is data, exactly as it is in the commit guard: an echo, a plan sentence or a
     // grep pattern that merely CONTAINS `git reset --hard` invokes nothing, and denying it teaches
     // the obfuscation that then defeats this gate on a real one. The fill is a NON-space so the
@@ -314,7 +316,7 @@ function main()
         // same command, then its `-C`. Judged from the project root, a dirty file one folder down read
         // as absent and its discard passed. An unexpanded variable is not guessed - the anchor stays.
         const at = hit.index;
-        const call = command.slice(at).match(/git((?:\s+-[cC]\s*\S+|\s+--\S+)*)\s+(checkout|restore|reset|clean|switch|stash|reflog)\b([^\n;&|]*)/);
+        const call = command.slice(at).match(/git((?:\s+-[cC]\s*\S+|\s+--\S+)*)\s+(checkout|restore|reset|clean|switch|stash|reflog|gc|prune)\b([^\n;&|]*)/);
         let gitCwd = path.resolve(payload.cwd || root);
         for (const c of gitScan.slice(0, at).matchAll(/(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?(\S+)/gi))
         {
@@ -344,6 +346,13 @@ function main()
                     const ref = /^\d+$/.test(named) ? `stash@{${named}}` : named;
                     return { kind: 'stash', rows: entries.filter((e) => e.startsWith(`${ref}:`)), targets: [ref] };
                 }
+                // A dry run deletes nothing - it is how a careful run asks what the real one would.
+                if ((verb === 'reflog' || verb === 'prune') && args.some((a) => a === '-n' || a === '--dry-run')) return { kind: '', rows: [], targets: [] };
+                if (verb === 'prune')
+                    return { kind: 'objects', rows: git(['prune', '--dry-run', ...args]).split('\n').filter(Boolean), targets: ['*'] };
+                // gc drops loose AND packed unreachable objects; fsck names both, reflogs counted as reachable as gc counts them.
+                if (verb === 'gc')
+                    return { kind: 'objects', rows: git(['fsck', '--unreachable', '--connectivity-only', '--no-progress']).split('\n').filter((l) => /^unreachable\b/.test(l)), targets: ['*'] };
                 if (verb === 'reflog')
                 {
                     const rest = args.slice(1).filter((a) => a !== '-n' && a !== '--dry-run' && a !== '--verbose');
@@ -417,16 +426,20 @@ function main()
                 : loss.kind === 'reflog'
                     ? `Blocked: this expires ${rows.length} reflog entr${rows.length === 1 ? 'y' : 'ies'} - the reflog is the one record of\n` +
                       `commits no branch reaches, and gc deletes them once it is gone. A house rule enforced here.\n`
+                    : loss.kind === 'objects'
+                    ? `Blocked: this deletes ${rows.length} unreachable object(s) now - a reset-away commit, a dropped stash or a lost\n` +
+                      `\`git add\` lives on only as these until the grace window ends. A house rule enforced here.\n`
                     : `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${loss.pathspec.length ? 'the path(s) this command names' : 'the working tree'}, and there is\n` +
                       `no reflog for a working tree - once it is gone it is gone. A house rule enforced here, no prose\n` +
                       `copy to consult - same class as the recursive-rm gate in this file.\n`;
             const keep = loss.kind === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
                 : loss.kind === 'reflog' ? `'Keep the reflog (Recommended)' - skip the expire`
+                : loss.kind === 'objects' ? `'Keep them (Recommended)' - a plain \`git gc\` keeps the grace window`
                     : `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`;
             const narrow = loss.kind === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
-                : loss.kind === 'reflog' ? '' : `'Narrow it' - name the ONE file to revert instead of the whole tree`;
+                : loss.kind === 'reflog' || loss.kind === 'objects' ? '' : `'Narrow it' - name the ONE file to revert instead of the whole tree`;
             const spell = loss.kind === 'stash' ? 'one entry per line as `stash@{N}`, or `*` for every one'
-                : loss.kind === 'reflog' ? 'the single line `*`'
+                : loss.kind === 'reflog' || loss.kind === 'objects' ? 'the single line `*`'
                     : 'one path per line exactly as the\ncommand spells them, or `*` for everything';
             process.stderr.write(
                 head +

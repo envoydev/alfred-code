@@ -70,7 +70,7 @@ change (see the invariants below).
   - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
     `git checkout --` / `restore` / `reset --hard` / `clean -f` / a forced `checkout` or `switch` only when
     the PATHSPEC the command names is dirty (judged where git runs: cwd, a leading `cd`, `-C`), plus
-    `stash drop` / `stash clear` / `reflog expire` by what they destroy; PowerShell `Remove-Item -Recurse`
+    `stash drop` / `stash clear` / `reflog expire` / `gc --prune=now` / `prune` by what they destroy; PowerShell `Remove-Item -Recurse`
     counts. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
   - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the

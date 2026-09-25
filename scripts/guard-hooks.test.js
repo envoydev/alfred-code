@@ -735,6 +735,35 @@ test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear 
   assert.equal(rm('git reflog expire --expire=now --all').status, 0, 'the * line does');
 });
 
+test('guard-catastrophic-rm: gc --prune=now and prune delete the unreachable objects every undo recovers from', () => {
+  // A reset-away commit, a dropped stash, a lost `git add` all survive as unreachable objects until
+  // the grace window ends; these forms end it now. Judged by what the call would delete, like the reflog.
+  const dir = cleanRepo();
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+
+  for (const c of ['git gc --prune=now', 'git prune --expire=now', 'git prune'])
+    assert.equal(rm(c).status, 0, `nothing unreachable yet: ${c}`);
+  const blob = spawnSync('git', ['-C', dir, 'hash-object', '-w', '--stdin'], { input: 'lost work\n', encoding: 'utf8' }).stdout.trim();
+  for (const c of ['git gc --prune=now', 'git gc --prune=all', 'git gc --aggressive --prune=now', 'git -c gc.auto=0 gc --prune=now',
+    'git prune --expire=now', 'git prune --expire now', 'git prune --expire=all', 'git prune -v', 'git prune'])
+    assert.equal(rm(c).status, 2, `deletes the unreachable object now: ${c}`);
+  const denial = rm('git gc --prune=now').stderr;
+  assert.match(denial, new RegExp(blob.slice(0, 12)), 'the denial lists what it would delete');
+  assert.match(denial, /DISCARD-ALLOW/, 'and names the receipt');
+  for (const c of ['git gc', 'git gc --prune=2.weeks.ago', 'git prune --expire=2.weeks.ago', 'git prune -n', 'git prune --dry-run --expire=now',
+    'git reflog expire --dry-run --expire=now --all', 'echo "then git gc --prune=now"', 'git count-objects -v'])
+    assert.equal(rm(c).status, 0, `keeps the objects: ${c}`);
+
+  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  fs.mkdirSync(flow, { recursive: true });
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
+  assert.equal(rm('git gc --prune=now').status, 2, 'a receipt naming something else covers nothing');
+  fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
+  assert.equal(rm('git gc --prune=now').status, 0, 'the * line does');
+  assert.equal(rm('git prune').status, 0, '... for prune too');
+});
+
 test('guard-catastrophic-rm: a SQL DROP or an EF database drop is counted, never denied', () => {
   // Count first (the user's direction): a probe row per call, so the block rate a gate would have is
   // measured before one is built.
