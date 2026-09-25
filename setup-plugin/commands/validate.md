@@ -586,6 +586,18 @@ the project's own, never in the copy. `behind` rows and the `stale stamp` line a
 validation, reported by count). `library: no library stamp` is the whole paste on an install older
 than the library route.
 
+Then the Stop build check advisory, from this project's session transcripts and its done-gate probe
+rows:
+
+```bash
+node "$TMP/repo/scripts/analyze-usage.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | sed 's/[^a-zA-Z0-9]/-/g')" --turn-check-advice .
+```
+
+It prints ONE `turn-check: advise - ...` line (done claims over an edit with nothing run after it
+reached 3 in the newest 10 sessions) or nothing. Paste a printed line as-is in the same fenced block;
+nothing printed means no row. It is advisory: never write `ALFRED_CODE_TURN_CHECK` from this command -
+the user sets it through `/alfred-code:configure` or by hand.
+
 ## Clean up the temp dir - ALWAYS
 
 Remove `$TMP` per `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md`, on EVERY exit path of

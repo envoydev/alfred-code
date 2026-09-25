@@ -301,6 +301,15 @@ one line under the table. Copy the block's closing caveat as the last line: a ho
 never score used, and a catalog-sourced row proves the stack ships the artifact, not that this
 project installed it.
 
+Then the Stop build check advisory, from the same transcripts and this project's done-gate probe rows:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | sed 's/[^a-zA-Z0-9]/-/g')" --turn-check-advice .
+```
+
+It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes under the usage table
+as-is; nothing printed means no row. The switch is the user's - never set it from here.
+
 **Generated docs & data** - the capture output under the docs root from the general table, plus
 serena's local memory:
 

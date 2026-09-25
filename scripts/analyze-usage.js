@@ -22,6 +22,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --inventory <.claude>  # the installed set the INVENTORY vs USE block scores
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <projects-dir> --exclude-session <id>  # leave a session out (the live one is left out already)
+//   node scripts/analyze-usage.js <projects-dir> --turn-check-advice <root>  # ONE row when unchecked done claims pass 3 per 10 sessions
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
@@ -2466,6 +2467,35 @@ const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
 const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over an edit - ${t.ran} ran after the edit, ${t.unrun} unrun: `
   + `${t.byRule} excused by a rule, ${t.noTests} with no tests found, ${t.skillLoaded} with the skill loaded, ${t.inContext} with it loaded earlier, ${t.missed} MISSED`;
 
+// The Stop build check (check-turn-build.js) ships off and turns on per project 'after a measured
+// week'; the done-gate probe above is that measurement. An UNCHECKED claim is an unrun one the user's
+// two named exceptions do not excuse (a rule against running tests, no tests found) - the split's
+// skill-loaded, loaded-earlier and missed buckets. At TURN_CHECK_THRESHOLD of them in the newest
+// TURN_CHECK_WINDOW sessions - one session in three - validate and status paste ONE advisory row. The
+// switch is the user's: nothing here writes it, and a project that already set it gets no row.
+const TURN_CHECK_WINDOW = 10;
+const TURN_CHECK_THRESHOLD = 3;
+function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
+  const { envOf } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
+  const root = path.resolve(projectRoot);
+  const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  // The hooks see local over project over account, so the same order answers here; junk is no setting.
+  const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
+    .map((f) => { try { const env = JSON.parse(fs.readFileSync(f, 'utf8')).env; return env && typeof env === 'object' ? env : {}; } catch { return {}; } });
+  const setting = (suffix) => [...envs, process.env].map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
+  const on = String(setting('TURN_CHECK') || '').trim() === '1';
+  const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.claude/docs'), 'hook-blocks');
+  const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
+    .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
+  const doneGate = newDoneGate();
+  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl')).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
+  const advise = !on && unchecked >= TURN_CHECK_THRESHOLD;
+  const row = advise ? `turn-check: advise - ${unchecked} done claims over an edit had nothing run after it in the newest ${newest.length} sessions `
+    + `(threshold ${TURN_CHECK_THRESHOLD} per ${TURN_CHECK_WINDOW}): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop` : null;
+  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, advise, row };
+}
+
 // A root-cause row is the first red build or test run of a streak. The ledger cannot know what came
 // next, so the transcript answers it: the run's tool_use_id is found in the session's own transcripts
 // (the main one and every subagent's), and what follows it in that actor's file decides - the skill
@@ -3529,7 +3559,7 @@ async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
-  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session']);
+  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
   const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
@@ -3557,26 +3587,37 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
+  }
+
+  // The session RUNNING this analyzer is left out of a directory read: its transcript is half-written,
+  // and a rollup over `~/.claude/projects` scored it beside the finished ones. Claude Code names it in
+  // every tool shell (`CLAUDE_CODE_SESSION_ID` - exact, where a 'modified in the last N seconds' rule
+  // would also drop a session that just closed and keep one idle past N); `--exclude-session`
+  // (repeatable, comma-separated) names more, such as a second live session in another terminal.
+  const excludeWhy = new Map();
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] !== '--exclude-session') continue;
+    for (const id of String(args[i + 1]).split(',').map((x) => x.trim()).filter(Boolean)) excludeWhy.set(id, '--exclude-session');
+  }
+  const liveId = process.env.CLAUDE_CODE_SESSION_ID;
+  if (liveId && !excludeWhy.has(liveId)) excludeWhy.set(liveId, 'CLAUDE_CODE_SESSION_ID');
+
+  // The Stop build check advisory: ONE row or nothing, over the newest sessions' own ledgers - no
+  // transcript is analysed, so it stays cheap on a long history, and a missing directory is no row.
+  const adviceRoot = flagVal('--turn-check-advice');
+  if (adviceRoot) {
+    const advice = turnCheckAdvice(target, adviceRoot, excludeWhy);
+    if (asJson) console.log(JSON.stringify(advice, null, 2));
+    else if (advice.row) console.log(advice.row);
+    return;
   }
 
   if (fs.statSync(target).isDirectory()) {
     // rollup mode: one line per session under the directory, newest first. RECURSIVE - a
     // collected corpus nests one folder per project and one per session, and the flat one-level
     // history folder is just the depth-0 case of the same walk.
-    // The session RUNNING this analyzer is left out: its transcript is half-written, and a rollup
-    // over `~/.claude/projects` scored it beside the finished ones. Claude Code names it in every
-    // tool shell (`CLAUDE_CODE_SESSION_ID` - exact, where a 'modified in the last N seconds' rule
-    // would also drop a session that just closed and keep one idle past N); `--exclude-session`
-    // (repeatable, comma-separated) names more, such as a second live session in another terminal.
-    const excludeWhy = new Map();
-    for (let i = 0; i < args.length - 1; i++) {
-      if (args[i] !== '--exclude-session') continue;
-      for (const id of String(args[i + 1]).split(',').map((x) => x.trim()).filter(Boolean)) excludeWhy.set(id, '--exclude-session');
-    }
-    const liveId = process.env.CLAUDE_CODE_SESSION_ID;
-    if (liveId && !excludeWhy.has(liveId)) excludeWhy.set(liveId, 'CLAUDE_CODE_SESSION_ID');
     const excludedSessions = [];
     const files = findSessionFiles(target)
       .filter((f) => {

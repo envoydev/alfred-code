@@ -894,6 +894,84 @@ test('hook-blocks: directory mode sums the probe rows of each session it reads, 
   assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');
 });
 
+// R5: the Stop build check ships off and turns on 'after a measured week' - the done-gate probe is that
+// measurement. Past 3 unexcused unrun claims in the newest 10 sessions, validate and status paste ONE row.
+function turnCheckCorpus(counts, opts = {}) {
+  const dir = tmp();
+  const sessions = path.join(dir, 'projects');
+  const root = path.join(dir, 'proj');
+  const docs = opts.docsPath || '.claude/docs';
+  const blocks = path.join(root, docs, 'hook-blocks');
+  fs.mkdirSync(sessions, { recursive: true });
+  fs.mkdirSync(blocks, { recursive: true });
+  counts.forEach((rows, i) => {
+    const sid = `s-${String(i).padStart(2, '0')}`;
+    const file = path.join(sessions, `${sid}.jsonl`);
+    fs.writeFileSync(file, [bash('t1', 'echo'), result('t1')].map(line).join(''));
+    // index 0 is the NEWEST session
+    const at = new Date(Date.UTC(2026, 8, 25) - i * 3600e3);
+    fs.utimesSync(file, at, at);
+    if (rows.length) fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), rows.join(''));
+  });
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  if (opts.settings !== undefined) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), opts.settings);
+  return { sessions, root, blocks };
+}
+const turnCheck = (c, extra = []) => {
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(c.root, 'no-account') };
+  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH;
+  const args = [SCRIPT, c.sessions, '--turn-check-advice', c.root, ...extra];
+  return { json: JSON.parse(execFileSync('node', [...args, '--json'], { encoding: 'utf8', env })), text: execFileSync('node', args, { encoding: 'utf8', env }) };
+};
+const excused = [doneRow({ rule: 'CLAUDE.md: Do not run the tests.' }), doneRow({ tests: 'none-found' }), doneRow({ outcome: 'ran', run: 'npm test' })];
+
+test('turn-check advice: 2 unexcused unrun claims in the newest 10 sessions stay silent; the rule, no-tests and ran rows never count', () => {
+  const { json, text } = turnCheck(turnCheckCorpus([[doneRow({}), ...excused], [doneRow({ skill: true })], [], ...excused.map((r) => [r])]));
+  assert.strictEqual(json.unchecked, 2, JSON.stringify(json));
+  assert.strictEqual(json.advise, false);
+  assert.strictEqual(text, '', 'one under the threshold prints nothing');
+});
+
+test('turn-check advice: exactly 3 prints the one row; 4 prints it too', () => {
+  for (const n of [3, 4]) {
+    const { json, text } = turnCheck(turnCheckCorpus([Array.from({ length: n }, () => doneRow({})), excused]));
+    assert.strictEqual(json.unchecked, n);
+    assert.strictEqual(json.advise, true);
+    assert.strictEqual(text.trim().split('\n').length, 1, 'ONE row');
+    assert.match(text, new RegExp(`^turn-check: advise - ${n} done claims over an edit had nothing run after it in the newest 2 sessions \\(threshold 3 per 10\\): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop\\n$`));
+  }
+});
+
+test('turn-check advice: only the newest 10 sessions count - an 11th, older one is outside the window', () => {
+  const counts = Array.from({ length: 11 }, () => []);
+  counts[0] = [doneRow({}), doneRow({})];
+  counts[10] = [doneRow({}), doneRow({})];
+  const { json, text } = turnCheck(turnCheckCorpus(counts));
+  assert.strictEqual(json.sessions, 10);
+  assert.strictEqual(json.unchecked, 2, 'the 11th session is out of the window');
+  assert.strictEqual(text, '');
+});
+
+test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 gets no row; a malformed settings file is no setting', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const on = turnCheck(turnCheckCorpus(over, { settings: JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }) }));
+  assert.strictEqual(on.json.on, true);
+  assert.strictEqual(on.json.advise, false);
+  assert.strictEqual(on.text, '');
+  const junk = turnCheck(turnCheckCorpus(over, { settings: '{not json' }));
+  assert.strictEqual(junk.json.on, false);
+  assert.strictEqual(junk.json.advise, true);
+});
+
+test('turn-check advice: the ledger is found under the project\'s own docs root, and a missing corpus prints nothing', () => {
+  const c = turnCheckCorpus([[doneRow({}), doneRow({}), doneRow({})]], { docsPath: 'notes/gen', settings: JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'notes/gen' } }) });
+  assert.strictEqual(turnCheck(c).json.unchecked, 3, 'read from notes/gen/hook-blocks');
+  const gone = { ...c, sessions: path.join(c.root, 'no-such-dir') };
+  const out = turnCheck(gone);
+  assert.strictEqual(out.json.sessions, 0);
+  assert.strictEqual(out.text, '');
+});
+
 // ---------- the efficiency scorecard ----------
 // Each row is a measured practice with a denominator; these pin the classifiers on synthetic
 // transcripts so a regex drift cannot silently move a rate the observation week is read from.

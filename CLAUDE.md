@@ -157,7 +157,9 @@ change (see the invariants below).
     session). Each note is one `mode: monitor` row in the hook-blocks ledger; `ALFRED_CODE_MONITOR` is seeded
     `log` (rows only, the observation week), `inject` hands the note back as `additionalContext`, `0` is off.
   - `check-turn-build.js` (`PostToolUse` on `Write|Edit|MultiEdit` + `Stop`) - seeded OFF
-    (`ALFRED_CODE_TURN_CHECK=0`; `1` turns it on per project after a measured week). The PostToolUse half
+    (`ALFRED_CODE_TURN_CHECK=0`; `1` turns it on per project after a measured week - validate and status
+    paste `analyze-usage.js --turn-check-advice`'s one row at 3 unchecked done claims in the newest 10
+    sessions, never setting it). The PostToolUse half
     lists the turn's written paths in `<docs-path>/flow/turn-edits-<session>`; at `Stop` it runs ONE scoped
     check per nearest root - the project's own `tsc --noEmit -p` for TypeScript, `dotnet build --no-restore
     -v q` for C# - and hands the first 20 error lines back as a block, once per turn (the continuation Stop
