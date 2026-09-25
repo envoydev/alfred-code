@@ -82,13 +82,18 @@ function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
     const src = path.join(sourceDir, 'stack', 'CLAUDE.template.md');
     if (!fs.existsSync(src)) { note('CLAUDE.template.md not found in the stack source'); return false; }
     const dest = path.join(projectRoot, '.claude', 'CLAUDE.md');
+    // Claude reads a root AGENTS.md on its own only while no CLAUDE.md exists, so the seed would switch it
+    // off: a live import under the H1 keeps it loading (resolved against this file, hence the '../').
+    const agents = fs.existsSync(path.join(projectRoot, 'AGENTS.md'));
     try
     {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        const body = fs.readFileSync(src, 'utf8').split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
+        let body = fs.readFileSync(src, 'utf8').split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
+        if (agents) body = body.replace(/^(#[^\n]*\n)/, '$1\n@../AGENTS.md\n');
         fs.writeFileSync(dest, body);
     }
     catch (err) { note(`CLAUDE.md could not be seeded (${err.message})`); return false; }
+    if (agents) log('  AGENTS.md: imported from the seeded .claude/CLAUDE.md (@../AGENTS.md), so it keeps loading');
     log("  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed");
     return true;
 }

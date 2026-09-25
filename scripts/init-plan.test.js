@@ -279,3 +279,18 @@ for (const [name, args] of [
         assert.strictEqual(r.stdout, '');
     });
 }
+
+// Both homes that print the post-install capture order to a reader must follow the order this script runs
+// (the shared-rules pin covers only the 'agent-capabilities LAST' clause, which is how the template drifted).
+for (const rel of ['stack/CLAUDE.template.md', 'setup-plugin/references/post-install.md'])
+{
+    test(`capture order: ${rel} names the captures in CAPTURES order`, () =>
+    {
+        const { CAPTURES } = require('./init-plan.js');
+        const names = CAPTURES.map((c) => c.skill);
+        const text = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+        const firstSeen = [];
+        for (const m of text.matchAll(/\/(alfred-capture-[a-z-]+)/g)) if (names.includes(m[1]) && !firstSeen.includes(m[1])) firstSeen.push(m[1]);
+        assert.deepStrictEqual(firstSeen, names);
+    });
+}

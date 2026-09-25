@@ -102,6 +102,25 @@ test('CLAUDE.md: seeded from the template with the project name stamped in', () 
         `# ${path.basename(projectRoot)}\n\nOutline.\n`);
 });
 
+test('CLAUDE.md: a root AGENTS.md gets a live import under the H1 - once a CLAUDE.md exists Claude stops reading AGENTS.md on its own', () =>
+{
+    const source = dir({ 'stack/CLAUDE.template.md': '# __PROJECT_NAME__\n\nOutline.\n' });
+    const projectRoot = dir({ 'AGENTS.md': '# Agents\n' });
+    const logs = [];
+    assert.strictEqual(seeds.seedClaudeMd({ projectRoot, sourceDir: source, log: (m) => logs.push(m) }), true);
+    assert.strictEqual(fs.readFileSync(path.join(projectRoot, '.claude', 'CLAUDE.md'), 'utf8'),
+        `# ${path.basename(projectRoot)}\n\n@../AGENTS.md\n\nOutline.\n`);
+    assert.ok(logs.some((m) => /AGENTS\.md: imported/.test(m)), logs.join(' | '));
+});
+
+test('CLAUDE.md: no AGENTS.md, no import line', () =>
+{
+    const source = dir({ 'stack/CLAUDE.template.md': '# __PROJECT_NAME__\n\nOutline.\n' });
+    const projectRoot = dir({ 'agents.txt': 'x\n' });
+    assert.strictEqual(seeds.seedClaudeMd({ projectRoot, sourceDir: source }), true);
+    assert.ok(!/@\.\.\/AGENTS\.md/.test(fs.readFileSync(path.join(projectRoot, '.claude', 'CLAUDE.md'), 'utf8')));
+});
+
 test('CLAUDE.md: EITHER existing location stops the seed - two copies would both auto-load', () =>
 {
     const source = dir({ 'stack/CLAUDE.template.md': '# __PROJECT_NAME__\n' });
