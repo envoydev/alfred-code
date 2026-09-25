@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
