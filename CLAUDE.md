@@ -397,7 +397,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
     registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
     and lets load - never a plugin-carried locked server or an engine left off. A legacy `playwright` server
-    migrates. The playwright agents grant all four.
+    migrates. The playwright agents grant all four. A kept engine writes `.playwright/.gitignore` (`*`): the
+    browser profiles hold session cookies.
   - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
@@ -563,7 +564,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `remove` looks like success. `verifyProject` / `verifyUser` (`scripts/install/mcp.js`) read the result
   back: at project scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`);
   at user and local scope the shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then
-  reported (the account config is never hand-edited). The expected shape is built from the same
+  reported (the account config is never hand-edited). A manual registration that takes a stack MCP plugin's place
+  (the context7 url under any name, or a plugin-carried server's own name at local, project or user scope) gets one
+  line naming its `claude mcp remove` command and is never removed by the run: plugins rank below those scopes
+  (measured, 2.1.282), so the warning is the only signal. The expected shape is built from the same
   manifest words; a server the project added by hand is never touched. `scripts/install-mcp.test.js`
   pins it on the seed.
 - Editing a consuming project's installed copy is local-only; mirror it into `scripts/install/` here

@@ -152,8 +152,8 @@ recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude
 CLAUDE.md (root or `.claude/`) is NEVER overwritten - the offer becomes a reconcile against
 `$TMP/repo/stack/CLAUDE.template.md` instead (add the sections it lacks, leave the project's own
 prose untouched), with the changes shown before writing. On a yes: follow the template's own
-authoring-outline comment - the project top (what it is, its structure, the real build and test
-commands), the outline's inventories, and the rules table trimmed to the rules this install carries.
+authoring-outline comment - the project top (what it is, where its main parts live - one line each, never a folder tour, the real
+build and test commands), the outline's inventories, and the rules table trimmed to the rules this install carries.
 The captures just run are what the top cites for structure. Never offer skill, agent or MCP changes
 here - that is `/alfred-code:configure`.
 
