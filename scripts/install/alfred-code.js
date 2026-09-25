@@ -1170,10 +1170,12 @@ function installHooksAndRules(ctx)
         log: ctx.log, note: ctx.note,
     });
     // C8: Claude Code keeps settings.local.json out of commits only when IT creates the file
-    // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named.
+    // (code.claude.com/docs/en/settings) - one this run created, and git does not ignore, is named. F7: it
+    // is the user's to act on (a machine path would be committed), so it carries the `!!` marker the 1.x
+    // update body's grep and every `warn:` pass read.
     if (!hadLocal && fs.existsSync(localSettings)
         && ctx.rt.spawnCommand('git', ['check-ignore', '-q', '--', path.relative(ctx.projectRoot, localSettings)], { cwd: ctx.projectRoot, stdio: 'ignore' }).status === 1)
-        ctx.log(`  settings.local.json: created for this machine's own values (the memory database path) - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
+        ctx.log(`  !! settings.local.json: created for this machine's own values (the memory database path) - git does not ignore it here; add ${path.relative(ctx.projectRoot, localSettings).split(path.sep).join('/')} to .gitignore`);
     // M1 (R132): the account file rejects a .mcp.json server as well, and the installer never edits it -
     // an engine this run enabled that it still lists is named with its file, never left to look on.
     const accountFile = path.join(ctx.configDir, 'settings.json');

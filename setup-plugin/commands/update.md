@@ -491,7 +491,10 @@ what was taken, what stays off or was left, each by name), and the restart line.
   them. Report those lines; when there are none, say 'env: nothing renamed, removed or seeded this
   run' - a claim you can make because the log is silent AND step 2's `env-keys:` set is the
   before-state you are comparing against. Never assert it from memory: three audited runs did, and
-  one named keys it had never probed.
+  one named keys it had never probed. The `settings.local.json: created ... add
+  .claude/settings.local.json to .gitignore` line carries the `!!` marker (a machine path would
+  otherwise be committed), so it also arrives as a `warn:` line - report it once, here, not again
+  under RESTART / WARN.
 - **MEMORY** - when the grep caught a memory line, report it verbatim: the `memory:` level/database
   line (present whenever `--memory-level` was passed, the level changed, or this run adopted the
   registration for the first time - the fast path's own default now, whenever it was absent, not

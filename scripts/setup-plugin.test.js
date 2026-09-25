@@ -928,6 +928,25 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
     assertSurfaced(report, 'plugin moved [local -> project]: serena@envoydev', { firstRun: false });
 });
 
+// F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a
+// machine path in the repo unless the user acts - matched neither the 1.x body's grep (`settings\.json
+// env:` only) nor its `warn:` lines, so a 1.x project's first 2.0.0 run never showed the advice.
+test('update: a 1.x project install\'s first 2.0.0 run shows the settings.local.json gitignore advice through both update bodies (F7)', { skip: process.platform === 'win32' && 'the seed sandbox is POSIX only' }, () =>
+{
+    const { seedRun } = require('./seed-sandbox.js');
+    const { out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', {
+        args: ['--scope', 'project'],
+        plugins: JSON.stringify([OLD_KEY, `${OLD_KEY}-hooks`].map((n) => ({ id: `${n}@${OLD_KEY}`, version: '1.3.0', scope: 'project', enabled: true }))),
+        prepare: (repo) =>
+        {
+            fs.mkdirSync(path.join(repo, '.claude', 'hooks'), { recursive: true });
+            fs.writeFileSync(path.join(repo, '.claude', `${OLD_KEY}.stamp`), 'sha: abc\nversion: 1.3.0\nscope: project\n');
+            fs.writeFileSync(path.join(repo, '.claude', 'hooks', 'docs.js'), '');
+        },
+    });
+    assertSurfaced(reportOf(out), 'settings.local.json: created for this machine\'s own values (the memory database path) - git does not ignore it here; add .claude/settings.local.json to .gitignore');
+});
+
 // The way back from the 2.0.0 cut is printed text the user runs as-is, at whatever scope the install
 // has. A retired-plugins row's add-back is substituted per run; a migration's `then` is not, so one
 // naming a project scope names the global install's user scope beside it. A local-mode context7 user
