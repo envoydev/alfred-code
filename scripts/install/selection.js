@@ -526,5 +526,5 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 
 module.exports = {
     addLines, closeLines, dropLines, dropFormerPicks, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
+    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

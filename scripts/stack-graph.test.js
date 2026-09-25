@@ -142,7 +142,7 @@ test('the catalog names the plugins every install carries beside the core, and s
     assert.ok(Array.isArray(graph.catalog.dependencyPlugins), 'catalog.dependencyPlugins is generated');
     assert.deepStrictEqual(graph.catalog.dependencyPlugins, CORE_DEP_PLUGINS.map((s) => s.split('@')[0]).sort());
     assert.deepStrictEqual(graph.catalog.dependencyPlugins, ['claude-hud']);
-    assert.ok(!graph.catalog.dependencyPlugins.includes('superpowers'), 'R72: superpowers is an optional pick, not a companion');
-    // and it stays IN the plugin catalog, as an optional pick the walk can offer.
-    assert.ok(graph.catalog.plugins.includes('superpowers'), 'an optional plugin is still a catalog plugin');
+    assert.ok(!graph.catalog.dependencyPlugins.includes('superpowers'), 'superpowers is no companion');
+    // R109: nor a pick - it left the plugin catalog in 2.0.0, so the walk never offers it.
+    assert.ok(!graph.catalog.plugins.includes('superpowers'), 'superpowers is no catalog plugin');
 });

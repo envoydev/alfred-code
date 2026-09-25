@@ -668,13 +668,13 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
         fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'serena' }, 'context7'], hooks: [],
-            plugins: [{ name: 'superpowers', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
+            plugins: [{ name: 'claude-md-management', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
         fs.writeFileSync(dropped, JSON.stringify({ plugins: [{ name: 'typescript-lsp', scope: 'project' }] }));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
             '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
         assert.ok(!/\[object Object\]/.test(out), `no object reads as a name:\n${out}`);
         const txt = fs.readFileSync(emit, 'utf8');
-        assert.match(txt, /^plugin superpowers$/m, 'a scoped plugin stays selected');
+        assert.match(txt, /^plugin claude-md-management$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
         assert.match(txt, /^mcp serena$/m, 'an object mcp entry stays selected');
     }
@@ -917,7 +917,7 @@ test('a plugin the core carries beside it gets its own row status, in both table
 });
 
 // R27: claude-hud is required - a `dependency` row, never a pick - and no plugin is an always-baseline
-// SEED any more: the optional four are suggested on evidence, and superpowers (R72) is an optional pick.
+// SEED any more: the optional four are suggested on evidence, and superpowers (R109) is no pick at all.
 test('claude-hud gets the dependency row, and no plugin is seeded into every install', () => {
     const fs = require('node:fs');
     const os = require('node:os');
@@ -931,36 +931,38 @@ test('claude-hud gets the dependency row, and no plugin is seeded into every ins
     fs.rmSync(dir, { recursive: true, force: true });
     const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
     assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
-    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp', 'superpowers'])
+    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
         assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');
     assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');
 });
 
-// R72: superpowers is an OPTIONAL pick - suggested (the general opt-in list), never seeded, and no
-// baseline item cites it any more, so nothing the walk keeps pulls it in.
-test('superpowers is an optional pick: suggested, in no seed, reached by no closure, not a companion', () => {
-    const { execFileSync } = require('node:child_process');
+// R109: superpowers left every selection surface in 2.0.0 - no seed, no suggestion, no closure, no
+// catalog row. It is no retirement either: an installed copy is the user's own and never touched, and
+// a selection that still names it drops it with the one 'unknown' line every stale item gets.
+test('superpowers is in no selection surface: no seed, no suggestion, no closure, no catalog row', () => {
+    const { spawnSync } = require('node:child_process');
     const recs = require('../meta/recommendations.json');
-    assert.ok(((recs.general || {}).plugins || []).includes('superpowers'), 'suggested: it is on the general opt-in list');
+    assert.ok(!((recs.general || {}).plugins || []).includes('superpowers'), 'not suggested');
     assert.ok(!(recs.always.plugins || []).includes('superpowers'), 'never an always seed');
     for (const [st, sel] of Object.entries(recs.stacks)) assert.ok(!(sel.plugins || []).includes('superpowers'), `never a ${st} seed`);
     assert.ok(!(computeClosure(graph, recs.always).plugins || []).includes('superpowers'), 'no baseline rule, skill or seat cites it');
     for (const sel of Object.values(recs.stacks)) assert.ok(!(computeClosure(graph, sel).plugins || []).includes('superpowers'), 'no stack closure reaches it');
     assert.ok(!(graph.catalog.dependencyPlugins || []).includes('superpowers'), 'not a companion the installer adds on every run');
-    assert.ok(graph.catalog.plugins.includes('superpowers'), 'still in the catalog - addable, and read back where installed');
+    assert.ok(!graph.catalog.plugins.includes('superpowers'), 'not in the catalog');
 
     const fs = require('node:fs');
     const os = require('node:os');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-row-'));
     const sel = path.join(dir, 'raw.json');
-    fs.writeFileSync(sel, JSON.stringify(recs.always));
-    const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins',
+    fs.writeFileSync(sel, JSON.stringify({ ...recs.always, plugins: ['superpowers', 'csharp-lsp'] }));
+    const r = spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins',
         '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
     fs.rmSync(dir, { recursive: true, force: true });
-    const row = out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === 'superpowers');
-    // unselected, nothing requiring it - and the row says what a pick costs and why it is optional
-    assert.match(row, /\|\s*-\s*\|\s*optional - .*5\.7k always-on chars.*core/, `the recommended walk leaves it unselected and names its cost: ${row}`);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = `${r.stdout}\n${r.stderr}`;
+    assert.ok(!out.split('\n').some((l) => l.split('|')[1] && l.split('|')[1].trim() === 'superpowers'), `no table row: ${out}`);
+    assert.strictEqual(out.split('\n').filter((l) => /^unknown: plugin 'superpowers'/.test(l)).length, 1, `an old pick is dropped with one line: ${out}`);
 });
 
 // R72, validate's side: an install that has superpowers keeps it. The redundant pass never proposes

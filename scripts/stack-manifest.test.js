@@ -60,17 +60,16 @@ test('stack-manifest: a parked row keeps its note, and the parked plugins are ex
     }
 });
 
-// R72: superpowers is an OPTIONAL pick - suggested, never seeded. Its row stays (an install that has
-// it reads it back from the catalog, and the walk can offer it), active like any other pick, and the
-// note carries the measured cost a user weighs before adding it back.
-test('stack-manifest: superpowers is an ordinary optional row that names its always-on cost', () =>
+// R109: superpowers left the stack's picks in 2.0.0, so the manifest carries no row for it. It is no
+// retirement: the installer names it in FORMER_PLUGINS, drops an old pick with one log line, and never
+// uninstalls, disables or refreshes an installed copy - that copy is the user's own now.
+test('stack-manifest: superpowers has no row, and the installer knows it as a former pick', () =>
 {
     const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
-    const row = m.plugins.find((r) => r.id === 'superpowers@claude-plugins-official');
-    assert.ok(row, 'the optional row is kept - dropping it would hide an installed superpowers from the read-back');
-    assert.notStrictEqual(row.active, false, 'not parked: a parked row is a companion installed on every run');
-    assert.match(row.note, /optional/i, 'the note says it is optional');
-    assert.match(row.note, /5,707/, 'the note names the measured always-on cost (chars per session)');
+    assert.ok(!m.plugins.some((r) => /^superpowers@/.test(r.id)), 'no manifest row - it is no stack pick');
+    assert.ok(!(m.retired && JSON.stringify(m.retired).includes('superpowers')), 'and no retirement - an installed copy is never pruned');
+    const { FORMER_PLUGINS } = require('./install/selection.js');
+    assert.strictEqual(FORMER_PLUGINS.superpowers, '2.0.0', 'the release it left in');
 });
 
 // A plugin from a marketplace that is neither the official one nor this repo installs only once
