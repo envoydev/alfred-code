@@ -534,6 +534,7 @@ function runLayers(ctx)
     importMemory(ctx);
     docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope), log: ctx.log });
     if (args.action === 'install') seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
+    selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
     serena.seedProject({
         projectRoot: ctx.projectRoot,
         selected: ctx.lists.mcps.some((e) => e.startsWith('serena|')),

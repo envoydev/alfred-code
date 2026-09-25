@@ -46,8 +46,8 @@ marketplace key (`claude-stack` on a 1.x account - a registered key never change
 names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
 prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
 docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
-`related-projects/`, `quality/`, `loops/`); a line in the project CLAUDE.md naming an old command is
-step 6's to fix.
+`related-projects/`, `quality/`, `loops/`), and so do the generated rules whose FILE names embed an
+old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
 
 | was | now |
 |---|---|
@@ -320,7 +320,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -434,6 +434,9 @@ as a next step - run nothing on the user's behalf.
 Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
 `configure` command's step 13: add sections the template gained, update the rules table for
 what this run pruned, never overwrite the project's own prose, show changes before writing.
+The installer has already re-spelled every renamed skill or seat name the stack wrote into
+`CLAUDE.md`, `.claude/CLAUDE.md` and the generated rules (one `renamed: <file> - <n> ...` line per
+file) - report those lines, and leave the names to it.
 
 **Run the compare whatever the delta says** - the template being unchanged
 UPSTREAM says nothing about whether THIS project's CLAUDE.md still matches it, and the

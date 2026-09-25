@@ -415,6 +415,39 @@ function renameDeny(settings, opts = {})
     return { ...settings, permissions: { ...settings.permissions, deny: mapped } };
 }
 
+// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded CLAUDE.md
+// and the generated rules (`baseline-project-*.md`, `project-code-style.md`) - follow a rename, so no
+// session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
+// re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
+// one (`baseline-project-related-context.md`) stays. A user's own token equal to an old stack name is
+// re-spelled too; the per-file line says how many, and a second run finds nothing.
+function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} })
+{
+    const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
+    const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
+    if (!olds.length) return 0;
+    const re = new RegExp(`(?<![A-Za-z0-9_-])(${olds.map((o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![A-Za-z0-9_-])`, 'g');
+    const rules = path.join(projectRoot, '.claude', 'rules');
+    let generated = [];
+    try { generated = fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
+    catch { generated = []; }
+    let total = 0;
+    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generated])
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let n = 0;
+        const out = text.replace(re, (old) => { n += 1; return pairs[old]; });
+        if (!n) continue;
+        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+        try { fs.writeFileSync(file, out); }
+        catch (err) { note(`${rel} names ${n} old skill or seat name(s) and could not be re-spelled (${err.message})`); continue; }
+        total += n;
+        log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
+    }
+    return total;
+}
+
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
 // read-back. Duplicates are dropped; each real addition is logged.
 function addLines(lines, add = [], log = () => {})
@@ -573,6 +606,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
     adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };
