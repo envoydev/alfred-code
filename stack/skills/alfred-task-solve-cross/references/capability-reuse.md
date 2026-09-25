@@ -20,7 +20,7 @@ Only serena is locked into every install. The rest of the baseline's servers - t
 
 ## Cross-cutting disciplines
 
-- **The library docs before a library API, always.** A wrong package or framework version is a common rework trigger; the current signature from the docs MCP (context7 where the project kept it) is cheaper than the failed build it prevents. Never write against a recalled version - where no docs source is reachable, the claim is marked unverified in the report, not asserted. This extends past API signatures to framework runtime semantics - signal / computed reactivity, change-detection, lifecycle order: cite context7 or the house convention skill before resting correctness on a recalled semantic, never a guess.
+- **The library docs before a library API, always.** A wrong package or framework version is a common rework trigger; the current signature from context7 is cheaper than the failed build it prevents. Never write against a recalled version - where no docs source is reachable, the claim is marked unverified in the report, not asserted. This extends past API signatures to framework runtime semantics - signal / computed reactivity, change-detection, lifecycle order: cite context7 or the house convention skill before resting correctness on a recalled semantic, never a guess.
 - **Clarify before freezing, verify before closing.** Run `alfred-habits-clarify` (SKILL.md's clarify gate) before freezing a contract
   on genuinely ambiguous design; route the done gate (`alfred-habits-done-gate`) to the closing seat (the domain
   verifier or the integration reviewer). An optional workflow-skills plugin's DISPATCH skills, where the install

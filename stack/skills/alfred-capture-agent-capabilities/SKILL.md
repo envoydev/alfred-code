@@ -15,7 +15,7 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 `scripts/capabilities-inventory.js` does every mechanical step in ONE node pass (built-ins only,
 nothing to install, no per-skill fork): the precheck, the inventory with a printed COUNT per layer,
 the live `claude mcp list`, the paste-ready MCP routing rows, the compare verdict and the
-post-write verify. From the project root:
+post-write verify.
 
 The script has TWO homes - copied under `.claude/skills/`, or carried by the plugin that ships this
 skill, where the cache can hold several versions and the NEWEST is the one this skill came from - so
@@ -36,7 +36,7 @@ An empty `$CAPS` means neither home has it: say so and stop, never hand-tally th
 printed is a defect, not diligence - every count and every row of the report comes off one of its
 lines, and a claim with no printed line behind it does not go in the report. It probes the `claude`
 CLI without laundering a failure into an empty result (`<cmd> || echo none`, banned in
-`baseline-navigation.md:41`) and without `| head -N`, so `CLI absent` and `0 plugins` stay
+`baseline-navigation.md`) and without `| head -N`, so `CLI absent` and `0 plugins` stay
 different report fields.
 
 ### 1. PRECHECK - the script's first lines

@@ -2113,6 +2113,10 @@
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
           "marker": "context7 or the vendor doc"
+        },
+        {
+          "file": "stack/skills/alfred-habits-plan-writing/SKILL.md",
+          "marker": "context7 or the vendor doc"
         }
       ]
     },
@@ -4668,6 +4672,10 @@
         {
           "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
           "marker": "a skill-level pin lasts only for the turn it activates in"
+        },
+        {
+          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "marker": "a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings"
         }
       ]
     },
@@ -4938,6 +4946,14 @@
         },
         {
           "file": "stack/skills/alfred-loop-quality/references/staged-mode.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
+        },
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
           "marker": "DELEGATED vs INLINE keys on dispatch capability, not file presence"
         }
       ]
@@ -5549,6 +5565,181 @@
         {
           "file": "stack/skills/angular-testing/SKILL.md",
           "marker": "A self-review is never the check"
+        }
+      ]
+    },
+    "capture-expensive-seat-reads": {
+      "_note": "The three deliberate captures that judge in-session (architecture map, architecture pros/cons, code quality) all tell the Opus seat it never reads the codebase wholesale - the analyzer seats absorb the reads. Owned by the architecture capture; restated in the two quality captures because each runs alone.",
+      "owner": {
+        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "marker": "You are the expensive seat: never read the codebase wholesale yourself"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "marker": "You are the expensive seat: never read the codebase wholesale yourself"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "You are the expensive seat: never read the codebase wholesale yourself"
+        }
+      ]
+    },
+    "capture-regather-cap": {
+      "_note": "A contradiction between two analyzer digests on a CHECKABLE fact is settled by the cheapest deterministic probe in-session before any re-dispatch, and gathering is capped at 3 rounds. Owned by the architecture capture; restated in the two quality captures.",
+      "owner": {
+        "file": "stack/skills/alfred-capture-architecture/SKILL.md",
+        "marker": "settle it with the cheapest deterministic probe in-session first"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+          "marker": "settle it with the cheapest deterministic probe in-session first"
+        },
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "settle it with the cheapest deterministic probe in-session first"
+        }
+      ]
+    },
+    "capture-model-report-line": {
+      "_note": "The capture report states the model the judgment ran on, and a run that started on Opus says there was nothing to reset. Owned by the architecture-quality capture; restated in the code-quality capture and the architecture capture's report-fields reference.",
+      "owner": {
+        "file": "stack/skills/alfred-capture-architecture-quality/SKILL.md",
+        "marker": "already on Opus before this run started - nothing to reset"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "marker": "already on Opus before this run started - nothing to reset"
+        },
+        {
+          "file": "stack/skills/alfred-capture-architecture/references/report-fields.md",
+          "marker": "already on Opus before this run started - nothing to reset"
+        }
+      ]
+    },
+    "loop-declined-set": {
+      "_note": "A loop keeps what the user declined this run as an in-context list, never a file, so a declined finding is not re-proposed within the run and nothing about it outlives the run. Owned by the architecture-quality loop; restated in the code-quality loop.",
+      "owner": {
+        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "marker": "an in-context list only, never written to a file"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "an in-context list only, never written to a file"
+        }
+      ]
+    },
+    "loop-green-across-round": {
+      "_note": "Every improvement loop keeps the build and tests green across the round: each fix batch re-runs them and a red routes to the matching resolver before the next item. Owned by the architecture-quality loop; restated in the other two loops.",
+      "owner": {
+        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "marker": "green across the round"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "green across the round"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "green across the round"
+        }
+      ]
+    },
+    "loop-plateau-stop": {
+      "_note": "The plateau stop: a round whose open set equals the previous round's with nothing now resolvable stops the loop rather than re-running identically. Owned by the architecture-quality loop; restated in the other two loops.",
+      "owner": {
+        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "marker": "equals the previous round's and none is now resolvable"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "equals the previous round's and none is now resolvable"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "equals the previous round's and none is now resolvable"
+        }
+      ]
+    },
+    "loop-tier-routing-authority": {
+      "_note": "In every improvement loop the item's tier decides where it routes: no silent upgrade of a small item into a rewrite, no downgrade of a structural one past its approval gate. Owned by the architecture-quality loop; restated in the other two loops.",
+      "owner": {
+        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "marker": "is the routing authority"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "is the routing authority"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "is the routing authority"
+        }
+      ]
+    },
+    "loop-retier-through-ask": {
+      "_note": "When the designer's findings shrink an approved structural item, its tier changes only through the user's ask, never silently. Owned by the architecture-quality loop; restated in the code-quality loop.",
+      "owner": {
+        "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+        "marker": "Re-tier only through the ask"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "Re-tier only through the ask"
+        }
+      ]
+    },
+    "seat-fan-out-flat": {
+      "_note": "The main session is the only orchestrator: seats carry no Agent tool so the fan-out stays flat. Owned by the cross-task orchestrator; restated in the three loops that fan seats out.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "marker": "so the fan-out stays flat"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "marker": "so the fan-out stays flat"
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "so the fan-out stays flat"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "so the fan-out stays flat"
+        }
+      ]
+    },
+    "size-first-table": {
+      "_note": "The size table (trivial / small / standard / cross, with the floor that keeps auth, secrets, input parsing, permissions, a public contract or a migration at standard). Owned by the single-chat solve flow; vendored into the cross-task orchestrator because both are user-invoked only and neither can load the other.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "marker": "a public contract or a migration is never below standard"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "a public contract or a migration is never below standard"
+        }
+      ]
+    },
+    "producer-first-rule": {
+      "_note": "A multi-stack build runs producer-first: the producer designer runs first and the interface section of its plan is the contract. Owned by the cross-task orchestrator; restated in the greenfield build, which vendors the trio protocol and cannot load the orchestrator (both are user-invoked only).",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "marker": "the PRODUCER designer runs first and the interface section of its plan IS the contract"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "marker": "the PRODUCER designer runs first and the interface section of its plan IS the contract"
         }
       ]
     }

@@ -21,7 +21,7 @@ When the diff touches styles or templates (`.scss` / `.css` / `.html`), the prob
 targeted visual check of the changed surface - a screenshot of the element or region through the
 browser-driving MCP, not a DOM assertion alone (measured: a DOM-only probe signed off a style diff
 and the user caught a CSS-only defect in the exact reviewed feature 92 seconds later). That MCP is
-per-project - the baseline comments out the servers a project does not need, so it can be absent
+per-project and droppable - seeded only where the stack renders a browser UI - so it can be absent
 from your tool list; absent it, the visual check is reported `live-probe: visual NOT RUN - no
 browser MCP`, never assumed from the DOM.
 

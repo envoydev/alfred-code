@@ -97,7 +97,7 @@ lowered.
 | trivial | one file, no new dependency, no behaviour a test would see (typo, comment, format, rename inside a file) | edit -> scoped check -> close. No design, no audit, no stop |
 | small | up to 3 files in one domain, no new dependency, no public contract touched | plan inline -> build -> verifier -> close. One stop, the close |
 | standard | anything else in one domain | the full gated vertical below |
-| cross | more than one domain | the cross-domain orchestrator |
+| cross | more than one domain | the cross-domain orchestrator (`/alfred-task-solve-cross`, the user's command) |
 
 Floor: auth, secrets, input parsing, permissions, a public contract or a migration is never below
 standard, whatever the file count.
@@ -138,23 +138,20 @@ run makes.
 4. **BUILD** - per the approved mode:
    - *session*: run `alfred-task-implement` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
-   - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - flat
-     fan-out per the shared policy `alfred-task-solve-cross` owns (write its approval gate file
-     first, quoting this step's user approval verbatim - the dispatch hook blocks an unstamped
-     implementer; DELETE that gate file when the fan-out completes, before the step-5 stop - a
-     stamp left live can silently authorize an unrelated later dispatch for up to 8h), the main
-     session the only
-     orchestrator; a red build/test routes per the repair-agent rules; tick the same plan file
-     per task as reports land. MINT the run's contract version - `<the plan's Approved: date>-<plan
-     slug>` - and put it in EVERY dispatch prompt verbatim, with the seat's memory-handoff line
-     spelled out: `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each
-     seat's green gate stays fast -
-     build + fast tests, never
-     integration replays or another minutes-long run; the slow full run
-     happens once, in this session, at the step-5 review / step-6 done-gate.
+   - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - a flat
+     fan-out, the main session the only orchestrator. Write the approval gate file first, quoting
+     this step's user approval verbatim - the dispatch hook blocks an unstamped implementer - and
+     DELETE it when the fan-out completes, before the step-5 stop: a stamp left live can silently
+     authorize an unrelated later dispatch for up to 8h. A red build/test routes per the
+     repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract
+     version - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY dispatch prompt
+     verbatim, with the seat's memory-handoff line spelled out:
+     `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
+     stays fast - build + fast tests, never integration replays or another minutes-long run; the
+     slow full run happens once, in this session, at the step-5 review / step-6 done-gate.
    Both modes build to the bar the step mechanics reference states, and the plan's `## Decisions`
-   ledger grows as they land. A mid-build how-to-build question is a protocol violation. Build-time stops are for what the BUILD cannot decide, and
-   there are three: scope beyond the plan, a decision the plan left open that the code now forces,
+   ledger grows as they land. A mid-build how-to-build question is a protocol violation.
+   Build-time stops are for what the BUILD cannot decide, and there are three: scope beyond the plan, a decision the plan left open that the code now forces,
    and an EXTERNAL blocker the run cannot resolve (a service or test dependency down, a credential
    missing, a locked file). State the blocker and what is done and what is not, then put the next
    move through ONE AskUserQuestion like every other stop - wait for the blocker to clear, re-scope

@@ -7,8 +7,7 @@ description: "Use when writing, stamping, resuming or reading an implementation 
 
 The plan file is the handoff: the build reads its task cards, the gates stamp its header, and a
 compacted or fresh session resumes from it. This is its one shape - the design writes it, the plan
-audit and the build read it, and the Example in `alfred-task-design` is the same plan in chat
-shorthand.
+audit and the build read it.
 
 ## The file
 
@@ -73,5 +72,5 @@ stamped later by the flow that owns it, never pre-filled:
 
 - The execution mode, a banner, or advice on how to run it - that is the solve flow's mode ask.
 - A whole implementation pasted in - anchors and shapes, not code.
-- A library or vendor claim from memory - `alfred-task-design`'s Plan format section says how
-  one is cited.
+- A library or vendor claim from memory - verify it via context7 or the vendor doc and cite it,
+  or mark it `unverified`.

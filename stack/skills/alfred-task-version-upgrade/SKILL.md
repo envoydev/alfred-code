@@ -24,7 +24,7 @@ The staged plan is presented and NOTHING is edited until the user approves - an 
 Green baseline first - build + tests green, zero pending EF migrations, before a single version moves; a red or drifted baseline is a blocking precondition, report it and stop, never plan around it. Then read the manifests (`global.json`, `*.csproj` / `Directory.Packages.props`, `package.json` / `angular.json`), pin current -> target versions and the trigger (major, EOL, security advisory), and classify the event and the stacks it touches. No breaking surface -> routine bump, exit.
 
 ### 2. GATHER - delegated
-- **The library-docs MCP** (load-bearing - context7 where the project kept it; the baseline comments out the servers a project does not need): the target's published breaking-change surface - the migration guide, deprecations-and-removals, the version delta - never from recall. Without it, the surface is the vendor's migration guide the user pastes or fetches, and a breaking change no doc backs is marked `unverified` in the plan, never asserted. Branch by stack per the playbooks: what the migration engine auto-applies (.NET Upgrade Assistant / `ng update` schematics) versus hand edits.
+- **context7** (load-bearing - the library-docs MCP every install carries): the target's published breaking-change surface - the migration guide, deprecations-and-removals, the version delta - never from recall. When it is unreachable, the surface is the vendor's migration guide the user pastes or fetches, and a breaking change no doc backs is marked `unverified` in the plan, never asserted. Branch by stack per the playbooks: what a migration tool auto-applies (`ng update` schematics on Angular; on .NET whatever the current porting docs name - the Upgrade Assistant is deprecated) versus hand edits.
 - **architecture-analyzer (sonnet/medium)** per affected area: where the codebase actually uses the changed/deprecated APIs - located usage digests, reads kept off this context. Mine the build's own signals first (the `[Obsolete]`/analyzer warnings, `ng update`/`ng lint` deprecation notices) - they are the framework's pre-computed removal map.
 
 ### 3. PLAN - in-session
@@ -44,7 +44,7 @@ Full suite green at the end; on a large upgrade, optionally the domain **verifie
 ```
 .NET 8 -> 10: 4 stages landed, full suite green (412 passed)
   1 SDK pin + global.json (rollback a1b2c3d)   2 TFM + framework packages in lockstep
-  3 engine-applied edits (Upgrade Assistant)   4 hand edits - TimeProvider swap, 3 call sites
+  3 obsolete-API swaps (SYSLIB warnings)       4 hand edits - TimeProvider swap, 3 call sites
 runtime-break checks: serializer defaults reviewed, zero [Obsolete] warnings left
 deferred: FluentAssertions major (user-declined)
 ```

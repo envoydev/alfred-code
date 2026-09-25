@@ -11,7 +11,7 @@ Use this skill to build a new application or a major new module from scratch, be
 ## Steps
 
 ### 1. DESIGN - in-session, on Opus
-Load `alfred-habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step will run it producer-first per `alfred-task-solve-cross`.
+Load `alfred-habits-clarify` first (the Skill tool): a spec gap that blocks the design is its question to the user, never a guess. Then turn the spec into 2-3 reasoned architecture options - stack, architecture style, folder/module shape, state and persistence approach - each with its tradeoffs, drawn from the stack's architecture skills (the per-stack table below names them). Ground every option in the house skills, not recall. Multi-stack designs name the seam and its producer/consumer direction up front - the build step runs it producer-first.
 
 ### 2. THE PICK - hard gate
 Present the options, then put the pick through AskUserQuestion - one option per architecture, its stack and one-line tradeoff as the description, a custom direction always available via Other (plain-text options where the harness lacks the tool). Greenfield tech choices are the user's, never silently picked - nothing is scaffolded before this gate.
@@ -29,9 +29,9 @@ When dispatch is available, ask ONE question before the first slice, via AskUser
 - *Ownership* - the stamp belongs to the session that dispatches, written when its own decision lands and deleted at its own close; an earlier session's leftover stamp is not consent.
 - *Refused* - if BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.
 
-Then: reds route to the matching resolver seat for that stack where one is installed, and are fixed in-session where none is. A multi-stack slice runs producer-first with the recorded interface, per `alfred-task-solve-cross`. Loop until the spec's first milestone is met.
+Then: reds route to the matching resolver seat for that stack where one is installed, and are fixed in-session where none is. A multi-stack slice runs producer-first: the PRODUCER designer runs first and the interface section of its plan IS the contract, recorded before any consumer seat is briefed. Loop until the spec's first milestone is met.
 
-**INLINE** (chosen or forced) - do the slices in-session with writing-plans plus the architecture skills instead of dispatching.
+**INLINE** (chosen or forced) - do the slices in-session with `alfred-habits-plan-writing` plus the architecture skills instead of dispatching.
 
 ### 5. HANDOFF - the close, as a field template
 First milestone green. Close on a literal line template, not prose to remember - one line per field, a table where a field lists several items:
@@ -70,6 +70,6 @@ Brief: 'Start a new Angular admin dashboard.'
 
 ## Rules
 - Greenfield architecture and tech choices are the user's - present options, get the pick, never scaffold before it.
-- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check the library-docs MCP (context7 where the project kept it) or the vendor doc, never memory - an option resting on a claim no doc backs says `unverified`.
+- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check context7 or the vendor doc, never memory - an option resting on a claim no doc backs says `unverified`.
 - The main session is the only orchestrator - never instruct a subagent to dispatch another; the domain seats this skill fans out carry no Agent tool.
 - An honest NEEDS_CONTEXT beats a guessed design: a blocking spec question goes to the user before options are locked.
