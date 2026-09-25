@@ -10,10 +10,12 @@ Route by install state, then hand the user the ONE command to run. The actions a
 commands - the user stays at the wheel, so you answer with the command, never run the flow
 yourself. The state is one script read of the project's `.claude/`, nothing inferred:
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` prints `not-installed`,
-`legacy-global`, `installed` or `initialised`.
+`legacy-global`, `worktree-of-installed <main>`, `installed` or `initialised`.
 
 - **Installed** = an install record in this repo, its git top level or a worktree's main
   checkout: `alfred-code.stamp`, the 1.x `claude-stack.stamp`, or a copied `hooks/docs.js`. <!-- legacy-name -->
+- **Worktree of an installed checkout** = a git worktree whose own `.claude/` holds no record,
+  while its main checkout (`<main>`) does. The hooks count it set up; the commands cannot act on it.
 - **Legacy global** = no project record, but a 1.x global install's `claude-stack.stamp` in the <!-- legacy-name -->
   account dir - the one install whose stamp does not live in the project yet.
 - **Initialised** = the stamp's `initialised:` line holds a date - init's memory step writes it once
@@ -25,6 +27,9 @@ Then:
 
 - Not installed -> `/alfred-code:setup` (fresh install: the selection and the install; it ends on a
   restart).
+- Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which
+  holds the install - run /alfred-code:<the command the ask needs> from there' - every command stops
+  on this tree, and the installer refuses it.
 - Legacy global -> `/alfred-code:update`, whatever the ask: it moves the 1.x global install into
   this project, and every other command reads the project.
 - Installed, never initialised -> `/alfred-code:init` (the one-time bootstrap, in a session started

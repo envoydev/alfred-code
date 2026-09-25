@@ -50,10 +50,11 @@ account-only install to refuse. Find the install with `node "$TMP/repo/scripts/i
 state .`, which reads the install records the hooks read (`alfred-code.stamp`, the 1.x
 `claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's main
 checkout - never `.claude/skills` or `.claude/agents`, which a plugin-route install may not have:
-`not-installed` -> stop and route to `/alfred-code:setup`; `legacy-global` (a 1.x global install
+`not-installed` -> stop and route to `/alfred-code:setup`; `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:validate from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; `legacy-global` (a 1.x global install
 whose stamp is still in the account dir) -> stop and route to `/alfred-code:update`, which moves it
-into the project first; `installed` / `initialised` -> go on. `<scope>` below is the stamp's own
-`scope:` line (`grep -m1 '^scope:' .claude/alfred-code.stamp`; absent = `project`), passed to every
+into the project first; `installed` / `initialised` -> go on. `<scope>` below is `node "$TMP/repo/scripts/install/stamp.js" scope .` -
+the same script, reading the stamp under either name (a 1.x install keeps `claude-stack.stamp` until <!-- legacy-name -->
+its first 2.0.0 update), a 1.x `global` as `user`, anything else as `project` - passed to every
 installer call so the read-back and the apply read and write the settings file that scope uses
 (`.claude/settings.local.json` laid over `.claude/settings.json` at local scope). One installer on
 every OS.

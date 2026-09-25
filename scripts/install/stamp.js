@@ -339,20 +339,71 @@ function legacyAccountStamp({ claudeDir, env = process.env })
     return fs.existsSync(file) ? file : null;
 }
 
-// The router's one read: not-installed | legacy-global | installed (never initialised) | initialised.
-// Installed is the prelude's own record list over the prelude's own checkouts (the dir, its git top
-// level, a worktree's main checkout), so the router and the hooks' GATE 4 can never disagree (R90 N2);
-// the stamp is read in the checkout that holds the record. legacy-global is a 1.x global install whose
-// stamp the first update has not moved into the project yet: update's to take, never init's (N1).
-function installState(projectRoot, env = process.env)
+// The checkout that holds this directory's install record - the prelude's own record list over the
+// prelude's own checkouts (the dir, its git top level, a worktree's main checkout), so the router and
+// the hooks' GATE 4 can never disagree about WHETHER a tree is set up (R90 N2) - or null.
+function recordCheckout(projectRoot)
 {
     const { INSTALL_RECORDS, checkoutsOf } = require(path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js'));
     const holds = (at) => INSTALL_RECORDS.some((record) => fs.existsSync(path.join(at, '.claude', ...record)));
-    const at = checkoutsOf(path.resolve(projectRoot)).find(holds);
+    const roots = checkoutsOf(path.resolve(projectRoot));
+    return { roots, at: roots.find(holds) || null };
+}
+
+// The dir and its git top level - the trees a run started here reads and writes. A worktree's main
+// checkout is not among them: every installer layer, the preflight and library-check read the tree
+// the run is in.
+function ownCheckouts(projectRoot)
+{
+    const dir = path.resolve(projectRoot);
+    for (let at = dir; ; )
+    {
+        if (fs.existsSync(path.join(at, '.git'))) return at === dir ? [dir] : [dir, at];
+        const up = path.dirname(at);
+        if (up === at) return [dir];
+        at = up;
+    }
+}
+
+// R95 (Task 18b fix round 1): the main checkout of a git worktree whose OWN tree holds no install
+// record while the main checkout does - or null. The hooks count such a worktree set up (the main
+// checkout's record), but no command can act on it from here: every reader after a command's gate
+// reads the worktree's own `.claude`, which is empty, so update named setup and setup named update
+// (measured). The commands stop on it instead, naming the checkout to run them from.
+function worktreeMain(projectRoot)
+{
+    const { at } = recordCheckout(projectRoot);
+    return at && !ownCheckouts(projectRoot).includes(at) ? at : null;
+}
+
+// The router's one read: not-installed | legacy-global | worktree-of-installed | installed (never
+// initialised) | initialised. The stamp is read in the checkout that holds the record.
+// worktree-of-installed is R95 above - the CLI prints the main checkout's path after it. legacy-global
+// is a 1.x global install whose stamp the first update has not moved into the project yet: update's to
+// take, never init's (N1).
+function installState(projectRoot, env = process.env)
+{
+    const { at } = recordCheckout(projectRoot);
     if (!at) return 'not-installed';
+    if (worktreeMain(projectRoot)) return 'worktree-of-installed';
     const claudeDir = path.join(at, '.claude');
     if (legacyAccountStamp({ claudeDir, env })) return 'legacy-global';
     return isInitialised(initialisedValue({ claudeDir })) ? 'initialised' : 'installed';
+}
+
+// M5 (Task 18b fix round 1): the scope the last install used, for a command to pass back to the
+// installer - the stamp under either name (a 1.x install keeps `claude-stack.stamp` until its first
+// 2.0.0 update), a 1.x `global` as `user` (args.js reads the flag the same way), and anything else -
+// no stamp, no line, a hand-edited value - as `project`, the floor every scope always had. Read in the
+// tree the command runs in, never a worktree's main checkout (R95 stops those before this read).
+const SCOPES = ['project', 'user', 'local'];
+function installScope(projectRoot)
+{
+    const own = ownCheckouts(projectRoot);
+    const { read } = stampFile(path.join(own[own.length - 1], '.claude'));
+    const raw = read ? readStampScope(read).toLowerCase() : '';
+    const scope = raw === 'global' ? 'user' : raw;
+    return SCOPES.includes(scope) ? scope : 'project';
 }
 
 // init's mark, in place: the line replaced, or added. No stamp, nothing written (false).
@@ -441,13 +492,18 @@ function migrateLegacyGlobal({ configDir, projectRoot, log = () => {}, note = ()
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
     readPicked, readLibrary, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readVersion, migrateLegacyGlobal, validItemName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, accountDir,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, worktreeMain, installScope,
 };
 
-// `node scripts/install/stamp.js state [projectRoot]` - the router's read, one word on stdout.
+// `node scripts/install/stamp.js state [projectRoot]` - the router's read: one word on stdout, and for
+// `worktree-of-installed` the main checkout's path after it. `scope [projectRoot]` - the scope the last
+// install used, one word.
 if (require.main === module)
 {
     const [cmd, root] = process.argv.slice(2);
-    if (cmd !== 'state') { console.error('usage: stamp.js state [projectRoot]'); process.exit(2); }
-    console.log(installState(path.resolve(root || '.')));
+    const at = path.resolve(root || '.');
+    if (cmd === 'scope') { console.log(installScope(at)); process.exit(0); }
+    if (cmd !== 'state') { console.error('usage: stamp.js state|scope [projectRoot]'); process.exit(2); }
+    const state = installState(at);
+    console.log(state === 'worktree-of-installed' ? `${state} ${worktreeMain(at)}` : state);
 }

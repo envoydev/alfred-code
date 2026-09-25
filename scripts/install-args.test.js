@@ -254,6 +254,40 @@ test('install-entry: the project root comes from io.cwd, never from the process'
     assert.ok(r.err.includes(ENTRY_CWD), `looked somewhere else: ${r.err}`);
 });
 
+// R95 (Task 18b fix round 1): a git worktree whose own `.claude` holds no install record shares its main
+// checkout's install. A run here would write a second install into the worktree, or - for an update -
+// find nothing and name setup, which named update back (the loop the review measured). Every action
+// stops before anything is resolved or written, naming the checkout to run from.
+test('install-entry: in a worktree of an installed checkout every action stops, naming the main checkout, and writes nothing (R95)', () =>
+{
+    const { execFileSync } = require('node:child_process');
+    const main = fs.mkdtempSync(path.join(TMP_ENTRY, 'wt-main-'));
+    const git = (...a) => execFileSync('git', ['-C', main, ...a], { stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q');
+    fs.writeFileSync(path.join(main, 'README.md'), 'x\n');
+    git('add', 'README.md');
+    git('commit', '-q', '-m', 'init');
+    fs.mkdirSync(path.join(main, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\nscope: project\n');
+    const wt = path.join(TMP_ENTRY, `wt-${path.basename(main)}`);
+    git('worktree', 'add', '-q', wt);
+    const mainBefore = fs.readdirSync(path.join(main, '.claude')).sort();
+    for (const argv of [['install'], ['update'], ['update', '--installed-only'], ['update', '--installed-only', '--print-plan']])
+    {
+        let out = '';
+        let err = '';
+        const code = require('./install/alfred-code.js').main([...argv, '--source', ROOT], { HOME: '/nonexistent-home', CLAUDE_CONFIG_DIR: path.join(wt, '..', 'wt-acct') },
+            { out: (x) => { out += x; }, err: (x) => { err += x; }, cwd: wt });
+        assert.strictEqual(code, 1, `${argv.join(' ')}: ${out.slice(-300)}`);
+        assert.match(err, /^error: this is a git worktree of .+, which holds the install - run the installer from there$/m, `${argv.join(' ')}: ${err}`);
+        assert.ok(err.includes(fs.realpathSync(main)) || err.includes(main), err);
+        assert.ok(!/found nothing installed/.test(err), 'never the setup-naming refusal');
+        assert.ok(!fs.existsSync(path.join(wt, '.claude')), `${argv.join(' ')}: wrote into the worktree`);
+        assert.deepStrictEqual(fs.readdirSync(path.join(main, '.claude')).sort(), mainBefore, `${argv.join(' ')}: wrote into the main checkout`);
+        assert.ok(!/^action: /m.test(out), 'no run started');
+    }
+});
+
 test('install-entry: a --source that is not the stack fails before any layer is reached', () =>
 {
     const r = run(['install', '--source', path.join(TMP_ENTRY, 'nope')]);

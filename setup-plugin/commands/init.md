@@ -16,7 +16,7 @@ records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a cop
   then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
   dir): stop the same way on `/alfred-code:update`, which moves it into the project. Both are
   `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
-  belongs in its own session.
+  belongs in its own session. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:init from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here.
 - **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new
   session. What setup installed is on disk but not loaded here.
 - **Run before** - go on: every step below reads what is already in place and skips it

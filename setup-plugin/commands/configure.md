@@ -77,12 +77,12 @@ comparable banner by banner; the content varies, the skeleton never does.
 
 ## 1. Install status - find it, inventory it, diff it
 
-- **Find the install.** `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word, read
+- **Find the install.** `node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read
   from the install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a
   copied `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout - never
   from `.claude/skills` or `.claude/agents`, which a plugin-route install may not have.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
-  to configure yet. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
+  to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
   -> stop and route to `/alfred-code:update`, which moves it into the project; configure runs after
   it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.

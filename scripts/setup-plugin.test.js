@@ -535,6 +535,30 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
     }
 });
 
+// R95 (Task 18b fix round 1): the review measured a loop in a git worktree of an installed checkout -
+// the state read named the main checkout's install, every reader after it read the worktree's empty
+// `.claude`, so update named setup and setup named update. Every gate now reads the worktree state and
+// stops on ONE line naming the checkout to run its own command from; none goes on to a reader.
+test('every command gate and the router stop in a worktree of an installed checkout, naming the main checkout (R95)', () =>
+{
+    const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
+    assert.match(router, /`worktree-of-installed <main>`/);
+    assert.match(router, /Worktree of an installed checkout -> no command here: 'This is a git worktree of <main>, which holds the install - run \/alfred-code:<the command the ask needs> from there'/);
+    for (const name of ['setup', 'init', 'update', 'configure', 'validate', 'status'])
+    {
+        const body = flat(cmdBody(name));
+        assert.match(body, /node "(\$\{CLAUDE_PLUGIN_ROOT\}|\$TMP\/repo)\/scripts\/install\/stamp\.js" state \./, `${name} reads the state`);
+        const line = new RegExp(`\`worktree-of-installed <main>\` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:${name} from there' and stop`);
+        assert.match(body, line, `${name} stops in a worktree with its own command named`);
+    }
+    // M5: validate's scope comes from the same script, which reads either stamp name - never a grep.
+    const validate = cmdBody('validate');
+    assert.match(flat(validate), /`<scope>` below is `node "\$TMP\/repo\/scripts\/install\/stamp\.js" scope \.`/);
+    assert.ok(!/grep -m1 '\^scope:'/.test(validate), 'no grep of one stamp name');
+    // The installer refuses the same tree, so a gate skipped by hand cannot restart the loop either.
+    assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'alfred-code.js'), 'utf8'), /this is a git worktree of \$\{worktreeOf\}, which holds the install - run the installer from there/);
+});
+
 // Task 18b: status runs the RUNNING plugin's own scripts (no snapshot), finds the install by the
 // stamp state, and reports health from the CLI's own error fields, usage, and credentials by presence.
 test('status: read-only from the running plugin - stamp state, health columns, usage, presence only', () =>

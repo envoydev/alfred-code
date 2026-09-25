@@ -106,11 +106,11 @@ or a user 'no'). The protocol's 'Narrate, don't trace' section governs every too
 machinery, no pasted output, one narration line between steps.
 
 ## 1. Preconditions
-`node "$TMP/repo/scripts/install/stamp.js" state .` prints one word, read from the install records
+`node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read from the install records
 the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied `hooks/docs.js`) in this
 repo, its git top level or a worktree's main checkout - never from `.claude/skills` or
 `.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
-the sibling `/alfred-code:setup` command. `legacy-global` is a 1.x GLOBAL install whose stamp still
+the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-global` is a 1.x GLOBAL install whose stamp still
 sits in the account dir: this command is its route - step 2's preflight reads that stamp and the
 installer moves it into the project. `installed` / `initialised` -> go on. Every scope - project,
 user or local - keeps the stamp, the library copies and the settings in the project's `.claude/`,

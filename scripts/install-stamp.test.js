@@ -658,10 +658,12 @@ test('installState: a 1.x global install whose stamp is still in the account dir
 });
 
 // N2 (Task 18a re-review, R90): a git worktree carries no `.claude/` record of its own (ignored), so the
-// router reads the same checkouts the hooks' GATE 4 reads - the main checkout's record, and its stamp.
-test('installState: a worktree of a set-up repo reads the main checkout\'s record and stamp (N2)', () => {
-    const stamp = require('./install/stamp.js');
-    const { neverSetUp } = require('../stack/hooks/hook-prelude.js');
+// hooks read the main checkout's record and count the worktree set up.
+// R95 (Task 18b fix round 1): the COMMANDS must not - every reader after their gate reads the worktree's
+// own `.claude`, and the review measured the loop that made (update names setup, setup names update).
+// So the state is its own: 'worktree-of-installed', with the main checkout's path beside it.
+const worktreeOf = () =>
+{
     const { execFileSync } = require('node:child_process');
     const main = path.join(TMP, `wt-main-${seq++}`);
     fs.mkdirSync(main, { recursive: true });
@@ -674,12 +676,58 @@ test('installState: a worktree of a set-up repo reads the main checkout\'s recor
     fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: 2026-09-25T10:00:00Z\n');
     const wt = path.join(main, '.claude', 'worktrees', 'feat');
     git('worktree', 'add', '-q', wt);
+    return { main, wt };
+};
+test('installState: a worktree with no record of its own is a worktree of the installed checkout - the hooks still count it set up (N2, R95)', () => {
+    const stamp = require('./install/stamp.js');
+    const { spawnSync } = require('node:child_process');
+    const { neverSetUp } = require('../stack/hooks/hook-prelude.js');
+    const { main, wt } = worktreeOf();
     const env = { CLAUDE_CONFIG_DIR: path.join(main, 'no-account') };
-    assert.strictEqual(stamp.installState(wt, env), 'initialised', 'the worktree reads the main checkout\'s stamp');
-    assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: wt }), false, 'the hooks agree');
+    const real = (p) => fs.realpathSync(p);
+    assert.strictEqual(stamp.installState(wt, env), 'worktree-of-installed', 'never the main checkout\'s own state');
+    assert.strictEqual(real(stamp.worktreeMain(wt)), real(main), 'the main checkout is named');
+    assert.strictEqual(stamp.installState(path.join(wt), env), 'worktree-of-installed');
+    assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: wt }), false, 'the hooks keep counting it set up');
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', wt], { encoding: 'utf8', env: { ...process.env, ...env } });
+    const [word, at] = cli.stdout.trim().split(' ');
+    assert.strictEqual(word, 'worktree-of-installed', cli.stderr);
+    assert.strictEqual(real(at), real(main), 'the CLI carries the main path');
     fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
-    assert.strictEqual(stamp.installState(wt, env), 'installed');
+    assert.strictEqual(stamp.installState(wt, env), 'worktree-of-installed', 'initialised or not, the install is the main checkout\'s');
+    assert.strictEqual(stamp.installState(main, env), 'installed', 'the main checkout reads its own state');
+    assert.strictEqual(stamp.worktreeMain(main), null);
     fs.rmSync(path.join(main, '.claude', 'alfred-code.stamp'));
     assert.strictEqual(stamp.installState(wt, env), 'not-installed');
+    assert.strictEqual(stamp.worktreeMain(wt), null);
     assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: wt }), true, 'and agree again');
+    // A worktree that holds its OWN record is an install of its own.
+    fs.writeFileSync(path.join(main, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
+    fs.mkdirSync(path.join(wt, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(wt, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: 2026-09-25T10:00:00Z\n');
+    assert.strictEqual(stamp.installState(wt, env), 'initialised');
+    assert.strictEqual(stamp.worktreeMain(wt), null);
+});
+
+// M5 (Task 18b fix round 1): the scope validate passes to every installer call is read by the same
+// script as the state - the new stamp name or the 1.x one, a 1.x `global` read as `user`, anything else
+// (absent, hand-edited) as `project` - never a grep of one file name.
+test('installScope: the stamp\'s scope under either name, `global` as user, anything else as project (M5)', () => {
+    const stamp = require('./install/stamp.js');
+    const { spawnSync } = require('node:child_process');
+    const root = path.join(TMP, `scope-${seq++}`);
+    const claude = path.join(root, '.claude');
+    fs.mkdirSync(claude, { recursive: true });
+    assert.strictEqual(stamp.installScope(root), 'project', 'no stamp at all');
+    fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'version: 1.3.0\nscope: global\n'); // legacy-name
+    assert.strictEqual(stamp.installScope(root), 'user', 'a 1.x stamp under its old name');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
+    assert.strictEqual(stamp.installScope(root), 'local', 'the new name wins');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: ../bogus\n');
+    assert.strictEqual(stamp.installScope(root), 'project', 'a value that is no scope');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\n');
+    assert.strictEqual(stamp.installScope(root), 'project', 'no scope line');
+    fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'version: 2.0.0\nscope: user\n');
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'scope', root], { encoding: 'utf8' });
+    assert.strictEqual(cli.stdout, 'user\n', cli.stderr);
 });

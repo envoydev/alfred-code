@@ -106,6 +106,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // project's `.claude/` at EVERY scope - the bodies run `node .claude/hooks/docs.js` from the
     // project, and the docs-root rule is stamped there.
     const claudeDir = path.join(projectRoot, '.claude');
+    // R95: a git worktree whose own `.claude` holds no install record shares its main checkout's
+    // install (the hooks count it set up). Every layer below reads and writes the tree the run is in,
+    // so an install would lay a second one here and an update would find nothing and name setup -
+    // stopped before anything is resolved, called or written, naming the checkout to run from.
+    const worktreeOf = stampLayer.worktreeMain(cwd);
+    if (worktreeOf)
+    {
+        err(`error: this is a git worktree of ${worktreeOf}, which holds the install - run the installer from there\n`);
+        return 1;
+    }
     let skillsDir = path.join(projectRoot, '.claude', 'skills');
     const mcpFile = path.join(projectRoot, '.mcp.json');
     const hasClaude = rt.which('claude');

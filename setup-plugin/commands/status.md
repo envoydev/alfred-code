@@ -16,12 +16,13 @@ narration line per area at most. Anything the user wants CHANGED routes to the s
 
 ## 1. Find the install
 
-Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` - one word, read from the same
+Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .` - one word (two for a worktree), read from the same
 install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied <!-- legacy-name -->
 `hooks/docs.js`) in this repo, its git top level or a worktree's main checkout. Never test for
 `.claude/skills` or `.claude/agents`: a plugin-route install can have neither.
 
 - `not-installed` -> say so and route to `/alfred-code:setup`.
+- `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:status from there' and stop - every table below reads this tree's own `.claude`, which holds nothing.
 - `legacy-global` -> a 1.x global install whose stamp still sits in the account dir: say so and
   route to `/alfred-code:update`, which moves it into the project. Render nothing else - its copies
   are not where this command reads.
