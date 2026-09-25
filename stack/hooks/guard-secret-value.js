@@ -1060,15 +1060,17 @@ if (payload.tool_name === 'Grep') {
   }
   if (String(input.output_mode || 'files_with_matches') === 'content') {
     const target = String(input.path || '');
-    // A directory target is judged by the credential-bearing files it would print from; with no
-    // path at all the search is the whole project, which is how the measured leak would have run.
-    const roots = target ? [target] : [process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd()];
+    // Only a NAMED file is judged. A directory target, and a search with no path at all, is a tree
+    // walk this guard does not judge - a known gap, not a covered case: the pattern would have to be
+    // matched against every credential-bearing file the walk reaches. The Read and shell routes still
+    // gate every named read of those files.
+    const roots = target ? [target] : [];
     for (const r of roots) {
       const file = resolveFile(r);
       if (!file) continue;
       let st = null;
       try { st = fs.statSync(file); } catch { st = null; }
-      if (st && st.isDirectory()) continue;   // a tree walk is not a named read - the file routes still gate it
+      if (st && st.isDirectory()) continue;
       const key = secretInUnlessAllowed(file);
       if (key) {
         block(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +

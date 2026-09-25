@@ -554,8 +554,10 @@ function rotateAskAnswered() {
 // the published triggers could not be reconstructed at all (measured: one status turn blocked at
 // 142,455 cache-read, and this audit hit the same wall three times). A block that cannot be
 // explained cannot be tuned, and an untunable gate is the one the model learns to work around.
+// The matched text is the model's own prose, and a close can quote a credential - the row and the
+// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first.
 function blockDetail(branch, matched) {
-  const detail = { branch, matched: String(matched == null ? '' : matched).slice(0, 120) };
+  const detail = { branch, matched: String(matched == null ? '' : matched).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>').slice(0, 120) };
   global.BLOCK_DETAIL = detail;
   breadcrumb(`block ${branch}: ${detail.matched}`);
 }
@@ -604,6 +606,7 @@ function subagentOwnTools(file) {
   return tools;
 }
 if (payload.hook_event_name === 'SubagentStop') {
+  if (payload.stop_hook_active) process.exit(0); // a continuation this hook caused - the once-marker's twin, never a loop
   const text = (typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '').replace(/```[\s\S]*?```/g, ' ');
   const tools = subagentOwnTools(payload.agent_transcript_path);
   if (!tools) process.exit(0);
@@ -1288,7 +1291,9 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
 
     // 4. CREDENTIAL.
-    if (secretInSession()) {
+    // The Stop branch's own conditions: once per exposure, off under ROTATE_ASK=0, and not while the
+    // user's SECRET-READ-ALLOW consent stands.
+    if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !secretReadAllowed()) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +
         'cannot be unsent. If this ask closes the turn, one of its questions must be whether to ' +
         'rotate it now - name the key and its shape only, never the value.');
@@ -1414,7 +1419,7 @@ function freshStateReadThisTurn() {
       if (o.type === 'user' && isTypedTurn(o)) return false;
       if (o.type === 'assistant' && Array.isArray(o.message.content)) {
         for (const b of o.message.content) {
-          if (!b || b.type !== 'tool_use' || b.name !== 'Bash') continue;
+          if (!b || b.type !== 'tool_use' || !SHELL_TOOL_RE.test(String(b.name))) continue;
           const cmd = String((b.input && b.input.command) || '');
           if (/\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b|\bgh\s+(pr|run|api|repo)\b/.test(cmd)) return true;
         }

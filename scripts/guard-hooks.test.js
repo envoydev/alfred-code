@@ -2484,3 +2484,65 @@ test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-en
   assert.equal(rows[0].mode, 'skip-tool-end');
   assert.equal(rows[0].hook, 'guard-stop-contract.js');
 });
+
+// ---- guard-stop-contract: the audit's R1 / R2 / R4 / R6 ----------------------------------------
+const FAKE_TOKEN = 'ghp_' + 'Q7'.repeat(18);   // credential-SHAPED, no real value
+
+test('guard-stop-contract: the ask-time credential note honours the same off switch and answers as the Stop branch', () => {
+  // The Stop branch asks once per exposure and never with ROTATE_ASK=0; the ask-time note ignored all
+  // three and re-raised rotation on every ask of a session whose user had already answered.
+  const logDir = fs.mkdtempSync(path.join(TMP, 'r1-'));
+  const leaked = transcript('r1-leak', [
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `token=${FAKE_TOKEN}` }] } },
+    assistantRow('r1', 'ok', { cache_read_input_tokens: 900 }),
+  ]);
+  const answered = transcript('r1-answered', [
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `token=${FAKE_TOKEN}` }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: rotate now' }] } },
+  ]);
+  const ask = (tp, extra) => runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp,
+      tool_input: { questions: [{ question: 'Next?', options: [{ label: 'Continue', description: 'x' }] }] } },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: logDir, ...(extra || {}) } });
+  const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
+  assert.match(ctxOf(ask(leaked)), /credential-shaped value/, 'an unanswered exposure is still raised');
+  assert.doesNotMatch(ctxOf(ask(leaked, { ALFRED_CODE_ROTATE_ASK: '0' })), /credential-shaped value/, 'ROTATE_ASK=0 turns it off here too');
+  assert.doesNotMatch(ctxOf(ask(answered)), /credential-shaped value/, 'an answered rotate ask covers it');
+});
+
+test('guard-stop-contract: a continued subagent stop is never held again, marker or not', () => {
+  // The once-marker was the only loop guard on SubagentStop; an unwritable log dir lost it.
+  const r = runIn('guard-stop-contract.js', {
+    hook_event_name: 'SubagentStop', session_id: 'sub-stop', agent_id: 'a-r2', agent_type: 'fork', stop_hook_active: true,
+    agent_transcript_path: forkTranscript('fork-r2', WAKEUP_PAIR), last_assistant_message: FORK_CLOSE,
+  }, { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'r2-')) } });
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test('guard-stop-contract: a PowerShell git status is the state read the stale-scope note looks for', () => {
+  const tp = transcript('r4-ps', [
+    { type: 'user', message: { content: 'publish it' } },
+    { type: 'assistant', message: { id: 'p1', content: [{ type: 'tool_use', id: 't1', name: 'PowerShell', input: { command: 'git status --porcelain' } }], usage: { cache_read_input_tokens: 900 } } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'M f' }] } },
+  ]);
+  const r = runIn('guard-stop-contract.js',
+    { tool_name: 'AskUserQuestion', hook_event_name: 'PreToolUse', transcript_path: tp,
+      tool_input: { questions: [{ question: 'Publish?', options: [{ label: 'Push to origin', description: 'land it' }] }] } },
+    { env: { ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'r4-')) } });
+  let ctx = '';
+  try { ctx = JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { ctx = ''; }
+  assert.doesNotMatch(ctx, /no `git status`/);
+});
+
+test('guard-stop-contract: a credential in the blocked text never reaches the ledger or the breadcrumb', () => {
+  const ledger = fs.mkdtempSync(path.join(TMP, 'r6-'));
+  const logDir = fs.mkdtempSync(path.join(TMP, 'r6log-'));
+  const r = runIn('guard-stop-contract.js',
+    { hook_event_name: 'Stop', session_id: 'r6', cwd: ledger, last_assistant_message: `The token is ${FAKE_TOKEN} - should I rotate it or keep ${FAKE_TOKEN}?` },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ledger, ALFRED_CODE_DOCS_PATH: path.join(ledger, 'docs'), ALFRED_CODE_HOOK_LOG_DIR: logDir } });
+  assert.equal(r.status, 2, 'the close ends on a question and is held');
+  const rows = fs.readFileSync(path.join(ledger, 'docs', 'hook-blocks', 'r6.jsonl'), 'utf8');
+  assert.ok(!rows.includes(FAKE_TOKEN), 'the ledger row carries no value');
+  assert.match(rows, /<redacted>/, 'it says one was there');
+  assert.ok(!fs.readFileSync(path.join(logDir, 'guard-stop-contract.log'), 'utf8').includes(FAKE_TOKEN), 'nor does the breadcrumb');
+});

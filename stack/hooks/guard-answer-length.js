@@ -127,6 +127,7 @@ function tailLines() {
 function lastMessages() {
   let assistant = null;
   let user = null;
+  let userTs = NaN;
   for (const line of tailLines()) {
     if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
     let o;
@@ -155,10 +156,10 @@ function lastMessages() {
       const typed = typeof c === 'string'
         ? c
         : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
-      if (typed.trim()) user = typed;
+      if (typed.trim()) { user = typed; userTs = Date.parse(o.timestamp); }
     }
   }
-  return { assistant, user };
+  return { assistant, user, userTs };
 }
 
 // Prose only: code blocks, tables, inline spans and link targets are the parts a short answer is
@@ -314,9 +315,10 @@ if (payload.hook_event_name === 'SessionStart') {
 // own file and accept a guard-stop-contract row from the last two minutes; anything older belongs
 // to an earlier turn. Only a BLOCK counts: a row carrying a `mode` (the red-run injection, the skip
 // at a tool-ended turn) blocked nothing, and yielding to it tells the model to obey a block it never
-// saw - measured in the A/B, where the rewrite dropped the verification line. Best-effort in every
-// direction: an unreadable ledger simply means no yield.
-function stopContractBlockedThisTurn() {
+// saw - measured in the A/B, where the rewrite dropped the verification line. A row older than
+// this turn's typed prompt is an earlier turn's, however recent: two minutes alone read the previous
+// turn's block as this one's. Best-effort in every direction: an unreadable ledger means no yield.
+function stopContractBlockedThisTurn(turnStartMs) {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
@@ -327,7 +329,9 @@ function stopContractBlockedThisTurn() {
       try { o = JSON.parse(line); } catch { continue; }
       if (!o || o.hook !== 'guard-stop-contract.js' || o.mode) continue;
       if (o.event !== 'Stop' && o.event !== 'SubagentStop') continue;
-      if (Date.now() - Date.parse(o.ts) <= 2 * 60 * 1000) return true;
+      const at = Date.parse(o.ts);
+      if (Number.isFinite(turnStartMs) && at < turnStartMs) continue;
+      if (Date.now() - at <= 2 * 60 * 1000) return true;
     }
     return false;
   } catch { return false; }
@@ -337,10 +341,14 @@ if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
   let last;
   let user;
+  let userTs = NaN;
+  // An unreadable transcript leaves the LENGTH half fail-open (no user row, so depth cannot be ruled
+  // out), never the em-dash half: that reads last_assistant_message, which the payload carries anyway.
+  let transcriptRead = true;
   try {
-    ({ assistant: last, user } = lastMessages());
+    ({ assistant: last, user, userTs } = lastMessages());
   } catch {
-    process.exit(0);
+    transcriptRead = false;
   }
   // The harness's `last_assistant_message` is the turn's final text; the transcript is written
   // asynchronously and can lag it (documented), so the field wins and the transcript's assistant
@@ -364,7 +372,7 @@ if (payload.hook_event_name === 'Stop') {
   // legitimately names a string value and the false positives would cost a turn each.
   const DASHES = /[\u2014\u2015]/g;
   const dashes = (body.match(DASHES) || []).length;
-  let overLength = body.length > HARD_CAP;
+  let overLength = transcriptRead && body.length > HARD_CAP;
   if (!overLength && !dashes) process.exit(0);
   // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
   // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
@@ -395,7 +403,7 @@ if (payload.hook_event_name === 'Stop') {
       `baseline-interaction.md and this hook injects it into every turn, including the one you just\n` +
       `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
       `the rule loaded three times in the same transcript).\n` +
-      (stopContractBlockedThisTurn()
+      (stopContractBlockedThisTurn(userTs)
         ? `guard-stop-contract.js has already blocked this same turn, so do what IT asks and fold the\n` +
           `dash fix into that turn - replace every em-dash with a single dash in the text you re-send.\n` +
           `Its instruction wins on everything else.`

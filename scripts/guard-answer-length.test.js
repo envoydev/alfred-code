@@ -220,3 +220,35 @@ test('UserPromptSubmit names the format ask after three short turns that each fo
     assert.doesNotMatch(ctxOf(WALL, write('streak3', rows)), /FORMAT ASK/, 'a long turn is a brief, not a correction');
     assert.doesNotMatch(ctxOf('<command-name>/help</command-name>', write('streak4', rows)), /FORMAT ASK/, 'a slash turn is not a correction');
 });
+
+// R3: the em-dash check reads last_assistant_message, which the harness sends whether or not the
+// transcript is readable - an unreadable transcript skipped it along with the length check.
+test('an unreadable transcript still gets the em-dash check - only the length half needs the user row', () => {
+    const r = run({ hook_event_name: 'Stop', session_id: 'r3', transcript_path: path.join(TMP, 'absent.jsonl'),
+        last_assistant_message: 'Done — the build is green.' });
+    assert.strictEqual(r.status, 2, 'the dash is judged from the payload text');
+    assert.match(r.stderr, /em-dash/);
+    const long = run({ hook_event_name: 'Stop', session_id: 'r3b', transcript_path: path.join(TMP, 'absent.jsonl'), last_assistant_message: WALL });
+    assert.strictEqual(long.status, 0, 'length stays fail-open: with no user row, depth cannot be ruled out');
+});
+
+// R5: a stop-contract block from the PREVIOUS turn, still inside two minutes, was read as this
+// turn's, and the em-dash denial told the model to obey a block it never saw this turn.
+test('a stop-contract row older than this turn does not make the em-dash denial yield', () => {
+    const sid = 'r5';
+    const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.claude', 'docs', 'hook-blocks');
+    fs.mkdirSync(ledger, { recursive: true });
+    const prior = new Date(Date.now() - 60 * 1000).toISOString();
+    fs.writeFileSync(path.join(ledger, `${sid}.jsonl`), JSON.stringify({ ts: prior, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: x' }) + '\n');
+    const p = path.join(TMP, 'r5.jsonl');
+    fs.writeFileSync(p, [
+        { type: 'user', timestamp: new Date(Date.now() - 20 * 1000).toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'status?' }] } },
+        { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done — green.' }] } },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = run({ hook_event_name: 'Stop', session_id: sid, transcript_path: p, last_assistant_message: 'Done — green.' });
+    assert.strictEqual(r.status, 2);
+    assert.doesNotMatch(r.stderr, /has already blocked this same turn/, 'the row predates the typed prompt, so it is another turn');
+    fs.appendFileSync(path.join(ledger, `${sid}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: y' }) + '\n');
+    assert.match(run({ hook_event_name: 'Stop', session_id: sid, transcript_path: p, last_assistant_message: 'Done — green.' }).stderr,
+        /has already blocked this same turn/, 'a row from this turn still yields');
+});
