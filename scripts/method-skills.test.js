@@ -129,6 +129,20 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
         assert.ok(flat.includes(heading), `the habit carries '${heading}'`);
     for (const phrase of ['WITHOUT the skill', 'WITH it', 'adverse', 'explicit, plain and adverse'])
         assert.ok(flat.includes(phrase), `the proof names '${phrase}'`);
+    // Review M4: each phrase below is the one a deleted bullet takes with it - the cite-by-description
+    // rule (lint 25/26's reason), the retold-procedure rule, and every sign that the habit was skipped.
+    for (const phrase of ['guaranteed to sit beside the citer', 'describe what it covers', 'retells the procedure gets obeyed in place of the body',
+        'no run seen failing without it', 'retells the steps', 'restated in a second file', 'not guaranteed beside', 'only one step reads'])
+        assert.ok(flat.includes(phrase), `the habit carries '${phrase}'`);
+    // Review M2: a lookup skill is proven by retrieval; pressure is for a discipline only.
+    assert.ok(flat.includes('proven by retrieval'), 'a lookup skill is proven by retrieval');
+    assert.ok(flat.includes('pressure applies only to a discipline'), 'the adverse step is for a discipline skill');
+    // Review M1: the opener is the trigger, and a pre-act gate opens on it too.
+    assert.ok(flat.includes('`Use when`') && flat.includes('`Use before`') && flat.includes('`Load before`'), 'the pre-act openers are allowed');
+    // Review I3: the frontmatter facts every skill needs live here, where every install has them.
+    for (const fact of ['1% of the context window', 'skillListingBudgetFraction', '1,536', '`when_to_use`', 'defaults to the folder name',
+        '`disable-model-invocation: true`', '`user-invocable: false`', 'context7'])
+        assert.ok(flat.includes(fact), `the habit states '${fact}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');
     assert.match(read('setup-plugin/references/walk.md'), /the six `alfred-habits-\*` habits/, 'the walk counts six habits');
@@ -160,11 +174,41 @@ test('the skill-authoring rule attaches on skill files and its first action is t
 });
 
 test('plugin-authoring points at the habit for a skill body, and the repo notes name it instead of the plugin method', () => {
-    const pa = squash(read('stack/skills/plugin-authoring/SKILL.md'));
-    assert.ok(pa.includes('load `alfred-habits-skill-writing`'), 'plugin-authoring loads the habit where it covers skills');
-    for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers'])
-        assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's method: '${moved}'`);
+    const raw = read('stack/skills/plugin-authoring/SKILL.md');
+    const pa = squash(raw);
+    const bullet = raw.split('\n').filter((l, i, all) => l.startsWith('- **Skills**') || (i && all[i - 1].startsWith('- **Skills**') && /^  \S/.test(l)));
+    assert.strictEqual(bullet.length, 1, 'the Skills bullet is one line');
+    assert.ok(bullet[0].includes('load `alfred-habits-skill-writing`'), 'plugin-authoring loads the habit where it covers skills');
+    for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers', '1,536', 'skillListingBudgetFraction',
+        'user-invocable', 'description, not the body'])
+        assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's text: '${moved}'`);
+    const evals = squash(read('stack/skills/plugin-authoring/references/evals.md'));
+    assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
+    assert.ok(evals.includes('`alfred-habits-skill-writing`'), 'it points at the habit instead');
     const md = squash(read('CLAUDE.md'));
     assert.ok(md.includes('Authoring a skill in `stack/skills/`: the method is `alfred-habits-skill-writing`'), 'CLAUDE.md points at the habit');
     assert.ok(!md.includes('writing-skills is a reference'), 'and no longer at the optional plugin');
+});
+
+// Review I2 + R118: the habit's own rule - a description that retells the procedure gets obeyed in
+// place of the body - holds for every habit. Each description says when, and what it is NOT for with
+// where that case goes, and never walks its loop.
+test('the habit descriptions are triggers only - when, and what they are not for with its destination', () => {
+    const retold = {
+        'alfred-habits-root-cause': ['reproduce', 'hypothesis', 'localize', 'compare with'],
+        'alfred-habits-clarify': ['one question at a time', '2-3', 'until one reading', 'find its readings'],
+        'alfred-habits-test-first': ['watch it fail', 'minimal code', 'refactor', 'see it green'],
+        'alfred-habits-done-gate': ['output quoted', 'scoped runs', 'full suite', 'red trace'],
+    };
+    for (const skill of [...Object.keys(retold), 'alfred-habits-skill-writing'])
+    {
+        const text = read(`stack/skills/${skill}/SKILL.md`);
+        const desc = (text.match(/^description:\s*"?(.*?)"?$/m) || [])[1] || '';
+        const extra = (text.match(/^when_to_use:\s*"?(.*?)"?$/m) || [])[1] || '';
+        assert.match(desc, /^(Use when|Use before|Load when|Load before) /, `${skill} opens on its trigger`);
+        assert.match(desc, /\bNot for\b.*\b(that is|which|goes to|owns|belongs to)\b/, `${skill} names where its 'Not for' case goes`);
+        assert.ok(desc.length + extra.length <= 1536, `${skill} fits the listing's per-entry cap`);
+        for (const step of retold[skill] || [])
+            assert.ok(!desc.includes(step), `${skill}'s description retells its loop: '${step}'`);
+    }
 });

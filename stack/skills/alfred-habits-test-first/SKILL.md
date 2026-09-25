@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-test-first
-description: "Use before writing the production code of a feature, a bug fix or a behavior change: write the test, watch it fail for the expected reason, write the minimal code that passes, see it green, then refactor. Not for a config-only or docs-only edit."
+description: "Use before writing the production code of a feature, a bug fix or a behavior change. Not for a config-only or docs-only edit, which records 'test: none' with its reason and goes straight to the done gate."
 ---
 
 # Test first - red for the right reason, then green, then clean

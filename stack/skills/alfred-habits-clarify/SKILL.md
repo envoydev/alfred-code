@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-clarify
-description: "Use before designing against a feature, change or greenfield ask: find its readings, and where more than one is left, ask one question at a time through AskUserQuestion, 2-3 concrete options with the recommended one marked, until one reading is left. The requirement, never the implementation."
+description: "Use before designing against an ambiguous feature, change or greenfield ask - a requirement that can be read more than one way. Not for how to build it: an implementation choice is decided, stated inline and recorded in the plan, which is the plan-writing habit's job."
 ---
 
 # Clarify - one reading of the ask before any design

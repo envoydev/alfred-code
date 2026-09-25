@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-skill-writing
-description: "Use when writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference. Not for a plugin's manifest, packaging or marketplace entry, and not for a project's CLAUDE.md."
+description: "Use when writing, changing or reviewing a skill - its SKILL.md, description or frontmatter, or a file under its references/ folder - or when deciding whether a piece of guidance belongs in a skill at all rather than a rule, a hook or a reference. Not for a plugin's manifest or marketplace entry, which the plugin authoring guide covers, or a project's CLAUDE.md, which its instruction-file tooling owns."
 ---
 
 # Skill writing - a trigger that fires, a body that changes the run, proof on both sides
@@ -32,8 +32,9 @@ Pick the home before writing a word:
 The body stays unread until the description earns the load, and the description is paid for on
 every message whether it fires or not.
 
-- Start on `Use when`, then the situation, in the words a request or a file would carry: the file
-  types, tool names, error text and synonyms a user actually types.
+- Start on the trigger - `Use when`, or `Use before` / `Load before` for a gate that must run before
+  an act - then the situation, in the words a request or a file would carry: the file types, tool
+  names, error text and synonyms a user actually types.
 - Close with `Not for` and the nearest neighbours that must stay quiet, each with where it goes
   instead - this is the clause that keeps a near-miss from loading the wrong skill.
 - List what it covers as keywords, never its steps in order: a description that retells the
@@ -41,6 +42,18 @@ every message whether it fires or not.
 - Third person throughout; as short as the triggers allow, and under the harness's per-entry cap.
 - A skill that needs the user to name it before it loads has a broken description - repair the
   description, not the body.
+- Where the harness is Claude Code (its skills docs, read 2026-09-25 - version-coupled, so re-check
+  through context7 before leaning on a number):
+  - the listing of every description is budgeted at 1% of the context window
+    (`skillListingBudgetFraction` raises it); over budget the least-used skills lose their
+    descriptions first and keep only their names, and `/doctor` shows the cost;
+  - each entry is cut at 1,536 characters, an appended `when_to_use` counted with the description -
+    so the key use case goes first;
+  - `name` is optional and defaults to the folder name;
+  - `disable-model-invocation: true` makes the skill the user's to type: its description leaves the
+    model's context, and no subagent can preload it;
+  - `user-invocable: false` hides it from the slash menu while its description stays in context -
+    background knowledge only the model loads.
 
 ## One home per piece
 
@@ -92,6 +105,10 @@ A skill is code the model runs, so its test comes first and is seen to fail - th
    on its own.
 6. **A new excuse** seen in any run is answered in the body, and the runs go again. One sample per
    arm proves little: run several, and read every hit a grader counts before trusting its number.
+
+A lookup skill (a catalog, a reference table) has no discipline to hold: it is proven by retrieval -
+the plain phrasing finds the right entry, and the run uses it correctly - and pressure applies only
+to a discipline.
 
 Where the project keeps a step grader - fixtures replayed at explicit, plain and adverse prompt
 levels, a before arm compared with an after arm (a skill-comply harness) - add the new skill's steps

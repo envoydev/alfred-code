@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-root-cause
-description: "Use when a bug, a failing test, a build error or unexpected behavior needs its cause found before any fix: read the whole failure, reproduce, localize, compare with a working case, one hypothesis per change, fix at the root. Not a signature lookup, not the gated investigation."
+description: "Use when any bug, failing test, build error or unexpected behavior needs its root cause found before any fix. Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence, which is the gated diagnose flow's job."
 ---
 
 # Root cause - one hypothesis, one change, then the fix

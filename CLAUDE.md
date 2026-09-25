@@ -507,7 +507,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
   `.ps1`, the tag block) - write one as an escape.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (113,112 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,917). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (113,077 on 2026-09-25: pathless rules 36,665, agent descriptions 28,530, skill descriptions 47,882). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
