@@ -3423,7 +3423,7 @@
       ]
     },
     "shell-path-resolution-shared": {
-      "_note": "How a guard resolves a path out of a shell command, identical in the two guards that do it: an in-command `cd`/`pushd` moves the anchor for everything after it (CD_RE), and an UNEXPANDED variable is never judged - the guard bails rather than guessing. The two halves are one decision because they failed together: the read guard had neither and denied 6 of one session's 7 reads on paths it could not resolve (a `$VAR/...` target, and a bare name after `cd X && cat Y`) while the cross-project guard beside it resolved both correctly. Two guards disagreeing about the same command text is worse than either rule alone, so a change to one side is a change to both. The cross-project guard's side lives in shell-writes.js, which the done gate reads the same shell writes through.",
+      "_note": "How a guard resolves a path out of a shell command, identical in the two guards that do it: an in-command `cd`/`pushd` (and PowerShell's Set-Location / sl / Push-Location) moves the anchor for everything after it (CD_RE), and an UNEXPANDED variable is never judged - the guard bails rather than guessing. The two halves are one decision because they failed together: the read guard had neither and denied 6 of one session's 7 reads on paths it could not resolve (a `$VAR/...` target, and a bare name after `cd X && cat Y`) while the cross-project guard beside it resolved both correctly. Two guards disagreeing about the same command text is worse than either rule alone, so a change to one side is a change to both. The cross-project guard's side lives in shell-writes.js, which the done gate reads the same shell writes through.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "an unexpanded variable - cannot judge, don't guess"
@@ -3435,11 +3435,11 @@
         },
         {
           "file": "stack/hooks/shell-writes.js",
-          "marker": "const CD_RE = /(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:cd|pushd)\\s+(\"[^\"]+\"|'[^']+'|[^\\s;|&()]+)/g;"
+          "marker": "const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';\nconst CD_RE = new RegExp(`(?:^|&&|\\\\|\\\\||;|\\\\n|\\\\(|\\\\|)\\\\s*(?:${CD_VERB})\\\\s+(?:-(?:literal)?path\\\\s+)?(\"[^\"]+\"|'[^']+'|[^\\\\s;|&()]+)`, 'gi');"
         },
         {
           "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const CD_RE = /(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:cd|pushd)\\s+(\"[^\"]+\"|'[^']+'|[^\\s;|&()]+)/g;"
+          "marker": "const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';\nconst CD_RE = new RegExp(`(?:^|&&|\\\\|\\\\||;|\\\\n|\\\\(|\\\\|)\\\\s*(?:${CD_VERB})\\\\s+(?:-(?:literal)?path\\\\s+)?(\"[^\"]+\"|'[^']+'|[^\\\\s;|&()]+)`, 'gi');"
         }
       ]
     },

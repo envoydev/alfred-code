@@ -303,7 +303,7 @@ test('guard-fresh-session-start: the trigger is the tier\'s own variable', () =>
 // ---- hooks audit: every gate branch pinned in both directions (block AND the exemption) ----
 const runIn = (hook, payload, opts) =>
   spawnSync(process.execPath, [path.join(HOOKS, hook)], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
-const BIG_LINES = fs.readFileSync(BIG, 'utf8').split('\n').length;
+const BIG_LINES = fs.readFileSync(BIG, 'utf8').replace(/\n$/, '').split('\n').length; // lines, not newline-split pieces
 const SMALL = path.join(HOOKS, 'instrument-tool-usage.js'); // 74 lines - the smallest shipped hook,
 // deliberately not one of the guards: they grow, and a fixture that drifts past 200 lines turns
 // two unrelated read-guard assertions red (measured: the fresh-session hook crossed it).
@@ -384,6 +384,22 @@ test('guard-protected-force-push: a bare force targets HEAD, judged from the ses
   spawnSync('git', ['-C', dir, 'checkout', '-qb', 'feature/z']);
   assert.equal(fp('git push -f', dir), 0, 'bare -f on a feature branch');
   assert.equal(fp('git push -f', TMP), 0, 'outside a repo the guard fails open');
+});
+
+test('guard-protected-force-push: HEAD and @ are the current branch, and -C or a cd moves where it is read', () => {
+  // `git push -f origin HEAD` on main is the bare force spelled out, and passed (reproduced), as did a
+  // bare force run through `git -C <repo>` from outside it.
+  const dir = scratchRepoOn('main');
+  const fp = (c, cwd) => runIn('guard-protected-force-push.js', { tool_name: 'Bash', tool_input: { command: c }, cwd }, {});
+  for (const c of ['git push -f origin HEAD', 'git push --force origin @', 'git push origin +HEAD', 'git push -d origin HEAD'])
+    assert.equal(fp(c, dir).status, 2, `must block on main: ${c}`);
+  assert.equal(fp(`git -C ${dir} push -f`, TMP).status, 2, 'a -C names the repo the bare force runs in');
+  assert.equal(fp(`cd ${dir} && git push -f`, TMP).status, 2, 'and so does a cd before it');
+  assert.match(fp('git push -f origin HEAD', dir).stderr, /^Blocked: /, 'the denial opens on the word the analyzer counts');
+  assert.equal(fp('git push origin HEAD', dir).status, 0, 'a plain push of HEAD is fast-forward work');
+  spawnSync('git', ['-C', dir, 'checkout', '-qb', 'feature/y']);
+  assert.equal(fp('git push -f origin HEAD', dir).status, 0, 'HEAD on a feature branch is the feature branch');
+  assert.equal(fp('git push -f origin HEAD:main', dir).status, 2, 'an explicit protected destination still blocks');
 });
 
 test('guard-catastrophic-rm: the catastrophic-target matrix', () => {
@@ -1707,6 +1723,47 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG } }, {});
   assert.equal(r.status, 2);
   assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol/);
+});
+
+test('guard-read-whole-file: a file is as long as its lines - the trailing newline is not one more', () => {
+  // A 200-line file read as 201 and was blocked at the threshold it sits on; the denial reported
+  // 1501 lines for a 1500-line file.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lines-'));
+  const at = path.join(dir, 'at.ts');
+  const over = path.join(dir, 'over.ts');
+  fs.writeFileSync(at, Array.from({ length: 200 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  fs.writeFileSync(over, Array.from({ length: 201 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  assert.equal(bash('guard-read-whole-file.js', `cat ${at}`), 0, 'exactly the threshold passes');
+  assert.equal(run('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: at } }), 0, 'on the Read route too');
+  const r = runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command: `cat ${over}` } }, {});
+  assert.equal(r.status, 2, 'one line over blocks');
+  assert.match(r.stderr, /\(201 lines\)/, 'and the denial counts it right');
+});
+
+test('guard-read-whole-file: the PowerShell reads and anchors are judged like their Bash twins', () => {
+  // Wired on PowerShell, yet Get-Content / gc / type dumped a 3000-line file unjudged.
+  for (const c of [`Get-Content ${BIG}`, `gc ${BIG}`, `type ${BIG}`, `Get-Content -Path ${BIG} -Raw`, `Get-Content -LiteralPath '${BIG}'`])
+    assert.equal(pwsh('guard-read-whole-file.js', c), 2, `must block: ${c}`);
+  for (const c of [`Get-Content ${BIG} -TotalCount 40`, `gc ${BIG} -Head 20`, `Get-Content ${BIG} -Tail 30`,
+    `Get-Content ${BIG} | Select-Object -First 40`, `Get-Content ${BIG} | Select-String 'foo'`, `Get-Content ${BIG} | Measure-Object -Line`])
+    assert.equal(pwsh('guard-read-whole-file.js', c), 0, `bounded: ${c}`);
+  assert.equal(pwsh('guard-read-whole-file.js', `Set-Location ${HOOKS}; Get-Content instrument-tool-usage.js`), 0,
+    'a Set-Location moves the anchor, so a small file named relative to it resolves');
+  assert.equal(bash('guard-read-whole-file.js', 'type node'), 0, 'the bash builtin reads no file');
+  assert.equal(bash('guard-read-whole-file.js', `grep -n type ${BIG}`), 0, 'nor is the word an argument');
+  assert.equal(pwsh('guard-read-whole-file.js', `$x = (Get-Content ${BIG})`), 2, 'a parenthesised read is still the command');
+});
+
+test('guard-read-whole-file: every source-read denial carries the call that loads serena', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'loadline-'));
+  const big = path.join(dir, 'big.ts');
+  fs.writeFileSync(big, Array.from({ length: 400 }, (_, i) => `const a${i} = ${i};`).join('\n') + '\n');
+  const deny = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command } }, { cwd: dir });
+  for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `node -e "console.log(require('fs').readFileSync('${big}','utf8'))"`, `head -n 99999 ${big}`]) {
+    const r = deny(c);
+    assert.equal(r.status, 2, c);
+    assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__/, `the loading line: ${c}`);
+  }
 });
 
 test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail its own receipt', () => {

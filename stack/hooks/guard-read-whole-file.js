@@ -91,7 +91,9 @@ const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)
 // serena detour costs about what the whole-file read would - the guard only pays above 200.
 const THRESHOLD = 200;
 const lineCountOf = (p) => {
-  try { return fs.readFileSync(p, 'utf8').split('\n').length; } catch { return 0; }
+  // Lines, not newline-split pieces: a final newline ends the last line, it does not start another -
+  // counted as one, a 200-line file sat one over the threshold it is on.
+  try { const t = fs.readFileSync(p, 'utf8'); return t ? t.replace(/\n$/, '').split('\n').length : 0; } catch { return 0; }
 };
 // Resolve a possibly-relative path the way the session sees it. The hook subprocess's own
 // cwd is NOT the Bash tool's persisted cwd (a prior `cd` in another call moves it), so a bare
@@ -103,7 +105,8 @@ const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].
 // relative target then resolves nowhere - which failed CLOSED and denied the call. Add every
 // literal `cd` target as one more candidate anchor; a variable or `-` target is unfollowable and
 // simply contributes nothing. The sibling cross-project guard tracks the same thing positionally.
-const CD_RE = /(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;|&()]+)/g;
+const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';
+const CD_RE = new RegExp(`(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:${CD_VERB})\\s+(?:-(?:literal)?path\\s+)?("[^"]+"|'[^']+'|[^\\s;|&()]+)`, 'gi');
 // `$VAR` / `${VAR}` that this hook cannot see through. The sibling guard's rule, applied here for
 // the same reason: 6 of 12 measured denials in one project named a `$R/...` target, and judging a
 // path whose value is unknown is guessing, not gating.
@@ -143,12 +146,13 @@ const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
 // saying exactly that and still made 100 Bash calls and 0 serena calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
+const LOAD_SERENA = `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n`;
 const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
   ? `serena cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
   : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
-  `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n` +
+  LOAD_SERENA +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
   `for a large body fetch it without the body first, then Read the range you need).`);
@@ -327,7 +331,8 @@ if (isShellTool(payload.tool_name)) {
   // This pre-filter must name every verb the branches below look for: `readFileSync` / `File.read`
   // were in the runtime-dump pattern but not here, so `node -e "...readFileSync(f)..."` exited on
   // this line and that branch never ran (reproduced against the same 1371-line file).
-  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read/.test(command)) process.exit(0);
+  // Get-Content / gc / type are the PowerShell route's cat - wired on that tool, and unjudged until now.
+  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read|\bget-content\b|\bgc\b|\btype\b/i.test(command)) process.exit(0);
   // EVERY test below is PER SEGMENT, and the extension is tested against the PATH the verb names -
   // never against the whole command. Testing `GATED_EXT_ANY` against the whole compound command
   // denied a command for an unrelated `*.js` glob sitting in a SIBLING segment (replayed: exit 2;
@@ -369,13 +374,14 @@ if (isShellTool(payload.tool_name)) {
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
         `variable or a find placeholder. Per baseline-navigation.md, locate what you need first\n` +
         `(serena find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
-        `ranges that matter. If you genuinely need one whole small file, cat it by name.`,
+        `ranges that matter. If you genuinely need one whole small file, cat it by name. The serena\n` +
+        `tools are DEFERRED - load them first:\n` + LOAD_SERENA,
       );
       process.exit(2);
     }
   }
   for (const seg of command.split(/&&|\|\||;|\n/)) {
-    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut)\b/.test(seg)) continue;
+    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i.test(seg)) continue;
     // Output redirected INTO a file never reaches the context - `cat a.ts > copy.ts` is a copy,
     // not a dump (an fd form like `2>&1` / `>&2` still prints, so only a path target is exempt).
     if (/\s>>?\s*[^&\s>]/.test(seg)) continue;
@@ -406,7 +412,8 @@ if (isShellTool(payload.tool_name)) {
           'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
           'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
           'only the range you need. An expression that only COUNTS or SEARCHES - the read feeding\n' +
-          '.match/.split/.length with no print of the content - is not a dump and is not blocked.',
+          '.match/.split/.length with no print of the content - is not a dump and is not blocked.\n' +
+          'The serena tools are DEFERRED - load them first:\n' + LOAD_SERENA,
         );
         process.exit(2);
       }
@@ -422,7 +429,7 @@ if (isShellTool(payload.tool_name)) {
       process.stderr.write(
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
         'Per baseline-navigation.md, read the located range - serena find_symbol, or a bounded\n' +
-        'sed -n \'<start>,<end>p\' once you know where to look.',
+        'sed -n \'<start>,<end>p\' once you know where to look. The serena tools are DEFERRED - load them first:\n' + LOAD_SERENA,
       );
       process.exit(2);
     }
@@ -435,6 +442,22 @@ if (isShellTool(payload.tool_name)) {
       : [];
     const sedM = seg.match(/\bsed\s+-n\s+["']1,\$p["']\s+("[^"]+"|'[^']+'|[^\s;&|<>]+)/);
     if (sedM) files.push(sedM[1].replace(/^["']|["']$/g, ''));
+    // PowerShell's reader: bounded by -TotalCount / -Head / -First / -Tail / -Last; its path is the
+    // positional argument or -Path / -LiteralPath, and the values of its other parameters are not paths.
+    // The verb must be the segment's COMMAND (its start, or after a pipe or a paren) - `grep type a.ts`
+    // and `git gc` name the word as an argument.
+    const gcM = seg.match(/(?:^\s*|[|(]\s*)(?:get-content|gc|type)\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/i);
+    if (gcM) {
+      const words = gcM[1].trim().match(/"[^"]+"|'[^']+'|\S+/g) || [];
+      if (!words.some((w) => /^-(?:totalcount|head|first|tail|last)$/i.test(w))) {
+        for (let k = 0; k < words.length; k++) {
+          const w = words[k];
+          if (/^-(?:path|literalpath|lp|pspath)$/i.test(w)) continue;
+          if (/^-/.test(w)) { if (/^-(?:encoding|delimiter|readcount|filter|include|exclude|stream|credential)$/i.test(w)) k++; continue; }
+          files.push(w.replace(/\)+$/, '').replace(/^["']|["']$/g, ''));
+        }
+      }
+    }
     for (const rawF of files) {
     const f = expandWith(assigns, rawF);
     if (!GATED_EXT.test(f)) continue;
@@ -456,7 +479,7 @@ if (isShellTool(payload.tool_name)) {
     }
     if (lc > THRESHOLD) {
       process.stderr.write(
-        `Blocked: whole-file dump of ${f} (${lc} lines) via Bash.\n` +
+        `Blocked: whole-file dump of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per baseline-navigation.md, a bare cat/sed of a large source file is the same\n` +
         `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
       );

@@ -143,29 +143,53 @@ function pushArgs(seg)
 
     // Walk git's own options/values before the subcommand (`-C dir`, `-c k=v`, `--git-dir=...`).
     let j = i + 1;
+    const dirs = [];
     while (j < tokens.length && tokens[j].startsWith('-'))
     {
         const opt = tokens[j];
         j++;
         if ((opt === '-C' || opt === '-c') && j < tokens.length)
         {
+            if (opt === '-C') dirs.push(unquote(tokens[j]));
             j++; // skip the option's value token
         }
     }
 
-    return tokens[j] === 'push' ? tokens.slice(j + 1) : null;
+    if (tokens[j] !== 'push') return null;
+    const after = tokens.slice(j + 1);
+    after.dirs = dirs; // where git runs: each -C resolves against the one before it
+    return after;
+}
+
+// The directory a segment's `cd` moves the shell to, for the segments after it. An unexpanded
+// variable is not guessed.
+function cdTarget(seg)
+{
+    const m = seg.trim().match(/^(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|\S+)$/i);
+    if (!m) return null;
+    const dest = unquote(m[1]);
+    return /\$/.test(dest) ? null : dest.replace(/^~(?=$|\/)/, require('os').homedir());
 }
 
 // Block a push that would force-update, delete, or mirror a protected branch.
 function isProtectedForcePush(command, cwd)
 {
+    const path = require('path');
+    let shellCwd = cwd;
     for (const seg of command.split(SEPARATORS))
     {
+        const moved = cdTarget(seg);
+        if (moved !== null) shellCwd = path.resolve(shellCwd, moved);
         const after = pushArgs(seg);
         if (after === null)
         {
             continue;
         }
+        const gitCwd = after.dirs.reduce((at, d) => (/\$/.test(d) ? at : path.resolve(at, d)), shellCwd);
+        // HEAD and @ name the branch checked out where git runs - `git push -f origin HEAD` on main is
+        // the bare force spelled out, and read literally it named no protected branch and passed.
+        let head;
+        const branchOf = (ref) => (ref === 'HEAD' || ref === '@' ? (head === undefined ? (head = currentBranch(gitCwd)) : head) : ref);
 
         // FORCE_FLAG catches -f / --force / --force-with-lease / --force-if-includes as whole tokens;
         // also catch clustered short flags (-fu, -uf, -fv): single-dash token containing f.
@@ -184,7 +208,7 @@ function isProtectedForcePush(command, cwd)
         // Explicit refspec whose destination is a protected branch, when the op is a
         // force ('+' prefix or a force flag) or a delete (--delete/-d, or ':dst').
         // Unquote first so a quoted token - `"main"` or `"+main"` - is read correctly.
-        const targets = after.filter(t => !t.startsWith('-') && PROTECTED.includes(normalizeBranch(refDestination(t))));
+        const targets = after.filter(t => !t.startsWith('-') && PROTECTED.includes(branchOf(normalizeBranch(refDestination(t)))));
         for (const t of targets)
         {
             const u = unquote(t);
@@ -195,7 +219,7 @@ function isProtectedForcePush(command, cwd)
         }
 
         // Bare push targets HEAD's branch - block a force or delete of a protected one.
-        if (isBarePush(after) && PROTECTED.includes(currentBranch(cwd)) && (hasForceFlag || hasDeleteFlag))
+        if (isBarePush(after) && PROTECTED.includes(branchOf('HEAD')) && (hasForceFlag || hasDeleteFlag))
         {
             return true;
         }
@@ -271,7 +295,7 @@ function main()
     }
 
     process.stderr.write(
-        'Rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
+        'Blocked: rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
         'no force-push, branch deletion, or --mirror. Push to a feature branch and open a PR; ' +
         'use --force-with-lease only on your own feature branch.\n');
     process.exit(2);
