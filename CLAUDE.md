@@ -223,7 +223,9 @@ change (see the invariants below).
   (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`); never in a build flow).
   `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
-  `integration-reviewer`). cursor-stack shipped twins of all 44 before this rebrand and is PENDING
+  `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
+  branch from HEAD because the installer seeds `worktree.baseRef: "head"` add-only, and fan in as an
+  uncommitted `git apply`). cursor-stack shipped twins of all 44 before this rebrand and is PENDING
   the same rename while its mirror is paused - a protocol change here usually needs the same edit
   there once it resumes (divergences only: `model: inherit`, no `tools:` allowlist, no auto-delegation
   hard-disable).

@@ -2230,6 +2230,51 @@
         }
       ]
     },
+    "implementer-worktree-uncommitted": {
+      "_note": "A worktree-isolated implementer leaves its edits uncommitted: the orchestrator fans each worktree's diff into the main tree (domain-trio-protocol.md step 3), because the commit gate judges the main checkout's diff, not the worktree's - measured: a seat's commit passed with the main tree clean and was blocked with siblings' edits in it. Verbatim in all 10 implementers.",
+      "owner": {
+        "file": "stack/agents/aspnet-implementer.md",
+        "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+      },
+      "sites": [
+        {
+          "file": "stack/agents/web-angular-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/ionic-angular-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/wpf-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/winforms-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/console-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/windows-service-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/data-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/devops-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        },
+        {
+          "file": "stack/agents/browser-extension-implementer.md",
+          "marker": "leave your edits uncommitted there: the orchestrator fans them in"
+        }
+      ]
+    },
     "implementer-solution-test-gate": {
       "_note": "The .NET implementers' test gate is the whole solution's (fitness project included) unless the brief names a single project, with a sibling-caused red reported as BLOCKED instead of burning attempts - measured: an own-project reading skipped the fitness suite, ~111k tokens redone. The two TypeScript implementers carry the sibling-red half only - a workspace has no solution file, so the gate itself differs while the BLOCKED-not-burn rule is the same.",
       "owner": {

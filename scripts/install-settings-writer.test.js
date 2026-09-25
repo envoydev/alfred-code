@@ -846,3 +846,30 @@ test('settings-writer: attribution seeding is idempotent, and absent when not as
     assert.ok(!again.logs.some((m) => /attribution/.test(m)), again.logs.join(' | '));
     assert.strictEqual(write(settingsFile({}), {}).data.attribution, undefined);
 });
+
+// R6: a seat dispatched with isolation 'worktree' branches from the remote default branch unless
+// `worktree.baseRef` is "head" (code.claude.com/docs/en/worktrees) - the stack seeds "head", add-only.
+test('settings-writer: worktree.baseRef is seeded "head", never over a value the project set, other worktree keys kept', () =>
+{
+    const fresh = write(settingsFile({}), { worktreeBase: {} });
+    assert.deepStrictEqual(fresh.data.worktree, { baseRef: 'head' });
+    assert.ok(fresh.logs.some((m) => /worktree\.baseRef head/.test(m)), fresh.logs.join(' | '));
+
+    assert.deepStrictEqual(write(settingsFile({ worktree: { baseRef: 'fresh' } }), { worktreeBase: {} }).data.worktree, { baseRef: 'fresh' }, 'the project chose fresh');
+    assert.deepStrictEqual(write(settingsFile({ worktree: { bgIsolation: 'none' } }), { worktreeBase: {} }).data.worktree, { bgIsolation: 'none', baseRef: 'head' });
+    assert.strictEqual(write(settingsFile({ worktree: 'x' }), { worktreeBase: {} }).data.worktree, 'x', 'a value that is not an object is the user\'s - left as-is');
+    assert.deepStrictEqual(write(settingsFile({ worktree: ['head'] }), { worktreeBase: {} }).data.worktree, ['head']);
+});
+
+test('settings-writer: worktree.baseRef at local scope never hides a settings.json value; idempotent; absent when not asked for', () =>
+{
+    assert.strictEqual(write(settingsFile({}), { worktreeBase: { inherited: { baseRef: 'fresh' } } }).data.worktree, undefined, 'settings.json holds the choice');
+    assert.deepStrictEqual(write(settingsFile({}), { worktreeBase: { inherited: { bgIsolation: 'none' } } }).data.worktree, { baseRef: 'head' });
+    const file = settingsFile({});
+    write(file, { worktreeBase: {} });
+    const before = fs.readFileSync(file, 'utf8');
+    const again = write(file, { worktreeBase: {} });
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+    assert.ok(!again.logs.some((m) => /worktree/.test(m)), again.logs.join(' | '));
+    assert.strictEqual(write(settingsFile({}), {}).data.worktree, undefined);
+});

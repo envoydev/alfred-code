@@ -1204,6 +1204,8 @@ function installHooksAndRules(ctx)
         inheritedOverrides: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).skillOverrides : null,
         // baseline-git's no-attribution rule, enforced by the setting; at local scope settings.json's own value stays.
         attribution: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).attribution : null },
+        // R6: isolated seats branch from this HEAD; at local scope settings.json's own value stays.
+        worktreeBase: { inherited: ctx.args.scope === 'local' ? settings.readBackSettings(ctx.claudeDir, 'project', { sharedOnly: true }).worktree : null },
         renamed: ctx.manifest.renamed,
         log: ctx.log, note: ctx.note,
     });

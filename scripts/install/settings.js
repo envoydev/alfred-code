@@ -324,7 +324,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedKeys = [], attribution = null,
+        inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null,
         log = () => {}, note = () => {},
     } = opts;
     // A seat a release RENAMED (meta/stack-manifest.json `renamed`) loads under its new name only.
@@ -491,6 +491,21 @@ function writeSettings(opts)
             seeded.push(key);
         }
         if (seeded.length) { changed = true; log(`  ${label}: attribution off (${seeded.join(', ')}) - no AI attribution in commits or PRs`); }
+    }
+    // A seat dispatched with isolation 'worktree' branches from the REMOTE default branch unless
+    // `worktree.baseRef` is "head" (code.claude.com/docs/en/worktrees), so it would build without the run's
+    // own commits. Add-only, the attribution shape: a value the project set stays, other `worktree` keys
+    // are kept, and at local scope a settings.json value is never hidden by a seed.
+    const plain = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+    if (worktreeBase && (data.worktree === undefined || plain(data.worktree)))
+    {
+        const inherited = plain(worktreeBase.inherited) ? worktreeBase.inherited : {};
+        if (!(data.worktree && Object.hasOwn(data.worktree, 'baseRef')) && !Object.hasOwn(inherited, 'baseRef'))
+        {
+            (data.worktree ??= {}).baseRef = 'head';
+            changed = true;
+            log(`  ${label}: worktree.baseRef head - an isolated seat's worktree branches from this HEAD, not the remote default branch`);
+        }
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
