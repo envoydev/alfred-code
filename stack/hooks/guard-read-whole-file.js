@@ -187,7 +187,7 @@ const CONVENTION_RULES = [
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
   [/\.sql\b/i, 'sql-conventions.md'],
   [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b/i, 'devops-conventions.md'],
-  [/(?:^|\/)SKILL\.md\b|(?:^|\/)skills\/\S*\.md\b/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md
+  [/(?:^|\/)SKILL\.md$|(?:^|\/)skills\/\S*\.md$/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md, case-sensitive, no .bak
   [/\.md\b/i, 'markdown-docs.md'],
 ];
 // The announcement is HELD until the call is allowed, and only then marked as said: a denial and an
@@ -253,9 +253,10 @@ const ruleInstalled = (rule) => {
   return !known;
 };
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
-// neither is the install's own `.claude/` tree, so a markdown-docs.md hit on a target there is
-// dropped. That carve-out is the markdown rule's alone: `.claude/skills/` is where a project keeps its
-// own skills, and skill-authoring.md governs a skill file wherever it lives.
+// neither is the install's own `.claude/` tree, so a `.md` target there names no rule - not even one
+// whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
+// rule's once-per-session announcement on a docs note. The one exception is skill-authoring.md -
+// `.claude/skills/` is where a project keeps its own skills, and a skill file is governed wherever it lives.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
 // ALFRED_CODE_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
 // to `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
@@ -269,7 +270,7 @@ function announceRules(text) {
   if (!targets.length) return;
   const hit = [];
   for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
-    if (re.test(t) && !hit.includes(rule) && !(rule === 'markdown-docs.md' && ungoverned(t))) hit.push(rule);
+    if (re.test(t) && !hit.includes(rule) && !(rule !== 'skill-authoring.md' && /\.md\b/i.test(t) && ungoverned(t))) hit.push(rule);
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();

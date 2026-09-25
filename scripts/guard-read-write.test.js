@@ -71,6 +71,25 @@ test('guard-read-whole-file: a shell write to a skill file names the skill-autho
   assert.doesNotMatch(announce('printf x > README.md', sid()), /skill-authoring/, 'a plain doc is not a skill');
   assert.doesNotMatch(announce('printf x > docs/skills.md', sid()), /skill-authoring/, 'nor a doc that is only named for skills');
   assert.equal(announce('printf x > .claude/docs/notes.md', sid()), '', 'the install tree outside a skill stays silent');
+  // The glob is case-SENSITIVE: a lowercase skill.md outside a skills/ folder is no skill file, and a
+  // backup copy is not SKILL.md.
+  assert.doesNotMatch(announce('printf x > docs/demo/skill.md', sid()), /skill-authoring/, 'a lowercase skill.md is not SKILL.md');
+  assert.doesNotMatch(announce('cp stack/skills/foo/SKILL.md stack/skills/foo/SKILL.md.bak', sid()), /skill-authoring/, 'nor is a .bak copy');
+});
+
+test('guard-read-whole-file: a .md under .claude or the docs root names no OTHER rule - the carve-out lifts for skill files only', () => {
+  // Review I1: the carve-out once dropped every such .md target before ANY rule was matched. Scoping
+  // it to markdown-docs alone let a docs note whose NAME carries another rule's pattern spend that
+  // rule's once-per-session announcement, so the real write later got nothing.
+  assert.equal(announce('printf x > .claude/docs/related-context/next.js-upgrade.md', sid()), '', 'a docs note named for a .js file');
+  assert.equal(announce('printf x > .claude/docs/architecture/references/Dockerfile.md', sid()), '', 'a docs page named for a Dockerfile');
+  const committedRoot = { env: { ...process.env, ALFRED_CODE_DOCS_PATH: 'docs' } };
+  assert.equal(announce('printf x > docs/architecture/Dockerfile.md', sid(), READ, committedRoot), '', 'a committed docs root too');
+  const skill = announce('printf x > .claude/skills/csharp/references/x.cs.md', sid());
+  assert.match(skill, /skill-authoring\.md/, 'a skill file under .claude still names the skill rule');
+  assert.doesNotMatch(skill, /csharp-conventions\.md/, '... and no other');
+  // ... while the same names outside those trees still announce their rules
+  assert.match(announce('printf x > .claude/hooks/local-check.js', sid()), /javascript-conventions\.md/, 'a non-.md write under .claude still announces');
 });
 
 test('guard-read-whole-file: only a rule this install actually has is announced', () => {
