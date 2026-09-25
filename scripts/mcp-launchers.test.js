@@ -164,6 +164,24 @@ test('uv-python: the override is read from the settings files a plugin server ne
     assert.strictEqual(ask(), '3.13', 'no override anywhere is the machine default');
 });
 
+// F4 item 2: a --space account's directory is named by CLAUDE_CONFIG_DIR, never derived from HOME.
+// overrideFrom resolves the account dir as `env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')`
+// - already CLAUDE_CONFIG_DIR-first. Proven here with an account directory that is NOT '<home>/.claude'
+// (the shape a --space account actually has, e.g. '<home>/.claude-work'): the value the module reads
+// is the one at the CLAUDE_CONFIG_DIR path, so the lookup is not hardcoded to a HOME-derived layout.
+test('uv-python: the account read is keyed by CLAUDE_CONFIG_DIR itself, not a HOME-derived .claude path (a --space account)', () =>
+{
+    const spaceDir = path.join(TMP, 'uvpy-space-acct-not-dot-claude');
+    fs.mkdirSync(spaceDir, { recursive: true });
+    fs.writeFileSync(path.join(spaceDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_UV_PYTHON: '3.10-space' } }));
+    const { dir } = project('uvpy-space-project', {});
+    assert.strictEqual(
+        pythonRequest({ platform: 'linux', arch: 'x64', env: { CLAUDE_CONFIG_DIR: spaceDir }, projectDir: dir }),
+        '3.10-space',
+        'the account file at the CLAUDE_CONFIG_DIR path must answer, whatever that directory is named',
+    );
+});
+
 // A stub uvx on PATH records the argv it was started with, so the launches are read, not guessed.
 function stubUvx(name)
 {
