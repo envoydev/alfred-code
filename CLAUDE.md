@@ -344,7 +344,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
   twice. They come back to `.mcp.json` only on the FULL copy route; every registration and verify
-  pass skips a locked name while the core is on.
+  pass skips a locked name while the core is on. A switch onto that route disables the core and the
+  locked three first, and copies every skill and seat the core carried, a denied seat excepted - that
+  route reads them from the disk, where a plugin-route install holds only the extras. A switch back
+  enables them again: the settings file naming the core off is the one reason a run enables it, never
+  the listing's flag (S22) (R116).
 - **MCP servers are per-project at project and local scope** (a `user` install makes them
   account-wide). `serena` (baseline-navigation), `context7`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be

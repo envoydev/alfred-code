@@ -665,6 +665,35 @@ test('read-back: a flip to the hooks copy route carries the plugin route\'s ALFR
     assert.ok(!unset.lines.some((l) => l.startsWith('hook ')), 'nothing named off: every hook, as before');
 });
 
+// R116 matrix re-run (R22): a switch onto the FULL copy route disables the core, and that route reads
+// skills and seats from the disk - where a plugin-route install holds only the extras. The core's items
+// are read back only while the core is still ON at this run's scope (the rows the stand-down disables):
+// once it is off, the copies on disk are the record, and a dropped copy must not come back.
+test('read-back: a switch onto the full copy route reads back what the core still ON at this scope carried - an off or other-scope core adds nothing (R116)', () =>
+{
+    const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+    const seat = 'code-style-analyzer';
+    const back = ({ listing, isOn, scope = 'project', settings = {} }) => sel.readBack({
+        claudeDir: target({ rules: ['baseline-security'] }), mcpServers: [], listing, settings, routes: {}, manifest: MANIFEST,
+        sourceDir: ROOT_DIR, always: {}, stampPicked: { skills: ['markdown-style@alfred-code'], agents: [] }, marketplace: 'envoydev', scope, isOn,
+    });
+    const items = (r) => r.lines.filter((l) => /^(skill|agent) /.test(l));
+    const on = back({ listing: [row('alfred-code@envoydev')], settings: { permissions: { deny: [`Agent(alfred-code:${seat})`] } } });
+    assert.deepStrictEqual(core.skills.filter((s) => !on.lines.includes(`skill ${s}`)), [], items(on).join(', '));
+    assert.deepStrictEqual(core.agents.filter((a) => a !== seat && !on.lines.includes(`agent ${a}`)), [], items(on).join(', '));
+    assert.ok(!on.lines.includes(`agent ${seat}`), 'a denied seat stays off');
+    // The settings file's word before the listing's flag (S22): a stale false flag is still a core that runs.
+    const stale = back({ listing: [row('alfred-code@envoydev', { enabled: false })], isOn: () => true });
+    assert.ok(stale.lines.includes('skill project-first-look'), items(stale).join(', '));
+    const off = back({ listing: [row('alfred-code@envoydev')], isOn: () => false });
+    assert.deepStrictEqual(items(off), [], 'a core already off (a switched install re-run) adds nothing');
+    const elsewhere = back({ listing: [row('alfred-code@envoydev', { scope: 'user' })] });
+    assert.deepStrictEqual(items(elsewhere), [], 'a core at another scope keeps running there - nothing to carry across');
+    const plugin = sel.readBack({ claudeDir: target({ rules: ['baseline-security'] }), mcpServers: [], listing: [row('alfred-code@envoydev')], settings: {},
+        routes: { skills: false, hooks: true, mcps: false }, manifest: MANIFEST, sourceDir: ROOT_DIR, always: {}, stampPicked: { skills: [], agents: [] }, marketplace: 'envoydev', scope: 'project' });
+    assert.ok(!plugin.lines.includes('skill project-first-look'), 'a partial copy route keeps the core on - it carries its own items');
+});
+
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
 {
     const rule = GRAPH.rules['csharp-conventions'];

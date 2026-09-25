@@ -547,7 +547,7 @@ function extraMarketplaces(rows, set)
 // (docs/rebrand-evidence.md S22). A playwright engine is never enabled for its flag - the user's own
 // off-state, which only their answer (`engines.on`) switches - and an absent one is installed as on
 // install: switched off after when the user chose it off.
-function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), engines = NO_ENGINES, cli, log = () => {}, note = () => {} })
+function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, fresh = [], refreshed = new Set(), engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     for (const mp of marketplaces) cli(['plugin', 'marketplace', 'add', mp], { quiet: true });
     refreshMarketplaces({ plugins, cli, refreshed });
@@ -561,9 +561,11 @@ function updatePlugins({ plugins, scope, marketplaces = [], before = [], after, 
             log(`plugin install [${pscope}]: ${spec}`);
             if (cli(['plugin', 'install', spec, '--scope', pscope, '-y']) && engines.off.includes(spec)) switchOff(spec, pscope, { cli, log, note });
         }
-        // The core is locked on (brand.js alwaysOn): its flag is no reason to act. A user-disabled
-        // claude-hud stays off (USER_OFF_WINS).
-        else if (fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
+        // The core is locked on (brand.js alwaysOn): its flag is no reason to act (S22) - but the
+        // settings file naming it off is, the full copy route's stand-down wrote that (R116). A
+        // user-disabled claude-hud stays off (USER_OFF_WINS).
+        else if ((fieldOf(before, spec, 'enabled') === false && !alwaysOn(bareName(spec)) && !offByUser(spec, before))
+            || (alwaysOn(bareName(spec)) && isOn(spec, pscope) === false))
         {
             log(`plugin enable [${pscope}]: ${spec} (installed but disabled)`);
             // A stale listing flag (S22) makes this a no-op enable, which exits 1 with this line.
@@ -605,5 +607,5 @@ module.exports = {
     pluginRoutes, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
-    copyRouteStandDown, engineStandDown,
+    copyRouteStandDown, engineStandDown, rowsOn,
 };

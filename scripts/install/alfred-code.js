@@ -329,7 +329,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
                 stampPicked: lastPicked, stampEngines,
-                always, marketplace: market, said: renaming.said, log,
+                always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
             });
             if (!back.installed)
@@ -710,7 +710,7 @@ function installPlugins(ctx)
         const gone = moving ? moved.gone : plugins.prunedRetired({ rows, retired, retiredRows, carriers, market: ctx.market, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note });
         ctx.liveCarriers = installed(gone);
         plugins.updatePlugins({
-            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
+            plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh: moved.fresh, refreshed: ctx.refreshed, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
             after: readListing,
         });
         for (const row of ctx.dropEntries || [])

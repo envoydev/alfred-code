@@ -25,8 +25,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
-const { BRAND, currentName, rowOn } = require('./brand.js');
-const { USER_OFF_WINS } = require('./plugins.js');
+const { BRAND, LEGACY, currentName, rowOn } = require('./brand.js');
+const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -191,7 +191,7 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], scope, isOn = () => undefined, log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -230,7 +230,15 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
     const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(r.name))).map((r) => currentName(r.name));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
-    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes, sourceDir });
+    // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
+    // reads skills and seats from the disk - where a plugin-route install holds only the extras, so the
+    // core's own items were never copied and loaded nowhere after the switch. What the core carried is
+    // what the project runs today: read back as the skills route reads it, and copied before the core
+    // goes off. The rows the stand-down disables - on at this run's scope by the settings file's word,
+    // else the listing's flag (S22, S28).
+    const leaving = !corePluginOn(routes)
+        && rowsOn({ rows: ours, names: [BRAND.core, LEGACY.core], market: marketplace, isOn }).some((r) => !scope || r.scope === scope);
+    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes: leaving ? { ...routes, skills: true } : routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes(BRAND.core) && stampHooks.length > 0

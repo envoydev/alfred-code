@@ -559,6 +559,37 @@ test('seed update (plugin route): a copy-route install whose 1.x ids were disabl
     for (const name of mcp.LOCKED) assert.ok(moves.includes(`plugin enable ${name}@claude-stack --scope project`), `${name} was not switched back on:\n${moves.join('\n')}`); // legacy-name
 });
 
+// R116 matrix re-run: the full copy route disables a 2.x core (R107), and the plugin route never enabled
+// the core for its flag - the listing's flag reads a running core as off (S22). So a switch back left
+// the core off while the copies it replaces were pruned: the project ran no core at all. The settings
+// file's word is not stale - a core it names off at the run's scope is enabled; the flag alone still
+// moves nothing.
+test('seed update (plugin route): a copy-route install whose 2.x core was disabled switches back with the core enabled - the flag alone moves nothing (R116)', POSIX_ONLY, () =>
+{
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { enabled: false } });
+    const run = (settingsWord) => seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows),
+        env: [COPY_ENV, {}],
+        args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), '');
+            const file = path.join(repo, '.claude', 'settings.json');
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            data.enabledPlugins = { ...(data.enabledPlugins || {}), ...settingsWord };
+            fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+            return null;
+        },
+    });
+    const off = run({ 'alfred-code@envoydev': false, 'serena@envoydev': false, 'context7@envoydev': false, 'memory@envoydev': false });
+    const enables = off.calls.filter((c) => /^plugin enable /.test(c));
+    assert.ok(enables.includes('plugin enable alfred-code@envoydev --scope project'), `the core stayed off:\n${enables.join('\n')}\n${off.out}`);
+    for (const name of mcp.LOCKED) assert.ok(enables.includes(`plugin enable ${name}@envoydev --scope project`), `${name}:\n${enables.join('\n')}`);
+    const stale = run({ 'alfred-code@envoydev': true });
+    assert.ok(!stale.calls.includes('plugin enable alfred-code@envoydev --scope project'), `a stale false flag alone enabled the core:\n${stale.calls.join('\n')}`);
+});
+
 // The listing's own flag is not the word on whether a row runs: it read a running project-scope core
 // as off (docs/rebrand-evidence.md S22), and a no-op disable exits 1 (S28). The settings file at the
 // row's scope is, when it names the plugin - the same read the playwright engines take.
@@ -583,6 +614,42 @@ test('seed update (full copy route): the settings file, not the listing flag, sa
     const disables = calls.filter((c) => /^plugin disable /.test(c)).sort();
     assert.deepStrictEqual(disables, ['alfred-code', 'context7', 'memory'].map((n) => `plugin disable ${n}@envoydev --scope project`), `${disables.join('\n')}\n${out}`);
 });
+
+// R116 matrix re-run (R22): the switch disabled the core, but the full copy route read its skills and
+// seats from the DISK, where a plugin-route install holds only the extras - so the core's own skills
+// and seats were never copied, and with the core off they loaded nowhere (a switched session listed 8
+// skills and no stack seat, a fresh copy-route install 26 skills and 8 seats). What the core carried
+// is read back the way the skills route reads it, and copied before it goes off - a denied seat excepted.
+for (const [key, rows] of [['envoydev', STACK_ROWS('envoydev')], ['claude-stack', LEGACY_ROWS()]]) // legacy-name
+{
+    test(`seed update (full copy route, key ${key}): what the enabled core carried is copied before the switch disables it, a denied seat left off (R116)`, POSIX_ONLY, () =>
+    {
+        const core = require('./plugin-placement.js').placement().plugins['alfred-code'];
+        const seat = 'code-style-analyzer';
+        assert.ok(core.agents.includes(seat) && core.skills.length > 1, 'fixture: the core carries the seat and more than one skill');
+        const names = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+        // Every core seat picked (an unpicked one is denied at install), then one switched off by hand.
+        const { out, result } = seedRun(['install', 'update'], `skill markdown-style\n${core.agents.map((a) => `agent ${a}\n`).join('')}`, {
+            plugins: JSON.stringify(rows),
+            env: [{}, COPY_ENV],
+            args: [[], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                const file = path.join(repo, '.claude', 'settings.json');
+                const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+                const perms = data.permissions || {};
+                data.permissions = { ...perms, deny: [...(perms.deny || []), `Agent(alfred-code:${seat})`] };
+                fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+                return null;
+            },
+            inspect: (repo) => ({ skills: names(path.join(repo, '.claude', 'skills')), agents: names(path.join(repo, '.claude', 'agents')) }),
+        });
+        assert.deepStrictEqual(core.skills.filter((s) => !result.skills.includes(s)), [], `core skills not copied:\n${out}`);
+        assert.deepStrictEqual(core.agents.filter((a) => a !== seat && !result.agents.includes(`${a}.md`)), [], `core seats not copied:\n${out}`);
+        assert.ok(!result.agents.includes(`${seat}.md`), `the seat the user denied came back: ${result.agents.join(',')}`);
+    });
+}
 
 // R111 (Task 8a concern c): wherever the copy route registers a playwright engine in .mcp.json, that
 // engine's plugin row loaded beside it - the same tools twice. Its row at this scope is UNINSTALLED
