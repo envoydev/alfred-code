@@ -355,3 +355,18 @@ test('the README trust surface counts what the core entry carries', () =>
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
     if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
 });
+
+// Review finding 2: code.claude.com/docs/en/plugins-reference - 'If you declare `options` on any field,
+// users on Claude Code versions before v2.1.271 can't load the plugin'. The core carries every guard, so
+// no userConfig field of the core or its 1.x alias declares one - generated or committed.
+test('no userConfig field of the core or its 1.x alias declares options, so an older CLI still loads it', () => {
+    const fields = (list) => list.flatMap((e) => Object.entries(e.userConfig || {}).map(([k, f]) => [`${e.name}.${k}`, f]));
+    const committed = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8')).plugins
+        .filter((e) => e.name === coreEntry().name || e.name === LEGACY.core);
+    const all = [...fields([coreEntry(), ...aliasEntries()]), ...fields(committed), ...fields(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8')).entries)];
+    assert.ok(all.some(([k]) => k.endsWith('.hook_profile')), 'the hook profile field is still declared');
+    for (const [key, field] of all) assert.ok(!Object.hasOwn(field, 'options'), `${key} declares options`);
+    const profile = coreEntry().userConfig.hook_profile;
+    assert.strictEqual(profile.default, 'standard');
+    for (const name of ['minimal', 'standard', 'strict']) assert.match(profile.description, new RegExp(`\\b${name}\\b`), `the description names ${name}`);
+});

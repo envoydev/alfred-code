@@ -145,7 +145,10 @@ test('the profile the prelude reads is the userConfig key the core entry declare
     const { HOOK_PROFILES } = require(PRELUDE);
     const field = coreEntry().userConfig && coreEntry().userConfig.hook_profile;
     assert.ok(field, 'the core entry declares hook_profile');
-    assert.deepStrictEqual(field.options, HOOK_PROFILES);
+    // Review finding 2: no `options` picker (an older CLI cannot load a plugin declaring one) - the
+    // description names the three values the prelude knows instead.
+    assert.ok(!Object.hasOwn(field, 'options'));
+    for (const value of HOOK_PROFILES) assert.match(field.description, new RegExp(`\\b${value}\\b`));
     assert.strictEqual(field.default, 'standard');
     assert.strictEqual(field.type, 'string');
     assert.strictEqual(`CLAUDE_PLUGIN_OPTION_${'hook_profile'.toUpperCase()}`, PROFILE, 'the docs export <KEY> uppercased');

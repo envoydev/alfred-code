@@ -84,13 +84,15 @@ function coreEntry(options = {})
         tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
         // One /config row for the whole hook set, per user (pluginConfigs lives in the account settings
         // only). hook-prelude.js reads it as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; a project's
-        // ALFRED_CODE_HOOKS_OFF still wins. A picker needs Claude Code 2.1.271+; older builds keep the default.
+        // ALFRED_CODE_HOOKS_OFF still wins. A plain string, NOT an `options` picker: a plugin declaring
+        // `options` on any field does not load at all on Claude Code before v2.1.271
+        // (code.claude.com/docs/en/plugins-reference), and the core carries every guard. The prelude reads
+        // any value it does not know as standard, so the description names the three it knows.
         userConfig: {
             hook_profile: {
                 type: 'string',
                 title: 'Hook profile',
-                description: 'Which Alfred Code hooks run: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. A project\'s ALFRED_CODE_HOOKS_OFF still switches a hook off.',
-                options: [...HOOK_PROFILES],
+                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
                 default: 'standard',
             },
         },
