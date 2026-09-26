@@ -36,6 +36,7 @@ const { removeTree } = require('./lib/remove-tree.js');
 const { pickAuth } = require('./lib/env.js');
 const limitLib = require('./lib/limit.js');
 const { assertIsolated } = require('./lib/isolation.js');
+const poolLib = require('./lib/pool.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -73,6 +74,7 @@ function readTask(dir, id)
     });
     return {
         id, group: meta.group || null, tags: meta.tags || [], timeLimitMin: meta.timeLimitMin, startRef: meta.startRef, setup,
+        exclusive: Boolean(meta.exclusive),
         prompt, promptSha256: sha256(prompt), setupSha256: setup.length ? setupHash.digest('hex') : null,
     };
 }
@@ -256,45 +258,53 @@ async function drive(opts)
         let stopped = null;
         let total = parts.todo.length;
         let finished = 0;
-        const worker = async () =>
+        // A task's own exclusive flag (meta.json, devops-01) is the pool's only exclusivity key: two
+        // cells of that same task id never run at once, whatever arm or rep, because three arms built
+        // and removed the same Docker tag on the shared daemon within 19 s in pilot 2. Every other task
+        // keeps the run's own parallelism - the key is null for it, so the pool never serializes it.
+        const cellTask = async (cell) =>
         {
-            while (queue.length && !paused && !stopped)
+            const task = taskBy[cell.task];
+            try
             {
-                const now = versionOf(o.claude);
-                if (now !== record.cliVersion)
+                cellsLib.reset(cell);
+                template.copyInto(templates[cell.arm], cell);
+                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared });
+                counts[rec.outcome] += 1;
+                if (rec.outcome === 'limited')
                 {
-                    stopped = stopped || `the Claude Code version changed mid-run (${record.cliVersion} -> ${now})`;
-                    break;
-                }
-                const cell = queue.shift();
-                const task = taskBy[cell.task];
-                try
-                {
-                    cellsLib.reset(cell);
-                    template.copyInto(templates[cell.arm], cell);
-                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared });
-                    counts[rec.outcome] += 1;
-                    if (rec.outcome === 'limited')
-                    {
-                        limited.push(cell);
-                        if (!paused) paused = { startedAt: new Date().toISOString(), text: rec.limitText, probes: 0 };
-                    }
-                }
-                catch (err)
-                {
-                    counts.failed += 1;
-                    failures.push(`${cell.arm}/${cell.task}/r${cell.rep}: ${err.message.split('\n')[0]}`);
-                }
-                finally
-                {
-                    // The work dir holds the cell's raw account dir, auth values included: never kept.
-                    removeTree(cell.work);
-                    finished += 1;
-                    o.log(`${finished}/${total} - ok ${counts.ok}, timeout ${counts.timeout}, error ${counts.error}, limited ${counts.limited}, harness failure ${counts.failed}`);
+                    limited.push(cell);
+                    if (!paused) paused = { startedAt: new Date().toISOString(), text: rec.limitText, probes: 0 };
                 }
             }
+            catch (err)
+            {
+                counts.failed += 1;
+                failures.push(`${cell.arm}/${cell.task}/r${cell.rep}: ${err.message.split('\n')[0]}`);
+            }
+            finally
+            {
+                // The work dir holds the cell's raw account dir, auth values included: never kept.
+                removeTree(cell.work);
+                finished += 1;
+                o.log(`${finished}/${total} - ok ${counts.ok}, timeout ${counts.timeout}, error ${counts.error}, limited ${counts.limited}, harness failure ${counts.failed}`);
+            }
         };
-        const workers = () => Promise.all(Array.from({ length: Math.min(o.parallel, queue.length) }, worker));
+        // stop() is read before every dequeue, never mid-item: a version drift or a limit must stop the
+        // pool from STARTING a new cell, exactly where the old inline check ran, but an already-started
+        // cell always finishes.
+        const shouldStop = () =>
+        {
+            if (paused || stopped) return true;
+            const now = versionOf(o.claude);
+            if (now !== record.cliVersion)
+            {
+                stopped = stopped || `the Claude Code version changed mid-run (${record.cliVersion} -> ${now})`;
+                return true;
+            }
+            return false;
+        };
+        const workers = () => poolLib.run({ queue, parallel: o.parallel, exclusiveKey: (cell) => (taskBy[cell.task].exclusive ? cell.task : null), stop: shouldStop, task: cellTask });
         await workers();
         let waitedMs = 0;
         while (paused)

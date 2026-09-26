@@ -348,6 +348,27 @@ test('flow mode is refused until its approver exists', async (t) =>
     await assert.rejects(drive({ ...w.opts, mode: 'flow' }), /flow mode/);
 });
 
+test('a task marked exclusive never runs two cells at once; a plain task keeps the pool\'s own parallelism', async (t) =>
+{
+    const w = makeWorld(t, {
+        arms: { a1: { env: { FAKE_SLEEP_MS: '80' } }, a2: { env: { FAKE_SLEEP_MS: '80' } } },
+        tasks: { 'devops-01': { group: 'devops', exclusive: true }, t2: { group: 'web' } },
+    });
+    w.opts.reps = 2;
+    w.opts.parallel = 4;
+    const res = await drive(w.opts);
+    assert.deepStrictEqual([res.ran, res.failed], [8, 0]);
+    const read = (arm, task, rep) => JSON.parse(fs.readFileSync(path.join(w.runDir, arm, task, `r${rep}`, 'session.json'), 'utf8'));
+    const overlaps = (x, y) => new Date(x.startedAt) < new Date(y.endedAt) && new Date(y.startedAt) < new Date(x.endedAt);
+    const exclusiveCells = ['a1', 'a2'].flatMap((arm) => [1, 2].map((rep) => read(arm, 'devops-01', rep)));
+    for (let i = 0; i < exclusiveCells.length; i++)
+    {
+        for (let j = i + 1; j < exclusiveCells.length; j++) assert.ok(!overlaps(exclusiveCells[i], exclusiveCells[j]), `${exclusiveCells[i].sessionId} and ${exclusiveCells[j].sessionId} overlapped`);
+    }
+    const plainCells = ['a1', 'a2'].flatMap((arm) => [1, 2].map((rep) => read(arm, 't2', rep)));
+    assert.ok(plainCells.some((p) => exclusiveCells.some((x) => overlaps(x, p))), 'the plain task still ran alongside the exclusive one - exclusivity did not serialize the whole run');
+});
+
 test('tasks select by id list, all, or group', (t) =>
 {
     const w = world(t);
