@@ -111,7 +111,7 @@ change (see the invariants below).
     `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
     skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test, a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
-    passes) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
+    passes, and so does a joiner or direction mark a script needs) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).
   - `guard-stop-contract.js` (`Stop` + `SubagentStop`; INJECTION-ONLY, never denying: PreToolUse `AskUserQuestion`;
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
@@ -576,7 +576,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **House voice:** direct, lean, single dashes not em-dashes, single quotes in prose, recommend one
   option with a reason. Lint check 32 sweeps `stack/`, `setup-plugin/`, `meta/` for em-dashes, and
   those plus `scripts/` for characters nobody can see (zero-width, bidi, a BOM past byte 0 outside a
-  `.ps1`, the tag block) - write one as an escape.
+  `.ps1`, the tag block) - write one as an escape. A joiner or direction mark a script needs is text:
+  a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
+  LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
   every agent and skill DESCRIPTION and fails over 160,000 chars (114,000 on 2026-09-26: pathless rules 35,907, agent descriptions 29,148, skill descriptions 48,945 - the 2.0.0 audit tightened rules and skill descriptions, -2,260). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's

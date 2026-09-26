@@ -379,3 +379,19 @@ test('guard-ungated-commit: a binary or oversize file is skipped, and a hit besi
   git('rm', '-q', '--cached', 'leak.js'); fs.rmSync(path.join(dir, 'leak.js'));
   assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'alone, a file past the cap is not scanned');
 });
+
+test('guard-ungated-commit: a joiner or mark a script needs is text, and the rest of the hidden class still blocks', () => {
+  // `hidden-chars.js` flagged a README emoji built with a ZWJ and a Persian ZWNJ as 'write it as an
+  // escape', which Markdown and JSON prose cannot do. The commit scan and lint check 32 share the class.
+  const { dir, git, write } = scanRepo();
+  write('README.md', 'Built by a \u{1F468}\u200D\u{1F4BB}.\n');
+  write('fa.json', '{ "want": "می\u200Cخواهم" }\n');
+  write('he.md', 'שלום\u200F.\n');
+  git('add', '-A');
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'an emoji ZWJ, a Persian ZWNJ and an RLM pass');
+  for (const [name, text, hex] of [['a.js', 'const ab = "a\u200Db";\n', '200D'], ['b.md', 'text \u202E here\n', '202E'], ['c.md', 'zero\u200Bwidth\n', '200B']]) {
+    write(name, text); git('add', name);
+    assert.match(gateFull(dir, 'git commit -m x').stderr, new RegExp(`${name.replace('.', '\\.')}:1 - a hidden character U\\+${hex}`), `${name}: still blocks`);
+    git('rm', '-q', '--cached', name); fs.rmSync(path.join(dir, name));
+  }
+});

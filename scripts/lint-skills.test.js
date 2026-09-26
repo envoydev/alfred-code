@@ -880,6 +880,29 @@ test('hiddenChars flags zero-width, bidi, mid-file BOM and tag characters with t
     assert.deepStrictEqual(at('plain text with an escape \\u200B written out\n'), [], 'an escape spelled out is not the character');
 });
 
+test('hiddenChars keeps a joiner or direction mark a script needs, and flags the rest of the class wherever it sits', () => {
+    // A README emoji built with a ZWJ, or a Persian word with its ZWNJ, was flagged 'write it as an
+    // escape', which Markdown and JSON prose cannot do (the 2026-09-26 hooks review).
+    const { hiddenChars } = require('./lint-skills.js');
+    const at = (text, file = 'x.md') => hiddenChars(text, file).map((h) => `${h.line}:${h.hex}`);
+    const ZWJ = '\u200D';
+    const ZWNJ = '\u200C';
+    assert.deepStrictEqual(at(`dev \u{1F468}${ZWJ}\u{1F4BB} here\n`), [], 'a ZWJ emoji sequence is text');
+    assert.deepStrictEqual(at(`\u{1F3F3}\uFE0F${ZWJ}\u{1F308}\n`), [], 'a ZWJ after a variation selector too');
+    assert.deepStrictEqual(at(`\u{1F469}\u{1F3FD}${ZWJ}\u{1F4BB}\n`), [], 'and after a skin tone');
+    assert.deepStrictEqual(at(`می${ZWNJ}خواهم\n`, 'fa.json'), [], 'a Persian ZWNJ between letters is text');
+    assert.deepStrictEqual(at(`שלום\u200F ok\n`), [], 'an RLM beside a Hebrew letter is text');
+    assert.deepStrictEqual(at(`a${ZWJ}b\n`), ['1:200D'], 'a ZWJ between ASCII letters is hidden');
+    assert.deepStrictEqual(at(`1${ZWJ}2 #${ZWJ}#\n`), ['1:200D', '1:200D'], 'ASCII digits and # are no emoji part');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWJ}a\n`), ['1:200D'], 'an emoji on one side only is no sequence');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWNJ}\u{1F4BB}\n`), ['1:200C'], 'a ZWNJ between emoji is hidden');
+    assert.deepStrictEqual(at('x\u200Ey\n'), ['1:200E'], 'a mark between ASCII letters is hidden');
+    assert.deepStrictEqual(at('م\u202Eم\n'), ['1:202E'], 'an override is hidden even between Arabic letters');
+    assert.deepStrictEqual(at('é\u200Bé\n'), ['1:200B'], 'a zero-width space is hidden between any letters');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWJ}${ZWJ}\u{1F4BB}\n`), ['1:200D', '1:200D'], 'a hidden character never vouches for its neighbour');
+    assert.deepStrictEqual(at(`\u{1F3F4}${ZWJ}\u{E0067}\n`), ['1:200D', '1:E0067'], 'nor does a tag character');
+});
+
 test('lintWorkflows flags script injection, floating third-party actions and a pull_request_target head checkout', () => {
     const { lintWorkflows } = require('./lint-skills.js');
     const fs = require('node:fs');
