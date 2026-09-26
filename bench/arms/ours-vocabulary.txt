@@ -1,11 +1,12 @@
 # Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at the 2.0.0
-# candidate - read from feat/alfred-code at commit 1c584b353e2bbb69afb638ffe42b7f927d9aaafe, before v2.0.0 was tagged:
+# candidate - read from feat/alfred-code at commit 89fad3e57f93c1c201750488dd9c838b7167f577, before v2.0.0 was tagged:
 # stack/skills, stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate from the
 # v2.0.0 tag when it lands, and whenever that pin moves, over an export of the pinned tree:
 #   node -e "console.log(require('./bench/lint-prompts.js').ourNames(process.argv[1]).join('\\n'))" <tree>
 alfred-capture-agent-capabilities
 alfred-capture-architecture
 alfred-capture-architecture-quality
+alfred-capture-claude-md
 alfred-capture-code-quality
 alfred-capture-code-style
 alfred-capture-first-look
@@ -65,6 +66,7 @@ data-solution-designer
 data-verifier
 database-conventions
 database-security
+desktop-automation
 dev-log-convert
 devops
 devops-implementer

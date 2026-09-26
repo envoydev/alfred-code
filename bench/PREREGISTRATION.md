@@ -58,7 +58,7 @@ The four `flow` tasks are named in this file before the measured run starts.
 
 | Arm | What is installed | Set up how | Pinned by |
 |---|---|---|---|
-| `ours` | Alfred Code 2.0.0 (the stack formerly named claude-stack), the release under test - its candidate commit until the tag exists | its README route: the official marketplace and the stack's own added, the core `alfred-code@envoydev` installed at project scope, the `/alfred-code:setup` selection decided from the fixture (every recommended option) applied by its installer, then `/alfred-code:init`, the one-time bootstrap that runs the captures a new project gets | commit `1c584b3` of `feat/alfred-code` (the 2.0.0 candidate) + the source commit from `alfred-code.stamp` |
+| `ours` | Alfred Code 2.0.0 (the stack formerly named claude-stack), the release under test - its candidate commit until the tag exists | its README route: the official marketplace and the stack's own added, the core `alfred-code@envoydev` installed at project scope, the `/alfred-code:setup` selection decided from the fixture (every recommended option) applied by its installer, then `/alfred-code:init`, the one-time bootstrap that runs the captures a new project gets | commit `89fad3e` of `feat/alfred-code` (the 2.0.0 candidate) + the source commit from `alfred-code.stamp` |
 | `ecc` | ECC at a named commit, `e482e57` (main, read 2026-09-26, plugin 2.2.2) - its newest tag, v2.2.1, is older than 2.2.2, so 'the newest release' would downgrade it | its README's native plugin route: `claude plugin marketplace add affaan-m/ECC`, `claude plugin install ecc@ecc` at user scope with its two hook options stored (`hooks_enabled=true`, `hook_profile=standard` - its defaults), plus the rule packs it says a plugin cannot ship - `rules/common`, `rules/csharp`, `rules/angular`, `rules/typescript` copied under the arm's own `rules/ecc/` - then the onboarding its docs recommend for a new repo (`codebase-onboarding`) | plugin version + repo commit |
 | `bare` | nothing - Claude Code alone, after `/init` | `/init` only | Claude Code version |
 | `baseline` (optional, recommended) | claude-stack v1.0.0, the last release before the improvement plans - 0.2.86 was never tagged, and a 0.2.x pin would fold the plugin-native migration into what the plans bought | its installer, the same route as `ours` at that release, then its architecture capture | the `v1.0.0` tag |
@@ -66,6 +66,30 @@ The four `flow` tasks are named in this file before the measured run starts.
 The arm rows were updated on 2026-09-26, before any measured run: `ours` follows the 2.0.0 rebrand, `ecc` is re-pinned to a named commit, `baseline` names the tag the arm file always pinned. No task, metric or rule changed.
 
 Later on 2026-09-26, still before any measured run: `ours` pins the 2.0.0 candidate commit because no `v2.0.0` tag exists yet, and sessions may run on the owner's subscription (`CLAUDE_CODE_OAUTH_TOKEN`) instead of an API key. Cost stays the list-price equivalent computed from the transcripts' usage rows, with every session held at the 5-minute prompt cache an API key gets (`FORCE_PROMPT_CACHING_5M`; measured: without it a subscription session wrote 40,360 cache tokens at the 1-hour rate, with it the same tokens at 5 minutes). A cell a usage limit stopped is set aside and re-run from scratch rather than graded, and the report counts set-aside cells per arm, because the sessions in flight when a limit lands lean long. No task, metric or rule changed.
+
+Later still on 2026-09-26, after the first pilot (`b4-pilot`) and before any measured run: that pilot
+was INVALID and was never graded - its cells sat inside this repo, so every arm loaded this repo's own
+instructions. The harness changed, the same for every arm:
+- cells and templates live outside the repo (the OS temp dir by default), and a run is refused when a
+  `CLAUDE.md`, `CLAUDE.local.md` or `.claude/` sits above its work root;
+- every session gets its own temp dir, so parallel cells share no build log;
+- a `dotnet` shim adds `-m:1 -nodeReuse:false` to build, test, publish, pack and msbuild, and the
+  sandbox allows local unix sockets (`allowAllUnixSockets`) so a sandboxed `docker build` and
+  Testcontainers reach the daemon;
+- every session runs .NET over IPv4 with the polling file watcher, so a piped or `cd`-prefixed
+  `dotnet test` passes inside the sandbox instead of aborting or hanging - the sandbox is not widened;
+- each template's own MCP servers and plugin files are pre-approved in its local settings, as a user
+  who answered 'always allow' would have them, plus a read grant on the session's temp dir;
+- one shared uv cache and Python install for every template, with the servers warmed once before
+  onboarding;
+- an onboarding that leaves its arm's expected output missing fails the template, and the plugin list
+  is recorded beside it;
+- the graded diff leaves out the stacks' own state folders;
+- D8 measured: subagent hooks fire in print mode, so no workspace-trust entry is written.
+
+`ours` is re-pinned to `89fad3e`, which moves its docs root to `.alfred/docs` (Claude Code prompts for
+every write under `.claude/`) and gives its init an unattended mode that takes each recommended,
+non-destructive answer (`ALFRED_CODE_UNATTENDED=1` in its arm env). No task, metric or rule changed.
 
 An optional fifth arm, `ours+ponytail` (our stack plus the ponytail plugin at its newest release), on the 12 headline tasks only - 36 more cells, about $130 - is the honest way to settle whether the plugin earns its injected text: it rejoins the stack only if it is BETTER than `ours` by the decision rule below, with net lines added as the tie-breaker.
 
