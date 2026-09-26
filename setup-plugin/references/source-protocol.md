@@ -204,7 +204,9 @@ cache-read apiece, rediscovering `cygpath -w` by failing first).
 Every artifact this run writes or reads - `raw.json`, `selection.txt`, `select.out`, `final.json` -
 is named as `"$TMP/<file>"`, never bare. A bare relative name resolves against whatever cwd the
 shell drifted to, and the six sites that carried one were saved only by a model choosing an absolute
-path on its own initiative. PowerShell keeps `$TMP` the same way, in a marker keyed the same way:
+path on its own initiative. PowerShell keeps `$TMP` the same way, in a marker of its OWN, keyed on the
+full root rather than a prefix plus a hash (Windows path limits bound it); nothing reads one route's
+marker from the other:
 
 ```powershell
 $Root = (git rev-parse --show-toplevel 2>$null); if (-not $Root) { $Root = (Get-Location).Path }
