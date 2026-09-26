@@ -43,6 +43,23 @@ test('removeManagedFiles: a copy whose hash still matches goes, an edited one an
     assert.match(logs.join('\n'), /rule edited: kept - changed since the stack wrote it, so it is yours/);
 });
 
+// Review finding 14: the CommonJS marker scopes every .js in .claude/hooks - the user's own CommonJS hooks
+// too - so it stays while the folder holds anything the uninstall did not remove.
+test('removeManagedFiles: the hooks CommonJS marker stays while a hook of the user\'s is left beside it', () =>
+{
+    const claudeDir = path.join(TMP, `f-${seq++}`, '.claude');
+    put(path.join(claudeDir, 'hooks', 'docs.js'), 'engine');
+    put(path.join(claudeDir, 'hooks', 'my-hook.js'), 'module.exports = 1;');
+    put(path.join(claudeDir, 'hooks', 'package.json'), '{ "type": "commonjs" }\n');
+    const logs = [];
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), files: { 'hooks/docs.js': hashItem(path.join(claudeDir, 'hooks', 'docs.js')) }, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(fs.readdirSync(path.join(claudeDir, 'hooks')).sort(), ['my-hook.js', 'package.json'], logs.join('\n'));
+    assert.match(logs.join('\n'), /hooks marker kept: package\.json/);
+    fs.rmSync(path.join(claudeDir, 'hooks', 'my-hook.js'));
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), log: () => {} });
+    assert.ok(!fs.existsSync(path.join(claudeDir, 'hooks')), 'with nothing else left the marker goes, and the folder with it');
+});
+
 test('removePlugins: the stack\'s rows at project or local scope are uninstalled, dependents first; user-scope rows are printed, never run (R10, ruling)', () =>
 {
     const rows = [
@@ -155,4 +172,154 @@ test('uninstall: nothing installed is refused before anything runs', POSIX_ONLY,
     assert.strictEqual(code, 1);
     assert.match(err, /no alfred-code install here/);
     assert.deepStrictEqual(calls, []);
+});
+
+// Review finding 1: the ledger claims an entry in the FILE it was recorded for. A local-scope install
+// records its secret-file denies in settings.local.json; a move back to project scope carries them into
+// settings.json - but the ones the team's settings.json already held were never the stack's there, so
+// uninstall leaves them.
+test('uninstall after a move off local scope keeps the deny entries settings.json held before the move', POSIX_ONLY, () =>
+{
+    const { result, outs } = seedRun(['install', 'update', 'uninstall'], 'rule markdown-docs\n', {
+        args: [['--scope', 'local'], ['--scope', 'project'], []],
+        prepare: (repo) => put(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)', 'Read(*.pem)', 'Bash(rm -rf:*)'] } })),
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    assert.deepStrictEqual(result.permissions, { deny: ['Read(.env)', 'Read(*.pem)', 'Bash(rm -rf:*)'] }, outs[2]);
+});
+
+// Review finding 6: the first update of a pre-ledger install has no ledger to read, so a secret-file
+// deny already in settings.json may be the team's - never claimed, so uninstall leaves it.
+test('uninstall after the first update of a pre-ledger install keeps a secret-file deny the team held', POSIX_ONLY, () =>
+{
+    const { result } = seedRun(['install', 'update', 'uninstall'], 'rule markdown-docs\n', {
+        prepare: (repo) => put(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)'] } })),
+        each: (repo, i) =>
+        {
+            if (i !== 0) return;
+            const stamp = path.join(repo, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').split('\n').filter((l) => !l.startsWith('managed-')).join('\n'));
+        },
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    assert.ok(result.permissions.deny.includes('Read(.env)'), JSON.stringify(result.permissions));
+});
+
+// Review finding 3: a plugin listing that is not JSON is no empty list - uninstall refuses before any
+// change, so the stamp still lists what a retry must remove.
+test('uninstall with an unreadable plugin listing refuses before any change', POSIX_ONLY, () =>
+{
+    const { code, err, calls, result } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        plugins: LISTING, failOk: true,
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), 'Error: not logged in'); },
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), rule: fs.existsSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md')) }),
+    });
+    assert.strictEqual(code, 1);
+    assert.match(err, /claude plugin list --json.*run uninstall again/);
+    assert.ok(!calls.some((c) => c.startsWith('plugin uninstall')), calls.join('\n'));
+    assert.deepStrictEqual(result, { stamp: true, rule: true });
+});
+
+// Review finding 5: an update the settings file refused (it did not parse) wrote nothing there, so the
+// ledger keeps that file's entries as the last run recorded them - once the file is fixed, uninstall
+// still knows every key the stack wrote.
+test('uninstall after an update over a malformed settings.json still removes every stack key', POSIX_ONLY, () =>
+{
+    let good = '';
+    const { result, outs } = seedRun(['install', 'update', 'update', 'uninstall'], 'rule markdown-docs\n', {
+        failOk: true,
+        each: (repo, i) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.json');
+            if (i === 0) { good = fs.readFileSync(file, 'utf8'); fs.writeFileSync(file, '{ broken'); }
+            if (i === 1) fs.writeFileSync(file, good);
+        },
+        inspect: (repo) =>
+        {
+            const file = path.join(repo, '.claude', 'settings.json');
+            return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+        },
+    });
+    assert.deepStrictEqual(Object.keys(result.env || {}).filter((k) => k.startsWith('ALFRED_CODE_')), [], outs[3]);
+    assert.ok(!result.attribution && !result.worktree, JSON.stringify(result));
+});
+
+// Review finding 7: on the MCP copy route a local- or user-scope registration lives in the ACCOUNT file,
+// not .mcp.json. The stub below keeps `claude mcp add` / `remove` there the way the CLI does (local: the
+// project's own row, user: the top level), so the ledger reads back what was registered.
+const MCP_STUB = path.join(TMP, 'mcp-stub.js');
+put(MCP_STUB, `'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const file = path.join(process.env.CLAUDE_CONFIG_DIR, '.claude.json');
+let data = {};
+try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none yet */ }
+const [verb, ...rest] = process.argv.slice(3);
+const holder = (scope) => (scope === 'user' ? data : ((data.projects ||= {})[process.cwd()] ||= {}));
+if (verb === 'add')
+{
+    let scope = 'local';
+    let name = null;
+    const words = [];
+    for (let i = 0; i < rest.length; i++)
+    {
+        if (name === null && ['--transport', '--scope', '-s', '--header', '-e', '--env'].includes(rest[i])) { if (rest[i] === '--scope' || rest[i] === '-s') scope = rest[i + 1]; i++; continue; }
+        if (name === null) name = rest[i]; else words.push(rest[i]);
+    }
+    (holder(scope).mcpServers ||= {})[name] = { command: 'stub', args: words };
+}
+else if (verb === 'remove')
+{
+    const scope = rest[rest.indexOf('-s') + 1];
+    const servers = holder(scope).mcpServers || {};
+    if (!servers[rest[0]]) { process.stderr.write('No MCP server named ' + rest[0] + '\\n'); process.exit(1); }
+    delete servers[rest[0]];
+}
+else process.exit(1);
+fs.mkdirSync(path.dirname(file), { recursive: true });
+fs.writeFileSync(file, JSON.stringify(data, null, 2));
+`);
+const RECORDING_CLAUDE = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
+    'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi',
+    `if [ "$1" = "mcp" ]; then exec "${process.execPath}" "${MCP_STUB}" "$@"; fi`, 'exit 0'].join('\n');
+const accountOf = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), 'utf8')); } catch { return {}; } };
+const localServers = (account) => Object.values(account.projects || {}).map((p) => Object.keys(p.mcpServers || {})).flat().sort();
+
+test('uninstall removes the copy route\'s own local-scope registrations and keeps the user\'s', POSIX_ONLY, () =>
+{
+    const { calls, steps, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {
+        tools: { claude: RECORDING_CLAUDE },
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+        args: [['--scope', 'local'], []],
+        each: (repo, i) =>
+        {
+            const account = accountOf(repo);
+            const held = localServers(account);
+            if (i === 0)
+            {
+                Object.values(account.projects)[0].mcpServers.mine = { command: 'node', args: ['mine.js'] };
+                fs.writeFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), JSON.stringify(account));
+            }
+            return held;
+        },
+        inspect: (repo) => localServers(accountOf(repo)),
+    });
+    assert.deepStrictEqual(steps[0], ['context7', 'memory', 'serena'], outs[0]);
+    for (const name of ['serena', 'context7', 'memory']) assert.ok(calls.includes(`mcp remove ${name} -s local`), calls.join('\n'));
+    assert.deepStrictEqual(result, ['mine'], outs[1]);
+    assert.match(outs[1], /mcp removed: serena \(local scope\)/);
+});
+
+test('uninstall prints the user-scope registrations\' remove commands and never runs them', POSIX_ONLY, () =>
+{
+    const { calls, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\nmcp playwright\n', {
+        tools: { claude: RECORDING_CLAUDE },
+        env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
+        args: [['--scope', 'user', '--playwright-browsers', 'chrome'], []],
+        inspect: (repo) => Object.keys(accountOf(repo).mcpServers || {}).sort(),
+    });
+    const uninstallCalls = calls.slice(calls.lastIndexOf('plugin list --json'));
+    assert.ok(!uninstallCalls.some((c) => c.startsWith('mcp remove')), uninstallCalls.join('\n'));
+    assert.deepStrictEqual(result, ['playwright-chrome'], outs[0]);
+    assert.match(outs[1], /playwright-chrome is registered at user scope.*claude mcp remove playwright-chrome -s user/);
 });

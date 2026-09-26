@@ -997,8 +997,49 @@ test('settings-ledger: a stamp with no ledger adopts what the stack itself shipp
     assert.strictEqual(env.ALFRED_CODE_FRESH_SESSION_DEFAULT, valueHash('180000'), 'reseeded this run: written by the stack');
     assert.strictEqual(env.ALFRED_CODE_MEMORY_DB, valueHash('/m.db'), 'the written key is the stack\'s by contract');
     assert.ok(!('MY_KEY' in env));
-    assert.deepStrictEqual(result.managed.deny.map((d) => d.entry).sort(), ['Agent(alfred-code:angular-verifier)', 'Read(.env)']);
+    // Review finding 6: with no ledger a secret-file deny already there may be the team's, so it is never
+    // claimed - a leftover after uninstall is harmless, a removed one is not. A stack seat still is.
+    assert.deepStrictEqual(result.managed.deny.map((d) => d.entry).sort(), ['Agent(alfred-code:angular-verifier)']);
     assert.deepStrictEqual(result.managed.hooks.map((h) => h.id), [idOf('PreToolUse', 'Bash', 'guard-a.js')]);
+});
+
+// Review finding 1: a ledger entry claims the entry in the file it was recorded for, never the same
+// string another file already held.
+test('settings-ledger: a deny the ledger recorded in settings.local.json never claims the same entry settings.json held', () =>
+{
+    const file = settingsFile({ permissions: { deny: ['Read(.env)'] } });
+    const prior = { ...noLedger, deny: [{ file: 'settings.local.json', entry: 'Read(.env)' }] };
+    const { result } = write(file, { denySpecs: ['Read(.env)'], ledger: { prior, releaseHooks: [] } });
+    assert.deepStrictEqual(result.managed.deny, []);
+});
+
+// Review finding 5: a settings.local.json the run could not read was not written, so the deny rows the
+// last run recorded there stand unchanged.
+test('settings-ledger: an unreadable settings.local.json keeps the deny rows the ledger recorded there', () =>
+{
+    const file = settingsFile({});
+    const localFile = path.join(path.dirname(file), 'settings.local.json');
+    fs.writeFileSync(localFile, '{ broken');
+    const row = { file: 'settings.local.json', entry: 'Agent(alfred-code:angular-verifier)' };
+    const { result } = write(file, { localFile, ledger: { prior: { ...noLedger, deny: [row] }, releaseHooks: [] } });
+    assert.deepStrictEqual(result.managed.deny.filter((d) => d.file === 'settings.local.json'), [row]);
+});
+
+test('leaveLocalScope: the ledger\'s moved denies follow them into settings.json only where settings.json did not hold them before', () =>
+{
+    const dir = path.join(TMP, `leave-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ permissions: { deny: ['Read(.env)', 'Bash(rm:*)'] } }));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ permissions: { deny: ['Read(.env)', 'Read(.env.*)', 'Read(*.key)'] } }));
+    const ledgerDeny = [
+        { file: 'settings.local.json', entry: 'Read(.env)' }, { file: 'settings.local.json', entry: 'Read(.env.*)' },
+        { file: 'settings.json', entry: 'Agent(alfred-code:angular-verifier)' },
+    ];
+    const moved = leaveLocalScope({ claudeDir: dir, denySpecs: ['Read(.env)', 'Read(.env.*)', 'Read(*.key)'], ledgerDeny });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).permissions.deny, ['Read(.env)', 'Bash(rm:*)', 'Read(.env.*)', 'Read(*.key)']);
+    assert.deepStrictEqual(moved.ledgerDeny, [
+        { file: 'settings.json', entry: 'Agent(alfred-code:angular-verifier)' }, { file: 'settings.json', entry: 'Read(.env.*)' },
+    ], 'Read(.env) was the team\'s in settings.json before the move; Read(*.key) was never the ledger\'s');
 });
 
 test('settings-ledger: at project scope a key the run writes into settings.local.json is managed there, the user\'s local key is not (R10, R99)', () =>
@@ -1063,6 +1104,37 @@ test('removeManagedSettings: the managed keys, denies and wirings go; the user\'
     removeManagedSettings({ claudeDir: dir, ledger, note: (m) => notes.push(m) });
     assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), '{nope');
     assert.strictEqual(notes.length, 1, notes.join('\n'));
+});
+
+// Review finding 8: at user scope uninstall leaves the user-scope core loaded (its row is printed, never
+// removed), so the seats denied here and the hooks named off keep the user's switch-offs holding.
+test('removeManagedSettings: at user scope the seat denies and ALFRED_CODE_HOOKS_OFF stay, said in one line', () =>
+{
+    const dir = path.join(TMP, `rm-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const seat = 'Agent(alfred-code:angular-verifier)';
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_HOOKS_OFF: 'guard-x', ALFRED_CODE_INSTRUMENT: '0' }, permissions: { deny: [seat, 'Read(.env)'] } }));
+    const ledger = {
+        env: { 'settings.json': { ALFRED_CODE_HOOKS_OFF: valueHash('guard-x'), ALFRED_CODE_INSTRUMENT: valueHash('0') } },
+        deny: [{ file: 'settings.json', entry: seat }, { file: 'settings.json', entry: 'Read(.env)' }],
+    };
+    const logs = [];
+    removeManagedSettings({ claudeDir: dir, ledger, shippedDeny: ['Read(.env)'], scope: 'user', log: (m) => logs.push(m) });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { env: { ALFRED_CODE_HOOKS_OFF: 'guard-x' }, permissions: { deny: [seat] } });
+    assert.strictEqual(logs.filter((l) => /user-scope core stays loaded/.test(l)).length, 1, logs.join('\n'));
+});
+
+// Review finding 12: the empty-list tidy-up runs only in a file the ledger names - a file the install
+// never wrote is not the stack's to tidy, let alone delete.
+test('removeManagedSettings: an empty enabledPlugins in a file the ledger never names is left as it is', () =>
+{
+    const dir = path.join(TMP, `rm-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_INSTRUMENT: '0' }, enabledPlugins: {} }));
+    fs.writeFileSync(path.join(dir, 'settings.local.json'), '{"enabledPlugins":{}}');
+    removeManagedSettings({ claudeDir: dir, ledger: { env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0') } } } });
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), '{"enabledPlugins":{}}');
+    assert.ok(!fs.existsSync(path.join(dir, 'settings.json')), 'the file the ledger names is tidied and goes once empty');
 });
 
 // The `attribution` keys the seed writes are the stack's too: seeded this run, or listed by the prior

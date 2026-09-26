@@ -1,5 +1,5 @@
 ---
-description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, .mcp.json entry and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows at project or local scope are uninstalled; a user-scope row serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. One confirmation first. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
+description: "Remove the Alfred Code stack from THIS project, and nothing of the user's with it. The install ledger in the stamp (every env key, deny entry, hook wiring, MCP registration and copied file the installer wrote, each at the hash it wrote it with) is the whole list: an item still matching its hash goes, one changed since is the user's and is kept and named, and anything the ledger does not name (the user's own hook, server or key) is never touched. The stack's plugin rows and MCP registrations at project or local scope are removed; a user-scope one serves every project on the account, so its commands are printed and never run, like a third-party pick's and the marketplace's. One confirmation first. A stamp from before the ledger is refused with the route (one /alfred-code:update records it). NOT for dropping some items - that is the sibling configure command."
 disable-model-invocation: true
 ---
 
@@ -27,10 +27,11 @@ worktree), before anything is downloaded:
 ## 2. Confirm once
 
 Put ONE AskUserQuestion: 'Uninstall the stack from this project (Recommended)' vs 'Keep it'. The
-question names what goes (the stack's plugin rows at this project's scope, its settings entries,
-hook wirings, `.mcp.json` entries and copied files, the stamp) and what stays (anything the user
-added or changed since the stack wrote it, a user-scope plugin row, the docs root, `.serena/`, the
-memory database). 'Keep it' -> end the turn, nothing downloaded.
+question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
+settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
+changed since the stack wrote it, a user-scope plugin row or MCP registration, the docs root,
+`.serena/`, the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
+since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing downloaded.
 
 ## 3. Resolve the snapshot, then run the seed
 
@@ -47,16 +48,20 @@ Read `${PIPESTATUS[0]}`. Exit 1 carries one `error:` line and nothing was touche
   cannot be told from the user's: run `/alfred-code:update` once (it records the ledger), then this
   command again.
 - `no alfred-code install here` -> nothing to remove.
+- `claude plugin list --json` -> the CLI's plugin listing did not answer, so the stack's rows could
+  not be told apart: say so, name that command for the user to check, and run this command again
+  once it prints a listing.
 
 ## 4. Report the seed's own lines
 
-One `grep -E 'removed|uninstalled|kept|claude plugin|stamp|!!' "$TMP/install.log"`, then a short
+One `grep -E 'removed|uninstalled|kept|claude plugin|claude mcp|stamp|!!' "$TMP/install.log"`, then a short
 report in three parts:
 
 - **Removed** - a count per kind (plugin rows, env keys, deny entries, hook wirings, servers, files).
 - **Kept as yours** - every `kept` line, verbatim: a value or file changed since the stack wrote it.
-- **Commands to run yourself** - every printed `claude plugin ...` line, verbatim: a user-scope row
-  (it loads in every project on the account), a third-party pick, the marketplace registration.
+- **Commands to run yourself** - every printed `claude plugin ...` and `claude mcp remove ...` line,
+  verbatim: a user-scope row or registration (it loads in every project on the account), a
+  third-party pick, the marketplace registration.
   Never run a printed command - which of them the user wants is their call, and a user-scope
   uninstall takes the stack out of every other project too.
 

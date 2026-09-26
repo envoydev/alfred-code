@@ -48,7 +48,9 @@
 // removes exactly what the stack put here - never the user's own key, hook or server. `managed-env` is
 // `<file>:<KEY>=<sha256 of the value written>` per settings file; `managed-deny` the permissions.deny
 // entries, `<file>:<entry>`; `managed-hooks` the copy route's hook wirings, `<file>:<hook file>:<sha256
-// of event, matcher and command>`; `managed-mcp` the .mcp.json entries, `<name>=<sha256 of the entry>`;
+// of event, matcher and command>`; `managed-mcp` the .mcp.json entries, `<name>=<sha256 of the entry>`,
+// and the copy route's local- and user-scope registrations as `<scope>:<name>=<sha256 of the entry the
+// account file holds>` (`mcpAt` - uninstall removes the local ones and prints the user-scope ones);
 // `managed-files` every copy outside the library (the engines, the copy route's hooks, skills and seats,
 // and a seeded `.claude/CLAUDE.md` until it is filled in), `<kind>/<name>=<sha256>`; `managed-settings`
 // the other settings keys it seeded, `<file>:attribution.<key>=<sha256 of the JSON value>`. A value whose
@@ -135,17 +137,18 @@ const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
 const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef)$/;
-const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, files: {}, settings: {} });
+const MCP_SCOPES = ['local', 'user'];
+const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
 
 function renderLedger(ledger)
 {
-    const { env = {}, deny = [], hooks = [], mcp = {}, files = {}, settings = {} } = ledger;
+    const { env = {}, deny = [], hooks = [], mcp = {}, mcpAt = {}, files = {}, settings = {} } = ledger;
     const pairs = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`);
     return [
         `managed-env: ${Object.entries(env).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
         `managed-deny: ${deny.map((d) => `${d.file}:${d.entry}`).join(',')}`,
         `managed-hooks: ${hooks.map((h) => `${h.file}:${h.hook}:${h.id}`).join(',')}`,
-        `managed-mcp: ${pairs(mcp).join(',')}`,
+        `managed-mcp: ${[...pairs(mcp), ...Object.entries(mcpAt || {}).flatMap(([scope, map]) => pairs(map).map((kv) => `${scope}:${kv}`))].join(',')}`,
         `managed-files: ${pairs(files).join(',')}`,
         `managed-settings: ${Object.entries(settings || {}).flatMap(([file, keys]) => pairs(keys).map((kv) => `${file}:${kv}`)).join(',')}`,
     ];
@@ -166,7 +169,7 @@ function readLedger(file)
         return m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : null;
     };
     const cut = (s, sep) => { const i = s.indexOf(sep); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; };
-    const out = { env: null, deny: null, hooks: null, mcp: null, files: null, settings: null };
+    const out = { env: null, deny: null, hooks: null, mcp: null, mcpAt: null, files: null, settings: null };
     const perFile = (kind, valid) =>
     {
         const list = items(kind);
@@ -190,6 +193,16 @@ function readLedger(file)
         .filter((h) => LEDGER_FILES.includes(h.file) && validItemName(h.hook) && HEX.test(h.id));
     const mcp = items('mcp');
     if (mcp) out.mcp = Object.fromEntries(mcp.map((item) => cut(item, '=')).filter(([n, h]) => validItemName(n) && HEX.test(h)));
+    if (mcp)
+    {
+        out.mcpAt = {};
+        for (const item of mcp)
+        {
+            const [scope, rest] = cut(item, ':');
+            const [n, h] = cut(rest, '=');
+            if (rest && MCP_SCOPES.includes(scope) && validItemName(n) && HEX.test(h)) (out.mcpAt[scope] ||= {})[n] = h;
+        }
+    }
     const files = items('files');
     if (files) out.files = Object.fromEntries(files.map((item) => cut(item, '=')).filter(([rel, h]) =>
     {

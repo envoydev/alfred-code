@@ -527,7 +527,8 @@ function managedMcp({ servers = {}, prior = null, written = [], adopt = () => fa
 
 // Uninstall's half: each managed entry whose hash still matches goes, and the file with them when
 // nothing else is left in it. A file that cannot be read is left exactly as it is. The installer
-// never hand-edits the ACCOUNT config, so this is .mcp.json alone - the one file the ledger records.
+// never hand-edits the ACCOUNT config, so this is .mcp.json alone - the ledger's local- and user-scope
+// registrations go through the CLI, or are printed (uninstall.js removeScopedMcp).
 function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => {} })
 {
     const removed = [];

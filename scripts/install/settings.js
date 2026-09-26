@@ -666,12 +666,18 @@ function writeSettings(opts)
             log(`  ${name}: deny ${d.entry} removed - the stack wrote it and this release no longer does`);
         }
     }
+    // An entry already there is the stack's only when the ledger recorded it IN THIS FILE: the same string
+    // recorded for the other file (a local-scope install's own, before a move) never claims the team's
+    // copy (review finding 1). With no ledger a secret-file deny is never claimed - it may be the team's,
+    // and a leftover after uninstall is harmless where a removed one is not (finding 6); a stack seat is.
     const managedDeny = deny.filter((entry) => !denyBefore.includes(entry)
-        || (priorDeny ? priorDeny.some((d) => d.entry === entry) : ownDeny(entry))).map((entry) => ({ file: label, entry }));
+        || (priorDeny ? priorDeny.some((d) => d.file === label && d.entry === entry) : Boolean(stackSeat(entry)))).map((entry) => ({ file: label, entry }));
     if (localDeny)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))
                 managedDeny.push({ file: localName, entry });
+    // Review finding 5: a local file this run could not read was not written - its rows stand as recorded.
+    if (localUnreadable && priorDeny) managedDeny.push(...priorDeny.filter((d) => d.file === localName));
     // The release's wirings with the shell guards folded, plus the dispatcher row this run wrote (its
     // args name this selection's guards, which the release's own full row does not).
     const release = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
@@ -821,7 +827,7 @@ function sharedOnlyDeny(claudeDir)
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
-function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, ledgerSettings = null, log = () => {}, note = () => {} })
+function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, ledgerSettings = null, ledgerDeny = null, log = () => {}, note = () => {} })
 {
     const localFile = path.join(claudeDir, 'settings.local.json');
     const sharedFile = path.join(claudeDir, 'settings.json');
@@ -887,13 +893,15 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     const perms = isObj(local.permissions) ? local.permissions : null;
     const deny = perms && Array.isArray(perms.deny) ? perms.deny : [];
     const carried = deny.filter((d) => stackSeat(d) || denySpecs.includes(d));
+    // What settings.json did not hold before the move: the only entries a ledger row can follow there.
+    const landed = [];
     if (carried.length)
     {
         if (!isObj(shared.permissions)) shared.permissions = {};
         if (!Array.isArray(shared.permissions.deny)) shared.permissions.deny = [];
         for (const d of carried)
         {
-            if (!shared.permissions.deny.includes(d)) { shared.permissions.deny.push(d); sharedChanged = true; }
+            if (!shared.permissions.deny.includes(d)) { shared.permissions.deny.push(d); landed.push(d); sharedChanged = true; }
             deny.splice(deny.indexOf(d), 1);
             say(`deny ${d} moved to settings.json`);
         }
@@ -925,15 +933,34 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
     // which the next run reads the same way, never in neither.
     if (sharedChanged) fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
     fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
-    return { moved: true };
+    return { moved: true, ledgerDeny: refileDeny(ledgerDeny, carried, landed) };
+}
+
+// Review finding 1: the ledger's settings.local.json deny rows for what the move carried. One that
+// landed in settings.json (the file did not hold it before) follows it there; one settings.json already
+// held was the team's there, so the stack's row goes with the local copy. Every other row stays.
+function refileDeny(ledgerDeny, carried, landed)
+{
+    if (!Array.isArray(ledgerDeny)) return null;
+    const out = ledgerDeny.filter((d) => !(d.file === 'settings.local.json' && carried.includes(d.entry)));
+    for (const d of ledgerDeny)
+        if (d.file === 'settings.local.json' && landed.includes(d.entry) && !out.some((x) => x.file === 'settings.json' && x.entry === d.entry))
+            out.push({ file: 'settings.json', entry: d.entry });
+    return out;
 }
 
 // R10 UNINSTALL, the settings half: every env key, deny entry and hook wiring the ledger lists for a
 // file, at the value it recorded - a value changed since is the user's and stays, said by its length
-// only. The .mcp.json approvals of the servers uninstall removed go with them. A file left holding
-// nothing goes; one that cannot be read is left exactly as it is.
-function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], log = () => {}, note = () => {} })
+// only. The .mcp.json approvals of the servers uninstall removed go with them. A file the ledger names
+// that is left holding nothing goes (an empty list the stack or the plugin CLI left there with it); one
+// it names nothing in is never tidied or deleted (review finding 12), and one that cannot be read is
+// left exactly as it is.
+function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRemoved = [], scope = 'project', log = () => {}, note = () => {} })
 {
+    // Review finding 8: at user scope the core's user-scope row is printed, never removed, so it stays
+    // loaded here - a seat denied and the hooks named off keep what the user switched off off.
+    const offState = (key) => scope === 'user' && (key === 'ALFRED_CODE_HOOKS_OFF' || Boolean(stackSeat(key)));
+    const keptOff = [];
     for (const name of ['settings.json', 'settings.local.json'])
     {
         const file = path.join(claudeDir, name);
@@ -944,6 +971,8 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         const denies = (ledger.deny || []).filter((d) => d.file === name && (shippedDeny.includes(d.entry) || Boolean(stackSeat(d.entry)))).map((d) => d.entry);
         const ids = new Set((ledger.hooks || []).filter((h) => h.file === name).map((h) => h.id));
         const attr = ((ledger.settings || {})[name]) || {};
+        // Review finding 12: a file the ledger names nothing in was never the stack's to tidy or delete.
+        const named = Object.keys(keys).length > 0 || denies.length > 0 || ids.size > 0 || Object.keys(attr).length > 0;
         let data;
         try { ({ data } = readSettings(file)); }
         catch (err) { note(`${err.message} - nothing of the stack's was removed from it`); continue; }
@@ -954,6 +983,7 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
             {
                 if (!isStackKey(key) || !Object.hasOwn(data.env, key)) continue;
                 if (valueHash(data.env[key]) !== hash) { log(`  ${name} env: ${key} kept - changed since the stack wrote it, so it is yours (${String(data.env[key]).length} chars)`); continue; }
+                if (offState(key)) { keptOff.push(key); continue; }
                 delete data.env[key];
                 changed = true;
             }
@@ -962,7 +992,8 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         const perms = plain(data.permissions) ? data.permissions : null;
         if (perms && Array.isArray(perms.deny))
         {
-            const kept = perms.deny.filter((d) => !denies.includes(d));
+            keptOff.push(...perms.deny.filter((d) => denies.includes(d) && offState(d)));
+            const kept = perms.deny.filter((d) => !denies.includes(d) || offState(d));
             if (kept.length !== perms.deny.length)
             {
                 changed = true;
@@ -991,12 +1022,14 @@ function removeManagedSettings({ claudeDir, ledger = {}, shippedDeny = [], mcpRe
         }
         // An empty list or map sets nothing: the stack creates enabledMcpjsonServers on every write, and
         // the plugin CLI leaves enabledPlugins as {} once the stack's rows are uninstalled.
-        for (const [key, empty] of [['enabledMcpjsonServers', (v) => Array.isArray(v) && !v.length], ['enabledPlugins', (v) => plain(v) && !Object.keys(v).length]])
+        for (const [key, empty] of named ? [['enabledMcpjsonServers', (v) => Array.isArray(v) && !v.length], ['enabledPlugins', (v) => plain(v) && !Object.keys(v).length]] : [])
             if (Object.hasOwn(data, key) && empty(data[key])) { delete data[key]; changed = true; }
         if (!changed) continue;
-        if (!Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
+        if (named && !Object.keys(data).length) { fs.rmSync(file, { force: true }); log(`  ${name} removed - it held nothing but the stack's entries`); }
         else { fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`); log(`  ${name}: the stack's env keys, deny entries, hook wirings and attribution / worktree keys removed`); }
     }
+    if (keptOff.length)
+        log(`  kept at user scope: ${keptOff.join(', ')} - the user-scope core stays loaded for this account, so these keep what you switched off here off; remove them once it is uninstalled`);
 }
 
 module.exports = { removeManagedSettings, isStackKey, writeSettings, applyEnv, wireHooks, hookCommand, readSettings, settingsTarget, readBackSettings, sharedOnlyDeny, leaveLocalScope, HOOK_TIMEOUT, HOOK_TIMEOUTS, timeoutFor };

@@ -197,7 +197,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, failures: () => failures });
+        return runUninstall({ projectRoot, claudeDir, configDir, accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'), env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
 
     try
     {
@@ -307,7 +307,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
             for (const [key, shippedSeed] of envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json'))).reseed)
                 (seeds[key] ??= []).push(shippedSeed);
-            settings.leaveLocalScope({
+            const move = settings.leaveLocalScope({
                 claudeDir,
                 hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js'),
                 mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS),
@@ -315,7 +315,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
                 ledgerSettings: priorLedger && priorLedger.settings ? priorLedger.settings['settings.local.json'] || {} : null,
+                ledgerDeny: priorLedger ? priorLedger.deny : null,
             });
+            // Review finding 1: the ledger's deny rows follow what the move carried, so the writer below
+            // claims in settings.json only what landed there - never an entry the team already held.
+            if (move.ledgerDeny) priorLedger.deny = move.ledgerDeny;
         }
 
         // --- the six lists, narrowed to this project -------------------------------
@@ -1100,6 +1104,7 @@ function installMcps(ctx)
                 ctx.log(name === 'playwright'
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
+    const registered = [];
     for (const entry of live)
     {
         const name = entry.split('|')[0];
@@ -1113,16 +1118,20 @@ function installMcps(ctx)
         ctx.log(`mcp [${scope}]: ${name}`);
         if (!ctx.cli(mcp.registerSpec({ name, args, scope, remotes: ctx.remotes, tokens: ctx.tokens }), { expect: 'reported' }))
             ctx.note(`mcp ${name} failed`);
+        else registered.push(name);
     }
 
-    // R10: what this run registers in .mcp.json is the stack's, whatever the file held before.
+    // R10: what this run registers in .mcp.json is the stack's, whatever the file held before. Review
+    // finding 7: at local and user scope, what it actually registered (a name it skipped as already
+    // configured may be the user's) - read back from the account file by the ledger.
     if (scope === 'project') ctx.mcpWritten = live.map((e) => e.split('|')[0]);
+    else ctx.mcpWrittenAt = { [scope]: registered };
     // Read the RESULT back: `claude mcp add` over an existing name exits 0 without writing.
     const expects = live.map((e) => mcp.expectShape({
         name: e.split('|')[0], args: e.slice(e.indexOf('|') + 1), remotes: ctx.remotes, tokens: ctx.tokens,
     }));
     if (scope === 'project') mcp.verifyProject({ mcpFile: ctx.mcpFile, expects, log: ctx.log });
-    else mcp.verifyUser({
+    else ctx.mcpWrittenAt[scope].push(...mcp.verifyUser({
         expects, scope,
         // N4: at user scope only a registration the account file showed as the stack's is re-registered -
         // the re-register removes first, and one it could not read (or did not hold) may be the user's.
@@ -1135,7 +1144,7 @@ function installMcps(ctx)
             ctx.cli(mcp.registerSpec({ name, args: entry.slice(entry.indexOf('|') + 1), scope, remotes: ctx.remotes, tokens: ctx.tokens }), { quiet: true });
         },
         log: ctx.log, note: ctx.note,
-    });
+    }).repaired);
 }
 
 function installHooksAndRules(ctx)
@@ -1358,23 +1367,40 @@ function downconvert(ctx)
 function ledgerOf(ctx)
 {
     const prior = ctx.ledger || {};
+    // Review finding 5: a settings file this run could not read was not written either, so what the last
+    // run recorded there still stands - read as {} it would drop every entry, and nothing restores them
+    // once the file is fixed.
+    const unreadable = (name) => { try { settings.readSettings(path.join(ctx.claudeDir, name)); return false; } catch { return true; } };
     const envNow = (name) => { const env = readJson(path.join(ctx.claudeDir, name)).env; return env && typeof env === 'object' ? env : {}; };
-    const still = (name, keys) => Object.fromEntries(Object.entries(keys || {}).filter(([k, h]) => Object.hasOwn(envNow(name), k) && stampLayer.valueHash(envNow(name)[k]) === h));
+    const still = (name, keys) => (unreadable(name) ? { ...keys }
+        : Object.fromEntries(Object.entries(keys || {}).filter(([k, h]) => Object.hasOwn(envNow(name), k) && stampLayer.valueHash(envNow(name)[k]) === h)));
     const part = ctx.managedSettings || { env: {}, deny: prior.deny || [], hooks: prior.hooks || [], settings: {} };
     const env = { ...part.env };
     for (const [name, keys] of Object.entries(prior.env || {})) if (!env[name]) env[name] = still(name, keys);
     const holderNow = (name, obj) => { const a = readJson(path.join(ctx.claudeDir, name))[obj]; return a && typeof a === 'object' && !Array.isArray(a) ? a : {}; };
     const settingsKeys = { ...(part.settings || {}) };
     for (const [name, keys] of Object.entries(prior.settings || {}))
-        if (!settingsKeys[name]) settingsKeys[name] = Object.fromEntries(Object.entries(keys).filter(([at, h]) =>
+        if (!settingsKeys[name]) settingsKeys[name] = unreadable(name) ? { ...keys } : Object.fromEntries(Object.entries(keys).filter(([at, h]) =>
         {
             const [obj, key] = at.split('.');
             return Object.hasOwn(holderNow(name, obj), key) && stampLayer.valueHash(JSON.stringify(holderNow(name, obj)[key])) === h;
         }));
     const servers = mcp.registrationsAt({ scope: 'project', mcpFile: ctx.mcpFile, projectRoot: ctx.projectRoot }).servers;
+    // Review finding 7: the copy route's local- and user-scope registrations, read back from the account
+    // file - what this run registered there, or what the last run recorded, still unchanged. Nothing is
+    // adopted with no record, and an account file that cannot be read keeps the record as it was.
+    const mcpAt = {};
+    for (const scope of ['local', 'user'])
+    {
+        const regs = mcp.registrationsAt({ scope, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot });
+        const was = (prior.mcpAt || {})[scope] || {};
+        const now = regs.state === 'unreadable' ? { ...was } : mcp.managedMcp({ servers: regs.servers, prior: was, written: (ctx.mcpWrittenAt || {})[scope] || [] });
+        if (Object.keys(now).length) mcpAt[scope] = now;
+    }
     return {
         env, deny: part.deny, hooks: part.hooks,
         mcp: mcp.managedMcp({ servers, prior: prior.mcp || null, written: ctx.mcpWritten || [], adopt: (name, entry) => stackShaped(ctx, name, entry) }),
+        mcpAt,
         files: managedFiles(ctx),
         settings: settingsKeys,
     };
@@ -1443,18 +1469,26 @@ function pruneDroppedCopies(ctx)
     }
 }
 
-// THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json, then the settings
-// entries, then the copies, then the stamp - last, and only when nothing failed.
-function runUninstall({ projectRoot, claudeDir, configDir, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, failures })
+// THE UNINSTALL ORDER (uninstall.js holds the decisions): plugin rows, then .mcp.json and the local- and
+// user-scope registrations, then the settings entries, then the copies, then the stamp - last, and only
+// when nothing failed.
+function runUninstall({ projectRoot, claudeDir, configDir, accountFile, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures })
 {
     const file = stampLayer.stampFiles({ projectRoot }).read;
     const raw = stampLayer.readStampScope(file).toLowerCase();
     const scope = raw === 'global' ? 'user' : ENUMS.scope.values.includes(raw) ? raw : 'project';
     const ledger = stampLayer.readLedger(file);
     log(`action: uninstall [scope=${scope}, account=${configDir}]`);
+    // Review finding 3: a listing that did not answer is no empty list - acted on, it removes no plugin
+    // row and then deletes the stamp that lists them. Refused before any change, so a retry finishes.
+    const rawList = hasClaude ? readRaw() : '';
+    if (hasClaude && !listingRead(rawList))
+    {
+        err('error: `claude plugin list --json` did not answer with a plugin listing, so the stack\'s plugin rows cannot be told apart - nothing was removed; fix what that command prints, then run uninstall again\n');
+        return 1;
+    }
     if (hasClaude)
     {
-        const rawList = readRaw();
         const market = marketOf({ listing: plugins.parsePluginList(rawList, projectRoot, { byMarketplace: true }), marketplaces: readMarkets(), env }).key;
         const manifest = loadManifest(path.join(__dirname, '..', '..'));
         uninstallLayer.removePlugins({
@@ -1465,7 +1499,11 @@ function runUninstall({ projectRoot, claudeDir, configDir, env, hasClaude, claud
     }
     else if (!claudeBroken) note('the claude CLI is not on PATH - no plugin row was removed; run uninstall again where it is');
     const { removed } = mcp.removeManagedMcp({ mcpFile: path.join(projectRoot, '.mcp.json'), managed: ledger.mcp || {}, log, note });
-    settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, log, note });
+    uninstallLayer.removeScopedMcp({
+        mcpAt: ledger.mcpAt || {}, cli, log, note,
+        readAt: (scope) => mcp.registrationsAt({ scope, accountFile, projectRoot }),
+    });
+    settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
     log(`  kept, yours or your data: a CLAUDE.md you filled in, the docs root, .serena/, the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);

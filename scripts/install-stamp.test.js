@@ -342,6 +342,8 @@ const LEDGER = {
     deny: [{ file: 'settings.json', entry: 'Read(.env)' }, { file: 'settings.json', entry: 'Agent(alfred-code:angular-verifier)' }],
     hooks: [{ file: 'settings.json', hook: 'guard-secret-value.js', id: 'a'.repeat(64) }],
     mcp: { serena: 'b'.repeat(64) },
+    // Review finding 7: a local- or user-scope registration (the MCP copy route) is recorded with its scope.
+    mcpAt: { local: { memory: '9'.repeat(64) }, user: { 'playwright-chrome': '8'.repeat(64) } },
     files: { 'hooks/docs.js': 'c'.repeat(64), 'skills/csharp': 'd'.repeat(64), 'agents/angular-verifier.md': 'e'.repeat(64), 'CLAUDE.md': 'f'.repeat(64) },
     settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
 };
@@ -353,7 +355,7 @@ test('install-stamp: the ledger lines record what the run manages and read back 
     assert.match(text, /^managed-env: settings\.json:ALFRED_CODE_INSTRUMENT=[0-9a-f]{64},settings\.local\.json:ALFRED_CODE_MEMORY_DB=[0-9a-f]{64}$/m);
     assert.match(text, /^managed-deny: settings\.json:Read\(\.env\),settings\.json:Agent\(alfred-code:angular-verifier\)$/m);
     assert.match(text, /^managed-hooks: settings\.json:guard-secret-value\.js:a{64}$/m);
-    assert.match(text, /^managed-mcp: serena=b{64}$/m);
+    assert.match(text, /^managed-mcp: serena=b{64},local:memory=9{64},user:playwright-chrome=8{64}$/m);
     assert.match(text, /^managed-files: hooks\/docs\.js=c{64},skills\/csharp=d{64},agents\/angular-verifier\.md=e{64},CLAUDE\.md=f{64}$/m);
     assert.match(text, /^managed-settings: settings\.json:attribution\.commit=[0-9a-f]{64},settings\.json:attribution\.sessionUrl=[0-9a-f]{64}$/m);
     assert.deepStrictEqual(readLedger(dest), LEDGER);
@@ -369,10 +371,10 @@ test('install-stamp: a stamp with no ledger line reads as null - the fallback; a
     assert.strictEqual(readLedger(path.join(p.base, 'absent.stamp')), null);
     const empty = write(project(), { ledger: emptyLedger() });
     assert.match(empty.text, /^managed-env: $/m);
-    assert.deepStrictEqual(readLedger(empty.dest), { env: {}, deny: [], hooks: [], mcp: {}, files: {}, settings: {} }, 'recorded none is not the same answer as no ledger');
+    assert.deepStrictEqual(readLedger(empty.dest), { env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} }, 'recorded none is not the same answer as no ledger');
     const partial = path.join(p.base, 'partial.stamp');
     fs.writeFileSync(partial, 'sha: abc\nmanaged-env: settings.json:ALFRED_CODE_X=' + 'f'.repeat(64) + '\n');
-    assert.deepStrictEqual(readLedger(partial), { env: { 'settings.json': { ALFRED_CODE_X: 'f'.repeat(64) } }, deny: null, hooks: null, mcp: null, files: null, settings: null }, 'a kind with no line reads null');
+    assert.deepStrictEqual(readLedger(partial), { env: { 'settings.json': { ALFRED_CODE_X: 'f'.repeat(64) } }, deny: null, hooks: null, mcp: null, mcpAt: null, files: null, settings: null }, 'a kind with no line reads null');
 });
 
 // N1's rule for the ledger: a stamp is a project file a clone can fill with any text, and every name it
@@ -386,7 +388,7 @@ test('install-stamp: readLedger drops every entry of a shape the installer never
         `managed-env: settings.json:ALFRED_CODE_OK=${h},../x.json:ALFRED_CODE_A=${h},settings.json:lower=${h},settings.json:ALFRED_CODE_B=nothex`,
         'managed-deny: settings.json:Read(.env),other.json:Read(*.pem),settings.json:',
         `managed-hooks: settings.json:guard-x.js:${h},settings.json:../../evil.js:${h},settings.json:guard-y.js:short`,
-        `managed-mcp: serena=${h},../evil=${h},Bad Name=${h}`,
+        `managed-mcp: serena=${h},../evil=${h},Bad Name=${h},local:memory=${h},local:../evil=${h},global:serena=${h},user:x=short`,
         `managed-files: hooks/docs.js=${h},hooks/../../etc=${h},../outside=${h},rules/x.md=${h},skills/a/b=${h},skills/..=${h},../CLAUDE.md=${h}`,
         `managed-settings: settings.json:attribution.pr=${h},settings.json:attribution.__proto__=${h},settings.json:attribution.constructor=${h},settings.json:model=${h},x.json:attribution.pr=${h}`,
         '',
@@ -396,6 +398,7 @@ test('install-stamp: readLedger drops every entry of a shape the installer never
         deny: [{ file: 'settings.json', entry: 'Read(.env)' }],
         hooks: [{ file: 'settings.json', hook: 'guard-x.js', id: h }],
         mcp: { serena: h },
+        mcpAt: { local: { memory: h } },
         files: { 'hooks/docs.js': h },
         settings: { 'settings.json': { 'attribution.pr': h } },
     });

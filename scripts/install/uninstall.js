@@ -11,14 +11,22 @@
 // own, so they are uninstalled. A USER-scope row serves every project on the account - uninstalling it
 // from here would take the stack out of all of them - so its commands are printed and never run
 // (ruling). A third-party pick may be in use on its own, and the marketplace registration is the
-// account's: both are printed the same way.
+// account's: both are printed the same way. The MCP copy route's registrations follow the same rule
+// (review finding 7): a local-scope one is removed, a user-scope one printed. And since the user-scope
+// core stays loaded, a user-scope uninstall keeps the seats denied here and ALFRED_CODE_HOOKS_OFF, so
+// what the user switched off stays off (finding 8). A plugin listing that cannot be read is refused
+// before any change (finding 3) - acted on as empty, it would remove no row and then drop the stamp.
 //
-// The order is plugins first (the hooks stop loading), then the settings entries, .mcp.json, the copies,
-// and the stamp LAST - only when nothing failed, so a re-run finishes what this one could not.
+// The order is plugins first (the hooks stop loading), then .mcp.json and the account-scope
+// registrations, the settings entries, the copies, and the stamp LAST - only when nothing failed, so a
+// re-run finishes what this one could not.
 const fs = require('node:fs');
 const path = require('node:path');
 const { hashItem } = require('./library.js');
 const { commonJsScope } = require('./copy.js');
+const { entryHash } = require('./stamp.js');
+
+const isMarker = (file) => { try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); return Object.keys(j).length === 1 && j.type === 'commonjs'; } catch { return false; } };
 
 // Every library copy (library-*) and every other copy (managed-files) whose hash still matches.
 function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, log = () => {} })
@@ -41,8 +49,15 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, lo
         fs.rmSync(at, { recursive: true, force: true });
         log(`  ${label} removed: ${name}`);
     }
-    // The CommonJS marker the installer wrote beside its hook copies goes once no stack copy is left.
-    commonJsScope({ dir: path.join(claudeDir, 'hooks'), stackFiles: [], log });
+    // The CommonJS marker the installer wrote beside its hook copies goes once nothing else is left there.
+    // Review finding 14: it scopes EVERY .js in the folder, so while a file of the user's is left (their
+    // own hook, or a stack copy they edited and so kept) it stays - taking it would break a CommonJS hook
+    // in a "type": "module" project.
+    const hooksDir = path.join(claudeDir, 'hooks');
+    let left = [];
+    try { left = fs.readdirSync(hooksDir).filter((f) => f !== 'package.json'); } catch { left = []; }
+    if (!left.length) commonJsScope({ dir: hooksDir, stackFiles: [], log });
+    else if (isMarker(path.join(hooksDir, 'package.json'))) log(`  hooks marker kept: package.json - it scopes ${left.join(', ')}, left in .claude/hooks as yours`);
     for (const dir of [skillsDir, ...['agents', 'rules', 'hooks'].map((d) => path.join(claudeDir, d))])
     {
         try { if (!fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* absent, or not ours to empty */ }
@@ -81,4 +96,35 @@ function removePlugins({ rows = [], market, scope, thirdParty = [], cli, log = (
     return { left };
 }
 
-module.exports = { removeManagedFiles, removePlugins };
+// Review finding 7: the MCP copy route's local- and user-scope registrations (the ledger's `mcpAt`), read
+// from the account file (`readAt(scope)`, mcp.registrationsAt). A local one is this project's own, so it
+// is removed through the CLI; a user-scope one serves every project on the account, so its command is
+// printed and never run - the plugin rows' ruling. One changed since the stack registered it is the
+// user's, kept and said. An account file that cannot be read removes nothing, and keeps the stamp.
+function removeScopedMcp({ mcpAt = {}, readAt, cli, log = () => {}, note = () => {} })
+{
+    const printUser = (name) => log(`  mcp ${name} is registered at user scope - every project on this account loads it, so it is not removed here: claude mcp remove ${name} -s user`);
+    for (const scope of ['local', 'user'])
+    {
+        const managed = mcpAt[scope] || {};
+        if (!Object.keys(managed).length) continue;
+        const regs = readAt(scope);
+        if (regs.state === 'unreadable')
+        {
+            if (scope === 'user') { Object.keys(managed).forEach(printUser); continue; }
+            note(`${regs.file} could not be read - no local-scope registration of the stack's was removed (${Object.keys(managed).join(', ')}); fix the file and run uninstall again`);
+            continue;
+        }
+        for (const [name, hash] of Object.entries(managed))
+        {
+            const entry = regs.servers[name];
+            if (!entry) continue;
+            if (entryHash(entry) !== hash) { log(`  mcp ${name}: kept - the ${scope}-scope registration changed since the stack registered it, so it is yours; if it should go: claude mcp remove ${name} -s ${scope}`); continue; }
+            if (scope === 'user') { printUser(name); continue; }
+            if (cli(['mcp', 'remove', name, '-s', 'local'], { quiet: true, expect: 'reported' })) log(`  mcp removed: ${name} (local scope)`);
+            else note(`mcp remove failed: ${name} - remove it by hand: claude mcp remove ${name} -s local`);
+        }
+    }
+}
+
+module.exports = { removeManagedFiles, removePlugins, removeScopedMcp };
