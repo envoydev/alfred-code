@@ -1481,8 +1481,12 @@ function importMemory(ctx)
         // Pilot 2 (2026-09-27): init's own switch-off hit EPERM inside the sandbox, so auto-memory stayed
         // on in every cell. With NO notes there is nothing to import and nothing the level choice could
         // change, so this run - outside the session - switches it off now, behind the same replacement
-        // gate; init only reports it. Any note, or folders it cannot read, keeps the old path.
-        const early = memory.importGate({ projectRoot: ctx.projectRoot, settingsFile, mcps: ctx.lists.mcps, rules: ctx.lists.rules, tools: {} });
+        // gate; init only reports it. Any note, or folders it cannot read, keeps the old path. uvx is part of
+        // the gate like at the other two switch-off sites: the memory server launches through it and init is
+        // what installs uv, so without it the replacement cannot start yet (review A, I1).
+        const early = memory.importGate({ projectRoot: ctx.projectRoot, settingsFile, mcps: ctx.lists.mcps, rules: ctx.lists.rules,
+            tools: { node: true, uvx: ctx.rt.which('uvx') } });
+        if (!early.go && !early.already && early.reason) ctx.log(early.reason);
         if (early.already)
         {
             ctx.log("memory: Claude's own memory is already off - /alfred-code:init still asks the level");

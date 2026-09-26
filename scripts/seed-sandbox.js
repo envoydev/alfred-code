@@ -27,6 +27,8 @@ function scrubLegacyEnv(env)
 // `prepare(repo)` lays the project out before the run; `inspect(repo)` reads it after, before the
 // sandbox is removed. `env` adds to (or, with undefined, removes from) the run's environment -
 // one object for every step, or an array with one PER STEP (a route flip between two runs).
+// A tool mapped to `null` in `tools` is ABSENT: no stub, and PATH is cut to the sandbox bin, node's own dir
+// and the system dirs, so a real copy on this machine cannot answer instead.
 // `source: null` runs with no --source, so the seed resolves its own snapshot (the plugin cache under the
 // sandbox account, which `prepare(repo, work)` can lay out). `tools` puts a stub on PATH per name (`{ npm: '<sh body>' }`), replacing the default 'no', for a case
 // that needs a registry lookup to answer one fixed way. `action` may be a list - the runs share one sandbox, in order, and
@@ -52,9 +54,15 @@ function seedRun(action, selection, { plugins = '[]', env: extra = {}, tools = {
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });
     for (const tool of ['uvx', 'npx', 'npm', 'curl']) fs.writeFileSync(path.join(bin, tool), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
-    for (const [tool, body] of Object.entries(tools)) fs.writeFileSync(path.join(bin, tool), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    for (const [tool, body] of Object.entries(tools))
+    {
+        if (body === null) fs.rmSync(path.join(bin, tool), { force: true });
+        else fs.writeFileSync(path.join(bin, tool), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    }
+    const absent = Object.values(tools).some((body) => body === null);
+    const searchPath = absent ? [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter) : bin + path.delimiter + process.env.PATH;
     fs.writeFileSync(path.join(work, 'sel.txt'), selection);
-    const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: bin + path.delimiter + process.env.PATH,
+    const env = { ...process.env, HOME: work, CLAUDE_CONFIG_DIR: path.join(work, 'acct'), PATH: searchPath,
         CLAUDE_STUB_LOG: log, CLAUDE_STUB_PLUGINS: path.join(work, 'plugins.json') };
     // This runner may sit in a session whose account env carries real keys and stack settings - none
     // of them may reach the run, or land in the sandbox.

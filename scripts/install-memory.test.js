@@ -412,6 +412,20 @@ test('seed: with no notes, install switches Claude\'s own memory off, imports no
     assert.match(steps[2].l.env.ALFRED_CODE_MEMORY_DB, /\.memory-mcp[/\\]memory\.db$/, 'the named level still applies - only the import waits');
 });
 
+// Review A, I1: the memory server launches through uvx, which INIT installs after setup - so the install-time
+// switch-off checks it like the other two switch-off paths do. No uvx on PATH: Claude's own memory stays on.
+test('seed: with no notes but no uvx on PATH, install leaves Claude\'s own memory on and says why', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { out, result } = seedRun('install', SEL, {
+        tools: { uvx: null },
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    assert.ok(!('autoMemoryEnabled' in result), 'no uvx - the replacement cannot start, so Claude\'s own memory stays on');
+    assert.match(out, /uvx not found - the memory notes import was skipped; Claude's own memory stays on/);
+    assert.doesNotMatch(out, /autoMemoryEnabled set to false/);
+});
+
 // With notes, nothing changes before init: the notes must land in the database the user picks, so the
 // switch-off waits for init's import.
 test('seed: with notes, install and update leave Claude\'s own memory on until init imports them', POSIX_ONLY, () =>
