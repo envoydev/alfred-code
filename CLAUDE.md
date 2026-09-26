@@ -355,7 +355,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Surface | Delivery |
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
-| MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), plus the six pre-2.0.0 ids listed as RETIRED aliases for installs not yet updated; `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
+| MCP | the 9 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), plus the six pre-2.0.0 ids listed as RETIRED aliases for installs not yet updated; `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 4 OPTIONAL third-party picks (`claude plugin install`), each suggested on evidence (`meta/evidence.json`): claude-md-management, the `*-lsp` pair and security-guidance (`superpowers` left them in 2.0.0, never touched - R109) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
@@ -410,7 +410,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
   signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
   where a reader needs it ('the navigation server (Serena)'). A backticked `browser` is no graph edge
-  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 4 names, 7 plugins:
+  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 6 names, 9 plugins:
   - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`browser-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
@@ -431,6 +431,22 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     and lets load - never a plugin-carried locked server or an engine left off. A legacy 1.x `playwright` server
     migrates. The browser agents grant all four. A kept engine writes `.playwright/.gitignore` (`*`): the
     browser profiles hold session cookies.
+  - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
+    desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
+    is the one home of which OS each drives; the walk's table, `--missing` / `--redundant`, the installer
+    and the launcher all read it). windows-desktop is seeded for the WPF and WinForms stacks there;
+    macos-desktop is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
+    in a run that names no selection - because a server that clicks through the user's desktop with
+    their full rights is opt-in. A server left out is named in one line, a row another machine enabled at
+    project scope is left as it is, and the run that brings one in prints its prerequisites once (English
+    display language and matching privilege on Windows, the Accessibility and Screen Recording grants
+    on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process`;
+    `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
+    the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
+    `WINDOWS_MCP_EXCLUDE_TOOLS`. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
+    no subcommand it exits with usage, measured). `ALFRED_CODE_PLATFORM` (or stack-select's `--platform`)
+    stands in for the OS where a run must be judged as another's - the tests and the temp-project matrix.
+    Each server brings the `desktop-automation` skill through the graph (below).
   - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
@@ -490,14 +506,16 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
 - **The navigation server's state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
   `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories).
-- **The navigation and memory servers run on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
+- **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
   the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
   server never gets a project settings env key). uvx takes the newest interpreter, and serena-agent's
   pyyaml 6.0.2 ships no 3.14 wheel, so an unpinned start dies without a C compiler (Claude Code shows
   only CONNECTION_CLOSED); Windows ARM64 has no wheel for five compiled deps on ANY Python, while the
-  x64 build runs there under emulation. Both plugin entries start through a node launcher
-  (`serena-launch.js`, `memory-launch.js`) because the right value is the MACHINE's; the copy route
+  x64 build runs there under emulation. Every such plugin entry starts through a node launcher
+  (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`) because the right value is the MACHINE's
+  (windows-mcp 0.8.6 already needs 3.14, so `refresh-mcp-pins.js` takes the newest release the pinned
+  Python can install); the copy route
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
   in the platform's separator, and the copy route registers `.serena\home` on Windows
@@ -565,7 +583,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   DIFFERENT stack - is described by what it covers. A guard phrase beside the name is not the remedy.
   Lint checks 25 and 26 block a named cite that can be absent; a router hub opts out with an
   `**Availability**` callout. Naming a skill never installs it: `suggests:` is removed (check 27) and the
-  graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json` or a per-stack seed.
+  graph emits no body-mention edge. Install need is PROVEN via `meta/evidence.json`, a per-stack seed, or
+  a server that brings the skill: a manifest `mcps[].skills` row is the graph's one edge back at a skill
+  (`graph.mcps`), so the skill arrives with its server, a configure drop cascades both ways, and update
+  never offers it alone.
 - **One home per piece, no duplication.** A deterministic gate -> a hook. A per-file-type convention -> a
   path-scoped rule attaching its skill. A keyword capability -> the skill's description. Cross-cutting
   guidance -> the always-on `baseline-*.md` set (each with an `.mdc` twin in cursor-stack to mirror). The
@@ -597,7 +618,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (114,311 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 48,997 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, and the MCP role names added +311). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (115,104 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 49,790 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, the MCP role names added +311, and the desktop-automation description +793). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
