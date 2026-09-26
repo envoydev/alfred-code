@@ -73,6 +73,15 @@ test('unattended: the switch, then the last row carrying an entrypoint', () =>
     assert.strictEqual(unattended({ transcript_path: file([{ type: 'cost-state' }, 7, 'x']) }, {}), false, 'rows but no entrypoint anywhere');
 });
 
+test('unattended: only sdk-cli is unattended - an Agent SDK, IDE or desktop session keeps its asks', () =>
+{
+    // Review A, M2: an SDK launch keeps its own entrypoint (the CLI rewrites only an inherited cli to sdk-cli in
+    // print mode), and a flow driven through the SDK answers its asks - a later tidy-up to startsWith('sdk-')
+    // would quiet exactly those sessions.
+    for (const entrypoint of ['sdk-ts', 'sdk-py', 'claude-vscode', 'claude-desktop'])
+        assert.strictEqual(unattended({ transcript_path: file(convo(entrypoint)) }, {}), false, entrypoint);
+});
+
 test('unattended: a last row longer than the first read window is still read whole', () =>
 {
     const big = { type: 'user', entrypoint: 'sdk-cli', message: { role: 'user', content: [{ type: 'tool_result', content: 'x'.repeat(600 * 1024) }] } };
