@@ -245,17 +245,63 @@ function rewrite(dir, pairs, skip)
     }
 }
 
+// A path's OS-resolved spelling, when it differs from the one given: os.tmpdir() is a symlink on
+// macOS (/var -> /private/var), so a value a subprocess wrote by resolving its own cwd (rather than
+// echoing the argument it was given) can name a template path by a spelling paths.* never uses.
+function realSpelling(p)
+{
+    try
+    {
+        const real = fs.realpathSync(p);
+        return real === p ? null : real;
+    }
+    catch { return null; }
+}
+
+const SETTINGS_FILE = /^settings.*\.json$/;
+
+// A value the rewrite above could not map - past REWRITE_MAX_BYTES, say - would point a session at the
+// template's own config, home or repo: a directory the NEXT template build wipes, and this cell's own
+// copy of the same tree sits right beside it unused. Refused rather than served.
+function assertNoTemplateLeak(paths, cell)
+{
+    const dir = path.join(cell.repo, '.claude');
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return; }
+    const names = ['config', 'home', 'repo'].flatMap((d) => [paths[d], realSpelling(paths[d])]).filter(Boolean);
+    for (const e of entries)
+    {
+        if (!e.isFile() || !SETTINGS_FILE.test(e.name)) continue;
+        const text = fs.readFileSync(path.join(dir, e.name), 'utf8');
+        const hit = names.find((name) => text.includes(name));
+        if (hit) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep}: .claude/${e.name} still names the template ${hit}`);
+    }
+}
+
 // `parts` narrows the copy - the grader needs the clone alone - but the rewrite always maps all three,
 // so a copied file names exactly what it named in the session's cell.
 function copyInto(paths, cell, { parts = ['config', 'home', 'repo'] } = {})
 {
     if (fs.existsSync(cell.work) && fs.readdirSync(cell.work).length) throw new Error(`${cell.work} is not empty - reset the cell first`);
     for (const d of parts) fs.cpSync(paths[d], cell[d], { recursive: true, verbatimSymlinks: true });
-    const pairs = ['config', 'home', 'repo'].map((d) => [paths[d], cell[d]]);
+    // The realpath spelling goes FIRST: /private/var/X literally contains /var/X as a substring, so the
+    // given-spelling pair would otherwise partial-match inside an unprocessed realpath occurrence and
+    // leave a stray /private prefix glued to the cell's own (given-spelling) path.
+    const pairs = ['config', 'home', 'repo'].flatMap((d) =>
+    {
+        const real = realSpelling(paths[d]);
+        return real ? [[real, cell[d]], [paths[d], cell[d]]] : [[paths[d], cell[d]]];
+    });
     // The plugin cache is the plugins' own code, installed from a marketplace: it names no account path.
     // Nor do the restored packages, thousands of files no account path lives in.
     const skip = [path.join(cell.config, 'plugins', 'cache'), path.join(cell.home, '.nuget', 'packages')];
     for (const d of parts) rewrite(cell[d], pairs, skip);
+    if (parts.includes('repo'))
+    {
+        try { assertNoTemplateLeak(paths, cell); }
+        catch (err) { removeTree(cell.work); throw err; }
+    }
 }
 
 module.exports = { build, copyInto, grantRules, READY };

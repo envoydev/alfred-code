@@ -135,6 +135,38 @@ test('the restored package folder is copied but never scanned for template paths
     assert.strictEqual(fs.readFileSync(path.join(cell.home, '.nuget', 'packages', 'x', '1.0.0', 'x.nuspec'), 'utf8'), `built in ${paths.home}\n`, 'package files carry no account path worth the scan');
 });
 
+// The B4 read found the template's own repo/.claude/settings.local.json naming the template's home by
+// its OS-resolved (realpath) spelling while the harness's own paths.home carries the given, unresolved
+// one (os.tmpdir() is a symlink on macOS) - a spelling the plain pairs list never matched, so the value
+// survived into the cell unrewritten, still pointing at a directory the next template build wipes.
+test('a settings value naming the template home by its realpath spelling is still rewritten into the cell\'s own home', (t) =>
+{
+    const f = fixture(t);
+    const { paths } = build({ claude: FAKE, arm: arm([]), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock });
+    const real = fs.realpathSync(paths.home);
+    if (real === paths.home) { t.skip('this filesystem gives no second spelling of the template home to test'); return; }
+    fs.mkdirSync(path.join(paths.repo, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(paths.repo, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.memory-mcp', 'memory.db') } }));
+    const cell = cellPaths({ benchDir: f.bench, run: 'r1', arm: 'solo', task: 't1', rep: 1 });
+    copyInto(paths, cell);
+    const written = JSON.parse(fs.readFileSync(path.join(cell.repo, '.claude', 'settings.local.json'), 'utf8'));
+    assert.strictEqual(written.env.ALFRED_CODE_MEMORY_DB, path.join(cell.home, '.memory-mcp', 'memory.db'), 'the realpath spelling maps to the cell\'s own home, not the template\'s');
+});
+
+test('a cell whose copied local settings still name the template directory is refused, not served', (t) =>
+{
+    const f = fixture(t);
+    const { paths } = build({ claude: FAKE, arm: arm([]), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock });
+    fs.mkdirSync(path.join(paths.repo, '.claude'), { recursive: true });
+    // A realistic gap the pairs list cannot close: a file past the rewrite's own size cap (REWRITE_MAX_BYTES)
+    // is never scanned, so whatever it names of the template survives into the cell exactly as written.
+    const padding = 'x'.repeat(5 * 1024 * 1024);
+    fs.writeFileSync(path.join(paths.repo, '.claude', 'settings.local.json'), JSON.stringify({ note: `see ${paths.repo}`, padding }));
+    const cell = cellPaths({ benchDir: f.bench, run: 'r1', arm: 'solo', task: 't1', rep: 1 });
+    assert.throws(() => copyInto(paths, cell), /solo\/t1\/r1: \.claude\/settings\.local\.json still names the template/);
+    assert.ok(!fs.existsSync(cell.work), 'no half-leaked cell is left behind');
+});
+
 test('a failed onboarding leaves no template either', (t) =>
 {
     const f = fixture(t);
