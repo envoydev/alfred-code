@@ -1902,6 +1902,29 @@ function hooksRouteSandbox(prefix, selection = 'skill markdown-style\n')
     };
 }
 
+// O-1: `claude` is looked up on the run's OWN PATH, the one every claude call is spawned with. The
+// lookup read the installer process's PATH instead, so a parent with no claude on it (a CI runner)
+// skipped the whole plugin layer while the run's env held a working one.
+test('seed: `claude` is looked up on the run\'s own PATH, never the installer process\'s (O-1)', POSIX_ONLY, () =>
+{
+    const s = hooksRouteSandbox('o1-');
+    const parentPath = process.env.PATH;
+    try
+    {
+        process.env.PATH = String(parentPath).split(path.delimiter)
+            .filter((d) => d && !fs.existsSync(path.join(d, 'claude'))).join(path.delimiter);
+        assert.strictEqual(s.run(['install'], s.env), 0, 'the install failed');
+        const log = s.env.CLAUDE_STUB_LOG;
+        const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
+        assert.match(calls, /^plugin list --json$/m, 'the claude on the run\'s PATH was never called');
+    }
+    finally
+    {
+        process.env.PATH = parentPath;
+        s.cleanup();
+    }
+});
+
 // NM1 (fix round 3): the route line was written only at the very END of a run, after
 // installHooksAndRules had already pruned the other route's copies - a run that died in between left
 // a STALE route over a folder the prune had already emptied. The fault is raised from the log sink

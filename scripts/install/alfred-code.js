@@ -164,7 +164,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // R105: a `claude` found on PATH that cannot be STARTED (a batch file spawned without cmd.exe, a
     // missing interpreter) is said once, here, and the run goes on as without one - never a failure
     // line per plugin, and never a call that fails with no line at all.
-    const claudeBroken = rt.which('claude') ? rt.unrunnable('claude', { cwd: projectRoot, env: cliEnv }) : null;
+    const claudeBroken = rt.which('claude', { env: cliEnv }) ? rt.unrunnable('claude', { cwd: projectRoot, env: cliEnv }) : null;
     const hasClaude = claudeBroken === '';
     if (claudeBroken) note(`${claudeBroken} - the plugin and MCP layers were skipped`);
 
