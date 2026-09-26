@@ -50,10 +50,11 @@ function loadRun({ benchDir, run, preregFile, metricsFn, onboardingFn })
     const measure = metricsFn || ((cell) => metricsLib.cellMetrics({ cell, prices: runP.prices }));
     const cells = [];
     const ungraded = [];
+    const unfinished = [];
     for (const a of record.arms) for (const t of record.tasks) for (let rep = 1; rep <= record.reps; rep++)
     {
         const cell = cellsLib.cellPaths({ benchDir, run, arm: a.name, task: t.id, rep });
-        if (cellsLib.state(cell) !== 'done') continue;
+        if (cellsLib.state(cell) !== 'done') { unfinished.push(a.name); continue; }
         let grade;
         try { grade = JSON.parse(fs.readFileSync(path.join(cell.results, 'grade.json'), 'utf8')); }
         catch { ungraded.push(`${a.name}/${t.id}/r${rep}`); continue; }
@@ -61,7 +62,25 @@ function loadRun({ benchDir, run, preregFile, metricsFn, onboardingFn })
     }
     if (ungraded.length) throw new Error(`${ungraded.length} finished ${ungraded.length === 1 ? 'cell is' : 'cells are'} not graded - run grade.js first`);
     const onboarding = Object.fromEntries(record.arms.map((a) => [a.name, (onboardingFn || defaultOnboarding(runP.dir))(a.name)]));
-    return { record, cells, onboarding, runP };
+    // What a usage limit set aside (drive.js): each copy names its arm in session.limited.json.
+    const setAside = [];
+    const limitedDir = path.join(runP.dir, 'limited');
+    for (const d of fs.existsSync(limitedDir) ? fs.readdirSync(limitedDir) : [])
+    {
+        try { setAside.push(JSON.parse(fs.readFileSync(path.join(limitedDir, d, 'session.limited.json'), 'utf8')).arm); }
+        catch { setAside.push('unknown'); }
+    }
+    const total = record.arms.length * record.tasks.length * record.reps;
+    return { record, cells, onboarding, runP, unfinished, setAside, total };
+}
+
+const perArm = (names, arms) => arms.map((a) => `${a} ${names.filter((n) => n === a).length}`).join(', ');
+
+// A run the driver has not finished reports rates over fewer cells than it pre-registered: say so first.
+function partialLine(o, arms)
+{
+    if (!o.unfinished.length) return null;
+    return `**PARTIAL RUN: ${o.unfinished.length} of ${o.total} cells unfinished (${perArm(o.unfinished, arms)}) - the rates below cover finished cells only; finish it with --resume before reading a verdict.**`;
 }
 
 const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -147,6 +166,8 @@ function aggregate({ benchDir = BENCH_DIR, run, preregFile = path.join(BENCH_DIR
     const infra = cells.filter((c) => c.infra);
 
     const lines = [`# Benchmark report: ${run}`, ''];
+    const partial = partialLine(main, arms);
+    if (partial) lines.push(partial, '');
     lines.push(`Run ${run}: mode ${record.mode}, ${record.model} at effort ${record.effort}, Claude Code ${record.cliVersion}, fixture ${record.fixture.tag}@${record.fixture.commit.slice(0, 8)}, seed ${record.seed}, reps ${record.reps}. Pre-registration sha256 ${record.prereg.sha256.slice(0, 12)}, unchanged since the run started.`, '');
     lines.push('## Verdict', '');
     if (arms.includes('ours') && arms.includes('bare'))
@@ -159,7 +180,8 @@ function aggregate({ benchDir = BENCH_DIR, run, preregFile = path.join(BENCH_DIR
     for (const g of groups) lines.push(...sentences(head.filter((c) => c.task.group === g), arms, `${g}: `));
     if (guard.length) lines.push(...sentences(guard, arms, 'guard tasks: '));
     if (home.length) lines.push(...sentences(home, arms, 'home-advantage tasks: '));
-    lines.push('', infra.length ? `infrastructure, excluded: ${infra.length} (${infra.map((c) => c.id).join(', ')})` : 'infrastructure, excluded: 0', '');
+    lines.push('', infra.length ? `infrastructure, excluded: ${infra.length} (${infra.map((c) => c.id).join(', ')})` : 'infrastructure, excluded: 0');
+    lines.push(main.setAside.length ? `set aside by a usage limit and re-run: ${perArm(main.setAside, arms)}` : 'set aside by a usage limit and re-run: 0', '');
 
     lines.push('## Headline tasks', '', table(head, arms, { onboarding: main.onboarding, taskCount: headTasks.length }), '');
     for (const g of groups) lines.push(`## Group: ${g}`, '', table(head.filter((c) => c.task.group === g), arms), '');
@@ -172,7 +194,10 @@ function aggregate({ benchDir = BENCH_DIR, run, preregFile = path.join(BENCH_DIR
         if (!other) continue;
         const o = loadRun({ benchDir, run: other, preregFile, metricsFn, onboardingFn });
         const oArms = o.record.arms.map((a) => a.name);
-        lines.push(`## ${label}: ${other} (${o.record.model})`, '', table(o.cells.filter((c) => isHeadline(c.task)), oArms), '');
+        lines.push(`## ${label}: ${other} (${o.record.model})`, '');
+        const oPartial = partialLine(o, oArms);
+        if (oPartial) lines.push(oPartial, '');
+        lines.push(table(o.cells.filter((c) => isHeadline(c.task)), oArms), '');
     }
 
     const report = `${lines.join('\n')}\n`;

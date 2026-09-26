@@ -13,6 +13,7 @@
 //                             stdout and the edit - a model running `env`
 //   FAKE_SLEEP_MS=<n>         wait before finishing; FAKE_IGNORE_TERM=1 survives SIGTERM
 //   FAKE_EXIT=<n>             the exit status
+//   FAKE_STDERR=<text>        write <text> to stderr first
 //   FAKE_LIMIT_FILE=<file>    while <file> exists ({ "from": n }), the nth session started and every later
 //                             one ends on a usage-limit result (counted in <file>.count)
 //   --version                 prints a fake version, as the driver asks the real CLI
@@ -25,6 +26,7 @@ const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 
 const env = process.env;
 const sid = flag('--session-id');
 const prompt = argv[argv.length - 1];
+if (env.FAKE_STDERR) process.stderr.write(`${env.FAKE_STDERR}\n`);
 if (env.FAKE_RECORD) fs.writeFileSync(env.FAKE_RECORD, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd() }));
 
 const leakName = env.FAKE_LEAK === '1' ? 'ANTHROPIC_API_KEY' : env.FAKE_LEAK;

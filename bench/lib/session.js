@@ -214,7 +214,8 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
 
         redact(cell.results, authSecrets(session, base));
 
-        const limit = limitHit({ stdoutFile: cell.stdout, stderrFile: cell.stderr });
+        // A timeout is the arm's pre-registered failure, whatever its stderr says: it is never set aside.
+        const limit = timedOut ? { hit: false } : limitHit({ stdoutFile: cell.stdout, stderrFile: cell.stderr });
         if (limit.hit) return setAside(cell, { sessionId, limitText: limit.text, exitCode: result.code, signal: result.signal, started, ended, model: session.model, effort: session.effort });
 
         let outcome = 'ok';

@@ -94,6 +94,14 @@ test('a session past its time limit is stopped and recorded as timeout, not an e
     assert.strictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).transcript, true, 'what it did before the stop is kept');
 });
 
+test('a timeout stays a timeout even when stderr reads like a limit', async (t) =>
+{
+    const { cell } = cellFor(t);
+    const out = await go(cell, { name: 'solo', env: { FAKE_SLEEP_MS: '20000', FAKE_STDERR: 'npm warn: registry rate limit, retrying' } }, { timeLimitMin: 0.005 });
+    assert.strictEqual(out.outcome, 'timeout');
+    assert.strictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).outcome, 'timeout');
+});
+
 test('a session that ignores TERM is killed after the grace period', async (t) =>
 {
     const { cell } = cellFor(t);

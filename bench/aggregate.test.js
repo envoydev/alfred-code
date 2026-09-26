@@ -60,6 +60,29 @@ test('refuses without a pre-registration, or when it changed since the run start
     assert.throws(() => none.go(), /r-syn recorded no pre-registration/);
 });
 
+test('a partial run says so at the top, per arm, and counts the cells a usage limit set aside', (t) =>
+{
+    const s = syntheticRun(t, { passes: { ours: ALL(3), bare: ALL(1) }, cost: { ours: 1, bare: 1 } });
+    fs.rmSync(path.join(s.runDir, 'ours', 'api-1', 'r3', 'session.json'));
+    for (const [arm, n] of [['ours', 1], ['bare', 2]]) for (let i = 0; i < n; i++)
+    {
+        const d = path.join(s.runDir, 'limited', `${arm}-api-2-r1-2026092${i}T000000000Z`);
+        fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(path.join(d, 'session.limited.json'), JSON.stringify({ arm, task: 'api-2', rep: 1, outcome: 'limited' }));
+    }
+    const { report } = s.go();
+    assert.match(report, /\*\*PARTIAL RUN: 1 of 36 cells unfinished \(ours 1, bare 0\) - the rates below cover finished cells only; finish it with --resume before reading a verdict\.\*\*/);
+    assert.match(report, /set aside by a usage limit and re-run: ours 1, bare 2/);
+});
+
+test('a complete run carries no partial line, and says no cell was set aside', (t) =>
+{
+    const s = syntheticRun(t, { passes: { ours: ALL(3), bare: ALL(1) }, cost: { ours: 1, bare: 1 } });
+    const { report } = s.go();
+    assert.ok(!/PARTIAL RUN/.test(report));
+    assert.match(report, /set aside by a usage limit and re-run: 0/);
+});
+
 test('refuses while a finished cell is still ungraded', (t) =>
 {
     const r = syntheticRun(t, { passes: { ours: ALL(3), bare: ALL(1) }, cost: { ours: 1, bare: 1 }, ungraded: 'bare/web-1/r2' });

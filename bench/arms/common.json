@@ -1,11 +1,13 @@
 {
-  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section.",
+  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section. FORCE_PROMPT_CACHING_5M holds every session at the 5-minute cache an API key gets - a subscription defaults to 1 hour and drops to 5 minutes on usage credits, and the price table bills the two apart - and DISABLE_AUTOUPDATER keeps the CLI one version, because the allowlisted env drops the shell's own switch.",
   "model": "claude-sonnet-5",
   "effort": "medium",
   "permissionMode": "acceptEdits",
   "settings": "harness.settings.json",
   "env": {
-    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "FORCE_PROMPT_CACHING_5M": "1",
+    "DISABLE_AUTOUPDATER": "1"
   },
   "graceSec": 10,
   "auth": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],

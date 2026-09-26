@@ -34,6 +34,10 @@ test('the four shipped arm files load against the shared session', () =>
     assert.deepStrictEqual(arms.map((a) => a.name), ['ours', 'ecc', 'bare', 'baseline']);
     assert.strictEqual(session.model, 'claude-sonnet-5');
     assert.strictEqual(session.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS, '1');
+    // A subscription session gets a 1-hour cache by default and an API key 5 minutes, and the price table
+    // bills the two differently: every session is held at 5 minutes so the cost metric does not follow the route.
+    assert.strictEqual(session.env.FORCE_PROMPT_CACHING_5M, '1');
+    assert.strictEqual(session.env.DISABLE_AUTOUPDATER, '1', 'the allowlisted env drops the shell\'s own switch');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });

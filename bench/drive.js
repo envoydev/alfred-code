@@ -272,17 +272,19 @@ async function drive(opts)
             waitedMs += o.probeEveryMs;
             paused.probes += 1;
             const p = await o.probe({ claude: o.claude, session: loaded.session, base: o.base, auth: authName });
-            if (!p.ok) continue;
+            if (!p.ok) { paused.lastProbe = p.text; continue; }
             paused.endedAt = new Date().toISOString();
             pauses.push(paused);
             paused = null;
+            // The budget is per pause: a subscription's next window gets its own hours.
+            waitedMs = 0;
             o.log(`${o.run}: the limit cleared after ${pauses[pauses.length - 1].probes} probes - carrying on`);
             await workers();
         }
         if (paused)
         {
             pauses.push(paused);
-            if (!stopped) o.log(`paused: usage limit (${paused.text}) - node bench/drive.js --run ${o.run} --resume`);
+            if (!stopped) o.log(`paused: usage limit (${paused.text})${paused.lastProbe ? `, last probe: ${paused.lastProbe}` : ''} - node bench/drive.js --run ${o.run} --resume`);
         }
         if (stopped) o.log(`stopped: ${stopped} - put ${record.cliVersion} back and resume, or start a new run`);
         for (const f of failures) o.log(`harness failure: ${f}`);

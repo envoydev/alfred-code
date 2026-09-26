@@ -154,11 +154,29 @@ test('--wait-on-limit gives up after its hours and leaves the run resumable', as
     const w = limitWorld(t, 2);
     let probes = 0;
     const res = await drive({ ...w.opts, waitOnLimit: 0.5, sleep: async () => {}, probe: async () => { probes += 1; return { ok: false, text: 'still limited' }; } });
-    assert.strictEqual(probes, 2, 'one probe per 20 minutes inside half an hour');
+    assert.strictEqual(probes, 2, 'probes at 20 and 40 minutes, then half an hour is spent');
     assert.deepStrictEqual([res.ran, res.paused], [1, true]);
-    assert.ok(w.lines.some((l) => /^paused: usage limit \(.*\) - node bench\/drive\.js --run r-test --resume$/.test(l)));
+    assert.ok(w.lines.includes('paused: usage limit (Claude AI usage limit reached|1790000000), last probe: still limited - node bench/drive.js --run r-test --resume'), w.lines.join('\n'));
+    assert.strictEqual(w.record().drives[0].pauses[0].lastProbe, 'still limited');
     fs.rmSync(w.limitFile);
     assert.strictEqual((await drive({ ...w.opts, resume: true })).ran, 3);
+});
+
+test('--wait-on-limit is a budget PER pause: a second limit in the same drive gets its own hours', async (t) =>
+{
+    const w = limitWorld(t, 2);
+    let probes = 0;
+    const probe = async () =>
+    {
+        probes += 1;
+        if (probes > 1) return { ok: false, text: 'still limited' };
+        // The first pause clears; the limit comes back two sessions later (the re-run passes, the next cell hits it).
+        fs.writeFileSync(w.limitFile, JSON.stringify({ from: 4 }));
+        return { ok: true, text: null };
+    };
+    const res = await drive({ ...w.opts, waitOnLimit: 0.5, sleep: async () => {}, probe });
+    assert.deepStrictEqual(w.record().drives[0].pauses.map((p) => p.probes), [1, 2]);
+    assert.deepStrictEqual([res.ran, res.paused], [2, true]);
 });
 
 test('--wait-on-limit is a number of hours above 0', async (t) =>
