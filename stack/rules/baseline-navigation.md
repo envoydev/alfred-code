@@ -6,7 +6,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 ## What to read
 
-- Read only what is needed: `Read` is for code already located, never a whole file to find a symbol (`guard-read-whole-file.js` blocks it). Answer a blocked read with the ranged read its denial names; before editing, read the body and what it calls.
+- Read only what is needed: `Read` is for code already located, never a whole file to find a symbol (`guard-read-whole-file.js` blocks it). Answer a blocked read with the ranged read its denial names - never the same read in another shape or against a second path; before editing, read the body and what it calls.
 - A shell read (`cat`, `sed`, `head`, `awk`, python, a heredoc) is the same read under the same rules; path-scoped rules do not attach on the shell route, so the read guard names the governing rule on the first shell write.
 - Never fetch what is already in context, by any route - no repeat `find_symbol`, no second read of an unchanged file or range; re-check an edit at the edited range only.
 - Poll background output through the harness's task tool (`Monitor`) or its NEW lines, never by re-reading the whole log.
@@ -34,7 +34,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 
 - Single-quote a glob the TOOL owns (`grep --include='*.cs'`, `find . -name '*.md'`): zsh aborts on an unmatched bare glob with status 1, the same as a genuine no-match, so an aborted scan reads as 'nothing there'.
 - A splice (`sed -i`, an in-place python or perl replace) counts its anchor first and replaces only when it appears exactly once.
-- Read `$?` (or `${PIPESTATUS[0]}`) on the very next line; never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call.
+- Read `$?` (or `${PIPESTATUS[0]}`) on the very next line; never `<cmd> || echo none`, which launders a failure into an empty result. A scan used as evidence of ABSENCE runs a must-match positive control in the same call, and resolves its tool absolutely or checks it with `type` first.
 - On Windows a Git Bash `/tmp/x` path is one native `node` cannot open: pass it through `cygpath -w`, or write under `$TEMP`.
 - Scratch code goes outside the tracked tree (the session scratchpad or the OS temp dir), or into a gitignored dir inside the repo when an ESM script must import the project's `node_modules`. An interrupted compound write may already have run - check the target before trusting the rejection.
 

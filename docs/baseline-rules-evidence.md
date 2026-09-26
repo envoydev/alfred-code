@@ -99,6 +99,6 @@ kept its imperative and a one-line reason in the rule; the longer story moved he
 - baseline-quality-gates.md - **A green build proves the code compiles, not that its API is current** - a wrong version-coupled claim ships silently because the compiler has no opinion about it; a registry `npx` / `curl` answers a version number, not the API shape, and leaves the installed server unused
 - baseline-quality-gates.md - **a bare process-name grep** - `pgrep -f 'dotnet test'` matches a sibling project's run
 - baseline-quality-gates.md - **Tear down only AFTER the answer** - measured: a run that tore down first and asked second paid a second up-build-down cycle when the answer arrived 1h47m later and said keep it
-- alfred-capture-agent-capabilities usage policy - **A slash-only skill ... is the USER's to type** - do not rely on the harness to stop you, and never spend the turn explaining that you cannot or weighing whether to
+- alfred-capture-agent-capabilities usage policy - **A slash-only skill ... is the USER's to type** - do not rely on the harness to stop you: it denied the call in one CLI build and not in another
 - alfred-capture-agent-capabilities usage policy - **A deliberate orchestration skill starts in a fresh session** - the rule is MECHANIZED by the hook; the prose form of it did not hold, so it is never restated as a reminder
 - agents - every description over 300 chars kept its 'Use ...' sentence and its 'Do NOT use' clause; the full original text is the `## Scope` section at the top of the agent's body
