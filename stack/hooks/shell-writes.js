@@ -22,16 +22,33 @@ const blankHeredocs = (rawCommand) => String(rawCommand || '').replace(
 // nothing in one can write - and an apostrophe in one ('the model's') flipped every quoted span after
 // it, so `x=>/@(...)` inside a later single-quoted `node -e` program read as a redirection to `/@` (the
 // source-protocol snippet init runs, 2026-09-27). Blank it, keep the length. A `#` starts a comment only
-// at a word start outside quotes - not in `a#b`, `$#`, `${#x}`, or a quoted string.
+// at a word start outside quotes - not in `a#b`, `$#`, `${#x}`, or a quoted string. The PowerShell route
+// shares this parser: its `<# ... #>` block comment ends at `#>`, not at the line end, so it is blanked as
+// its own span and a `#` after `<` starts no line comment (review A, M1: `<# note #> echo x > <outside>` lost
+// its redirect). Bash's `$'...'` honours backslash escapes, so `$'it\'s # x'` stays one quoted word.
 function blankComments(command) {
   const out = command.split('');
   let q = null;
+  let ansi = false;
   for (let i = 0; i < out.length; i++) {
     const c = out[i];
-    if (c === '\\' && q !== "'") { i++; continue; }
-    if (q) { if (c === q) q = null; continue; }
+    if (q) {
+      if (c === '\\' && (q === '"' || ansi)) { i++; continue; }
+      if (c === q) { q = null; ansi = false; }
+      continue;
+    }
+    if (c === '\\') { i++; continue; }
+    if (c === "'" && i > 0 && out[i - 1] === '$') { q = c; ansi = true; continue; }
     if (c === '"' || c === "'") { q = c; continue; }
-    if (c === '#' && (i === 0 || /[\s;&|()<>]/.test(out[i - 1]))) {
+    if (c === '<' && out[i + 1] === '#') {
+      const end = command.indexOf('#>', i + 2);
+      if (end > 0) {
+        for (let j = i; j < end + 2; j++) if (out[j] !== '\n') out[j] = ' ';
+        i = end + 1;
+      }
+      continue;
+    }
+    if (c === '#' && (i === 0 || /[\s;&|()>]/.test(out[i - 1]))) {
       for (; i < out.length && out[i] !== '\n'; i++) out[i] = ' ';
     }
   }

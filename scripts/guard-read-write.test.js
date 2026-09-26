@@ -236,3 +236,20 @@ test('guard-cross-project-write: a comment is not shell - an apostrophe in one n
   assert.equal(xp(`echo a#b > ${path.join(other, 'f.txt')}`), 2, 'a # inside a word is no comment');
   assert.equal(xp(`echo \${#X} > ${path.join(other, 'f.txt')}`), 2, 'a length expansion is no comment');
 });
+
+test('guard-cross-project-write: a PowerShell <# #> block comment ends at #>, and blanking never hides more than base did', () => {
+  // Review A, M1: a `#` after `<` started a line comment, so `<# note #> echo x > <outside>` lost its redirect on the
+  // PowerShell route (denied at base). A block comment is blanked as its own span; a `#` after `<` starts no line comment.
+  const other = fs.mkdtempSync(path.join(TMP, 'projD-'));
+  const target = path.join(other, 'f.txt');
+  const ps = (command) => run(XWRITE, { tool_name: 'PowerShell', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  assert.equal(ps(`<# note #> echo x > ${target}`), 2, 'the redirect after an inline block comment is judged');
+  assert.equal(ps(`<# a note\n   over two lines #>\necho x > ${target}`), 2, 'a block comment over several lines ends at #>');
+  assert.equal(ps(`<# it's a note > ${target} #>\necho ok`), 0, 'a redirect INSIDE the block comment writes nothing');
+  // Bash ANSI-C quoting: `$'it\'s # x'` is ONE quoted word, so the `#` in it starts no comment - the command
+  // reaches the quote parse exactly as it did at base, nothing blanked.
+  const { scanShell } = require('../stack/hooks/shell-writes.js');
+  const ansi = `echo $'it\\'s # x' > ${target}`;
+  assert.strictEqual(scanShell(ansi).command, ansi, 'an ANSI-C string blanks nothing');
+});
