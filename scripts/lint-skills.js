@@ -861,6 +861,17 @@ function lintOptionalCites(file, text, optional, opts = {})
     return findings;
 }
 
+// 15b. An AGENT description is capped far below check 15: the dispatcher's listing carries every enabled
+// seat's description in the first call of every session (pilot 2, 2026-09-27: 13.5k chars for 30 seats).
+// The description is the 'Use when...' sentence plus its 'Do NOT use' clause; the rest lives in the
+// agent's body, which only a dispatched seat pays for.
+const AGENT_DESC_LIMIT = 300;
+function lintAgentDescription(label, description)
+{
+    if (typeof description !== 'string' || description.length <= AGENT_DESC_LIMIT) return [];
+    return [`${label} description is ${description.length} chars (> ${AGENT_DESC_LIMIT}) - keep the 'Use when...' sentence and its 'Do NOT use' clause, and move the rest into the agent body`];
+}
+
 // 37. A plugin-qualified name (`superpowers:verification-before-completion`) is a cite of a skill
 // the stack does not own and cannot guarantee: the plugin is per-install on Claude Code and
 // documented OPTIONAL on the cursor-stack twin. Naming it BARE teaches a seat without the plugin
@@ -1708,6 +1719,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
+        if (label.startsWith('agents/')) for (const finding of lintAgentDescription(label, meta && meta.description)) flag(finding);
     }
 
     // 16. An agent told to invoke the Skill tool must carry 'Skill' in its tools:
@@ -3095,6 +3107,7 @@ module.exports = {
     lintPreloadClaims,
     lintOptionalCites,
     lintPluginCites,
+    lintAgentDescription,
     lintAgentTools,
     lintAgentMemoryTools,
     MEMORY_TOOLS,

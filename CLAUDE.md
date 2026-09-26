@@ -683,9 +683,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (115,792 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 50,478 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, the MCP role names added +311, the desktop-automation description +793, and alfred-capture-claude-md's +688). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (87,307 on 2026-09-27: pathless rules 24,481, agent descriptions 12,516, skill descriptions 50,310 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
-  own floor.
+  own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
+  'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries
+  every enabled seat's description in every session's first call.
 
 ## Maintenance gotchas
 

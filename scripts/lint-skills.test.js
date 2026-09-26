@@ -1160,3 +1160,17 @@ test('lintPageScripts flags an inline page script node --check refuses, and the 
     assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: '<html><body>no script</body></html>' }), [], 'no inline script, nothing to check');
     assert.deepStrictEqual(lintPageScripts(), [], 'docs/alfred-code.html: its script parses');
 });
+
+// Pilot 2 (2026-09-27): the dispatcher's agent listing carried 13.5k chars of descriptions for 30 seats
+// in every session's first call. A description is the 'Use when...' sentence plus its 'Do NOT use' clause;
+// anything longer belongs in the agent's own body, which only a dispatched seat pays for.
+test('an agent description is capped at 300 chars', () =>
+{
+    const { lintAgentDescription } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', 'x'.repeat(299)), [], 'one under');
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', 'x'.repeat(300)), [], 'at the cap');
+    const over = lintAgentDescription('agents/a.md', 'x'.repeat(301));
+    assert.strictEqual(over.length, 1, 'one over');
+    assert.match(over[0], /agents\/a\.md description is 301 chars \(> 300\)/);
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
+});

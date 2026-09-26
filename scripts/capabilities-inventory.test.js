@@ -377,7 +377,8 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 test('--verify: a hand-edited policy block fails, and a resolved <docs-path> does not', { skip: posixOnly }, () =>
 {
     const root = project('verify-policy');
-    const edited = validRule().replace('Over-loading a simple', 'Over loading a simple');
+    const edited = validRule().replace('never to answer a question', 'never to answer questions');
+    assert.notStrictEqual(edited, validRule(), 'the fixture edit landed on a sentence the policy block still carries');
     const ruleA = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), edited);
     assert.match(run(['--verify', ruleA], { cwd: root }).out, /policy block:\s+FAIL - differs from the skill at line \d+/);
 

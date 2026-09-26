@@ -78,3 +78,27 @@ The measured anecdotes behind the always-on `stack/rules/baseline-*.md` clauses,
 - baseline-quality-gates.md - **A command's exit status is read immediately or it is gone** - measured: one session used it correctly and then, 5h24m later, read a pipeline's status as the pager's
 - baseline-security.md - **`/security-review` is the UNBOUNDED route** - measured: five runs delivered ZERO content while overflowing their injected sections to `<persisted-output>` at 116 KB, 187 KB and 11.3 MB - one of those on a branch level with origin with a clean tree at session start
 - baseline-security.md - **Hardcoded secret found: ... the turn ends on the ask** - measured: a discovered exposure stated as prose was abandoned in 3 of 3 sessions
+
+## 2026-09-27 trim (pilot 3) - the reason clauses cut to one line
+
+Pilot 2's first model call carried 40.1k chars of pathless rules in every `ours` cell. Each clause below
+kept its imperative and a one-line reason in the rule; the longer story moved here.
+- baseline-navigation.md - **Never Read a screenshot mid-loop** - an image result is base64 in the transcript and is re-sent as cache-read on every later turn, so one iteration read is paid for the rest of the session
+- baseline-navigation.md - **A large symbol is fetched WITHOUT its body first** - a multi-thousand-token symbol body costs more than the ranged Read it was meant to avoid
+- baseline-navigation.md - **`get_symbols_overview` takes ONE file** - a directory call only errors and costs the round trip
+- baseline-navigation.md - **When compacting, keep verbatim** - measured: two sessions each re-read 18 files after a compaction, one of them the plan the summary should have carried; the analyzer's compaction re-read row checks this line
+- baseline-navigation.md - **Single-quote a glob the TOOL owns** - `zsh:1: no matches found: --include=*.cs`, which `2>/dev/null` does not suppress; the command never ran and the harness flags no error - measured many times, including a security scan whose 'no secrets found' was an aborted command
+- baseline-navigation.md - **Scratch code goes outside the tracked tree** - an ESM script cannot `import` the project's `node_modules` from outside the repo because NODE_PATH is ignored by ESM
+- baseline-interaction.md - **A number presented as measured names its command** - measured: a performance table asserted from another session's memory, withdrawn when the user challenged it
+- baseline-interaction.md - **an AskUserQuestion's question, labels and descriptions included** - the Stop hook reads the answer text and never sees an ask, so that surface failed 10 measurements out of 10
+- baseline-interaction.md - **In JSON or code a string's delimiters stay double** - `{"label": "Today's sessions"}` is right; re-delimiting the value with single quotes is invalid JSON and cost a measured retry
+- baseline-interaction.md - **A written plan file only when the user asks for a plan or the work spans sessions** - measured, pilot 2: `ours` wrote and re-ticked a `superpowers/plans/*.md` file in 6 of 12 single-session cells, after its last test
+- baseline-security.md - **the `COMMIT-GATE` receipt is written `VERIFIED` only after the review ran** - an auth-path diff committed on the code review alone shipped unreviewed to a shared branch
+- baseline-security.md - **`permissions.deny` blocks only the Read TOOL** - measured: an account carrying `Read(**/config.json)` returned two Bash `cat`s of a config.json unblocked
+- baseline-security.md - **Name a credential by its KEY and char count** - 'the token ending ...' leaks the value into prose the transcript keeps forever, and identifies nothing the key does not
+- baseline-quality-gates.md - **A green build proves the code compiles, not that its API is current** - a wrong version-coupled claim ships silently because the compiler has no opinion about it; a registry `npx` / `curl` answers a version number, not the API shape, and leaves the installed server unused
+- baseline-quality-gates.md - **a bare process-name grep** - `pgrep -f 'dotnet test'` matches a sibling project's run
+- baseline-quality-gates.md - **Tear down only AFTER the answer** - measured: a run that tore down first and asked second paid a second up-build-down cycle when the answer arrived 1h47m later and said keep it
+- alfred-capture-agent-capabilities usage policy - **A slash-only skill ... is the USER's to type** - do not rely on the harness to stop you, and never spend the turn explaining that you cannot or weighing whether to
+- alfred-capture-agent-capabilities usage policy - **A deliberate orchestration skill starts in a fresh session** - the rule is MECHANIZED by the hook; the prose form of it did not hold, so it is never restated as a reminder
+- agents - every description over 300 chars kept its 'Use ...' sentence and its 'Do NOT use' clause; the full original text is the `## Scope` section at the top of the agent's body

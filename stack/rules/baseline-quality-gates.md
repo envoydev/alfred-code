@@ -20,17 +20,8 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 
 ### Claims about the outside world
 
-A green build proves the code COMPILES, never that the API it calls is current: any claim about a
-package, a version floor, an API shape, a config key or a deprecation is checked against the `documentation` server
-(Context7, the docs-lookup MCP - this rule locks it into every install) at the moment you write it - the docs
-are the authority, recall is not, and a wrong version-coupled claim ships silently because the
-compiler has no opinion about it. Prefer the durable policy plus a fetch-at-use pointer over a
-pinned number, so the artifact keeps the judgment and the drifting fact is fetched live. Use the
-REGISTERED server, not a shell stand-in: a `npx`/`curl` at a registry answers a different, narrower
-question (a version number, not the API shape) and leaves the server that was installed for this
-unused. Its tools arrive DEFERRED - the names exist, the schemas do not - so the first use is two
-calls, not one: `ToolSearch select:mcp__plugin_documentation_documentation__resolve-library-id,mcp__plugin_documentation_documentation__query-docs`,
-then the query. The documentation server unreachable: say the claim is unverified rather than asserting it.
+- A green build proves the code compiles, not that its API is current: a claim about a package, version floor, API shape, config key or deprecation is checked against the `documentation` server (Context7, locked into every install) as you write it - recall is not the authority. Prefer the durable policy plus a fetch-at-use pointer over a pinned number.
+- Use that server, not a shell stand-in (an `npx` or a registry `curl` answers only a version number). Its tools are DEFERRED: `ToolSearch select:mcp__plugin_documentation_documentation__resolve-library-id,mcp__plugin_documentation_documentation__query-docs`, then the query. Unreachable: say the claim is unverified.
 
 ### Partial work
 
@@ -39,33 +30,6 @@ one option each, recommendation marked (a prose-only ask gets skipped).
 
 ## Long-running and leftover work
 
-### Background work
-
-A wait measured in MINUTES is not a foreground command. A CI run, a container build, a full suite,
-an emulator boot: start it in the background and go on with work that does not depend on it, rather
-than blocking the turn on it. Arm the blocking wait when you background the job, not after polling
-it - the wait tool is DEFERRED, so `ToolSearch` loads it first. A polling wait or a
-'what is running' answer keys on a specific PID, marker file, or output sentinel - never a bare
-process-name grep (`pgrep -f 'dotnet test'` matches a sibling project's run). Task lists track
-created tasks only, never background shells - check the shell's own PID and listening ports before
-claiming nothing runs.
-
-### What the run started, and what the run wrote
-
-Started infrastructure: anything the run started or seeded to build, test, or verify - a Docker
-container or compose stack, an integration-test database and its seeded data, a dev server, an
-emulator, a background watcher - never outlives the work silently. At close, list exactly what
-is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's existing
-close ask where one fires), teardown recommended for the disposable. The teardown RUNS AFTER that
-ask is answered, never before it - a run that tore down first and asked second paid a second
-up-build-down cycle when the answer arrived 1h47m later and said keep it. Never stop or wipe what
-you did not start - the ask covers only what this run brought up.
-
-Generated files are the same contract with a different default: anything the run wrote only to
-build, test or verify - a scratch script or probe, a temp fixture or sandbox directory, a coverage
-or log dump, a downloaded sample - is DELETED as soon as the check that needed it passes, no ask (it
-is working state, not output; the ask covers only what is still running). Three exceptions survive:
-the user asked for the file, a later step still needs it, or it is a real deliverable (a report
-under `<docs-path>`, a committed fixture) - name those in the close. Never delete a file this run
-did not create, and never leave the repo dirtier than you found it: `git status` at the close
-shows only the intended change.
+- A wait measured in MINUTES (a CI run, a container build, a full suite, an emulator boot) runs in the background while you do work that does not depend on it; arm the blocking wait when you start it (the wait tool is deferred - `ToolSearch` first). A 'what is running' check keys on a specific PID, marker file or output sentinel, never a bare process-name grep; task lists track tasks, not shells.
+- Infrastructure the run started to build, test or verify (a container or compose stack, a test database and its data, a dev server, an emulator, a watcher) never outlives the work silently: at close list what is still up and put tear-down-vs-keep through AskUserQuestion (batched into the flow's close ask), teardown recommended for the disposable. Tear down only AFTER the answer, and never what you did not start.
+- Files the run wrote only to build, test or verify (a scratch script, a temp fixture, a coverage or log dump, a downloaded sample) are deleted once their check passes, no ask - unless the user asked for them, a later step needs them, or they are a deliverable; name those in the close. Never delete what this run did not create; `git status` at the close shows only the intended change.
