@@ -41,6 +41,8 @@ const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
+// Every settings path the stack seeds, with its seed value - the ledger records them and a scope move takes them along.
+const SEEDED_SETTINGS = [...ATTRIBUTION_OFF.map(([k, v]) => [`attribution.${k}`, v]), ['worktree.baseRef', 'head']];
 
 const HOOKS_DIR_MARK = '/.claude/hooks/';
 
@@ -804,7 +806,7 @@ function sharedOnlyDeny(claudeDir)
 // file - the user's own keys, allow list, hooks, `autoMemoryEnabled` - stays as it was. A file that
 // cannot be read or written moves nothing: half a move would strand entries in neither file.
 const ENV_PREFIX = 'ALFRED_CODE_';
-function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, log = () => {}, note = () => {} })
+function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs = [], seeds = {}, written = [], ledgerEnv: recorded = null, ledgerSettings = null, log = () => {}, note = () => {} })
 {
     const localFile = path.join(claudeDir, 'settings.local.json');
     const sharedFile = path.join(claudeDir, 'settings.json');
@@ -840,9 +842,32 @@ function leaveLocalScope({ claudeDir, hookFiles = [], mcpNames = [], denySpecs =
         delete env[key];
         localChanged = true;
     }
-    if (seedsGone.length)
-        say(`${seedsGone.length} stack env key${seedsGone.length === 1 ? '' : 's'} removed - each held the stack's own seed, so settings.json's value or its seed applies from here on: ${seedsGone.join(', ')}`);
     if (env && !Object.keys(env).length) delete local.env;
+
+    // The settings seeds (attribution, worktree.baseRef) leave too: left here they would override a value the
+    // team later sets in settings.json. The ledger's entries exactly; with no ledger, the seed value.
+    const settingsGone = [];
+    for (const [at, seed] of SEEDED_SETTINGS)
+    {
+        const [obj, key] = at.split('.');
+        const holder = isObj(local[obj]) ? local[obj] : null;
+        if (!holder || !Object.hasOwn(holder, key)) continue;
+        const json = JSON.stringify(holder[key]);
+        if (ledgerSettings ? ledgerSettings[at] !== valueHash(json) : json !== JSON.stringify(seed))
+        {
+            say(`${at} stays here (your value) - it applies over settings.json`);
+            continue;
+        }
+        delete holder[key];
+        if (!Object.keys(holder).length) delete local[obj];
+        settingsGone.push(at);
+        localChanged = true;
+    }
+    // C18: every seed that left is ONE line.
+    const alsoSettings = settingsGone.length ? `; and the settings seeds ${settingsGone.join(', ')}` : '';
+    if (seedsGone.length)
+        say(`${seedsGone.length} stack env key${seedsGone.length === 1 ? '' : 's'} removed - each held the stack's own seed, so settings.json's value or its seed applies from here on: ${seedsGone.join(', ')}${alsoSettings}`);
+    else if (settingsGone.length) say(`the stack's settings seeds removed - settings.json's value or its seed applies from here on: ${settingsGone.join(', ')}`);
 
     const perms = isObj(local.permissions) ? local.permissions : null;
     const deny = perms && Array.isArray(perms.deny) ? perms.deny : [];

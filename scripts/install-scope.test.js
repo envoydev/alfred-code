@@ -755,6 +755,8 @@ test('install-scope: a local install moved to project scope drops its seeded key
     assert.match(outs[1], /settings\.local\.json: \d+ stack env keys removed - each held the stack's own seed, so settings\.json's value or its seed applies from here on: [A-Z_, ]*ALFRED_CODE_INSTRUMENT/, outs[1]);
     assert.match(outs[1], /stack env keys removed - [^\n]*ALFRED_CODE_DOCS_VERSIONING/, outs[1]);
     assert.strictEqual((outs[1].match(/^==> +settings\.local\.json: .* removed/gm) || []).length, 1, outs[1]);
+    assert.ok(!('attribution' in result.local) && !('worktree' in result.local), `the stack's settings seeds stayed local: ${JSON.stringify(result.local)}`);
+    assert.deepStrictEqual(result.shared.attribution, { commit: '', pr: '', sessionUrl: false }, 'settings.json carries them from here on');
     assert.ok(String(result.local.env.ALFRED_CODE_MEMORY_DB || '').endsWith('memory.db'), 'the machine\'s memory path left settings.local.json (C8)');
     assert.ok(!('ALFRED_CODE_MEMORY_DB' in result.shared.env), 'the machine\'s memory path reached the committed settings.json (C8)');
 });

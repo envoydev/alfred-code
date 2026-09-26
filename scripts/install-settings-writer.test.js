@@ -677,6 +677,29 @@ test('leaveLocalScope: seed-valued stack keys leave, a value the user set stays 
     assert.strictEqual(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'), before);
 });
 
+// Matrix OBS-A (2.0.0): after a local -> project move the stack's own attribution block stayed in
+// settings.local.json, where it overrides a value the team later sets in settings.json.
+test('leaveLocalScope: the stack\'s attribution and worktree seeds leave the local file, the user\'s own values stay', () =>
+{
+    const dir = path.join(TMP, `leave-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const put = (local) => { fs.writeFileSync(path.join(dir, 'settings.json'), '{}'); fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify(local)); };
+    const localNow = () => JSON.parse(fs.readFileSync(path.join(dir, 'settings.local.json'), 'utf8'));
+    put({ attribution: { commit: '', pr: '', sessionUrl: false }, worktree: { baseRef: 'head' }, MINE: 1 });
+    const logs = [];
+    leaveLocalScope({ claudeDir: dir, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(localNow(), { MINE: 1 }, 'no ledger: the seed values are the stack\'s');
+    assert.match(logs.join('\n'), /settings seeds removed - [^\n]*: attribution\.commit, attribution\.pr, attribution\.sessionUrl, worktree\.baseRef$/m);
+
+    put({ attribution: { commit: 'Team X', pr: '' }, worktree: { baseRef: 'fresh', bgIsolation: 'none' } });
+    leaveLocalScope({ claudeDir: dir, log: () => {} });
+    assert.deepStrictEqual(localNow(), { attribution: { commit: 'Team X' }, worktree: { baseRef: 'fresh', bgIsolation: 'none' } }, 'a value the user set stays');
+
+    put({ attribution: { commit: '', pr: '' } });
+    leaveLocalScope({ claudeDir: dir, ledgerSettings: { 'attribution.pr': valueHash('""') }, log: () => {} });
+    assert.deepStrictEqual(localNow(), { attribution: { commit: '' } }, 'with a ledger only what it lists goes - the user typed commit');
+});
+
 test('leaveLocalScope: no local file, a malformed one, or a malformed settings.json moves nothing (R78)', () =>
 {
     const dir = path.join(TMP, `leave-${seq++}`, '.claude');

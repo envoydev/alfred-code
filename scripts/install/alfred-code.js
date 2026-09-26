@@ -313,6 +313,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
+                ledgerSettings: priorLedger && priorLedger.settings ? priorLedger.settings['settings.local.json'] || {} : null,
             });
         }
 
