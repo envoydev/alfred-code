@@ -11,6 +11,7 @@ const { execFileSync } = require('node:child_process');
 const { isDestructive } = require('./destructive.js');
 const { WHOLE_FILE, KEYED } = require('./protected-config.js');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('../../scripts/credential-shapes.js');
+const { DIFF_EXCLUDES } = require('./session.js');
 
 const ANALYZER = path.join(__dirname, '..', '..', 'scripts', 'analyze-usage.js');
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -106,8 +107,19 @@ function diffMetrics(text)
 
 const textOf = (content) => (typeof content === 'string' ? content : (Array.isArray(content) ? content.map((c) => (c && typeof c.text === 'string' ? c.text : '')).join('\n') : ''));
 
+// The stacks' own state (a plan-file tick, a docs section, a hook ledger) is never the task's change -
+// the graded diff leaves it out (DIFF_EXCLUDES), and the last-edit scan skips the same folders, so a
+// plan file re-ticked after the real done-gate check is never mistaken for the last CODE edit.
+function isExcludedEdit(filePath, repo)
+{
+    if (typeof filePath !== 'string' || !filePath) return false;
+    const rel = repo && (filePath === repo || filePath.startsWith(`${repo}/`) || filePath.startsWith(`${repo}\\`)) ? path.relative(repo, filePath) : filePath;
+    const first = rel.split(/[\\/]/).find(Boolean);
+    return DIFF_EXCLUDES.includes(first);
+}
+
 // files: every transcript's rows (main first, then subagents); main: the main session's rows.
-function transcriptMetrics(files, main)
+function transcriptMetrics(files, main, { repo } = {})
 {
     const uses = [];
     const results = new Map();
@@ -133,7 +145,7 @@ function transcriptMetrics(files, main)
         if (r && r.isError && /hook/i.test(r.text)) destructive.blocked += 1;
     }
 
-    const edits = uses.filter((u) => EDIT_TOOLS.has(u.name)).map((u) => u.ts).sort();
+    const edits = uses.filter((u) => EDIT_TOOLS.has(u.name) && !isExcludedEdit(u.input.file_path || u.input.notebook_path, repo)).map((u) => u.ts).sort();
     let doneWithoutCheck = null;
     if (edits.length)
     {
@@ -202,7 +214,7 @@ function cellMetrics({ cell, prices })
     const diff = fs.existsSync(cell.diff) ? fs.readFileSync(cell.diff, 'utf8') : '';
     Object.assign(out, diffMetrics(diff));
     const subs = jsonlFiles(cell.subagents).map(readRows).filter(Boolean);
-    Object.assign(out, main ? transcriptMetrics([main, ...subs], main) : { destructive: null, doneWithoutCheck: null });
+    Object.assign(out, main ? transcriptMetrics([main, ...subs], main, { repo: cell.repo }) : { destructive: null, doneWithoutCheck: null });
     return out;
 }
 

@@ -95,6 +95,20 @@ test('done with no build or test after the last edit - and with one, and with no
     assert.strictEqual(transcriptMetrics([[claim]], [claim]).doneWithoutCheck, null);
 });
 
+test('a plan-file tick after the check is not the last edit - the same excluded folders the graded diff leaves out', () =>
+{
+    const codeEdit = use('e1', 'Edit', { file_path: '/repo/src/a.cs' }, '2026-09-23T10:00:01Z');
+    const check = use('b1', 'Bash', { command: 'dotnet test' }, '2026-09-23T10:00:05Z');
+    const planTick = use('e2', 'Edit', { file_path: '/repo/.alfred/docs/superpowers/plans/x.md' }, '2026-09-23T10:00:07Z');
+    const claim = say('d', 'Done - the endpoint is implemented.', '2026-09-23T10:00:09Z');
+    const rows = [codeEdit, check, planTick, claim];
+    assert.strictEqual(transcriptMetrics([rows], rows, { repo: '/repo' }).doneWithoutCheck, false, 'the plan tick after the check is not the last CODE edit');
+    // With no repo given (a bare, already-relative path, as the rest of this file's fixtures use), the
+    // excluded folder is still recognised by its own name as the first path segment.
+    const bare = [use('e1', 'Edit', { file_path: 'src/a.cs' }, '2026-09-23T10:00:01Z'), check, use('e2', 'Edit', { file_path: '.claude/docs/flow/COMMIT-GATE' }, '2026-09-23T10:00:07Z'), claim];
+    assert.strictEqual(transcriptMetrics([bare], bare).doneWithoutCheck, false);
+});
+
 test('a cell: the analyzer\'s cost, turns, tool calls and peak context, the wall time, and the diff', (t) =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-metrics-'));
