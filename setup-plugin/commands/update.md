@@ -207,6 +207,11 @@ It prints, in order:
   `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
   not be read). A rename whose old name the stamp's picks never named and the disk never held
   prints no row - it was declined under that name.
+- `docs-move: offer <from> -> <to><TAB>tracked=<n> untracked=<n>[<TAB>conflicts=<n>]` - this install
+  still writes its docs under the OLD default `.claude/docs` (the stack's own seed, never a root the
+  user chose); `docs-move: repoint ...` (the old root holds nothing - the installer takes the new
+  default itself, report its log line) or `docs-move: none (<why>)` otherwise. Only `offer` is asked,
+  below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. **Never dump that file** - a plain `cat` of it put a live 71-character
@@ -256,6 +261,22 @@ path runs, and so does every `renamed` row, unasked; every `was-off` row becomes
 `--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh.
 
+**The docs root - ONE ask, and only on `docs-move: offer`.** 2.0.0 moved the default docs root from
+`.claude/docs` to `.alfred/docs`: Claude Code prompts for every write under `.claude/` - every plan,
+capture and commit receipt - denies it in `dontAsk`, and no allow rule lifts it
+(code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves without this answer. One
+AskUserQuestion, before the installer runs: **Move to .alfred/docs (Recommended)** - the `tracked`
+files move through `git mv` (history kept, staged as renames for the user to commit), the rest by
+rename, in one step, and the docs-root rule is re-stamped; nothing else is written - or **Keep at
+.claude/docs** - `ALFRED_CODE_DOCS_PATH=.claude/docs` becomes the user's own value and no later update
+asks again. The answer is `--docs-move move` or `--docs-move keep` on the installer call of whichever
+path runs. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one question
+each. A `conflicts=<n>` field means files already sit at the new root: do not ask - name the count,
+run without the flag (the old root stays in effect), and the next update offers again once they are
+moved. After a move the log carries `docs root: moved ...`, the `--log` call prints `restart: yes`,
+and until that restart this session writes under the NEW root - its loaded rule text still names
+the old one.
+
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through
 `stack-select.js`, and logs any `installed-only: required:` additions:
@@ -264,7 +285,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 post-install read below has a file that was actually written (the shared contract is in
 `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--docs-move move|keep] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
@@ -340,7 +361,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -498,6 +519,9 @@ what was taken, what stays off or was left, each by name), and the restart line.
   .claude/settings.local.json to .gitignore` line carries the `!!` marker (a machine path would
   otherwise be committed), so it also arrives as a `warn:` line - report it once, here, not again
   under RESTART / WARN.
+- **DOCS ROOT** - every `docs root:` / `docs move:` line the grep caught, verbatim: the move (with its
+  `git mv` count, which the user commits), the kept root, the re-point, the refused move with its files,
+  or the offer still open when no answer was passed.
 - **MEMORY** - when the grep caught a memory line, report it verbatim: the `memory:` level/database
   line (present whenever `--memory-level` was passed, the level changed, or this run adopted the
   registration for the first time - the fast path's own default now, whenever it was absent, not

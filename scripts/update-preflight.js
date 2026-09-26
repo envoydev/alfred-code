@@ -29,6 +29,10 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
+//   docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tconflicts=<n>]
+//            | repoint <from> -> <to> (nothing to move) | none (<why>)
+//                                           (the one-time move out of the old default docs root;
+//                                           a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
@@ -39,7 +43,8 @@
 // form - and prints the RESTART/'!!' facts the update close-out used to judge from a raw grep
 // dump in the model, one of two report rows the update.md BLOCKER measured missing 1-in-4/1-in-5:
 //
-//   restart: yes|no                         (mcps=<n> above 0 in the log, or --hooks <n> above 0)
+//   restart: yes|no                         (mcps=<n> above 0 in the log, --hooks <n> above 0, or a
+//                                           moved docs root)
 //   warn: <line>                            (one per '!!' fail-soft line; none printed if none)
 const fs = require('node:fs');
 const path = require('node:path');
@@ -304,7 +309,9 @@ function runLogMode(logFile)
     for (const l of warnLines) console.log(`warn: ${l.trim()}`);
     const m = /mcps=(\d+)/.exec(text);
     const mcps = m ? Number(m[1]) : 0;
-    console.log(`restart: ${(mcps > 0 || hooks > 0) ? 'yes' : 'no'}`);
+    // A moved docs root: the session's loaded baseline-docs-root rule still names the old one.
+    const docsMoved = /docs root: moved /.test(text);
+    console.log(`restart: ${(mcps > 0 || hooks > 0 || docsMoved) ? 'yes' : 'no'}`);
 }
 
 function main()
@@ -386,6 +393,19 @@ function main()
     const routeDir = arg('--settings') ? path.dirname(path.resolve(arg('--settings'))) : accountDir ? path.resolve('.claude') : claudeDir;
     const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
     for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines, routes })) console.log(l);
+
+    // The one-time docs-root offer, from the rule the installer applies (docs.docsMovePlan): the same
+    // settings view the docs root is read from, and the stamp's ledger for who wrote the value.
+    if (!accountDir)
+    {
+        const docs = require('./install/docs.js');
+        const view = settingsLib.readBackSettings(claudeDir, stampScope === 'local' ? 'local' : 'project').env || {};
+        const ledger = require('./install/stamp.js').readLedger(stampFile);
+        const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
+        console.log(docs.docsMoveLine(docs.docsMovePlan({
+            projectRoot: path.resolve(root), env: view, ledger: managed, stamped: fs.existsSync(stampFile), launchEnv: process.env,
+        })));
+    }
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);

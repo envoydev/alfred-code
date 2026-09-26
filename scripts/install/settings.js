@@ -234,7 +234,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -251,6 +251,20 @@ function applyEnv(env, { catalog, migrations, docsVersioning, memoryDb, hooksOff
     const at = (key) => (heldHere(key) ? { into: held, lab: overlayLabel, mine: false } : { into: env, lab: label, mine: true });
 
     if (retireAndReseed(env, migrations, log, label)) changed = true;
+
+    // 3b. THE DOCS ROOT DECISION (docs.docsMovePlan) - before the seeds, so the absent-only default never
+    // lands first: a moved or re-pointed root, a kept old one, or the old root held while its move is offered.
+    if (docsPath && docsPath.value)
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_DOCS_PATH');
+        const old = into.ALFRED_CODE_DOCS_PATH;
+        if (old !== docsPath.value)
+        {
+            into.ALFRED_CODE_DOCS_PATH = docsPath.value;
+            if (mine) changed = true;
+            log(`  ${lab} env: ALFRED_CODE_DOCS_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${docsPath.value}' (${docsPath.why})`);
+        }
+    }
 
     // 4. SEEDS - absent-only, from the catalog, which is the one list.
     for (const row of catalog)
@@ -404,7 +418,7 @@ function renamedFrom(key, value, before, migrations)
 // The env half, for one file: the drop, then the managed map. `release` is every key the catalog ships;
 // `seedsOf(key)` what the stack ever seeded it with (the fallback's evidence); `written` the keys this
 // run overwrites by contract, with the value it wrote.
-function ledgerEnv({ name, env, before, prior, release, seedsOf, written, migrations, log })
+function ledgerEnv({ name, env, before, prior, release, seedsOf, written, userOwned = [], migrations, log })
 {
     let changed = false;
     if (prior)
@@ -418,6 +432,7 @@ function ledgerEnv({ name, env, before, prior, release, seedsOf, written, migrat
     const managed = {};
     for (const key of Object.keys(env).filter(isStackKey))
     {
+        if (userOwned.includes(key)) continue;   // an answer this run made the value the user's
         const v = env[key];
         const hash = valueHash(v);
         const from = renamedFrom(key, v, before, migrations);
@@ -437,7 +452,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
-        docsVersioning, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        docsVersioning, docsPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
@@ -634,23 +649,24 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const localName = localFile ? path.basename(localFile) : null;
     const reseeds = (key) => (migrations.reseed || []).filter(([k]) => k === key).flatMap(([, bad, to]) => [bad, to]);
-    const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).map((r) => String(r.default)), ...reseeds(key),
+    const seedsOf = (key) => [...catalog.filter((r) => r.key === key && !r.written).flatMap((r) => [String(r.default), ...(r.former_defaults || []).map(String)]), ...reseeds(key),
         ...(key === 'ALFRED_CODE_DOCS_VERSIONING' && docsVersioning && docsVersioning.seed ? [docsVersioning.seed] : [])];
     const releaseEnv = new Set(catalog.map((r) => r.key));
     const writtenNow = memoryDb ? { ALFRED_CODE_MEMORY_DB: memoryDb } : {};
     const priorEnv = (name) => (prior && prior.env ? prior.env[name] || {} : null);
     const managedEnv = {};
-    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, migrations, log });
+    const userOwned = docsPath && docsPath.own === 'user' ? ['ALFRED_CODE_DOCS_PATH'] : [];
+    const envShared = ledgerEnv({ name: label, env: data.env, before: envBefore, prior: priorEnv(label), release: releaseEnv, seedsOf, written: writtenNow, userOwned, migrations, log });
     if (envShared.changed) changed = true;
     managedEnv[label] = envShared.managed;
     if (overlay)
     {
-        const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, migrations, log });
+        const envLocal = ledgerEnv({ name: localName, env: overlay, before: localEnvBefore, prior: priorEnv(localName), release: releaseEnv, seedsOf, written: writtenNow, userOwned, migrations, log });
         managedEnv[localName] = envLocal.managed;
     }
     const priorDeny = prior && prior.deny ? prior.deny : null;

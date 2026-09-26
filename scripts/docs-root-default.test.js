@@ -144,7 +144,7 @@ test('a versioning switch replaces the stack\'s own file, and a re-run changes n
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'current');
 });
 
-test('a docs root outside the project, or an unknown mode, is left alone', () =>
+test('a docs root outside the project, under .claude/, or with an unknown mode is left alone', () =>
 {
     const root = repo();
     const outside = path.join(TMP, `elsewhere-${seq++}`);
@@ -152,5 +152,7 @@ test('a docs root outside the project, or an unknown mode, is left alone', () =>
     assert.ok(!fs.existsSync(path.join(outside, '.gitignore')));
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '../sibling/docs', mode: 'local' }), 'outside');
     assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'bogus' }), 'skipped');
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.claude/docs', mode: 'git' }), 'skipped', 'a root under .claude/ is the project\'s .claude/* line\'s');
+    assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', '.gitignore')));
     assert.ok(!fs.existsSync(ignoreOf(root)));
 });

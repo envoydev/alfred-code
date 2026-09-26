@@ -304,7 +304,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         if (leavingLocal && !args.printPlan)
         {
             const rows = readJson(path.join(resolved.dir, 'meta', 'environment.json')).env || [];
-            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, [r.default]]));
+            const seeds = Object.fromEntries(rows.filter((r) => !r.written).map((r) => [r.key, [r.default, ...(r.former_defaults || [])]]));
             seeds.ALFRED_CODE_DOCS_VERSIONING = [docs.docsVersioningSeed({ projectRoot, docsPath: copy.resolveDocsRoot(projectRoot, args.scope) })];
             for (const [key, shippedSeed] of envMigrations(readJson(path.join(resolved.dir, 'meta', 'migrations.json'))).reseed)
                 (seeds[key] ??= []).push(shippedSeed);
@@ -664,6 +664,7 @@ function runLayers(ctx)
     installMcps(ctx);
     desktopNotes(ctx);
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
+    docsRootStep(ctx);
     installHooksAndRules(ctx);
     importMemory(ctx);
     const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
@@ -692,6 +693,65 @@ function runLayers(ctx)
         log: ctx.log,
     });
     downconvert(ctx);
+}
+
+// The docs root this run leaves in effect, and the one-time move out of the old default
+// (docs.LEGACY_DOCS_ROOT, docs.docsMovePlan). Never silent: with no --docs-move answer the old root stays in effect - written
+// back as the stack's own value when the key is absent, so the hooks keep reading where the docs are -
+// and the offer is named for /alfred-code:update to ask. `ctx.docsPath` is the settings write
+// (applyEnv 3b), `ctx.docsRoot` the root the rules are stamped with.
+function docsRootStep(ctx)
+{
+    const { args, log, note } = ctx;
+    // What Claude Code applies - a stack key settings.local.json holds is read over settings.json - so a
+    // root the user keeps in the personal file is theirs, never re-pointed.
+    const view = settings.readBackSettings(ctx.claudeDir, args.scope === 'local' ? 'local' : 'project').env || {};
+    const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
+    const stamped = Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile);
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, env: view, ledger: managed, stamped, launchEnv: ctx.env });
+    ctx.docsPath = null;
+    if (plan.state !== 'offer' && args.docsMove) log(`docs move: nothing to offer (${plan.why}) - --docs-move ignored`);
+    if (plan.state === 'repoint')
+    {
+        ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old default held nothing' };
+        log(`docs root: ${plan.from} (the old default) holds nothing - re-pointed to ${plan.to}`);
+    }
+    else if (plan.state === 'offer')
+    {
+        const held = { value: plan.from, own: 'stack', why: 'its docs are still there' };
+        const count = plan.tracked.length + plan.untracked.length;
+        if (args.docsMove === 'keep')
+        {
+            ctx.docsPath = { value: plan.from, own: 'user', why: '--docs-move keep' };
+            log(`docs root: kept at ${plan.from} - ALFRED_CODE_DOCS_PATH is yours from here on; no update offers the move again`);
+        }
+        else if (args.docsMove === 'move' && plan.conflicts.length)
+        {
+            ctx.docsPath = held;
+            note(`docs root: not moved - ${plan.conflicts.length} file(s) already at ${plan.to}: ${plan.conflicts.slice(0, 5).join(', ')} - move or remove them, then run /alfred-code:update again`);
+        }
+        else if (args.docsMove === 'move')
+        {
+            const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
+            if (moved.ok)
+            {
+                ctx.docsPath = { value: plan.to, own: 'stack', why: '--docs-move move' };
+                log(`docs root: moved ${plan.from} -> ${plan.to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
+                    + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
+            }
+            else
+            {
+                ctx.docsPath = held;
+                note(`docs root: not moved - ${moved.error}; every file is back under ${plan.from}`);
+            }
+        }
+        else
+        {
+            ctx.docsPath = held;
+            log(`docs root: ${plan.from} is the old default and holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--docs-move move|keep); nothing moved`);
+        }
+    }
+    ctx.docsRoot = ctx.docsPath ? ctx.docsPath.value : copy.resolveDocsRoot(ctx.projectRoot, args.scope);
 }
 
 // A first run with no plugin cache installs the core entry FIRST, so its cache can serve the same
@@ -1288,7 +1348,7 @@ function installHooksAndRules(ctx)
     // that changes nothing about it neither rewrites it nor says it did (Task 8a concern 7).
     // On the copy route the tool-name re-spelling is rendered the same way, for every rule, so a rule
     // the re-spelling touches is not rewritten and logged on every run (R111).
-    const docsRoot = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    const docsRoot = ctx.docsRoot || copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
     const bare = ctx.routes.skills ? [] : bareNames(ctx);
     const respell = (text) => mcp.respellToolNames(text, bare);
     const ruleNames = ctx.lists.rules.map((f) => f.replace(/\.md$/, ''));
@@ -1304,7 +1364,7 @@ function installHooksAndRules(ctx)
     // A copy this run did not write may still hold the placeholder: stampDocsRoot substitutes it IN
     // PLACE, after copyLibrary already hashed it - re-hash the one file it touches, or `drift` fires
     // on every check from here on.
-    copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, log: ctx.log, note: ctx.note });
+    copy.stampDocsRoot(ctx.projectRoot, { scope: ctx.args.scope, value: docsRoot, log: ctx.log, note: ctx.note });
     if (Object.hasOwn(ctx.library.rules, DOCS_ROOT_RULE))
         ctx.library.rules[DOCS_ROOT_RULE] = library.hashItem(path.join(ctx.claudeDir, 'rules', `${DOCS_ROOT_RULE}.md`));
 
@@ -1347,8 +1407,9 @@ function installHooksAndRules(ctx)
             : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
         docsVersioning: {
             value: ctx.args.docsVersioning,
-            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope) }),
+            seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot }),
         },
+        docsPath: ctx.docsPath,
         // R124 (m): trust exactly the .mcp.json servers this run registered and lets load; every other
         // stack name leaves the list (a plugin-carried locked server, an engine left off, anything at
         // local or user scope). A name the user added is not a stack name and stays.

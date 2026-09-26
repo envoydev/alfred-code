@@ -184,11 +184,12 @@ function resolveDocsVersioning(projectRoot, scope)
 // makes an update re-stamp is the copy that precedes it - the stamped destination differs from the
 // pristine source, so the source is copied back and this writes the current value over a fresh
 // placeholder. The two halves are one behaviour; neither works alone.
-function stampDocsRoot(projectRoot, { scope, log = () => {}, note = () => {} } = {})
+function stampDocsRoot(projectRoot, { scope, value: given, log = () => {}, note = () => {} } = {})
 {
     const rule = path.join(projectRoot, '.claude', 'rules', DOCS_ROOT_RULE);
     if (!fs.existsSync(rule)) return false;
-    const value = resolveDocsRoot(projectRoot, scope);
+    // `value`: the root a run decided before its settings write lands (a docs-root move) - else the file's.
+    const value = given || resolveDocsRoot(projectRoot, scope);
     try
     {
         const text = fs.readFileSync(rule, 'utf8');

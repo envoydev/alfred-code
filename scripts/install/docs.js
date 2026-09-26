@@ -153,7 +153,7 @@ const DOCS_IGNORE = {
 };
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
-// the project) | 'skipped' (no versioning to state). A file that is exactly the stack's text for the
+// the project) | 'skipped' (no versioning to state, or a root under `.claude/`). A file that is exactly the stack's text for the
 // OTHER mode is the stack's and follows a versioning switch; any other text is the project's.
 function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
 {
@@ -162,6 +162,9 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     const base = path.resolve(root, String(docsPath || ''));
     const rel = path.relative(root, base);
     if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return 'outside';
+    // A root inside `.claude/` - the old default, kept or waiting on its move - never had a file of its
+    // own: the project's `.claude/*` line is what governs it, and a move offered must find nothing new there.
+    if (rel.split(path.sep)[0] === '.claude') return 'skipped';
     const file = path.join(base, '.gitignore');
     const want = DOCS_IGNORE[mode];
     let have = null;
@@ -179,4 +182,161 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     return have === null ? 'written' : 'replaced';
 }
 
-module.exports = { domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED };
+// THE ONE-TIME MOVE OUT OF THE OLD DEFAULT. Until 2.0.0 the stack seeded ALFRED_CODE_DOCS_PATH with
+// LEGACY_DOCS_ROOT (meta/environment.json `former_defaults`), under a folder Claude Code protects: every plan,
+// capture and receipt the model wrote there cost a prompt, and a headless run could not write it at all.
+// An install on that root is never moved silently. The plan says whether there is anything to OFFER;
+// update asks once; `--docs-move move` moves the tree, `--docs-move keep` makes the old root the user's.
+const LEGACY_DOCS_ROOT = '.claude/docs';
+const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH']; // legacy-name
+const normRoot = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+const heldIn = (env) => DOCS_PATH_KEYS.find((k) => env && typeof env[k] === 'string' && env[k] !== '') || null;
+
+// Every file under `dir`, relative, forward slashes - dot folders (`.branches/`) and ignored files included.
+function filesUnder(dir)
+{
+    const out = [];
+    const walk = (abs, rel) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
+        for (const e of entries)
+        {
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) walk(path.join(abs, e.name), r);
+            else out.push(r);
+        }
+    };
+    walk(dir, '');
+    return out.sort();
+}
+
+// 'none' (nothing to offer - `why` says which rule), 'repoint' (the stack's own seed names the old root
+// but nothing lives there, so the new default is simply taken) or 'offer', with what a move would carry.
+// `env` is the settings view the docs root is read from; `ledger` the last run's managed env keys
+// (null: a stamp from before the ledger, so the old seed value itself is the evidence); `launchEnv` the
+// environment the installer was started with.
+function docsMovePlan({ projectRoot, env = {}, ledger = null, stamped = false, launchEnv = {}, to = require('./copy.js').DOCS_ROOT_DEFAULT })
+{
+    const base = { from: LEGACY_DOCS_ROOT, to, tracked: [], untracked: [], conflicts: [] };
+    const none = (why) => ({ ...base, state: 'none', why });
+    if (!stamped) return none('no install record - a fresh install takes the new default');
+    // A settings file that does not parse reads as empty - an absent key, which would look like the old
+    // default applying. Whose root it names cannot be told, and the settings write would be refused anyway.
+    const broken = ['settings.json', 'settings.local.json'].find((name) =>
+    {
+        const file = path.join(projectRoot, '.claude', name);
+        if (!fs.existsSync(file)) return false;
+        try { const v = JSON.parse(fs.readFileSync(file, 'utf8')); return !v || typeof v !== 'object' || Array.isArray(v); }
+        catch { return true; }
+    });
+    if (broken) return none(`${broken} cannot be read`);
+    const key = heldIn(env);
+    // A settings `env` value applies over a shell export of the same variable
+    // (code.claude.com/docs/en/llm-gateway-connect), and a session exports its settings env to every
+    // command it runs - the installer included, often from before this run's own changes. So the launch
+    // environment names the root only where no settings file holds one.
+    const launched = heldIn(launchEnv);
+    if (launched && !key) return none(`${launched} is set to ${normRoot(launchEnv[launched])} in the launch environment`);
+    if (key)
+    {
+        if (normRoot(env[key]) !== LEGACY_DOCS_ROOT) return none(`the docs root is ${normRoot(env[key])}`);
+        const hash = require('./stamp.js').valueHash(env[key]);
+        const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : true;
+        if (!stacks) return none(`${key} was set by hand`);
+    }
+    const from = path.join(projectRoot, ...LEGACY_DOCS_ROOT.split('/'));
+    const files = filesUnder(from);
+    if (!files.length) return { ...base, state: 'repoint', why: 'nothing is under the old root' };
+    let tracked = [];
+    try
+    {
+        const listed = rt.execCommand('git', ['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const prefix = `${LEGACY_DOCS_ROOT}/`;
+        tracked = String(listed).split('\0').filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
+    }
+    catch { tracked = []; }   // no repository: every file is a plain move
+    const onDisk = new Set(files);
+    tracked = tracked.filter((f) => onDisk.has(f)).sort();
+    const isTracked = new Set(tracked);
+    const dest = path.join(projectRoot, ...normRoot(to).split('/'));
+    return {
+        ...base, state: 'offer', why: 'the stack\'s own seed over docs at the old root',
+        tracked, untracked: files.filter((f) => !isTracked.has(f)),
+        conflicts: files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/')))),
+    };
+}
+
+// The preflight's line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tconflicts=<n>]`,
+// `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`.
+function docsMoveLine(plan)
+{
+    if (plan.state === 'offer')
+        return `docs-move: offer ${plan.from} -> ${plan.to}\ttracked=${plan.tracked.length} untracked=${plan.untracked.length}`
+            + (plan.conflicts.length ? `\tconflicts=${plan.conflicts.length}` : '');
+    if (plan.state === 'repoint') return `docs-move: repoint ${plan.from} -> ${plan.to} (nothing to move)`;
+    return `docs-move: none (${plan.why})`;
+}
+
+// One step: tracked files through `git mv` (the index records a rename, so history follows), every other
+// file by rename, then the emptied folders of the old root. Any failure puts every file moved so far back
+// - a half-moved root would leave the hooks reading one root while half the docs sit in the other.
+function moveDocsRoot({ projectRoot, plan })
+{
+    const from = path.join(projectRoot, ...plan.from.split('/'));
+    const to = path.join(projectRoot, ...normRoot(plan.to).split('/'));
+    const done = [];
+    const gitMv = (a, b) => rt.execCommand('git', ['mv', '--', a, b], { cwd: projectRoot, stdio: 'ignore' });
+    const rel = (root, f) => `${normRoot(root)}/${f}`;
+    try
+    {
+        for (const f of plan.tracked)
+        {
+            fs.mkdirSync(path.dirname(path.join(to, ...f.split('/'))), { recursive: true });
+            try { gitMv(rel(plan.from, f), rel(plan.to, f)); }
+            catch (err) { throw new Error(`git mv ${rel(plan.from, f)}: ${String(err.stderr || err.message).trim()}`); }
+            done.push(['git', f]);
+        }
+        for (const f of plan.untracked)
+        {
+            const target = path.join(to, ...f.split('/'));
+            try
+            {
+                fs.mkdirSync(path.dirname(target), { recursive: true });
+                if (fs.existsSync(target)) throw new Error('a file is already there');
+                fs.renameSync(path.join(from, ...f.split('/')), target);
+            }
+            catch (err) { throw new Error(`${rel(plan.from, f)}: ${err.message}`); }
+            done.push(['fs', f]);
+        }
+    }
+    catch (err)
+    {
+        for (const [kind, f] of done.reverse())
+        {
+            try
+            {
+                fs.mkdirSync(path.dirname(path.join(from, ...f.split('/'))), { recursive: true });
+                if (kind === 'git') gitMv(rel(plan.to, f), rel(plan.from, f));
+                else fs.renameSync(path.join(to, ...f.split('/')), path.join(from, ...f.split('/')));
+            }
+            catch { /* the error below names the move; a file that cannot go back stays where it is */ }
+        }
+        return { ok: false, moved: 0, gitMoved: 0, error: err.message };
+    }
+    // Only folders the move emptied: a folder still holding anything is not the old root's to remove.
+    const prune = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) if (e.isDirectory()) prune(path.join(dir, e.name));
+        try { if (!fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* left in place */ }
+    };
+    prune(from);
+    return { ok: true, moved: done.length, gitMoved: done.filter(([k]) => k === 'git').length };
+}
+
+module.exports = {
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveLine, moveDocsRoot,
+    DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT,
+};

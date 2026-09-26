@@ -32,7 +32,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   by hand since the last run, the env value wins. Wherever an instruction names a doc as
   `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means this root.
 - To move the docs, change that env value and nothing else - forward slashes on every OS. Existing
-  docs do not move with it: they stay under the old root until moved by hand or re-captured.
+  docs do not move with it: they stay under the old root until moved by hand or re-captured. The
+  one exception is the old default `.claude/docs`: `/alfred-code:update` offers that move once.
 - Reading a capture doc: every one opens with `Captured: <branch>@<short-sha>, <date>` (`+dirty` =
   the tree held uncommitted work), and every capture's docs follow the checked-out branch through the docs hook
   (`docs.js status` says how), so the stamp says which code the doc describes. A foreign-branch stamp, or `+dirty`, means approximate at best -
