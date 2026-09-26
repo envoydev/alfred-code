@@ -34,7 +34,7 @@ Six steps, a stop after each: DESIGN (plan written to a file under the docs root
 (`alfred-task-verify-plan`'s four-pass audit, stamped) -> APPROVE (your word + the build mode -
 'session' or 'agents'; an answer that names no mode is not an approval) -> BUILD -> CONFORMANCE
 (inline review, the verifier seat, or an honest recorded skip) -> CLOSE (done-gate with per-task
-evidence). The plan file plus a serena cycle note carry ALL state - every stamp, every task tick.
+evidence). The plan file plus a navigation-server cycle note carry ALL state - every stamp, every task tick.
 
 ### Advantages
 

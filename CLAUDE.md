@@ -85,7 +85,7 @@ change (see the invariants below).
   - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). An unexpanded `$VAR` target is not judged; a
     leading `cd` moves the anchor; a counting expression is not a dump. Every denial carries the
-    `ToolSearch select:` line that loads the serena tools.
+    `ToolSearch select:` line that loads the navigation server's tools.
   - `guard-secret-value.js` (PreToolUse `Read` + `Bash`) - credentials are read for PRESENCE, never
     value. Judged by file CONTENT (a JSON/dotenv file holding a `secret_key_pattern` key with a live
     value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
@@ -244,7 +244,7 @@ change (see the invariants below).
   `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
   the installer stamps its value over `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
-  reading - locks the server in the way `baseline-navigation` locks serena).
+  reading - locks the server in the way `baseline-navigation` locks the navigation server).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
   Thirteen path-scoped: `markdown-docs.md`, `skill-authoring.md`, the repair routers
   (`dotnet-repair-agents.md`, `angular-repair-agents.md`) and nine convention rules, each
@@ -355,7 +355,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Surface | Delivery |
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
-| MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
+| MCP | the 7 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), plus the six pre-2.0.0 ids listed as RETIRED aliases for installs not yet updated; `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 4 OPTIONAL third-party picks (`claude plugin install`), each suggested on evidence (`meta/evidence.json`): claude-md-management, the `*-lsp` pair and security-guidance (`superpowers` left them in 2.0.0, never touched - R109) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
@@ -372,11 +372,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   SAME NAME (lint check 53): a plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so
   every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`, and lint check 54 fails on a bare
   `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a
-  `tools:` allowlist silently drops the tool, a `ToolSearch select:` line finds none). A plugin's
+  `tools:` allowlist silently drops the tool, a `ToolSearch select:` line finds none); check 59 fails
+  on a plugin spelling whose plugin ships no server there - a renamed server's old spelling (a
+  deliberate fixture line carries `mcp-fixture` in a comment). A plugin's
   servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
-  playwright, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
+  the browser, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
   names a registration writes - that needs the FILES, so the switch belongs with
   `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). On the FULL copy
   route alone (all three switches `false`, so no core plugin) the copied agents' `alfred-code:<skill>`
@@ -402,17 +404,19 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   A user-scope run that registers anywhere else (the plugin route, or the MCP copy route with the
   core on) prunes the stack's own registrations from that `.mcp.json`; the user's own server under a
   stack name is kept and named with its remove command.
-  `serena` (baseline-navigation), `context7`
+  `navigation` (baseline-navigation), `documentation`
   (baseline-quality-gates) and `memory` (baseline-memory) are LOCKED into every install and may be
   named in artifacts; every other server is droppable, so a body describes it. Only those three are
   seeded everywhere; the rest arrive by proof - a stack whose surface always has them, an evidence
-  signal, or the user's pick. Catalog of 4 names, 7 plugins:
-  - `playwright` - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
-    entry, expanded after the selection into ONE PLUGIN per kept browser (`playwright-chrome|msedge|firefox|
+  signal, or the user's pick. The names are ROLES; prose names the role and gives the upstream once
+  where a reader needs it ('the navigation server (Serena)'). A backticked `browser` is no graph edge
+  (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 4 names, 7 plugins:
+  - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
+    entry, expanded after the selection into ONE PLUGIN per kept browser (`browser-chrome|msedge|firefox|
     webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
-    session. Setup/configure ask `--playwright-browsers` (install) and `--playwright-enabled` (absent: all
-    on at install, none flipped by update); the stamp's two lines are the record on EVERY route (a
+    session. Setup/configure ask `--browsers` (install) and `--browser-enabled` (absent: all
+    on at install, none flipped by update); the stamp's two lines (`browser-engines:`, `browser-enabled:`) are the record on EVERY route (a
     switch onto the copy route carries them over, R116), and a stamped engine a run drops is
     uninstalled. On the copy route an engine's plugin row is uninstalled, on or off - except at user
     scope on the FULL copy route (C11): there the engine registers in THIS project's `.mcp.json`
@@ -424,15 +428,28 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     local- or user-scope registration, so there the registration IS the enable: one left off is not
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
     registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
-    and lets load - never a plugin-carried locked server or an engine left off. A legacy `playwright` server
-    migrates. The playwright agents grant all four. A kept engine writes `.playwright/.gitignore` (`*`): the
+    and lets load - never a plugin-carried locked server or an engine left off. A legacy 1.x `playwright` server
+    migrates. The browser agents grant all four. A kept engine writes `.playwright/.gitignore` (`*`): the
     browser profiles hold session cookies.
-  - plus `serena`, `context7` (the hosted remote only - its `CONTEXT7_API_KEY` header expands from
+  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
     `meta/retired-plugins.json`): update uninstalls each only as `name@<stack key>` and prints its
     add-back line.
-- **`memory` is required like serena and context7**, chosen per install by LEVEL rather than by
+  - **The 2.0.0 rename** (`meta/stack-manifest.json` `renamed.mcps`, the one table): `serena`,
+    `context7` and `playwright-<engine>` are `navigation`, `documentation` and `browser-<engine>`, plugin
+    and server alike. The old ids stay LISTED as RETIRED aliases carrying their successor's server under
+    the old name (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
+    keeps its tools after a marketplace refresh (S25). Update swaps each old row at the scope the listing
+    reports (`plugins.migrateRenamed`): the successor installed there first, then the old id removed -
+    an engine keeps its on/off, a locked server comes on; an old id the run does not carry goes at this
+    run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
+    go on every route by the stack's own shape (the user's own server under an old name is kept), the
+    approval lists follow, the read-back and selection lines read old names under the new ones, and
+    the generated project files are re-spelled (`selection.respellRenamed`). The old flags
+    (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
+    `playwright-enabled:`) are read for one release.
+- **`memory` is required like navigation and documentation**, chosen per install by LEVEL rather than by
   a droppable pick: `global` (`~/.memory-mcp/memory.db`, every Claude account and Cursor on the
   machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,
   `memory_default.db` with no space - one account), `project` (`<project>/.memory-mcp/memory.db`,
@@ -459,7 +476,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   memory (superseded, a child, a graph edge) is left alone; the first row goes alone and stops the run
   when its new vector is still not unit length. `memory.js duplicates` reports same-content pairs and
   deletes nothing.
-- **serena self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
+- **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installer SEEDS `.serena/project.yml` on install and update: project name, the
   `language_servers` their own scan detects (C#, TypeScript/JS), and `ignored_paths` for `.serena` /
@@ -471,9 +488,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `CLAUDE_PROJECT_DIR` is not reliably in scope at parse time, and expansion reads only the shell
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
-- **serena state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
+- **The navigation server's state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
   `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories).
-- **serena and memory run on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
+- **The navigation and memory servers run on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
   the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
   server never gets a project settings env key). uvx takes the newest interpreter, and serena-agent's
@@ -489,7 +506,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them.
 - **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
-  level (global/scoped/project) read by every Claude account and Cursor at that level; serena's
+  level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
   per-project memory (`.serena/memories/`) is the EPHEMERAL handoff bus between agents within one
   feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
   `memory/*.md`) is SWITCHED OFF by `/alfred-code:init` (`autoMemoryEnabled: false`) after a
@@ -506,10 +523,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
   (owned by `alfred-capture-code-style`). The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
-  `quality/` carries no `watch.json` and is no docs domain. serena memory (`<feature>__<contract_version>__<seat>`,
+  `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>__<contract_version>__<seat>`,
   never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone
   belongs in the committed docs.
-- **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via serena
+- **Never `Read` a whole file to find a symbol** (hard rule, both stacks): locate via the navigation server
   (`find_symbol` / `find_referencing_symbols`) or the LSP; `Read` is for code already located.
 
 ## Working in THIS repo - invariants
@@ -556,7 +573,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **Prove a behavioral change, don't assert it.** A model / effort pin, routing rule or plugin-set change
   ships only with evidence: run the build + tests yourself and read the code, measure the token delta when
   the claim is about cost, and commit the evidence BEFORE any reset. Verify outside-world claims
-  (package, version, API shape, CLI flag) through context7 in the same sitting and cite it.
+  (package, version, API shape, CLI flag) through the documentation server in the same sitting and cite it.
 - **Every change is proven on a TEMP PROJECT before it is committed - MANDATORY, no exceptions.** Unit
   tests and a green `npm run lint` / `npm test` are necessary, never sufficient. Each change or feature
   (installer, hook, command, skill, rule, agent, MCP, manifest - a one-line or prose-only edit included)
@@ -580,7 +597,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (114,000 on 2026-09-26: pathless rules 35,907, agent descriptions 29,148, skill descriptions 48,945 - the 2.0.0 audit tightened rules and skill descriptions, -2,260). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (114,311 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 48,997 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, and the MCP role names added +311). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
@@ -588,14 +605,14 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 - **`.mcp.json` is the COPY ROUTE only** (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); on the default
   plugin route the installer registers nothing and prunes every stack name it ever wrote, including
-  the four `playwright-*` spellings, out of `.mcp.json` and out of `enabledMcpjsonServers`. On that
+  the four `browser-*` spellings and the pre-2.0.0 names (`serena`, `context7`, `playwright-*`), out of `.mcp.json` and out of `enabledMcpjsonServers`. On that
   copy route it is **registered by the CLI and VERIFIED by the installer - fix the manifest, not the
   output.** `claude mcp add` over an existing name prints 'already exists' and exits 0, so a failed
   `remove` looks like success. `verifyProject` / `verifyUser` (`scripts/install/mcp.js`) read the result
   back: at project scope `.mcp.json` is parsed and drifted entries rewritten (`mcp repaired: <name>`);
   at user and local scope the shape comes from `claude mcp get`, a mismatch is retried once through the CLI, then
   reported (the account config is never hand-edited). A manual registration that takes a stack MCP plugin's place
-  (the context7 url under any name, or a plugin-carried server's own name at local, project or user scope) gets one
+  (the Context7 url under any name, or a plugin-carried server's own name at local, project or user scope) gets one
   line naming its `claude mcp remove` command and is never removed by the run: plugins rank below those scopes
   (measured, 2.1.282), so the warning is the only signal. The expected shape is built from the same
   manifest words; a server the project added by hand is never touched. `scripts/install-mcp.test.js`

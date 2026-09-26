@@ -443,7 +443,7 @@ which reads as unfinished work rather than as the judgment calls they were).
 
 - **Premise check on any finding about a harness or API feature.** A finding that assumes what a
   frontmatter key, CLI flag, hook event or tool parameter DOES is verified against the current docs
-  (context7) before a mechanism is built on it - the verification is what the fix cites (measured: a
+  (the documentation server) before a mechanism is built on it - the verification is what the fix cites (measured: a
   finding asked for `allowed-tools` on a command as a context saving; it is a per-turn permission
   pre-approval that removes no schema, so the fix was to write the verified semantics down, not to
   add the key).
