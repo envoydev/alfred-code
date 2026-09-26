@@ -98,12 +98,17 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   (`TMPDIR` and `CLAUDE_CODE_TMPDIR`), so parallel cells never share `/tmp/claude-<uid>`. Re-measured
   2026-09-26 (bare, one Sonnet session, `b4-probe-d4`): sandboxed `TMPDIR=/private/tmp/bench-<id>/claude-501`,
   `cd src && dotnet build ../LendingDesk.slnx | tail -3` 0 errors in 16 s, a piped `docker build` done;
-  a write beside the clone refused (`b4-probe-d8`). NOT fixed: a sandboxed `dotnet test` - piped
-  (`dotnet test X | tail`) or compound (`cd X && dotnet test`) - aborts after 90 s ('vstest.console
-  process failed to connect to testhost'): the sandbox lets a process bind loopback but not connect to
-  it, and CLI 2.1.283 runs those forms sandboxed although the settings reference says any matching part
-  of a compound command unsandboxes it (`b4-probe-tmp`; the same command outside Claude Code with the
-  cell's env passes 18 tests in 1 s). A bare `dotnet test X` runs outside the sandbox and passes.
+  a write beside the clone refused (`b4-probe-d8`). CLI 2.1.283 runs a piped (`dotnet test X | tail`)
+  or compound (`cd X && dotnet test`) test command INSIDE the sandbox, although the settings reference
+  says any matching part of a compound command unsandboxes it (`b4-probe-tmp`), and there it failed
+  twice. vstest aborted after 90 s ('failed to connect to testhost'): the macOS profile admits a
+  loopback connect to `127.0.0.1` but not to `::ffff:127.0.0.1`, which a dual-stack .NET socket dials.
+  And the integration suite hung on its second `WebApplicationFactory` host, in `FileSystemWatcher`.
+  `DOTNET_SYSTEM_NET_DISABLEIPV6=1` and `DOTNET_USE_POLLING_FILE_WATCHER=1` in `common.json` fix both
+  without widening the sandbox - measured 2026-09-26 with the CLI's own sandbox runtime
+  (`@anthropic-ai/sandbox-runtime` 0.0.77, this file's settings, `cd tests && dotnet test ...`): 18 unit
+  tests in 1 s and 26 integration tests (Postgres through Testcontainers) in 8 s, against a 90 s abort
+  and a hang without them.
 - **D8, workspace trust.** Measured 2026-09-26 (`b4-probe-d8`, `ours`, `--include-hook-events`): a
   forced `general-purpose` dispatch fired `SubagentStart` and `SubagentStop` (both exit 0), and stderr
   carried no untrusted-workspace warning - no trust entry is written. Print mode never applies a

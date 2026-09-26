@@ -48,6 +48,12 @@ test('the four shipped arm files load against the shared session', () =>
     // Testcontainers need a unix socket: the owner allowed local sockets (AskUserQuestion, 2026-09-26).
     assert.strictEqual(session.settings.sandbox.network.allowAllUnixSockets, true);
     assert.strictEqual(session.env.MSBUILDDISABLENODEREUSE, '1', 'parallel cells never share a build node');
+    // A sandboxed 'cd tests && dotnet test' runs inside the macOS sandbox, which admits a loopback connect to
+    // 127.0.0.1 but not to the IPv4-mapped address a dual-stack .NET socket dials (vstest aborted after 90 s),
+    // and whose second FileSystemWatcher hangs a WebApplicationFactory host. Measured with the CLI's own
+    // sandbox runtime: both switches on, 18 unit and 26 integration tests pass inside it.
+    assert.strictEqual(session.env.DOTNET_SYSTEM_NET_DISABLEIPV6, '1', 'vstest reaches its testhost over IPv4 loopback');
+    assert.strictEqual(session.env.DOTNET_USE_POLLING_FILE_WATCHER, '1', 'a test host starts without a FileSystemWatcher');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
