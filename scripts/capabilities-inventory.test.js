@@ -127,7 +127,7 @@ test('inventory: every layer prints its own count, including the .claude/rules l
     assert.match(out, /seat families \(1\): aspnet/);
     assert.match(out, /RULES:\s+3 total, 2 pathless, 1 path-scoped/);
     assert.match(out, /path-scoped: markdown-docs \[\*\*\/\*\.md\]/);
-    assert.match(out, /MCP:\s+4 registered in \.mcp\.json, 3 live in `claude mcp list`/);
+    assert.match(out, /MCP:\s+4 registered in \.mcp\.json, 0 from enabled plugins, 3 live in `claude mcp list`/);
     assert.doesNotMatch(out, /heavy native deps/, 'the stack ships no heavy-native-deps server since 2.0.0 - no flag left to raise');
     assert.match(out, /PLUGINS:\s+2 after dedupe/);
     assert.match(out, /claude-hud \(disabled\), superpowers \(enabled\)/, 'deduped and sorted, so the row is stable between runs');
@@ -437,6 +437,83 @@ test('report: an unreadable skill frontmatter is reported as unreadable, never f
     write(path.join(root, '.claude', 'skills', 'broken', 'SKILL.md'), '---\nname: broken\ndescription: x\n\n# no closing fence\n', -100);
     const { out } = run([], { cwd: root });
     assert.match(out, /UNREADABLE broken: no closing `---`/);
+});
+
+// Pilot 2 (2026-09-27): on the plugin route no server sits in .mcp.json, so the routing block came out
+// empty, the rule said 'None registered in .mcp.json', and the model made 0 MCP calls in 12 cells.
+// A plugin-provided server reaches the session under `mcp__plugin_<plugin>_<server>__` - it gets the
+// same row a registration gets, in that spelling.
+const routingRows = (out) => out.split('\n').filter((l) => /^\s+- `/.test(l)).map((l) => l.trim());
+const PLUGIN_LIST = JSON.stringify([
+    { id: 'alfred-code@envoydev', enabled: true },
+    { id: 'navigation@envoydev', enabled: true, mcpServers: { navigation: {} } },
+    { id: 'documentation@envoydev', enabled: true, mcpServers: { documentation: {} } },
+    { id: 'memory@envoydev', enabled: true, mcpServers: { memory: {} } },
+    { id: 'browser-chrome@envoydev', enabled: true, mcpServers: { 'browser-chrome': {} } },
+    { id: 'browser-firefox@envoydev', enabled: false, mcpServers: { 'browser-firefox': {} } },
+    { id: 'windows-desktop@envoydev', enabled: true, mcpServers: { 'windows-desktop': {} }, projectPath: '/nowhere/else' },
+    { id: 'csharp-lsp@claude-plugins-official', enabled: true },
+]);
+
+test('inventory: every server an enabled plugin provides gets its routing row in the plugin spelling', { skip: posixOnly }, () =>
+{
+    const root = project('plugin-mcp');
+    fs.rmSync(path.join(root, '.mcp.json'));
+    const bin = stubCli(path.join(TMP, 'plugin-mcp-cli'), {
+        mcp: 'plugin:navigation:navigation: uvx x - ✔ Connected\nplugin:memory:memory: uvx y - ✗ Failed to connect',
+        plugins: PLUGIN_LIST,
+    });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /MCP:\s+0 registered in \.mcp\.json \(no \.mcp\.json\), 4 from enabled plugins/);
+    assert.match(out, /navigation\s+plugin\s+live: connected\s+from navigation/);
+    assert.match(out, /memory\s+plugin\s+live: failed/);
+    assert.match(out, /documentation\s+plugin\s+live: not in the live list/);
+    assert.doesNotMatch(out, /plugin:navigation:navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
+    const rows = routingRows(out);
+    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['browser-chrome', 'documentation', 'memory', 'navigation'],
+        'one row per enabled plugin server - never a disabled one, another project\'s, or a plugin with no server');
+    for (const row of rows) assert.match(row, /first call: `ToolSearch select:mcp__plugin_/, `plugin spelling in ${row.slice(0, 50)}`);
+    assert.match(rows[3], /first call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols/);
+    assert.match(rows[0], /mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/);
+});
+
+test('inventory: with no CLI, the project settings enabledPlugins name the plugin servers', { skip: posixOnly }, () =>
+{
+    const root = project('plugin-settings');
+    fs.rmSync(path.join(root, '.mcp.json'));
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'navigation@envoydev': true, 'memory@envoydev': true, 'csharp-lsp@claude-plugins-official': true, 'alfred-code@envoydev': true } }), -100);
+    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'memory@envoydev': false } }), -100);
+    const { out } = run([], { cwd: root });
+    assert.match(out, /live list unavailable - CLI absent/);
+    assert.deepStrictEqual(routingRows(out).map((r) => /^- `([^`]+)`/.exec(r)[1]), ['navigation'], 'settings.local.json switches memory off; the core and the LSP carry no server');
+    assert.match(routingRows(out)[0], /ToolSearch select:mcp__plugin_navigation_navigation__find_symbol/);
+});
+
+test('inventory: a registered server keeps its own row, and a third-party plugin server is spelled by its plugin', { skip: posixOnly }, () =>
+{
+    const root = project('plugin-both');
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {} } }), -100);
+    const bin = stubCli(path.join(TMP, 'plugin-both-cli'), {
+        plugins: JSON.stringify([
+            { id: 'navigation@envoydev', enabled: true, mcpServers: { navigation: {} } },
+            { id: 'acme-tools@acme', enabled: true, mcpServers: { tracker: {} } },
+        ]),
+    });
+    const rows = routingRows(run([], { cwd: root, bin }).out);
+    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['navigation', 'tracker'], 'one row per server name');
+    assert.doesNotMatch(rows[0], /mcp__plugin_/, 'the registration wins its name and keeps its own spelling');
+    assert.match(rows[1], /routing: see project docs\. first call: `ToolSearch select:` plus the `mcp__plugin_acme-tools_tracker__\*` names/); // mcp-fixture
+});
+
+test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnly }, () =>
+{
+    const root = project('plugin-verify');
+    fs.rmSync(path.join(root, '.mcp.json'));
+    const bin = stubCli(path.join(TMP, 'plugin-verify-cli'), { plugins: PLUGIN_LIST });
+    const rows = routingRows(run([], { cwd: root, bin }).out);
+    const rule = write(path.join(root, 'composed.md'), validRule().replace(/## MCP routing\n[\s\S]*?\n\n/, `## MCP routing\n${rows.join('\n')}\n\n`));
+    const r = run(['--verify', rule], { cwd: root, bin });
+    assert.match(r.out, /mcp rows:\s+ok - 4 of 4 carry their 'first call:' line/);
 });
 
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));

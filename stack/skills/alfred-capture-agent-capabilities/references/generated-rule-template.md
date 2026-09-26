@@ -18,20 +18,23 @@ One line: the installed seat names, comma-separated - dispatch is explicit only 
 orchestration skill, or a repair-loop rule); each seat's description says when it applies.
 
 ## MCP routing
-One row per REGISTERED server only, from the routing map below - a server absent from `.mcp.json`
-gets no row, and an unknown server gets its name + 'routing: see project docs'. EVERY row ends with
+One row per server that reaches the session - registered in `.mcp.json`, or provided by an enabled
+plugin (the default route, where `.mcp.json` holds none) - from the routing map below; an unknown
+server gets its name + 'routing: see project docs'. Never write 'None registered' over a plugin-provided
+server: that rule made 0 MCP calls in 12 pilot cells. EVERY row ends with
 its `first call:` line - the exact `ToolSearch select:...` that loads that server's load-bearing
 tools. MCP tools arrive DEFERRED in this harness: the names exist, the schemas do not, and a
 deferred tool cannot be called until it is loaded. A row that says WHEN to use a server and not HOW
 to load it describes a capability the session cannot reach - naming a server is not loading it,
 and the `first call:` line is the row's load-bearing half. Copy each one VERBATIM.
 
-`scripts/capabilities-inventory.js` prints these rows already filled, one per registered server -
-its `MCP ROUTING rows` block is the paste source, and `--verify` fails the rule when a row reached
-it without a `first call:`. The map below is what the script reads; `<server>` in a row is
-substituted with the registered name (`browser` ships as one plugin, and one server, per kept
-browser). The map names the plugin spelling, `mcp__plugin_<server>_<server>__<tool>`; a `.mcp.json`
-registration answers `mcp__<server>__<tool>`, so the script prints every row in that form.
+`scripts/capabilities-inventory.js` prints these rows already filled, one per server - its `MCP
+ROUTING rows` block is the paste source, and `--verify` fails the rule when a row reached it without
+a `first call:`. The map below is what the script reads; `<server>` in a row is substituted with the
+server's name (`browser` ships as one plugin, and one server, per kept browser). The map names the
+plugin spelling, `mcp__plugin_<server>_<server>__<tool>`, which is what a plugin-provided server
+answers; a `.mcp.json` registration answers `mcp__<server>__<tool>`, so the script re-spells a
+registered server's row to that form. A registration wins a name a plugin also provides.
 
 The routing map (only for servers actually present):
 - `navigation` - the navigation server (Serena): default symbol navigator + symbol-level editor; `find_symbol` / `find_referencing_symbols` before any whole-file Read; also holds the per-project handoff memory (`.serena/memories/`). first call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols,mcp__plugin_navigation_navigation__get_symbols_overview` (add `,mcp__plugin_navigation_navigation__write_memory,mcp__plugin_navigation_navigation__read_memory,mcp__plugin_navigation_navigation__list_memories` for a seat handoff).
@@ -39,7 +42,7 @@ The routing map (only for servers actually present):
 - `memory` - the shared memory (required, not a routing option): preferences, corrections, project
   facts and agent lessons, one database per install's chosen level (`baseline-memory.md` names what
   belongs and when); search before asking the user something they may have already said, or before
-  reading a related project's repo. first call: `ToolSearch select:` plus the `mcp__plugin_memory_memory__*` names the session's own listing shows.
+  reading a related project's repo. first call: `ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list`.
 - `browser` - the browser server (Playwright MCP): drive a browser for visual checks / large HTML reports - don't text-read them. Screenshots: omit `filename` (auto-names land in the registered output dir, `.playwright/output/`), or prefix an explicit name with `.playwright/output/` - the server resolves explicit filenames against the repo ROOT, so a bare name litters the repo. Readback discipline: verify UI state via `browser_snapshot` / `browser_evaluate` (DOM assertions), or a `target`-scoped screenshot for a localized visual check - a full-page PNG Read is for the FINAL accepted state only, never the iteration loop. first call: `ToolSearch select:mcp__plugin_<server>_<server>__browser_snapshot,mcp__plugin_<server>_<server>__browser_evaluate,mcp__plugin_<server>_<server>__browser_wait_for`, plus the other `mcp__plugin_<server>_<server>__*` names the session's own listing shows.
 - `windows-desktop` - the Windows desktop server (Windows-MCP): drive a native Windows app (WPF, WinForms, Win32, UWP, Office, Explorer) through its UI Automation tree - Snapshot, ONE action on an element that snapshot listed, Snapshot or WaitFor again before the next; stop at an elevation, credential, payment or destructive dialog and hand it to the user; stay in the UI, never PowerShell, Registry or FileSystem for a UI task. The skill covering desktop automation arrives with this server and holds the loop. first call: `ToolSearch select:mcp__plugin_<server>_<server>__Snapshot,mcp__plugin_<server>_<server>__Click,mcp__plugin_<server>_<server>__Type,mcp__plugin_<server>_<server>__WaitFor`.
 - `macos-desktop` - the macOS desktop server (MacOS-MCP): drive a native macOS app through its Accessibility tree - Snapshot, ONE coordinate action taken from that snapshot, Snapshot again; an empty snapshot means the Accessibility grant is missing and black screenshots the Screen Recording one, which only the user can give; stop at an elevation, credential, payment or destructive dialog; never Shell for a UI task. The skill covering desktop automation arrives with this server and holds the loop. first call: `ToolSearch select:mcp__plugin_<server>_<server>__Snapshot,mcp__plugin_<server>_<server>__Click,mcp__plugin_<server>_<server>__Type,mcp__plugin_<server>_<server>__App`.

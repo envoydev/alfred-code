@@ -286,7 +286,9 @@ function parsePluginList(out, projectRoot)
             const name = String(e.id || e.name || '').split('@')[0];
             // The listing is machine-global: a row carrying another repo's projectPath is a sibling's.
             if (!name || (e.projectPath && real(String(e.projectPath)) !== here)) continue;
-            if (!byName.has(name)) byName.set(name, { state: e.enabled === false ? 'disabled' : 'enabled', installPath: e.installPath ? String(e.installPath) : null });
+            // `mcpServers` is on the rows of a plugin that declares a server, keyed by server name.
+            const servers = e.mcpServers && typeof e.mcpServers === 'object' && !Array.isArray(e.mcpServers) ? Object.keys(e.mcpServers) : null;
+            if (!byName.has(name)) byName.set(name, { state: e.enabled === false ? 'disabled' : 'enabled', installPath: e.installPath ? String(e.installPath) : null, servers });
         }
     }
     else
@@ -345,6 +347,59 @@ function routingRow(name, map)
     let row = collapse(hit.text).replace(/<server>/g, name);
     if (key !== name) row = row.replace(`\`${key}\``, `\`${name}\``);
     return row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`);
+}
+
+// A server an enabled PLUGIN provides - the default route, where nothing sits in .mcp.json (pilot 2:
+// the empty routing block meant 'None registered' in the rule and 0 MCP calls in 12 cells). Its tools
+// are `mcp__plugin_<plugin>_<server>__<tool>`: the catalog's own spelling for the stack's servers,
+// whose plugin and server share a name, and re-spelled for one whose names differ.
+function pluginRoutingRow(plugin, server, map)
+{
+    const key = routingKey(server);
+    const hit = map.get(key);
+    if (!hit) return `- \`${server}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__plugin_${plugin}_${server}__*\` names the session's own listing shows.`;
+    let row = collapse(hit.text).replace(/<server>/g, server);
+    if (key !== server) row = row.replace(`\`${key}\``, `\`${server}\``);
+    return row.replace(new RegExp(`mcp__plugin_${escapeRe(server)}_${escapeRe(server)}__`, 'g'), `mcp__plugin_${plugin}_${server}__`);
+}
+
+// `enabledPlugins` of the project's own settings, the local file winning a key both name.
+function settingsPlugins(projectRoot)
+{
+    const merged = new Map();
+    for (const file of ['settings.json', 'settings.local.json'])
+    {
+        let map = null;
+        try { map = JSON.parse(readText(path.join(projectRoot, '.claude', file)) || 'null'); }
+        catch { map = null; }
+        map = map && typeof map === 'object' ? map.enabledPlugins : null;
+        if (map && typeof map === 'object' && !Array.isArray(map)) for (const [id, on] of Object.entries(map)) merged.set(String(id).split('@')[0], on === true);
+    }
+    return merged;
+}
+
+// The servers the enabled plugins provide, one per server name. The CLI's listing is the authority
+// when it answered (it resolves every scope and names each plugin's servers); a row from a CLI too old
+// to carry `mcpServers` counts by the catalog's names. With no CLI, the project settings' enabledPlugins
+// stand in, by the same catalog names - a plugin the catalog does not name cannot be judged from a key.
+function pluginServers(projectRoot, pluginProbe, pluginRows, map)
+{
+    const out = [];
+    const known = (name) => map.has(routingKey(name));
+    if (pluginProbe.ok)
+    {
+        for (const p of pluginRows)
+        {
+            if (p.state !== 'enabled') continue;
+            for (const server of p.servers || (known(p.name) ? [p.name] : [])) out.push({ plugin: p.name, server });
+        }
+    }
+    else
+    {
+        for (const [name, on] of settingsPlugins(projectRoot)) if (on && known(name)) out.push({ plugin: name, server: name });
+    }
+    const seen = new Set();
+    return out.filter((s) => (seen.has(s.server) ? false : seen.add(s.server))).sort((a, b) => a.server.localeCompare(b.server));
 }
 
 // ---------------------------------------------------------------- the project, and the live rule
@@ -554,12 +609,19 @@ function report(projectRoot)
     }
     const live = claude(['mcp', 'list'], 45000);
     const liveRows = live.ok ? parseMcpList(live.out) : [];
-    say('MCP', `${registered.length} registered in .mcp.json${mcpNote ? ` (${mcpNote})` : ''}, ${live.ok ? `${liveRows.length} live in \`claude mcp list\`` : `live list unavailable - ${live.reason}`}`);
+    // A registration wins its name: the CLI ranks the project, local and user scopes above a plugin.
+    const provided = pluginServers(projectRoot, pluginProbe, pluginRows, map).filter((s) => !registered.includes(s.server));
+    say('MCP', `${registered.length} registered in .mcp.json${mcpNote ? ` (${mcpNote})` : ''}, ${provided.length} from enabled plugins, ${live.ok ? `${liveRows.length} live in \`claude mcp list\`` : `live list unavailable - ${live.reason}`}`);
     const liveByName = new Map(liveRows.map((r) => [r.name, r.state]));
-    for (const name of registered) sub(`${name.padEnd(20)} registered  live: ${liveByName.get(name) || (live.ok ? 'not in the live list' : 'unknown')}${routingKey(name) !== name ? `  routing: ${routingKey(name)}` : ''}`);
-    for (const r of liveRows) if (!registered.includes(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
-    sub('MCP ROUTING rows - paste verbatim, one per REGISTERED server:');
+    const liveOf = (name) => liveByName.get(name) || (live.ok ? 'not in the live list' : 'unknown');
+    for (const name of registered) sub(`${name.padEnd(20)} registered  live: ${liveOf(name)}${routingKey(name) !== name ? `  routing: ${routingKey(name)}` : ''}`);
+    // The live list names a plugin's server `plugin:<plugin>:<server>`.
+    const pluginLive = new Set(provided.map((s) => `plugin:${s.plugin}:${s.server}`));
+    for (const s of provided) sub(`${s.server.padEnd(20)} plugin      live: ${liveOf(`plugin:${s.plugin}:${s.server}`)}  from ${s.plugin}${routingKey(s.server) !== s.server ? `  routing: ${routingKey(s.server)}` : ''}`);
+    for (const r of liveRows) if (!registered.includes(r.name) && !pluginLive.has(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
+    sub('MCP ROUTING rows - paste verbatim, one per registered or plugin-provided server:');
     for (const name of registered) sub(routingRow(name, map));
+    for (const s of provided) sub(pluginRoutingRow(s.plugin, s.server, map));
 
     if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the rule rather than guess`);
     else
