@@ -59,6 +59,8 @@ function readTask(dir, id)
     if (meta.id !== id) throw new Error(`task ${id}: meta.json names '${meta.id}'`);
     if (!(typeof meta.timeLimitMin === 'number' && meta.timeLimitMin > 0)) throw new Error(`task ${id}: timeLimitMin is not a positive number`);
     if (typeof meta.startRef !== 'string' || !meta.startRef) throw new Error(`task ${id}: no startRef`);
+    // The flow block's tasks name their kind, which picks the arm's own entry (arms/<arm>.json flow).
+    if (meta.kind !== undefined && !armsLib.FLOW_KINDS.includes(meta.kind)) throw new Error(`task ${id}: kind '${meta.kind}' is not one of ${armsLib.FLOW_KINDS.join('|')}`);
     const prompt = fs.readFileSync(path.join(dir, id, 'prompt.md'), 'utf8');
     // The start state beyond the ref (session.prepare): each step's patch is part of the task's
     // identity, so a resume refuses a changed one the way it refuses a changed prompt.
@@ -74,7 +76,7 @@ function readTask(dir, id)
     });
     return {
         id, group: meta.group || null, tags: meta.tags || [], timeLimitMin: meta.timeLimitMin, startRef: meta.startRef, setup,
-        exclusive: Boolean(meta.exclusive),
+        exclusive: Boolean(meta.exclusive), kind: meta.kind || null,
         prompt, promptSha256: sha256(prompt), setupSha256: setup.length ? setupHash.digest('hex') : null,
     };
 }

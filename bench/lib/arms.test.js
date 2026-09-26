@@ -76,9 +76,81 @@ test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onb
     assert.ok(installer > core, 'the installer runs after the core, so it reads the pinned marketplace key rather than adding the published one');
     assert.deepStrictEqual(ours.setup[installer].slice(2), ['install', '--source', '{src}', '--scope', 'project', '--selection', '{template}/selection.txt']);
     assert.deepStrictEqual(ours.onboarding, ['/alfred-code:init']);
-    // Nobody answers an ask in print mode: the stack's unattended init takes each recommended option instead.
-    assert.deepStrictEqual(ours.env, { ALFRED_CODE_UNATTENDED: '1' });
+    // Nobody answers an ask in print mode: the stack's unattended init takes each recommended option
+    // instead - during onboarding only, so no measured cell takes recommended answers on its own.
+    assert.deepStrictEqual(ours.onboardingEnv, { ALFRED_CODE_UNATTENDED: '1' });
+    assert.deepStrictEqual(ours.env, {});
     assert.deepStrictEqual(ours.expects, ['.alfred/docs/architecture/ARCHITECTURE.md'], 'the architecture capture init runs, under the stack\'s default docs root');
+});
+
+test('each shipped arm names its own flow entry per task kind', () =>
+{
+    const { arms } = load({ dir: ARMS_DIR, names: ['ours', 'ecc', 'bare'] });
+    const by = Object.fromEntries(arms.map((a) => [a.name, a.flow]));
+    assert.deepStrictEqual(by.ours, {
+        feature: ['/alfred-task-solve {prompt}'],
+        cross: ['/alfred-task-solve-cross {prompt}'],
+        // The diagnoser's close names the build: /alfred-task-solve with the findings file it wrote.
+        bug: ['/alfred-issue-diagnoser {prompt}', '/alfred-task-solve {file:.alfred/docs/diagnoses/*.md}'],
+    });
+    assert.deepStrictEqual(by.ecc, {
+        feature: ['/ecc:plan "{prompt}"', '/ecc:tdd-workflow'],
+        cross: ['/ecc:plan "{prompt}"', '/ecc:tdd-workflow'],
+        bug: ['/ecc:tdd-workflow {prompt}'],
+    });
+    assert.deepStrictEqual(by.bare, { feature: ['{prompt}'], cross: ['{prompt}'], bug: ['{prompt}'] });
+});
+
+test('the flow entries stay out of the template key, and carry a key of their own', (t) =>
+{
+    const session = { model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: {} };
+    const FLOW = { feature: ['/go {prompt}'], cross: ['{prompt}'], bug: ['{prompt}', 'then build'] };
+    assert.strictEqual(armHash({ ...ARM, flow: FLOW }, session), armHash(ARM, session), 'a flow prompt never rebuilds a template');
+    const [plain] = load({ dir: armsDir(t), names: ['solo'] }).arms;
+    const [flowing] = load({ dir: armsDir(t, { arms: [{ ...ARM, flow: FLOW }] }), names: ['solo'] }).arms;
+    const [other] = load({ dir: armsDir(t, { arms: [{ ...ARM, flow: { ...FLOW, bug: ['{prompt}'] } }] }), names: ['solo'] }).arms;
+    assert.strictEqual(plain.flow, null);
+    assert.strictEqual(plain.flowHash, null);
+    assert.deepStrictEqual(flowing.flow, FLOW);
+    assert.match(flowing.flowHash, /^[0-9a-f]{64}$/);
+    assert.notStrictEqual(other.flowHash, flowing.flowHash, 'a changed flow prompt changes the flow key');
+    assert.strictEqual(flowing.hash, plain.hash);
+});
+
+test('a malformed flow is refused, by kind', (t) =>
+{
+    const ok = { feature: ['{prompt}'], cross: ['{prompt}'], bug: ['{prompt}'] };
+    const cases = [
+        ['{prompt}', /solo: flow is not a map of task kinds/],
+        [{ ...ok, epic: ['{prompt}'] }, /solo: flow names an unknown kind 'epic'/],
+        [{ feature: ok.feature, cross: ok.cross }, /solo: flow names no entry for kind 'bug'/],
+        [{ ...ok, bug: [] }, /solo: flow bug is not a list of prompts/],
+        [{ ...ok, bug: ['{prompt}', 3] }, /solo: flow bug is not a list of prompts/],
+        [{ ...ok, bug: ['fix it'] }, /solo: flow bug never sends the task's \{prompt\}/],
+        [{ ...ok, bug: ['{prompt} in {repo}'] }, /solo: flow bug uses an unknown placeholder \{repo\}/],
+        [{ ...ok, bug: ['{prompt}', 'go {file:../x.md}'] }, /solo: flow bug names a file outside the clone/],
+        [{ ...ok, bug: ['{prompt}', 'go {file:/etc/x.md}'] }, /solo: flow bug names a file outside the clone/],
+        [{ ...ok, bug: ['{prompt}', 'go {file:a/*/x.md}'] }, /solo: flow bug names a file pattern with a wildcard above its last part/],
+    ];
+    for (const [flow, why] of cases) assert.throws(() => load({ dir: armsDir(t, { arms: [{ ...ARM, flow }] }), names: ['solo'] }), why, JSON.stringify(flow));
+    const fine = { ...ok, bug: ['{prompt}', 'go {file:.docs/diagnoses/*.md}'] };
+    assert.deepStrictEqual(load({ dir: armsDir(t, { arms: [{ ...ARM, flow: fine }] }), names: ['solo'] }).arms[0].flow, fine);
+});
+
+test('an onboarding-only env is validated like env and enters the template key', (t) =>
+{
+    const session = { model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: {} };
+    assert.notStrictEqual(armHash({ ...ARM, onboardingEnv: { X: '1' } }, session), armHash(ARM, session));
+    assert.strictEqual(armHash({ ...ARM, onboardingEnv: {} }, session), armHash(ARM, session), 'absent and empty are the same template');
+    const [arm] = load({ dir: armsDir(t, { arms: [{ ...ARM, onboardingEnv: { X: '1' } }] }), names: ['solo'] }).arms;
+    assert.deepStrictEqual([arm.onboardingEnv, arm.env], [{ X: '1' }, {}]);
+    assert.deepStrictEqual(load({ dir: armsDir(t), names: ['solo'] }).arms[0].onboardingEnv, {});
+    assert.throws(() => load({ dir: armsDir(t, { arms: [{ ...ARM, onboardingEnv: { X: 1 } }] }), names: ['solo'] }), /solo: onboardingEnv is not a map of strings/);
+    for (const key of ['HOME', 'ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
+    {
+        assert.throws(() => load({ dir: armsDir(t, { arms: [{ ...ARM, onboardingEnv: { [key]: '1' } }] }), names: ['solo'] }), new RegExp(`solo: onboardingEnv ${key} is the harness's`));
+    }
+    assert.throws(() => load({ dir: armsDir(t, { arms: [{ ...ARM, onboardingEnv: { X: '{run}' } }] }), names: ['solo'] }), /solo: unknown placeholder \{run\}/);
 });
 
 test('every shipped arm with an onboarding names what it must leave behind', () =>

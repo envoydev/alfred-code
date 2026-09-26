@@ -26,7 +26,7 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     fs.writeFileSync(path.join(armsDir, 'harness.settings.json'), '{}');
     for (const [name, a] of Object.entries(arms))
     {
-        fs.writeFileSync(path.join(armsDir, `${name}.json`), JSON.stringify({ name, pin: { kind: 'cli', value: 'claude' }, setup: a.setup || [], onboarding: a.onboarding || [], expects: a.expects || [], env: a.env || {} }));
+        fs.writeFileSync(path.join(armsDir, `${name}.json`), JSON.stringify({ name, pin: { kind: 'cli', value: 'claude' }, setup: a.setup || [], onboarding: a.onboarding || [], expects: a.expects || [], env: a.env || {}, ...(a.flow ? { flow: a.flow } : {}) }));
     }
     for (const [id, spec] of Object.entries(tasks))
     {
@@ -36,6 +36,7 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
         const meta = { id, group: spec.group || 'api', tags: spec.tags || [], timeLimitMin: spec.timeLimitMin || 1, startRef: 'bench-fixture-v1' };
         if (spec.setup) meta.setup = spec.setup;
         if (spec.exclusive) meta.exclusive = true;
+        if (spec.kind) meta.kind = spec.kind;
         fs.writeFileSync(path.join(td, 'meta.json'), JSON.stringify(meta));
         for (const [rel, body] of Object.entries(spec.files || {})) fs.writeFileSync(path.join(td, rel), body);
         if (spec.grade)

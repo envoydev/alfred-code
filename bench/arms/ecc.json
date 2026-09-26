@@ -12,5 +12,11 @@
   ],
   "onboarding": ["/ecc:codebase-onboarding"],
   "expects": ["CLAUDE.md"],
-  "env": {}
+  "env": {},
+  "_flow": "The flow block's entry per task kind, from the 'Start Using ECC' table of its README at the pin: a feature is '/ecc:plan \"describe the feature\"', then tdd-workflow; a bug is 'reproduce it with a failing test, then use tdd-workflow'. Cross-domain work is a feature to that table. /ecc:plan is the plugin's commands/plan.md (free text is its conversational mode - an inline plan, then it waits for confirmation); tdd-workflow is the plugin's skills/tdd-workflow, invoked in the plugin's namespaced form.",
+  "flow": {
+    "feature": ["/ecc:plan \"{prompt}\"", "/ecc:tdd-workflow"],
+    "cross": ["/ecc:plan \"{prompt}\"", "/ecc:tdd-workflow"],
+    "bug": ["/ecc:tdd-workflow {prompt}"]
+  }
 }

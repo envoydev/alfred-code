@@ -21,14 +21,16 @@ const PASS = [
 ];
 const PASS_PREFIX = ['TESTCONTAINERS_'];
 
-function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin, shared })
+// `onboarding`: the arm's onboarding-only env (`onboardingEnv`, a stack's unattended switch) joins its
+// own env for that one session - never for a setup step or a measured cell.
+function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin, shared, onboarding = false })
 {
     const env = {};
     for (const [k, v] of Object.entries(base))
     {
         if (v !== undefined && (PASS.includes(k) || PASS_PREFIX.some((p) => k.startsWith(p)))) env[k] = v;
     }
-    Object.assign(env, { CLAUDE_CONFIG_DIR: config, HOME: home }, session.env, (arm && arm.env) || {});
+    Object.assign(env, { CLAUDE_CONFIG_DIR: config, HOME: home }, session.env, (arm && arm.env) || {}, (onboarding && arm && arm.onboardingEnv) || {});
     if (auth)
     {
         if (typeof auth !== 'string') throw new Error('auth names one variable, never a boolean');

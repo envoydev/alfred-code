@@ -193,7 +193,7 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
             const tmp = sessionTmp();
             try
             {
-                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared });
+                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared, onboarding: true });
                 onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, tmp, index: i + 1, dir: paths.dir });
             }
             catch (err) { throw new Error(`${arm.name} onboarding ${i + 1}: ${err.message}`); }

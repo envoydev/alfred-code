@@ -420,3 +420,16 @@ test('a price table with no models is refused before anything is built', async (
     await assert.rejects(drive({ ...w.opts, pricesFile: bad }), /price table .* lists no models/);
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'run.json')));
 });
+
+test('a task kind is feature, cross or bug, and exactly the four pre-registered flow tasks carry one', (t) =>
+{
+    const bad = makeWorld(t, { arms: { a1: {} }, tasks: { t1: { kind: 'epic' } } });
+    assert.throws(() => selectTasks(bad.opts.tasksDir, 'all'), /task t1: kind 'epic' is not one of feature\|cross\|bug/);
+    const kinds = Object.fromEntries(selectTasks(path.join(__dirname, 'tasks'), 'all').filter((x) => x.kind).map((x) => [x.id, x.kind]));
+    assert.deepStrictEqual(kinds, {
+        'api-02-last-copy-race': 'bug',
+        'api-03-member-notices': 'feature',
+        'cross-02-late-return-event': 'cross',
+        'data-02-loans-cursor-feed': 'feature',
+    });
+});

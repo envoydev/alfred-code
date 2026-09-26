@@ -1,1 +1,1 @@
-{ "id": "api-03-member-notices", "group": "api", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }
+{ "id": "api-03-member-notices", "group": "api", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "kind": "feature" }

@@ -207,6 +207,18 @@ test('onboarding gets only the credential the run chose, and setup gets none', (
     assert.ok(!('ANTHROPIC_API_KEY' in seen[0]));
 });
 
+test('the onboarding-only env reaches the onboarding and neither the setup steps nor any other session', (t) =>
+{
+    const f = fixture(t);
+    const log = path.join(f.bench, '..', 'setup-env.log');
+    const step = ['node', '-e', `require('fs').appendFileSync(${JSON.stringify(log)}, String(process.env.STACK_UNATTENDED) + ':' + String(process.env.ARM_OWN) + '\\n')`];
+    const seen = [];
+    build({ claude: FAKE, arm: arm([step], { onboarding: ['/init'], env: { ARM_OWN: 'yes' }, onboardingEnv: { STACK_UNATTENDED: '1' } }), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, onboard: (prompt, where) => seen.push(where.env) });
+    assert.strictEqual(seen[0].STACK_UNATTENDED, '1', 'the onboarding gets its own switch');
+    assert.strictEqual(seen[0].ARM_OWN, 'yes', 'and the arm env beside it');
+    assert.strictEqual(fs.readFileSync(log, 'utf8'), 'undefined:yes\n', 'a setup step gets the arm env but never the onboarding switch');
+});
+
 test('a template under a CLAUDE.md is refused before its setup runs, and a work root moves it out of the bench dir', (t) =>
 {
     const f = fixture(t);

@@ -19,6 +19,16 @@ test('only the allowlist crosses from the host, and the cell\'s own account and 
     });
 });
 
+test('an arm\'s onboarding-only env crosses to an onboarding alone, never to a measured session', () =>
+{
+    const arm = { env: { ARM_ONLY: 'a' }, onboardingEnv: { STACK_UNATTENDED: '1' } };
+    const measured = sessionEnv({ base: BASE, session: SESSION, arm, config: '/c/config', home: '/c/home', auth: false });
+    assert.ok(!('STACK_UNATTENDED' in measured), 'a measured cell never takes recommended answers on its own');
+    assert.strictEqual(measured.ARM_ONLY, 'a');
+    const onboarding = sessionEnv({ base: BASE, session: SESSION, arm, config: '/c/config', home: '/c/home', auth: false, onboarding: true });
+    assert.deepStrictEqual([onboarding.STACK_UNATTENDED, onboarding.ARM_ONLY], ['1', 'a']);
+});
+
 test('a session\'s own temp dir replaces the host\'s TMPDIR, for sandboxed and unsandboxed commands alike', () =>
 {
     const env = sessionEnv({ base: BASE, session: { ...SESSION, env: { ...SESSION.env, TMPDIR: '/shared' } }, arm: { env: {} }, config: '/c', home: '/h', auth: false, tmp: '/private/tmp/bench-a1' });

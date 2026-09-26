@@ -5,5 +5,7 @@
   "setup": [],
   "onboarding": ["/init"],
   "expects": ["CLAUDE.md"],
-  "env": {}
+  "env": {},
+  "_flow": "Claude Code alone has no entry of its own: the flow block sends the same plain prompt for every kind.",
+  "flow": { "feature": ["{prompt}"], "cross": ["{prompt}"], "bug": ["{prompt}"] }
 }

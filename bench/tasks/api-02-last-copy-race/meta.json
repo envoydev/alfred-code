@@ -1,1 +1,1 @@
-{ "id": "api-02-last-copy-race", "group": "api", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1" }
+{ "id": "api-02-last-copy-race", "group": "api", "tags": [], "timeLimitMin": 40, "startRef": "bench-fixture-v1", "kind": "bug" }
