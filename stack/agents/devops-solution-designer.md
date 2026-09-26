@@ -1,6 +1,6 @@
 ---
 name: devops-solution-designer
-description: "Use when a devops change (a Dockerfile, compose, CI/CD, a deploy or release workflow, an env template, the Aspire AppHost) needs designing before code: a read-only pass that settles it and splits parallel tasks. Do NOT use to write the files, to diagnose red CI, or for app or schema code."
+description: "Use when a devops change (a Dockerfile, compose, CI/CD, a deploy or release workflow, an env template, the Aspire AppHost) needs designing before code: a read-only pass that settles it and splits tasks. Do NOT use to write the files, to diagnose red CI (alfred-issue-diagnoser-ci), or for app code."
 tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_documentation_documentation__*
 model: opus
 effort: xhigh

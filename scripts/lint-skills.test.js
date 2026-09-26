@@ -1174,3 +1174,21 @@ test('an agent description is capped at 300 chars', () =>
     assert.match(over[0], /agents\/a\.md description is 301 chars \(> 300\)/);
     assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
 });
+
+// Review A, M7: the 300-char cut dropped the seat to use instead from three 'Do NOT use' clauses; where the cap has
+// room, the alternative is named.
+test('a capped agent description still names the seat to use instead', () =>
+{
+    const yaml = require('js-yaml');
+    const desc = (seat) => String(yaml.load(/^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', `${seat}.md`), 'utf8'))[1]).description);
+    for (const [seat, alternative] of [
+        ['console-solution-designer', 'windows-service-solution-designer'],
+        ['devops-solution-designer', 'alfred-issue-diagnoser-ci'],
+        ['data-implementer', 'aspnet-implementer'],
+    ])
+    {
+        const d = desc(seat);
+        assert.ok(d.slice(d.indexOf('Do NOT use')).includes(alternative), `${seat}: its Do NOT use clause names ${alternative}`);
+        assert.ok(d.length <= 300, `${seat}: ${d.length} chars`);
+    }
+});

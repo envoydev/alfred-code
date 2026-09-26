@@ -1,6 +1,6 @@
 ---
 name: console-solution-designer
-description: "Use when a headless .NET app - a worker, bot, daemon or CLI tool - needs designing before code: a read-only pass that settles the host/DI seam, the hosted-service lifecycle and gateway resilience, then splits parallel tasks. Do NOT use to write code, for a Windows Service or another C# stack."
+description: "Use when a .NET worker, bot, daemon or CLI tool needs designing before code: a read-only pass settling the host/DI seam, hosted-service lifecycle and gateway resilience, then parallel tasks. Do NOT use to write code, for a Windows Service (windows-service-solution-designer) or another C# stack."
 tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, mcp__plugin_documentation_documentation__*
 model: opus
 effort: xhigh

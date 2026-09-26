@@ -1,6 +1,6 @@
 ---
 name: data-implementer
-description: "Use to build ONE task from a data-solution-designer plan: the schema DDL, EF Core migrations, SQL, views and procedures it names, plus Testcontainers and migration tests, to the contract. Do NOT use without a task + contract, to redesign or verify, or for the app's EF Core mapping."
+description: "Use to build ONE task from a data-solution-designer plan: the schema DDL, EF Core migrations, SQL, views and procedures it names, plus Testcontainers and migration tests. Do NOT use without a task + contract, to redesign or verify, or for the app's EF Core mapping (aspnet-implementer)."
 tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Write, Skill, Bash, Grep, Glob, mcp__plugin_documentation_documentation__*
 model: sonnet
 effort: medium
