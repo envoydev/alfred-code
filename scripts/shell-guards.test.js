@@ -15,6 +15,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const DISPATCH = path.join(HOOKS, 'shell-guards.js');
 const shell = require(DISPATCH);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'shell-guards-'));
+test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const BIG = path.join(__dirname, 'lint-skills.js');
 
 // The containment every guard suite applies: an empty account dir, no ambient stack settings from the
