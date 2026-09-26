@@ -9,7 +9,8 @@
 //   FAKE_EDIT=<name>          write a file into the clone
 //   FAKE_WRITE_OUTSIDE=<path> write a file outside it
 //   FAKE_SUBAGENT=1           add one subagent transcript
-//   FAKE_LEAK=1               put the auth value into the transcript, stdout and the edit - a model running `env`
+//   FAKE_LEAK=1|<VAR>         put an auth value (ANTHROPIC_API_KEY, or the named variable) into the transcript,
+//                             stdout and the edit - a model running `env`
 //   FAKE_SLEEP_MS=<n>         wait before finishing; FAKE_IGNORE_TERM=1 survives SIGTERM
 //   FAKE_EXIT=<n>             the exit status
 //   --version                 prints a fake version, as the driver asks the real CLI
@@ -24,7 +25,8 @@ const sid = flag('--session-id');
 const prompt = argv[argv.length - 1];
 if (env.FAKE_RECORD) fs.writeFileSync(env.FAKE_RECORD, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd() }));
 
-const leak = env.FAKE_LEAK ? ` ${env.ANTHROPIC_API_KEY}` : '';
+const leakName = env.FAKE_LEAK === '1' ? 'ANTHROPIC_API_KEY' : env.FAKE_LEAK;
+const leak = leakName ? ` ${env[leakName]}` : '';
 const dir = path.join(env.CLAUDE_CONFIG_DIR, 'projects', process.cwd().replace(/[^A-Za-z0-9]/g, '-'));
 fs.mkdirSync(dir, { recursive: true });
 const usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };

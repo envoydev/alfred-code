@@ -122,6 +122,30 @@ test('the auth value never appears in any file the harness writes, even when the
     assert.match(fs.readFileSync(cell.transcript, 'utf8'), /<redacted:ANTHROPIC_API_KEY>/);
 });
 
+test('a subscription token is redacted from every file too, and only the chosen credential reaches the session', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const TOKEN = 'bench-test-oauth-token-0123456789';
+    const record = path.join(dir, 'record.json');
+    const session = { ...SESSION, auth: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] };
+    await run({ cell, prompt: 'Add the thing.', session, arm: { name: 'solo', env: { FAKE_LEAK: 'CLAUDE_CODE_OAUTH_TOKEN', FAKE_EDIT: 'made.txt', FAKE_RECORD: record } }, timeLimitMin: 1, claude: FAKE, base: { ...BASE, CLAUDE_CODE_OAUTH_TOKEN: TOKEN }, auth: 'CLAUDE_CODE_OAUTH_TOKEN' });
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8')).env;
+    assert.ok(seen.CLAUDE_CODE_OAUTH_TOKEN && !('ANTHROPIC_API_KEY' in seen));
+    const files = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else files.push(p); } };
+    walk(cell.results);
+    for (const f of files) assert.ok(!fs.readFileSync(f, 'utf8').includes(TOKEN), `${path.relative(cell.results, f)} carries the token`);
+    assert.match(fs.readFileSync(cell.transcript, 'utf8'), /<redacted:CLAUDE_CODE_OAUTH_TOKEN>/);
+});
+
+test('a session with two credentials set and none chosen is refused before it starts', async (t) =>
+{
+    const { cell } = cellFor(t);
+    const session = { ...SESSION, auth: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] };
+    await assert.rejects(run({ cell, prompt: 'x', session, arm: { name: 'solo', env: {} }, timeLimitMin: 1, claude: FAKE, base: { ...BASE, CLAUDE_CODE_OAUTH_TOKEN: 'bench-test-oauth-token-0123456789' } }), /more than one auth variable is set/);
+    assert.ok(!fs.existsSync(cell.session));
+});
+
 test('a start ref is checked out before the baseline is taken', async (t) =>
 {
     const { cell, first } = cellFor(t);

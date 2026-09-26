@@ -8,6 +8,7 @@ const { execFileSync } = require('node:child_process');
 
 const FAKE = [process.execPath, path.join(__dirname, 'fake-claude.js')];
 const AUTH = 'world-test-auth-value-0123456789';
+const OAUTH = 'world-test-oauth-token-0123456789';
 
 // `fixture: { source, lock }` uses a given fixture (the real tag) instead of a throwaway repo.
 function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
@@ -20,7 +21,7 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     fs.mkdirSync(armsDir, { recursive: true });
     fs.writeFileSync(path.join(armsDir, 'common.json'), JSON.stringify({
         model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: 'harness.settings.json',
-        env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }, graceSec: 1, auth: ['ANTHROPIC_API_KEY'], scrub: [],
+        env: { CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }, graceSec: 1, auth: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'], scrub: [],
     }));
     fs.writeFileSync(path.join(armsDir, 'harness.settings.json'), '{}');
     for (const [name, a] of Object.entries(arms))
@@ -73,4 +74,4 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     return { dir, bench, opts, lines, prices, runDir: path.join(bench, 'results', run) };
 }
 
-module.exports = { makeWorld, FAKE, AUTH };
+module.exports = { makeWorld, FAKE, AUTH, OAUTH };

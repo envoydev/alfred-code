@@ -13,7 +13,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { drive, selectTasks } = require('./drive.js');
 
-const { makeWorld } = require('./test/world.js');
+const { makeWorld, OAUTH } = require('./test/world.js');
 const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
 
@@ -88,8 +88,35 @@ test('a second driver on the same run refuses', async (t) =>
 test('no auth variable set is refused before anything is built', async (t) =>
 {
     const w = world(t);
-    await assert.rejects(drive({ ...w.opts, base: { PATH: process.env.PATH } }), /no auth variable is set \(ANTHROPIC_API_KEY\)/);
+    await assert.rejects(drive({ ...w.opts, base: { PATH: process.env.PATH } }), /no auth variable is set \(ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN\)/);
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
+});
+
+test('two credentials and no --auth are refused before anything is built', async (t) =>
+{
+    const w = world(t);
+    await assert.rejects(drive({ ...w.opts, base: { ...w.opts.base, CLAUDE_CODE_OAUTH_TOKEN: OAUTH } }),
+        /more than one auth variable is set \(ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN\) - pass --auth <name>/);
+    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
+});
+
+test('--auth picks the credential: run.json names it, and only it reaches a session', async (t) =>
+{
+    const rec = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-rec-')), 'record.json');
+    t.after(() => fs.rmSync(path.dirname(rec), { recursive: true, force: true }));
+    const w = makeWorld(t, { arms: { a1: { env: { FAKE_RECORD: rec } } }, tasks: { t1: {} } });
+    await drive({ ...w.opts, base: { ...w.opts.base, CLAUDE_CODE_OAUTH_TOKEN: OAUTH }, auth: 'CLAUDE_CODE_OAUTH_TOKEN' });
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(w.runDir, 'run.json'), 'utf8')).auth, 'CLAUDE_CODE_OAUTH_TOKEN');
+    const seen = JSON.parse(fs.readFileSync(rec, 'utf8')).env;
+    assert.strictEqual(seen.CLAUDE_CODE_OAUTH_TOKEN, OAUTH);
+    assert.ok(!('ANTHROPIC_API_KEY' in seen), 'the API key in the shell never reached the session');
+});
+
+test('a resume under a different credential is refused', async (t) =>
+{
+    const w = world(t);
+    await drive({ ...w.opts, reps: 1, base: { PATH: process.env.PATH, CLAUDE_CODE_OAUTH_TOKEN: OAUTH } });
+    await assert.rejects(drive({ ...w.opts, reps: 1, resume: true }), /the credential changed since r-test started \(CLAUDE_CODE_OAUTH_TOKEN -> ANTHROPIC_API_KEY\)/);
 });
 
 test('a run is never restarted over itself, and a resume refuses an arm changed since it started', async (t) =>
@@ -153,6 +180,8 @@ test('the command line: every flag parsed, a resume needs its run, an unknown fl
     assert.throws(() => parseArgs(['--resume']), /--resume needs --run/);
     assert.throws(() => parseArgs(['--rep', '3']), /unknown argument --rep/);
     assert.throws(() => parseArgs(['--reps']), /--reps needs a value/);
+    assert.strictEqual(parseArgs(['--arms', 'bare', '--auth', 'CLAUDE_CODE_OAUTH_TOKEN']).auth, 'CLAUDE_CODE_OAUTH_TOKEN');
+    assert.throws(() => parseArgs(['--auth']), /--auth needs a value/);
 });
 
 test('a price table with no models is refused before anything is built', async (t) =>

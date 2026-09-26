@@ -10,7 +10,7 @@ const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { templatePaths } = require('./cells.js');
 const { resolve } = require('./arms.js');
-const { sessionEnv } = require('./env.js');
+const { sessionEnv, pickAuth } = require('./env.js');
 const fixture = require('../fixture/verify.js');
 const { removeTree } = require('./remove-tree.js');
 
@@ -42,7 +42,7 @@ function stepFailure(r)
     return `exited ${r.status}`;
 }
 
-function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, base = process.env })
+function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, base = process.env, auth })
 {
     const paths = templatePaths({ benchDir, arm: arm.name, hash: arm.hash });
     if (isReady(paths, arm.hash)) return { paths, built: false };
@@ -70,7 +70,9 @@ function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, bas
         });
 
         if (arm.onboarding.length && typeof onboard !== 'function') throw new Error(`${arm.name}: onboarding prompts but no onboarding runner`);
-        const onboardEnv = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: true });
+        // The driver names the run's credential; a caller that names none gets the only one set, or none.
+        const onboardAuth = auth || (session.auth.some((name) => base[name]) ? pickAuth(session.auth, base) : false);
+        const onboardEnv = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth });
         arm.onboarding.forEach((prompt, i) =>
         {
             try { onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env: onboardEnv, index: i + 1, dir: paths.dir }); }

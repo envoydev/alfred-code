@@ -5,6 +5,7 @@
 //
 //   node bench/drive.js --arms ours,ecc,bare --tasks <ids|all|group:x> --reps 3 --parallel 3
 //                       [--seed n] [--model id --effort e] [--run id] [--resume] [--mode plain]
+//                       [--auth ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN]
 //
 // One driver per run (a lock with its pid), and a resume trusts the disk alone: a finished cell is
 // never rerun, a cell another worker still holds is left alone, anything else is wiped and run
@@ -22,6 +23,7 @@ const template = require('./lib/template.js');
 const session = require('./lib/session.js');
 const fixture = require('./fixture/verify.js');
 const { removeTree } = require('./lib/remove-tree.js');
+const { pickAuth } = require('./lib/env.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -104,7 +106,7 @@ function writeJson(file, value)
 
 // Fresh: validate the invocation and write the run's record. Resume: the record IS the invocation,
 // and today's arms, tasks and CLI must still match it.
-function configure(o, runP, version)
+function configure(o, runP, version, authName)
 {
     const exists = fs.existsSync(runP.runJson);
     if (!o.resume)
@@ -127,7 +129,7 @@ function configure(o, runP, version)
         const record = {
             run: o.run, createdAt: new Date().toISOString(), mode: 'plain', seed, reps: o.reps,
             model: loaded.session.model, effort: loaded.session.effort, permissionMode: loaded.session.permissionMode,
-            cliVersion: version, harnessCommit: harnessCommit(o.root),
+            cliVersion: version, auth: authName, harnessCommit: harnessCommit(o.root),
             arms: loaded.arms.map((a) => ({ name: a.name, pin: a.pin, hash: a.hash })),
             tasks: tasks.map(({ prompt, ...t }) => t),
             fixture: { tag: theLock.tag, commit: theLock.commit },
@@ -141,6 +143,8 @@ function configure(o, runP, version)
     if (!exists) throw new Error(`${o.run} has no run.json - nothing to resume`);
     const record = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));
     if (record.cliVersion !== version) throw new Error(`the Claude Code version changed since ${o.run} started (${record.cliVersion} -> ${version})`);
+    // Named, never a value: the route decides who is billed and which limits a session meets.
+    if (record.auth && record.auth !== authName) throw new Error(`the credential changed since ${o.run} started (${record.auth} -> ${authName})`);
     const loaded = armsLib.load({ dir: o.armsDir, names: record.arms.map((a) => a.name), override: { model: record.model, effort: record.effort, cliVersion: version } });
     for (const a of loaded.arms)
     {
@@ -164,7 +168,7 @@ async function drive(opts)
     const runP = cellsLib.runPaths({ benchDir: o.benchDir, run: o.run });
 
     const common = armsLib.load({ dir: o.armsDir, names: [] }).session;
-    if (!common.auth.some((name) => o.base[name])) throw new Error(`no auth variable is set (${common.auth.join(' or ')}) - the sessions could not call the model`);
+    const authName = pickAuth(common.auth, o.base, o.auth);
     const version = cliVersion(o.claude);
 
     fs.mkdirSync(runP.dir, { recursive: true });
@@ -174,13 +178,13 @@ async function drive(opts)
     try
     {
         if (held.reclaimed) o.log(`${o.run}: took over the lock of a stopped driver (pid ${held.reclaimed})`);
-        const { record, loaded, tasks } = configure(o, runP, version);
+        const { record, loaded, tasks } = configure(o, runP, version, authName);
 
         const templates = {};
         for (const arm of loaded.arms)
         {
             const built = template.build({
-                arm, session: loaded.session, benchDir: o.benchDir, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base,
+                arm, session: loaded.session, benchDir: o.benchDir, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base, auth: authName,
                 onboard: (prompt, where) => session.onboardSync({ prompt, where, session: loaded.session, claude: o.claude, base: o.base }),
             });
             templates[arm.name] = built.paths;
@@ -210,7 +214,7 @@ async function drive(opts)
                 {
                     cellsLib.reset(cell);
                     template.copyInto(templates[cell.arm], cell);
-                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base });
+                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName });
                     counts[rec.outcome] += 1;
                 }
                 catch (err)
@@ -257,6 +261,7 @@ function parseArgs(argv)
         else if (a === '--mode') o.mode = next();
         else if (a === '--run') o.run = next();
         else if (a === '--resume') o.resume = true;
+        else if (a === '--auth') o.auth = next();
         else throw new Error(`unknown argument ${a}`);
     }
     if (o.resume && !o.run) throw new Error('--resume needs --run <id>');

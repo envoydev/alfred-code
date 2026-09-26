@@ -38,8 +38,9 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
 - `drive.js` takes one lock per run, builds each arm's template once per pin (setup, then onboarding,
   in the template's own account dir and home), and runs the cells in a seeded order that interleaves
   the arms. A resume runs only unfinished cells, and refuses when an arm, a task or the Claude Code
-  version changed since the run started. It needs `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` set,
-  and runs on macOS and Linux only.
+  version changed since the run started. It needs ONE credential set - `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_AUTH_TOKEN` or the subscription's `CLAUDE_CODE_OAUTH_TOKEN`, or `--auth <name>` choosing
+  one when several are - recorded by name in `run.json`, and runs on macOS and Linux only.
 - `grade.js` grades serially under the run's lock. Each cell is re-created from its template, checked
   against the baseline its session recorded, patched, and tested with the task's hidden files. What
   the harness caused - over 50 failing tests with a connection error, a grader timeout, a changed
@@ -97,8 +98,11 @@ node bench/prove-tasks.js --tasks all
 
 Every billed phase needs, in the shell that runs `drive.js`:
 
-- **A credential, by name:** `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, exported by the user in
-  their own terminal (never pasted into a session). `drive.js` refuses without one; `grade.js`,
+- **A credential, by name:** `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` (billed to the Console), or
+  `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` (the owner's subscription), exported by the user in
+  their own terminal (never pasted into a session). Exactly one reaches the sessions: with several set,
+  `drive.js` refuses until `--auth <name>` picks one, because in print mode an API key outranks the
+  subscription token. `drive.js` refuses without one, and a resume under another; `grade.js`,
   `aggregate.js` and `prove-tasks.js` never read it.
 - **Docker running:** `open -a Docker` on macOS, then wait until `docker info` exits 0. Every task's
   suite runs the fixture's integration tests on Testcontainers, so `grade.js` and `prove-tasks.js`

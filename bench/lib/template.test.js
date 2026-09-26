@@ -109,6 +109,17 @@ test('onboarding runs each prompt in the template repo with the template\'s own 
     for (const s of seen) assert.deepStrictEqual([s.cwd, s.config, s.home], [paths.repo, paths.config, paths.home]);
 });
 
+test('onboarding gets only the credential the run chose, and setup gets none', (t) =>
+{
+    const f = fixture(t);
+    const seen = [];
+    const session = { ...SESSION, auth: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] };
+    const base = { PATH: process.env.PATH, ANTHROPIC_API_KEY: 'k'.repeat(24), CLAUDE_CODE_OAUTH_TOKEN: 't'.repeat(24) };
+    build({ arm: arm([], { onboarding: ['/init'] }), session, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, base, auth: 'CLAUDE_CODE_OAUTH_TOKEN', onboard: (prompt, where) => seen.push(where.env) });
+    assert.strictEqual(seen[0].CLAUDE_CODE_OAUTH_TOKEN, base.CLAUDE_CODE_OAUTH_TOKEN);
+    assert.ok(!('ANTHROPIC_API_KEY' in seen[0]));
+});
+
 test('a template left half-built by a killed driver is rebuilt, never served', (t) =>
 {
     const f = fixture(t);

@@ -11,7 +11,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const lock = require('./lock.js');
-const { sessionEnv } = require('./env.js');
+const { sessionEnv, pickAuth } = require('./env.js');
 const { removeTree } = require('./remove-tree.js');
 
 const WIN = process.platform === 'win32';
@@ -163,8 +163,9 @@ function kill(child, signal)
     catch { /* already gone */ }
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec })
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth })
 {
+    const authName = auth || pickAuth(session.auth, base);
     fs.mkdirSync(cell.results, { recursive: true });
     const got = lock.acquire(cell.results);
     if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);
@@ -174,7 +175,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const baseTree = snapshot(cell, 'base');
         const sessionId = crypto.randomUUID();
         const argv = sessionArgv({ prompt, session, sessionId });
-        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: true });
+        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName });
 
         const out = fs.openSync(cell.stdout, 'w');
         const err = fs.openSync(cell.stderr, 'w');
