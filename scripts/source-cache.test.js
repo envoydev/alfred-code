@@ -90,6 +90,15 @@ function plantThree(home) {
 const nativePath = (p) => process.platform === 'win32'
     ? execFileSync('bash', ['-c', 'cygpath -w "$1"', 'cygpath', p], { encoding: 'utf8' }).trim() : p;
 
+// The run marker a snippet run in `home` writes, named by the snippet's OWN lines run where it runs -
+// never a formula copied into the test: a copy spelled the root the way os.tmpdir() does while the
+// snippet reads the real path, so every cleanup missed and each run left its markers in /tmp.
+function markOf(home) {
+    const lines = protocolSnippet('bash', 0).split('\n').filter((l) => /^(RUN_ROOT|MARK)=/.test(l));
+    assert.ok(lines.some((l) => l.startsWith('MARK=')), 'the bash snippet names no MARK= line');
+    return nativePath(execFileSync('bash', ['-c', `${lines.join('\n')}\nprintf '%s' "$MARK"`], { cwd: home, encoding: 'utf8' }));
+}
+
 // A recording `claude` on PATH, so no snippet test reaches the real CLI or the real account. With
 // `lands`, its `plugin update alfred-code@envoydev` writes that newer valid entry into the cache -
 // what the real CLI does - so a snippet that picks BEFORE it updates is caught taking the stale one.
@@ -143,8 +152,9 @@ test("the protocol's bash snippet updates the core FIRST, takes the entry that l
     }
     finally
     {
-        const mark = `/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
+        const mark = markOf(home);
         for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        assert.ok(!fs.existsSync(mark), `the run marker outlived the test: ${mark}`);
         fs.rmSync(home, { recursive: true, force: true });
     }
 });
@@ -166,6 +176,32 @@ test("the protocol's PowerShell snippet updates the core FIRST and takes the ent
         fs.rmSync(out.match(/PS-TMP=(.+)/)[1].trim(), { recursive: true, force: true });
     }
     finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+// FINDING-5: the marker was named from the first 80 characters of the cleaned root, so two roots
+// sharing that prefix (worktrees under one deep parent) shared ONE marker - an interrupted run's
+// $TMP was then REUSED by the other project, a stale snapshot with its plugin update skipped.
+test('two roots sharing their first 80 characters get two run markers, and every bash block names it one way (FINDING-5)', () => {
+    const base = work();
+    try
+    {
+        const long = 'x'.repeat(90);
+        const [a, b] = ['a', 'b'].map((s) => path.join(base, long + s));
+        for (const d of [a, b]) fs.mkdirSync(d);
+        assert.notStrictEqual(markOf(a), markOf(b), 'two projects share one run marker');
+        assert.strictEqual(markOf(a), markOf(a), 'the marker is not stable across calls');
+        if (process.platform !== 'win32')
+        {
+            const deep = path.join(base, 'd'.repeat(100), 'e'.repeat(100), 'f'.repeat(100));
+            fs.mkdirSync(deep, { recursive: true });
+            assert.ok(path.basename(markOf(deep)).length <= 255, 'a deep root names a marker past the file-name limit');
+        }
+        const md = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+        const markLines = [...md.matchAll(/```bash\n([\s\S]*?)```/g)].flatMap((m) => m[1].split('\n').filter((l) => /^(RUN_ROOT|MARK)=/.test(l)));
+        assert.ok(markLines.length >= 4, `expected the two bash blocks to name the marker: ${markLines.join(' | ')}`);
+        assert.strictEqual(new Set(markLines.filter((l) => l.startsWith('MARK='))).size, 1, 'the bash blocks name the marker two ways');
+    }
+    finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
 test("the protocol's bash snippet resolves the newest valid cache entry", () => {
@@ -193,8 +229,9 @@ test("the protocol's bash snippet resolves the newest valid cache entry", () => 
     }
     finally
     {
-        const mark = nativePath(`/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`);
+        const mark = markOf(home);
         for (const p of [tmp, mark]) if (p) fs.rmSync(p, { recursive: true, force: true });
+        assert.ok(!fs.existsSync(mark), `the run marker outlived the test: ${mark}`);
         fs.rmSync(home, { recursive: true, force: true });
     }
 });
@@ -343,8 +380,9 @@ function runBashSnippet(home, PATH, extra = {}) {
     const out = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
     const m = out.match(/RESOLVED TMP=(\S+) (\S+) .*running=(\S+)/);
     assert.ok(m, `the snippet printed no RESOLVED line:\n${out}`);
-    const mark = `/tmp/alfred-code-run.${home.replace(/[^A-Za-z0-9]/g, '-').slice(0, 80)}.path`;
+    const mark = markOf(home);
     for (const p of [nativePath(m[1]), mark]) fs.rmSync(p, { recursive: true, force: true });
+    assert.ok(!fs.existsSync(mark), `the run marker outlived the test: ${mark}`);
     return { version: m[2], running: m[3], seed: (out.match(/ seed=(\S+)/) || [])[1], key: (out.match(/ key=(\S+)/) || [])[1] };
 }
 

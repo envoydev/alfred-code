@@ -61,7 +61,8 @@ Windows run's first call silently no-opped, no `RESOLVED`/`REUSING` line, until 
 platform, pre-set env var or not:
 
 ```bash
-MARK="/tmp/alfred-code-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
+RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+MARK="/tmp/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
   TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}}"   # a valid marker from an earlier call; legacy-name: the 1.x setting too
 else
@@ -182,10 +183,13 @@ The marker name is DERIVED, never a fixed path: two Claude Code sessions on one 
 commands concurrently in different projects, and a shared `/tmp/alfred-code-run.path` hands the
 second run's `$TMP` to the first - measured: an installer log came back holding the other session's
 lines, and the other session's cleanup step deleted the still-live `$TMP` out from under a run in
-progress. Every later call in this run just re-reads it:
+progress. The name is a readable prefix of the root plus a hash of the WHOLE root: a prefix alone let two
+roots under one deep parent (sibling worktrees) share a marker, and one reused the other's stale `$TMP`.
+Every later call in this run just re-reads it:
 
 ```bash
-MARK="/tmp/alfred-code-run.$(printf '%s' "$(git rev-parse --show-toplevel 2>/dev/null || pwd)" | tr -c 'A-Za-z0-9' '-' | cut -c1-80).path"
+RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+MARK="/tmp/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 TMP=$(cat "$MARK")
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```
