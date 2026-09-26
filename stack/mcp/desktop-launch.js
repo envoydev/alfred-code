@@ -65,6 +65,29 @@ function copyRouteExclude({ env, projectDir })
     return /^none$/i.test(override) ? '' : override;
 }
 
+// The installer's two kinds of line, worded once here beside the table they describe.
+// A server this machine cannot run, left out of a run - whatever put it in (a walk's seed, an --add, a
+// read-back of a row another machine enabled).
+function skipNote(name, platform)
+{
+    const drives = `it drives ${osLabel(DESKTOP[name].os)} apps and this machine runs ${osLabel(platform)}`;
+    const own = Object.keys(DESKTOP).find((n) => DESKTOP[n].os === platform);
+    return `desktop: ${name} left out - ${drives}${own ? `; the ${osLabel(platform)} one is ${own} (--add 'mcp ${own}')` : ', where no desktop server runs'}`;
+}
+
+// What a server needs before its first start, said on the run that brings it in.
+function prereqNotes(name, { uvx = true } = {})
+{
+    const first = `its first start downloads Python and ${DESKTOP[name].upstream}, and a timeout then clears with a reconnect from /mcp`;
+    const lines = name === 'windows-desktop'
+        ? ["  desktop: windows-desktop needs the Windows display language set to English (Windows-MCP's App tool reads app names in English), and Claude Code at the same privilege level as the app it drives - a UAC prompt can never be automated",
+            `  desktop: windows-desktop - ${DEFAULT_EXCLUDE.split(',').join(', ').replace(/, (?=[^,]*$)/, ' and ')} stay off (ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: another list, or none for every tool); ${first}`]
+        : ["  !! desktop: macos-desktop needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; an empty snapshot means Accessibility is missing, black screenshots mean Screen Recording is",
+            `  desktop: macos-desktop - its Shell tool stays on (MacOS-MCP has no flag for it; exclude = ['Shell'] under [tools] in ~/.macos-mcp/config.toml turns it off); ${first}`];
+    if (!uvx) lines.unshift(`  !! desktop: ${name} starts through uvx, which is not on PATH - install uv (https://docs.astral.sh/uv/)`);
+    return lines;
+}
+
 const valueOf = (argv, flag) =>
 {
     const at = argv.indexOf(flag);
@@ -102,4 +125,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, DESKTOP, DESKTOP_OS, DEFAULT_EXCLUDE, platformOf, offeredOn, osLabel, withExclude, copyRouteExclude };
+module.exports = { main, DESKTOP, DESKTOP_OS, DEFAULT_EXCLUDE, platformOf, offeredOn, osLabel, withExclude, copyRouteExclude, skipNote, prereqNotes };

@@ -26,6 +26,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
+const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
 
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['navigation', 'documentation', 'memory'];
@@ -673,8 +674,25 @@ function withLocked({ mcps = [], catalog = [], log = () => {} })
     return out;
 }
 
+// THE DESKTOP GATE (stack/mcp/desktop-launch.js owns which OS each desktop server drives). One this
+// machine cannot run is left out of the run with one line naming why - whatever put it in the list: a
+// walk's wpf / winforms seed, an --add, or a read-back of a row another machine enabled at project scope,
+// which nothing here removes (it is simply not in the set this run installs, updates or switches).
+function desktopGate({ mcps = [], platform })
+{
+    const kept = [];
+    const lines = [];
+    for (const entry of mcps)
+    {
+        const name = String(entry).split('|')[0];
+        if (offeredOn(name, platform)) kept.push(entry);
+        else lines.push(skipNote(name, platform));
+    }
+    return { kept, lines };
+}
+
 module.exports = {
-    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
+    CONTEXT7_REMOTE, LOCKED, desktopGate, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,

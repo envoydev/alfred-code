@@ -20,6 +20,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const { USER_OFF_WINS } = require('./install/plugins.js');
+const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/desktop-launch.js');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
@@ -69,6 +70,28 @@ function computeClosure(graph, raw)
     const sort = set => [...set].sort();
     return { skills: sort(skills), agents: sort(agents), rules: sort(rules), mcps: sort(mcps), plugins: sort(plugins), hooks: sort(hooks), reasons };
 }
+
+// THE DESKTOP SERVERS BY OS (stack/mcp/desktop-launch.js owns which OS each drives). A walk never offers
+// windows-desktop off Windows, macos-desktop off macOS, or either on Linux: the servers are taken out of
+// a selection before its closure, and out of every recommendation a table, --missing or --redundant is
+// computed from - so a wpf seed read on a Mac is named once and never pre-selected or reported missing.
+function gateMcps(names, platform)
+{
+    const list = Array.isArray(names) ? names : [];
+    return { kept: list.filter((n) => offeredOn(n, platform)), skipped: list.filter((n) => !offeredOn(n, platform)) };
+}
+
+function gateRecs(recs, platform)
+{
+    if (!recs || typeof recs !== 'object') return recs;
+    const gate = (sel) => (sel && Array.isArray(sel.mcps) ? { ...sel, mcps: gateMcps(sel.mcps, platform).kept } : sel);
+    const stacks = {};
+    for (const [st, sel] of Object.entries(recs.stacks || {})) stacks[st] = gate(sel);
+    return { ...recs, always: gate(recs.always), stacks };
+}
+
+// The one line a server this OS cannot run gets - `why` names the seed that picked it, or the server.
+const skipLine = (name, platform, why) => `skipped: mcp ${name} - ${why || `it drives ${osLabel(DESKTOP_OS[name])} apps`}; this machine runs ${osLabel(platform)}`;
 
 // Phase 1 - always required, a miss is a hard blocker.
 const HARD_PREREQS = [
@@ -339,7 +362,7 @@ function emitTable(graph, layer, opts)
         agents: Object.keys(graph.agents),
         skills: Object.keys(graph.skills),
         hooks: graph.catalog.hooks || [],
-        mcps: graph.catalog.mcps,
+        mcps: graph.catalog.mcps.filter((n) => !opts.platform || offeredOn(n, opts.platform)),
         plugins: graph.catalog.plugins,
     }[layer];
     if (!catalog) return null;
@@ -633,6 +656,8 @@ function main(argv)
         }
         return stacks;
     };
+    // The OS the desktop servers are judged for: --platform, else this machine (ALFRED_CODE_PLATFORM stands in).
+    const platform = platformOf({ ALFRED_CODE_PLATFORM: arg('--platform') || process.env.ALFRED_CODE_PLATFORM });
     const graphPath = arg('--graph') || path.join(__dirname, '..', 'meta', 'stack-graph.json');
     let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
@@ -644,7 +669,7 @@ function main(argv)
     if (has('--redundant'))
     {
         const installed = readJson('--installed', arg('--installed'));
-        const recs = readJson('--recs', arg('--recs'));
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
         if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
         const detected = parseStacks(recs);
         const foundFile = readJsonSoft('--found', arg('--found'));
@@ -680,8 +705,9 @@ function main(argv)
         const installed = installedOrFresh();
         if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json> and --catalog <evidence.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const gaps = findEvidenceGaps(catalog, foundFile.found || foundFile, installed);
+        gaps.missing = gaps.missing.filter((m) => m.category !== 'mcp' || offeredOn(m.name, platform));
         const covered = new Set();
-        const recs = readJson('--recs', arg('--recs'));
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
         if (recs)
         {
             const detected = parseStacks(recs);
@@ -707,7 +733,7 @@ function main(argv)
     if (has('--missing'))
     {
         const installed = installedOrFresh();
-        const recs = readJson('--recs', arg('--recs'));
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
         if (!installed || !recs) { console.error('stack-select: --missing needs --recs <recommendations.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const detected = parseStacks(recs);
         // Fresh mode (setup): the baseline is every install's and the walk locks or pre-selects each
@@ -724,7 +750,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--github-cli] [--config-dir <account dir>] [--platform win32|darwin|linux] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -732,8 +758,11 @@ function main(argv)
     // a {name,scope} plugin read as `[object Object]` and was dropped from the emit (measured
     // 2026-09-15), and a `.claude/hooks/*.js` filename misclassified every hook as unknown.
     raw = normalizeInventory(raw);
-    const unknown = findUnknownNames(graph, raw);
     const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
+    const desktop = gateMcps(raw.mcps, platform);
+    if (Array.isArray(raw.mcps)) raw = { ...raw, mcps: desktop.kept };
+    for (const name of desktop.skipped) unknownOut(skipLine(name, platform));
+    const unknown = findUnknownNames(graph, raw);
     for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (your own item, retired upstream, renamed, or a typo); excluded from the selection`);
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
@@ -756,14 +785,20 @@ function main(argv)
     const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
     if (tableLayer)
     {
-        const recs = readJson('--recs', arg('--recs'));
+        const rawRecs = readJson('--recs', arg('--recs'));
         const installed = readJson('--installed', arg('--installed'));
         const droppedForTable = readJsonSoft('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
-        const stacks = parseStacks(recs);
+        const stacks = parseStacks(rawRecs);
+        // A confirmed stack's seed this OS cannot run is said once, on stderr, and never pre-selected.
+        if (tableLayer === 'mcps')
+            for (const st of stacks)
+                for (const name of gateMcps((((rawRecs || {}).stacks || {})[st] || {}).mcps, platform).skipped)
+                    console.error(skipLine(name, platform, `stack:${st} seeds it on ${osLabel(DESKTOP_OS[name])}`));
+        const recs = gateRecs(rawRecs, platform);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, platform });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
     }
@@ -796,6 +831,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, gateMcps, gateRecs, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

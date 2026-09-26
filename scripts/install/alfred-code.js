@@ -25,7 +25,7 @@ const selection = require('./selection.js');
 const plugins = require('./plugins.js');
 const { pythonRequest } = require('../../stack/mcp/uv-python.js');
 const { serenaHomeFor } = require('../../stack/mcp/serena-launch.js');
-const { copyRouteExclude } = require('../../stack/mcp/desktop-launch.js');
+const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
@@ -449,7 +449,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             picked = selection.parseSelection(selection.renameLines(selection.dropFormerPicks({ lines: text.split('\n'), log, said: formerSaid }), renaming).join('\n'));
             answered = { hooks: [...picked].some((l) => l.startsWith('hook ')), agents: true };
         }
-        if (picked) lists = selection.applySelection(lists, picked);
+        // A selection picks from every SHIPPED server - the opt-in rows (the desktop servers, `active: false`)
+        // included; with none, the run takes the default list, which leaves them out.
+        if (picked) lists = selection.applySelection({ ...lists, mcps: manifest.catalogs.mcps }, picked);
         // R83 a: the locked three are every install's. A plugin route adds their plugins in `pluginSet`;
         // the FULL copy route registers only what this list names, so they are put back here, before
         // the plan is printed, so the plan, the registrations and the stamp agree.
@@ -461,6 +463,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             if (!(lists[key] || []).some((e) => selection.CATEGORY[key].name(e) === name))
                 note(`--add ${line} names nothing this release ships - ignored`);
         }
+        // The desktop servers drive THIS machine's own apps (stack/mcp/desktop-launch.js): each is kept on its
+        // own OS only, and one left out is said in one line - never installed to fail at launch. `io.platform`
+        // (the tests) or ALFRED_CODE_PLATFORM stands in for the OS.
+        const platform = io.platform || platformOf(env);
+        const desktop = mcp.desktopGate({ mcps: lists.mcps, platform });
+        lists.mcps = desktop.kept;
+        for (const line of desktop.lines) log(line);
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
@@ -573,6 +582,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
             // own stand-down, and what a switch back could not enable yet.
             standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
+            // The desktop servers this project held before the run (its plugin rows, or on the copy route its
+            // registrations) - set by the layer that reads them, so the prerequisites are said once.
+            desktopHeld: null,
         };
         // R116 (j): an engine left off does not load. At project scope the copy route lists it in
         // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
@@ -637,6 +649,7 @@ function runLayers(ctx)
     installSkillsAndAgents(ctx);
     installPlugins(ctx);
     installMcps(ctx);
+    desktopNotes(ctx);
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     installHooksAndRules(ctx);
     importMemory(ctx);
@@ -777,6 +790,7 @@ function installPlugins(ctx)
     const listing = plugins.parsePluginList(raw, ctx.projectRoot, { byMarketplace: true });
     const rows = plugins.parsePluginList(raw, ctx.projectRoot, { everyScope: true });
     const blind = !listingRead(raw);
+    if (ctx.routes.mcps) ctx.desktopHeld = new Set(rows.filter((r) => r.marketplace === ctx.market && DESKTOP_OS[r.name]).map((r) => r.name));
     const engines = playwrightMoves(ctx, { blind, rows });
     // R107 / R111: what the copy route registers in .mcp.json after this layer must never also load as
     // a plugin. On the full copy route the stack's own rows go off (the core, its 1.x ids and the locked
@@ -884,6 +898,21 @@ function installPlugins(ctx)
         plugins: set, scope: ctx.cliScope, marketplaces, before: listing, fresh, refreshed: ctx.refreshed, engines, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
     hudLine();
+}
+
+// The desktop servers' prerequisites (stack/mcp/desktop-launch.js prereqNotes), said ONCE: on the run
+// that brings a server into this project - its plugin row, or on the copy route its registration, was not
+// there before - never on every update after it. No claude CLI installs nothing, so nothing is said.
+function desktopNotes(ctx)
+{
+    if (!ctx.desktopHeld) return;
+    const uvx = Boolean(ctx.rt.which('uvx'));
+    for (const entry of ctx.lists.mcps)
+    {
+        const name = String(entry).split('|')[0];
+        if (!DESKTOP_OS[name] || ctx.desktopHeld.has(name)) continue;
+        for (const line of prereqNotes(name, { uvx })) ctx.log(line);
+    }
 }
 
 // M4 (R132): the one line for a listing the run could not read on a copy route - what would have been
@@ -1149,6 +1178,7 @@ function installMcps(ctx)
                 ctx.log(name === 'playwright'
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
+    ctx.desktopHeld = new Set(Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers).filter((n) => DESKTOP_OS[n]));
     const registered = [];
     for (const entry of live)
     {

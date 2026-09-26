@@ -166,6 +166,9 @@
     "wpf-conventions",
     "dotnet-repair-agents"
    ],
+   "mcps": [
+    "windows-desktop"
+   ],
    "plugins": [
     "csharp-lsp"
    ]
@@ -193,6 +196,9 @@
     "csharp-conventions",
     "winforms-conventions",
     "dotnet-repair-agents"
+   ],
+   "mcps": [
+    "windows-desktop"
    ],
    "plugins": [
     "csharp-lsp"

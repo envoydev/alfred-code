@@ -1108,3 +1108,71 @@ test('the --browsers option, with --playwright-browsers read as its alias', () =
     assert.deepStrictEqual(from({ '--browsers': 'firefox', '--playwright-browsers': 'webkit' }), ['firefox'], 'the new spelling wins');
     assert.deepStrictEqual(from({}), []);
 });
+
+// THE DESKTOP SERVERS BY OS. windows-desktop drives Windows apps and macos-desktop macOS ones, so the walk
+// offers each on its own OS only and neither on Linux; the wpf and winforms stacks seed windows-desktop,
+// which on another OS is named once on stderr instead of pre-selected. --platform forces the OS.
+test('the MCP table offers each desktop server on its own OS only, seeded for wpf / winforms on Windows', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-'));
+    const rawFile = path.join(dir, 'raw.json');
+    fs.writeFileSync(rawFile, '{}');
+    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const table = (platform, stacks) => spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--table', 'mcps', '--recs', recs, '--stacks', stacks, '--platform', platform], { encoding: 'utf8' });
+    const row = (out, name) => (out.split('\n').find((l) => new RegExp(`\\| ${name}\\s+\\|`).test(l)) || '').replace(/\s+/g, ' ');
+    try
+    {
+        for (const stack of ['wpf', 'winforms'])
+        {
+            const win = table('win32', stack);
+            assert.match(row(win.stdout, 'windows-desktop'), new RegExp(`\\| stack:${stack} \\|`), `${stack} seeds windows-desktop on Windows`);
+            assert.strictEqual(row(win.stdout, 'macos-desktop'), '', 'macos-desktop is never offered on Windows');
+            assert.ok(!/skipped/.test(win.stderr), win.stderr);
+            const mac = table('darwin', stack);
+            assert.strictEqual(row(mac.stdout, 'windows-desktop'), '', 'windows-desktop is never offered on macOS');
+            assert.match(row(mac.stdout, 'macos-desktop'), /\| - \|/, 'macos-desktop is addable on macOS, pre-selected by nothing');
+            assert.match(mac.stderr, new RegExp(`skipped: mcp windows-desktop - stack:${stack} seeds it on Windows; this machine runs macOS`));
+            const footer = Number((mac.stdout.match(/^total: (\d+) mcps/m) || [])[1]);
+            assert.strictEqual(mac.stdout.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the rows offered here');
+        }
+        const linux = table('linux', 'wpf');
+        assert.strictEqual(row(linux.stdout, 'windows-desktop') + row(linux.stdout, 'macos-desktop'), '', 'no desktop server is offered on Linux');
+        assert.match(linux.stderr, /skipped: mcp windows-desktop - stack:wpf seeds it on Windows; this machine runs Linux/);
+        const web = table('win32', 'web-angular');
+        assert.match(row(web.stdout, 'windows-desktop'), /\| - \|/, 'only wpf and winforms seed it');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the desktop gate reaches --missing and a selection: a wrong-OS server is never missing, never emitted', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-sel-'));
+    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const script = path.join(__dirname, 'stack-select.js');
+    try
+    {
+        const missing = (platform) => spawnSync('node', [script, '--missing', '--recs', recs, '--stacks', 'wpf', '--platform', platform], { encoding: 'utf8' }).stdout;
+        assert.match(missing('win32'), /^missing: mcp windows-desktop - needed by wpf, not installed$/m);
+        assert.ok(!/windows-desktop/.test(missing('darwin')), missing('darwin'));
+        assert.ok(!/windows-desktop/.test(missing('linux')), missing('linux'));
+
+        const rawFile = path.join(dir, 'raw.json');
+        fs.writeFileSync(rawFile, JSON.stringify({ skills: [], mcps: ['windows-desktop', 'macos-desktop'] }));
+        const emit = (platform) =>
+        {
+            const out = path.join(dir, `${platform}.sel`);
+            const r = spawnSync('node', [script, '--selection', rawFile, '--emit', out, '--platform', platform], { encoding: 'utf8' });
+            return { lines: fs.readFileSync(out, 'utf8').split('\n').filter((l) => l.startsWith('mcp ')), out: r.stdout };
+        };
+        const mac = emit('darwin');
+        assert.deepStrictEqual(mac.lines, ['mcp macos-desktop']);
+        assert.match(mac.out, /^skipped: mcp windows-desktop - it drives Windows apps; this machine runs macOS$/m);
+        assert.deepStrictEqual(emit('win32').lines, ['mcp windows-desktop']);
+        assert.deepStrictEqual(emit('linux').lines, []);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

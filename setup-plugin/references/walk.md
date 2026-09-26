@@ -204,10 +204,17 @@ not hold.
 
 Locked = the servers the kept selection pulls: `navigation` via `baseline-navigation`, `documentation` via
 `baseline-quality-gates`, `memory` via `baseline-memory` - required in every install, the same way
-The navigation server and the documentation server are. `browser` is the one droppable server: seeded on the web Angular, Ionic
+The navigation server and the documentation server are. `browser` is droppable: seeded on the web Angular, Ionic
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
-DELTA preserved across runs like any direct pick (`raw.json` carries it). Those four are the whole
-catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
+DELTA preserved across runs like any direct pick (`raw.json` carries it). The two desktop servers drive
+the machine's own apps, so the table offers each on its own OS only and neither on Linux:
+`windows-desktop` (Windows-MCP) on Windows, seeded on the WPF and WinForms stacks, and `macos-desktop`
+(MacOS-MCP) on macOS, seeded by no stack - a plain add. A seed this OS cannot run comes back as one
+`skipped: mcp <name> - ...` line on stderr instead of a row; say it in one line under the table. Picking
+either is opt-in consent to a server that clicks through the user's own desktop with their full rights,
+so the question names that in one line; the installer prints what each needs (English display language
+and matching privilege on Windows, the Accessibility and Screen Recording grants on macOS). Those six
+are the whole catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
