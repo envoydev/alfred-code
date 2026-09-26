@@ -106,7 +106,8 @@ change (see the invariants below).
     command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
-    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A connection-string / URL password and a PEM
+    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
+    lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch

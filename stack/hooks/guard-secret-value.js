@@ -651,9 +651,12 @@ function splitOutsideQuotes(text, sepAt, blind, seps) {
 // Segments split on `&&`, `||`, `;` and newline OUTSIDE quotes: a runtime's inline code carries
 // `;` inside its quoted argument (`python3 -c "import json;print(...)"`), and a naive split
 // separated the runtime word from the segment holding the file path, so neither half matched.
+// A LONE `&` is a boundary too: it backgrounds its left side and runs the right one (`true & env` left the
+// dump unjudged). Not the `&` of a redirection (`2>&1`, `&>`, `<&`) or of `|&`.
+const loneAmp = (t, i) => t[i] === '&' && t[i + 1] !== '&' && t[i + 1] !== '>' && !/[<>|&]/.test(t[i - 1] || '');
 const splitSegments = (cmd, seps) => splitOutsideQuotes(cmd,
-  (t, i) => ((t[i] === '\n' || t[i] === ';') ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
-  (t) => t.split(/&&|\|\||;|\n/), seps);
+  (t, i) => ((t[i] === '\n' || t[i] === ';' || loneAmp(t, i)) ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
+  (t) => t.split(/&&|\|\||;|\n|(?<![<>|&])&(?![&>])/), seps);
 // A segment is a PIPELINE: its stages split on a single `|` (`||` never reaches here - splitSegments
 // consumed it), and a print verb's arguments end at its own stage.
 const splitPipes = (seg) => splitOutsideQuotes(seg, (t, i) => (t[i] === '|' ? 1 : 0), (t) => t.split('|'));
@@ -902,7 +905,8 @@ function blockVariable(name) {
 // A quote-blind split (unbalanced quotes) changes nothing here; the stage-by-stage judge below takes it.
 // The shape is blockEnvDump's own, inline: a const here would be in its dead zone when the Bash branch runs.
 function redactEnvStages(text) {
-  const dump = /^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*$/;
+  // The dump verb, then only fd redirections that stay on the terminal or go nowhere (`2>&1`, `2>/dev/null`).
+  const dump = /^(env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)((?:\s+\d*>&\d+|\s+\d*>\s*\/dev\/null)*)\s*$/;
   const seps = [];
   const segs = splitSegments(text, seps);
   if (seps.length !== segs.length - 1) return text;
@@ -913,11 +917,11 @@ function redactEnvStages(text) {
     // judgeShell's own passes: output into a file never reaches the context, and a names-only reducer
     // (`env | cut -d= -f1`) is the presence read - neither is a dump to replace.
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
-    const hits = stages.map((st) => dump.test(st.replace(PREFIX_WORDS, '').trim()));
+    const hits = stages.map((st) => dump.exec(st.replace(PREFIX_WORDS, '').trim()));
     if (!hits.some(Boolean)) return seg;
     changed = true;
     const view = `node "${shDouble(__filename)}" --redacted-env${stages.length > 1 ? ' --note-to-stderr' : ''}`;
-    return stages.map((st, i) => (hits[i] ? st.replace(/^(\s*)[\s\S]*?(\s*)$/, `$1${view}$2`) : st)).join('|');
+    return stages.map((st, i) => (hits[i] ? st.replace(/^(\s*)[\s\S]*?(\s*)$/, `$1${view}${hits[i][2]}$2`) : st)).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
 }
@@ -1017,7 +1021,7 @@ function judgeShell(text, forceRuntime, main) {
       // prefix word of its own (`sudo env`, `command printenv`, `FOO=bar env`) changes nothing. The
       // shell's OWN listings (`set`, `export`, `declare -p`) print the same values and passed every
       // probe until the review; their argument-carrying forms (`set -e`, `export FOO=x`) do not match.
-      if (/^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
+      if (/^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:(?:\d*>&\d+|\d*>\s*\/dev\/null)\s*)*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
 
       // A runtime reading the environment - `node -e "console.log(process.env.SENTRY_ACCESS_TOKEN)"`
       // is `echo $SENTRY_ACCESS_TOKEN` with more syntax. The denial names the VARIABLE, never a value.

@@ -805,3 +805,23 @@ test('guard-secret-value: an environment dump keeps its filter and the rest of t
   assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
   assert.match(r.stderr, /^# credential guard: /, 'the note says what happened');
 });
+
+// Review (2026-09-26): a lone `&` backgrounds its left side and runs the right one - a step boundary the
+// segment split did not know. `env | grep A & env` came back with the trailing bare `env` left raw after the
+// in-place rewrite, and `true & env` / `env & env` were never judged at all (a gap older than this change).
+test('guard-secret-value: a step after a background & is its own step - no environment dump is left raw', () => {
+  const view = `node "${HOOK}" --redacted-env`;
+  for (const cmd of ['env | grep A & env', 'true & env', 'env & env', 'true & printenv', 'sleep 1 & set']) {
+    const out = rewritten(cmd);
+    assert.ok(out, `${cmd}: rewritten`);
+    assert.doesNotMatch(out.replace(/node "[^"]*" --redacted-env( --note-to-stderr)?/g, ''), /(^|[&|;]\s*)(env|printenv|set)\s*($|[&|;])/, `${cmd}: no raw dump left in ${out}`);
+  }
+  assert.equal(rewritten('true & env'), `true & ${view}`);
+  // `&` inside redirections and `&&` are not the background operator
+  assert.equal(bash('ls 2>&1 | head -3'), 0);
+  assert.equal(bash('ls &> /dev/null && echo ok'), 0);
+  assert.equal(rewritten('env 2>&1 | grep -i msbuild'), `${view} --note-to-stderr 2>&1 | grep -i msbuild`);
+  // run for real: nothing prints the fake credential
+  const r = spawnSync('bash', ['-c', rewritten('true & env | grep -i MSBUILD_TOKEN; wait')], { encoding: 'utf8', env: { ...process.env, MSBUILD_TOKEN: FAKE_TOKEN } });
+  assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
+});
