@@ -3,6 +3,27 @@
     "enabled": true,
     "failIfUnavailable": true,
     "autoAllowBashIfSandboxed": true,
-    "excludedCommands": ["docker"]
+    "allowUnsandboxedCommands": false,
+    "excludedCommands": [
+      "docker *",
+      "dotnet *"
+    ],
+    "filesystem": {
+      "allowWrite": [
+        "~"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "registry.npmjs.org"
+      ],
+      "allowLocalBinding": true
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(docker *)",
+      "Bash(dotnet *)"
+    ]
   }
 }

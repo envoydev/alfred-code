@@ -69,6 +69,14 @@ function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, bas
             if (r.error || r.status !== 0) throw new Error(`${arm.name} setup step ${i + 1} (${argv[0]}) ${stepFailure(r)} - see ${logFile}`);
         });
 
+        // Every arm's template gets the fixture's packages once, outside the sandbox and before its
+        // onboarding: NuGet cannot restore inside the sandbox, and every cell would pay the same download.
+        for (const argv of session.restore || [])
+        {
+            const r = runStep(argv, { cwd: paths.repo, env: setupEnv, logFile });
+            if (r.error || r.status !== 0) throw new Error(`${arm.name} package restore (${argv.join(' ')}) ${stepFailure(r)} - see ${logFile}`);
+        }
+
         if (arm.onboarding.length && typeof onboard !== 'function') throw new Error(`${arm.name}: onboarding prompts but no onboarding runner`);
         // The driver names the run's credential; a caller that names none gets the only one set, or none.
         const onboardAuth = auth || (session.auth.some((name) => base[name]) ? pickAuth(session.auth, base) : false);
@@ -122,7 +130,8 @@ function copyInto(paths, cell, { parts = ['config', 'home', 'repo'] } = {})
     for (const d of parts) fs.cpSync(paths[d], cell[d], { recursive: true, verbatimSymlinks: true });
     const pairs = ['config', 'home', 'repo'].map((d) => [paths[d], cell[d]]);
     // The plugin cache is the plugins' own code, installed from a marketplace: it names no account path.
-    const skip = [path.join(cell.config, 'plugins', 'cache')];
+    // Nor do the restored packages, thousands of files no account path lives in.
+    const skip = [path.join(cell.config, 'plugins', 'cache'), path.join(cell.home, '.nuget', 'packages')];
     for (const d of parts) rewrite(cell[d], pairs, skip);
 }
 

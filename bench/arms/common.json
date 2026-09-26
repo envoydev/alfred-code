@@ -1,5 +1,5 @@
 {
-  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section. FORCE_PROMPT_CACHING_5M holds every session at the 5-minute cache an API key gets - a subscription defaults to 1 hour and drops to 5 minutes on usage credits, and the price table bills the two apart - and DISABLE_AUTOUPDATER keeps the CLI one version, because the allowlisted env drops the shell's own switch.",
+  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section. FORCE_PROMPT_CACHING_5M holds every session at the 5-minute cache an API key gets - a subscription defaults to 1 hour and drops to 5 minutes on usage credits, and the price table bills the two apart - and DISABLE_AUTOUPDATER keeps the CLI one version, because the allowlisted env drops the shell's own switch. restore (NuGet only) runs once per template, outside the sandbox and before onboarding, so no session downloads packages (NuGet cannot restore inside the sandbox; npm installs fine there and a restored node_modules cannot be deleted inside it, so npm is left to the session). dotnet runs outside the sandbox like docker (harness.settings.json excludedCommands; the sandbox refuses the sockets MSBuild binds), and the three MSBuild switches keep parallel cells from sharing a build node or a compiler server.",
   "model": "claude-sonnet-5",
   "effort": "medium",
   "permissionMode": "acceptEdits",
@@ -7,9 +7,29 @@
   "env": {
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
     "FORCE_PROMPT_CACHING_5M": "1",
-    "DISABLE_AUTOUPDATER": "1"
+    "DISABLE_AUTOUPDATER": "1",
+    "MSBUILDDISABLENODEREUSE": "1",
+    "DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER": "1",
+    "UseSharedCompilation": "false"
   },
   "graceSec": 10,
-  "auth": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"],
-  "scrub": ["SENTRY_SLUG", "SENTRY_ACCESS_TOKEN", "CONTEXT7_API_KEY", "CLAUDE_PROJECT_DIR", "CLAUDE_STACK_DOCS_PATH", "ALFRED_CODE_DOCS_PATH"]
+  "auth": [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "scrub": [
+    "SENTRY_SLUG",
+    "SENTRY_ACCESS_TOKEN",
+    "CONTEXT7_API_KEY",
+    "CLAUDE_PROJECT_DIR",
+    "CLAUDE_STACK_DOCS_PATH",
+    "ALFRED_CODE_DOCS_PATH"
+  ],
+  "restore": [
+    [
+      "dotnet",
+      "restore"
+    ]
+  ]
 }

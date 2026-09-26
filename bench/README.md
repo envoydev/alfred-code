@@ -73,7 +73,15 @@ which holds its raw account dir - is deleted as soon as the cell ends.
 ## What B4 must verify before any measured cell
 
 - **D4, the host protection.** The fixture suite passes inside `harness.settings.json`'s sandbox,
-  and a probe `rm` outside the clone is refused, on every arm.
+  and a probe `rm` outside the clone is refused, on every arm. Measured on 2026-09-26 (bare, one Sonnet
+  session): build, 26 integration tests, `npm ci`, lint and 25 web tests pass; a write to the real home
+  and an `rm` beside the clone are refused. What it took: `docker *` and `dotnet *` run outside the
+  sandbox (the pattern form - a bare name matches only the bare command), each with its
+  `permissions.allow` rule because an excluded command meets the ordinary permission flow; MSBuild
+  binds a socket the sandbox refuses, so dotnet joins docker as the second host-equivalent hole, by the
+  owner's decision. The cell's own home is writable (`~`, npm's cache), npm reaches its registry, NuGet
+  restores once per template (`common.json` `restore`), and the three MSBuild switches keep parallel
+  cells from sharing a build node.
 - **D8, workspace trust.** A subagent hook fires in `ours` under print mode. If it stays silent,
   write Claude Code's trust entry into every cell, for every arm alike.
 - Every arm's machinery loaded: ten transcripts read end to end.

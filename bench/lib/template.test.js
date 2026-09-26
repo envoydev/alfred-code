@@ -90,6 +90,41 @@ test('a failed setup step leaves no template, and names the step', (t) =>
     assert.ok(!fs.existsSync(path.join(f.bench, 'work', 'templates', 'solo-abcdef01')));
 });
 
+test('the restore steps run in the template repo after setup and before onboarding, with no credential', (t) =>
+{
+    const f = fixture(t);
+    const log = path.join(path.dirname(f.bench), 'order.txt');
+    const step = (tag) => ['node', '-e', `require('fs').appendFileSync(${JSON.stringify(log)}, ${JSON.stringify(tag)} + ':' + process.cwd() + ':' + ('ANTHROPIC_API_KEY' in process.env) + '\\n')`];
+    const session = { ...SESSION, restore: [step('restore')] };
+    const { paths } = build({ arm: arm([step('setup')], { onboarding: ['/init'] }), session, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, base: { PATH: process.env.PATH, ANTHROPIC_API_KEY: 'k'.repeat(24) }, onboard: () => fs.appendFileSync(log, 'onboard\n') });
+    const lines = fs.readFileSync(log, 'utf8').trim().split('\n');
+    assert.deepStrictEqual(lines.map((l) => l.split(':')[0]), ['setup', 'restore', 'onboard']);
+    assert.strictEqual(fs.realpathSync(lines[1].split(':')[1]), fs.realpathSync(paths.repo));
+    assert.strictEqual(lines[1].split(':')[2], 'false');
+});
+
+test('a failed restore leaves no template, and names the command', (t) =>
+{
+    const f = fixture(t);
+    const session = { ...SESSION, restore: [['node', '-e', 'process.exit(4)']] };
+    assert.throws(() => build({ arm: arm([]), session, benchDir: f.bench, fixtureSource: f.source, lock: f.lock }), /solo package restore \(node -e process\.exit\(4\)\) exited 4/);
+    assert.ok(!fs.existsSync(path.join(f.bench, 'work', 'templates', 'solo-abcdef01')));
+});
+
+test('the restored package folder is copied but never scanned for template paths', (t) =>
+{
+    const f = fixture(t);
+    const { paths } = build({ arm: arm([]), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock });
+    const pkg = path.join(paths.home, '.nuget', 'packages', 'x', '1.0.0');
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(path.join(pkg, 'x.nuspec'), `built in ${paths.home}\n`);
+    fs.writeFileSync(path.join(paths.home, 'note.txt'), `built in ${paths.home}\n`);
+    const cell = cellPaths({ benchDir: f.bench, run: 'r1', arm: 'solo', task: 't1', rep: 1 });
+    copyInto(paths, cell);
+    assert.strictEqual(fs.readFileSync(path.join(cell.home, 'note.txt'), 'utf8'), `built in ${cell.home}\n`);
+    assert.strictEqual(fs.readFileSync(path.join(cell.home, '.nuget', 'packages', 'x', '1.0.0', 'x.nuspec'), 'utf8'), `built in ${paths.home}\n`, 'package files carry no account path worth the scan');
+});
+
 test('a failed onboarding leaves no template either', (t) =>
 {
     const f = fixture(t);

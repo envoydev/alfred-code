@@ -51,7 +51,7 @@ function armHash(arm, session)
 {
     const body = {
         arm: canonical({ ...arm, env: arm.env || {} }),
-        session: canonical({ model: session.model, effort: session.effort, permissionMode: session.permissionMode, settings: session.settings, cli: session.cliVersion || null }),
+        session: canonical({ model: session.model, effort: session.effort, permissionMode: session.permissionMode, settings: session.settings, env: session.env || {}, restore: session.restore || [], cli: session.cliVersion || null }),
     };
     return crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
 }
@@ -104,6 +104,8 @@ function loadSession(dir, override)
     if (!(typeof common.graceSec === 'number' && common.graceSec > 0)) throw new Error('common.json: graceSec is not a positive number');
     if (!isStrings(common.auth) || !common.auth.length) throw new Error('common.json: auth names no variable');
     if (!isStrings(common.scrub)) throw new Error('common.json: scrub is not a list of names');
+    const restore = common.restore === undefined ? [] : common.restore;
+    if (!Array.isArray(restore) || !restore.every((c) => isStrings(c) && c.length)) throw new Error('common.json: restore is not a list of commands');
 
     const settingsFile = path.join(dir, common.settings);
     const settings = readJson(settingsFile);
@@ -112,7 +114,7 @@ function loadSession(dir, override)
     const session = {
         model: common.model, effort: common.effort, permissionMode: common.permissionMode,
         settingsFile, settings, env: { ...common.env }, graceSec: common.graceSec,
-        auth: [...common.auth], scrub: [...common.scrub], cliVersion: null,
+        auth: [...common.auth], scrub: [...common.scrub], restore: restore.map((c) => [...c]), cliVersion: null,
     };
     if (override.model !== undefined)
     {

@@ -38,6 +38,13 @@ test('the four shipped arm files load against the shared session', () =>
     // bills the two differently: every session is held at 5 minutes so the cost metric does not follow the route.
     assert.strictEqual(session.env.FORCE_PROMPT_CACHING_5M, '1');
     assert.strictEqual(session.env.DISABLE_AUTOUPDATER, '1', 'the allowlisted env drops the shell\'s own switch');
+    assert.deepStrictEqual(session.restore, [['dotnet', 'restore']], 'NuGet restores once per template, outside the sandbox');
+    // A bare name matches only the bare command: the docs' form is 'docker *'. An excluded command then meets the
+    // ordinary permission flow, which nobody answers in print mode, so each hole carries its allow rule too.
+    assert.deepStrictEqual(session.settings.sandbox.excludedCommands, ['docker *', 'dotnet *'], 'the two declared holes, both host-equivalent');
+    assert.deepStrictEqual(session.settings.permissions.allow, ['Bash(docker *)', 'Bash(dotnet *)']);
+    assert.strictEqual(session.settings.sandbox.allowUnsandboxedCommands, false);
+    assert.strictEqual(session.env.MSBUILDDISABLENODEREUSE, '1', 'parallel cells never share a build node');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
@@ -126,6 +133,21 @@ test('an arm env cannot override what the harness or common.json owns', (t) =>
         const dir = armsDir(t, { arms: [{ ...ARM, env: { [key]: '1' } }] });
         assert.throws(() => load({ dir, names: ['solo'] }), new RegExp(`solo: env ${key} is the harness's`));
     }
+});
+
+test('the template key follows the shared env and the restore steps, so a changed one rebuilds the template', () =>
+{
+    const session = { model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: {}, env: { A: '1' }, restore: [['dotnet', 'restore']] };
+    const h = armHash(ARM, session);
+    assert.notStrictEqual(armHash(ARM, { ...session, env: { A: '2' } }), h);
+    assert.notStrictEqual(armHash(ARM, { ...session, restore: [] }), h);
+});
+
+test('common.json restore is a list of commands, absent meaning none', (t) =>
+{
+    assert.deepStrictEqual(load({ dir: armsDir(t), names: [] }).session.restore, []);
+    assert.deepStrictEqual(load({ dir: armsDir(t, { common: { ...COMMON, restore: [['npm', 'ci']] } }), names: [] }).session.restore, [['npm', 'ci']]);
+    for (const bad of ['npm ci', [['npm', 3]], [[]]]) assert.throws(() => load({ dir: armsDir(t, { common: { ...COMMON, restore: bad } }), names: [] }), /common\.json: restore is not a list of commands/);
 });
 
 test('the pin hash changes with the pin value and the session, never with a note', () =>
