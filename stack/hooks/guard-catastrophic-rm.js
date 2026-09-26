@@ -201,11 +201,14 @@ function isCatastrophicRm(command)
 }
 
 // ---- git, read as git reads its argv -----------------------------------------------------------
-// The words of one shell command, quote-aware: '...' is literal, "..." keeps \" \\ \$ \` as escapes,
-// a backslash outside quotes escapes the next character and adjacent pieces join ("my file".js is one
-// word). A redirection and its target are no argument (`git clean -fdx > /dev/null` names no path).
-function shellWords(text)
+// The words of one shell command, quote-aware: '...' is literal and adjacent pieces join ("my file".js
+// is one word). In bash "..." keeps \" \\ \$ \` as escapes and a backslash outside quotes escapes the
+// next character; in PowerShell a backslash is a path separator and the escape is the backtick - read
+// as a bash escape, `src\a.txt` named no file and its discard passed. A redirection and its target are
+// no argument (`git clean -fdx > /dev/null` names no path).
+function shellWords(text, powershell = false)
 {
+    const esc = powershell ? '`' : '\\';
     const words = [];
     let word = null;
     let redirect = false;
@@ -236,12 +239,12 @@ function shellWords(text)
             let j = i + 1;
             for (; j < text.length && text[j] !== '"'; j++)
             {
-                if (text[j] === '\\' && /["\\$`]/.test(text[j + 1] || '')) j++;
+                if (text[j] === esc && j + 1 < text.length && (powershell || /["\\$`]/.test(text[j + 1]))) j++;
                 word += text[j];
             }
             i = j;
         }
-        else if (ch === '\\')
+        else if (ch === esc)
         {
             word += text[i + 1] ?? '';
             i++;
@@ -640,11 +643,15 @@ function main()
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
     const losses = [];
     const { execFileSync } = require('child_process');
-    for (const found of gitScan.matchAll(/(?:^|[;&|(`\n]|\s)git(?=\s)/g))
+    // A backtick is bash's command substitution and PowerShell's escape, so only bash ends a call on it.
+    const powershell = /powershell/i.test(String(payload.tool_name || ''));
+    const callStart = powershell ? /(?:^|[;&|(\n]|\s)git(?=\s)/g : /(?:^|[;&|(`\n]|\s)git(?=\s)/g;
+    const callEnd = powershell ? /[\n;&|)]|$/ : /[\n;&|)`]|$/;
+    for (const found of gitScan.matchAll(callStart))
     {
         const start = found.index + found[0].length;
-        const end = start + gitScan.slice(start).search(/[\n;&|)`]|$/);
-        const { dirs, config, verb, args } = splitGitCall(shellWords(command.slice(start, end)));
+        const end = start + gitScan.slice(start).search(callEnd);
+        const { dirs, config, verb, args } = splitGitCall(shellWords(command.slice(start, end), powershell));
         // WHERE git runs decides what a pathspec names: the call's own cwd, then a `cd` before it in the
         // same command, then its `-C`. Judged from the project root, a dirty file one folder down read
         // as absent and its discard passed. An unexpanded variable is not guessed - the anchor stays.

@@ -74,7 +74,8 @@ function envOf(env, suffix)
     return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
 }
 
-// GATE 5. The three spellings the core's userConfig offers, in its picker's order.
+// GATE 5. The core's `hook_profile` userConfig is a plain string, default `standard`: these are the
+// three values it reads, and any other value is read as `standard`.
 const HOOK_PROFILES = ['minimal', 'standard', 'strict'];
 // The seeded-off switches strict turns on: a deterministic check, never a monitor that judges the
 // model's habits (those stay log-only until measured) nor instrumentation (measurement, not a check).

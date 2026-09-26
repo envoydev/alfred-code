@@ -896,6 +896,26 @@ test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the wa
   assert.equal(fromSub.status, 2, 'run from a subfolder, the clash at the root is still seen');
 });
 
+test('guard-catastrophic-rm: a backslash is literal in PowerShell, whose escape is the backtick, and an escape in bash', { skip: process.platform === 'win32' && 'a Windows filename cannot hold a backslash' }, () => {
+  // The argv reader read every backslash as a bash escape, so a PowerShell path (`src\a.txt`) lost its
+  // separator, named nothing, and its discard passed. A file whose NAME holds a backslash stands in here.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.writeFileSync(path.join(dir, 'back\\slash.txt'), 'seed\n');
+  fs.writeFileSync(path.join(dir, 'my file.txt'), 'seed\n');
+  git('add', '-A'); git('commit', '-qm', 'names');
+  fs.writeFileSync(path.join(dir, 'back\\slash.txt'), 'changed\n');
+  fs.writeFileSync(path.join(dir, 'my file.txt'), 'changed\n');
+  const run = (tool_name, command) => runIn('guard-catastrophic-rm.js', { tool_name, tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  assert.equal(run('PowerShell', 'git checkout -- back\\slash.txt'), 2, 'PowerShell keeps the backslash in the path');
+  assert.equal(run('Bash', 'git checkout -- my\\ file.txt'), 2, 'bash still reads an escaped space');
+  assert.equal(run('Bash', 'git checkout -- "back\\slash.txt"'), 2, 'and a backslash inside double quotes before a letter');
+  assert.equal(run('Bash', 'git checkout -- my\\ fil\\e.txt'), 2, 'an unquoted bash backslash before a letter drops, as bash drops it');
+  assert.equal(run('PowerShell', 'git checkout -- my` file.txt'), 2, 'the PowerShell escape is the backtick');
+});
+
 test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it deletes', () => {
   // The loss came from `git status --porcelain`, which never lists an ignored file: an ignored .env or
   // .claude/ was deleted with exit 0. It now comes from `git clean -n` with the command's own flags.
