@@ -15,6 +15,8 @@
 // A usage limit (a subscription's window) is not the arm's fail: the limited cell is set aside
 // unfinished, the queue stops taking cells, and the drive either exits with the resume line or, with
 // --wait-on-limit, probes every 20 minutes and carries on in the same drive once the limit clears.
+// The CLI's version is read again before every session: an update landing mid-run stops the drive,
+// because the sessions after it would run a different Claude Code than the run recorded.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -178,7 +180,8 @@ async function drive(opts)
 
     const common = armsLib.load({ dir: o.armsDir, names: [] }).session;
     const authName = pickAuth(common.auth, o.base, o.auth);
-    const version = cliVersion(o.claude);
+    const versionOf = o.versionOf || cliVersion;
+    const version = versionOf(o.claude);
 
     fs.mkdirSync(runP.dir, { recursive: true });
     const held = lock.acquire(runP.dir);
@@ -215,12 +218,19 @@ async function drive(opts)
         const limited = [];
         const pauses = [];
         let paused = null;
+        let stopped = null;
         let total = parts.todo.length;
         let finished = 0;
         const worker = async () =>
         {
-            while (queue.length && !paused)
+            while (queue.length && !paused && !stopped)
             {
+                const now = versionOf(o.claude);
+                if (now !== record.cliVersion)
+                {
+                    stopped = stopped || `the Claude Code version changed mid-run (${record.cliVersion} -> ${now})`;
+                    break;
+                }
                 const cell = queue.shift();
                 const task = taskBy[cell.task];
                 try
@@ -257,7 +267,7 @@ async function drive(opts)
             // A limited cell goes back to the FRONT: it re-runs from scratch before anything new starts.
             total += limited.length;
             queue.unshift(...limited.splice(0));
-            if (!o.waitOnLimit || waitedMs >= o.waitOnLimit * 3600 * 1000) break;
+            if (stopped || !o.waitOnLimit || waitedMs >= o.waitOnLimit * 3600 * 1000) break;
             await o.sleep(o.probeEveryMs);
             waitedMs += o.probeEveryMs;
             paused.probes += 1;
@@ -272,16 +282,17 @@ async function drive(opts)
         if (paused)
         {
             pauses.push(paused);
-            o.log(`paused: usage limit (${paused.text}) - node bench/drive.js --run ${o.run} --resume`);
+            if (!stopped) o.log(`paused: usage limit (${paused.text}) - node bench/drive.js --run ${o.run} --resume`);
         }
+        if (stopped) o.log(`stopped: ${stopped} - put ${record.cliVersion} back and resume, or start a new run`);
         for (const f of failures) o.log(`harness failure: ${f}`);
         if (!parts.live.length) removeTree(path.join(o.benchDir, 'work', o.run));
 
         const ran = counts.ok + counts.timeout + counts.error;
         const latest = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));
-        latest.drives.push({ pid: process.pid, startedAt, endedAt: new Date().toISOString(), parallel: o.parallel, ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, pauses });
+        latest.drives.push({ pid: process.pid, startedAt, endedAt: new Date().toISOString(), parallel: o.parallel, ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, pauses, stopped });
         writeJson(runP.runJson, latest);
-        return { ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, paused: Boolean(paused) };
+        return { ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, paused: Boolean(paused), stopped };
     }
     finally { lock.release(runP.dir); }
 }
@@ -318,7 +329,7 @@ if (require.main === module)
     try { o = parseArgs(process.argv.slice(2)); }
     catch (err) { console.error(`drive: ${err.message}`); process.exit(2); }
     drive(o).then(
-        (res) => { console.log(`${o.run}: ran ${res.ran}, skipped ${res.skipped}, limited ${res.counts.limited}, harness failures ${res.failed}${res.paused ? ' - paused on a usage limit' : ''}`); process.exitCode = res.failed ? 1 : 0; },
+        (res) => { console.log(`${o.run}: ran ${res.ran}, skipped ${res.skipped}, limited ${res.counts.limited}, harness failures ${res.failed}${res.stopped ? ` - stopped: ${res.stopped}` : res.paused ? ' - paused on a usage limit' : ''}`); process.exitCode = res.failed || res.stopped ? 1 : 0; },
         (err) => { console.error(`drive: ${err.message}`); process.exitCode = 1; });
 }
 

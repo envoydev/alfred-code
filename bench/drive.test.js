@@ -170,6 +170,21 @@ test('--wait-on-limit is a number of hours above 0', async (t) =>
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
 });
 
+test('a Claude Code update mid-run stops the drive before the next session, never mixing versions', async (t) =>
+{
+    const w = world(t);
+    let calls = 0;
+    const OLD = '0.0.0-fake (Claude Code)';
+    const NEW = '0.0.1-fake (Claude Code)';
+    // Call 1 is the drive's start; calls 2 and 3 come before cells 1 and 2; the update lands before cell 3.
+    const versionOf = () => { calls += 1; return calls <= 3 ? OLD : NEW; };
+    const res = await drive({ ...w.opts, parallel: 1, versionOf, waitOnLimit: 1, sleep: async () => { throw new Error('a version change is never waited out'); } });
+    assert.deepStrictEqual([res.ran, res.stopped], [2, `the Claude Code version changed mid-run (${OLD} -> ${NEW})`]);
+    assert.strictEqual(sessions(w.bench).length, 2);
+    assert.ok(w.lines.includes(`stopped: the Claude Code version changed mid-run (${OLD} -> ${NEW}) - put ${OLD} back and resume, or start a new run`), w.lines.join('\n'));
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(w.runDir, 'run.json'), 'utf8')).drives[0].stopped, res.stopped);
+});
+
 test('a second driver on the same run refuses', async (t) =>
 {
     const w = world(t);
