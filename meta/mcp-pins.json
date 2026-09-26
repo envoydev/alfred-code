@@ -20,6 +20,18 @@
       "registry": "pypi",
       "spelling": "==<v>",
       "version": "11.13.0"
+    },
+    "windows-desktop": {
+      "package": "windows-mcp",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "0.8.5"
+    },
+    "macos-desktop": {
+      "package": "macos-mcp",
+      "registry": "pypi",
+      "spelling": "==<v>",
+      "version": "0.4.6"
     }
   }
 }

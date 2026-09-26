@@ -346,6 +346,42 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
     assert.strictEqual(pins.SERENA_PIN, `@${rel.navigation.version}`);
     assert.strictEqual(pins.PW_PIN, `@${rel.browser.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
+    // The desktop servers run `uvx --from windows-mcp==<ver>` / `macos-mcp==<ver>` on the copy route.
+    assert.strictEqual(pins.WINDOWS_DESKTOP_PIN, `==${rel['windows-desktop'].version}`);
+    assert.strictEqual(pins.MACOS_DESKTOP_PIN, `==${rel['macos-desktop'].version}`);
+});
+
+// The copy route registers no launcher, so windows-desktop's tool gate reaches Windows-MCP as its own
+// WINDOWS_MCP_EXCLUDE_TOOLS, resolved at install time from the same setting the launcher reads.
+test('copy route: windows-desktop registers with the release pin and the tool gate as Windows-MCP\'s own env', () =>
+{
+    const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+    const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-desktop|'));
+    const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-desktop|'));
+    assert.ok(row && mac, 'both desktop servers are catalog rows');
+    const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
+    const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }) };
+    const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
+    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process',
+        '--', 'uvx', '--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
+        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '--', 'uvx', '--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } }), 'PowerShell');
+    assert.strictEqual(mcp.identityOf({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'] }), 'stdio:windows-mcp');
+});
+
+// Opt-in by design: a server that clicks through the user's own desktop never arrives by default, so the
+// desktop rows ship `active: false` - in the catalog, out of a run that names no selection.
+test('the desktop servers are shipped but never in the no-selection default', () =>
+{
+    const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+    const names = (list) => list.map((e) => e.split('|')[0]);
+    for (const name of ['windows-desktop', 'macos-desktop'])
+    {
+        assert.ok(names(manifest.catalogs.mcps).includes(name), `${name} is not in the shipped catalog`);
+        assert.ok(!names(manifest.mcps).includes(name), `${name} is in the default list a bare install takes`);
+    }
 });
 
 // 2.0.0 cut the local npx transport (R32): the manifest ships context7 as the hosted remote row, which

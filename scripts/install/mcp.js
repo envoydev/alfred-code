@@ -291,8 +291,12 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 // installs unpinned, the generator's own fallback.
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
-// which have no extras suffix to sit next to - each row names its own spelling.
-const PIN_ROWS = { browser: ['PW_PIN', '@<v>'], navigation: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'] };
+// which have no extras suffix to sit next to - each row names its own spelling. The desktop servers
+// take `==<ver>` too (`--from windows-mcp==<ver>`).
+const PIN_ROWS = {
+    browser: ['PW_PIN', '@<v>'], navigation: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'],
+    'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
+};
 
 function resolvePins({ pins, log = () => {} })
 {

@@ -17,7 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { browser: '@playwright/mcp', navigation: 'serena-agent', memory: 'mcp-memory-service' };
+const PINNED = { browser: '@playwright/mcp', navigation: 'serena-agent', memory: 'mcp-memory-service', 'windows-desktop': 'windows-mcp', 'macos-desktop': 'macos-mcp' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -97,4 +97,23 @@ test('seed update over an install still on @latest rewrites the row to the pin',
     const { result } = seedRun('update', SELECTION, { env: COPY_ROUTE, tools: REGISTRY, prepare, inspect });
     assert.deepStrictEqual(result.pw, ['-y', PW]);
     assert.deepStrictEqual(result.mine, old.mcpServers['my-browser'], "the user's own server was touched");
+});
+
+// A PyPI refresh takes the newest release the stack's PINNED Python can install (uv-python.js). The
+// launchers start every uvx server on it, so a pin past its floor fails at launch - windows-mcp 0.8.6
+// (2026-09-26) needs Python 3.14 while 0.8.5 runs on 3.12 and up.
+test('refresh-mcp-pins: a PyPI pin never moves past what the pinned Python can install', () =>
+{
+    const { newestFor, admits } = require('./refresh-mcp-pins.js');
+    const file = (requires, extra = {}) => [{ requires_python: requires, yanked: false, ...extra }];
+    const json = { info: { version: '0.8.6' }, releases: {
+        '0.8.4': file('>=3.12'), '0.8.5': file('>=3.12'), '0.8.6': file('>=3.14'),
+        '0.9.0rc1': file('>=3.12'), '0.8.7': file('>=3.12', { yanked: true }), '0.8.10': [],
+    } };
+    assert.strictEqual(newestFor(json, '3.13'), '0.8.5');
+    assert.strictEqual(newestFor(json, '3.14'), '0.8.6');
+    assert.strictEqual(newestFor({ info: { version: '1.0.0' }, releases: { '1.0.0': file(null) } }, '3.13'), '1.0.0', 'no floor declared admits any Python');
+    assert.strictEqual(newestFor({ info: { version: '2.0.0' }, releases: { '2.0.0': file('>=3.14') } }, '3.13'), null, 'nothing installable is no pin, never a pin that fails at launch');
+    for (const [spec, ok] of [['>=3.11', true], ['>=3.12,<3.14', true], ['>3.13', false], ['<3.13', false], ['~=3.12', true], ['!=3.13.*', false], ['==3.13.*', true], ['>=3.13.1', false]])
+        assert.strictEqual(admits(spec, '3.13'), ok, spec);
 });

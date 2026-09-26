@@ -311,3 +311,100 @@ test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, 
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir }, stdio: 'pipe' });
     assert.deepStrictEqual(uvx.argv().argv, ['--python', '3.13', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==11.13.0', 'memory', 'server']);
 });
+
+// ------------------------------------------------------------------ desktop-launch.js
+// The two desktop servers drive THIS machine's own apps: windows-desktop (Windows-MCP) on Windows,
+// macos-desktop (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
+// on any host.
+const DESKTOP = path.join(ROOT, 'stack/mcp/desktop-launch.js');
+const WIN_ARGS = ['--server', 'windows-desktop', '--package', 'windows-mcp==0.8.5', '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process'];
+const MAC_ARGS = ['--server', 'macos-desktop', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
+
+function desktopRun(name, args, { env = {}, settings } = {})
+{
+    const { dir, acct } = project(name, { settings });
+    const uvx = stubUvx(name);
+    let res;
+    try { res = { status: 0, stderr: '', stdout: execFileSync(process.execPath, [DESKTOP, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ...env }, stdio: 'pipe', encoding: 'utf8' }) }; }
+    catch (err) { res = { status: err.status, stderr: String(err.stderr || ''), stdout: String(err.stdout || '') }; }
+    let argv = null;
+    try { argv = uvx.argv().argv; } catch { /* uvx never started */ }
+    return { ...res, argv };
+}
+
+test('desktop-launch: windows-desktop gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
+{
+    const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
+    assert.strictEqual(got.status, 0, got.stderr);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process']);
+    assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
+});
+
+test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
+{
+    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    assert.deepStrictEqual(one.argv.slice(4), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
+    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(none.argv.slice(4), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
+    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
+    assert.deepStrictEqual(empty.argv.slice(6), ['--exclude-tools', 'PowerShell,Registry,Process'], 'an empty override is no override');
+});
+
+test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
+{
+    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(got.argv.slice(4), ['windows-mcp', 'serve']);
+});
+
+test('desktop-launch: macos-desktop runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+{
+    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'Shell' } });
+    assert.strictEqual(got.status, 0, got.stderr);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
+});
+
+test('desktop-launch: on another OS the server does not start, and one line says why', POSIX, () =>
+{
+    for (const [name, args, platform] of [['desktop-win-on-mac', WIN_ARGS, 'darwin'], ['desktop-mac-on-win', MAC_ARGS, 'win32'], ['desktop-win-on-linux', WIN_ARGS, 'linux']])
+    {
+        const got = desktopRun(name, args, { env: { ALFRED_CODE_PLATFORM: platform } });
+        assert.strictEqual(got.status, 1, name);
+        assert.strictEqual(got.argv, null, `${name}: uvx was started on the wrong OS`);
+        assert.match(got.stderr, /drives (Windows|macOS) apps and this machine runs (macOS|Windows|Linux)/, name);
+    }
+});
+
+test('desktop-launch: a hand-edited entry with no --server or --package says so instead of launching something else', () =>
+{
+    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-desktop', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
+    {
+        let code = 0;
+        try { execFileSync(process.execPath, [DESKTOP, ...args], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'win32' }, stdio: 'pipe' }); }
+        catch (err) { code = err.status; }
+        assert.strictEqual(code, 2, args.join(' '));
+    }
+});
+
+test('desktop-launch: the server\'s exit code comes back', POSIX, () =>
+{
+    const { dir } = project('desktop-exit');
+    const PATH = scriptedUvx('desktop-exit', "process.stderr.write('dying\\n'); process.exit(7);");
+    let status = 0;
+    try { execFileSync(process.execPath, [DESKTOP, ...MAC_ARGS], { cwd: dir, env: { ...BARE, PATH, HOME: dir, ALFRED_CODE_PLATFORM: 'darwin' }, stdio: 'pipe' }); }
+    catch (err) { status = err.status; }
+    assert.strictEqual(status, 7);
+});
+
+test('desktop gate: each server runs on its own OS only, and an unknown platform override is ignored', () =>
+{
+    const { offeredOn, platformOf, DESKTOP_OS } = require(DESKTOP);
+    assert.deepStrictEqual(DESKTOP_OS, { 'windows-desktop': 'win32', 'macos-desktop': 'darwin' });
+    assert.strictEqual(offeredOn('windows-desktop', 'win32'), true);
+    assert.strictEqual(offeredOn('windows-desktop', 'darwin'), false);
+    assert.strictEqual(offeredOn('macos-desktop', 'darwin'), true);
+    assert.strictEqual(offeredOn('macos-desktop', 'linux'), false);
+    assert.strictEqual(offeredOn('browser', 'linux'), true, 'a server that is no desktop server runs anywhere');
+    assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'win32' }), 'win32');
+    assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'beos' }), process.platform);
+    assert.strictEqual(platformOf({}), process.platform);
+});

@@ -25,6 +25,7 @@ const selection = require('./selection.js');
 const plugins = require('./plugins.js');
 const { pythonRequest } = require('../../stack/mcp/uv-python.js');
 const { serenaHomeFor } = require('../../stack/mcp/serena-launch.js');
+const { copyRouteExclude } = require('../../stack/mcp/desktop-launch.js');
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
 const settings = require('./settings.js');
@@ -463,7 +464,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan
-            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
+            ? { PW_PIN: '', SERENA_PIN: '', MEMORY_PIN: '', WINDOWS_DESKTOP_PIN: '', MACOS_DESKTOP_PIN: '', MEMORY_BACKEND: 'sqlite_vec' }
             : mcp.resolvePins({ pins: readJson(path.join(resolved.dir, 'meta', 'mcp-pins.json')).pins, log });
 
         const pw = mcp.expandPlaywright({
@@ -537,6 +538,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             SERENA_HOME: serenaHomeFor(),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
+            WINDOWS_DESKTOP_PIN: pins.WINDOWS_DESKTOP_PIN, MACOS_DESKTOP_PIN: pins.MACOS_DESKTOP_PIN,
+            // windows-desktop's tool gate on the copy route, which registers no launcher: the list the
+            // launcher would pass, as Windows-MCP's own WINDOWS_MCP_EXCLUDE_TOOLS.
+            WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: cliEnv, projectDir: projectRoot }),
         };
         // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
         const remotes = { documentation: mcp.CONTEXT7_REMOTE };

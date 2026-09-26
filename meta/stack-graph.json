@@ -1151,8 +1151,10 @@
     "mcps": [
       "browser",
       "documentation",
+      "macos-desktop",
       "memory",
-      "navigation"
+      "navigation",
+      "windows-desktop"
     ],
     "plugins": [
       "claude-hud",

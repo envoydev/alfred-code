@@ -33,6 +33,7 @@ const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
+const { DEFAULT_EXCLUDE } = require('../stack/mcp/desktop-launch.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -324,9 +325,10 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 // `mcp__plugin_<n>_<n>__<tool>` for a single `<n>` - readable, and mechanical to generate. Lint
 // check 53 fails on any entry that breaks it.
 //
-// The names are the ROLE (2.0.0, the user's rename): navigation, documentation, memory and one
-// browser-<engine> per browser. The upstream each one runs - Serena, Context7, Playwright MCP - is
-// named once in its description, where a reader needs it.
+// The names are the ROLE (2.0.0, the user's rename): navigation, documentation, memory, one
+// browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
+// Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
+// reader needs it.
 
 function mcpServerShapes(options = {})
 {
@@ -401,6 +403,28 @@ function mcpServerShapes(options = {})
         },
         // --- the droppable servers: one browser plugin per engine ---------------------------------
         ...browsers,
+        // --- the desktop servers: each drives the machine's own apps, so each ships for ONE OS -----
+        // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
+        // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
+        'windows-desktop': {
+            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).`,
+            servers: {
+                'windows-desktop': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`,
+                        '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
+                },
+            },
+        },
+        'macos-desktop': {
+            description: 'The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.',
+            servers: {
+                'macos-desktop': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, '--', 'serve'],
+                },
+            },
+        },
     };
 }
 

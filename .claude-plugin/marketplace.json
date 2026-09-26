@@ -1546,6 +1546,64 @@
       "dependencies": [
         "claude-stack"
       ]
+    },
+    {
+      "name": "windows-desktop",
+      "source": "./",
+      "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "windows-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "windows-desktop",
+            "--package",
+            "windows-mcp==0.8.5",
+            "--",
+            "serve",
+            "--exclude-tools",
+            "PowerShell,Registry,Process"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "macos-desktop",
+      "source": "./",
+      "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "macos-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "macos-desktop",
+            "--package",
+            "macos-mcp==0.4.6",
+            "--",
+            "serve"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
     }
   ]
 }

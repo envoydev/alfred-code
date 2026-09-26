@@ -251,6 +251,28 @@ test('the three locked MCP plugins ship standalone, one server each, depending o
     }
 });
 
+// The desktop servers drive the machine's own apps: each one plugin, one server of its own name, a
+// droppable pick that names the core, started through the launcher that pins the Python and refuses
+// on the other OS. windows-desktop ships with shell, registry and process control switched off.
+test('the two desktop MCP plugins: one server each, launched through desktop-launch.js at the release pin', () => {
+    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
+    const want = {
+        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process'],
+        'macos-desktop': ['--server', 'macos-desktop', '--package', `macos-mcp==${pins['macos-desktop'].version}`, '--', 'serve'],
+    };
+    for (const [name, args] of Object.entries(want))
+    {
+        const entry = shippedBy[name];
+        assert.ok(entry, `${name} is not in the marketplace`);
+        assert.deepStrictEqual(Object.keys(entry.mcpServers), [name], `${name} must carry exactly one server of its own name`);
+        assert.deepStrictEqual(entry.dependencies, ['alfred-code'], `${name} is a droppable pick, so it names the core`);
+        const server = entry.mcpServers[name];
+        assert.strictEqual(server.command, 'node');
+        assert.deepStrictEqual(server.args, ['${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js', ...args]);
+        assert.ok(fs.existsSync(path.join(__dirname, '..', 'stack', 'mcp', 'desktop-launch.js')), 'the launcher the entry names is not in the tree');
+    }
+});
+
 test('the retired entries stay listed for one release, marked retired', () =>
 {
     const mkt = applyToMarketplace({ plugins: [] }, buildEntries().concat(retiredMarketplaceEntries()));
