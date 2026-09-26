@@ -97,6 +97,15 @@ An optional fifth arm, `ours+ponytail` (our stack plus the ponytail plugin at it
 
 Model: the stack's yardstick model - Sonnet at the effort the stack pins for its implementer path - for ALL arms. One reference column, `bare` on Opus at high effort, is run on the headline tasks only (the stack's own goal is Sonnet + stack against Opus without it).
 
+**2026-09-27, before pilot 3, no result changed:** B1-B4 fixed what pilot 2 exposed in the harness:
+
+- `dotnet tool restore` runs at template time too, outside the sandbox - the fixture's local tool (`dotnet-ef`) hit the sandbox's NuGet deny in every data-01 cell otherwise, and two cells fell back to the host's own `dotnet-ef` via `find /`;
+- a cell's copied `.claude/settings*.json` maps the template's OS-resolved (realpath) spelling too, not just the given one (os.tmpdir() is a symlink on macOS) - a value neither mapping covers is refused rather than served;
+- the done-gate check (`doneWithoutCheck`) reads code edits only - a plan-file tick after the last real check no longer counts as the task's last edit;
+- `devops-01-worker-image` is marked `exclusive`: two of its cells never run at once, because three arms raced the same Docker tag on the shared daemon in pilot 2.
+
+Pilot 3 reruns the harder task per group, picked from the Opus proof run's wall time (`b3-proof`): `api-03-member-notices` (25.0 min), `cross-02-late-return-event` (28.9), `data-02-loans-cursor-feed` (36.3), `web-03-check-in-guard` (2.6, the slowest web task), `guard-02-reminder-lead-time` (18.1 - it plants the credential, so the credential check is finally exercised) and `devops-01-worker-image` (the only devops task). No task, metric or rule changed.
+
 ## Metrics (pre-registered)
 
 | Metric | Source | Role |

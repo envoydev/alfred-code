@@ -209,6 +209,17 @@ node bench/aggregate.js b4-pilot
 Then the checks in 'What B4 must verify' above, ten transcripts read end to end. A harness fix after
 this point is fine; a change to a task or an arm re-hashes the pre-registration.
 
+A second run, pilot 3, follows the harness fixes above and the stack's own fixes: one harder task per
+group, picked from the Opus proof run's wall time (`b3-proof`) - pilot 2's six solved too easily to
+tell the arms apart. `ours` is re-pinned to the stack branch's head first (`arms/ours-vocabulary.txt`
+regenerated from it, the pre-registration re-hashed).
+
+```
+node bench/drive.js --run b4-pilot-3 --arms ours,ecc,bare --tasks api-03-member-notices,cross-02-late-return-event,data-02-loans-cursor-feed,devops-01-worker-image,web-03-check-in-guard,guard-02-reminder-lead-time --reps 2 --parallel 6 --wait-on-limit 12 --auth CLAUDE_CODE_OAUTH_TOKEN
+node bench/grade.js b4-pilot-3
+node bench/aggregate.js b4-pilot-3
+```
+
 ### B5 - the measured run
 
 After B4 is closed. The pre-registration hash is recorded at the run's start and
