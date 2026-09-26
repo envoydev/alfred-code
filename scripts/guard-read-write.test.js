@@ -115,6 +115,25 @@ test('guard-read-whole-file: only a rule this install actually has is announced'
   assert.match(announce('cp x.js dist/app.js', sid()), /javascript-conventions\.md/, "this repo's own stack/rules is the sibling dir here");
 });
 
+// The benchmark pilot (2026-09-26): a plugin-launched hook announced `winforms-conventions.md` to a project that
+// never installed it. On the plugin route the hook's sibling `../rules` is the PLUGIN's stack/rules - the whole
+// catalog - so every convention rule read as installed. Only the project's own `.claude/rules` says what it has.
+test('guard-read-whole-file: a plugin-launched hook reads the project\'s rules, never the plugin catalog beside it', () => {
+  const cache = fs.mkdtempSync(path.join(TMP, 'plugin-'));
+  fs.mkdirSync(path.join(cache, 'stack', 'hooks'), { recursive: true });
+  fs.mkdirSync(path.join(cache, 'stack', 'rules'), { recursive: true });
+  const hook = path.join(cache, 'stack', 'hooks', 'guard-read-whole-file.js');
+  fs.copyFileSync(READ, hook);
+  for (const r of ['winforms-conventions.md', 'csharp-conventions.md']) fs.writeFileSync(path.join(cache, 'stack', 'rules', r), '# rule\n');
+  const project = fs.mkdtempSync(path.join(TMP, 'project-'));
+  fs.mkdirSync(path.join(project, '.claude', 'rules'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.claude', 'rules', 'csharp-conventions.md'), '# csharp\n');
+  const at = { cwd: project, env: { ...process.env, CLAUDE_PROJECT_DIR: project } };
+  const said = announce("sed -i '' 's/a/b/' src/MainForm.cs", sid(), hook, at);
+  assert.match(said, /csharp-conventions\.md/, 'the rule the project has');
+  assert.doesNotMatch(said, /winforms-conventions\.md/, 'the catalog\'s other rule is never named');
+});
+
 test('guard-read-whole-file: a shell loop ENDS at its own done - a later cat is not the loop body', () => {
   // ~88k tokens per block, twice: the capabilities skill's own grep-only inventory loop followed by
   // `; cat .mcp.json` was denied as a whole-file markdown sweep, because the sweep pattern's

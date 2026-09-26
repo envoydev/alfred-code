@@ -247,12 +247,16 @@ function writeTargets(text) {
   return out;
 }
 // A rule that is not INSTALLED cannot be read: one measured bundle was told to read
-// `javascript-conventions.md` in a project that has no JS and never installed that rule. The hook's
-// own sibling directory is the install's rules dir (`.claude/hooks/` -> `.claude/rules/`); with no
-// rules directory anywhere this cannot be told, and the announcement is made rather than dropped.
+// `javascript-conventions.md` in a project that has no JS and never installed that rule. A COPIED hook's
+// sibling directory is the install's rules dir (`.claude/hooks/` -> `.claude/rules/`); a plugin-launched
+// one's sibling is the plugin's `stack/rules` - the whole catalog, which named `winforms-conventions.md` to
+// a project that never installed it (the 2026-09-26 benchmark pilot) - so only a `.claude/hooks` sibling
+// counts, beside the project's own `.claude/rules`. With no rules directory anywhere this cannot be told,
+// and the announcement is made rather than dropped.
+const copiedSibling = pathMod.basename(__dirname) === 'hooks' && pathMod.basename(pathMod.dirname(__dirname)) === '.claude';
 const ruleInstalled = (rule) => {
   let known = false;
-  for (const d of [pathMod.join(__dirname, '..', 'rules'), ...anchorDirs.map((a) => pathMod.join(a, '.claude', 'rules'))]) {
+  for (const d of [...(copiedSibling ? [pathMod.join(__dirname, '..', 'rules')] : []), ...anchorDirs.map((a) => pathMod.join(a, '.claude', 'rules'))]) {
     if (!fs.existsSync(d)) continue;
     known = true;
     if (fs.existsSync(pathMod.join(d, rule))) return true;
