@@ -194,7 +194,7 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
             try
             {
                 const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared });
-                onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, index: i + 1, dir: paths.dir });
+                onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, tmp, index: i + 1, dir: paths.dir });
             }
             catch (err) { throw new Error(`${arm.name} onboarding ${i + 1}: ${err.message}`); }
             finally { removeTree(tmp); }

@@ -158,10 +158,10 @@ test('each onboarding prompt gets its own temp dir, removed after it', (t) =>
 {
     const f = fixture(t);
     const seen = [];
-    build({ claude: FAKE, arm: arm([], { onboarding: ['/init', 'second'] }), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, onboard: (prompt, where) => seen.push({ tmp: where.env.TMPDIR, cc: where.env.CLAUDE_CODE_TMPDIR, there: fs.existsSync(where.env.TMPDIR) }) });
+    build({ claude: FAKE, arm: arm([], { onboarding: ['/init', 'second'], expects: ['app.txt'] }), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, onboard: (prompt, where) => seen.push({ tmp: where.env.TMPDIR, cc: where.env.CLAUDE_CODE_TMPDIR, named: where.tmp, there: fs.existsSync(where.env.TMPDIR) }) });
     assert.strictEqual(seen.length, 2);
     assert.notStrictEqual(seen[0].tmp, seen[1].tmp);
-    for (const s of seen) assert.ok(s.there && s.cc === s.tmp && !fs.existsSync(s.tmp));
+    for (const s of seen) assert.ok(s.there && s.cc === s.tmp && s.named === s.tmp && !fs.existsSync(s.tmp));
 });
 
 test('onboarding gets only the credential the run chose, and setup gets none', (t) =>

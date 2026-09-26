@@ -27,12 +27,15 @@ const DIFF_EXCLUDES = ['.alfred', '.claude', '.memory-mcp', '.playwright', '.ser
 const MIN_SECRET = 8;
 const ONBOARD_TIMEOUT_MS = 60 * 60 * 1000;
 
-function sessionArgv({ prompt, session, sessionId })
+// The session's own temp dir is readable by the Read tool: the sandbox lets its commands write there,
+// but in print mode the Read tool is refused outside the working directory (measured: b4-probe-d8,
+// 'you haven't granted it yet'). The grant goes before --session-id, which ends the flag's list.
+function sessionArgv({ prompt, session, sessionId, tmp })
 {
     return [
         '-p', '--output-format', 'stream-json', '--verbose',
         '--model', session.model, '--effort', session.effort, '--permission-mode', session.permissionMode,
-        '--settings', session.settingsFile, '--session-id', sessionId, prompt,
+        '--settings', session.settingsFile, ...(tmp ? ['--allowedTools', `Read(/${tmp}/**)`] : []), '--session-id', sessionId, prompt,
     ];
 }
 
@@ -185,8 +188,8 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         prepare({ cell, startRef, setup, taskDir, task: cell.task });
         const baseTree = snapshot(cell, 'base');
         const sessionId = crypto.randomUUID();
-        const argv = sessionArgv({ prompt, session, sessionId });
         sessionTmpDir = sessionTmp();
+        const argv = sessionArgv({ prompt, session, sessionId, tmp: sessionTmpDir });
         const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
         const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared });
 
@@ -289,7 +292,7 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     let r;
     try
     {
-        r = spawnSync(claude[0], [...claude.slice(1), ...sessionArgv({ prompt, session, sessionId })], { cwd: where.cwd, env: where.env, stdio: ['ignore', out, err], timeout: ONBOARD_TIMEOUT_MS, killSignal: 'SIGKILL' });
+        r = spawnSync(claude[0], [...claude.slice(1), ...sessionArgv({ prompt, session, sessionId, tmp: where.tmp })], { cwd: where.cwd, env: where.env, stdio: ['ignore', out, err], timeout: ONBOARD_TIMEOUT_MS, killSignal: 'SIGKILL' });
     }
     finally
     {

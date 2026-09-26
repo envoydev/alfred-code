@@ -52,13 +52,35 @@ test('the argv is exactly the shared session, and nothing an arm chose', () =>
     ]);
 });
 
+test('a session may read its own temp dir: the Read tool is otherwise refused there in print mode', async (t) =>
+{
+    assert.deepStrictEqual(sessionArgv({ prompt: 'x', session: SESSION, sessionId: 'abc', tmp: '/private/tmp/bench-a1' }).slice(10, 14),
+        ['--settings', '/arms/harness.settings.json', '--allowedTools', 'Read(//private/tmp/bench-a1/**)']);
+    const { dir, cell } = cellFor(t);
+    const record = path.join(dir, 'record.json');
+    await go(cell, { name: 'solo', env: { FAKE_RECORD: record } });
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8'));
+    const at = seen.argv.indexOf('--allowedTools');
+    assert.deepStrictEqual(seen.argv.slice(at, at + 3), ['--allowedTools', `Read(/${seen.env.TMPDIR}/**)`, '--session-id'], 'the grant names this session\'s temp dir, and a flag ends the list before the prompt');
+    assert.strictEqual(seen.argv[seen.argv.length - 1], 'Add the thing.');
+});
+
+test('an onboarding prompt may read its own temp dir too', (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const record = path.join(dir, 'record.json');
+    const where = { cwd: cell.repo, config: cell.config, home: cell.home, env: { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: cell.config, HOME: cell.home, FAKE_RECORD: record }, index: 1, dir, tmp: '/private/tmp/bench-onb' };
+    onboardSync({ prompt: '/init', where, session: SESSION, claude: FAKE, base: BASE });
+    assert.ok(JSON.parse(fs.readFileSync(record, 'utf8')).argv.includes('Read(//private/tmp/bench-onb/**)'));
+});
+
 test('the session gets the cell\'s own account and home, the shared env, the arm env, auth by name, and nothing else of the host', async (t) =>
 {
     const { dir, cell } = cellFor(t);
     const record = path.join(dir, 'record.json');
     const out = await go(cell, { name: 'solo', env: { FAKE_RECORD: record } });
     const seen = JSON.parse(fs.readFileSync(record, 'utf8'));
-    assert.deepStrictEqual(seen.argv, sessionArgv({ prompt: 'Add the thing.', session: SESSION, sessionId: out.sessionId }));
+    assert.deepStrictEqual(seen.argv, sessionArgv({ prompt: 'Add the thing.', session: SESSION, sessionId: out.sessionId, tmp: seen.env.TMPDIR }));
     assert.strictEqual(fs.realpathSync(seen.cwd), fs.realpathSync(cell.repo));
     assert.deepStrictEqual(Object.keys(seen.env).filter((k) => !['PATH', '__CF_USER_TEXT_ENCODING'].includes(k)).sort(),
         ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_CONFIG_DIR', 'FAKE_RECORD', 'HOME', 'TMPDIR']);
