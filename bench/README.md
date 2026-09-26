@@ -47,7 +47,11 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   `ANTHROPIC_AUTH_TOKEN` or the subscription's `CLAUDE_CODE_OAUTH_TOKEN`, or `--auth <name>` choosing
   one when several are - recorded by name in `run.json`, and runs on macOS and Linux only.
 - `grade.js` grades serially under the run's lock. Each cell is re-created from its template, checked
-  against the baseline its session recorded, patched, and tested with the task's hidden files. What
+  against the baseline its session recorded, patched, and tested with the task's hidden files. The
+  patch is the task's change alone: a session's `diff.patch` leaves out the top-level folders the
+  stacks keep for themselves (`.alfred`, `.claude`, `.memory-mcp`, `.playwright`, `.serena` - docs
+  roots, hook ledgers, the LSP cache), the same for every arm, and `state.txt` beside it names what
+  changed there. What
   the harness caused - over 50 failing tests with a connection error, a grader timeout, a changed
   baseline - is infrastructure, queued in `regrade.json`, never counted as the arm's fail.
 - `aggregate.js` writes `results/<id>/report.md` and `metrics.json`: the headline table, one per

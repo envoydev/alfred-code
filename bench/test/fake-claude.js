@@ -6,7 +6,7 @@
 // env, the one channel the harness lets through.
 //
 //   FAKE_RECORD=<file>        write { argv, env, cwd, tmpdirExists } there first
-//   FAKE_EDIT=<name>          write a file into the clone
+//   FAKE_EDIT=<name>[,<name>] write a file into the clone per name (a relative path; its folders are made)
 //   FAKE_WRITE_OUTSIDE=<path> write a file outside it
 //   FAKE_SUBAGENT=1           add one subagent transcript
 //   FAKE_LEAK=1|<VAR>         put an auth value (ANTHROPIC_API_KEY, or the named variable) into the transcript,
@@ -60,7 +60,12 @@ if (env.FAKE_SUBAGENT)
     fs.mkdirSync(sub, { recursive: true });
     fs.writeFileSync(path.join(sub, 'agent-a1.jsonl'), `${JSON.stringify({ type: 'assistant', message: { id: 'msg_fake_sub', role: 'assistant', content: [], usage } })}\n`);
 }
-if (env.FAKE_EDIT) fs.writeFileSync(path.join(process.cwd(), env.FAKE_EDIT), `edited${leak}\n`);
+for (const name of (env.FAKE_EDIT || '').split(',').filter(Boolean))
+{
+    const file = path.join(process.cwd(), name);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `edited${leak}\n`);
+}
 if (env.FAKE_WRITE_OUTSIDE) fs.writeFileSync(env.FAKE_WRITE_OUTSIDE, 'outside\n');
 
 process.stdout.write(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: sid })}\n`);

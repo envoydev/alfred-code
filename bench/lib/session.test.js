@@ -120,6 +120,20 @@ test('a finished session leaves its transcript, subagents, stdout and the diff o
     assert.ok(!fs.existsSync(path.join(cell.results, '.lock')), 'the cell lock is released');
 });
 
+test('the diff is the task\'s change alone: the stacks\' own state is listed apart, never graded', async (t) =>
+{
+    const { cell } = cellFor(t);
+    const state = ['.serena/cache/c.mef-composition', '.claude/docs/flow/COMMIT-GATE', '.alfred/docs/hook-blocks/s.jsonl', '.playwright/chrome/x', '.memory-mcp/memory.db'];
+    await go(cell, { name: 'solo', env: { FAKE_EDIT: ['made.txt', 'src/deep/.claude-not-state.txt', ...state].join(',') } });
+    const diff = fs.readFileSync(cell.diff, 'utf8');
+    const files = [...diff.matchAll(/^diff --git a\/(\S+)/gm)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(files, ['made.txt', 'src/deep/.claude-not-state.txt'], 'only a top-level state folder is left out');
+    const listed = fs.readFileSync(path.join(cell.results, 'state.txt'), 'utf8');
+    for (const f of state) assert.match(listed, new RegExp(`^A\\t${f.replace(/\./g, '\\.')}$`, 'm'));
+    const rec = JSON.parse(fs.readFileSync(cell.session, 'utf8'));
+    assert.deepStrictEqual(rec.diffExcludes, ['.alfred', '.claude', '.memory-mcp', '.playwright', '.serena']);
+});
+
 test('a session past its time limit is stopped and recorded as timeout, not an error', async (t) =>
 {
     const { cell } = cellFor(t);

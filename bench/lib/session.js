@@ -18,6 +18,12 @@ const { assertIsolated } = require('./isolation.js');
 const { installShims } = require('./dotnet-shim.js');
 
 const WIN = process.platform === 'win32';
+// What the stacks keep in the clone for themselves - docs roots and their hook ledgers, serena's LSP
+// cache, browser profiles, a project-level memory database, Claude Code's own .claude/ - is never the
+// task's change. The diff that is graded and measured leaves these top-level folders out, the same for
+// every arm; state.txt beside it lists what they changed (names only - a language server cache runs to
+// hundreds of megabytes).
+const DIFF_EXCLUDES = ['.alfred', '.claude', '.memory-mcp', '.playwright', '.serena'];
 const MIN_SECRET = 8;
 const ONBOARD_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -216,7 +222,9 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
             if (fs.existsSync(subs)) fs.cpSync(subs, cell.subagents, { recursive: true });
         }
         const endTree = snapshot(cell, 'end');
-        fs.writeFileSync(cell.diff, git(cell.repo, ['diff', '--binary', '--no-color', '--no-ext-diff', baseTree, endTree], { home: cell.home }));
+        const exclude = DIFF_EXCLUDES.map((p) => `:(top,exclude)${p}`);
+        fs.writeFileSync(cell.diff, git(cell.repo, ['diff', '--binary', '--no-color', '--no-ext-diff', baseTree, endTree, '--', '.', ...exclude], { home: cell.home }));
+        fs.writeFileSync(path.join(cell.results, 'state.txt'), git(cell.repo, ['diff', '--name-status', '--no-color', '--no-renames', baseTree, endTree, '--', ...DIFF_EXCLUDES.map((p) => `:(top)${p}`)], { home: cell.home }));
 
         redact(cell.results, authSecrets(session, base));
 
@@ -231,7 +239,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
             run: cell.run, arm: cell.arm, task: cell.task, rep: cell.rep, sessionId, outcome,
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
-            model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree,
+            model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree, diffExcludes: DIFF_EXCLUDES,
             transcript: Boolean(transcript), subagents: countJsonl(cell.subagents),
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
@@ -304,4 +312,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git };
+module.exports = { sessionArgv, run, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, DIFF_EXCLUDES };
