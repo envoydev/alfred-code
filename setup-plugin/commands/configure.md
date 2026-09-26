@@ -407,12 +407,12 @@ nothing at step 8 and applies nothing here.
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
 seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
-On a yes: reconcile it against the fetched `stack/CLAUDE.template.md` - add the sections the
-template gained since the install, update the selection-tied parts (the rules table and any
-capability mentions) for what this run added or dropped, and complete any still-unwritten
-authoring-outline sections from what the inventory established. Reconcile ADDITIVELY: never
-overwrite the project's own prose, and show the changes before writing. Never offer
-skill/agent/MCP additions here - the walk owned the selection.
+On a yes, read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline
+with `STACK=$TMP/repo` - the one home of the fill: its improve mode adds the sections the template
+gained, fixes what its check reports and shows every change before writing, never overwriting the
+project's own prose. This run's own part is the selection-tied lines - the rules table and any
+capability mentions - for what it added or dropped. Never offer skill/agent/MCP additions here -
+the walk owned the selection.
 
 ## Post-check
 

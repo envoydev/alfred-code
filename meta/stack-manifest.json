@@ -43,6 +43,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "alfred-capture-claude-md",
+      "note": "create or improve a project's CLAUDE.md - the template's outline (Setup and Key files among it), a part's own <part>/CLAUDE.md, changes shown before an improve writes, and scripts/claude-md-check.js last; the one home of the CLAUDE.md fill /alfred-code:init runs"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "alfred-capture-architecture-quality",
       "note": "deliberate pros/cons capture over the architecture map - dispatches architecture-analyzer per module, reasons a gated, tiered strengths/weaknesses assessment in the main session, writes docs/quality/ASSESSMENT.md fresh every run (never versioned - quality/ carries no watch.json, so the docs engine never treats it as a domain); reads the decision log, never writes it; manual /-only"
     },

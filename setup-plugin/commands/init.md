@@ -148,21 +148,20 @@ captures above added; its own precheck decides whether the rule needs regenerati
 
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (fill it in -
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
-`stack/CLAUDE.template.md` when the project had none - that file is the target; a pre-existing
-CLAUDE.md (root or `.claude/`) is NEVER overwritten - the offer becomes a reconcile against
-`$TMP/repo/stack/CLAUDE.template.md` instead (add the sections it lacks, leave the project's own
-prose untouched), with the changes shown before writing. On a yes: follow the template's own
-authoring-outline comment - the project top (what it is, where its main parts live - one line each, never a folder tour, the real
-build and test commands), the outline's inventories, and the rules table trimmed to the rules this install carries.
-The captures just run are what the top cites for structure. Never offer skill, agent or MCP changes
-here - that is `/alfred-code:configure`.
+`stack/CLAUDE.template.md` when the project had none; a CLAUDE.md with the project's own text (root,
+`.claude/` or a part's own) is NEVER overwritten. On a yes, read
+`$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline, start to finish,
+with `STACK=$TMP/repo` - it is this step's instructions, the one home of the fill: its script picks
+create (the seed is still unfilled) or improve (every change shown before it is written), and the
+check closes it. The captures just run are what it cites for structure. Never offer skill, agent or
+MCP changes here - that is `/alfred-code:configure`.
 
 ## Close - one card
 
 **The card restates the OUTCOME of every step** - one line each, in step order: each machine item
 (installed, failed with its reason, skipped, blocked with its fix), the memory level and database and
 whether the import and the switch-off happened, each capture (ran and what it wrote, done, skipped
-and why), CLAUDE.md (filled, reconciled or skipped). Then the user's own next steps as suggestions,
+and why), CLAUDE.md (created, improved or skipped, with the check's last line). Then the user's own next steps as suggestions,
 each with its one reason: a restart when step 3 installed a runtime a server needed or step 4 chose
 a level other than `global`; `claude mcp list` after it, where every row should read connected;
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card

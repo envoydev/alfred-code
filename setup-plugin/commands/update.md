@@ -453,9 +453,11 @@ never regex, never touching other wiring). A migration's `then` line goes in the
 as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's CLAUDE.md
-Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 13: add sections the template gained, update the rules table for
-what this run pruned, never overwrite the project's own prose, show changes before writing.
+Read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline with
+`STACK=$TMP/repo`, exactly as the sibling `configure` command's step 13: its improve mode adds the
+sections the template gained and fixes what its check reports, this run's own part is the rules
+table for what it pruned, the project's own prose is never overwritten, and every change is shown
+before writing.
 The installer has already re-spelled every renamed skill or seat name the stack wrote into
 `CLAUDE.md`, `.claude/CLAUDE.md` and the generated rules (one `renamed: <file> - <n> ...` line per
 file) - report those lines, and leave the names to it.

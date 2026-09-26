@@ -187,7 +187,8 @@ test('a placeholder or a TODO left in the live text is a finding; inside a comme
         'The package marker `app/__init__.py`; a `TODO` without a ticket is rejected.',
         'Root is __DOCS_ROOT__ here.',
     ].join('\n');
-    assert.deepStrictEqual(kinds(run(root, text)), ['1 placeholder __PROJECT_NAME__', '3 todo TODO', '5 placeholder __DOCS_ROOT__']);
+    assert.deepStrictEqual(kinds(run(root, text)), ['1 template the template', '1 placeholder __PROJECT_NAME__', '3 todo TODO', '5 placeholder __DOCS_ROOT__'],
+        'a file with no section but its placeholder H1 is an unfilled template copy too');
 });
 
 test('a live line still carrying the template\'s own authoring text is a finding; the template\'s live Rules text is not', () =>
@@ -275,9 +276,10 @@ test('cli: --file checks one file; an unreadable template skips only the templat
     assert.match(bad.stderr, /usage: node claude-md-check\.js/);
 });
 
-// The installer seeds the template as .claude/CLAUDE.md: on a project whose captures all ran, only the
-// unfilled H1 is left; a GENERATED row whose capture never ran names files that are not there.
-test('cli: the shipped template, seeded untouched, is flagged by its placeholder alone - and a skipped capture\'s row by its files', () =>
+// A HAND copy of the template (the fill-in block's route when the seed step was skipped) keeps its
+// placeholder H1: on a project whose captures all ran, it is flagged unfilled and by that placeholder
+// alone; a GENERATED row whose capture never ran names files that are not there.
+test('cli: a hand copy of the shipped template is flagged unfilled and by its placeholder alone - and a skipped capture\'s row by its files', () =>
 {
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'CLAUDE.template.md'), 'utf8');
     const rules = ['baseline-interaction', 'baseline-quality-gates', 'baseline-security', 'baseline-git', 'baseline-navigation', 'baseline-docs-root', 'baseline-memory',
@@ -287,10 +289,43 @@ test('cli: the shipped template, seeded untouched, is flagged by its placeholder
     const root = tree(files, { git: true });
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout + r.stderr);
-    assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/CLAUDE.md:1 placeholder: __PROJECT_NAME__', 'claude-md-check: 1 finding(s) in 1 file(s)']);
+    assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/CLAUDE.md:1 template: the template', '.claude/CLAUDE.md:1 placeholder: __PROJECT_NAME__', 'claude-md-check: 2 finding(s) in 1 file(s)']);
     fs.rmSync(path.join(root, '.claude/rules/project-code-style.md'));
     fs.rmSync(path.join(root, '.claude/docs/code-style'), { recursive: true });
     const skipped = cli(root).stdout.trim().split('\n').map((l) => l.replace(/:\d+ /, ' ').replace(/ - .*/, ''));
-    assert.deepStrictEqual(skipped.slice(1, -1), ['.claude/CLAUDE.md path: project-code-style.md', '.claude/CLAUDE.md path: .claude/rules/project-code-style.md',
+    assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/CLAUDE.md path: project-code-style.md', '.claude/CLAUDE.md path: .claude/rules/project-code-style.md',
         '.claude/CLAUDE.md path: .claude/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
+});
+
+// The skill's first read: which CLAUDE.md files exist and whether one is still the untouched seed - the
+// fact its create-or-improve choice turns on, stated by the script instead of inferred.
+test('cli --list: every CLAUDE.md with its size, the untouched seed marked, and nothing checked', () =>
+{
+    const root = tree({ '.claude/CLAUDE.md': '# __PROJECT_NAME__\n\n## Rules\n', 'web/CLAUDE.md': '# web\n\nSee `gone.ts`.\n' }, { git: true });
+    const r = cli(root, ['--list']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(r.stdout.trim().split('\n'), ['.claude/CLAUDE.md: 3 lines, the seeded template (unfilled)', 'web/CLAUDE.md: 3 lines']);
+    const none = cli(tree({}), ['--list']);
+    assert.strictEqual(none.stdout.trim(), 'claude-md-check: no CLAUDE.md in this project');
+});
+
+// Measured by the skill's walkthrough (2026-09-26): the installer stamps the H1 with the folder name, so
+// the file it seeds carries no `__PROJECT_NAME__` - an unfilled seed is known by what the installer
+// leaves: the template's fill-in block still there, and no live section but the H1 and `## Rules`.
+test('the seed the installer writes reads as the unfilled template - listed as such, and a finding - until a section of the project\'s own lands', () =>
+{
+    const { claudeMdBody } = require('./install/seeds.js');
+    const root = tree({}, { git: true });
+    const seed = claudeMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
+    assert.ok(!seed.includes('__PROJECT_NAME__'), 'the installer stamps the H1');
+    fs.mkdirSync(path.join(root, '.claude/rules'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), seed);
+    assert.deepStrictEqual(cli(root, ['--list']).stdout.trim().split('\n'), [`.claude/CLAUDE.md: ${seed.replace(/\n$/, '').split('\n').length} lines, the seeded template (unfilled)`]);
+    const r = cli(root);
+    assert.strictEqual(r.status, 1, r.stdout);
+    assert.match(r.stdout, /^\.claude\/CLAUDE\.md:1 template: the template - never filled: only its H1 and ## Rules are live$/m);
+    const filled = seed.replace('\n## Rules\n', '\n## Commands\n\n- `git status`\n\n## Rules\n');
+    fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), filled);
+    assert.doesNotMatch(cli(root, ['--list']).stdout, /unfilled/, 'a section of the project\'s own makes it the project\'s file');
+    assert.doesNotMatch(cli(root).stdout, /never filled/);
 });

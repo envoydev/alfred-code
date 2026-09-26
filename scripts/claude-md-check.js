@@ -4,6 +4,8 @@
 // call, no network. The CLAUDE.md skill runs it as its last step; /alfred-code:validate runs it for drift.
 //
 //   node scripts/claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]
+//   node scripts/claude-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
+//                                                             the untouched seed marked; nothing checked
 //
 //   path        - a path the file names does not exist (a code span, an @import, a relative link)
 //   command     - a command's program does not resolve on PATH (a shell block, or a code span under a
@@ -21,7 +23,7 @@ const path = require('node:path');
 const rt = require('./install/runtime.js');
 
 const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'CLAUDE.template.md');
-const USAGE = 'usage: node claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>]';
+const USAGE = 'usage: node claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
 
 // Folders that hold someone else's files or a build's output - never a CLAUDE.md of the project's own.
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', 'dist', 'build', 'out', 'target', 'vendor', '.venv', 'venv', '__pycache__', '.serena', '.playwright', '.memory-mcp']);
@@ -44,6 +46,17 @@ const PROGRAM = /^(?:\.{1,2}\/|\/)?[A-Za-z0-9_][A-Za-z0-9._+/-]*$/;
 const CMDLET = /^[A-Z][a-z]+-[A-Z][A-Za-z]+$/;
 const PLACEHOLDER = /__[A-Z][A-Z0-9_]*__/g;
 const SHINGLE = 8;
+// What the installer leaves in a file it seeded (scripts/install/seeds.js stamps the H1 with the folder
+// name, so no placeholder is left to find): the template's fill-in block, and no live section of the
+// project's own - only the H1 and `## Rules`.
+const FILL_IN = '<!-- Fill-in block - delete once done.';
+function unfilledSeed(text)
+{
+    const t = normalize(text);
+    const { live } = stripComments(t);
+    if (!t.includes(FILL_IN) && !/^#\s+__PROJECT_NAME__\s*$/m.test(live)) return false;
+    return ![...live.matchAll(/^\s{0,3}(#{1,6})\s+(.*)$/gm)].some((m) => m[1] !== '#' && m[2].trim() !== 'Rules');
+}
 
 const WHY = {
     path: 'does not exist',
@@ -279,6 +292,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
     }
     if (template) checkTemplateText();
+    if (unfilledSeed(text)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
     return findings.sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
 
     function checkProgram(program, line, col)
@@ -335,10 +349,12 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     let root = process.cwd();
     let templateFile = TEMPLATE_DEFAULT;
     const files = [];
+    let list = false;
     for (let i = 0; i < argv.length; i++)
     {
         const flag = argv[i];
         const value = argv[i + 1];
+        if (flag === '--list') { list = true; continue; }
         if (['--root', '--file', '--template'].includes(flag) && value && !value.startsWith('--'))
         {
             if (flag === '--root') root = path.resolve(value);
@@ -350,6 +366,7 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
         err(`${USAGE}\n`);
         return 2;
     }
+    if (list) return listMain(root, files.length ? files : findFiles(root), { out, err });
     let template = null;
     try { template = fs.readFileSync(templateFile, 'utf8'); }
     catch { err(`claude-md-check: template ${templateFile} unreadable - the template-text check did not run\n`); }
@@ -369,6 +386,22 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
     if (!findings.length) { out(`claude-md-check: clean (${targets.length} file(s))\n`); return 0; }
     out(`claude-md-check: ${findings.length} finding(s) in ${new Set(findings.map((f) => f.file)).size} file(s)\n`);
     return 1;
+}
+
+// A seeded file still carrying the template's H1 placeholder in its live text has never been filled.
+function listMain(root, targets, { out, err })
+{
+    if (!targets.length) { out('claude-md-check: no CLAUDE.md in this project\n'); return 0; }
+    for (const file of targets)
+    {
+        let text;
+        try { text = normalize(fs.readFileSync(path.join(root, file), 'utf8')); }
+        catch (e) { err(`claude-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
+        const lines = text.replace(/\n$/, '').split('\n').length;
+        const seeded = unfilledSeed(text);
+        out(`${file}: ${lines} lines${seeded ? ', the seeded template (unfilled)' : ''}\n`);
+    }
+    return 0;
 }
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
