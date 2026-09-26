@@ -66,6 +66,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
+const { spawnSync } = require('child_process');   // `node --check` only - node is process.execPath, never a batch file (R105)
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
@@ -2274,6 +2275,8 @@ function main()
     for (const finding of lintMcpToolNames()) flag(finding);
     // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
     for (const finding of lintStaleMcpToolNames()) flag(finding);
+    // 60. The inventory page's inline script parses - a broken string there renders an empty page.
+    for (const finding of lintPageScripts()) flag(finding);
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
@@ -2619,6 +2622,32 @@ function lintStaleMcpToolNames({ files, entries } = {})
                     out.push(`${file}:${i + 1} names \`${full}\`, but the plugin '${plugin}' carries no server '${server}' - one plugin, one server, same name (check 53).`);
             }
         });
+    return out;
+}
+
+// 60. The inventory page builds every table from ONE inline script, so a row string that does not
+// parse (an unescaped double quote) leaves the page blank in the browser - and every other check reads
+// that script as text. Each inline script goes through `node --check` on stdin; the finding maps the
+// parser's line back onto the page. A `src=` script has no body here and is not ours to check.
+function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
+{
+    let text = html;
+    if (text === undefined)
+    {
+        try { text = fs.readFileSync(path.join(ROOT, file), 'utf8'); }
+        catch (err) { return [`${file}: unreadable, so its script was not checked (${err.message})`]; }
+    }
+    const out = [];
+    for (const m of text.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+    {
+        const r = spawnSync(process.execPath, ['--check', '-'], { input: m[1], encoding: 'utf8' });
+        if (r.status === 0) continue;
+        const bodyStart = text.slice(0, m.index + m[0].indexOf('>') + 1).split('\n').length;
+        const at = /^\[stdin\]:(\d+)/m.exec(r.stderr || '');
+        const line = at ? bodyStart + Number(at[1]) - 1 : bodyStart;
+        const why = ((r.stderr || '').split('\n').find((l) => /Error/.test(l)) || `exit ${r.status}`).trim();
+        out.push(`${file}:${line} - its inline script fails node --check (${why}), so the page renders no table`);
+    }
     return out;
 }
 
@@ -3034,6 +3063,7 @@ module.exports = {
     lintMcpEntries,
     lintMcpToolNames,
     lintStaleMcpToolNames,
+    lintPageScripts,
     lintRetiredNames,
     stackTextFiles,
     lintLegacyNames,

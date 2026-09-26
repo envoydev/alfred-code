@@ -1140,3 +1140,17 @@ test('lintStaleMcpToolNames flags a plugin tool spelling no shipped server answe
     assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'scripts/t.test.js', text: marked }] }), [], 'a marked fixture line passes');
     assert.deepStrictEqual(lintStaleMcpToolNames(), [], 'no stale plugin tool spelling under stack/, setup-plugin/, meta/ or scripts/');
 });
+
+// Check 60. The inventory page is ONE inline script building every table; a string that does not parse
+// (an unescaped double quote in a row) leaves the page blank in the browser, and no other check reads
+// the script as code. The check runs `node --check` over each inline script and names the page line.
+test('lintPageScripts flags an inline page script node --check refuses, and the live inventory page parses', () => {
+    const { lintPageScripts } = require('./lint-skills.js');
+    const page = (body) => `<!doctype html>\n<html><body>\n<p>x</p>\n<script>\n${body}\n</script>\n<script src="https://cdn.example.invalid/x.js"></script>\n</body></html>\n`;
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["a", "fine"],\n];') }), [], 'a script that parses passes');
+    const broken = lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["a", "says "quoted" words"],\n];') });
+    assert.strictEqual(broken.length, 1, broken.join('\n'));
+    assert.match(broken[0], /docs\/p\.html:6 .*node --check.*SyntaxError/, 'the finding names the page line, the tool and the error');
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: '<html><body>no script</body></html>' }), [], 'no inline script, nothing to check');
+    assert.deepStrictEqual(lintPageScripts(), [], 'docs/alfred-code.html: its script parses');
+});
