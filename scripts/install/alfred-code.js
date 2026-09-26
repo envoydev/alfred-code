@@ -79,7 +79,8 @@ const RETIRED_DENY = [
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
-const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js'];
+// shell-guards.js is the dispatcher the copy route wires for the picked shell guards (no catalog row).
+const HOOK_MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'];
 // The one rule copy.stampDocsRoot rewrites in place, after copyLibrary already hashed it - its
 // bare name, matching a copyLibrary/stamp key (no .md).
 const DOCS_ROOT_RULE = 'baseline-docs-root';
@@ -308,7 +309,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 (seeds[key] ??= []).push(shippedSeed);
             settings.leaveLocalScope({
                 claudeDir,
-                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))],
+                hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js'),
                 mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS),
                 denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.

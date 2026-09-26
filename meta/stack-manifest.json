@@ -805,15 +805,27 @@
     },
     {
       "file": "guard-config-protection.js",
-      "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
       "note": "an EXISTING lint / format / analyzer config, or a strictness setting in tsconfig / MSBuild, cannot be changed to get a check green - creating one passes; the CONFIG-EDIT-ALLOW receipt honours a wanted change, ALFRED_CODE_CONFIG_PROTECT=0 turns it off"
     },
     {
+      "file": "guard-config-protection.js",
+      "matcher": "Bash|PowerShell",
+      "event": "",
+      "note": "same gate on the shell routes (an in-place edit, redirect, tee, rm, mv or cp onto the config) - run inside shell-guards.js with the other shell guards"
+    },
+    {
       "file": "guard-cross-project-write.js",
-      "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
+      "matcher": "Write|Edit|NotebookEdit",
       "event": "",
       "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card"
+    },
+    {
+      "file": "guard-cross-project-write.js",
+      "matcher": "Bash|PowerShell",
+      "event": "",
+      "note": "same gate on the shell routes (redirect, tee, in-place sed/perl, cp/mv, rm/mkdir/chmod, git -C, cd then a write) - run inside shell-guards.js"
     },
     {
       "file": "guard-answer-length.js",
@@ -853,9 +865,15 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob",
+      "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
       "event": "",
       "note": "doc reads recorded; the FIRST change under a source root held until a covering section was read, that section handed over inline"
+    },
+    {
+      "file": "docs-session.js",
+      "matcher": "Bash|PowerShell",
+      "event": "",
+      "note": "the same read record and hold on the shell routes - run inside shell-guards.js; every Bash|PowerShell row of a guard shell-guards.js lists is wired as that ONE dispatcher (wiringRows), never on its own"
     },
     {
       "file": "docs-session.js",

@@ -47,7 +47,7 @@ change (see the invariants below).
   with cursor-stack run `node .claude/hooks/docs.js` (and the history block points at `history.js
   rulings`). The core's hooks block is GENERATED from the manifest's `hooks[]` table after the core's
   own two per event (`mergeHooks`, lint check 48); every hook carries `"timeout": 10` (a hook with none
-  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring only, from the
+  gets Claude Code's 600s) except `check-turn-build.js`'s 60 on its `Stop` wiring and `shell-guards.js`'s 80, from the
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
@@ -63,7 +63,10 @@ change (see the invariants below).
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
-  shell command's writes for the cross-project guard and the done gate.
+  shell command's writes for the cross-project guard and the done gate. The eight guards with a
+  `Bash|PowerShell` row are wired as ONE hook, `shell-guards.js` (R11; both generators fold the rows,
+  `wiringRows`): each guard runs in-process with its own gates and ledger row, every block reason
+  reaches the model, a throwing guard fails open alone.
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.
   A denial that needs the user's decision ends in ONE AskUserQuestion, and an 'allow' answer is

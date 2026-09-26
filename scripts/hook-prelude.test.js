@@ -209,12 +209,24 @@ const CORE = 'alfred-code@envoydev';
 
 // A real hook, run the way the entry launches it: the file the core's command names, under a plugin
 // root. guard-protected-force-push denies (exit 2) a force-push to main.
-const coreCommand = (file) => Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command).find((c) => c.includes(`/stack/hooks/${file}`));
+const dispatcher = require('../stack/hooks/shell-guards.js');
+function coreCommand(file)
+{
+    const all = Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks).map((h) => h.command);
+    const own = all.find((c) => c.includes(`/stack/hooks/${file}`));
+    if (own) return own;
+    // A shell guard with no launch of its own runs inside the dispatcher: fire it there, alone.
+    const name = file.replace(/\.js$/, '');
+    const via = dispatcher.GUARDS.includes(name) && all.find((c) => c.includes(`/stack/hooks/${dispatcher.SELF}.js`));
+    return via ? `${via} ${name}` : undefined;
+}
 function fire(file, env)
 {
-    const rel = coreCommand(file).match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/)[1];
+    const command = coreCommand(file);
+    const rel = command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/)[1];
+    const args = command.split('"').pop().trim().split(/\s+/).filter(Boolean);
     const clean = { PATH: process.env.PATH, HOME: env.CLAUDE_CONFIG_DIR || os.tmpdir(), ...env };
-    return spawnSync(process.execPath, [path.join(__dirname, '..', rel)], {
+    return spawnSync(process.execPath, [path.join(__dirname, '..', rel), ...args], {
         input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git push --force origin main' }, session_id: 's' }), env: clean, encoding: 'utf8',
     });
 }
@@ -368,7 +380,8 @@ test('the split state - the alias at user scope, the core at project scope, the 
     const s = scopes({ account: on(ALIAS), project: { enabledPlugins: { [CORE_OLD_KEY]: true, [HOOKS_ALIAS]: true } },
         core: [{ id: ALIAS, scope: 'user' }, { id: CORE_OLD_KEY, scope: 'project' }, { id: HOOKS_ALIAS, scope: 'project' }] });
     const hooks = [...new Set(Object.values(coreEntry().hooks).flat().flatMap((g) => g.hooks)
-        .map((h) => (h.command.match(/\/stack\/hooks\/([\w-]+)\.js/) || [])[1]).filter(Boolean))];
+        .map((h) => (h.command.match(/\/stack\/hooks\/([\w-]+)\.js/) || [])[1]).filter(Boolean)
+        .flatMap((h) => (h === dispatcher.SELF ? [h, ...dispatcher.GUARDS] : [h])))];
     assert.ok(hooks.length >= 17, `every stack hook the core wires: ${hooks.join(', ')}`);
     for (const hook of hooks)
     {

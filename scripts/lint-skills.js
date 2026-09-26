@@ -2771,6 +2771,10 @@ function lintHooksEntry(liveIn)
                 if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
                     out.push(`the core wires ${file}, which is not in stack/hooks/.`);
             }
+    // The shell-guard dispatcher runs its guards in-process: a guard it lists is wired through it.
+    const dispatcher = require(path.join(ROOT, 'stack/hooks/shell-guards.js'));
+    if (wired.has(`${dispatcher.SELF}.js`))
+        for (const guard of dispatcher.GUARDS) wired.add(`${guard}.js`);
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
         if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
@@ -2783,6 +2787,12 @@ function lintHooksEntry(liveIn)
         const text = fs.readFileSync(path.join(ROOT, 'stack/hooks', file), 'utf8');
         if (!text.includes('STACK HOOK GATES'))
             out.push(`stack/hooks/${file} carries no stand-down gate - a plugin copy would fire beside a still-wired project copy.`);
+        else if (file === `${dispatcher.SELF}.js`)
+        {
+            // Its guards gate themselves; its own gate is the copied-twin stand-down alone.
+            if (!text.includes(`yieldToCopiedTwin('${dispatcher.SELF}')`))
+                out.push(`stack/hooks/${file} does not step aside for its copied twin - yieldToCopiedTwin('${dispatcher.SELF}').`);
+        }
         else if (!text.includes(`standDown('${file.replace(/\.js$/, '')}')`))
             out.push(`stack/hooks/${file} names another hook in standDown() - the gate must name itself.`);
     }

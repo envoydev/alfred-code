@@ -32,6 +32,7 @@ const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
+const { wiringRows } = require('../stack/hooks/shell-guards.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -231,8 +232,9 @@ function applyToMarketplace(mkt, entries, { retired = [] } = {})
 function parseHookWirings(sourceDir)
 {
     const { catalogs } = loadManifest(sourceDir || REPO);
-    const rows = catalogs.hooks;
-    if (!rows.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
+    if (!catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
+    // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight.
+    const rows = wiringRows(catalogs.hooks);
     const out = [];
     for (const line of rows)
     {

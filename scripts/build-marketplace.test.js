@@ -337,6 +337,10 @@ test('the README trust surface counts what the core entry carries', () =>
     const core = coreEntry();
     const files = new Set(Object.values(core.hooks).flat().flatMap((g) => g.hooks)
         .map((h) => /\$\{CLAUDE_PLUGIN_ROOT\}\/([^"]+)"/.exec(h.command)[1]));
+    // The shell-guard dispatcher is a runner, not a hook: the guards it runs in-process are the hooks.
+    const dispatcher = require('../stack/hooks/shell-guards.js');
+    const dispatched = files.delete(`stack/hooks/${dispatcher.SELF}.js`);
+    if (dispatched) for (const g of dispatcher.GUARDS) files.add(`stack/hooks/${g}.js`);
     const own = [...files].filter((f) => f.startsWith('setup-plugin/')).length;
     const UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
         'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
@@ -349,4 +353,5 @@ test('the README trust surface counts what the core entry carries', () =>
     assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
         word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');
+    if (dispatched) assert.match(row, new RegExp(`${word(dispatcher.GUARDS.length)} of them run in-process by one dispatcher \\(\`${dispatcher.SELF}\\.js\`\\)`), 'the row names the dispatcher that runs the shell guards');
 });

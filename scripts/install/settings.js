@@ -28,6 +28,7 @@ const path = require('node:path');
 const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
+const shellGuards = require('../../stack/hooks/shell-guards.js');
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -37,7 +38,9 @@ const HOOK_TIMEOUT = 10;
 // seconds of real work, not a 25ms spawn - and it keeps its checks inside 50s of this. Keyed by EVENT:
 // the same file's PostToolUse half only appends a path, and a stall there must die at 10s like any
 // other hook. The plugin entry's generator reads the same table (build-marketplace.js).
-const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 } };
+// The shell-guard dispatcher runs every shell guard in one process, so its budget is theirs summed:
+// each guard keeps the 10s it had as its own hook.
+const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
@@ -101,6 +104,14 @@ function wireHooks(data, specs, retiredHooks)
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
     // SELECTED specs, so a hook the user de-selected keeps its entries - that is configure's job.
     const ourFiles = new Set(specs.map((s) => fileOf(s.command)).filter(Boolean));
+    // A guard the dispatcher runs is ours too: its own shell-tool row, which an older install wired,
+    // goes now that the dispatcher judges for it.
+    for (const s of specs)
+        if (fileOf(s.command) === `${shellGuards.SELF}.js`)
+        {
+            const named = s.command.split('"').pop().trim().split(/\s+/).filter(Boolean);
+            for (const g of named.length ? named : shellGuards.GUARDS) ourFiles.add(`${g}.js`);
+        }
     const pairs = new Set(specs.filter((s) => !s.matcher.startsWith('@')).map((s) => `${s.matcher}\u0000${s.command}`));
     const pre = hooks.PreToolUse || [];
     for (const entry of [...pre])
@@ -445,7 +456,9 @@ function writeSettings(opts)
     const denyBefore = plain(data.permissions) && Array.isArray(data.permissions.deny) ? [...data.permissions.deny] : [];
     const wiredBefore = new Set(wiringsOf(data.hooks).map((w) => w.id));
 
-    const specs = hookSpecs.map((row) =>
+    // The shell guards' rows fold into the ONE dispatcher row, naming a strict subset in its args.
+    const wired = shellGuards.wiringRows(hookSpecs, { listGuards: true });
+    const specs = wired.map((row) =>
     {
         const [fileName, matcher, args = ''] = String(row.file ?? row).split('::').concat(['', '']);
         return { matcher: row.matcher ?? matcher, ...hookCommand(row.file ?? fileName, row.args ?? args) };
@@ -659,7 +672,9 @@ function writeSettings(opts)
         for (const entry of localDeny)
             if (!localDenyBefore.includes(entry) || (priorDeny ? priorDeny.some((d) => d.file === localName && d.entry === entry) : Boolean(stackSeat(entry))))
                 managedDeny.push({ file: localName, entry });
-    const release = releaseWirings(ledger.releaseHooks || hookSpecs);
+    // The release's wirings with the shell guards folded, plus the dispatcher row this run wrote (its
+    // args name this selection's guards, which the release's own full row does not).
+    const release = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
     const priorHooks = prior && prior.hooks ? prior.hooks : null;
     if (priorHooks)
     {

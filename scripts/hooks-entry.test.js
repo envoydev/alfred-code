@@ -8,12 +8,14 @@ const { spawnSync } = require('node:child_process');
 const build = require('./build-marketplace.js');
 const { parseHookWirings, hooksBlock, coreEntry } = build;
 
+const dispatcher = require('../stack/hooks/shell-guards.js');
 const wirings = parseHookWirings();
 const block = hooksBlock(wirings);
 
 test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
-    const files = new Set(wirings.map(w => w.file));
+    // The shell guards launch as ONE dispatcher, which runs each of them in-process.
+    const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`) : [w.file])));
     assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
@@ -36,7 +38,7 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // script ('Exec form and shell form', code.claude.com/docs/en/hooks: 'the node plus script-path
 // pattern works on every platform'). A bare script path needs the exec bit and a shebang the
 // platform honours: five hooks were committed 100644, and Windows runs neither.
-test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 for the one declared exception), plugin-root paths', () => {
+test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 and 80 for the two declared exceptions), plugin-root paths', () => {
     for (const [event, blocks] of Object.entries(block))
     {
         assert.ok(Array.isArray(blocks) && blocks.length, `${event} must hold at least one block`);
@@ -46,7 +48,9 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 fo
                 assert.strictEqual(h.type, 'command');
                 // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s. Its
                 // PostToolUse half only appends a path, so it keeps 10 like every other hook.
-                const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60 : 10;
+                // The shell-guard dispatcher runs eight guards in one process: their 10s each, summed.
+                const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60
+                    : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length : 10;
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
                 assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
                     `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
@@ -67,7 +71,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
             for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 19, `expected the seventeen hooks plus the core's own two, got ${commands.size}`);
+        assert.ok(commands.size >= 17, `expected the seventeen hooks (the eight shell guards through one dispatcher) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {

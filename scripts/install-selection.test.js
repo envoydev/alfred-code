@@ -109,7 +109,7 @@ test('derive: generated project-owned files and the engine modules are NOT items
     // engines and hook-prelude.js the shared gate module - none of them is a hook.
     const dir = target({
         rules: ['baseline-security', 'baseline-project-agent-capabilities', 'project-code-style'],
-        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session', 'shell-writes', 'hidden-chars'],
+        hooks: ['docs-session', 'docs', 'memory', 'hook-prelude', 'fresh-session', 'shell-writes', 'hidden-chars', 'shell-guards'],
     });
     const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [] });
     assert.deepStrictEqual(lines.filter((l) => l.startsWith('rule ')), ['rule baseline-security']);

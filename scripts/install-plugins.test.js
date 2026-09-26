@@ -1387,7 +1387,7 @@ test('seed update --installed-only: an unwired stack hook under a stamp with no 
     assert.deepStrictEqual(result.onDisk, shipped.filter((h) => h !== 'guard-answer-length').map((h) => `${h}.js`).sort(), '16 of 17 hooks copied and on');
 });
 
-// Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js, shell-writes.js, hidden-chars.js) are no catalog hook,
+// Re-review N1: the copy route's own modules (hook-prelude.js, fresh-session.js, shell-writes.js, hidden-chars.js, shell-guards.js) are no catalog hook,
 // so a plugin-route stint that pruned only the catalog left them behind - and the next copy-route run
 // read that leftover prelude as the copy route's own None, switching every hook off. The plugin route
 // removes them with the hooks, so copy -> plugin -> copy comes back with the plugin route's answer.
@@ -1397,7 +1397,7 @@ test('seed: copy -> plugin -> copy hands the plugin route\'s hooks back, never a
     const shipped = [...new Set(loadManifest(ROOT).catalogs.hooks.map((r) => r.split('::')[0].replace(/\.js$/, '')))];
     const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const copies = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' };
-    const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js'];
+    const MODULES = ['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'];
     const read = (repo) => ({
         files: fs.readdirSync(path.join(repo, '.claude', 'hooks')),
         off: String(JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).env.ALFRED_CODE_HOOKS_OFF || '').split(',').filter(Boolean).sort(),
@@ -1933,7 +1933,7 @@ test('seed: a copy-route None survives a plugin-route run that dies after the ma
 {
     const s = hooksRouteSandbox('m9-', 'skill markdown-style\nhook none\n');
     const fullCopy = { ...s.env, ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js'].includes(f));
+    const stackHooks = () => s.onDisk().filter((f) => !HOOK_ENGINES.includes(f) && !['hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js', 'shell-guards.js'].includes(f));
     try
     {
         // Step 1: the full copy route with the user's None - the stamp says 'copy', no stack hook copied.
