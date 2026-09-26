@@ -590,7 +590,7 @@ Then the Stop build check advisory, from this project's session transcripts and 
 rows:
 
 ```bash
-node "$TMP/repo/scripts/analyze-usage.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | sed 's/[^a-zA-Z0-9]/-/g')" --turn-check-advice .
+node "$TMP/repo/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
 It prints ONE `turn-check: advise - ...` line (done claims over an edit with nothing run after it

@@ -602,15 +602,18 @@ test('status: read-only from the running plugin - stamp state, health columns, u
     assert.match(f, /When `invalid` is above 0, one more line: `invalid: <n> stamp name\(s\) are not valid item names/);
     assert.match(f, /`health` is `ok` when the row's `errors` list is empty or absent, else the `type` of each `errorDetails` entry/);
     assert.match(f, /The `health` column is ONE `claude mcp list` call/);
-    assert.match(status, /scripts\/analyze-usage\.js" "\$\{CLAUDE_CONFIG_DIR:-\$HOME\/\.claude\}\/projects\/\$\(pwd \| sed 's\/\[\^a-zA-Z0-9\]\/-\/g'\)" --inventory \.claude/);
+    assert.match(status, /scripts\/analyze-usage\.js" --inventory \.claude/);
     assert.match(status, /stack\/hooks\/guard-secret-value\.js" --presence /);
     for (const row of ['stack version \\(stamp\\)', 'running plugin', 'scope', 'docs root', 'initialised'])
         assert.match(status, new RegExp(`^\\| ${row} \\|`, 'm'), `the general table has its ${row} row`);
-    // The transcript folder is named the way the memory import names it - one encoding, two readers.
-    const sedClass = /sed 's\/(\[\^a-zA-Z0-9\])\/-\/g'/.exec(status)[1];
+    // Review finding 10: the transcript folder is derived by the analyzer from its own cwd, named the way
+    // the memory import names it - one encoding, two readers - and no body builds it with `pwd | sed`
+    // (Git Bash's `pwd` is not the native path Claude Code names the folder from).
     const { slugify } = require('./memory-import.js');
+    const { sessionsDirOf } = require('./analyze-usage.js');
     for (const sample of ['/Users/x/My Repo', 'C:\\work\\app.v2', '/tmp/a_b-c'])
-        assert.strictEqual(sample.replace(new RegExp(sedClass, 'g'), '-'), slugify(sample), `status and the memory import name ${sample}'s transcript folder alike`);
+        assert.strictEqual(path.basename(sessionsDirOf(sample, '/acct')), slugify(sample), `the analyzer and the memory import name ${sample}'s transcript folder alike`);
+    for (const body of [status, cmdBody('validate')]) assert.ok(!/pwd \| sed/.test(body), 'no body derives the transcript folder in the shell');
     // validate reports the same invalid line.
     assert.match(flat(cmdBody('validate')), /An `invalid: N stamp name\(s\) \.\.\.` line is a finding too/);
 });

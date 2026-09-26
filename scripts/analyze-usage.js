@@ -23,6 +23,7 @@
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
 //   node scripts/analyze-usage.js <projects-dir> --exclude-session <id>  # leave a session out (the live one is left out already)
 //   node scripts/analyze-usage.js <projects-dir> --turn-check-advice <root>  # ONE row when unchecked done claims pass 3 per 10 sessions
+//   node scripts/analyze-usage.js --turn-check-advice .           # no folder: this project's own, derived from the cwd
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
@@ -2472,18 +2473,28 @@ const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over a
 // two named exceptions do not excuse (a rule against running tests, no tests found) - the split's
 // skill-loaded, loaded-earlier and missed buckets. At TURN_CHECK_THRESHOLD of them in the newest
 // TURN_CHECK_WINDOW sessions - one session in three - validate and status paste ONE advisory row. The
-// switch is the user's: nothing here writes it, and a project that already set it gets no row.
+// switch is the user's: nothing here writes it, and a project that already set it, or runs the strict
+// hook profile (which runs the check anyway), gets no row.
 const TURN_CHECK_WINDOW = 10;
 const TURN_CHECK_THRESHOLD = 3;
 function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
-  const { envOf } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
+  const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
   const root = path.resolve(projectRoot);
   const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const readSettings = (f) => { try { const d = JSON.parse(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
   // The hooks see local over project over account, so the same order answers here; junk is no setting.
   const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
-    .map((f) => { try { const env = JSON.parse(fs.readFileSync(f, 'utf8')).env; return env && typeof env === 'object' ? env : {}; } catch { return {}; } });
+    .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
   const setting = (suffix) => [...envs, process.env].map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
-  const on = String(setting('TURN_CHECK') || '').trim() === '1';
+  // Review finding 9: the strict hook profile runs the Stop build check whatever TURN_CHECK says, so it
+  // is advised nothing. A hook reads the profile as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the shell a command
+  // body runs this from has no such variable, so the account settings' pluginConfigs - the one file
+  // Claude Code reads it from (code.claude.com/docs/en/plugins-reference) - answers after it.
+  const configs = readSettings(path.join(account, 'settings.json')).pluginConfigs;
+  const stored = Object.entries(configs && typeof configs === 'object' ? configs : {})
+    .filter(([id]) => id.split('@')[0] === CORE_PLUGIN).map(([, c]) => c && c.options && c.options.hook_profile).find((v) => typeof v === 'string' && v);
+  const profile = hookProfile({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: process.env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored || '' });
+  const on = String(setting('TURN_CHECK') || '').trim() === '1' || profile === 'strict';
   const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.claude/docs'), 'hook-blocks');
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
@@ -2493,7 +2504,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const advise = !on && unchecked >= TURN_CHECK_THRESHOLD;
   const row = advise ? `turn-check: advise - ${unchecked} done claims over an edit had nothing run after it in the newest ${newest.length} sessions `
     + `(threshold ${TURN_CHECK_THRESHOLD} per ${TURN_CHECK_WINDOW}): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop` : null;
-  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, advise, row };
+  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, profile, advise, row };
 }
 
 // A root-cause row is the first red build or test run of a streak. The ledger cannot know what came
@@ -3528,7 +3539,15 @@ function printCheckReport(res) {
 // Exported for the tests: the join's arithmetic shipped broken (ISO string minus a number = NaN,
 // so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
 // stayed broken because nothing could reach the function to pin it.
-module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath };
+// Review finding 10: the project's own transcripts folder, `<config>/projects/<name>`. Claude Code names it
+// from the NATIVE path, every non-alphanumeric character a '-' (memory-import.js slugify, the documented
+// rule), so on Windows 'C:\\Users\\me\\repo' is 'C--Users-me-repo'. Derived here from the analyzer's own
+// cwd, never in a command body: a shell's `pwd | sed` gets '-c-Users-me-repo' under Git Bash.
+function sessionsDirOf(cwd, configDir) {
+  return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
+}
+
+module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 
@@ -3561,7 +3580,9 @@ async function runAnalysis() {
   // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
   const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice']);
   const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
-  const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
+  // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
+  const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
+    || sessionsDirOf(process.cwd(), process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
   const checkFile = flagVal('--check-report');
   if (checkFile) {
@@ -3587,7 +3608,7 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
   }
 

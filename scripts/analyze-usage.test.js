@@ -917,9 +917,10 @@ function turnCheckCorpus(counts, opts = {}) {
   if (opts.settings !== undefined) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), opts.settings);
   return { sessions, root, blocks };
 }
-const turnCheck = (c, extra = []) => {
+const turnCheck = (c, extra = [], extraEnv = {}) => {
   const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(c.root, 'no-account') };
-  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH;
+  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH; delete env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE;
+  Object.assign(env, extraEnv);
   const args = [SCRIPT, c.sessions, '--turn-check-advice', c.root, ...extra];
   return { json: JSON.parse(execFileSync('node', [...args, '--json'], { encoding: 'utf8', env })), text: execFileSync('node', args, { encoding: 'utf8', env }) };
 };
@@ -961,6 +962,44 @@ test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 get
   const junk = turnCheck(turnCheckCorpus(over, { settings: '{not json' }));
   assert.strictEqual(junk.json.on, false);
   assert.strictEqual(junk.json.advise, true);
+});
+
+// Review finding 9: under the strict hook profile the Stop build check already runs, so there is nothing to
+// advise. A hook reads the profile from its env; a command body's shell has none, so the account settings'
+// pluginConfigs (the only file Claude Code reads it from) answers too.
+test('turn-check advice: the strict hook profile gets no row, from the hook env or the account pluginConfigs', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const env = turnCheck(turnCheckCorpus(over), [], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict' });
+  assert.strictEqual(env.json.advise, false, JSON.stringify(env.json));
+  assert.strictEqual(env.text, '');
+  const c = turnCheckCorpus(over);
+  const account = path.join(c.root, 'no-account');
+  fs.mkdirSync(account, { recursive: true });
+  fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'alfred-code@envoydev': { options: { hook_profile: 'strict' } } } }));
+  assert.strictEqual(turnCheck(c).text, '', 'the account pluginConfigs says strict');
+  fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'alfred-code@envoydev': { options: { hook_profile: 'standard' } } } }));
+  assert.match(turnCheck(c).text, /^turn-check: advise/, 'standard still advises');
+});
+
+// Review finding 10: the command bodies built the project's transcripts folder with `pwd | sed`, which Git
+// Bash spells '-c-Users-...' while Claude Code names the folder from the NATIVE path ('C--Users-...'). The
+// analyzer derives it itself, from its own cwd, when no folder is passed.
+test('sessionsDirOf: the transcripts folder Claude Code names from a native path, a Windows one included', () => {
+  const { sessionsDirOf } = require('./analyze-usage.js');
+  assert.strictEqual(sessionsDirOf('C:\\Users\\me\\my repo', '/acct'), path.join('/acct', 'projects', 'C--Users-me-my-repo'));
+  assert.strictEqual(sessionsDirOf('/Users/me/my.repo', '/acct'), path.join('/acct', 'projects', '-Users-me-my-repo'));
+});
+
+test('turn-check advice: with no folder passed, the project\'s own transcripts folder is derived from the cwd', () => {
+  const c = turnCheckCorpus([[doneRow({}), doneRow({}), doneRow({})]]);
+  const account = path.join(c.root, 'acct');
+  const own = path.join(account, 'projects', fs.realpathSync(c.root).replace(/[^a-zA-Z0-9]/g, '-'));
+  fs.mkdirSync(path.dirname(own), { recursive: true });
+  fs.renameSync(c.sessions, own);
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: account };
+  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH; delete env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; delete env.CLAUDE_CODE_SESSION_ID;
+  const text = execFileSync('node', [SCRIPT, '--turn-check-advice', '.'], { encoding: 'utf8', env, cwd: c.root });
+  assert.match(text, /^turn-check: advise - 3 done claims/);
 });
 
 test('turn-check advice: the ledger is found under the project\'s own docs root, and a missing corpus prints nothing', () => {

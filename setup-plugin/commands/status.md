@@ -281,10 +281,12 @@ way.
 
 **Usage** - which installed skills, agents, rules, plugins and MCP servers this project's sessions
 used, and which they never reached, from the analyzer's own inventory block (it reads every
-transcript of this project on this machine, so a long history takes a few seconds):
+transcript of this project on this machine, so a long history takes a few seconds; with no folder
+named it finds this project's transcripts itself, from its cwd, spelled the way Claude Code names the
+folder on every OS):
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | sed 's/[^a-zA-Z0-9]/-/g')" --inventory .claude | sed -n '/^INVENTORY vs USE/,$p'
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --inventory .claude | sed -n '/^INVENTORY vs USE/,$p'
 ```
 
 No such directory, or nothing printed: `usage: no session transcripts for this project on this
@@ -304,7 +306,7 @@ project installed it.
 Then the Stop build check advisory, from the same transcripts and this project's done-gate probe rows:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | sed 's/[^a-zA-Z0-9]/-/g')" --turn-check-advice .
+node "${CLAUDE_PLUGIN_ROOT}/scripts/analyze-usage.js" --turn-check-advice .
 ```
 
 It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes under the usage table
