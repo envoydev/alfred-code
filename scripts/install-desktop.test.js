@@ -28,12 +28,22 @@ test('desktopGate: each desktop server stays on its own OS, and a left-out one i
     assert.deepStrictEqual(on('win32').kept, ['navigation|x', 'windows-desktop|y']);
     assert.deepStrictEqual(on('darwin').kept, ['navigation|x', 'macos-desktop|z']);
     assert.deepStrictEqual(on('linux').kept, ['navigation|x']);
-    assert.deepStrictEqual(on('darwin').lines, ["desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS; the macOS one is macos-desktop (--add 'mcp macos-desktop')"]);
-    assert.deepStrictEqual(on('win32').lines, ["desktop: macos-desktop left out - it drives macOS apps and this machine runs Windows; the Windows one is windows-desktop (--add 'mcp windows-desktop')"]);
+    assert.deepStrictEqual(on('darwin').lines, ["desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS; the macOS one is macos-desktop (--add 'mcp macos-desktop'); where the project enables it, keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local"]);
+    assert.deepStrictEqual(on('win32').lines, ["desktop: macos-desktop left out - it drives macOS apps and this machine runs Windows; the Windows one is windows-desktop (--add 'mcp windows-desktop'); where the project enables it, keep it off on this machine only: claude plugin disable macos-desktop@envoydev --scope local"]);
     assert.deepStrictEqual(on('linux').lines, [
-        'desktop: windows-desktop left out - it drives Windows apps and this machine runs Linux, where no desktop server runs',
-        'desktop: macos-desktop left out - it drives macOS apps and this machine runs Linux, where no desktop server runs',
+        'desktop: windows-desktop left out - it drives Windows apps and this machine runs Linux, where no desktop server runs; where the project enables it, keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local',
+        'desktop: macos-desktop left out - it drives macOS apps and this machine runs Linux, where no desktop server runs; where the project enables it, keep it off on this machine only: claude plugin disable macos-desktop@envoydev --scope local',
     ]);
+});
+
+// I4 (final review of the rename): a row another machine enabled at project scope still starts here, and
+// /plugin would switch it off in the committed settings.json - for the teammate on the right OS too. The
+// skip line names the local-scope disable instead, under the marketplace key this install runs from.
+test('desktopGate: the skip line names the local-scope disable under this install\'s marketplace key (I4)', () =>
+{
+    const [line] = mcp.desktopGate({ mcps: ['windows-desktop'], platform: 'darwin', market: 'acme-key' }).lines;
+    assert.match(line, /keep it off on this machine only: claude plugin disable windows-desktop@acme-key --scope local$/);
+    assert.doesNotMatch(line, /\/plugin/);
 });
 
 test('seed install: a wpf selection on Windows installs windows-desktop and says its prerequisites once', POSIX_ONLY, () =>
@@ -52,7 +62,7 @@ test('seed install: the same wpf selection on macOS installs no desktop server, 
     const { calls, out } = seedRun('install', WPF, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
     assert.deepStrictEqual(calls.filter((c) => /desktop/.test(c) && !c.startsWith('mcp remove')), [], calls.join('\n'));
     const said = out.split('\n').filter((l) => /left out/.test(l));
-    assert.deepStrictEqual(said, ["==> desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS; the macOS one is macos-desktop (--add 'mcp macos-desktop')"]);
+    assert.deepStrictEqual(said, ["==> desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS; the macOS one is macos-desktop (--add 'mcp macos-desktop'); where the project enables it, keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local"]);
     assert.ok(!/English|Accessibility/.test(out), 'no prerequisite is said for a server the run left out');
 });
 

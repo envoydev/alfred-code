@@ -374,6 +374,25 @@ test('desktop-launch: on another OS the server does not start, and one line says
     }
 });
 
+// I4 (final review of the rename): the refusal said 'switch it off here with /plugin', which for a
+// project-scope entry writes the committed settings.json and switches it off for the teammate on the
+// right OS at their next pull. It names the local-scope disable - this machine only - and the marketplace
+// key the launcher runs from (its plugin-cache folder), the stack's own key outside a cache.
+test('desktop-launch: the wrong-OS line names the local-scope disable, for this machine only (I4)', POSIX, () =>
+{
+    const got = desktopRun('desktop-win-on-mac-line', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
+    assert.strictEqual(got.status, 1);
+    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local\n$/);
+    assert.doesNotMatch(got.stderr, /\/plugin/, 'the /plugin toggle writes the scope the entry sits at - a project one reaches every teammate');
+    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-desktop', '2.0.0', 'stack', 'mcp');
+    fs.mkdirSync(cached, { recursive: true });
+    for (const f of ['desktop-launch.js', 'uv-python.js']) fs.copyFileSync(path.join(ROOT, 'stack/mcp', f), path.join(cached, f));
+    let stderr = '';
+    try { execFileSync(process.execPath, [path.join(cached, 'desktop-launch.js'), ...WIN_ARGS], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'linux' }, stdio: 'pipe', encoding: 'utf8' }); }
+    catch (err) { stderr = String(err.stderr || ''); }
+    assert.match(stderr, /claude plugin disable windows-desktop@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
+});
+
 test('desktop-launch: a hand-edited entry with no --server or --package says so instead of launching something else', () =>
 {
     for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-desktop', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])

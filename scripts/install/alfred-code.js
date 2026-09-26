@@ -358,7 +358,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const desktopLines = (lines) => lines.filter((l) =>
         {
             const m = /^mcp (\S+)$/.exec(String(l).trim());
-            const gate = m ? mcp.desktopGate({ mcps: [m[1]], platform }) : null;
+            const gate = m ? mcp.desktopGate({ mcps: [m[1]], platform, market }) : null;
             if (!gate || gate.kept.length) return true;
             if (!desktopSaid.has(m[1])) log(gate.lines[0]);
             desktopSaid.add(m[1]);
@@ -480,7 +480,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 note(`--add ${line} names nothing this release ships - ignored`);
         }
         // A selection file is already closed, so the gate reads its server lines here (said once per name).
-        const desktop = mcp.desktopGate({ mcps: lists.mcps, platform });
+        const desktop = mcp.desktopGate({ mcps: lists.mcps, platform, market });
         lists.mcps = desktop.kept;
         for (const line of desktop.lines) if (!desktopSaid.has(line.split(' ')[1])) log(line);
 

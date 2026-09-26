@@ -677,8 +677,9 @@ function withLocked({ mcps = [], catalog = [], log = () => {} })
 // THE DESKTOP GATE (stack/mcp/desktop-launch.js owns which OS each desktop server drives). One this
 // machine cannot run is left out of the run with one line naming why - whatever put it in the list: a
 // walk's wpf / winforms seed, an --add, or a read-back of a row another machine enabled at project scope,
-// which nothing here removes (it is simply not in the set this run installs, updates or switches).
-function desktopGate({ mcps = [], platform })
+// which nothing here removes (it is simply not in the set this run installs, updates or switches) - its
+// line names the local-scope disable that keeps it off on this machine only, under `market`.
+function desktopGate({ mcps = [], platform, market })
 {
     const kept = [];
     const lines = [];
@@ -686,7 +687,7 @@ function desktopGate({ mcps = [], platform })
     {
         const name = String(entry).split('|')[0];
         if (offeredOn(name, platform)) kept.push(entry);
-        else lines.push(skipNote(name, platform));
+        else lines.push(skipNote(name, platform, market));
     }
     return { kept, lines };
 }

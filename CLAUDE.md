@@ -451,7 +451,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     macos-desktop is seeded by no stack. Both manifest rows ship `active: false` - in the catalog, never
     in a run that names no selection - because a server that clicks through the user's desktop with
     their full rights is opt-in. A server left out is named in one line, a row another machine enabled at
-    project scope is left as it is, and the run that brings one in prints its prerequisites once (English
+    project scope is left as it is - that line and the launcher's own refusal name `claude plugin disable
+    <name>@<marketplace> --scope local`, this machine only, since `/plugin` would switch the committed row
+    off for the teammate on the right OS too - and the run that brings one in prints its prerequisites once (English
     display language and matching privilege on Windows, the Accessibility and Screen Recording grants
     on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process`;
     `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
