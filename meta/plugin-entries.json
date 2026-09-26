@@ -108,28 +108,8 @@
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-protected-force-push.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-catastrophic-rm.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
-                "timeout": 10
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
+                "timeout": 80
               }
             ]
           },
@@ -179,7 +159,7 @@
             ]
           },
           {
-            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit",
             "hooks": [
               {
                 "type": "command",
@@ -189,7 +169,7 @@
             ]
           },
           {
-            "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
+            "matcher": "Write|Edit|NotebookEdit",
             "hooks": [
               {
                 "type": "command",
@@ -199,7 +179,7 @@
             ]
           },
           {
-            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob",
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
             "hooks": [
               {
                 "type": "command",
