@@ -1,5 +1,5 @@
 {
-  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section. FORCE_PROMPT_CACHING_5M holds every session at the 5-minute cache an API key gets - a subscription defaults to 1 hour and drops to 5 minutes on usage credits, and the price table bills the two apart - and DISABLE_AUTOUPDATER keeps the CLI one version, because the allowlisted env drops the shell's own switch. restore (NuGet only) runs once per template, outside the sandbox and before onboarding, so no session downloads packages (NuGet cannot restore inside the sandbox; npm installs fine there and a restored node_modules cannot be deleted inside it, so npm is left to the session). dotnet runs outside the sandbox like docker (harness.settings.json excludedCommands; the sandbox refuses the sockets MSBuild binds), and the three MSBuild switches keep parallel cells from sharing a build node or a compiler server. A compound dotnet command ('cd tests && dotnet test', a pipe) still runs inside the sandbox, which admits a loopback connect to 127.0.0.1 but not to the IPv4-mapped address a dual-stack .NET socket dials, and whose FileSystemWatcher hangs a second WebApplicationFactory host: DOTNET_SYSTEM_NET_DISABLEIPV6 and DOTNET_USE_POLLING_FILE_WATCHER make both work there without widening the sandbox.",
+  "_note": "The ONE session every arm runs: same model, effort, permission mode, settings layer and env. An arm file naming any of these is refused (bench/lib/arms.js). The Opus reference column is a run-level --model/--effort override, applied to every arm of that run. Effort is the stack's implementer pin, per the benchmark plan's Arms section. FORCE_PROMPT_CACHING_5M holds every session at the 5-minute cache an API key gets - a subscription defaults to 1 hour and drops to 5 minutes on usage credits, and the price table bills the two apart - and DISABLE_AUTOUPDATER keeps the CLI one version, because the allowlisted env drops the shell's own switch. restore (NuGet only) runs once per template, outside the sandbox and before onboarding, so no session downloads packages (NuGet cannot restore inside the sandbox; npm installs fine there and a restored node_modules cannot be deleted inside it, so npm is left to the session). dotnet tool restore is a second, separate restore: dotnet restore alone never touches a local tool manifest (dotnet-tools.json), so without it a session's own dotnet tool restore hit the sandbox's NuGet deny in pilot 2 (403 from the proxy, all 6 data-01 cells) - one cell then ran the host's own dotnet-ef via find /. dotnet runs outside the sandbox like docker (harness.settings.json excludedCommands; the sandbox refuses the sockets MSBuild binds), and the three MSBuild switches keep parallel cells from sharing a build node or a compiler server. A compound dotnet command ('cd tests && dotnet test', a pipe) still runs inside the sandbox, which admits a loopback connect to 127.0.0.1 but not to the IPv4-mapped address a dual-stack .NET socket dials, and whose FileSystemWatcher hangs a second WebApplicationFactory host: DOTNET_SYSTEM_NET_DISABLEIPV6 and DOTNET_USE_POLLING_FILE_WATCHER make both work there without widening the sandbox.",
   "model": "claude-sonnet-5",
   "effort": "medium",
   "permissionMode": "acceptEdits",
@@ -31,6 +31,11 @@
   "restore": [
     [
       "dotnet",
+      "restore"
+    ],
+    [
+      "dotnet",
+      "tool",
       "restore"
     ]
   ]

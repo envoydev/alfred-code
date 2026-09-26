@@ -38,7 +38,9 @@ test('the four shipped arm files load against the shared session', () =>
     // bills the two differently: every session is held at 5 minutes so the cost metric does not follow the route.
     assert.strictEqual(session.env.FORCE_PROMPT_CACHING_5M, '1');
     assert.strictEqual(session.env.DISABLE_AUTOUPDATER, '1', 'the allowlisted env drops the shell\'s own switch');
-    assert.deepStrictEqual(session.restore, [['dotnet', 'restore']], 'NuGet restores once per template, outside the sandbox');
+    // dotnet-ef is a local tool (dotnet-tools.json): `dotnet restore` alone never restores it, so a session's
+    // own `dotnet tool restore` hit the sandbox's NuGet deny in pilot 2 (all 6 data-01 cells, 403 from the proxy).
+    assert.deepStrictEqual(session.restore, [['dotnet', 'restore'], ['dotnet', 'tool', 'restore']], 'the local tool manifest restores at template time too, outside the sandbox');
     // A bare name matches only the bare command: the docs' form is 'docker *'. An excluded command then meets the
     // ordinary permission flow, which nobody answers in print mode, so each hole carries its allow rule too.
     assert.deepStrictEqual(session.settings.sandbox.excludedCommands, ['docker *', 'dotnet *'], 'the two declared holes, both host-equivalent');
