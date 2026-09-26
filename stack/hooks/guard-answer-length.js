@@ -417,8 +417,6 @@ function stopContractBlockedThisTurn(turnStartMs) {
 
 if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
-  // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer.
-  if (unattended(payload)) process.exit(0);
   let last;
   let user;
   let userTs = NaN;
@@ -469,6 +467,13 @@ if (payload.hook_event_name === 'Stop') {
   if (overLength && SELF_CORRECTION_RE.test(text)) overLength = false;
   if (overLength && MANDATED_FIELD_RE.test(text)) overLength = false;
   if (!overLength && !dashes) process.exit(0);
+  // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer. The row
+  // keeps the skipped block countable, as the stop contract's and the docs hook's do (review A, M3).
+  if (unattended(payload)) {
+    ledgerRow({ mode: 'unattended', kind: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
+      reason: 'skip: nobody is at the terminal - logged, not held', detail: { chars: body.length, dashes } });
+    process.exit(0);
+  }
 
   global.BLOCK_DETAIL = { branch: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
     matched: overLength ? `${body.length} chars of prose` : `${dashes} em-dash(es)` };

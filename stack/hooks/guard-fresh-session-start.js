@@ -92,6 +92,19 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
     exit(code);
   };
 })();
+// One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
+// block. Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const dir = nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: nodePath.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
+}
+const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
+
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
 if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
@@ -301,8 +314,11 @@ if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 if (EVENT === 'SessionStart') {
   if (String(payload.source || '') !== 'compact') process.exit(0);
   const pointer = compactPointer();
-  // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer.
-  if (FRESH_OFF || unattended(payload)) {
+  // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
+  // skipped offer leaves its row (review A, M3).
+  const quiet = !FRESH_OFF && unattended(payload);
+  if (quiet) ledgerRow({ mode: 'unattended', kind: 'compact-offer', reason: UNATTENDED_SKIP });
+  if (FRESH_OFF || quiet) {
     if (pointer) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: pointer } }));
     process.exit(0);
   }
@@ -465,8 +481,8 @@ function recordSizeOffer(ctx) {
 
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
-// neither trigger judges it. Nor does a session nobody is at (hook-prelude.js unattended).
-if (payload.agent_id || unattended(payload)) process.exit(0);
+// neither trigger judges it.
+if (payload.agent_id) process.exit(0);
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage
@@ -483,6 +499,12 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
 const chained = EVENT === 'UserPromptSubmit' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
+// Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
+// spent, so a person resuming the session later is still offered it (review A, M3).
+if (unattended(payload)) {
+  ledgerRow({ mode: 'unattended', kind: chained ? 'chained-offer' : 'size-offer', reason: UNATTENDED_SKIP, detail: { skill, ctx } });
+  process.exit(0);
+}
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
 }

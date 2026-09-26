@@ -203,6 +203,46 @@ test('guard-fresh-session-start: the user-only skill is still denied in print mo
     assert.match(r.stderr, /disable-model-invocation/);
 });
 
+// Review A, M3: every quieted block or offer leaves ONE 'mode: unattended' row, as stop-contract and docs-session do,
+// so a print-mode run can still count what it skipped (pilot 2: nine em-dash blocks). Nothing skipped, no row.
+const ledger = (sid) => { try { return fs.readFileSync(path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } };
+test('guard-answer-length: a Stop block skipped in print mode leaves one unattended row, a clean answer none', () =>
+{
+    const dash = 'Fixed it \u2014 the build is green.';
+    const t = transcripts(dash);
+    const sid = `al-${process.pid}-${++n}`;
+    assert.strictEqual(run('guard-answer-length.js', { hook_event_name: 'Stop', session_id: sid, transcript_path: t.print, last_assistant_message: dash }).status, 0);
+    const rows = ledger(sid);
+    assert.strictEqual(rows.length, 1, JSON.stringify(rows));
+    assert.strictEqual(rows[0].mode, 'unattended');
+    assert.strictEqual(rows[0].hook, 'guard-answer-length.js');
+    assert.strictEqual(rows[0].kind, 'em-dash');
+    const clean = `al-${process.pid}-${++n}`;
+    assert.strictEqual(run('guard-answer-length.js', { hook_event_name: 'Stop', session_id: clean, transcript_path: t.print, last_assistant_message: 'Fixed - the build is green.' }).status, 0);
+    assert.deepStrictEqual(ledger(clean), [], 'nothing was skipped');
+});
+
+test('guard-fresh-session-start: an offer skipped in print mode leaves one unattended row, none under the trigger', () =>
+{
+    const at = (entrypoint, ctx) => file([
+        { type: 'assistant', entrypoint, message: { id: `h${++n}`, content: [{ type: 'text', text: 'the first turn' }], usage: { cache_creation_input_tokens: 20000 } } },
+        ...convo(entrypoint, 'ok', { cache_read_input_tokens: ctx }),
+    ]);
+    const call = (sid, tp) => run('guard-fresh-session-start.js', { hook_event_name: 'PreToolUse', session_id: sid, tool_name: 'Skill', tool_input: { skill: 'alfred-loop-quality' }, transcript_path: tp }).status;
+    const hot = `fs-${process.pid}-${++n}`;
+    assert.strictEqual(call(hot, at('sdk-cli', 450000)), 0);
+    const rows = ledger(hot);
+    assert.strictEqual(rows.length, 1, JSON.stringify(rows));
+    assert.strictEqual(rows[0].mode, 'unattended');
+    assert.strictEqual(rows[0].hook, 'guard-fresh-session-start.js');
+    const cold = `fs-${process.pid}-${++n}`;
+    assert.strictEqual(call(cold, at('sdk-cli', 30000)), 0);
+    assert.deepStrictEqual(ledger(cold), [], 'under the trigger nothing was offered, so nothing was skipped');
+    const compact = `fs-${process.pid}-${++n}`;
+    run('guard-fresh-session-start.js', { hook_event_name: 'SessionStart', source: 'compact', session_id: compact, transcript_path: transcripts().print });
+    assert.strictEqual(ledger(compact).filter((r) => r.mode === 'unattended').length, 1, 'the compaction offer skipped');
+});
+
 // ---------------------------------------------------------------------------------------------
 // docs-session - no source-root hold and no Stop FINISH ask in print mode
 // ---------------------------------------------------------------------------------------------
