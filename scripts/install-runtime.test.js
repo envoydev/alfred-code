@@ -203,8 +203,11 @@ test('install-runtime: a .bat resolved on win32 takes the cmd.exe route like a .
 test('install-runtime: execCommand routes like the runners, returns stdout, and throws with the status on a non-zero exit', () =>
 {
     const { calls, spawn } = recorder({ status: 0, stdout: 'v1\n', stderr: '' });
-    assert.strictEqual(execCommand(BIN, ['--version'], { encoding: 'utf8', stdio: 'pipe' }, { platform: 'win32', resolve: () => 'C:\\npm\\npm.cmd', spawn }), 'v1\n');
+    // an empty env: a Windows host's own ComSpec would otherwise answer (it is what the code reads first)
+    assert.strictEqual(execCommand(BIN, ['--version'], { encoding: 'utf8', stdio: 'pipe', env: {} }, { platform: 'win32', resolve: () => 'C:\\npm\\npm.cmd', spawn }), 'v1\n');
     assert.strictEqual(calls[0].cmd, 'cmd.exe');
+    execCommand(BIN, ['--version'], { stdio: 'pipe', env: { ComSpec: 'D:\\alt\\cmd.exe' } }, { platform: 'win32', resolve: () => 'C:\\npm\\npm.cmd', spawn });
+    assert.strictEqual(calls[1].cmd, 'D:\\alt\\cmd.exe', 'the ComSpec the env names is the shell');
     const bad = recorder({ status: 2, stdout: 'o', stderr: 'e' });
     assert.throws(() => execCommand(BIN, ['x'], { stdio: 'pipe' }, { platform: 'win32', resolve: () => 'C:\\bin\\git.exe', spawn: bad.spawn }),
         (e) => e.status === 2 && e.stdout === 'o' && e.stderr === 'e');
@@ -215,7 +218,7 @@ test('install-runtime: execCommand routes like the runners, returns stdout, and 
 test('install-runtime: spawnCommandAsync runs a .cmd through cmd.exe and a .exe directly, and leaves an unresolved name to the plain spawn', () =>
 {
     const { calls, spawn } = recorder({ on: () => {} });
-    spawnCommandAsync(BIN, ['-y', 'a b"&c'], { cwd: 'C:\\p' }, { platform: 'win32', resolve: () => 'C:\\npm\\npx.cmd', spawn });
+    spawnCommandAsync(BIN, ['-y', 'a b"&c'], { cwd: 'C:\\p', env: {} }, { platform: 'win32', resolve: () => 'C:\\npm\\npx.cmd', spawn });
     assert.strictEqual(calls[0].cmd, 'cmd.exe');
     assert.strictEqual(calls[0].opts.windowsVerbatimArguments, true);
     assert.ok(calls[0].args[3].endsWith(`${cmdArg('a b"&c')}"`));

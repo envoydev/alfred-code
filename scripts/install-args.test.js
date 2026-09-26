@@ -282,7 +282,8 @@ test('install-entry: in a worktree of an installed checkout every action stops, 
             { out: (x) => { out += x; }, err: (x) => { err += x; }, cwd: wt });
         assert.strictEqual(code, 1, `${argv.join(' ')}: ${out.slice(-300)}`);
         assert.match(err, /^error: this is a git worktree of .+, which holds the install - run the installer from there$/m, `${argv.join(' ')}: ${err}`);
-        assert.ok(err.includes(fs.realpathSync(main)) || err.includes(main), err);
+        // git names the checkout in the file system's own letter case, which a temp root can spell differently
+        assert.ok([main, fs.realpathSync(main), fs.realpathSync.native(main)].some((p) => err.includes(p)), err);
         assert.ok(!/found nothing installed/.test(err), 'never the setup-naming refusal');
         assert.ok(!fs.existsSync(path.join(wt, '.claude')), `${argv.join(' ')}: wrote into the worktree`);
         assert.deepStrictEqual(fs.readdirSync(path.join(main, '.claude')).sort(), mainBefore, `${argv.join(' ')}: wrote into the main checkout`);

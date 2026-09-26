@@ -259,11 +259,16 @@ test('a 500-row database resolves in well under 1s', { skip: skipNoSqlite }, () 
     const rows = [];
     for (let i = 0; i < 500; i++) rows.push({ content: `row ${i} ${'x'.repeat(60)}`, tags: i % 4 === 0 ? `project:${projectName}` : '', memory_type: i % 4 === 0 ? 'reference' : 'preference_signal', created_at: i });
     buildDb(p.dbPath, rows);
+    // the budget is the hook's own work: a bare node start is timed first and taken off, so a slow or
+    // emulated host (measured: 1003ms on an x64 node under ARM64 emulation) is not read as a slow query
+    const t0 = Date.now();
+    require('node:child_process').spawnSync(process.execPath, ['-e', '']);
+    const floor = Date.now() - t0;
     const started = Date.now();
     const r = p.hook({ hook_event_name: 'SessionStart', session_id: 's5', cwd: p.root });
     const elapsed = Date.now() - started;
     assert.strictEqual(r.status, 0);
-    assert.ok(elapsed < 1000, `took ${elapsed}ms`);
+    assert.ok(elapsed - floor < 1000, `took ${elapsed}ms (a bare node start ${floor}ms)`);
     assert.match(r.stdout, /^\{"hookSpecificOutput"/);
   } finally { p.rm(); }
 });

@@ -516,10 +516,12 @@ test('a worktree of a repo never set up is not set up either, and a .git file th
         fs.mkdirSync(path.join(base, 'main', '.claude'));
         fs.writeFileSync(path.join(base, 'main', '.claude', 'alfred-code.stamp'), '');
         assert.strictEqual(neverSetUp(unsetEnv(wt)), false, 'the worktrees/<n> layout names the main checkout');
-        // Junk in the .git file: only the project's own .claude/ is read, and it has no record.
-        fs.writeFileSync(path.join(wt, '.git'), 'not a gitdir line\n');
+        // Junk in the .git file: only the project's own .claude/ is read, and it has no record. Removed
+        // before each write: Git for Windows marks it Hidden, and a Hidden file refuses an overwrite (EPERM).
+        const rewrite = (text) => { fs.rmSync(path.join(wt, '.git'), { force: true }); fs.writeFileSync(path.join(wt, '.git'), text); };
+        rewrite('not a gitdir line\n');
         assert.strictEqual(neverSetUp(unsetEnv(wt)), true);
-        fs.writeFileSync(path.join(wt, '.git'), 'gitdir: /nowhere/at/all\n');
+        rewrite('gitdir: /nowhere/at/all\n');
         assert.strictEqual(neverSetUp(unsetEnv(wt)), true);
     }
     finally { fs.rmSync(base, { recursive: true, force: true }); }

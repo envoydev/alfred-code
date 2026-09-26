@@ -812,7 +812,7 @@ test('installState: a worktree with no record of its own is a worktree of the in
     const { neverSetUp } = require('../stack/hooks/hook-prelude.js');
     const { main, wt } = worktreeOf();
     const env = { CLAUDE_CONFIG_DIR: path.join(main, 'no-account') };
-    const real = (p) => fs.realpathSync(p);
+    const real = (p) => fs.realpathSync.native(p);      // the file system's own letter case, as git names it
     assert.strictEqual(stamp.installState(wt, env), 'worktree-of-installed', 'never the main checkout\'s own state');
     assert.strictEqual(real(stamp.worktreeMain(wt)), real(main), 'the main checkout is named');
     assert.strictEqual(stamp.installState(path.join(wt), env), 'worktree-of-installed');
