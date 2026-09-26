@@ -24,11 +24,13 @@ const path = require('path');
 // way, so a skewed copy (this hook beside an older or missing engine/prelude) still orients instead
 // of crashing.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
     off = prelude.standDown('docs-session');
   } catch { /* an install without the prelude runs the hook unchanged */ }
   // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
@@ -607,6 +609,8 @@ function preToolUse(input, root, docs, state) {
   try { readable = docs.docFiles().length > 0; } catch {}
   if (!readable) { allow(); return; }
   if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
+  // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
+  if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); allow(); return; }
   state.holds++;
   saveState(input.session_id, state);
   let hits = [];
@@ -728,6 +732,9 @@ function stop(input, root, docs, state) {
   const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS);
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
+  // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
+  // 'docs ok' (8 of 12 print-mode cells, pilot 2). Logged, never made.
+  if (unattended(input)) { log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) }); return; }
   state.asked = true;
   saveState(input.session_id, state);
   const reason = finishAsk(docs, files, asks, warnings);

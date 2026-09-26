@@ -274,6 +274,65 @@ function isCliInvocation(argv)
 // itself and skips its block row there instead.
 const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
 
+// UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
+// the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine
+// em-dash blocks re-sent finished answers). Not a gate every hook runs - the hooks that ASK call it at
+// the ask; a denial that protects something never does. True on ALFRED_CODE_UNATTENDED=1 (exactly
+// '1', init-plan.js's switch), or when the transcript's newest row carrying an `entrypoint` says
+// `sdk-cli`: every conversation row of a `claude -p` transcript does, an interactive one says `cli`,
+// and bookkeeping rows (last-prompt, atis-latch, cost-state) carry none (measured, 12 pilot-2 cells).
+// The newest row decides, so a resumed session is judged by who is there now. Anything unreadable - no
+// file, an empty one, a torn or garbage LAST row - is a person: the behaviour they expect.
+const TRANSCRIPT_WINDOWS = [256 * 1024, 8 * 1024 * 1024];
+
+function transcriptEntrypoint(file)
+{
+    let size;
+    try { size = fs.statSync(file).size; } catch { return null; }
+    for (const span of TRANSCRIPT_WINDOWS)
+    {
+        const start = Math.max(0, size - span);
+        let text;
+        const fd = fs.openSync(file, 'r');
+        try
+        {
+            const buf = Buffer.alloc(size - start);
+            fs.readSync(fd, buf, 0, buf.length, start);
+            text = buf.toString('utf8');
+        }
+        finally { fs.closeSync(fd); }
+        const lines = text.split('\n');
+        if (start > 0) lines.shift();   // cut mid-row
+        let last = true;
+        for (let i = lines.length - 1; i >= 0; i--)
+        {
+            const line = lines[i].trim();
+            if (!line) continue;
+            let row = null;
+            try { row = JSON.parse(line); } catch { /* judged below */ }
+            const isRow = row !== null && typeof row === 'object' && !Array.isArray(row);
+            if (last && !isRow) return null;
+            last = false;
+            if (isRow && typeof row.entrypoint === 'string') return row.entrypoint;
+        }
+        // Nothing complete in this window: one row longer than it - read the wider one.
+        if (start === 0 || !last) return null;
+    }
+    return null;
+}
+
+function unattended(input, env)
+{
+    try
+    {
+        const source = env || process.env;
+        if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return true;
+        const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
+        return file !== '' && transcriptEntrypoint(file) === 'sdk-cli';
+    }
+    catch { return false; }
+}
+
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing.
 function standDown(hook, env, argv)
 {
@@ -286,4 +345,4 @@ function standDown(hook, env, argv)
     catch { return false; }
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

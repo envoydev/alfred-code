@@ -31,10 +31,12 @@ const fs = require('fs');
 // this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
     if (prelude.standDown('guard-answer-length')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -415,6 +417,8 @@ function stopContractBlockedThisTurn(turnStartMs) {
 
 if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
+  // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer.
+  if (unattended(payload)) process.exit(0);
   let last;
   let user;
   let userTs = NaN;

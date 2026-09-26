@@ -39,10 +39,12 @@ const fs = require('fs');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
     if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -1094,6 +1096,16 @@ if (payload.hook_event_name === 'Stop') {
       'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
+  }
+  // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
+  // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
+  // probes above still log and the rotation ask above still holds: that one protects a credential.
+  if (unattended(payload)) {
+    if (proseAsk(tail) || doneClose || endsOnQuestion) {
+      ledgerRow({ tool: '', mode: 'unattended', kind: proseAsk(tail) ? 'prose-ask' : doneClose ? 'done-close' : 'ends-on-question',
+        reason: 'skip: nobody is at the terminal - logged, not held' });
+    }
+    process.exit(0);
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.

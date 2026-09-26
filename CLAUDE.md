@@ -69,7 +69,14 @@ change (see the invariants below).
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret and force-push guards stay live, writing no row - R54, R86); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
-  `alfred-code@*` its `installed_plugins.json` row can load (S26). All fail open.
+  `alfred-code@*` its `installed_plugins.json` row can load (S26). All fail open. Beside the gates,
+  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`, or the transcript's
+  newest row carrying an `entrypoint` reads `sdk-cli` (`claude -p`; interactive rows read `cli`,
+  bookkeeping rows carry none; `CLAUDE_CODE_ENTRYPOINT` is not read - its value was not confirmable in
+  the docs). Then the hooks that ASK a person stay quiet: no docs hold or Stop FINISH ask, no
+  stop-contract prose-question, pending-close or fresh-session block (a `mode: unattended` row
+  instead), no answer-length Stop block, no fresh-session offer. Every protective denial and the
+  rotation ask are unchanged; a missing, empty or torn-last-row transcript reads as a person.
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a

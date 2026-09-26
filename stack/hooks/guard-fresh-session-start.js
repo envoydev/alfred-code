@@ -32,10 +32,12 @@ const nodePath = require('path');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
     if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
@@ -299,7 +301,8 @@ if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 if (EVENT === 'SessionStart') {
   if (String(payload.source || '') !== 'compact') process.exit(0);
   const pointer = compactPointer();
-  if (FRESH_OFF) {
+  // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer.
+  if (FRESH_OFF || unattended(payload)) {
     if (pointer) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: pointer } }));
     process.exit(0);
   }
@@ -462,8 +465,8 @@ function recordSizeOffer(ctx) {
 
 // A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
 // the carry read here is the parent session's, and a seat has no user to answer the offer - so
-// neither trigger judges it.
-if (payload.agent_id) process.exit(0);
+// neither trigger judges it. Nor does a session nobody is at (hook-prelude.js unattended).
+if (payload.agent_id || unattended(payload)) process.exit(0);
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage
