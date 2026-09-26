@@ -630,7 +630,10 @@ function report(projectRoot)
         sub(pluginRows.map((p) => `${p.name} (${p.state})`).join(', ') || 'none');
     }
 
-    say('COMPARE', 'no --body yet - compose the rule body, write it to a scratch file, then re-run with `--body <file>`; that verdict is what authorizes the write');
+    // Inside the project, so a Write lands under print mode's acceptEdits too (a temp dir outside it was
+    // refused in pilot 2); the docs root's own .gitignore keeps flow/ out of git.
+    const body = `${String(docs.value).replace(/[\\/]+$/, '')}/flow/capabilities-body.md`;
+    say('COMPARE', `no --body yet - compose the rule body, write it to \`${body}\`, then re-run with \`--body ${body}\`; that verdict is what authorizes the write, and the file is deleted once it is spent`);
     console.log(out.join('\n'));
     return 0;
 }

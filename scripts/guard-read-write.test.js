@@ -216,3 +216,23 @@ test('guard-cross-project-write: a quote inside a $( ) substitution does not clo
     'and a write INSIDE the substitution is judged, not read as quoted prose');
   assert.equal(xp(`echo "a > ${path.join(other, 'f.txt')} is how you would do it"`), 0, 'while quoted PROSE is still prose');
 });
+
+test('guard-cross-project-write: a comment is not shell - an apostrophe in one never unbalances the quotes', () => {
+  // Pilot 3 prep (2026-09-27): the source-protocol snippet init runs carries a comment with an apostrophe;
+  // it flipped every quoted span after it, and `x=>/@(envoydev|...)` inside a single-quoted `node -e`
+  // program read as a redirection to `/@`. Bash ignores a word that starts with `#`, so nothing in one
+  // can write - but a real redirect on the next line is still judged.
+  const other = fs.mkdtempSync(path.join(TMP, 'projC-'));
+  const xp = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const md = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+  const snippet = [...md.matchAll(/```bash\n([\s\S]*?)```/g)][0][1];
+  assert.match(snippet, /#[^\n]*'/, 'the shipped snippet still has a comment carrying an apostrophe');
+  assert.equal(xp(snippet), 0, 'the shipped source-protocol snippet');
+  assert.equal(xp(`true   # it's a note\nnode -e 'a.filter(x=>/@(y)$/.test(x))'`), 0, 'the minimal shape');
+  assert.equal(xp(`true # > ${path.join(other, 'f.txt')}`), 0, 'a redirect inside a comment writes nothing');
+  assert.equal(xp(`true # it's a note\necho x > ${path.join(other, 'f.txt')}`), 2, 'a real redirect after a comment still blocks');
+  assert.equal(xp(`echo "# not a comment" > ${path.join(other, 'f.txt')}`), 2, 'a # inside quotes is text, and the redirect after it is real');
+  assert.equal(xp(`echo a#b > ${path.join(other, 'f.txt')}`), 2, 'a # inside a word is no comment');
+  assert.equal(xp(`echo \${#X} > ${path.join(other, 'f.txt')}`), 2, 'a length expansion is no comment');
+});

@@ -80,7 +80,9 @@ change (see the invariants below).
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
-  shell command's writes for the cross-project guard and the done gate. The eight guards with a
+  shell command's writes for the cross-project guard and the done gate, after blanking heredoc bodies
+  and comments (an apostrophe in a comment flipped every quoted span after it, and the source-protocol
+  snippet read as a redirect to `/@`). The eight guards with a
   `Bash|PowerShell` row are wired as ONE hook, `shell-guards.js` (R11; both generators fold the rows,
   `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
   reaches the model, a throwing guard fails open alone.
@@ -116,7 +118,10 @@ change (see the invariants below).
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
-    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt.
+    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. A
+    variable the command assigns ITSELF before any reference - empty, or from a `$(...)` naming no
+    credential-shaped variable - is its own value and prints freely (init's source-protocol snippet
+    prints the `KEY` it assigns; pilot 2 was blocked twice); a literal or variable assignment stays judged.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
     without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
@@ -519,7 +524,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   imports: `/alfred-code:init`, in the session after setup's restart (`scripts/install/memory.js
   init`), imports the project's existing `MEMORY.md` / `memory/*.md` notes into the chosen database
   once, through the service (idempotent), and only after that import succeeds switches Claude's own
-  memory off (`autoMemoryEnabled: false`) and writes the stamp's `initialised:` line. The switch-off
+  memory off (`autoMemoryEnabled: false`) and writes the stamp's `initialised:` line. With NO notes to
+  import, setup's install switches it off itself, behind the same gate (the memory server and
+  `baseline-memory.md` selected and on disk; an unreadable notes folder counts as notes), and init only
+  reports it - init runs inside the session, where the pilot-2 sandbox refused its settings write. The switch-off
   lands in THIS project's own `.claude/settings.json` at project and user scope, and in
   `settings.local.json` at local scope, where a value the user set stays local (R96) - never the
   account file, which would silence every other project. A failed import leaves Claude's own memory
@@ -569,8 +577,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
   per-project memory (`.serena/memories/`) is the EPHEMERAL handoff bus between agents within one
   feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
-  `memory/*.md`) is SWITCHED OFF by `/alfred-code:init` (`autoMemoryEnabled: false`) after a
-  one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
+  `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
+  notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
   with Cursor, which is why the MCP replaces it rather than sitting beside it. Which repos are
   related lives in the generated `.claude/rules/baseline-project-related-context.md` (the
   `/alfred-capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,

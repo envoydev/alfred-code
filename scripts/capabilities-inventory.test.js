@@ -517,4 +517,19 @@ test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnl
     assert.match(r.out, /mcp rows:\s+ok - 4 of 4 carry their 'first call:' line/);
 });
 
+// Pilot 2 (2026-09-27): init's capture wrote its composed body to the session temp dir with the Write
+// tool, which print mode refused ('you haven't granted it yet'); it recovered through a heredoc and
+// emitted the body twice. The body goes under the docs root's flow/ folder instead - inside the project,
+// where acceptEdits lets the Write land, and out of git through the docs root's own .gitignore.
+test('report: the composed body is written under <docs root>/flow/, and the skill says the same path', { skip: posixOnly }, () =>
+{
+    const root = project('body-path');
+    assert.match(run([], { cwd: root }).out, /COMPARE:\s+no --body yet - compose the rule body, write it to \`\.alfred\/docs\/flow\/capabilities-body\.md\`/);
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/ai' } }), -100);
+    assert.match(run([], { cwd: root }).out, /write it to \`docs\/ai\/flow\/capabilities-body\.md\`/, 'the resolved root, not the default');
+    const skill = fs.readFileSync(SKILL_MD, 'utf8');
+    assert.match(skill, /\/flow\/capabilities-body\.md/, 'the skill names the same file');
+    assert.doesNotMatch(skill, /Write the composed body to a scratch file/, 'no free choice of a temp dir');
+});
+
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));

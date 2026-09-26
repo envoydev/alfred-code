@@ -397,7 +397,9 @@ function buildContent(description, body)
     return description || body;
 }
 
-async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
+// Every note this project's folders hold, and the folders looked in - the lookup the import runs, shared
+// with the installer, which switches Claude's own memory off at install time when it finds none.
+function findNotes(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
 {
     let memoryDirs;
     let scannedConfigDirs;
@@ -436,6 +438,12 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
             noteEntries.push({ dir, file: f });
         }
     }
+    return { noteEntries, memoryDirs, existedDirs };
+}
+
+async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
+{
+    const { noteEntries, memoryDirs, existedDirs } = findNotes(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir);
     const fromLabel = (existedDirs.length ? existedDirs : memoryDirs).join(', ');
 
     // Re-review, I7 (binding ruling): no notes anywhere - including nothing found through a
@@ -499,6 +507,6 @@ if (require.main === module)
 }
 
 module.exports = {
-    mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir,
+    mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir, findNotes,
     INIT_TIMEOUT_MS: engine.INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS: engine.OVERALL_TIMEOUT_MS,
 };

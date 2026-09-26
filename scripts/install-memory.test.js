@@ -383,11 +383,14 @@ test('init: refuses a registration it cannot re-point, a malformed settings file
     assert.match(u.stderr, /--level must be global, scoped or project/);
 });
 
-// I1 (Task 18a review): 'initialised' is the stamp line only init writes. Before it, no run imports
-// the notes or switches Claude's own memory off - not setup's install, not a /alfred-code:update, not
-// configure's or validate's apply with a level named - so the router keeps offering init.
+// I1 (Task 18a review): 'initialised' is the stamp line only init writes. Before it, no run IMPORTS
+// the notes - not setup's install, not a /alfred-code:update, not configure's or validate's apply with a
+// level named - so the router keeps offering init. Pilot 2 (2026-09-27): init's own switch-off hit EPERM
+// inside the sandbox and auto-memory stayed ON in every cell. With NO notes there is nothing to import and
+// nothing a level choice could change, so the INSTALLER (run outside the session) switches Claude's own
+// memory off at install time; init only reports it. With notes, the switch-off still waits for init.
 const stampText = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
-test('seed: install, update, and an update naming a level before init import nothing and leave the router on init (I1)', POSIX_ONLY, () =>
+test('seed: with no notes, install switches Claude\'s own memory off, imports nothing and leaves the router on init', POSIX_ONLY, () =>
 {
     const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
     const { installState } = require('./install/stamp.js');
@@ -398,13 +401,64 @@ test('seed: install, update, and an update naming a level before init import not
     });
     for (const [i, step] of steps.entries())
     {
-        assert.ok(!('autoMemoryEnabled' in step.s), `run ${i}: Claude's own memory stays on until init`);
+        assert.strictEqual(step.s.autoMemoryEnabled, false, `run ${i}: no notes - Claude's own memory is off from the install on`);
         assert.match(step.stamp, /^initialised: pending$/m, `run ${i}`);
         assert.strictEqual(step.state, 'installed', `run ${i}: the router still routes to init`);
-        assert.match(outs[i], /memory: the notes import waits for \/alfred-code:init/, `run ${i}`);
-        assert.doesNotMatch(outs[i], /importing Claude's existing notes|autoMemoryEnabled set to false/, `run ${i}`);
+        assert.doesNotMatch(outs[i], /importing Claude's existing notes/, `run ${i}: nothing is imported before init`);
     }
+    assert.match(outs[0], /memory: no Claude memory notes for this project - nothing to import, so Claude's own memory is off from this install/);
+    assert.match(outs[0], /autoMemoryEnabled set to false/);
+    for (const i of [1, 2]) assert.match(outs[i], /memory: Claude's own memory is already off/, `run ${i}: reported, never rewritten`);
     assert.match(steps[2].l.env.ALFRED_CODE_MEMORY_DB, /\.memory-mcp[/\\]memory\.db$/, 'the named level still applies - only the import waits');
+});
+
+// With notes, nothing changes before init: the notes must land in the database the user picks, so the
+// switch-off waits for init's import.
+test('seed: with notes, install and update leave Claude\'s own memory on until init imports them', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { defaultMemoryDir } = require('./memory-import.js');
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },
+        prepare: (repo, work) =>
+        {
+            const dir = defaultMemoryDir(repo, path.join(work, 'acct'), work);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'build.md'), '---\nname: build\ndescription: A note\n---\nBuilds need the offline cache.\n');
+        },
+        each: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    for (const [i, s] of steps.entries())
+    {
+        assert.ok(!('autoMemoryEnabled' in s), `run ${i}: a note is waiting - Claude's own memory stays on until init`);
+        assert.match(outs[i], /memory: the notes import waits for \/alfred-code:init/, `run ${i}`);
+    }
+});
+
+test('countNotes: none, some, and an unreadable folder are three answers', () =>
+{
+    const home = fs.mkdtempSync(path.join(TMP, 'notes-'));
+    const root = path.join(home, 'proj');
+    fs.mkdirSync(root);
+    const configDir = path.join(home, 'acct');
+    // The importer's scan also reads CLAUDE_CONFIG_DIR - pinned, so this case never reads the real account.
+    const saved = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+    try
+    {
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 0, 'no folder at all');
+        const { defaultMemoryDir } = require('./memory-import.js');
+        const dir = defaultMemoryDir(root, configDir, home);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'MEMORY.md'), '- index\n');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 0, 'the index alone is no note');
+        fs.writeFileSync(path.join(dir, 'a.md'), 'note\n');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 1);
+        fs.rmSync(dir, { recursive: true });
+        fs.writeFileSync(dir, 'a file where the folder should be');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), null, 'unreadable is unknown - the caller waits for init');
+    }
+    finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
 });
 
 // After init the line is carried, and a later run imports as it always did (a no-op once memory is off).

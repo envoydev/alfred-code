@@ -129,7 +129,8 @@ after a fresh uv). It writes the level into the
 `ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
 writes `.memory-mcp/.gitignore` at `project` level, imports this project's old `MEMORY.md` /
 `memory/*.md` notes into THAT database once through the memory service, and - only when the import
-succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`) and marks the stamp
+succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`; an install that found no notes
+already did, and the step reports it as already off) and marks the stamp
 `initialised: <date>`, the one signal the router reads and no other run writes. Report its lines: the
 level, the import count or WHY it stopped (no `uvx` is the usual one - step 3 skipped uv), and
 whether the switch-off happened; never claim it from the answer alone. A failed import leaves Claude's

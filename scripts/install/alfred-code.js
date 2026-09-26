@@ -1472,15 +1472,31 @@ function importMemory(ctx)
     // which asks the level first and marks the stamp `initialised:`. Until that line holds a date, no
     // run imports - not setup's install, an update, or configure's apply with a level named - or the
     // notes land in a database the user never chose and the router skips init.
-    if (!stampLayer.isInitialised(stampLayer.initialisedValue({ claudeDir: ctx.claudeDir })))
-    {
-        ctx.log("memory: the notes import waits for /alfred-code:init, which asks the level first - Claude's own memory stays on until then");
-        return;
-    }
     // I1 (R47): the switch-off is one of THIS run's own settings writes, so it follows the same
     // scope target as installHooksAndRules' own write - a local-scope install's `autoMemoryEnabled`
     // now lands in settings.local.json, never the shared file every teammate reads.
     const settingsFile = settings.settingsTarget(ctx.claudeDir, ctx.args.scope);
+    if (!stampLayer.isInitialised(stampLayer.initialisedValue({ claudeDir: ctx.claudeDir })))
+    {
+        // Pilot 2 (2026-09-27): init's own switch-off hit EPERM inside the sandbox, so auto-memory stayed
+        // on in every cell. With NO notes there is nothing to import and nothing the level choice could
+        // change, so this run - outside the session - switches it off now, behind the same replacement
+        // gate; init only reports it. Any note, or folders it cannot read, keeps the old path.
+        const early = memory.importGate({ projectRoot: ctx.projectRoot, settingsFile, mcps: ctx.lists.mcps, rules: ctx.lists.rules, tools: {} });
+        if (early.already)
+        {
+            ctx.log("memory: Claude's own memory is already off - /alfred-code:init still asks the level");
+            return;
+        }
+        if (early.go && memory.countNotes({ projectRoot: ctx.projectRoot, configDir: ctx.configDir, home: ctx.home }) === 0)
+        {
+            ctx.log("memory: no Claude memory notes for this project - nothing to import, so Claude's own memory is off from this install; /alfred-code:init still asks the level");
+            memory.writeSwitchOff(settingsFile, { log: ctx.log });
+            return;
+        }
+        ctx.log("memory: the notes import waits for /alfred-code:init, which asks the level first - Claude's own memory stays on until then");
+        return;
+    }
     const gate = memory.importGate({
         projectRoot: ctx.projectRoot, settingsFile,
         mcps: ctx.lists.mcps, rules: ctx.lists.rules,

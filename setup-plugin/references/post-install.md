@@ -88,7 +88,7 @@ The memory MCP is required in every install, at the level chosen during init (`g
 `scoped`, or `project` - `/alfred-code:status` names it and the database file). Init also
 imported this project's old `MEMORY.md` notes into that database once, and switched off Claude's
 own memory ONLY if that import succeeded - a failed import leaves it on rather than risk losing a
-note. Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
+note (with no notes to import, the install switched it off already). Check it once: `/alfred-code:status` shows `autoMemoryEnabled` in the Environment table;
 `false` means done, `true` or absent means the import has not completed - read init's memory line for
 why (a missing `uvx` or Python is the usual cause), fix that, and run `/alfred-code:init` again.
 `baseline-memory.md` (always-on) names what belongs in the store and when to search it before

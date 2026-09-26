@@ -18,6 +18,26 @@ const blankHeredocs = (rawCommand) => String(rawCommand || '').replace(
   (m) => { const nl = m.indexOf('\n'); return nl === -1 ? m : m.slice(0, nl) + m.slice(nl).replace(/[^\n]/g, ' '); },
 );
 
+// A COMMENT is not shell either: bash ignores a word that starts with `#` to the end of its line, so
+// nothing in one can write - and an apostrophe in one ('the model's') flipped every quoted span after
+// it, so `x=>/@(...)` inside a later single-quoted `node -e` program read as a redirection to `/@` (the
+// source-protocol snippet init runs, 2026-09-27). Blank it, keep the length. A `#` starts a comment only
+// at a word start outside quotes - not in `a#b`, `$#`, `${#x}`, or a quoted string.
+function blankComments(command) {
+  const out = command.split('');
+  let q = null;
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i];
+    if (c === '\\' && q !== "'") { i++; continue; }
+    if (q) { if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; continue; }
+    if (c === '#' && (i === 0 || /[\s;&|()<>]/.test(out[i - 1]))) {
+      for (; i < out.length && out[i] !== '\n'; i++) out[i] = ' ';
+    }
+  }
+  return out.join('');
+}
+
 // Quoted spans: a `>` or a verb inside '...' / "..." is text an outer command carries (a commit
 // message, an echo, a grep pattern), never a write of its own. The write TARGET may still be
 // quoted - the patterns below capture it - only the verb's own position is checked.
@@ -230,7 +250,7 @@ function interpreterTargets(rawCommand) {
 // is in at that point.
 function scanShell(rawCommand) {
   const raw = String(rawCommand || '');
-  const command = blankHeredocs(raw);
+  const command = blankComments(blankHeredocs(raw));
   const quoted = quotedSpans(command);
   const inQuotes = (i) => quoted.some(([a, b]) => i > a && i < b);
   // A variable assigned to a LITERAL earlier in the same command is not unknowable - `SP=/tmp/x`

@@ -132,6 +132,21 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
     return { go: true };
 }
 
+// How many of Claude's own notes this project has, found the way the import finds them. 0 means nothing
+// to import, so nothing waits on init's level choice; null means the folders could not be read, which
+// the caller treats as notes present (the switch-off then waits for init, the old path).
+function countNotes({ projectRoot, configDir, home })
+{
+    try
+    {
+        // This run's account dir is always scanned; the importer's own scan adds $HOME/.claude and its
+        // `.claude-<space>` siblings, so a folder the import would read is never missed here.
+        const { findNotes } = require('../memory-import.js');
+        return findNotes(projectRoot, configDir, configDir, home, null).noteEntries.length;
+    }
+    catch { return null; }
+}
+
 // The import, then the switch-off - in that order, and the second only if the first succeeded.
 // `runImport` returns { ok, output }: the importer's own lines - its count, or WHY it failed - are
 // logged as the twins print them, before the verdict. Swallowed, a failure read 'import failed' with
@@ -311,7 +326,7 @@ function initMemory(argv, { which, runNode, homedir, log = console.log, err = co
     return 0;
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, initMemory, ensureProjectIgnore };
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
 
 if (require.main === module)
 {

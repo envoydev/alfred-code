@@ -55,11 +55,15 @@ script's lines. One slot is not a slot - every `<docs-path>` becomes the LITERAL
 the script printed, because the generated rule is a deterministic pointer and cannot itself carry
 the placeholder it exists to resolve.
 
-Write the composed body to a scratch file, then run the verdict:
+Write the composed body to the file the script's `COMPARE` line names - `<DOCS ROOT>/flow/capabilities-body.md`,
+inside the project, where a Write lands in print mode too, and out of git through the docs root's own
+`.gitignore` - then run the verdict:
 
 ```bash
-node "$CAPS" --body <that file>
+node "$CAPS" --body <DOCS ROOT>/flow/capabilities-body.md
 ```
+
+Delete that file once the verdict is spent - after the rule is written, or on `identical`.
 
 - `COMPARE: identical` - do NOT write. Report `rule unchanged - <N> bytes, not rewritten`, and go
   to step 3's report. An identical rewrite pays a delete plus a full write, and the next session

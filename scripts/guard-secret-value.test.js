@@ -825,3 +825,39 @@ test('guard-secret-value: a step after a background & is its own step - no envir
   const r = spawnSync('bash', ['-c', rewritten('true & env | grep -i MSBUILD_TOKEN; wait')], { encoding: 'utf8', env: { ...process.env, MSBUILD_TOKEN: FAKE_TOKEN } });
   assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
 });
+
+// Pilot 2 (2026-09-27): init's own source-protocol snippet was blocked twice - it prints `key=${KEY:-?}`,
+// a variable the SAME command assigned from a command substitution, and the model's retry renamed it
+// MKTKEY and was blocked again. A variable the command assigns ITSELF - empty, or from a substitution
+// that names no credential-shaped variable - before any reference to it is the command's own value, not
+// an inherited secret. Everything that can carry a real credential stays judged.
+function protocolSnippet() {
+  const md = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+  return [...md.matchAll(/```bash\n([\s\S]*?)```/g)][0][1];
+}
+test('guard-secret-value: the source-protocol snippet prints the KEY it assigned itself - never blocked', () => {
+  const snippet = protocolSnippet();
+  assert.match(snippet, /\n\s*KEY=\$\(printf /, 'the shipped snippet still assigns KEY from a substitution');
+  assert.match(snippet, /key=\$\{KEY:-\?\}/, '... and prints it');
+  assert.equal(bash(snippet), 0, 'the shipped snippet');
+  assert.equal(bash(snippet.replace(/\bKEY\b/g, 'MKTKEY')), 0, 'the pilot retry, renamed MKTKEY');
+  // Through the dispatcher, the way the session runs every shell guard.
+  const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js')],
+    { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: snippet }, session_id: 'suite' }), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout + r.stderr, /credential-shaped variable/);
+});
+
+test('guard-secret-value: an own assignment is exempt only when it cannot carry an inherited credential', () => {
+  const f = fixtures();
+  assert.equal(bash('KEY=$(git rev-parse HEAD); echo "key=$KEY"'), 0, 'assigned from a substitution, then printed');
+  assert.equal(bash('KEY=""; echo "key=${KEY:-?}"'), 0, 'assigned empty, then printed');
+  assert.equal(bash('export KEY=$(date +%s)\necho $KEY'), 0, 'an exported own assignment on its own line');
+  assert.equal(bash('echo "$KEY"; KEY=$(date)'), REWRITE, 'printed BEFORE the assignment - the inherited value');
+  assert.equal(bash('KEY="$SENTRY_ACCESS_TOKEN"; echo $KEY'), REWRITE, 'assigned from a credential variable');
+  assert.equal(bash('KEY=$(printf %s "$SENTRY_ACCESS_TOKEN"); echo $KEY'), REWRITE, 'a substitution naming a credential variable');
+  assert.equal(bash('KEY=somevalue; echo $KEY'), REWRITE, 'a plain literal assignment is still judged');
+  assert.equal(bash('KEY=$(date); KEY=$API_TOKEN; echo $KEY'), REWRITE, 'one unsafe assignment among safe ones');
+  assert.equal(bash(`API_KEY=sk-ant-api03-${'Ab1'.repeat(14)}; echo $API_KEY`), 2, 'a real credential literal stays blocked');
+  assert.notEqual(bash(`KEY=$(grep API_KEY ${f.dotenv} | cut -d= -f2); echo $KEY`), 0, 'a substitution reading a credential file is still judged by the file');
+});
