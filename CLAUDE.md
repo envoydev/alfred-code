@@ -73,10 +73,13 @@ change (see the invariants below).
   honoured through a `<docs-path>/flow/*-ALLOW` receipt (this session's own, under 8h).
   - `guard-protected-force-push.js` - blocks force-push to protected branches.
   - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
-    `git checkout --` / `restore` / `reset --hard` / `clean -f` / a forced `checkout` or `switch` only when
-    the PATHSPEC the command names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; an untracked
-    file counts only for `clean` or a target that tracks it), plus
-    `stash drop` / `stash clear` / `reflog expire` / `gc --prune=now` / `prune` by what they destroy; PowerShell `Remove-Item -Recurse`
+    EVERY git call in the command, read from its argv (flags anywhere, a tree-ish before the paths): a
+    path `checkout` / `restore` of the working tree / `reset --hard` / a forced `checkout` or `switch` only
+    when the PATHSPEC it names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; `status -z`, so
+    a non-ASCII name reads as written; an untracked file counts only when the target tracks it, `-` being
+    the previous branch), `clean -f` by its own `-n` dry run (ignored files included), plus
+    `stash drop` / `stash clear` / `reflog expire` / `prune` / a `gc` given a prune date or a `-c gc.*Expire`
+    by what they destroy; one block names every loss. PowerShell `Remove-Item -Recurse`
     counts. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).
   - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the

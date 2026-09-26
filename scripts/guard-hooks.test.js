@@ -687,7 +687,9 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '# the user answered Discard it\na.txt\n');
   assert.equal(rm('git restore a.txt').status, 0, 'the receipt is honoured for the path it names');
-  assert.equal(rm('git checkout -- .').status, 2, 'but it does not cover the whole tree');
+  assert.equal(rm('git checkout -- .').status, 0, 'and for a whole-tree command whose only loss is that path');
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'two changed\n');
+  assert.equal(rm('git checkout -- .').status, 2, 'but not once the whole tree loses a path it does not name');
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '*\n');
   assert.equal(rm('git checkout -- .').status, 0, 'the * line does');
   fs.utimesSync(path.join(flow, 'DISCARD-ALLOW'), new Date(Date.now() - 9 * 3600 * 1000), new Date(Date.now() - 9 * 3600 * 1000));
@@ -838,6 +840,119 @@ test('guard-catastrophic-rm: the pathspec is judged where the command runs - its
   assert.equal(rm('git -C sub restore a.txt', dir), 2, 'a -C moves it');
   assert.equal(rm('cd sub && git checkout -- a.txt', dir), 2, 'a cd before it moves it');
   assert.equal(rm('git checkout -- seed.txt', dir), 0, 'a clean path at the root still passes');
+});
+
+// The 2026-09-26 hooks review: each case below walked past the gate on a tree holding real work.
+const rmAt = (dir) => (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+  { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+
+test('guard-catastrophic-rm: every git call in a chained command is judged, and one block names every loss', () => {
+  // Only the FIRST destructive call was read: `git reset --hard && git clean -fd` over a tree holding
+  // one untracked file judged the reset (which keeps it) and let the clean delete it.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.writeFileSync(path.join(dir, 'only-untracked.txt'), 'mine\n');
+  const rm = rmAt(dir);
+  for (const c of ['git reset --hard && git clean -fd', 'git checkout . && git clean -fdx',
+    'git reset --hard origin/main && git clean -fdx', 'git fetch && git clean -fd', 'git status; git clean -f'])
+    assert.equal(rm(c).status, 2, `the clean after it deletes the untracked file: ${c}`);
+  for (const c of ['git reset --hard && git clean -n -fd', 'git checkout . && git status'])
+    assert.equal(rm(c).status, 0, `nothing in it loses the file: ${c}`);
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
+  const r = rm('git checkout . && git clean -fdx');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /seed\.txt/, 'the checkout loss is named');
+  assert.match(r.stderr, /only-untracked\.txt/, 'and so is the clean loss');
+  assert.equal(r.stderr.match(/AskUserQuestion/g).length, 1, 'in ONE block');
+});
+
+test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the way git reads them', () => {
+  // `git status --porcelain` C-quotes a non-ASCII name ("caf\303\251.txt"), so the target's ls-tree
+  // never matched it and the untracked copy was overwritten; and `-` (the previous branch) read as a flag.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  git('checkout', '-q', '-b', 'other');
+  fs.writeFileSync(path.join(dir, 'café.txt'), 'theirs\n');
+  git('add', '-A'); git('commit', '-qm', 'cafe');
+  git('checkout', '-q', '-');
+  fs.writeFileSync(path.join(dir, 'café.txt'), 'mine, untracked here\n');
+  const rm = rmAt(dir);
+  for (const c of ['git reset --hard other', 'git checkout -f other', 'git switch --discard-changes other', 'git switch -f -', 'git checkout -f -']) {
+    const r = rm(c);
+    assert.equal(r.status, 2, `the target tracks café.txt, so the untracked copy is overwritten: ${c}`);
+    assert.match(r.stderr, /café\.txt/, `the name is shown as written, not C-quoted: ${c}`);
+  }
+  assert.equal(rm('git reset --hard').status, 0, 'HEAD does not track it');
+  assert.equal(rm('git switch -').status, 0, 'a switch that is not forced carries the work along');
+  // status names paths from the repo root, so the target is listed from the root too, whatever the cwd
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.writeFileSync(path.join(dir, 'sub', 'keep.txt'), 'x\n');
+  git('add', 'sub'); git('commit', '-qm', 'sub');
+  const fromSub = runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', cwd: path.join(dir, 'sub'), tool_input: { command: 'git reset --hard other' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
+  assert.equal(fromSub.status, 2, 'run from a subfolder, the clash at the root is still seen');
+});
+
+test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it deletes', () => {
+  // The loss came from `git status --porcelain`, which never lists an ignored file: an ignored .env or
+  // .claude/ was deleted with exit 0. It now comes from `git clean -n` with the command's own flags.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n.claude/\n');
+  git('add', '-A'); git('commit', '-qm', 'ignore');
+  fs.writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+  const rm = rmAt(dir);
+  for (const c of ['git clean -fdx', 'git clean -fX', 'git clean -xf', 'git clean -f -x -d', 'git clean -fx -- .env']) {
+    const r = rm(c);
+    assert.equal(r.status, 2, `an ignored file is deleted: ${c}`);
+    assert.match(r.stderr, /\.env/, `and named: ${c}`);
+  }
+  for (const c of ['git clean -fd', 'git clean -n -fdx', 'git clean -fdx --dry-run', 'git clean -fdx -e .env -e .claude'])
+    assert.equal(rm(c).status, 0, `the ignored file stays: ${c}`);
+});
+
+test('guard-catastrophic-rm: the discard spellings are read from the git argv, flags anywhere', () => {
+  // The positional regex wanted `--` or `.` right after checkout, a flag-free restore and `--hard` right
+  // after reset: a tree-ish before the paths, `--source`, `--staged --worktree`, a flag before `--hard`
+  // or `-f` walked past it on a dirty tree.
+  const dir = cleanRepo();
+  spawnSync('git', ['-C', dir, 'update-ref', 'refs/heads/trunk', 'HEAD'], { encoding: 'utf8' });
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
+  fs.writeFileSync(path.join(dir, 'new.txt'), 'untracked\n');
+  const rm = rmAt(dir);
+  for (const c of ['git checkout HEAD -- seed.txt', 'git checkout trunk seed.txt', 'git checkout seed.txt', 'git checkout -p seed.txt',
+    'git restore --source=HEAD seed.txt', 'git restore --source HEAD seed.txt', 'git restore -s HEAD seed.txt', 'git restore -sHEAD seed.txt',
+    'git restore --staged --worktree seed.txt', 'git restore -SW seed.txt', 'git restore --sour=HEAD seed.txt',
+    'git reset HEAD --hard', 'git reset -q --hard', 'git reset --har', 'git clean -d -f', 'git clean -q -fd', 'git clean -f -- new.txt',
+    'git checkout "seed.txt"', 'git -c core.quotePath=false checkout -- seed.txt'])
+    assert.equal(rm(c).status, 2, `a discard of dirty work: ${c}`);
+  for (const c of ['git checkout -b fresh', 'git checkout -B fresh2 trunk', 'git checkout --orphan lonely', 'git checkout trunk',
+    'git restore --staged seed.txt', 'git restore -S seed.txt', 'git reset', 'git reset --soft HEAD', 'git reset -q HEAD seed.txt',
+    'git reset --keep HEAD', 'git clean -d', 'git clean -n -fd', 'git clean -fd --dry-run', 'git clean -f -- seed.txt',
+    'git checkout trunk -- new.txt', 'git restore new.txt'])
+    assert.equal(rm(c).status, 0, `not a discard of this work: ${c}`);
+});
+
+test('guard-catastrophic-rm: an explicit prune date or gc expiry config is judged by what it destroys', () => {
+  // `git -c gc.pruneExpire=now gc` and `git gc --prune=1.second.ago` passed: only the literal `now` / `all`
+  // were read. An explicit date deletes the unreachable objects older than it; a reflog expiry set on the
+  // command line expires the recovery points themselves.
+  const dir = cleanRepo();
+  const blob = spawnSync('git', ['-C', dir, 'hash-object', '-w', '--stdin'], { input: 'lost work\n', encoding: 'utf8' }).stdout.trim();
+  const hourAgo = new Date(Date.now() - 3600 * 1000);
+  fs.utimesSync(path.join(dir, '.git', 'objects', blob.slice(0, 2), blob.slice(2)), hourAgo, hourAgo);
+  const rm = rmAt(dir);
+  for (const c of ['git -c gc.pruneExpire=now gc', 'git gc --prune=1.second.ago', 'git gc --prune=30.minutes.ago', 'git gc --pru=now',
+    'git -c gc.reflogExpire=now -c gc.reflogExpireUnreachable=now gc', 'git -c gc.reflogExpire=now reflog expire --all'])
+    assert.equal(rm(c).status, 2, `destroys an unreachable object or a reflog entry now: ${c}`);
+  assert.match(rm('git gc --prune=1.second.ago').stderr, new RegExp(blob.slice(0, 12)), 'the denial names the object');
+  for (const c of ['git gc --prune=2.weeks.ago', 'git gc --prune=never', 'git gc --no-prune', 'git -c gc.pruneExpire=never gc',
+    'git gc --prune', 'git -c gc.pruneExpire=2.weeks.ago gc', 'git gc --prune=now --no-prune'])
+    assert.equal(rm(c).status, 0, `keeps the hour-old object: ${c}`);
 });
 
 test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', () => {

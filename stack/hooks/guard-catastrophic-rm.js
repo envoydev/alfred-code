@@ -28,6 +28,12 @@
 // without a literal recursive `rm` of one of these targets - `find ... -delete`,
 // `xargs rm`, `eval`, a subshell, or rm via a wrapper script - is NOT caught here;
 // this guard reads the literal command's flat tokens.
+// The git half (main() below) reads EVERY git call in the command from its argv - flags anywhere, a
+// tree-ish before the paths - and judges each by what it would destroy: the dirty paths a discard
+// names, what `clean -n` of the same flags lists (ignored files included), a stash entry, the reflog
+// entries or unreachable objects a dry run would prune. One block names every loss. Ceilings: under a
+// dated `gc --prune` a PACKED unreachable object is counted whatever its age (its age sits in the
+// pack, not read here), and a git probe past its 5s timeout fails open like every hook here.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -194,6 +200,325 @@ function isCatastrophicRm(command)
     return false;
 }
 
+// ---- git, read as git reads its argv -----------------------------------------------------------
+// The words of one shell command, quote-aware: '...' is literal, "..." keeps \" \\ \$ \` as escapes,
+// a backslash outside quotes escapes the next character and adjacent pieces join ("my file".js is one
+// word). A redirection and its target are no argument (`git clean -fdx > /dev/null` names no path).
+function shellWords(text)
+{
+    const words = [];
+    let word = null;
+    let redirect = false;
+    const flush = () =>
+    {
+        if (word !== null) words.push({ text: word, redirect });
+        word = null;
+        redirect = false;
+    };
+    for (let i = 0; i < text.length; i++)
+    {
+        const ch = text[i];
+        if (/\s/.test(ch)) { flush(); continue; }
+        if (word === null)
+        {
+            word = '';
+            redirect = /^\d*[<>]/.test(text.slice(i));
+        }
+        if (ch === "'")
+        {
+            const end = text.indexOf("'", i + 1);
+            const stop = end < 0 ? text.length : end;
+            word += text.slice(i + 1, stop);
+            i = stop;
+        }
+        else if (ch === '"')
+        {
+            let j = i + 1;
+            for (; j < text.length && text[j] !== '"'; j++)
+            {
+                if (text[j] === '\\' && /["\\$`]/.test(text[j + 1] || '')) j++;
+                word += text[j];
+            }
+            i = j;
+        }
+        else if (ch === '\\')
+        {
+            word += text[i + 1] ?? '';
+            i++;
+        }
+        else word += ch;
+    }
+    flush();
+    const out = [];
+    for (let k = 0; k < words.length; k++)
+    {
+        if (!words[k].redirect) out.push(words[k].text);
+        else if (/^\d*(?:>>?|<|>&|<&|>\|)$/.test(words[k].text)) k++;   // the operator alone: its target is the next word
+    }
+    return out;
+}
+
+// The options git reads BEFORE the verb: `-C <dir>` (each one on from the last), `-c <key=value>`, and
+// the few that take their value as the next word; every other one is a single word.
+const GIT_GLOBAL_VALUE = /^--(?:git-dir|work-tree|namespace|attr-source|config-env|super-prefix)$/;
+function splitGitCall(words)
+{
+    const dirs = [];
+    const config = [];
+    let i = 0;
+    while (i < words.length && words[i].startsWith('-') && words[i] !== '-')
+    {
+        const w = words[i];
+        if (w === '-C' || w === '-c')
+        {
+            (w === '-C' ? dirs : config).push(words[i + 1] ?? '');
+            i += 2;
+        }
+        else i += GIT_GLOBAL_VALUE.test(w) ? 2 : 1;
+    }
+    return { dirs, config, verb: words[i] || '', args: words.slice(i + 1) };
+}
+
+// Per verb: the short letters and long names that take a VALUE, and the long names this guard reads. A
+// long option may be cut to any unique prefix, as git's own parser allows (`git reset --har` is --hard).
+const GIT_OPTS = {
+    checkout: { short: 'bB', value: ['orphan', 'conflict', 'pathspec-from-file'], flags: ['force', 'patch'] },
+    restore: { short: 's', value: ['source', 'conflict', 'pathspec-from-file'], flags: ['staged', 'worktree', 'patch'] },
+    switch: { short: 'cC', value: ['create', 'force-create', 'orphan', 'conflict'], flags: ['force', 'discard-changes'] },
+    reset: { short: '', value: ['pathspec-from-file'], flags: ['hard'] },
+    clean: { short: 'e', value: ['exclude'], flags: ['force', 'dry-run', 'quiet', 'interactive'] },
+    gc: { short: '', value: [], flags: ['prune', 'no-prune'] },
+};
+
+// One verb's argv as entries (`-f`, `--force`, each with its value when it takes one), the positionals,
+// and the words after `--` (null when there is no `--`). Flags may sit anywhere before `--`.
+function parseGitArgs(args, spec)
+{
+    const known = [...spec.value, ...spec.flags];
+    const full = (name) =>
+    {
+        if (known.includes(name)) return name;
+        const hits = known.filter((n) => n.startsWith(name));
+        return name && hits.length === 1 ? hits[0] : name;
+    };
+    const entries = [];
+    const pos = [];
+    let paths = null;
+    for (let i = 0; i < args.length; i++)
+    {
+        const a = args[i];
+        if (paths) { paths.push(a); continue; }
+        if (a === '--') { paths = []; continue; }
+        if (a.startsWith('--'))
+        {
+            const eq = a.indexOf('=');
+            const name = full(eq < 0 ? a.slice(2) : a.slice(2, eq));
+            const value = eq >= 0 ? a.slice(eq + 1) : spec.value.includes(name) ? (args[++i] ?? '') : undefined;
+            entries.push({ name: `--${name}`, value });
+            continue;
+        }
+        if (a.length > 1 && a.startsWith('-'))
+        {
+            for (let k = 1; k < a.length; k++)
+            {
+                if (spec.short.includes(a[k]))
+                {
+                    entries.push({ name: `-${a[k]}`, value: a.slice(k + 1) || (args[++i] ?? '') });
+                    break;
+                }
+                entries.push({ name: `-${a[k]}` });
+            }
+            continue;
+        }
+        pos.push(a);
+    }
+    const has = (...names) => entries.some((e) => names.includes(e.name));
+    const values = (...names) => entries.filter((e) => names.includes(e.name) && e.value !== undefined).map((e) => e.value);
+    const count = (...names) => entries.filter((e) => names.includes(e.name)).length;
+    return { entries, pos, paths, has, values, count };
+}
+
+// What ONE git call would destroy, as a plan the loss reader in main() answers - or null when the call
+// is no destructive form at all. `isRev(word)` says whether a word names a commit or tree: git's own
+// rule for `checkout <tree-ish> <paths>` written without `--`. `config` is the call's `-c` pairs.
+function gitPlan(verb, args, config, isRev)
+{
+    const p = parseGitArgs(args, GIT_OPTS[verb] || { short: '', value: [], flags: [] });
+    const prev = (t) => (t === '-' ? '@{-1}' : t);   // `-` is the previous branch to checkout and switch
+    const reflogConfig = config.filter((c) => /^gc\..*reflogexpire(?:unreachable)?=/i.test(c)).flatMap((c) => ['-c', c]);
+    if (verb === 'checkout')
+    {
+        const forced = p.has('-f', '--force');
+        const creates = p.has('-b', '-B', '--orphan');
+        let source;
+        let paths = [];
+        if (p.has('--pathspec-from-file')) return { kind: 'tree', paths: [], target: undefined };   // paths unknowable: the whole tree
+        if (p.paths) { source = p.pos[0]; paths = p.paths; }
+        else if (creates) source = p.pos[0];
+        else if (p.pos.length && isRev(prev(p.pos[0]))) { source = p.pos[0]; paths = p.pos.slice(1); }
+        else paths = p.pos;
+        if (paths.length || p.has('-p', '--patch')) return { kind: 'tree', paths, target: source && prev(source) };
+        // a branch switch or a new branch carries the work along - unless forced, which overwrites it
+        return forced ? { kind: 'tree', paths: [], target: source && prev(source) } : null;
+    }
+    if (verb === 'restore')
+    {
+        // the working tree is the default; --staged alone restores the index only
+        if (p.has('-S', '--staged') && !p.has('-W', '--worktree')) return null;
+        const paths = [...p.pos, ...(p.paths || [])];
+        if (!paths.length && !p.has('--pathspec-from-file')) return null;   // git refuses a restore with no path
+        return { kind: 'tree', paths, target: p.values('-s', '--source').pop() };
+    }
+    if (verb === 'reset') return p.has('--hard') ? { kind: 'tree', paths: [], target: p.pos[0] } : null;
+    if (verb === 'switch')
+    {
+        if (!p.has('-f', '--force', '--discard-changes')) return null;
+        const target = p.has('--orphan') ? undefined : p.pos[0];
+        return { kind: 'tree', paths: [], target: target && prev(target) };
+    }
+    if (verb === 'clean')
+    {
+        const force = p.count('-f', '--force');
+        if (!force || p.has('-n', '--dry-run')) return null;
+        // The dry run of the SAME call is exactly what it removes. -q and -i are left out: quiet prints
+        // nothing, interactive would wait on a prompt. Every -f is kept: a second one reaches nested repos.
+        const dry = ['-c', 'core.quotePath=false', 'clean', '-n'];
+        for (let k = 0; k < force; k++) dry.push('-f');
+        for (const flag of ['-d', '-x', '-X']) if (p.has(flag)) dry.push(flag);
+        for (const v of p.values('-e', '--exclude')) dry.push(`--exclude=${v}`);
+        const paths = [...p.pos, ...(p.paths || [])];
+        // an unexpanded variable is unknowable - judged as the whole directory rather than guessed
+        if (paths.length && !paths.some((a) => /\$/.test(a))) dry.push('--', ...paths);
+        return { kind: 'clean', dry, paths };
+    }
+    if (verb === 'stash')
+    {
+        if (args[0] === 'clear') return { kind: 'stash', all: true };
+        if (args[0] !== 'drop') return null;
+        const named = args.slice(1).find((a) => !a.startsWith('-')) || '0';
+        return { kind: 'stash', ref: /^\d+$/.test(named) ? `stash@{${named}}` : named };
+    }
+    // A dry run deletes nothing - it is how a careful run asks what the real one would.
+    if (verb === 'reflog')
+    {
+        if (args[0] !== 'expire' || args.some((a) => a === '-n' || a === '--dry-run')) return null;
+        const rest = args.slice(1).filter((a) => a !== '--verbose');
+        return { kind: 'reflog', argv: [...reflogConfig, 'reflog', 'expire', '--dry-run', '--verbose', ...rest] };
+    }
+    if (verb === 'prune') return args.some((a) => a === '-n' || a === '--dry-run') ? null : { kind: 'prune', argv: ['prune', '--dry-run', ...args] };
+    if (verb === 'gc')
+    {
+        // The prune date gc uses: -c gc.pruneExpire, then --prune=<date> / --no-prune, the last one
+        // winning as git's parser reads them; a bare --prune keeps the configured default.
+        let expiry;
+        for (const c of config)
+        {
+            const m = /^gc\.pruneexpire=(.*)$/i.exec(c);
+            if (m) expiry = m[1];
+        }
+        for (const e of p.entries)
+        {
+            if (e.name === '--prune' && e.value !== undefined) expiry = e.value;
+            if (e.name === '--no-prune') expiry = 'never';
+        }
+        const dated = expiry !== undefined && expiry !== 'never' && expiry !== 'false';
+        if (!dated && !reflogConfig.length) return null;
+        return { kind: 'gc', expiry: dated ? expiry : null, reflog: reflogConfig.length ? [...reflogConfig, 'reflog', 'expire', '--dry-run', '--verbose', '--all'] : null };
+    }
+    return null;
+}
+
+// What a plan destroys, read from git itself: [{ kind, rows, targets, named }] - `rows` the lines the
+// denial lists, `targets` what a DISCARD-ALLOW line must cover, `named` when the command named paths.
+// `run(argv)` is git in the call's own directory; it throws when git cannot answer.
+function readLoss(plan, run, gitCwd)
+{
+    const lines = (out) => out.split('\n').filter(Boolean);
+    const wouldPrune = (argv) => lines(run(argv)).filter((l) => /^would prune\b/.test(l));
+    if (plan.kind === 'stash')
+    {
+        const entries = lines(run(['stash', 'list']));
+        if (plan.all) return [{ kind: 'stash', rows: entries, targets: entries.map((e) => e.split(':')[0]) }];
+        return [{ kind: 'stash', rows: entries.filter((e) => e.startsWith(`${plan.ref}:`)), targets: [plan.ref] }];
+    }
+    if (plan.kind === 'reflog') return [{ kind: 'reflog', rows: wouldPrune(plan.argv), targets: ['*'] }];
+    if (plan.kind === 'prune') return [{ kind: 'objects', rows: lines(run(plan.argv)), targets: ['*'] }];
+    if (plan.kind === 'gc')
+    {
+        const out = [];
+        if (plan.expiry)
+        {
+            // fsck names the loose AND packed unreachable objects, reflogs counted as reachable as gc
+            // counts them. A date short of now keeps the younger ones: a loose object is judged by its own
+            // age (a prune dry run of that date), a packed one counted whatever its age (not read here).
+            let rows = lines(run(['fsck', '--unreachable', '--connectivity-only', '--no-progress'])).filter((l) => /^unreachable\b/.test(l));
+            if (!/^(?:now|all)$/.test(plan.expiry))
+            {
+                const aged = new Set(lines(run(['prune', '--dry-run', `--expire=${plan.expiry}`])).map((l) => l.split(' ')[0]));
+                const objects = path.resolve(gitCwd, run(['rev-parse', '--git-path', 'objects']).trim());
+                rows = rows.filter((l) =>
+                {
+                    const sha = l.split(' ').pop();
+                    return aged.has(sha) || !fs.existsSync(path.join(objects, sha.slice(0, 2), sha.slice(2)));
+                });
+            }
+            out.push({ kind: 'objects', rows, targets: ['*'] });
+        }
+        if (plan.reflog) out.push({ kind: 'reflog', rows: wouldPrune(plan.reflog), targets: ['*'] });
+        return out;
+    }
+    if (plan.kind === 'clean')
+    {
+        // `git status` never lists an ignored file, so -x / -X deleted an ignored .env or .claude/ with
+        // exit 0; the dry run of the same flags lists exactly what goes, ignored files included.
+        const removed = lines(run(plan.dry)).map((l) => /^Would remove (.+)$/.exec(l)).filter(Boolean).map((m) => m[1]);
+        const named = plan.paths.length > 0 && !plan.paths.some((a) => /\$/.test(a));
+        return [{ kind: 'tree', rows: removed.map((f) => `clean removes ${f}`), targets: named ? plan.paths : removed, named }];
+    }
+    // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty', which made
+    // its own prescribed escape - 'name the ONE file to revert instead of the whole tree' - unreachable:
+    // `git restore .gitignore` was denied with all seven dirty files listed, six of which the command
+    // never touched (measured live, twice in one session). `.` is the whole tree spelled as a path, and
+    // an unexpanded variable is unknowable - both fall back to the whole-tree check rather than a guess.
+    const whole = !plan.paths.length || plan.paths.some((a) => a === '.' || /\$/.test(a));
+    const spec = whole ? [] : plan.paths;
+    // -z: NUL-separated records, never C-quoted, so a non-ASCII name reads as written (the quoted
+    // "caf\303\251.txt" never matched the target's ls-tree, and the untracked copy was overwritten).
+    // A rename or copy record carries its source as the next field.
+    const fields = run(['status', '--porcelain', '-z', ...(spec.length ? ['--', ...spec] : [])]).split('\0');
+    const recs = [];
+    for (let i = 0; i < fields.length; i++)
+    {
+        if (fields[i].length < 4) continue;
+        const rec = { xy: fields[i].slice(0, 2), file: fields[i].slice(3) };
+        if (/[RC]/.test(rec.xy)) rec.orig = fields[++i];
+        recs.push(rec);
+    }
+    // An untracked row is lost only to clean, or to a call whose TARGET tracks that path (git overwrites
+    // it); a path checkout, a restore and a reset to HEAD never touch one (measured: the guard's own
+    // untracked ledger turned every whole-tree verb into a false block).
+    const loose = recs.filter((r) => r.xy === '??').map((r) => r.file);
+    let clash = new Set();
+    if (plan.target && loose.length)
+    {
+        // a target git cannot list, or one spelled as an option, keeps every untracked row - never pass on our own failure
+        try
+        {
+            if (plan.target.startsWith('-')) throw new Error('an option, not a target');
+            const tracked = run(['ls-tree', '-r', '-z', '--full-tree', '--name-only', plan.target, '--', ...loose]).split('\0').filter(Boolean);
+            clash = new Set(loose.filter((p) => tracked.some((t) => t === p || (p.endsWith('/') && t.startsWith(p)))));
+        }
+        catch { clash = new Set(loose); }
+    }
+    const lost = recs.filter((r) => (r.xy === '??' ? clash.has(r.file) : r.xy !== '!!'));
+    return [{
+        kind: 'tree',
+        rows: lost.map((r) => `${r.xy} ${r.orig ? `${r.orig} -> ` : ''}${r.file}`),
+        targets: spec.length ? spec : lost.map((r) => r.file),
+        named: spec.length > 0,
+    }];
+}
+
 function main()
 {
     let payload;
@@ -289,7 +614,7 @@ function main()
 
     // Git destroys uncommitted work with no undo, and this guard had ZERO git coverage: 225 lines
     // with no occurrence of `git`, so a destructive `git checkout --` replayed exit 0 against every
-    // guard in the stack. These four verbs are the same class as a recursive rm - the working tree
+    // guard in the stack. These verbs are the same class as a recursive rm - the working tree
     // is the only copy - and unlike a commit there is no reflog entry to recover from.
     // Gated on ACTUAL loss: a clean tree has nothing to destroy, so the command passes. That is the
     // same arithmetic the commit gate's trivial-diff exemption uses, and it keeps the guard silent
@@ -297,12 +622,14 @@ function main()
     // The same class, one step further: a FORCED checkout or switch overwrites the tree on its way to
     // another branch, and `stash drop` / `stash clear` / `reflog expire` destroy the recovery points
     // themselves - a dropped stash and an expired reflog entry are what every other undo leans on.
-    // `gc --prune=now|all` and `prune` (whose default expiry is everything) delete the unreachable
-    // objects those undos recover, ending the grace window at once.
-    // Each is judged by what it would actually destroy: the dirty paths, the stash entries it names,
-    // the reflog entries or objects a dry run of the same call would prune.
-    const FORCED = String.raw`\s(?:-[a-zA-Z]*f[a-zA-Z]*|--force)(?=\s|$)`;
-    const destructiveGit = new RegExp(String.raw`(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]\s*\S+|\s+--\S+)*\s+(?:checkout\s+(?:--\s|\.(?:\s|$))|restore\s+(?!(?:--staged|--source)\b)|reset\s+--hard\b|clean\s+-\S*[fx]|checkout\b[^\n;&|]*${FORCED}|switch\b[^\n;&|]*(?:${FORCED}|\s--discard-changes(?=\s|$))|stash\s+(?:clear|drop)\b|reflog\s+expire\b|gc\b[^\n;&|]*\s--prune=(?:now|all)(?=\s|$)|prune(?=\s|$))`);
+    // `prune` (whose default expiry is everything) and a `gc` given a prune date or a reflog expiry on
+    // the command line delete what those undos recover, ending the grace window early.
+    // Each is judged by what it would actually destroy: the dirty paths, what a `clean -n` of the same
+    // flags lists, the stash entries it names, the reflog entries or objects a dry run would prune.
+    // EVERY git call in the command is read, as git reads its argv (flags anywhere, a tree-ish before
+    // the paths): judging only the first let `git reset --hard && git clean -fd` delete an untracked
+    // file the reset keeps, and the positional regex this replaced let a dozen discard spellings by.
+    //
     // A QUOTED span is data, exactly as it is in the commit guard: an echo, a plan sentence or a
     // grep pattern that merely CONTAINS `git reset --hard` invokes nothing, and denying it teaches
     // the obfuscation that then defeats this gate on a real one. The fill is a NON-space so the
@@ -310,122 +637,67 @@ function main()
     const gitScan = command
         .replace(/'[^'\n]*'/g, (m) => m.replace(/[^\n]/g, 'x'))
         .replace(/"[^"\n]*"/g, (m) => m.replace(/[^\n]/g, 'x'));
-    const hit = gitScan.match(destructiveGit);
-    if (hit)
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const losses = [];
+    const { execFileSync } = require('child_process');
+    for (const found of gitScan.matchAll(/(?:^|[;&|(`\n]|\s)git(?=\s)/g))
     {
-        const { execFileSync } = require('child_process');
-        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+        const start = found.index + found[0].length;
+        const end = start + gitScan.slice(start).search(/[\n;&|)`]|$/);
+        const { dirs, config, verb, args } = splitGitCall(shellWords(command.slice(start, end)));
         // WHERE git runs decides what a pathspec names: the call's own cwd, then a `cd` before it in the
         // same command, then its `-C`. Judged from the project root, a dirty file one folder down read
         // as absent and its discard passed. An unexpanded variable is not guessed - the anchor stays.
-        const at = hit.index;
-        const call = command.slice(at).match(/git((?:\s+-[cC]\s*\S+|\s+--\S+)*)\s+(checkout|restore|reset|clean|switch|stash|reflog|gc|prune)\b([^\n;&|]*)/);
         let gitCwd = path.resolve(payload.cwd || root);
-        for (const c of gitScan.slice(0, at).matchAll(/(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?(\S+)/gi))
+        for (const c of gitScan.slice(0, found.index).matchAll(/(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?(\S+)/gi))
         {
             const dest = command.substr(c.index + c[0].length - c[1].length, c[1].length).replace(/^["']|["']$/g, '');
             if (/\$/.test(dest)) continue;
             gitCwd = path.resolve(gitCwd, dest.replace(/^~(?=$|[\\/])/, require('os').homedir()));
         }
-        for (const c of ((call && call[1]) || '').matchAll(/-C\s*("[^"]+"|'[^']+'|\S+)/g))
+        for (const d of dirs) if (d && !/\$/.test(d)) gitCwd = path.resolve(gitCwd, d);
+        // argv, never a shell string: the pathspec used to be single-quoted into an execSync line, and on
+        // win32 that line runs through cmd.exe, where a single quote is a literal character - git was
+        // asked about a file named 'seed.txt' with the quotes, found it clean, and `git restore <dirty
+        // file>` passed on every Windows install (measured: the release CI's windows job). stdio: git's
+        // own stderr is CAPTURED - inherited, a non-repo path printed `fatal: not a git repository` to the
+        // user on a call this gate then PASSED. LC_ALL=C: the dry runs are read by their English words.
+        const run = (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, LC_ALL: 'C' } }).toString();
+        const isRev = (w) =>
         {
-            const dest = c[1].replace(/^["']|["']$/g, '');
-            if (!/\$/.test(dest)) gitCwd = path.resolve(gitCwd, dest);
-        }
-        const git = (argv) => execFileSync('git', argv, { cwd: gitCwd, timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
-        const verb = call ? call[2] : '';
-        const args = call ? ((call[3] || '').match(/"[^"]*"|'[^']*'|\S+/g) || []).map((a) => a.replace(/^["']|["']$/g, '')) : [];
-
-        // What the call destroys, as the rows the denial lists and the targets a receipt must name.
+            if (!w || w.startsWith('-')) return false;
+            try { run(['rev-parse', '--verify', '--quiet', `${w}^{tree}`]); return true; }
+            catch { return false; }
+        };
+        const plan = gitPlan(verb, args, config, isRev);
+        if (!plan) continue;
         // A git that cannot answer (not a repo, git absent) is no loss - never block on our own failure.
-        const loss = (() => {
-            try
-            {
-                if (verb === 'stash')
-                {
-                    const entries = git(['stash', 'list']).split('\n').filter(Boolean);
-                    if (args[0] === 'clear') return { kind: 'stash', rows: entries, targets: entries.map((e) => e.split(':')[0]) };
-                    const named = args.slice(1).find((a) => !a.startsWith('-')) || '0';
-                    const ref = /^\d+$/.test(named) ? `stash@{${named}}` : named;
-                    return { kind: 'stash', rows: entries.filter((e) => e.startsWith(`${ref}:`)), targets: [ref] };
-                }
-                // A dry run deletes nothing - it is how a careful run asks what the real one would.
-                if ((verb === 'reflog' || verb === 'prune') && args.some((a) => a === '-n' || a === '--dry-run')) return { kind: '', rows: [], targets: [] };
-                if (verb === 'prune')
-                    return { kind: 'objects', rows: git(['prune', '--dry-run', ...args]).split('\n').filter(Boolean), targets: ['*'] };
-                // gc drops loose AND packed unreachable objects; fsck names both, reflogs counted as reachable as gc counts them.
-                if (verb === 'gc')
-                    return { kind: 'objects', rows: git(['fsck', '--unreachable', '--connectivity-only', '--no-progress']).split('\n').filter((l) => /^unreachable\b/.test(l)), targets: ['*'] };
-                if (verb === 'reflog')
-                {
-                    const rest = args.slice(1).filter((a) => a !== '-n' && a !== '--dry-run' && a !== '--verbose');
-                    const out = git(['reflog', 'expire', '--dry-run', '--verbose', ...rest]);
-                    return { kind: 'reflog', rows: out.split('\n').filter((l) => /^would prune\b/.test(l)), targets: ['*'] };
-                }
-                // The PATHSPEC the command actually names. The gate used to ask only 'is the tree dirty',
-                // which made its own prescribed escape - 'name the ONE file to revert instead of the whole
-                // tree' - unreachable: `git restore .gitignore` was denied with all seven dirty files
-                // listed, six of which the command never touched (measured live, twice in one session).
-                // `reset --hard`, `checkout .` / `checkout --` with no path, and a forced checkout or
-                // switch (whose argument is a branch) are whole-tree by nature; anything that names
-                // paths is judged on THOSE paths only.
-                const pathspec = (() => {
-                    if (verb === 'reset' || verb === 'switch') return [];   // a commit or a branch, never a pathspec
-                    const sep = args.indexOf('--');
-                    if (verb === 'checkout' && sep < 0) return args[0] === '.' ? [] : (args.some((a) => /^-/.test(a)) ? [] : args);
-                    const named = (sep >= 0 ? args.slice(sep + 1) : args).filter((a) => a && !a.startsWith('-'));
-                    // `.` is the whole tree spelled as a path, and an unexpanded variable is unknowable -
-                    // both fall back to the whole-tree check rather than a guess.
-                    if (!named.length || named.some((a) => a === '.' || /\$\{?[A-Za-z_]/.test(a))) return [];
-                    return named;
-                })();
-                // argv, never a shell string: the pathspec used to be single-quoted into an execSync
-                // line, and on win32 that line runs through cmd.exe, where a single quote is a literal
-                // character - git was asked about a file named 'seed.txt' with the quotes, found it
-                // clean, and `git restore <dirty file>` passed on every Windows install (measured: the
-                // release CI's windows job, both pathspec tests, 0 where 2 was expected). stdio: git's
-                // own stderr is CAPTURED - inherited, a non-repo path printed `fatal: not a git
-                // repository` to the user on a call this gate then PASSED.
-                const all = git(['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])]).split('\n').filter(Boolean);
-                // An untracked row is lost only to clean, or to a forced switch or reset whose TARGET tracks
-                // that path (git overwrites it); a path checkout, restore and a reset to HEAD never touch one,
-                // and clean never touches a tracked file (measured: the guard's own untracked ledger turned
-                // every whole-tree verb into a false block).
-                const untracked = (r) => r.startsWith('?? ');
-                const pathOf = (r) => r.slice(3).trim().replace(/^"|"$/g, '');
-                let rows = all.filter(untracked);
-                if (verb !== 'clean')
-                {
-                    const forced = verb === 'reset' || verb === 'switch'
-                        || (verb === 'checkout' && !pathspec.length && !args.includes('--') && args.some((a) => a.startsWith('-')));
-                    const target = forced ? args.find((a) => !a.startsWith('-')) : undefined;
-                    const loose = rows.map(pathOf);
-                    let clash = new Set();
-                    if (target && loose.length)
-                    {
-                        // a target git cannot list keeps every untracked row - never pass on our own failure
-                        try
-                        {
-                            const tracked = git(['ls-tree', '-r', '--name-only', target, '--', ...loose]).split('\n').filter(Boolean);
-                            clash = new Set(loose.filter((p) => tracked.some((t) => t === p || (p.endsWith('/') && t.startsWith(p)))));
-                        }
-                        catch { clash = new Set(loose); }
-                    }
-                    rows = all.filter((r) => !untracked(r) || clash.has(pathOf(r)));
-                }
-                return { kind: 'tree', pathspec, rows, targets: pathspec.length ? pathspec : rows.map((r) => r.slice(3).trim()) };
-            }
-            catch { return { kind: '', rows: [], targets: [] }; }
-        })();
+        try { losses.push(...readLoss(plan, run, gitCwd)); }
+        catch { /* nothing read, nothing claimed */ }
+    }
 
+    // ONE block for the whole command: the losses grouped by what they destroy, every row named.
+    const groups = new Map();
+    for (const l of losses)
+    {
+        if (!l.rows.length) continue;
+        const g = groups.get(l.kind) || { kind: l.kind, rows: [], targets: [], named: true };
+        for (const r of l.rows) if (!g.rows.includes(r)) g.rows.push(r);
+        for (const t of l.targets) if (!g.targets.includes(t)) g.targets.push(t);
+        g.named = g.named && Boolean(l.named);
+        groups.set(l.kind, g);
+    }
+    if (groups.size)
+    {
+        const kinds = [...groups.values()];
+        const targets = kinds.flatMap((g) => g.targets);
         // The user's own 'discard it' for THIS session. Every other blocking guard in the stack
         // honours an answer; this one had none, so it re-blocked a discard the user had just
         // chosen through AskUserQuestion, and the chosen action was silently substituted with a
         // `git stash push -u` (measured: answer at 06:54:14, block at 06:54:22, 142,674 cache-read
         // on the retried turn). Same shape as CROSS-WRITE-ALLOW: one path (or stash entry) per line,
-        // or `*` for everything, this session's own, under 8h.
+        // or `*` for everything, this session's own, under 8h - and it must cover EVERY loss named.
         const allowed = (() => {
-            if (!loss.rows.length) return false;
             try
             {
                 const receipt = path.resolve(root, docsRootEnv(), 'flow', 'DISCARD-ALLOW');
@@ -440,40 +712,40 @@ function main()
                 if (Date.now() - st.mtimeMs > 8 * 60 * 60 * 1000 || (sessionStartMs && st.mtimeMs < sessionStartMs)) return false;
                 const lines = fs.readFileSync(receipt, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
                 if (lines.includes('*')) return true;
-                return loss.targets.length > 0 && loss.targets.every((f) => f !== '*' && lines.some((l) => l === f || f.startsWith(`${l}/`)));
+                return targets.length > 0 && targets.every((f) => f !== '*' && lines.some((l) => l === f || f.startsWith(`${l}/`)));
             }
             catch { return false; } // absent or unreadable - no allowance recorded
         })();
 
-        if (loss.rows.length && !allowed)
+        if (!allowed)
         {
-            const rows = loss.rows;
             const receiptRel = path.join(docsRootEnv().replace(/^\//, ''), 'flow', 'DISCARD-ALLOW');
-            const head = loss.kind === 'stash'
-                ? `Blocked: this destroys ${rows.length} stash entr${rows.length === 1 ? 'y' : 'ies'}, and a dropped stash leaves no\n` +
-                  `reflog entry to recover it from. A house rule enforced here, no prose copy to consult.\n`
-                : loss.kind === 'reflog'
-                    ? `Blocked: this expires ${rows.length} reflog entr${rows.length === 1 ? 'y' : 'ies'} - the reflog is the one record of\n` +
-                      `commits no branch reaches, and gc deletes them once it is gone. A house rule enforced here.\n`
-                    : loss.kind === 'objects'
-                    ? `Blocked: this deletes ${rows.length} unreachable object(s) now - a reset-away commit, a dropped stash or a lost\n` +
-                      `\`git add\` lives on only as these until the grace window ends. A house rule enforced here.\n`
-                    : `Blocked: this discards uncommitted work in ${rows.length} file(s) under ${loss.pathspec.length ? 'the path(s) this command names' : 'the working tree'}, and there is\n` +
-                      `no reflog for a working tree - once it is gone it is gone. A house rule enforced here, no prose\n` +
-                      `copy to consult - same class as the recursive-rm gate in this file.\n`;
-            const keep = loss.kind === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
-                : loss.kind === 'reflog' ? `'Keep the reflog (Recommended)' - skip the expire`
-                : loss.kind === 'objects' ? `'Keep them (Recommended)' - a plain \`git gc\` keeps the grace window`
-                    : `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`;
-            const narrow = loss.kind === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
-                : loss.kind === 'reflog' || loss.kind === 'objects' ? '' : `'Narrow it' - name the ONE file to revert instead of the whole tree`;
-            const spell = loss.kind === 'stash' ? 'one entry per line as `stash@{N}`, or `*` for every one'
-                : loss.kind === 'reflog' || loss.kind === 'objects' ? 'the single line `*`'
-                    : 'one path per line exactly as the\ncommand spells them, or `*` for everything';
+            const entries = (n) => `entr${n === 1 ? 'y' : 'ies'}`;
+            const head = (g) => (g.kind === 'stash'
+                ? `this destroys ${g.rows.length} stash ${entries(g.rows.length)}, and a dropped stash leaves no\nreflog entry to recover it from.`
+                : g.kind === 'reflog'
+                    ? `this expires ${g.rows.length} reflog ${entries(g.rows.length)} - the reflog is the one record of\ncommits no branch reaches, and gc deletes them once it is gone.`
+                    : g.kind === 'objects'
+                        ? `this deletes ${g.rows.length} unreachable object(s) now - a reset-away commit, a dropped stash or a lost\n\`git add\` lives on only as these until the grace window ends.`
+                        : `this discards uncommitted work in ${g.rows.length} file(s) under ${g.named ? 'the path(s) this command names' : 'the working tree'}, and there is\nno reflog for a working tree - once it is gone it is gone.`);
+            const body = kinds.map((g, k) => `${k ? 'And ' : 'Blocked: '}${head(g)}\n` +
+                g.rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
+                (g.rows.length > 10 ? `\n  ... and ${g.rows.length - 10} more` : '')).join('\n');
+            const one = kinds.length === 1 ? kinds[0].kind : '';
+            const keep = one === 'stash' ? `'Keep the stash (Recommended)' - leave it, or \`git stash apply\` it first`
+                : one === 'reflog' ? `'Keep the reflog (Recommended)' - skip the expire`
+                    : one === 'objects' ? `'Keep them (Recommended)' - a plain \`git gc\` keeps the grace window`
+                        : one === 'tree' ? `'Keep the work (Recommended)' - \`git stash -u\`, or commit it`
+                            : `'Keep it all (Recommended)' - run none of it; \`git stash -u\` or commit the work first`;
+            const narrow = one === 'stash' ? `'Narrow it' - drop ONE named entry instead of every one`
+                : groups.has('tree') ? `'Narrow it' - name the ONE file to revert instead of the whole tree` : '';
+            const spell = one === 'stash' ? 'one entry per line as `stash@{N}`, or `*` for every one'
+                : one === 'reflog' || one === 'objects' ? 'the single line `*`'
+                    : one === 'tree' ? 'one path per line exactly as the\ncommand spells them, or `*` for everything'
+                        : 'one path or `stash@{N}` per line exactly as\nnamed above, or `*` for everything (a reflog or object loss takes `*`)';
             process.stderr.write(
-                head +
-                rows.slice(0, 10).map((r) => `  ${r}`).join('\n') +
-                (rows.length > 10 ? `\n  ... and ${rows.length - 10} more` : '') +
+                body +
+                `\nA house rule enforced here, no prose copy to consult - same class as the recursive-rm gate in this file.` +
                 `\n\nDo not decide for the user: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
                 `  ${keep}\n` +
                 `  'Discard it' - the loss is intended and the user says so\n` +
