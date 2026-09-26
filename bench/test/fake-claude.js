@@ -13,6 +13,8 @@
 //                             stdout and the edit - a model running `env`
 //   FAKE_SLEEP_MS=<n>         wait before finishing; FAKE_IGNORE_TERM=1 survives SIGTERM
 //   FAKE_EXIT=<n>             the exit status
+//   FAKE_LIMIT_FILE=<file>    while <file> exists ({ "from": n }), the nth session started and every later
+//                             one ends on a usage-limit result (counted in <file>.count)
 //   --version                 prints a fake version, as the driver asks the real CLI
 const fs = require('node:fs');
 const path = require('node:path');
@@ -45,6 +47,16 @@ if (env.FAKE_EDIT) fs.writeFileSync(path.join(process.cwd(), env.FAKE_EDIT), `ed
 if (env.FAKE_WRITE_OUTSIDE) fs.writeFileSync(env.FAKE_WRITE_OUTSIDE, 'outside\n');
 
 process.stdout.write(`${JSON.stringify({ type: 'system', subtype: 'init', session_id: sid })}\n`);
+if (env.FAKE_LIMIT_FILE && fs.existsSync(env.FAKE_LIMIT_FILE))
+{
+    const { from } = JSON.parse(fs.readFileSync(env.FAKE_LIMIT_FILE, 'utf8'));
+    fs.appendFileSync(`${env.FAKE_LIMIT_FILE}.count`, 'x');
+    if (fs.statSync(`${env.FAKE_LIMIT_FILE}.count`).size >= from)
+    {
+        process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, session_id: sid, result: 'Claude AI usage limit reached|1790000000' })}\n`);
+        process.exit(1);
+    }
+}
 const finish = () =>
 {
     process.stdout.write(`${JSON.stringify({ type: 'result', subtype: 'success', session_id: sid, result: `done${leak}` })}\n`);

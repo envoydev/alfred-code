@@ -38,6 +38,25 @@ async function gradedWorld(t, { grade } = {})
     return w;
 }
 
+test('a cell set aside by a usage limit is never graded', async (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-limit-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const limitFile = path.join(dir, 'limit.json');
+    fs.writeFileSync(limitFile, JSON.stringify({ from: 1 }));
+    const w = makeWorld(t, {
+        arms: { good: { env: { FAKE_EDIT: 'made.txt', FAKE_LIMIT_FILE: limitFile } } },
+        tasks: { t1: { grade: { hidden: [['node', 'hidden-check.js']], suite: [['node', '-e', '0']], timeoutMin: 1 } } },
+    });
+    fs.writeFileSync(path.join(w.opts.tasksDir, 't1', 'hidden', 'hidden-check.js'), hiddenCheck(path.join(w.dir, 'infra-flag')));
+    await drive(w.opts);
+    const res = gradeRun({ benchDir: w.bench, run: 'r-test', armsDir: w.opts.armsDir, tasksDir: w.opts.tasksDir, base: w.opts.base, log: () => {} });
+    assert.deepStrictEqual([res.graded, res.skipped], [0, 1]);
+    const aside = fs.readdirSync(path.join(w.runDir, 'limited'));
+    assert.strictEqual(aside.length, 1);
+    assert.ok(!fs.existsSync(path.join(w.runDir, 'limited', aside[0], 'grade.json')));
+});
+
 test('a session that did the work passes, one that did not fails, and the suite is judged apart', async (t) =>
 {
     const w = await gradedWorld(t);

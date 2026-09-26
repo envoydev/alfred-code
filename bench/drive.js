@@ -5,12 +5,16 @@
 //
 //   node bench/drive.js --arms ours,ecc,bare --tasks <ids|all|group:x> --reps 3 --parallel 3
 //                       [--seed n] [--model id --effort e] [--run id] [--resume] [--mode plain]
-//                       [--auth ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN]
+//                       [--auth ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN] [--wait-on-limit <hours>]
 //
 // One driver per run (a lock with its pid), and a resume trusts the disk alone: a finished cell is
 // never rerun, a cell another worker still holds is left alone, anything else is wiped and run
 // again. A resume re-reads the run's own record and refuses when an arm, a task or the CLI changed
 // since the run started - a run is one configuration or it is two runs. Progress prints COUNTS only.
+//
+// A usage limit (a subscription's window) is not the arm's fail: the limited cell is set aside
+// unfinished, the queue stops taking cells, and the drive either exits with the resume line or, with
+// --wait-on-limit, probes every 20 minutes and carries on in the same drive once the limit clears.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -24,6 +28,7 @@ const session = require('./lib/session.js');
 const fixture = require('./fixture/verify.js');
 const { removeTree } = require('./lib/remove-tree.js');
 const { pickAuth } = require('./lib/env.js');
+const limitLib = require('./lib/limit.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -33,6 +38,9 @@ const DEFAULTS = {
     pricesFile: path.join(BENCH_DIR, '..', 'meta', 'model-prices.json'),
     preregFile: path.join(BENCH_DIR, 'PREREGISTRATION.md'),
     root: path.join(BENCH_DIR, '..'),
+    probeEveryMs: 20 * 60 * 1000,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    probe: limitLib.probe,
 };
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -165,6 +173,7 @@ async function drive(opts)
     if (o.platform === 'win32') throw new Error('the harness runs on macOS and Linux only - its host protection is Claude Code\'s sandbox, which Windows does not have (D4, D12)');
     if (o.mode !== 'plain') throw new Error(`flow mode is not built yet - its scripted approver is carried to B4 (D11); run --mode plain`);
     if (!Number.isInteger(o.parallel) || o.parallel < 1) throw new Error(`--parallel '${o.parallel}' is not a count from 1`);
+    if (o.waitOnLimit !== undefined && !(o.waitOnLimit > 0)) throw new Error(`--wait-on-limit '${o.waitOnLimit}' is not a number of hours above 0`);
     const runP = cellsLib.runPaths({ benchDir: o.benchDir, run: o.run });
 
     const common = armsLib.load({ dir: o.armsDir, names: [] }).session;
@@ -200,13 +209,17 @@ async function drive(opts)
         const parts = cellsLib.partition(list);
         o.log(`${o.run}: ${list.length} cells - ${parts.done.length} done, ${parts.live.length} live elsewhere, ${parts.todo.length} to run`);
 
-        const counts = { ok: 0, timeout: 0, error: 0, failed: 0 };
+        const counts = { ok: 0, timeout: 0, error: 0, limited: 0, failed: 0 };
         const failures = [];
         const queue = [...parts.todo];
+        const limited = [];
+        const pauses = [];
+        let paused = null;
+        let total = parts.todo.length;
         let finished = 0;
         const worker = async () =>
         {
-            while (queue.length)
+            while (queue.length && !paused)
             {
                 const cell = queue.shift();
                 const task = taskBy[cell.task];
@@ -216,6 +229,11 @@ async function drive(opts)
                     template.copyInto(templates[cell.arm], cell);
                     const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName });
                     counts[rec.outcome] += 1;
+                    if (rec.outcome === 'limited')
+                    {
+                        limited.push(cell);
+                        if (!paused) paused = { startedAt: new Date().toISOString(), text: rec.limitText, probes: 0 };
+                    }
                 }
                 catch (err)
                 {
@@ -227,19 +245,43 @@ async function drive(opts)
                     // The work dir holds the cell's raw account dir, auth values included: never kept.
                     removeTree(cell.work);
                     finished += 1;
-                    o.log(`${finished}/${parts.todo.length} - ok ${counts.ok}, timeout ${counts.timeout}, error ${counts.error}, harness failure ${counts.failed}`);
+                    o.log(`${finished}/${total} - ok ${counts.ok}, timeout ${counts.timeout}, error ${counts.error}, limited ${counts.limited}, harness failure ${counts.failed}`);
                 }
             }
         };
-        await Promise.all(Array.from({ length: Math.min(o.parallel, parts.todo.length) }, worker));
+        const workers = () => Promise.all(Array.from({ length: Math.min(o.parallel, queue.length) }, worker));
+        await workers();
+        let waitedMs = 0;
+        while (paused)
+        {
+            // A limited cell goes back to the FRONT: it re-runs from scratch before anything new starts.
+            total += limited.length;
+            queue.unshift(...limited.splice(0));
+            if (!o.waitOnLimit || waitedMs >= o.waitOnLimit * 3600 * 1000) break;
+            await o.sleep(o.probeEveryMs);
+            waitedMs += o.probeEveryMs;
+            paused.probes += 1;
+            const p = await o.probe({ claude: o.claude, session: loaded.session, base: o.base, auth: authName });
+            if (!p.ok) continue;
+            paused.endedAt = new Date().toISOString();
+            pauses.push(paused);
+            paused = null;
+            o.log(`${o.run}: the limit cleared after ${pauses[pauses.length - 1].probes} probes - carrying on`);
+            await workers();
+        }
+        if (paused)
+        {
+            pauses.push(paused);
+            o.log(`paused: usage limit (${paused.text}) - node bench/drive.js --run ${o.run} --resume`);
+        }
         for (const f of failures) o.log(`harness failure: ${f}`);
         if (!parts.live.length) removeTree(path.join(o.benchDir, 'work', o.run));
 
         const ran = counts.ok + counts.timeout + counts.error;
         const latest = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));
-        latest.drives.push({ pid: process.pid, startedAt, endedAt: new Date().toISOString(), parallel: o.parallel, ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts });
+        latest.drives.push({ pid: process.pid, startedAt, endedAt: new Date().toISOString(), parallel: o.parallel, ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, pauses });
         writeJson(runP.runJson, latest);
-        return { ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts };
+        return { ran, failed: counts.failed, skipped: parts.done.length + parts.live.length, counts, paused: Boolean(paused) };
     }
     finally { lock.release(runP.dir); }
 }
@@ -262,6 +304,7 @@ function parseArgs(argv)
         else if (a === '--run') o.run = next();
         else if (a === '--resume') o.resume = true;
         else if (a === '--auth') o.auth = next();
+        else if (a === '--wait-on-limit') o.waitOnLimit = Number(next());
         else throw new Error(`unknown argument ${a}`);
     }
     if (o.resume && !o.run) throw new Error('--resume needs --run <id>');
@@ -275,7 +318,7 @@ if (require.main === module)
     try { o = parseArgs(process.argv.slice(2)); }
     catch (err) { console.error(`drive: ${err.message}`); process.exit(2); }
     drive(o).then(
-        (res) => { console.log(`${o.run}: ran ${res.ran}, skipped ${res.skipped}, harness failures ${res.failed}`); process.exitCode = res.failed ? 1 : 0; },
+        (res) => { console.log(`${o.run}: ran ${res.ran}, skipped ${res.skipped}, limited ${res.counts.limited}, harness failures ${res.failed}${res.paused ? ' - paused on a usage limit' : ''}`); process.exitCode = res.failed ? 1 : 0; },
         (err) => { console.error(`drive: ${err.message}`); process.exitCode = 1; });
 }
 

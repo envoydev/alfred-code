@@ -76,6 +76,100 @@ test('--resume after a killed driver runs only the cells it left unfinished', as
     assert.strictEqual(sessions(w.bench).length, 8);
 });
 
+// Every arm's sessions share one FAKE_LIMIT_FILE: from the nth session started, each ends on a limit.
+function limitWorld(t, from, extra = {})
+{
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-limit-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const limitFile = path.join(dir, 'limit.json');
+    fs.writeFileSync(limitFile, JSON.stringify({ from }));
+    const env = { FAKE_LIMIT_FILE: limitFile };
+    const w = makeWorld(t, { arms: { a1: { env }, a2: { env } }, tasks: { t1: {}, t2: {} } });
+    Object.assign(w.opts, { reps: 1, parallel: 1 }, extra);
+    w.limitFile = limitFile;
+    w.started = () => { try { return fs.statSync(`${limitFile}.count`).size; } catch { return 0; } };
+    w.setAside = () => { try { return fs.readdirSync(path.join(w.runDir, 'limited')); } catch { return []; } };
+    w.record = () => JSON.parse(fs.readFileSync(path.join(w.runDir, 'run.json'), 'utf8'));
+    return w;
+}
+
+test('a usage limit stops the queue: the limited cell is set aside unfinished, and no later cell starts', async (t) =>
+{
+    const w = limitWorld(t, 2);
+    const res = await drive(w.opts);
+    assert.deepStrictEqual([res.counts.ok, res.counts.limited, res.ran, res.paused], [1, 1, 1, true]);
+    assert.strictEqual(sessions(w.bench).length, 1);
+    assert.strictEqual(w.setAside().length, 1);
+    assert.strictEqual(w.started(), 2, 'cells 3 and 4 never started');
+    assert.ok(w.lines.includes('paused: usage limit (Claude AI usage limit reached|1790000000) - node bench/drive.js --run r-test --resume'), w.lines.join('\n'));
+    const first = w.record().drives[0];
+    assert.strictEqual(first.counts.limited, 1);
+    assert.deepStrictEqual(first.pauses.map((p) => [Boolean(p.startedAt), Boolean(p.endedAt), p.text]), [[true, false, 'Claude AI usage limit reached|1790000000']]);
+});
+
+test('a resume after the limit re-runs the set-aside cell from scratch and keeps the set-aside copy', async (t) =>
+{
+    const w = limitWorld(t, 2);
+    await drive(w.opts);
+    fs.rmSync(w.limitFile);
+    const res = await drive({ ...w.opts, resume: true });
+    assert.deepStrictEqual([res.ran, res.skipped, res.counts.limited, res.paused], [3, 1, 0, false]);
+    assert.strictEqual(sessions(w.bench).length, 4);
+    assert.strictEqual(w.setAside().length, 1);
+});
+
+test('cells running in parallel when the limit lands are all set aside, none finished', async (t) =>
+{
+    const w = limitWorld(t, 1, { parallel: 2 });
+    const res = await drive(w.opts);
+    assert.deepStrictEqual([res.counts.limited, res.ran, res.paused], [2, 0, true]);
+    assert.strictEqual(sessions(w.bench).length, 0);
+    assert.strictEqual(w.setAside().length, 2);
+    assert.strictEqual(w.started(), 2);
+});
+
+test('--wait-on-limit probes until the limit clears, then finishes the run in the same drive', async (t) =>
+{
+    const w = limitWorld(t, 2);
+    let probes = 0;
+    const probe = async ({ auth }) =>
+    {
+        probes += 1;
+        assert.strictEqual(auth, 'ANTHROPIC_API_KEY');
+        if (probes < 3) return { ok: false, text: 'still limited' };
+        fs.rmSync(w.limitFile);
+        return { ok: true, text: null };
+    };
+    const res = await drive({ ...w.opts, waitOnLimit: 1, sleep: async () => {}, probe });
+    assert.strictEqual(probes, 3);
+    assert.deepStrictEqual([res.ran, res.counts.limited, res.paused], [4, 1, false]);
+    assert.strictEqual(sessions(w.bench).length, 4);
+    const pause = w.record().drives[0].pauses[0];
+    assert.ok(pause.startedAt && pause.endedAt);
+    assert.strictEqual(pause.probes, 3);
+});
+
+test('--wait-on-limit gives up after its hours and leaves the run resumable', async (t) =>
+{
+    const w = limitWorld(t, 2);
+    let probes = 0;
+    const res = await drive({ ...w.opts, waitOnLimit: 0.5, sleep: async () => {}, probe: async () => { probes += 1; return { ok: false, text: 'still limited' }; } });
+    assert.strictEqual(probes, 2, 'one probe per 20 minutes inside half an hour');
+    assert.deepStrictEqual([res.ran, res.paused], [1, true]);
+    assert.ok(w.lines.some((l) => /^paused: usage limit \(.*\) - node bench\/drive\.js --run r-test --resume$/.test(l)));
+    fs.rmSync(w.limitFile);
+    assert.strictEqual((await drive({ ...w.opts, resume: true })).ran, 3);
+});
+
+test('--wait-on-limit is a number of hours above 0', async (t) =>
+{
+    const { parseArgs } = require('./drive.js');
+    assert.strictEqual(parseArgs(['--arms', 'bare', '--wait-on-limit', '12']).waitOnLimit, 12);
+    const w = world(t);
+    for (const bad of [0, -1, Number.NaN]) await assert.rejects(drive({ ...w.opts, waitOnLimit: bad }), /--wait-on-limit '.*' is not a number of hours above 0/);
+    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
+});
+
 test('a second driver on the same run refuses', async (t) =>
 {
     const w = world(t);

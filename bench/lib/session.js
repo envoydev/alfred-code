@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const lock = require('./lock.js');
 const { sessionEnv, pickAuth } = require('./env.js');
+const { limitHit } = require('./limit.js');
 const { removeTree } = require('./remove-tree.js');
 
 const WIN = process.platform === 'win32';
@@ -213,6 +214,9 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
 
         redact(cell.results, authSecrets(session, base));
 
+        const limit = limitHit({ stdoutFile: cell.stdout, stderrFile: cell.stderr });
+        if (limit.hit) return setAside(cell, { sessionId, limitText: limit.text, exitCode: result.code, signal: result.signal, started, ended, model: session.model, effort: session.effort });
+
         let outcome = 'ok';
         if (timedOut) outcome = 'timeout';
         else if (result.error || result.code !== 0) outcome = 'error';
@@ -230,6 +234,25 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         return record;
     }
     finally { lock.release(cell.results); }
+}
+
+// A cell a usage limit stopped is not finished: its files, already redacted, move to
+// results/<run>/limited/ for the record, and its own dir keeps only the lock, so the next drive or
+// resume runs it again from scratch and the grader never sees it.
+function setAside(cell, info)
+{
+    const runDir = path.resolve(cell.results, '..', '..', '..');
+    const dest = path.join(runDir, 'limited', `${cell.arm}-${cell.task}-r${cell.rep}-${new Date(info.ended).toISOString().replace(/[-:.]/g, '')}`);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.cpSync(cell.results, dest, { recursive: true, filter: (src) => path.basename(src) !== '.lock' });
+    for (const entry of fs.readdirSync(cell.results)) if (entry !== '.lock') fs.rmSync(path.join(cell.results, entry), { recursive: true, force: true });
+    const record = {
+        run: cell.run, arm: cell.arm, task: cell.task, rep: cell.rep, sessionId: info.sessionId, outcome: 'limited', limitText: info.limitText,
+        exitCode: info.exitCode, signal: info.signal, startedAt: new Date(info.started).toISOString(), endedAt: new Date(info.ended).toISOString(),
+        wallMs: info.ended - info.started, model: info.model, effort: info.effort,
+    };
+    fs.writeFileSync(path.join(dest, 'session.limited.json'), `${JSON.stringify(record, null, 2)}\n`);
+    return { ...record, setAside: dest };
 }
 
 const authSecrets = (session, base) => session.auth.map((name) => ({ name, value: base[name] })).filter((s) => typeof s.value === 'string' && s.value.length >= MIN_SECRET);
@@ -262,6 +285,8 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
         if (fs.existsSync(subs)) fs.cpSync(subs, path.join(dir, `${where.index}`, 'subagents'), { recursive: true });
     }
     redact(dir, authSecrets(session, base));
+    const limit = limitHit({ stdoutFile: path.join(dir, `${where.index}.stdout.jsonl`), stderrFile: path.join(dir, `${where.index}.stderr.log`) });
+    if (limit.hit) throw new Error(`usage limit during onboarding (${limit.text}) - resume the run after it resets`);
     if (r.error) throw new Error(`session ${r.error.code === 'ETIMEDOUT' ? 'timed out' : `failed: ${r.error.code || r.error.message}`}`);
     if (r.status !== 0) throw new Error(`session exited ${r.status === null ? r.signal : r.status}`);
     if (!transcript) throw new Error('session left no transcript');

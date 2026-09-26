@@ -30,6 +30,7 @@ dollars and ask first.
 
 ```
 node bench/drive.js --arms ours,ecc,bare --tasks all --reps 3 --parallel 3 [--seed n] [--run id]
+                    [--auth <name>] [--wait-on-limit <hours>]
 node bench/drive.js --run <id> --resume
 node bench/grade.js <id>
 node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
@@ -111,6 +112,14 @@ Every billed phase needs, in the shell that runs `drive.js`:
   when it changed.
 - A billed run that stops part-way is finished with `node bench/drive.js --run <id> --resume`. Grade
   again until `results/<id>/regrade.json` is empty: each pass re-grades the infrastructure cells.
+- **A usage limit is not the arm's fail.** On a subscription the plan's limit ends every later session
+  with an error. A cell whose last result is a limit (`bench/lib/limit.js`) is set aside unfinished
+  under `results/<id>/limited/` (never graded), and the queue stops taking cells. With
+  `--wait-on-limit <hours>` the drive probes every 20 minutes and carries on once the limit clears,
+  re-running the set-aside cells first; without it, or past those hours, it prints the resume line.
+  The pattern is not verified against a real limit, so at every phase end list the cells that did not
+  end `ok` and read each `error` cell's last result: a limit it missed is moved into `limited/` by
+  hand, its shape added to `lib/limit.test.js` and the pattern fixed before the resume.
 
 The task ids: headline 12 - `api-01-loan-renewal`, `api-02-last-copy-race`, `api-03-member-notices`,
 `api-04-member-self-lending`, `web-01-loan-date-rules`, `web-02-members-store`,

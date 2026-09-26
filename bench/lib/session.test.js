@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { sessionArgv, run, prepare } = require('./session.js');
+const { sessionArgv, run, prepare, onboardSync } = require('./session.js');
 const { cellPaths } = require('./cells.js');
 
 const FAKE = [process.execPath, path.join(__dirname, '..', 'test', 'fake-claude.js')];
@@ -144,6 +144,34 @@ test('a session with two credentials set and none chosen is refused before it st
     const session = { ...SESSION, auth: ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'] };
     await assert.rejects(run({ cell, prompt: 'x', session, arm: { name: 'solo', env: {} }, timeLimitMin: 1, claude: FAKE, base: { ...BASE, CLAUDE_CODE_OAUTH_TOKEN: 'bench-test-oauth-token-0123456789' } }), /more than one auth variable is set/);
     assert.ok(!fs.existsSync(cell.session));
+});
+
+test('a session stopped by a usage limit is set aside: no session.json, its files kept under limited/, the cell todo again', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const limitFile = path.join(dir, 'limit.json');
+    fs.writeFileSync(limitFile, JSON.stringify({ from: 1 }));
+    const out = await go(cell, { name: 'solo', env: { FAKE_LIMIT_FILE: limitFile, FAKE_LEAK: '1' } });
+    assert.strictEqual(out.outcome, 'limited');
+    assert.match(out.limitText, /usage limit reached/);
+    assert.ok(!fs.existsSync(cell.session), 'a limited cell is never finished');
+    assert.strictEqual(require('./cells.js').state(cell), 'todo');
+    assert.strictEqual(path.dirname(out.setAside), path.join(dir, 'results', 'r1', 'limited'));
+    assert.match(path.basename(out.setAside), /^solo-t1-r1-\d{8}T\d{6}/);
+    const kept = JSON.parse(fs.readFileSync(path.join(out.setAside, 'session.limited.json'), 'utf8'));
+    assert.deepStrictEqual([kept.outcome, kept.arm, kept.task, kept.rep, kept.limitText], ['limited', 'solo', 't1', 1, out.limitText]);
+    assert.ok(fs.existsSync(path.join(out.setAside, 'stdout.jsonl')) && fs.existsSync(path.join(out.setAside, 'transcript.jsonl')));
+    assert.ok(!fs.readFileSync(path.join(out.setAside, 'transcript.jsonl'), 'utf8').includes(AUTH_VALUE), 'what is set aside is redacted first');
+});
+
+test('an onboarding stopped by a usage limit says so, never a bare exit status', (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const limitFile = path.join(dir, 'limit.json');
+    fs.writeFileSync(limitFile, JSON.stringify({ from: 1 }));
+    const where = { cwd: cell.repo, config: cell.config, home: cell.home, env: { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: cell.config, HOME: cell.home, FAKE_LIMIT_FILE: limitFile }, index: 1, dir };
+    assert.throws(() => onboardSync({ prompt: '/init', where, session: SESSION, claude: FAKE, base: BASE }),
+        /usage limit during onboarding \(Claude AI usage limit reached\|1790000000\) - resume the run after it resets/);
 });
 
 test('a start ref is checked out before the baseline is taken', async (t) =>
