@@ -207,7 +207,7 @@ It prints, in order:
   `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
   not be read). A rename whose old name the stamp's picks never named and the disk never held
   prints no row - it was declined under that name.
-- `docs-move: offer <from> -> <to><TAB>tracked=<n> untracked=<n>[<TAB>conflicts=<n>]` - this install
+- `docs-move: offer <from> -> <to><TAB>tracked=<n> untracked=<n>[<TAB>ignored=yes][<TAB>conflicts=<n>]` - this install
   still writes its docs under the OLD default `.claude/docs` (the stack's own seed, never a root the
   user chose); `docs-move: repoint ...` (the old root holds nothing - the installer takes the new
   default itself, report its log line) or `docs-move: none (<why>)` otherwise. Only `offer` is asked,
@@ -271,7 +271,9 @@ AskUserQuestion, before the installer runs: **Move to .alfred/docs (Recommended)
 files move through `git mv` (history kept, staged as renames for the user to commit), the rest by
 rename, in one step, and the docs-root rule is re-stamped; nothing else is written - or **Keep at
 .claude/docs** - `ALFRED_CODE_DOCS_PATH=.claude/docs` becomes the user's own value and no later update
-asks again. The answer is `--docs-move move` or `--docs-move keep` on the installer call of whichever
+asks again. `ignored=yes` means git never saw the old root: the move keeps it that way (the new root
+gets a `.gitignore` of `*` and `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say so in the Move
+option. The answer is `--docs-move move` or `--docs-move keep` on the installer call of whichever
 path runs. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one question
 each. A `conflicts=<n>` field means files already sit at the new root: do not ask - name the count,
 run without the flag (the old root stays in effect), and the next update offers again once they are

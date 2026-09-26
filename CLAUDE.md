@@ -586,8 +586,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
   re-stamped, a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
   update offers again. No answer: nothing moves, and an absent key is written back as the old root so
-  the hooks keep reading where the docs are. A value the user set - in either settings file, or only in
-  the launch environment - is never offered; a conflict or an unreadable settings file moves nothing.
+  the hooks keep reading where the docs are. A value the user set is never offered: one the ledger does
+  not record, or any root in `settings.local.json` at project or user scope (the stamped rule is
+  settings.json's, R98). The launch environment is never read - a settings value applies over a shell
+  export and the seed writes one anyway. A move keeps what git saw: an old root git ignored, with nothing
+  tracked, becomes a `local` root (`ignored=yes` in the offer). A conflict or an unreadable settings file
+  moves nothing, and the rule keeps the root it was stamped with.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed

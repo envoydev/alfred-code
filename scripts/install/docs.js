@@ -153,7 +153,8 @@ const DOCS_IGNORE = {
 };
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
-// the project) | 'skipped' (no versioning to state, or a root under `.claude/`). A file that is exactly the stack's text for the
+// the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
+// root git already tracks docs in). A file that is exactly the stack's text for the
 // OTHER mode is the stack's and follows a versioning switch; any other text is the project's.
 function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
 {
@@ -168,13 +169,27 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     const file = path.join(base, '.gitignore');
     const want = DOCS_IGNORE[mode];
     let have = null;
-    try { have = fs.readFileSync(file, 'utf8'); } catch { have = null; }
+    // CRLF-normalised: a checkout with autocrlf turns the stack's own file into different bytes.
+    try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
     if (have === want) return 'current';
     const shown = rel.split(path.sep).join('/');
     if (have !== null && !Object.values(DOCS_IGNORE).includes(have))
     {
         log(`  docs root: ${shown}/.gitignore is the project's own - left as it is (versioning ${mode})`);
         return 'kept';
+    }
+    // `*` over a root git already tracks docs in would hide every NEW doc there while the old ones stay
+    // committed - the versioning and the repo disagree, which `docs.js status` reports; never widen it here.
+    if (mode === 'local')
+    {
+        let tracked = false;
+        try { tracked = String(rt.execCommand('git', ['ls-files', '--', shown], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim() !== ''; }
+        catch { tracked = false; }
+        if (tracked)
+        {
+            log(`  docs root: git tracks docs under ${shown} - no .gitignore of * written over them (versioning local; docs.js status reports the disagreement)`);
+            return 'tracked';
+        }
     }
     fs.mkdirSync(base, { recursive: true });
     fs.writeFileSync(file, want);
@@ -213,12 +228,14 @@ function filesUnder(dir)
 
 // 'none' (nothing to offer - `why` says which rule), 'repoint' (the stack's own seed names the old root
 // but nothing lives there, so the new default is simply taken) or 'offer', with what a move would carry.
-// `env` is the settings view the docs root is read from; `ledger` the last run's managed env keys
-// (null: a stamp from before the ledger, so the old seed value itself is the evidence); `launchEnv` the
-// environment the installer was started with.
-function docsMovePlan({ projectRoot, env = {}, ledger = null, stamped = false, launchEnv = {}, to = require('./copy.js').DOCS_ROOT_DEFAULT })
+// `env` is the settings file this install scope writes; `personal` the settings.local.json env Claude Code
+// lays over it at project and user scope (null at local scope, where it IS `env`); `ledger` the last run's
+// managed env keys (null: a stamp from before the ledger, so the old seed value itself is the evidence).
+// The launch environment is never read: a settings value applies over a shell export
+// (code.claude.com/docs/en/llm-gateway-connect), and the absent-only seed writes one on every run anyway.
+function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, stamped = false, to = require('./copy.js').DOCS_ROOT_DEFAULT })
 {
-    const base = { from: LEGACY_DOCS_ROOT, to, tracked: [], untracked: [], conflicts: [] };
+    const base = { from: LEGACY_DOCS_ROOT, to, tracked: [], untracked: [], conflicts: [], ignored: false };
     const none = (why) => ({ ...base, state: 'none', why });
     if (!stamped) return none('no install record - a fresh install takes the new default');
     // A settings file that does not parse reads as empty - an absent key, which would look like the old
@@ -231,13 +248,10 @@ function docsMovePlan({ projectRoot, env = {}, ledger = null, stamped = false, l
         catch { return true; }
     });
     if (broken) return none(`${broken} cannot be read`);
+    // A root in the personal file is this machine's own choice, and the stamped rule is settings.json's
+    // (R98) - a move written there alone would leave the rule and the team on the old root.
+    if (heldIn(personal)) return none('settings.local.json holds your own docs root');
     const key = heldIn(env);
-    // A settings `env` value applies over a shell export of the same variable
-    // (code.claude.com/docs/en/llm-gateway-connect), and a session exports its settings env to every
-    // command it runs - the installer included, often from before this run's own changes. So the launch
-    // environment names the root only where no settings file holds one.
-    const launched = heldIn(launchEnv);
-    if (launched && !key) return none(`${launched} is set to ${normRoot(launchEnv[launched])} in the launch environment`);
     if (key)
     {
         if (normRoot(env[key]) !== LEGACY_DOCS_ROOT) return none(`the docs root is ${normRoot(env[key])}`);
@@ -260,20 +274,40 @@ function docsMovePlan({ projectRoot, env = {}, ledger = null, stamped = false, l
     tracked = tracked.filter((f) => onDisk.has(f)).sort();
     const isTracked = new Set(tracked);
     const dest = path.join(projectRoot, ...normRoot(to).split('/'));
+    // What git saw of the old root: nothing, when it ignored the root and tracks none of it - which a move
+    // must keep, or every plan and task card there shows up untracked under the new root.
+    let ignored = false;
+    if (!tracked.length)
+        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${LEGACY_DOCS_ROOT}/`], { cwd: projectRoot, stdio: 'ignore' }); ignored = true; }
+        catch { ignored = false; }
     return {
-        ...base, state: 'offer', why: 'the stack\'s own seed over docs at the old root',
+        ...base, state: 'offer', why: 'the stack\'s own seed over docs at the old root', ignored,
         tracked, untracked: files.filter((f) => !isTracked.has(f)),
         conflicts: files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/')))),
     };
 }
 
-// The preflight's line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tconflicts=<n>]`,
+// The settings views a plan reads, one home for the installer and the preflight: at local scope the file
+// the scope writes is settings.local.json laid over settings.json (the N6 merge) and there is no personal
+// file beside it; at project and user scope settings.json alone, with settings.local.json as `personal`.
+function docsMoveViews({ claudeDir, scope })
+{
+    const { readBackSettings } = require('./settings.js');
+    const envOf = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+    if (scope === 'local') return { env: envOf(readBackSettings(claudeDir, 'local').env), personal: null };
+    let personal = {};
+    try { personal = envOf((JSON.parse(fs.readFileSync(path.join(claudeDir, 'settings.local.json'), 'utf8')) || {}).env); }
+    catch { personal = {}; }
+    return { env: envOf(readBackSettings(claudeDir, 'project', { sharedOnly: true }).env), personal };
+}
+
+// The preflight's line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tignored=yes][\tconflicts=<n>]`,
 // `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`.
 function docsMoveLine(plan)
 {
     if (plan.state === 'offer')
         return `docs-move: offer ${plan.from} -> ${plan.to}\ttracked=${plan.tracked.length} untracked=${plan.untracked.length}`
-            + (plan.conflicts.length ? `\tconflicts=${plan.conflicts.length}` : '');
+            + (plan.ignored ? '\tignored=yes' : '') + (plan.conflicts.length ? `\tconflicts=${plan.conflicts.length}` : '');
     if (plan.state === 'repoint') return `docs-move: repoint ${plan.from} -> ${plan.to} (nothing to move)`;
     return `docs-move: none (${plan.why})`;
 }
@@ -337,6 +371,6 @@ function moveDocsRoot({ projectRoot, plan })
 }
 
 module.exports = {
-    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveLine, moveDocsRoot,
+    domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, docsMoveLine, moveDocsRoot,
     DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT,
 };

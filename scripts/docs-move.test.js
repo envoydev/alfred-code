@@ -78,17 +78,28 @@ test('plan: every explicit root is left alone - never offered', () =>
         [{ env: { ALFRED_CODE_DOCS_PATH: 'docs' } }, 'another root'],
         [{ ledger: {} }, 'a ledger that does not record the key - the value is the user\'s'],
         [{ ledger: ledgerOf('something else') }, 'changed since the stack wrote it'],
-        [{ env: {}, launchEnv: { ALFRED_CODE_DOCS_PATH: 'notes/docs' } }, 'a root exported in the shell, with nothing in settings'],
-        [{ env: {}, launchEnv: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }, 'even the old root, when the shell is what sets it'],
+        [{ personal: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }, 'a root the user keeps in settings.local.json'],
         [{ stamped: false }, 'no install record - a fresh install'],
     ];
     for (const [over, what] of cases) assert.strictEqual(plan(root, over).state, 'none', what);
 });
 
-test('plan: where settings hold the key, a launch value never decides - settings apply over the shell', () =>
+test('plan: the launch environment never decides - settings apply over a shell export, and the seed writes one anyway', () =>
 {
-    assert.strictEqual(plan(repo(OLD), { launchEnv: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).state, 'offer', 'the session\'s own echo');
-    assert.strictEqual(plan(repo(OLD), { launchEnv: { CLAUDE_STACK_DOCS_PATH: 'stale/value' } }).state, 'offer', 'a stale export'); // legacy-name
+    // Review M2: a local install moved to project scope loses its local key earlier in the run while the
+    // session still exports it; reading the export as the user's orphaned the docs with no offer.
+    assert.strictEqual(plan(repo(OLD), { env: {}, launchEnv: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }).state, 'offer');
+    assert.strictEqual(plan(repo(OLD), { launchEnv: { CLAUDE_STACK_DOCS_PATH: 'stale/value' } }).state, 'offer'); // legacy-name
+});
+
+test('plan: the old root git ignored, with nothing tracked, is named so the move keeps it out of git', () =>
+{
+    const ignored = repo({ ...OLD, '.gitignore': '.claude/*\n' });
+    assert.strictEqual(plan(ignored).ignored, true);
+    assert.strictEqual(docs.docsMoveLine(plan(ignored)), 'docs-move: offer .claude/docs -> .alfred/docs\ttracked=0 untracked=2\tignored=yes');
+    assert.strictEqual(plan(repo(OLD)).ignored, false, 'visible to git, not ignored');
+    const tracked = repo({ ...OLD, '.gitignore': '.claude/*\n' }, { commit: ['.claude/docs/architecture/ARCHITECTURE.md'] });
+    assert.strictEqual(plan(tracked).ignored, false, 'a tracked file means git sees the root');
 });
 
 test('plan: nothing under the old root is a re-point, not an offer', () =>
@@ -268,7 +279,7 @@ test('installer: a root the user keeps in settings.local.json is what applies - 
         },
         inspect: (r) => ({ ...look(r), local: JSON.parse(fs.readFileSync(path.join(r, '.claude', 'settings.local.json'), 'utf8')).env }),
     });
-    assert.match(outs[1], /docs move: nothing to offer \(the docs root is notes\/docs\) - --docs-move ignored/);
+    assert.match(outs[1], /docs move: nothing to offer \(settings\.local\.json holds your own docs root\) - --docs-move ignored/);
     assert.strictEqual(result.local.ALFRED_CODE_DOCS_PATH, 'notes/docs');
     assert.ok(result.old && !result.moved, 'nothing moved');
 });
@@ -282,4 +293,103 @@ test('installer: a settings file that does not parse moves nothing - its owner c
     });
     assert.match(outs[1], /docs move: nothing to offer \(settings\.json cannot be read\) - --docs-move ignored/);
     assert.doesNotMatch(outs[1], /docs root: moved/);
+});
+
+test('validate never re-points a missing docs key over docs still under the old default', () =>
+{
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'validate.md'), 'utf8');
+    assert.match(body, /`ALFRED_CODE_DOCS_PATH` MISSING while\s+`\.claude\/docs` holds files[\s\S]{0,400}never offered[\s\S]{0,300}`\/alfred-code:update`/);
+});
+
+
+// --- review fixes (opus review, 2026-09-26) ---------------------------------------------------------
+
+test('installer: a root in settings.local.json at project scope is the user\'s - never moved, the rule stays settings.json\'s', POSIX_ONLY, () =>
+{
+    // Review B1: the move wrote the overlay alone, so settings.json and the stamped rule kept the old root while
+    // the hooks read the new one; a keep let the seed write .alfred/docs into settings.json under a local .claude/docs.
+    for (const answer of ['move', 'keep'])
+    {
+        const { outs, result } = seedRun(['install', 'update', 'update'], SELECTION, {
+            args: [['--scope', 'project'], updateArgs('--docs-move', answer), updateArgs()],
+            each: (r, i) =>
+            {
+                if (i !== 0) return null;
+                olderInstall(r);
+                fs.writeFileSync(path.join(r, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }));
+                return null;
+            },
+            inspect: (r) => ({ ...look(r), local: JSON.parse(fs.readFileSync(path.join(r, '.claude', 'settings.local.json'), 'utf8')).env }),
+        });
+        assert.match(outs[1], /docs move: nothing to offer \(settings\.local\.json holds your own docs root\) - --docs-move ignored/, answer);
+        assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.local.ALFRED_CODE_DOCS_PATH, result.rule, result.old, result.moved],
+            ['.claude/docs', '.claude/docs', '.claude/docs', true, false], answer);
+    }
+});
+
+test('installer: an unreadable settings file leaves the stamped rule as it was', POSIX_ONLY, () =>
+{
+    // Review M3: the plan said 'cannot be read', the rule was re-stamped to the new default anyway.
+    const { result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--docs-move', 'move')], failOk: true,
+        each: (r, i) =>
+        {
+            if (i !== 0) return null;
+            olderInstall(r);
+            const f = path.join(r, '.claude', 'settings.json');
+            fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/\}\s*$/, ',}'));
+            return null;
+        },
+        inspect: (r) => /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(r, '.claude', 'rules', 'baseline-docs-root.md'), 'utf8'))[1],
+    });
+    assert.strictEqual(result, '.claude/docs');
+});
+
+test('installer: a move keeps what git saw - an ignored old root becomes a local root, nothing new shows in git status', POSIX_ONLY, () =>
+{
+    // Review M4: an older install seeded git versioning while the project's .claude/* line kept the docs out of
+    // git; after the move the plans and task cards showed as untracked, one git add -A from being committed.
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'project'], updateArgs('--docs-move', 'move')],
+        prepare: (r) => fs.writeFileSync(path.join(r, '.gitignore'), '.claude/*\n'),
+        each: (r, i) =>
+        {
+            if (i !== 0) return null;
+            olderInstall(r);
+            const f = path.join(r, '.claude', 'settings.json');
+            const st = JSON.parse(fs.readFileSync(f, 'utf8'));
+            st.env.ALFRED_CODE_DOCS_VERSIONING = 'git';
+            fs.writeFileSync(f, JSON.stringify(st, null, 2));
+            return null;
+        },
+        inspect: (r) => ({ ...look(r), status: execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', '.alfred'], { cwd: r, encoding: 'utf8' }) }),
+    });
+    assert.match(outs[1], /docs root: moved \.claude\/docs -> \.alfred\/docs/);
+    assert.match(outs[1], /ALFRED_CODE_DOCS_VERSIONING 'git' -> 'local' \(the old root was kept out of git\)/);
+    assert.strictEqual(result.env.ALFRED_CODE_DOCS_VERSIONING, 'local');
+    assert.strictEqual(result.status, '', 'git sees nothing under the new root, as it saw nothing under the old');
+});
+
+test('installer: a local install moved to project scope while its session still exports the old root is offered, never orphaned', POSIX_ONLY, () =>
+{
+    // Review M2, end to end: the move off local drops the stack's local key; the exported variable must not read as the user's.
+    const { outs, result } = seedRun(['install', 'update'], SELECTION, {
+        args: [['--scope', 'local'], ['--scope', 'project', '--installed-only']],
+        env: [{}, { ALFRED_CODE_DOCS_PATH: '.claude/docs' }],
+        each: (r, i) =>
+        {
+            if (i !== 0) return null;
+            const f = path.join(r, '.claude', 'settings.local.json');
+            const st = JSON.parse(fs.readFileSync(f, 'utf8'));
+            st.env.ALFRED_CODE_DOCS_PATH = '.claude/docs';
+            fs.writeFileSync(f, JSON.stringify(st, null, 2));
+            const stamp = path.join(r, '.claude', 'alfred-code.stamp');
+            fs.writeFileSync(stamp, fs.readFileSync(stamp, 'utf8').replace(/settings\.local\.json:ALFRED_CODE_DOCS_PATH=[0-9a-f]{64}/, `settings.local.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`));
+            for (const [rel, body] of Object.entries(OLD)) { fs.mkdirSync(path.dirname(path.join(r, rel)), { recursive: true }); fs.writeFileSync(path.join(r, rel), body); }
+            return null;
+        },
+        inspect: look,
+    });
+    assert.match(outs[1], /docs root: \.claude\/docs is the old default and holds 2 file\(s\) - \/alfred-code:update offers the move/);
+    assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.rule, result.old], ['.claude/docs', '.claude/docs', true]);
 });

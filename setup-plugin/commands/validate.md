@@ -325,8 +325,11 @@ table of the actionable rows only - an install whose env already matches gets th
   (with the key absent its `mode:` line falls back to the same rule) - its bare `git (docs are not
   kept out of git - ...)` or `overlay (docs are kept out of git - ...)` names the probed value (`git`/`local`) and
   the reason in one line; show THAT value in the table, never the catalog's `git`. Reason column: `not set -
-  probed '<value>': <the mode line's own parenthetical>`. Every other MISSING row still offers the catalog
-  default unchanged.
+  probed '<value>': <the mode line's own parenthetical>`. `ALFRED_CODE_DOCS_PATH` MISSING while
+  `.claude/docs` holds files (`find .claude/docs -type f | head -1` prints a path) is never offered
+  either: those docs sit under the pre-2.0.0 default, so the catalog's `.alfred/docs` would point every
+  hook away from them - name `/alfred-code:update`, which offers the one-time move, in its reason column.
+  Every other MISSING row still offers the catalog default unchanged.
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The
   installers apply the same rename on their next run, so an unaccepted row is not lost, only later.

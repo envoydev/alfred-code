@@ -400,11 +400,11 @@ function main()
     if (!accountDir)
     {
         const docs = require('./install/docs.js');
-        const view = settingsLib.readBackSettings(claudeDir, stampScope === 'local' ? 'local' : 'project').env || {};
         const ledger = require('./install/stamp.js').readLedger(stampFile);
         const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
         console.log(docs.docsMoveLine(docs.docsMovePlan({
-            projectRoot: path.resolve(root), env: view, ledger: managed, stamped: fs.existsSync(stampFile), launchEnv: process.env,
+            projectRoot: path.resolve(root), ...docs.docsMoveViews({ claudeDir, scope: stampScope === 'local' ? 'local' : 'project' }),
+            ledger: managed, stamped: fs.existsSync(stampFile),
         })));
     }
 

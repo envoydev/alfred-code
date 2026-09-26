@@ -179,6 +179,17 @@ function resolveDocsVersioning(projectRoot, scope)
     return value === 'git' || value === 'local' ? value : null;
 }
 
+// The root the installed docs-root rule is stamped with now, or null (no rule, or still the placeholder).
+function stampedDocsRoot(projectRoot)
+{
+    try
+    {
+        const m = /This install's root: `([^`]*)`/.exec(fs.readFileSync(path.join(projectRoot, '.claude', 'rules', DOCS_ROOT_RULE), 'utf8'));
+        return m && m[1] !== '__DOCS_ROOT__' ? m[1] : null;
+    }
+    catch { return null; }
+}
+
 // Replace `__DOCS_ROOT__` in the COPIED rule with the current value. It runs on install and on
 // update, and it is once-only by construction: after it runs there is no placeholder left. What
 // makes an update re-stamp is the copy that precedes it - the stamped destination differs from the
@@ -274,4 +285,4 @@ function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} }
     return 'written';
 }
 
-module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };
+module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, stampedDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };

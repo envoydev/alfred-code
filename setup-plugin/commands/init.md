@@ -192,8 +192,10 @@ is answered by the run itself, never AskUserQuestion, by one rule:
 - **Destructive** means the option deletes, overwrites or rewrites something this run did not create
   and the project or the account owns: a file or a line the project wrote, a doc an earlier capture
   wrote, a setting or status line already set, a stored memory. Adding is never destructive - a new
-  file, a new line, a new install, a setting where none was. A machine line in `refresh` state is
-  destructive (its command replaces the account's existing status line); a `missing` one is not.
+  file, a new line, a new install, a setting where none was - and neither is moving what the stack
+  itself manages with every byte and its git history kept (update's docs-root move). A machine line in
+  `refresh` state is destructive (its command replaces the account's existing status line); a
+  `missing` one is not.
 - **Needs a person** means the option works only with free text typed via Other (a sibling list, a
   name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart).
 - Then, and on an ask with no option marked Recommended, take the option that changes nothing (skip,

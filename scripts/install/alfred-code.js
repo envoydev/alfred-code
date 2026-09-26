@@ -702,13 +702,11 @@ function runLayers(ctx)
 function docsRootStep(ctx)
 {
     const { args, log, note } = ctx;
-    // What Claude Code applies - a stack key settings.local.json holds is read over settings.json - so a
-    // root the user keeps in the personal file is theirs, never re-pointed.
-    const view = settings.readBackSettings(ctx.claudeDir, args.scope === 'local' ? 'local' : 'project').env || {};
     const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
     const stamped = Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile);
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, env: view, ledger: managed, stamped, launchEnv: ctx.env });
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope }), ledger: managed, stamped });
     ctx.docsPath = null;
+    ctx.docsVersioningCarry = null;
     if (plan.state !== 'offer' && args.docsMove) log(`docs move: nothing to offer (${plan.why}) - --docs-move ignored`);
     if (plan.state === 'repoint')
     {
@@ -735,6 +733,9 @@ function docsRootStep(ctx)
             if (moved.ok)
             {
                 ctx.docsPath = { value: plan.to, own: 'stack', why: '--docs-move move' };
+                // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git
+                // as a `local` root (its own `.gitignore` of `*`) - unless this run names a versioning itself.
+                if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
                 log(`docs root: moved ${plan.from} -> ${plan.to} (${moved.moved} file(s), ${moved.gitMoved} through git mv${moved.gitMoved ? ' - staged as renames, commit them' : ''})`
                     + ' - the rule is re-stamped; a session started before this still holds the old root in its loaded rule, so restart it');
             }
@@ -750,7 +751,11 @@ function docsRootStep(ctx)
             log(`docs root: ${plan.from} is the old default and holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--docs-move move|keep); nothing moved`);
         }
     }
-    ctx.docsRoot = ctx.docsPath ? ctx.docsPath.value : copy.resolveDocsRoot(ctx.projectRoot, args.scope);
+    // A settings file that cannot be read says nothing about the root, so the rule keeps the root it was
+    // stamped with rather than falling to the default the unreadable file would read as.
+    const unreadable = plan.state === 'none' && /cannot be read$/.test(plan.why);
+    ctx.docsRoot = ctx.docsPath ? ctx.docsPath.value
+        : (unreadable && copy.stampedDocsRoot(ctx.projectRoot)) || copy.resolveDocsRoot(ctx.projectRoot, args.scope);
 }
 
 // A first run with no plugin cache installs the core entry FIRST, so its cache can serve the same
@@ -1405,7 +1410,8 @@ function installHooksAndRules(ctx)
             ? catalogHooks
             : (ctx.args.dropApplied || []).filter((l) => l.startsWith('hook ')).map((l) => `${l.slice(5)}.js`)),
         docsVersioning: {
-            value: ctx.args.docsVersioning,
+            value: ctx.args.docsVersioning || ctx.docsVersioningCarry || '',
+            why: ctx.args.docsVersioning ? '--docs-versioning' : ctx.docsVersioningCarry ? 'the old root was kept out of git' : '',
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot }),
         },
         docsPath: ctx.docsPath,

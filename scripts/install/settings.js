@@ -286,7 +286,7 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb
         const old = into.ALFRED_CODE_DOCS_VERSIONING;
         if (old !== docsVersioning.value) { into.ALFRED_CODE_DOCS_VERSIONING = docsVersioning.value; if (mine) changed = true; }
         log(`  ${lab} env: ALFRED_CODE_DOCS_VERSIONING ${old === undefined ? 'absent' : `'${old}'`} -> '${docsVersioning.value}'`
-            + ` (--docs-versioning${old === docsVersioning.value ? ', unchanged' : ''})`);
+            + ` (${docsVersioning.why || '--docs-versioning'}${old === docsVersioning.value ? ', unchanged' : ''})`);
     }
     else if (!present('ALFRED_CODE_DOCS_VERSIONING') && docsVersioning && docsVersioning.seed)
     {

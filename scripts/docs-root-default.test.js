@@ -156,3 +156,27 @@ test('a docs root outside the project, under .claude/, or with an unknown mode i
     assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', '.gitignore')));
     assert.ok(!fs.existsSync(ignoreOf(root)));
 });
+
+test('the stack\'s own file checked out with CRLF line ends is still the stack\'s', () =>
+{
+    // Review minor: autocrlf on Windows turned the stack's git-shape file into 'the project's own'.
+    const root = repo();
+    docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' });
+    fs.writeFileSync(ignoreOf(root), fs.readFileSync(ignoreOf(root), 'utf8').replace(/\n/g, '\r\n'));
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'git' }), 'current');
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: '.alfred/docs', mode: 'local' }), 'replaced');
+});
+
+test('local versioning never hides a root that git already tracks docs in', () =>
+{
+    // Review minor: `*` over a committed root silently ignored every new team doc written there.
+    const root = repo();
+    fs.mkdirSync(path.join(root, 'docs', 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'docs', 'architecture', 'ARCHITECTURE.md'), '# a\n');
+    execFileSync('git', ['add', 'docs'], { cwd: root });
+    execFileSync('git', ['-c', 'user.email=x@example.invalid', '-c', 'user.name=x', 'commit', '-qm', 'docs'], { cwd: root });
+    const logs = [];
+    assert.strictEqual(docs.ensureDocsIgnore({ projectRoot: root, docsPath: 'docs', mode: 'local', log: (m) => logs.push(m) }), 'tracked');
+    assert.ok(!fs.existsSync(path.join(root, 'docs', '.gitignore')));
+    assert.ok(logs.some((m) => /git tracks docs under docs/.test(m)), logs.join(' | '));
+});
