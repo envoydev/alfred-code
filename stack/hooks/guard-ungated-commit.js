@@ -28,7 +28,7 @@ const fs = require('fs');
 // project whose settings.json has not been migrated yet keeps resolving.
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
+const { execSync, execFileSync, spawnSync } = require('child_process');
 
 // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
@@ -581,8 +581,10 @@ if (!commitMatch) process.exit(0);
 // receipt - the review receipt is a different claim - and a hit the user means to keep is opened
 // only by its own STAGED-SCAN-ALLOW receipt. What the act commits: the index; plus the unstaged
 // tracked changes under `commit -a` or a chained `git add` (nothing is staged yet when this hook
-// runs); plus the untracked files that add takes in. At most 2MB of diff is read - past it, and on
-// any failure of our own, the scan passes.
+// runs); plus the untracked files that add takes in. A commit NAMING paths commits their working
+// tree against HEAD - alone under `--only` (the default), on top of the index under `--include`.
+// At most 2MB of text is read: a binary file and a single file past the cap are skipped (their
+// text is never read), and past the total the scan stops adding text but keeps every hit it found.
 // The two shapes are COPIES of guard-secret-value.js, pinned by meta/shared-rules.json
 // (credential-literal-shapes, credential-literal-pem). No g flag.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
@@ -592,6 +594,9 @@ const TEST_FILE = /(^|\/)(__tests__|e2e|cypress)\/|\.(spec|test|cy|e2e)\.[cm]?[j
 // Any file may open with a byte-order mark (Visual Studio writes one on a new .cs); past byte 0 it is hidden text.
 let hiddenChars = null;
 try { hiddenChars = require(path.join(__dirname, 'hidden-chars.js')); } catch { /* a copy that runs before it lands scans without the class */ }
+// Shell words, quote-aware (`git add "cfg file.js"` is one path) - shell-writes.js beside this hook.
+let shellWords = (text) => text.trim().split(/\s+/).filter(Boolean).map(unq);
+try { ({ shellWords } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* a copy that runs before it lands splits on whitespace */ }
 function lineFinding(file, text, lineNo) {
   if (/^(<{7}|>{7}) /.test(text)) return 'a conflict marker';
   if (SECRET_SHAPE.test(text) || PEM_PRIVATE.test(text)) return 'a credential-shaped literal';
@@ -603,14 +608,71 @@ function lineFinding(file, text, lineNo) {
   if (TEST_FILE.test(file) && /\b(fdescribe|fit)\s*\(|\b(describe|it|test)\.only\s*\(/.test(text)) return 'a focused test';
   return '';
 }
+// The words of the git call starting at `index`: the segment ends on the QUOTE-MASKED copy (a `;` in a
+// commit message is text), then the real text is split quote-aware. `afterVerb` drops `git`, its
+// global options and the verb itself.
+const callWords = (index) => {
+  const rest = scannedQuoted.slice(index);
+  const end = rest.search(/[;&|\n]/);
+  return shellWords(command.slice(index, index + (end < 0 ? rest.length : end)));
+};
+const afterVerb = (words) => {
+  let i = 1;
+  while (i < words.length && words[i].startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
+  return words.slice(i + 1);
+};
+// `git commit`'s own argv: the options whose value is the next word (short letters, long names -
+// a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
+// the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
+const COMMIT_VALUE_SHORT = 'mFCct';
+const COMMIT_VALUE_LONG = ['message', 'file', 'author', 'date', 'cleanup', 'fixup', 'squash', 'template', 'reuse-message', 'reedit-message', 'trailer', 'pathspec-from-file'];
+const COMMIT_FLAGS = ['all', 'only', 'include', 'dry-run', 'interactive', 'amend'];
+function commitArgs(args) {
+  const known = [...COMMIT_VALUE_LONG, ...COMMIT_FLAGS];
+  const flags = new Set();
+  const paths = [];
+  let rest = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (rest) { paths.push(a); continue; }
+    if (a === '--') { rest = true; continue; }
+    if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const typed = eq < 0 ? a.slice(2) : a.slice(2, eq);
+      const hits = known.filter((n) => n.startsWith(typed));
+      const name = known.includes(typed) ? typed : (typed && hits.length === 1 ? hits[0] : typed);
+      flags.add(`--${name}`);
+      if (eq < 0 && COMMIT_VALUE_LONG.includes(name)) i++;
+      continue;
+    }
+    if (a.length > 1 && a.startsWith('-')) {
+      for (let k = 1; k < a.length; k++) {
+        flags.add(`-${a[k]}`);
+        if (COMMIT_VALUE_SHORT.includes(a[k])) { if (k === a.length - 1) i++; break; }
+        if ('uS'.includes(a[k])) break;
+      }
+      continue;
+    }
+    paths.push(a);
+  }
+  return { flags, paths };
+}
 function commitScope() {
+  const scope = { dryRun: false, tracked: false, untracked: false, paths: [], commitPaths: [], mode: '' };
+  if (!commitMatch.opaque) {
+    const { flags, paths } = commitArgs(afterVerb(callWords(commitMatch.index)));
+    scope.dryRun = flags.has('--dry-run');
+    scope.tracked = flags.has('-a') || flags.has('--all') || flags.has('--pathspec-from-file');
+    if (paths.length) {
+      scope.commitPaths = paths;
+      scope.mode = flags.has('-i') || flags.has('--include') ? 'include' : 'only';
+    }
+  }
   const before = scannedQuoted.slice(0, commitMatch.index);
-  const commitSeg = commitMatch.opaque ? '' : (scannedQuoted.slice(commitMatch.index).split(/[;&|\n]/)[0] || '');
-  const scope = { dryRun: /\s--dry-run\b/.test(commitSeg), tracked: /\s-[b-zA-Z]*a[a-zA-Z]*(?=\s|$)|\s--all\b/.test(commitSeg), untracked: false, paths: [] };
   const addRe = /(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g;
   let m;
   while ((m = addRe.exec(before))) {
-    const args = command.slice(m.index + m[0].length).split(/[;&|\n]/)[0].trim().split(/\s+/).filter(Boolean).map(unq);
+    const args = afterVerb(callWords(m.index + m[0].search(/git/)));
     if (args.some((a) => /^(-N|--intent-to-add)$/.test(a))) continue; // a scope survey stages nothing
     if (args.some((a) => /^(-u|--update)$/.test(a))) scope.tracked = true;
     if (args.some((a) => /^(-A|--all)$/.test(a) || a === '.' || a === ':/')) { scope.tracked = true; scope.untracked = true; continue; }
@@ -618,42 +680,129 @@ function commitScope() {
   }
   return scope;
 }
+// A name from a `+++ ` header: git ends a name holding a space with a TAB, and C-quotes one holding a
+// quote, a backslash or a control character (core.quotePath=false keeps every other byte as written).
+function headerName(raw) {
+  let s = raw.replace(/\t$/, '');
+  if (s.length > 1 && s.startsWith('"') && s.endsWith('"')) {
+    const ESC = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
+    const bytes = [];
+    const body = s.slice(1, -1);
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] !== '\\') {
+        const ch = String.fromCodePoint(body.codePointAt(i));
+        i += ch.length - 1;
+        bytes.push(...Buffer.from(ch));
+        continue;
+      }
+      const octal = /^[0-7]{3}/.exec(body.slice(i + 1));
+      if (octal) { bytes.push(parseInt(octal[0], 8)); i += 3; continue; }
+      const c = body[++i] ?? '';
+      bytes.push(ESC[c] ?? c.charCodeAt(0));
+    }
+    s = Buffer.from(bytes).toString('utf8');
+  }
+  return s.replace(/^b\//, '');
+}
 function stagedFindings() {
   const scope = commitScope();
   if (scope.dryRun) return [];
   const out = [];
   let budget = SCAN_LIMIT;
-  const read = (args) => {
-    const text = execFileSync('git', args, { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  const top = gitTop || root;
+  const q = ['-c', 'core.quotePath=false'];
+  // git's text, cut at what the budget has left: an overflow keeps what was read, never throws it away.
+  const readText = (args) => {
+    if (budget <= 0) return '';
+    const r = spawnSync('git', [...q, ...args], { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (r.error && r.error.code !== 'ENOBUFS') throw r.error;
+    if (!r.error && r.status !== 0) throw new Error(`git ${args[0]} exited ${r.status}`);
+    const text = (r.stdout || Buffer.alloc(0)).subarray(0, budget).toString('utf8');
     budget -= Buffer.byteLength(text);
-    if (budget < 0) throw new Error('over the scan cap');
     return text;
   };
-  const scanDiff = (diff) => {
-    let file = '', line = 0;
-    for (const row of diff.split('\n')) {
-      if (row.startsWith('+++ ')) { file = row.slice(4).replace(/^b\//, ''); continue; }
-      const hunk = row.match(/^@@ -\S+ \+(\d+)/);
-      if (hunk) { line = Number(hunk[1]); continue; }
-      if (!row.startsWith('+')) continue;
-      const hit = lineFinding(file, row.slice(1), line);
-      if (hit) out.push({ file, line, hit });
-      line += 1;
+  const list = (args) => execFileSync('git', [...q, args[0], '-z', ...args.slice(1)], { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
+    .toString('utf8').split('\0').filter(Boolean);
+  // The files a diff would carry that are binary (numstat `-`) or past the cap on their own, sized from
+  // the index for a staged diff and from the disk otherwise - left out, so none eats the budget.
+  const bulky = (base, paths, fromIndex) => {
+    const rows = [];
+    const f = list([...base, '--numstat', ...(paths.length ? ['--', ...paths] : [])]);
+    for (let i = 0; i < f.length; i++) {
+      const m = /^(-|\d+)\t(-|\d+)\t([\s\S]*)$/.exec(f[i]);
+      if (!m) continue;
+      rows.push({ binary: m[1] === '-', path: m[3] || f[i += 2] });   // a rename: its old path, then the new one
+    }
+    let sizes = new Map();
+    if (fromIndex && rows.length) {
+      const r = spawnSync('git', ['cat-file', '--batch-check=%(objectsize)'], { cwd: top, input: rows.map((x) => `:${x.path}`).join('\n') + '\n', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+      const n = String(r.stdout || '').split('\n');
+      sizes = new Map(rows.map((x, k) => [x.path, Number(n[k]) || 0]));
+    }
+    const sizeOf = (p) => { if (fromIndex) return sizes.get(p) || 0; try { return fs.statSync(path.join(top, p)).size; } catch { return 0; } };
+    return rows.filter((x) => x.binary || sizeOf(x.path) > SCAN_LIMIT).map((x) => x.path);
+  };
+  // One pass over a -U0 diff. A hunk header says how many rows follow it, so a content row that
+  // happens to start with `+++ ` is never read as the next file's header.
+  const scanDiff = (base, paths, fromIndex) => {
+    const skip = bulky(base, paths, fromIndex);
+    const spec = skip.length ? [...(paths.length ? paths : [':/']), ...skip.map((p) => `:(top,literal,exclude)${p}`)] : paths;
+    const found = [];
+    let file = '', line = 0, left = 0;
+    for (const row of readText([...base, '-U0', '--no-color', ...(spec.length ? ['--', ...spec] : [])]).split('\n')) {
+      if (left > 0) {
+        if (row.startsWith('\\')) continue; // "\ No newline at end of file"
+        left -= 1;
+        if (!row.startsWith('+')) continue;
+        const hit = lineFinding(file, row.slice(1), line);
+        if (hit) found.push({ file, line, hit });
+        line += 1;
+        continue;
+      }
+      if (row.startsWith('+++ ')) { file = headerName(row.slice(4)); continue; }
+      const hunk = row.match(/^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (hunk) { line = Number(hunk[2]); left = (hunk[1] === undefined ? 1 : Number(hunk[1])) + (hunk[3] === undefined ? 1 : Number(hunk[3])); }
+    }
+    return found;
+  };
+  // An untracked file the act takes in, read from the disk: a file past the cap is skipped, a NUL in
+  // its first 8KB marks it binary (git would not diff it as text either), and past the total budget
+  // the read stops adding text.
+  const scanLoose = (files) => {
+    for (const f of files) {
+      if (budget <= 0) return;
+      let fd;
+      try {
+        const full = path.join(root, f);
+        const st = fs.statSync(full);
+        if (!st.isFile() || st.size > SCAN_LIMIT) continue;
+        const buf = Buffer.alloc(Math.min(st.size, budget));
+        fd = fs.openSync(full, 'r');
+        fs.readSync(fd, buf, 0, buf.length, 0);
+        if (buf.subarray(0, 8192).includes(0)) continue;
+        budget -= buf.length;
+        buf.toString('utf8').split('\n').forEach((row, i) => { const hit = lineFinding(f, row, i + 1); if (hit) out.push({ file: f, line: i + 1, hit }); });
+      } catch { /* unreadable - skipped */ } finally { if (fd !== undefined) fs.closeSync(fd); }
     }
   };
+  const others = (paths) => list(['ls-files', '--others', '--exclude-standard', ...(paths.length ? ['--', ...paths] : [])]);
   try {
-    scanDiff(read(['diff', '--cached', '-U0', '--no-color']));
-    if (scope.tracked) scanDiff(read(['diff', '-U0', '--no-color']));
-    else if (scope.paths.length) scanDiff(read(['diff', '-U0', '--no-color', '--', ...scope.paths]));
-    const others = scope.untracked ? read(['ls-files', '--others', '--exclude-standard'])
-      : scope.paths.length ? read(['ls-files', '--others', '--exclude-standard', '--', ...scope.paths]) : '';
-    for (const f of others.split('\n').filter(Boolean)) {
-      const text = fs.readFileSync(path.join(root, f), 'utf8');
-      budget -= Buffer.byteLength(text);
-      if (budget < 0) return [];
-      text.split('\n').forEach((row, i) => { const hit = lineFinding(f, row, i + 1); if (hit) out.push({ file: f, line: i + 1, hit }); });
+    if (scope.mode === 'only') {
+      out.push(...scanDiff(['diff', 'HEAD'], scope.commitPaths, false));
+      // a chained add stages an untracked path first, and the commit then takes it in
+      if (scope.untracked || scope.paths.length) scanLoose(others(scope.commitPaths));
+      return out;
     }
-  } catch { return []; } // no repo, git unavailable, or past the 2MB cap - never block on our own failure
+    const staged = scanDiff(['diff', '--cached'], [], true);
+    if (scope.mode === 'include') {
+      const named = new Set(list(['diff', 'HEAD', '--name-only', '--', ...scope.commitPaths]));
+      out.push(...staged.filter((f) => !named.has(f.file)), ...scanDiff(['diff', 'HEAD'], scope.commitPaths, false));
+    } else out.push(...staged);
+    if (scope.tracked) out.push(...scanDiff(['diff'], [], false));
+    else if (scope.paths.length) out.push(...scanDiff(['diff'], scope.paths, false));
+    if (scope.untracked) scanLoose(others([]));
+    else if (scope.paths.length) scanLoose(others(scope.paths));
+  } catch { /* no repo or git unavailable - the hits already found still stand */ }
   return out;
 }
 {

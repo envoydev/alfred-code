@@ -107,7 +107,9 @@ change (see the invariants below).
     A PUSH-GATE receipt spanning more than one MANIFEST-owning directory needs a `scope:` line naming
     what the probe actually ran (a plain top-level folder is no project, so an ordinary repo never asks).
     Every commit, trivial or not, first gets a scan of the lines it ADDS (the index, plus what `-a` or a
-    chained `git add` takes in; at most 2MB): a conflict marker, a debugger, a focused test, a
+    chained `git add` takes in; a commit NAMING paths, the working tree of those paths - alone under
+    `--only`, on top of the index under `--include`; at most 2MB, a binary file or one past the cap
+    skipped, and past the total the scan stops reading but keeps its hits): a conflict marker, a debugger, a focused test, a
     credential-shaped literal or a hidden character (`hidden-chars.js`, the lint's class; a byte-0 BOM
     passes) blocks, and no COMMIT-GATE receipt opens it - a hit meant to land goes
     through one ask and `<docs-path>/flow/STAGED-SCAN-ALLOW` (`file:line`, a file or `*`).

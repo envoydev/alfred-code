@@ -306,3 +306,76 @@ test('guard-ungated-commit: a commit from a worktree is judged on the worktree, 
   });
   assert.equal(fromSub.status, 0, 'a subfolder of the project still reads the project receipt');
 });
+
+// ---------------------------------------------------------------------------------------------
+// the staged scan reads what the commit takes in (2026-09-26 hooks review): a commit naming its
+// paths, a spaced or non-ASCII name, and a file past the cap beside a real hit
+// ---------------------------------------------------------------------------------------------
+const TOKEN = ['ghp', '0123456789abcdefghij0123456789abcdef'].join('_');
+const SCAN_BLOCK = /Blocked: the commit adds what must never land/;
+function scanRepo(files = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-scan-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n');
+  for (const [f, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), body);
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  return { dir, git, write: (f, body) => fs.writeFileSync(path.join(dir, f), body) };
+}
+
+test('guard-ungated-commit: a commit naming paths is scanned for what git commits from them', () => {
+  // `commitScope` read only -a and a chained add, so `git commit <path>` - which stages that path's
+  // working tree itself - committed a credential literal with exit 0.
+  const { dir, git, write } = scanRepo({ 'a.js': 'const a = 1;\n', 'b.js': 'const b = 1;\n' });
+  write('a.js', `const a = '${TOKEN}';\n`);
+  for (const c of ['git commit a.js -m x', 'git commit -m x -- a.js', 'git commit -o a.js -m x', 'git commit --only -m x a.js',
+    'git commit -i a.js -m x', 'git commit --include -m "fix; wip" a.js']) {
+    const r = gateFull(dir, c);
+    assert.match(r.stderr, SCAN_BLOCK, `the named path's working tree is committed: ${c}`);
+    assert.match(r.stderr, /a\.js:1 - a credential-shaped literal/, `and the hit is named: ${c}`);
+  }
+  write('b.js', 'const b = 2;\n');
+  assert.doesNotMatch(gateFull(dir, 'git commit b.js -m x').stderr, SCAN_BLOCK, 'a path the commit does not name is not in it');
+  write('c.js', 'debugger;\n'); git('add', 'c.js');
+  assert.doesNotMatch(gateFull(dir, 'git commit b.js -m x').stderr, SCAN_BLOCK, '--only leaves the rest of the index out');
+  assert.match(gateFull(dir, 'git commit -i b.js -m x').stderr, /c\.js:1 - a debugger statement/, '--include takes the index as well');
+  assert.match(gateFull(dir, 'git commit -m x').stderr, /c\.js:1/, 'a plain commit takes the index');
+});
+
+test('guard-ungated-commit: a chained add of a quoted name, a spaced name and a non-ASCII name are scanned', () => {
+  // The chained add was split on whitespace before unquoting, and git's `+++ b/my file.js<TAB>` header
+  // kept its TAB, so the extension tests missed and a STAGED-SCAN-ALLOW line never matched.
+  const { dir, git, write } = scanRepo();
+  write('cfg file.js', `module.exports = '${TOKEN}';\n`);
+  const chained = gateFull(dir, 'git add "cfg file.js" && git commit -m x');
+  assert.match(chained.stderr, /cfg file\.js:1 - a credential-shaped literal/, 'the quoted path of a chained add is taken in');
+  git('add', '-A');
+  write('my file.js', 'debugger;\n'); write('café.js', 'debugger;\n'); write('my notes.md', `token ${TOKEN}\n`);
+  git('add', '-A');
+  const r = gateFull(dir, 'git commit -m x');
+  assert.match(r.stderr, /my file\.js:1 - a debugger statement/, 'a spaced name keeps its extension');
+  assert.match(r.stderr, /café\.js:1 - a debugger statement/, 'a non-ASCII name is read as written');
+  assert.match(r.stderr, /my notes\.md:1 - a credential-shaped literal/);
+  writeReceipt(dir, 'STAGED-SCAN-ALLOW', ['cfg file.js', 'my file.js:1', 'café.js:1', 'my notes.md:1'].join('\n') + '\n');
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'every hit named in the receipt - the scan opens');
+});
+
+test('guard-ungated-commit: a binary or oversize file is skipped, and a hit beside it still blocks', () => {
+  // Over the 2MB cap the scan threw and returned no findings at all, so a credential in leak.js
+  // committed beside one oversize (or binary, read raw as UTF-8) untracked file.
+  const LIMIT = 2 * 1024 * 1024;
+  const { dir, git, write } = scanRepo();
+  write('huge.log', `token ${TOKEN}\n${'x'.repeat(LIMIT + 10)}\n`);
+  write('blob.bin', Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(`\n${TOKEN}\n`)]));
+  write('leak.js', `const t = '${TOKEN}';\n`);
+  const loose = gateFull(dir, 'git add -A && git commit -m x');
+  assert.match(loose.stderr, /leak\.js:1 - a credential-shaped literal/, 'the untracked hit beside them stands');
+  assert.doesNotMatch(loose.stderr, /huge\.log|blob\.bin/, 'an oversize or binary file is skipped, not scanned');
+  git('add', '-A');
+  const staged = gateFull(dir, 'git commit -m x');
+  assert.match(staged.stderr, /leak\.js:1 - a credential-shaped literal/, 'the staged hit beside them stands');
+  assert.doesNotMatch(staged.stderr, /huge\.log|blob\.bin/, 'staged, they are skipped the same way');
+  git('rm', '-q', '--cached', 'leak.js'); fs.rmSync(path.join(dir, 'leak.js'));
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'alone, a file past the cap is not scanned');
+});

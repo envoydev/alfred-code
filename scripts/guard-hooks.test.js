@@ -2634,7 +2634,7 @@ test('guard-ungated-commit: no receipt opens the staged scan, and the block name
   assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
 });
 
-test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and passes past it', () => {
+test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and keeps the hits it read', () => {
   const LIMIT = 2 * 1024 * 1024;
   const dir = cleanRepo();
   const file = path.join(dir, 'big.ts');
@@ -2649,8 +2649,12 @@ test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and passe
   };
   sized(LIMIT - 1);
   assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte under the cap is scanned');
+  // Past the cap the scan used to throw and return nothing, voiding every hit (the 2026-09-26 review):
+  // the text is cut at the cap now, and a hit inside it still blocks.
   sized(LIMIT + 1);
-  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'a diff one byte over the cap passes unscanned');
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'a diff one byte over the cap is read up to the cap, and its hit stands');
+  fs.writeFileSync(file, `${'x'.repeat(LIMIT + 16)}\ndebugger;\n`); spawnSync('git', ['-C', dir, 'add', '-A']);
+  assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'a single file past the cap is skipped, its text never read');
 });
 
 test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits it names, for 8h', () => {
