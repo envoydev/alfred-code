@@ -869,8 +869,9 @@ function installPlugins(ctx)
     // A failed move leaves the old core carrying the guards; a second install of the new one beside it
     // would run both, and leave nothing for the next update to move.
     if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
-    // The 2.0.0 rename (plugins.migrateRenamed): each old MCP id swapped for its successor at the scope
-    // it is installed at, on either action - a setup over an older install would otherwise run both. A
+    // The 2.0.0 rename (plugins.migrateRenamed): each old MCP id at this run's scope swapped for its
+    // successor, one at another scope stood down here only, on either action - a setup over an older
+    // install would otherwise run both. A
     // listing the run could not read shows no old row: the ids a pre-rename stamp implies are named.
     const renamedMove = plugins.corePluginOn(ctx.routes) && !blind
         ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note })

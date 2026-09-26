@@ -713,23 +713,35 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
 
 // THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`): serena, context7 and
 // playwright-<engine> are navigation, documentation and browser-<engine>. An install made before it
-// holds the old rows; each one this run's set carries a successor for is SWAPPED at the scope the
-// listing reports for it - the plugin's own scope wins, as on every update (scopeFor) - the new one
-// installed there first, so a failed install leaves the old server running, then the old one removed,
-// so the same server never loads twice after the run. The new one already there (a re-run after a
-// partial one) is not installed again. A browser engine keeps the user's own on/off (the settings
-// file's word at that scope, or this run's enable answer); a locked server comes on, the way update
-// enables a parked one. An old one whose successor this run does not carry (a dropped engine, the MCP
-// copy route's engines) goes at this run's scope only - one at another scope serves the projects
-// there and is named with its command. Only this stack's marketplace: the official catalog ships a
-// `serena` too. Returns `{ fresh, gone }`: the specs installed here, and the old rows removed.
+// holds the old rows; each one this run's set carries a successor for, at THIS run's scope, is SWAPPED
+// there - the new one installed first, so a failed install leaves the old server running, then the old
+// one removed, so the same server never loads twice after the run. An old row at ANOTHER scope serves
+// the projects there too, and one not yet updated still spells the old tools (its agents' `tools:`, its
+// navigation rule's `ToolSearch select:` line) - a swap there would strip them (I2). It is STOOD DOWN
+// here instead: the successor installed at this run's scope, the old id disabled at this project's
+// scope only (standDownScope - Claude Code honours it over a user row, I2 on 2.1.282), and one `!!`
+// line naming its uninstall for when every project there has updated. The new one already there (a
+// re-run after a partial one) is not installed again, and an old id already off here is not disabled
+// again. A browser engine keeps the user's own on/off (the settings file's word at the old row's
+// scope, or this run's enable answer); a locked server comes on, the way update enables a parked one.
+// An old one whose successor this run does not carry (a dropped engine, the MCP copy route's engines)
+// goes at this run's scope only - one at another scope is named with its command. Only this stack's
+// marketplace: the official catalog ships a `serena` too. Returns `{ fresh, gone }`: the specs
+// installed here, and the old rows removed.
 function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
 {
     const { currentMcp, renamedFrom } = require('./mcp.js');
     const olds = renamedFrom(renamed);
     const out = { fresh: [], gone: [] };
     const drop = (spec, at) => cli(['plugin', 'uninstall', spec, '--scope', at, '-y'], { quiet: true, expect: 'reported' });
-    for (const row of rows.filter((r) => olds.includes(r.name) && r.marketplace === market && r.version))
+    // The successors already at this run's scope, and the ones whose install failed this run (tried once).
+    const here = new Set(rows.filter((r) => r.marketplace === market && r.scope === scope && r.version).map((r) => r.name));
+    const failed = new Set();
+    // This scope's own old rows first: an in-place uninstall clears the id's settings key here, which
+    // would undo a stand-down disable written before it (the old id at both scopes).
+    const mine = (r) => ((r.scope || scope) === scope ? 0 : 1);
+    const oldRows = rows.filter((r) => olds.includes(r.name) && r.marketplace === market && r.version).sort((x, y) => mine(x) - mine(y));
+    for (const row of oldRows)
     {
         const oldSpec = `${row.name}@${market}`;
         const newName = currentMcp(row.name, renamed);
@@ -742,23 +754,41 @@ function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.mark
             else note(`plugin uninstall failed: ${oldSpec} - remove it by hand: claude plugin uninstall ${oldSpec} --scope ${at}`);
             continue;
         }
-        if (!rows.some((r) => r.name === newName && r.marketplace === market && r.scope === at && r.version))
+        if (failed.has(newName)) continue;
+        const said = isOn(oldSpec, at);
+        const wasOn = said === undefined ? row.enabled !== false : said;
+        if (!here.has(newName))
         {
-            if (!cli(['plugin', 'install', newSpec, '--scope', at, '-y'], { expect: 'reported' }))
+            if (!cli(['plugin', 'install', newSpec, '--scope', scope, '-y'], { expect: 'reported' }))
             {
+                failed.add(newName);
                 note(`plugin ${newSpec} failed - ${oldSpec} stays until it installs; the next update retries the rename`);
                 continue;
             }
+            here.add(newName);
             out.fresh.push(newSpec);
-            const said = isOn(oldSpec, at);
-            const wasOn = said === undefined ? row.enabled !== false : said;
             const engine = /^browser-/.test(newName);
-            if (engine && !(engines.on ? engines.on.includes(newSpec) : wasOn)) switchOff(newSpec, at, { cli, log, note });
+            if (engine && !(engines.on ? engines.on.includes(newSpec) : wasOn)) switchOff(newSpec, scope, { cli, log, note });
         }
+        if (at !== scope) { standDownRenamed({ oldSpec, newSpec, at, here: standDownScope(scope), wasOn, isOn, cli, log, note }); continue; }
         if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} -> ${newSpec} [${at}]`); out.gone.push(row); }
         else note(`plugin uninstall failed: ${oldSpec} - it loads beside ${newSpec}, the same server twice; remove it by hand: claude plugin uninstall ${oldSpec} --scope ${at}`);
     }
     return out;
+}
+
+// An old id at another scope, with its successor now installed at this run's: switched off for THIS
+// project only, unless the settings there say it is off already or it was never on (a re-run changes
+// nothing). The `!!` line is said once, on the run that switches it off; the kept row is named every run.
+function standDownRenamed({ oldSpec, newSpec, at, here, wasOn, isOn, cli, log, note })
+{
+    const uninstall = `claude plugin uninstall ${oldSpec} --scope ${at}`;
+    const kept = `${oldSpec} is installed at ${at} scope - kept for every project there that has not updated yet (their tools still use the old name); once each has run /alfred-code:update: ${uninstall}`;
+    const offHere = isOn(oldSpec, here);
+    if (offHere === false || (offHere === undefined && !wasOn)) { log(`  ${kept}`); return; }
+    if (cli(['plugin', 'disable', oldSpec, '--scope', here], { quiet: true, expect: 'reported' }))
+        log(`  !! renamed: plugin ${oldSpec} -> ${newSpec} [${here}] - ${oldSpec} disabled for this project only; ${kept}`);
+    else note(`plugin disable failed: ${oldSpec} - it loads beside ${newSpec}, the same server twice; disable it for this project: claude plugin disable ${oldSpec} --scope ${here}`);
 }
 
 // The third-party marketplaces THIS run needs registered: the source each installed plugin's

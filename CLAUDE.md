@@ -471,10 +471,14 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     `context7` and `playwright-<engine>` are `navigation`, `documentation` and `browser-<engine>`, plugin
     and server alike. The old ids stay LISTED as RETIRED aliases carrying their successor's server under
     the old name (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
-    keeps its tools after a marketplace refresh (S25). Update swaps each old row at the scope the listing
-    reports (`plugins.migrateRenamed`): the successor installed there first, then the old id removed -
-    an engine keeps its on/off, a locked server comes on; an old id the run does not carry goes at this
-    run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
+    keeps its tools after a marketplace refresh (S25). Update swaps each old row at THIS run's scope
+    (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
+    engine keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
+    there, whose not-yet-updated files still spell the old tools, so it is stood down instead: the
+    successor installed at this run's scope, the old id disabled for this project only (`disable
+    --scope project`, or `local`), and one `!!` line naming its uninstall for once every project there
+    has updated; this scope's rows go first, since an in-place uninstall clears the settings key a
+    disable wrote (I2). An old id the run does not carry goes at this run's scope only. The full copy route stands the old ids down instead. Old copy-route registrations
     go on every route by the stack's own shape (the user's own server under an old name is kept), the
     approval lists follow, the read-back and selection lines read old names under the new ones, and
     the generated project files are re-spelled (`selection.respellRenamed`). The old flags

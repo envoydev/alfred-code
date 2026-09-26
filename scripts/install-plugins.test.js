@@ -2361,21 +2361,74 @@ const RENAMED_MCPS = { serena: 'navigation', context7: 'documentation', playwrig
 const oldRow = (name, over = {}) => ({ name, marketplace: 'envoydev', version: '1.3.0', scope: 'project', enabled: true, ...over });
 const RENAME_SET = ['alfred-code@envoydev', 'navigation@envoydev', 'documentation@envoydev', 'memory@envoydev', 'browser-chrome@envoydev', 'browser-firefox@envoydev'];
 
-test('rename: each old row is swapped at its own scope - the new one installed first, then the old one removed', () =>
+// I2 (final review of the rename): a user-scope old row serves every project on the account, and a project
+// not yet updated still spells the old tools (its library agents' `tools:`, its navigation rule's
+// `ToolSearch select:` line). A project-scope run swapping it at user scope stripped them all. An old row at
+// ANOTHER scope is stood down here instead: the successor installed at this run's scope, the old id
+// disabled here only, and one `!!` line naming its uninstall for when every project has updated.
+test('rename: an old row at this run\'s scope is swapped in place; one at another scope is stood down here only (I2)', () =>
 {
     const run = cli();
+    const logs = [];
     const rows = [oldRow('serena'), oldRow('context7', { scope: 'user' }), oldRow('playwright-chrome'), oldRow('memory')];
-    const out = P.migrateRenamed({ rows, renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run });
+    const out = P.migrateRenamed({ rows, renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run, log: (m) => logs.push(m) });
     assert.deepStrictEqual(run.calls, [
         'plugin install navigation@envoydev --scope project -y',
         'plugin uninstall serena@envoydev --scope project -y',
-        'plugin install documentation@envoydev --scope user -y',
-        'plugin uninstall context7@envoydev --scope user -y',
         'plugin install browser-chrome@envoydev --scope project -y',
         'plugin uninstall playwright-chrome@envoydev --scope project -y',
+        'plugin install documentation@envoydev --scope project -y',
+        'plugin disable context7@envoydev --scope project',
+    ], 'this scope\'s own old rows first, then the stand-downs');
+    assert.deepStrictEqual(out.fresh, ['navigation@envoydev', 'browser-chrome@envoydev', 'documentation@envoydev'], 'installed this run - the install and update passes leave them alone');
+    assert.deepStrictEqual(out.gone.map((r) => r.name), ['serena', 'playwright-chrome'], 'the user-scope row is still installed');
+    const bang = logs.filter((m) => /^\s*!!/.test(m));
+    assert.strictEqual(bang.length, 1, logs.join('\n'));
+    assert.match(bang[0], /context7@envoydev.*user scope.*every project.*claude plugin uninstall context7@envoydev --scope user/);
+});
+
+test('rename: a re-run over a stood-down old row changes nothing - the successor is here, the old id is off here (I2)', () =>
+{
+    const run = cli();
+    const logs = [];
+    const isOn = (spec, scope) => (spec === 'context7@envoydev' && scope === 'project' ? false : undefined);
+    const rows = [oldRow('context7', { scope: 'user' }), oldRow('documentation', { version: '2.0.0' })];
+    const out = P.migrateRenamed({ rows, renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: run, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(run.calls, []);
+    assert.deepStrictEqual(out, { fresh: [], gone: [] });
+    assert.ok(!logs.some((m) => /^\s*!!/.test(m)), `said loud a second time:\n${logs.join('\n')}`);
+    assert.ok(logs.some((m) => /claude plugin uninstall context7@envoydev --scope user/.test(m)), 'the kept row is still named');
+});
+
+// Found by the I2 temp-project proof: the old id at BOTH scopes (a user row, and this project's own). The
+// user row went first, then the in-place uninstall of the project row cleared the `false` its disable had
+// written - the user row loaded here beside its successor, and the successor was installed twice.
+test('rename: an old id at this scope and at user scope - swapped here first, the successor installed once, then the user row disabled here (I2)', () =>
+{
+    const run = cli();
+    P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' }), oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: run });
+    assert.deepStrictEqual(run.calls, [
+        'plugin install navigation@envoydev --scope project -y',
+        'plugin uninstall serena@envoydev --scope project -y',
+        'plugin disable serena@envoydev --scope project',
     ]);
-    assert.deepStrictEqual(out.fresh, ['navigation@envoydev', 'documentation@envoydev', 'browser-chrome@envoydev'], 'installed this run - the install and update passes leave them alone');
-    assert.deepStrictEqual(out.gone.map((r) => r.name), ['serena', 'context7', 'playwright-chrome']);
+    const failing = cli(['install navigation']);
+    const notes = [];
+    P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' }), oldRow('serena')], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', cli: failing, note: (m) => notes.push(m) });
+    assert.deepStrictEqual(failing.calls, ['plugin install navigation@envoydev --scope project -y'], 'a failed successor is tried once, and nothing old is touched');
+    assert.strictEqual(notes.length, 1, notes.join('\n'));
+});
+
+test('rename: a user-scope run swaps a user-scope old row at user scope; a user-scope engine left off arrives off here (I2)', () =>
+{
+    const run = cli();
+    P.migrateRenamed({ rows: [oldRow('serena', { scope: 'user' })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'user', cli: run });
+    assert.deepStrictEqual(run.calls, ['plugin install navigation@envoydev --scope user -y', 'plugin uninstall serena@envoydev --scope user -y']);
+    const off = cli();
+    const isOn = (spec, scope) => (spec === 'playwright-firefox@envoydev' && scope === 'user' ? false : undefined);
+    P.migrateRenamed({ rows: [oldRow('playwright-firefox', { scope: 'user', enabled: false })], renamed: RENAMED_MCPS, set: RENAME_SET, market: 'envoydev', scope: 'project', isOn, cli: off });
+    assert.deepStrictEqual(off.calls, ['plugin install browser-firefox@envoydev --scope project -y', 'plugin disable browser-firefox@envoydev --scope project'],
+        'an old id already off at its own scope and never on here needs no disable');
 });
 
 test('rename: a browser engine the user left off arrives off; a locked server arrives on, as update enables a parked one', () =>
@@ -2446,7 +2499,7 @@ test('seed update over a pre-rename install: every old id is swapped where it is
     });
     const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) /.test(c));
     const at = (c) => moves.indexOf(c);
-    for (const [from, to, scope] of [['serena', 'navigation', 'project'], ['context7', 'documentation', 'user'], ['playwright-chrome', 'browser-chrome', 'project'], ['playwright-firefox', 'browser-firefox', 'project']])
+    for (const [from, to, scope] of [['serena', 'navigation', 'project'], ['playwright-chrome', 'browser-chrome', 'project'], ['playwright-firefox', 'browser-firefox', 'project']])
     {
         const install = `plugin install ${to}@envoydev --scope ${scope} -y`;
         const remove = `plugin uninstall ${from}@envoydev --scope ${scope} -y`;
@@ -2454,6 +2507,11 @@ test('seed update over a pre-rename install: every old id is swapped where it is
         assert.strictEqual(moves.filter((c) => c.startsWith(`plugin install ${to}@`)).length, 1, `${to} installed once:\n${moves.join('\n')}`);
         assert.match(out, new RegExp(`renamed: plugin ${from}@envoydev -> ${to}@envoydev \\[${scope}\\]`));
     }
+    // I2: the user-scope context7 serves every project on the account - stood down here, never removed.
+    const install = 'plugin install documentation@envoydev --scope project -y';
+    assert.ok(at(install) >= 0 && at('plugin disable context7@envoydev --scope project') > at(install), moves.join('\n'));
+    assert.ok(!moves.some((c) => /context7@envoydev --scope user|documentation@envoydev --scope user/.test(c)), `the account-wide row was touched:\n${moves.join('\n')}`);
+    assert.match(out, /!! .*context7@envoydev.*claude plugin uninstall context7@envoydev --scope user/);
     assert.deepStrictEqual(moves.filter((c) => /^plugin disable browser-/.test(c)), ['plugin disable browser-firefox@envoydev --scope project'], moves.join('\n'));
     assert.match(result, /^browser-engines: chrome,firefox$/m, 'the stamp records the engines under the new line');
     assert.match(result, /^browser-enabled: chrome$/m);
