@@ -2268,6 +2268,8 @@ function main()
     for (const finding of lintMcpEntries()) flag(finding);
     // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
     for (const finding of lintMcpToolNames()) flag(finding);
+    // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
+    for (const finding of lintStaleMcpToolNames()) flag(finding);
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
@@ -2578,6 +2580,63 @@ function lintMcpToolNames()
     for (const [file, count, sample] of hits)
         out.push(`${file} names an MCP tool by its bare server spelling (${count}x, e.g. \`${sample}\`) - a plugin server's tools are \`mcp__plugin_<plugin>_<server>__<tool>\`, so the bare form resolves to nothing.`);
     return out;
+}
+
+// 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form;
+// this one catches the plugin form outliving its plugin - a renamed server (serena -> navigation)
+// leaves `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to
+// nothing, silently. The shipped names are read from the generator, never typed here. A line that
+// spells a plugin the stack does not ship ON PURPOSE (a test fixture, a third-party plugin in a usage
+// sample) carries the whole word `mcp-fixture` in a comment.
+const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
+const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
+function lintStaleMcpToolNames({ files, entries } = {})
+{
+    let shipped = entries;
+    if (!shipped)
+    {
+        try { shipped = require('./build-marketplace.js').mcpPlugins(); }
+        catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
+    }
+    const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
+    const out = [];
+    for (const { file, text } of files || shippedTextFiles(['stack', 'setup-plugin', 'meta', 'scripts']))
+        text.split('\n').forEach((line, i) =>
+        {
+            if (MCP_FIXTURE_MARKER.test(line)) return;
+            for (const [full, plugin, server] of line.matchAll(PLUGIN_TOOL_SPELLING))
+            {
+                if (!servers.has(plugin))
+                    out.push(`${file}:${i + 1} names \`${full}\`, but no marketplace entry named '${plugin}' carries a server - the tool resolves to nothing. Re-spell it to the shipped server; a deliberate fixture line carries \`mcp-fixture\` in a comment.`);
+                else if (!servers.get(plugin).has(server))
+                    out.push(`${file}:${i + 1} names \`${full}\`, but the plugin '${plugin}' carries no server '${server}' - one plugin, one server, same name (check 53).`);
+            }
+        });
+    return out;
+}
+
+// The text files under the given roots, the way checks 54 and 59 read them.
+function shippedTextFiles(roots, root = ROOT)
+{
+    const files = [];
+    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
+    const walk = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            const full = path.join(dir, d.name);
+            const rel = path.relative(root, full).split(path.sep).join('/');
+            if (skip.test(rel)) continue;
+            if (d.isDirectory()) { walk(full); continue; }
+            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
+            try { files.push({ file: rel, text: fs.readFileSync(full, 'utf8') }); } catch { /* unreadable: nothing to sweep */ }
+        }
+    };
+    for (const r of roots) walk(path.join(root, r));
+    return files;
 }
 
 // 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
@@ -2967,6 +3026,7 @@ module.exports = {
     lintHooksEntry,
     lintMcpEntries,
     lintMcpToolNames,
+    lintStaleMcpToolNames,
     lintRetiredNames,
     stackTextFiles,
     lintLegacyNames,

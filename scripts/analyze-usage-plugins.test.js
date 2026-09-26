@@ -124,9 +124,9 @@ function writeCorpus(dir, m) {
   const corpus = path.join(dir, 'corpus');
   writeSession(corpus, SID.a1, [
     human(m.projA, '2026-07-15T07:00:00.000Z'),
-    asst('m1', '2026-07-15T07:00:10.000Z', [toolUse('t1', 'mcp__plugin_inline-mcp_inline-srv__lookup')]),
+    asst('m1', '2026-07-15T07:00:10.000Z', [toolUse('t1', 'mcp__plugin_inline-mcp_inline-srv__lookup')]), // mcp-fixture
     result('t1', '2026-07-15T07:00:11.000Z'),
-    asst('m2', '2026-07-15T07:00:20.000Z', [toolUse('t2', 'mcp__plugin_shared-mcp_shared-mcp__find')]),
+    asst('m2', '2026-07-15T07:00:20.000Z', [toolUse('t2', 'mcp__plugin_shared-mcp_shared-mcp__find')]), // mcp-fixture
     result('t2', '2026-07-15T07:00:21.000Z'),
     // a BARE registration of a server with the plugin's server name - not the plugin
     asst('m3', '2026-07-15T07:00:30.000Z', [toolUse('t3', 'mcp__inline-srv__lookup')]),

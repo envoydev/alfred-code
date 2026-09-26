@@ -1118,3 +1118,25 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
     assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMismatch, commandSrcOk)
         .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
 });
+
+// Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and
+// `ToolSearch select:` line - a spelling check 54 cannot see, since it only bans the BARE form. The
+// stale spellings below are fixtures, so each line carries the marker the check skips.
+test('lintStaleMcpToolNames flags a plugin tool spelling no shipped server answers, and the live tree carries none', () => {
+    const { lintStaleMcpToolNames } = require('./lint-skills.js');
+    const entries = [
+        { name: 'memory', mcpServers: { memory: {} } },
+        { name: 'browser-chrome', mcpServers: { 'browser-chrome': {} } },
+    ];
+    const clean = 'tools: mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-chrome_browser-chrome__browser_navigate\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/a.md', text: clean }] }), [], 'shipped spellings pass');
+    const stale = 'line one\ntools: mcp__plugin_gone_gone__find_symbol\n'; // mcp-fixture
+    const hit = lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/b.md', text: stale }] });
+    assert.strictEqual(hit.length, 1, 'one stale spelling, one finding');
+    assert.match(hit[0], /stack\/agents\/b\.md:2 .*mcp__plugin_gone_gone__.*'gone'/, 'the finding names file:line, the spelling and the plugin'); // mcp-fixture
+    const wrongServer = 'mcp__plugin_memory_other__x\n'; // mcp-fixture
+    assert.match(lintStaleMcpToolNames({ entries, files: [{ file: 'meta/x.json', text: wrongServer }] })[0], /'memory' carries no server 'other'/, 'a server the plugin does not declare');
+    const marked = 'mcp__plugin_gone_gone__x // mcp-fixture\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'scripts/t.test.js', text: marked }] }), [], 'a marked fixture line passes');
+    assert.deepStrictEqual(lintStaleMcpToolNames(), [], 'no stale plugin tool spelling under stack/, setup-plugin/, meta/ or scripts/');
+});

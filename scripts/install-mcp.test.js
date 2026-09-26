@@ -217,8 +217,8 @@ test('down-convert: only the servers this run registered BARE are re-spelled', (
     // keep the plugin spelling while the droppable picks are re-spelled.
     const root = path.join(TMP, `dc-${seq++}`);
     fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'a.md'), 'use mcp__plugin_sentry_sentry__find_issues and mcp__plugin_serena_serena__find_symbol\n');
-    fs.writeFileSync(path.join(root, 'sub', 'b.yml'), 'mcp__plugin_sentry_sentry__find_issues\n');
+    fs.writeFileSync(path.join(root, 'a.md'), 'use mcp__plugin_sentry_sentry__find_issues and mcp__plugin_serena_serena__find_symbol\n'); // mcp-fixture
+    fs.writeFileSync(path.join(root, 'sub', 'b.yml'), 'mcp__plugin_sentry_sentry__find_issues\n'); // mcp-fixture
     const logs = [];
     const n = mcp.downconvertToolNames({ roots: [root], bare: ['sentry'], log: (m) => logs.push(m) });
     assert.strictEqual(n, 1);
@@ -227,7 +227,7 @@ test('down-convert: only the servers this run registered BARE are re-spelled', (
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
     assert.strictEqual(fs.readFileSync(path.join(root, 'a.md'), 'utf8'),
         `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_serena_serena__find_symbol\n`);
-    assert.match(fs.readFileSync(path.join(root, 'sub', 'b.yml'), 'utf8'), /mcp__plugin_sentry_sentry__/, 'a .yml is not a target extension');
+    assert.match(fs.readFileSync(path.join(root, 'sub', 'b.yml'), 'utf8'), /mcp__plugin_sentry_sentry__/, 'a .yml is not a target extension'); // mcp-fixture
     assert.ok(logs.some((m) => /re-spelled .* in 1 file/.test(m)), logs.join(' | '));
 });
 
@@ -235,9 +235,9 @@ test('down-convert: an empty bare list touches nothing', () =>
 {
     const root = path.join(TMP, `dc-${seq++}`);
     fs.mkdirSync(root, { recursive: true });
-    fs.writeFileSync(path.join(root, 'a.md'), 'mcp__plugin_sentry_sentry__x\n');
+    fs.writeFileSync(path.join(root, 'a.md'), 'mcp__plugin_sentry_sentry__x\n'); // mcp-fixture
     assert.strictEqual(mcp.downconvertToolNames({ roots: [root], bare: [] }), 0);
-    assert.match(fs.readFileSync(path.join(root, 'a.md'), 'utf8'), /mcp__plugin_sentry_sentry__x/);
+    assert.match(fs.readFileSync(path.join(root, 'a.md'), 'utf8'), /mcp__plugin_sentry_sentry__x/); // mcp-fixture
 });
 
 // --- the playwright expansion --------------------------------------------
