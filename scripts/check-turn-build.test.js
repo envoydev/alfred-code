@@ -30,7 +30,7 @@ function project()
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ...env },
     });
     const write = (rel) => run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content: 'x' } });
-    const list = path.join(root, '.claude', 'docs', 'flow', 'turn-edits-sess');
+    const list = path.join(root, '.alfred', 'docs', 'flow', 'turn-edits-sess');
     // A stub tsc: logs where and how it ran, prints `errors` error lines, exits 2 when there are any.
     const tsc = (dir, errors) =>
     {
@@ -74,7 +74,7 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     assert.deepStrictEqual(p.spawned().length, 1, 'one check for one root');
     assert.match(p.spawned()[0], /--noEmit -p .*tsconfig\.json/);
     assert.ok(!fs.existsSync(p.list), 'the list outlived the check');
-    const row = fs.readFileSync(path.join(p.root, '.claude', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+    const row = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.strictEqual(row.hook, 'check-turn-build.js');
     assert.strictEqual(row.event, 'Stop');
     // A row carrying a `mode` is a PROBE to analyze-usage.js (every guard's block row has none), so a

@@ -353,17 +353,17 @@ test('cli: a hand copy of the shipped template is flagged unfilled and by its pl
     const template = fs.readFileSync(path.join(__dirname, '..', 'stack', 'CLAUDE.template.md'), 'utf8');
     const rules = ['baseline-interaction', 'baseline-quality-gates', 'baseline-security', 'baseline-git', 'baseline-navigation', 'baseline-docs-root', 'baseline-memory',
         'baseline-project-agent-capabilities', 'baseline-project-architecture', 'baseline-project-related-context', 'project-code-style'];
-    const files = { '.claude/CLAUDE.md': template, '.claude/docs/code-style/CODE-STYLE.md': '' };
+    const files = { '.claude/CLAUDE.md': template, '.alfred/docs/code-style/CODE-STYLE.md': '' };
     for (const r of rules) files[`.claude/rules/${r}.md`] = '';
     const root = tree(files, { git: true });
     const r = cli(root);
     assert.strictEqual(r.status, 1, r.stdout + r.stderr);
     assert.deepStrictEqual(r.stdout.trim().split('\n').map((l) => l.replace(/ - .*/, '')), ['.claude/CLAUDE.md:1 template: the template', '.claude/CLAUDE.md:1 placeholder: __PROJECT_NAME__', 'claude-md-check: 2 finding(s) in 1 file(s)']);
     fs.rmSync(path.join(root, '.claude/rules/project-code-style.md'));
-    fs.rmSync(path.join(root, '.claude/docs/code-style'), { recursive: true });
+    fs.rmSync(path.join(root, '.alfred/docs/code-style'), { recursive: true });
     const skipped = cli(root).stdout.trim().split('\n').map((l) => l.replace(/:\d+ /, ' ').replace(/ - .*/, ''));
     assert.deepStrictEqual(skipped.slice(2, -1), ['.claude/CLAUDE.md path: project-code-style.md', '.claude/CLAUDE.md path: .claude/rules/project-code-style.md',
-        '.claude/CLAUDE.md path: .claude/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
+        '.claude/CLAUDE.md path: .alfred/docs/code-style/CODE-STYLE.md'], 'the intro line and the row both name the capture that never ran');
 });
 
 // The skill's first read: which CLAUDE.md files exist and whether one is still the untouched seed - the

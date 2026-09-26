@@ -51,7 +51,7 @@ function envOf(env, suffix)
 }
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const DOCS_ROOT = path.resolve(ROOT, docsRootEnv());
 const DOCS = path.join(DOCS_ROOT, 'architecture');
 const BLOCK_FILE = path.join(DOCS, 'ORIENTATION.md');
@@ -425,7 +425,7 @@ const declaredVersioning = () => {
   return null;
 };
 // Does git ignore the docs root? Asked of `<root>/` with the trailing slash: git answers check-ignore for a path that
-// does not exist yet (a fresh project), but a directory-only pattern ('.claude/docs/') matches the bare name only
+// does not exist yet (a fresh project), but a directory-only pattern ('.alfred/docs/') matches the bare name only
 // once the folder exists - the slash makes it match before. Relative to the project root, so a symlinked absolute
 // spelling can never read as 'outside the repository'.
 let IGNORED_CACHE;

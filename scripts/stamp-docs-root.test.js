@@ -47,7 +47,7 @@ test('missing settings, missing key, and broken JSON all stamp the default', () 
     {
         const root = makeProject(settings);
         run(root);
-        assert.match(stampLine(root), /This install's root: `\.claude\/docs`/, `settings=${settings}`);
+        assert.match(stampLine(root), /This install's root: `\.alfred\/docs`/, `settings=${settings}`);
     }
 });
 
@@ -142,7 +142,7 @@ function projectWithCommittedDocs(docsPath, versioning, domain = 'architecture')
 }
 
 test('--reprobe-versioning re-reads the mode at the docs path that ended up in the file', () => {
-    const root = projectWithCommittedDocs('docs', 'local');   // seeded against .claude/docs, then the path moved
+    const root = projectWithCommittedDocs('docs', 'local');   // seeded against .alfred/docs, then the path moved
     try
     {
         assert.match(reprobe(root), /docs versioning re-probed at docs\/: 'git'/);

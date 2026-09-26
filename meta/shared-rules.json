@@ -31,31 +31,35 @@
       ]
     },
     "docs-root-resolution": {
-      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .claude/docs (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites.",
+      "_note": "The docs-root default: ALFRED_CODE_DOCS_PATH from .claude/settings.json env, absent = .alfred/docs - outside .claude/, the directory Claude Code protects (2.0.0) (CLAUDE_DOCS_PATH is the pre-0.2.43 spelling, still read as a fallback by every consumer until the rename reaches every install; the installer renames the key in place). The always-on baseline-docs-root rule is canonical (the env var is the only user lever - no CLAUDE.md restatement); the code-level defaults (each hook's docsRootEnv() fallback, the skill line that quotes it, the re-probe script) must state the same value. Phase 7b (R33) deleted the frozen shell/PowerShell twins, which used to carry this default too, as their own two sites. Every other code home of the fallback (each hook's inline docsRootEnv, the analyzers) is held to the same value by scripts/docs-root-default.test.js, which also fails on a NEW home spelling the old one.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
-        "marker": "the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`"
+        "marker": "the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.alfred/docs`"
       },
       "sites": [
         {
+          "file": "scripts/install/copy.js",
+          "marker": "const DOCS_ROOT_DEFAULT = '.alfred/docs';"
+        },
+        {
           "file": "scripts/stamp-docs-root.js",
-          "marker": "const DEFAULT_ROOT = '.claude/docs';"
+          "marker": "const DEFAULT_ROOT = '.alfred/docs';"
         },
         {
           "file": "stack/hooks/guard-unapproved-dispatch.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         },
         {
           "file": "stack/hooks/instrument-tool-usage.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         },
         {
           "file": "stack/hooks/docs.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         },
         {
           "file": "stack/hooks/docs-session.js",
-          "marker": "envOf(process.env, 'DOCS_PATH') || '.claude/docs'"
+          "marker": "envOf(process.env, 'DOCS_PATH') || '.alfred/docs'"
         }
       ]
     },

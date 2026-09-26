@@ -46,7 +46,7 @@ if (require.main === module) {
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
 // CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
 // project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`

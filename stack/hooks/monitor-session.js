@@ -116,7 +116,7 @@ if (require.main === module)
   // ALFRED_CODE_DOCS_PATH is the name; envOf also answers CLAUDE_STACK_DOCS_PATH (pre-2.0.0) and // legacy-name
   // CLAUDE_DOCS_PATH (pre-0.2.43).
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const stateFile = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
   let state = null;

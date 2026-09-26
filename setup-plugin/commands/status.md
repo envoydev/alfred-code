@@ -47,7 +47,7 @@ One table, no ask - it is five rows and every other area reads against it:
 | stack version (stamp) | 2.0.0 @ <short-sha> |
 | running plugin | 2.0.0 - `alfred-code@<key>`, enabled at project scope |
 | scope | project |
-| docs root | .claude/docs (default) |
+| docs root | .alfred/docs (default) |
 | initialised | 2026-09-24 |
 
 - `stack version`: the stamp's version and commit - `alfred-code.stamp`, or a 1.x

@@ -47,7 +47,7 @@ const realGit = (projectRoot) => ({
         catch { return false; }
     },
     // `<docs>/` WITH the trailing slash: git answers check-ignore for a path that does not exist
-    // yet, but a directory-only pattern ('.claude/docs/') matches the bare name only once the
+    // yet, but a directory-only pattern ('.alfred/docs/') matches the bare name only once the
     // folder is there.
     ignored(rel)
     {
@@ -140,4 +140,43 @@ function migrateDocsDomains({ projectRoot, docsPath, log = () => {} })
     return { moved, switched };
 }
 
-module.exports = { domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED };
+// THE ROOT'S OWN .gitignore. The old default sat under `.claude/`, which a project's own `.claude/*`
+// line kept out of git for free; `.alfred/docs` is outside it, so the root states its versioning itself,
+// absent-only, the `.playwright` / `.memory-mcp` way. `local` keeps the whole root out of git - and git
+// then answers check-ignore for the root, so the four-home rule reads it back as kept out. `git` commits
+// the docs and keeps out only what the hooks write for this machine: the flow receipts, the block and
+// usage ledgers, the session history (which also ignores itself) and the local overlays.
+const DOCS_IGNORE = {
+    local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
+    git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n',
+};
+
+// 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
+// the project) | 'skipped' (no versioning to state). A file that is exactly the stack's text for the
+// OTHER mode is the stack's and follows a versioning switch; any other text is the project's.
+function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
+{
+    if (!Object.hasOwn(DOCS_IGNORE, mode)) return 'skipped';
+    const root = path.resolve(projectRoot);
+    const base = path.resolve(root, String(docsPath || ''));
+    const rel = path.relative(root, base);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return 'outside';
+    const file = path.join(base, '.gitignore');
+    const want = DOCS_IGNORE[mode];
+    let have = null;
+    try { have = fs.readFileSync(file, 'utf8'); } catch { have = null; }
+    if (have === want) return 'current';
+    const shown = rel.split(path.sep).join('/');
+    if (have !== null && !Object.values(DOCS_IGNORE).includes(have))
+    {
+        log(`  docs root: ${shown}/.gitignore is the project's own - left as it is (versioning ${mode})`);
+        return 'kept';
+    }
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(file, want);
+    log(`  docs root: ${shown}/.gitignore ${have === null ? 'written' : 'rewritten'} - ${mode === 'local' ? 'the whole root stays out of git' : "the docs are committed, the hooks' machine-local state is not"} (versioning ${mode})`);
+    return have === null ? 'written' : 'replaced';
+}
+
+module.exports = { domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED };

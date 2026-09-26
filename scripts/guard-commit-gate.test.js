@@ -15,7 +15,7 @@ const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 
 // Pin an empty account dir and a scratch project root for the whole run - a real machine's
-// account settings and this checkout's own `.claude/docs/hook-blocks/` must never be touched by
+// account settings and this checkout's own `.alfred/docs/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
@@ -70,7 +70,7 @@ function pushReceipt(head, over = {}) {
   ].filter((l) => l != null).join('\n') + '\n';
 }
 const writeReceipt = (dir, name, body) => {
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, name), body);
 };
@@ -129,12 +129,12 @@ test('guard-ungated-commit: plain top-level folders are not projects - only a fo
 
 test('guard-ungated-commit: a pure docs diff, and a NOT RUN probe, are not scope-gated at all', () => {
   const { dir, git } = pushRepo();
-  fs.mkdirSync(path.join(dir, '.claude', 'docs', 'architecture'), { recursive: true });
-  fs.writeFileSync(path.join(dir, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), forty());
+  fs.mkdirSync(path.join(dir, '.alfred', 'docs', 'architecture'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), forty());
   git('add', '-A'); git('commit', '-qm', 'docs: architecture notes');
   const docsHead = headOf(dir);
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(docsHead, { scope: null }));
-  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_DOCS_PATH: '.claude/docs' }), 0,
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_DOCS_PATH: '.alfred/docs' }), 0,
     'a docs-only diff touches no identifiable project - no scope: line required');
 
   fs.mkdirSync(path.join(dir, 'apps', 'auth'), { recursive: true });
@@ -269,7 +269,7 @@ test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0
   fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${RLO}y';\n`);
   assert.equal(gateIn(dir, 'git commit -m nothing-staged'), 0, 'an untracked file the commit does not take in is not scanned');
   assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 2, 'a chained add takes it in, so it is scanned');
-  const allow = path.join(dir, '.claude', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
   fs.writeFileSync(allow, 'late.js:1\n');
   assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');

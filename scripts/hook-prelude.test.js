@@ -428,7 +428,7 @@ test('a plugin-launched hook stands down in a project with no install record, an
     {
         assert.strictEqual(neverSetUp(env), true, 'no .claude at all');
         assert.strictEqual(standDown('history-session', env, ['node', 'x.js']), true, 'standDown carries the gate');
-        fs.mkdirSync(path.join(dir, '.claude', 'docs'), { recursive: true });
+        fs.mkdirSync(path.join(dir, '.alfred', 'docs'), { recursive: true });
         assert.strictEqual(neverSetUp(env), true, 'a .claude/ of the user\'s own is no install record');
         for (const record of [['alfred-code.stamp'], ['claude-stack.stamp'], ['hooks', 'docs.js']]) // legacy-name - a 1.x stamp is a record too
         {
@@ -557,7 +557,7 @@ test('in a repo never set up the three protective guards stay live and write not
         fs.mkdirSync(path.join(dir, '.claude'));
         fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), '');
         assert.strictEqual(fireIn('guard-catastrophic-rm.js', dir, { command: 'rm -rf ~' }).status, 2);
-        assert.ok(fs.existsSync(path.join(dir, '.claude', 'docs', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
+        assert.ok(fs.existsSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 's.jsonl')), 'a set-up repo records the block');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -178,7 +178,7 @@ test('generated-docs touches: a Windows Write target matches the docs prefix', (
   });
   const file = fixture(dir, [
     w('w1', 'C:\\Projects\\app\\.claude\\docs\\architecture\\ARCHITECTURE.md'), result('w1'),
-    w('w2', '/home/u/app/.claude/docs/architecture/ARCHITECTURE.md'), result('w2'),
+    w('w2', '/home/u/app/.alfred/docs/architecture/ARCHITECTURE.md'), result('w2'),
   ]);
   const { main } = run([file]);
   const touch = main.docTouches && main.docTouches['architecture/ARCHITECTURE.md'];
@@ -225,15 +225,15 @@ test('git acts: a quoted or heredoc mention is prose, a denied commit never ran,
 test('doc touches: assignments and globs open no row, rm clears, a heredoc mention is not a write', () => {
   const dir = tmp();
   const file = fixture(dir, [
-    bash('d1', 'D=.claude/docs/architecture/ARCHITECTURE.md'),
+    bash('d1', 'D=.alfred/docs/architecture/ARCHITECTURE.md'),
     result('d1'),
-    bash('d2', 'cat .claude/docs/architecture/ARCHITECTURE.md'),
+    bash('d2', 'cat .alfred/docs/architecture/ARCHITECTURE.md'),
     result('d2'),
-    bash('d3', 'rm -f .claude/docs/flow/COMMIT-GATE.md'),
+    bash('d3', 'rm -f .alfred/docs/flow/COMMIT-GATE.md'),
     result('d3'),
-    bash('d4', "cat <<'EOF' > /dev/null\nsee .claude/docs/architecture/ASSESSMENT.md\nEOF"),
+    bash('d4', "cat <<'EOF' > /dev/null\nsee .alfred/docs/architecture/ASSESSMENT.md\nEOF"),
     result('d4'),
-    bash('d5', 'ls .claude/docs/*.md; head -5 .claude/docs/PROJECT-CODE-STYLE.md.'),
+    bash('d5', 'ls .alfred/docs/*.md; head -5 .alfred/docs/PROJECT-CODE-STYLE.md.'),
     result('d5'),
   ]);
   const { main } = run([file]);
@@ -429,9 +429,9 @@ test('hook-block ledger: a directory is narrowed to the analyzed session, never 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The generated-docs table read one hardcoded spelling on each route: `/.claude/docs/` with
+// The generated-docs table read one hardcoded spelling on each route: `/.alfred/docs/` with
 // forward slashes for Read/Write (blank for every Windows project - 4 of the 9 audited) and the
-// literal `.claude/docs/` for Bash (so `--docs-root` fixed only half the table).
+// literal `.alfred/docs/` for Bash (so `--docs-root` fixed only half the table).
 test('generated docs: both routes honour --docs-root, and a Windows path is not invisible', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
     const file = path.join(dir, 'session.jsonl');
@@ -900,7 +900,7 @@ function turnCheckCorpus(counts, opts = {}) {
   const dir = tmp();
   const sessions = path.join(dir, 'projects');
   const root = path.join(dir, 'proj');
-  const docs = opts.docsPath || '.claude/docs';
+  const docs = opts.docsPath || '.alfred/docs';
   const blocks = path.join(root, docs, 'hook-blocks');
   fs.mkdirSync(sessions, { recursive: true });
   fs.mkdirSync(blocks, { recursive: true });

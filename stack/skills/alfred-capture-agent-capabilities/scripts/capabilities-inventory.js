@@ -369,7 +369,7 @@ function docsRoot(projectRoot)
         }
     }
     catch { /* a malformed settings.json is the default's case, not a failure */ }
-    return { value: '.claude/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
+    return { value: '.alfred/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
 }
 
 // The stamp's two names: a 1.x install keeps `claude-stack.stamp` until an update rewrites it. This // legacy-name

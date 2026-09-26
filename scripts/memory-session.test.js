@@ -45,7 +45,7 @@ function fixtureProject({ rows = null, relatedNames = null, registered = true } 
     mcpServers: registered ? { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service', 'memory', 'server'], env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec', MCP_MEMORY_SQLITE_PATH: dbPath } } } : {},
   }));
   if (relatedNames) {
-    const docDir = path.join(root, '.claude', 'docs', 'related-projects');
+    const docDir = path.join(root, '.alfred', 'docs', 'related-projects');
     fs.mkdirSync(docDir, { recursive: true });
     fs.writeFileSync(path.join(docDir, 'RELATED-PROJECTS.md'), relatedNames.map((n) => `## ${n}\n<!-- id: ${n} -->\n`).join('\n'));
   }

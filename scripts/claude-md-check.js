@@ -239,7 +239,7 @@ function findFiles(root)
 function docsRootOf(root)
 {
     try { return require('./install/copy.js').resolveDocsRoot(root); }
-    catch { return '.claude/docs'; }
+    catch { return '.alfred/docs'; }
 }
 
 // A code span that names a path, normalized, or '' when it names something else.

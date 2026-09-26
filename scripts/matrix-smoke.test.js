@@ -65,7 +65,7 @@ for (const route of Object.keys(ROUTES))
         assert.deepStrictEqual(result.engines, ['docs.js', 'memory.js', 'model-windows.json'], 'both hook engines and the window table are copied on every route');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
         assert.match(result.stamp, /^picked-skills: markdown-style@/m, 'the stamp records the pick');
-        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, '.claude/docs', 'the settings env is seeded');
+        assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'the settings env is seeded');
         if (route === 'plugin')
         {
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
@@ -130,7 +130,7 @@ for (const route of Object.keys(ROUTES))
             assert.strictEqual(s.key, false, `${act}: the project's own settings key changed or vanished`);
             assert.strictEqual(s.env, 'on', `${act}: the project's own env key changed or vanished`);
             assert.deepStrictEqual(s.hook, OWN_HOOK, `${act}: the project's own hook changed or vanished`);
-            assert.strictEqual(s.stack, '.claude/docs', `${act}: the stack's own env was not merged in beside them`);
+            assert.strictEqual(s.stack, '.alfred/docs', `${act}: the stack's own env was not merged in beside them`);
         }
     });
 }

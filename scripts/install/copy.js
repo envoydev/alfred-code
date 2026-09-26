@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { envOf } = require('../../stack/hooks/hook-prelude.js');
 
-const DOCS_ROOT_DEFAULT = '.claude/docs';
+const DOCS_ROOT_DEFAULT = '.alfred/docs';
 const DOCS_ROOT_RULE = 'baseline-docs-root.md';
 
 function sameContent(a, b)
@@ -165,6 +165,20 @@ function resolveDocsRoot(projectRoot, scope)
     return envOf(env && typeof env === 'object' ? env : {}, 'DOCS_PATH') || DOCS_ROOT_DEFAULT;
 }
 
+// The docs versioning DECLARED in the same view the docs root is read from - 'git', 'local', or null
+// when the key is absent or holds anything else (the four-home rule answers then).
+function resolveDocsVersioning(projectRoot, scope)
+{
+    const { readBackSettings } = require('./settings.js');
+    const { readStampScope } = require('./stamp.js');
+    const { stampFile } = require('./brand.js');
+    const claudeDir = path.join(projectRoot, '.claude');
+    const at = scope || readStampScope(stampFile(claudeDir).read || '');
+    const env = readBackSettings(claudeDir, at === 'local' ? 'local' : 'project', { sharedOnly: true }).env;
+    const value = String(envOf(env && typeof env === 'object' ? env : {}, 'DOCS_VERSIONING') || '').trim().toLowerCase();
+    return value === 'git' || value === 'local' ? value : null;
+}
+
 // Replace `__DOCS_ROOT__` in the COPIED rule with the current value. It runs on install and on
 // update, and it is once-only by construction: after it runs there is no placeholder left. What
 // makes an update re-stamp is the copy that precedes it - the stamped destination differs from the
@@ -259,4 +273,4 @@ function commonJsScope({ dir, stackFiles = [], log = () => {}, note = () => {} }
     return 'written';
 }
 
-module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };
+module.exports = { installFromSource, syncTree, respellPreloads, stampDocsRoot, resolveDocsRoot, resolveDocsVersioning, sameContent, removeDropped, commonJsScope, COMMONJS_MARKER, DOCS_ROOT_DEFAULT };

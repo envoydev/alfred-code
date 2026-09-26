@@ -8,7 +8,7 @@ set -e
 git config user.email fixture@example.invalid
 git config user.name fixture
 mkdir -p src test
-printf '.claude/docs/\n.serena/\n.memory-mcp/\n' >> .gitignore
+printf '.alfred/docs/\n.serena/\n.memory-mcp/\n' >> .gitignore
 cat > package.json <<'JSON'
 { "name": "cart", "private": true, "scripts": { "test": "node --test" } }
 JSON

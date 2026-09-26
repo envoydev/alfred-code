@@ -57,7 +57,7 @@ function fx({
     // Simulate the installer's own docs-root stamp: substitute the placeholder, then hash AFTER the
     // rewrite - exactly what alfred-code.js must do for the recorded hash to mean anything.
     const docsRootFile = path.join(rules, 'baseline-docs-root.md');
-    fs.writeFileSync(docsRootFile, fs.readFileSync(docsRootFile, 'utf8').replace('__DOCS_ROOT__', docsRoot || '.claude/docs'));
+    fs.writeFileSync(docsRootFile, fs.readFileSync(docsRootFile, 'utf8').replace('__DOCS_ROOT__', docsRoot || '.alfred/docs'));
     library.rules['baseline-docs-root'] = require('./install/library.js').hashItem(docsRootFile);
     if (!noStamp)
     {

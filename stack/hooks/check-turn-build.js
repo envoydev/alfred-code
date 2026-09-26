@@ -123,7 +123,7 @@ if (require.main === module)
   if (!payload || typeof payload !== 'object') process.exit(0);
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
-  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.claude/docs');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const list = path.join(docs, 'flow', `turn-edits-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 

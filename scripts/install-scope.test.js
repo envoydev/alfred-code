@@ -54,7 +54,7 @@ test('install-scope: at local scope the stack\'s own settings writes go to setti
     });
     assert.strictEqual(result.hasShared, false, 'a local-scope install must not write the shared settings.json');
     assert.strictEqual(result.hasLocal, true, 'a local-scope install must write settings.local.json');
-    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, '.claude/docs', 'the env seed landed in the local file');
+    assert.strictEqual(result.local.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'the env seed landed in the local file');
 });
 
 // C8 (R100, R101): the one exception is this machine's memory database path - settings.local.json holds
@@ -806,7 +806,7 @@ test('install-scope: a move off local removes an older shipped seed and the docs
     const { outs, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify([{ id: 'alfred-code@envoydev', version: '2.0.0', scope: 'local', enabled: true }]),
         args: [['--scope', 'local'], ['--scope', 'project', '--installed-only']],
-        prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/\n'),
+        prepare: (repo) => fs.writeFileSync(path.join(repo, '.gitignore'), '.claude/\n.alfred/\n'),
         each: (repo, i) =>
         {
             if (i !== 0) return null;

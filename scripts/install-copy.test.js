@@ -155,7 +155,7 @@ test('install-copy: with no setting, the stamp writes the DEFAULT rather than le
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     const text = fs.readFileSync(file, 'utf8');
     assert.ok(!text.includes('__DOCS_ROOT__'), 'a project with no env keeps an unresolved placeholder');
-    assert.ok(text.includes('.claude/docs'), text);
+    assert.ok(text.includes('.alfred/docs'), text);
 });
 
 test('install-copy: COPY THEN STAMP is what makes the rule track a changed env', () =>
@@ -212,7 +212,7 @@ test('install-copy: a malformed settings.json is not a failure - the default ans
 
     const notes = [];
     stampDocsRoot(base, { log: () => {}, note: (m) => notes.push(m) });
-    assert.ok(fs.readFileSync(file, 'utf8').includes('.claude/docs'));
+    assert.ok(fs.readFileSync(file, 'utf8').includes('.alfred/docs'));
     assert.deepStrictEqual(notes, [], 'a garbage settings file was treated as a failure');
 });
 

@@ -39,10 +39,10 @@ function session(env = {})
     };
     const rows = () =>
     {
-        try { return fs.readFileSync(path.join(root, '.claude', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
+        try { return fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
         catch { return []; }
     };
-    const stateFile = path.join(root, '.claude', 'docs', 'flow', `monitor-${sid}.json`);
+    const stateFile = path.join(root, '.alfred', 'docs', 'flow', `monitor-${sid}.json`);
     const call = (tool, input, extra = {}) => hook({ hook_event_name: 'PostToolUse', tool_name: tool, tool_input: input, ...extra });
     const prompt = () => hook({ hook_event_name: 'UserPromptSubmit', prompt: 'next' });
     return { root, sid, hook, rows, stateFile, call, prompt };

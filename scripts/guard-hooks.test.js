@@ -48,7 +48,7 @@ delete process.env.CLAUDE_DOCS_PATH;
 for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_')) delete process.env[k]; // legacy-name
 // Every guard appends a block row to `<root>/<docs-path>/hook-blocks/`, where the root falls back
 // to the process cwd when CLAUDE_PROJECT_DIR is unset - so a suite run from this checkout forged
-// 4MB of field ledger into the repo's own `.claude/docs/hook-blocks/` (measured 2026-09-07: 12,480
+// 4MB of field ledger into the repo's own `.alfred/docs/hook-blocks/` (measured 2026-09-07: 12,480
 // rows in nosession.jsonl alone). Pin a scratch root for the whole run; the cases that exercise the
 // ledger, or a gate that reads a receipt under the root, point it at a fixture of their own.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -175,11 +175,11 @@ test('guard-stop-contract: a credential shape in a tool result demands the rotat
     assistantRow('m9', 'Copied the token into .env as asked; all tests green.'),
   ]);
   const stop = () => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
   const r = stop();
   assert.equal(r.status, 2, 'a shape in a tool result with no consent');
   assert.match(r.stderr, /Rotate it now/);
-  const receipt = path.join(root, '.claude', 'docs', 'flow', 'SECRET-READ-ALLOW');
+  const receipt = path.join(root, '.alfred', 'docs', 'flow', 'SECRET-READ-ALLOW');
   fs.mkdirSync(path.dirname(receipt), { recursive: true });
   fs.writeFileSync(receipt, '*\n');
   assert.equal(stop().status, 0, 'the consented exposure is not re-asked');
@@ -197,7 +197,7 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   const answered = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'Your questions have been answered: "A GitHub token (ghp_ shape) entered this session through a tool result. Rotate it now?"="Acknowledge and defer"' }] } };
   // pushes the answer out of askJustAnswered's 8KB tail, so the once-per-exposure rule is what is judged
   const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
-  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' };
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
   const stop = (name, rows, extra = {}) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env: { ...env, ...extra } });
   assert.equal(stop('r1', [leak, assistantRow('a1', 'Wired the token as asked; tests green.')]).status, 2, 'the first exposure asks');
   const quiet = stop('r2', [leak, answered, filler, assistantRow('a2', 'Deferred as you chose. Remember to rotate the token when you get to it; the rest is done.')]);
@@ -448,7 +448,7 @@ test('guard-ungated-commit: trivial diffs, clean trees, non-commits and non-repo
 test('guard-ungated-commit: the receipt states', () => {
   const dir = scratchRepo();
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const receipt = (s) => fs.writeFileSync(gate, s);
   // the conformant receipt, and the pieces each clause removes from it
@@ -505,9 +505,9 @@ test('guard-ungated-commit: the receipt states', () => {
   // the atomic write+commit shape carries its receipt - and answers to the SAME contract, or it
   // would be the cheapest way to skip every clause above
   const atomic = full().trim().replace(/\n/g, '\\n');
-  assert.equal(gateIn(dir, `printf '${atomic}\\n' > .claude/docs/flow/COMMIT-GATE && git commit -am x`), 0, 'the atomic write+commit shape carries its receipt');
-  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .claude/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'the atomic shape gets no lighter contract');
-  assert.equal(gateIn(dir, `echo 'VERIFIED x' > .claude/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
+  assert.equal(gateIn(dir, `printf '${atomic}\\n' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 0, 'the atomic write+commit shape carries its receipt');
+  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'the atomic shape gets no lighter contract');
+  assert.equal(gateIn(dir, `echo 'VERIFIED x' > .alfred/docs/flow/COMMIT-GATE && git commit -am x`), 2, 'atomic VERIFIED without authorized:');
   assert.equal(gateIn(dir, 'git commit -am "COMMIT-GATE VERIFIED authorized: x > flow/COMMIT-GATE"'), 2, 'receipt words inside the commit message');
   fs.mkdirSync(path.join(dir, 'docs', 'flow'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs', 'flow', 'COMMIT-GATE'), 'WAIVED - "go"\n');
@@ -524,7 +524,7 @@ test('guard-ungated-commit: an option label THIS run wrote is not the user askin
   // comparison and the LABEL ITSELF is what disqualifies the quote.
   const dir = scratchRepo();
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
-  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const tp = transcript('own-label', [
     { type: 'assistant', message: { id: 'q1', content: [{ type: 'tool_use', id: 'u1', name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Commit now (Recommended)', description: 'land it' }, { label: 'Hold', description: 'wait' }] }] } }] } },
@@ -586,7 +586,7 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
   // reproduces the measured 430,740-token false positive - a report write denied for QUOTING a
   // merge command.
   const dir = pushRepo();
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   const receipt = (s) => (s === null ? fs.rmSync(path.join(flow, 'PUSH-GATE'), { force: true }) : fs.writeFileSync(path.join(flow, 'PUSH-GATE'), s));
   const ahead = () => { fs.appendFileSync(path.join(dir, 'a.txt'), 'more\n'); spawnSync('git', ['-C', dir, 'commit', '-qam', 'work'], { encoding: 'utf8' }); };
@@ -618,9 +618,9 @@ test('guard-ungated-commit: nothing gated a push, and a quoted publish verb is s
   assert.equal(gateIn(dir, 'git push'), 2, 'a 3h-old receipt is absent');
   receipt(null);
   const atomicPush = pushOk().trim().replace(/\n/g, '\\n');
-  assert.equal(gateIn(dir, `printf '${atomicPush}\\n' > .claude/docs/flow/PUSH-GATE && git push`), 0,
+  assert.equal(gateIn(dir, `printf '${atomicPush}\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 0,
     'the atomic write+publish shape carries its own receipt');
-  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .claude/docs/flow/PUSH-GATE && git push`), 2,
+  assert.equal(gateIn(dir, `printf 'VERIFIED x\\nauthorized: "go"\\n' > .alfred/docs/flow/PUSH-GATE && git push`), 2,
     '... and gets no lighter contract than the file');
   assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_PUSH_GATE: '0' }), 0, 'the switch turns the publish half off');
 
@@ -683,7 +683,7 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
   // every other blocking guard honours an answer; this one re-blocked a discard the user had just
   // chosen, and the chosen action was silently substituted with a `git stash push -u`
   assert.match(rm('git restore a.txt').stderr, /DISCARD-ALLOW/, 'the denial names the receipt');
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), '# the user answered Discard it\na.txt\n');
   assert.equal(rm('git restore a.txt').status, 0, 'the receipt is honoured for the path it names');
@@ -704,7 +704,7 @@ test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a ta
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   git('branch', 'other');
-  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n'); // the guard's own ledger, ignored as a set-up project ignores it
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n.alfred/\n'); // the guard's own ledger (the docs root's .gitignore keeps hook-blocks/ out), ignored as a set-up project ignores it
   const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
   fs.mkdirSync(path.join(dir, 'notes'));
@@ -762,7 +762,7 @@ test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear 
   assert.equal(rm('git reflog expire --all').status, 0, 'the default 90-day window prunes nothing in a fresh repo');
   assert.equal(rm('git reflog show').status, 0, 'reading the reflog loses nothing');
 
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
   assert.equal(rm('git stash drop').status, 0, 'the receipt names the entry the user chose to drop');
@@ -791,7 +791,7 @@ test('guard-catastrophic-rm: gc --prune=now and prune delete the unreachable obj
     'git reflog expire --dry-run --expire=now --all', 'echo "then git gc --prune=now"', 'git count-objects -v'])
     assert.equal(rm(c).status, 0, `keeps the objects: ${c}`);
 
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, 'DISCARD-ALLOW'), 'stash@{0}\n');
   assert.equal(rm('git gc --prune=now').status, 2, 'a receipt naming something else covers nothing');
@@ -807,7 +807,7 @@ test('guard-catastrophic-rm: a SQL DROP or an EF database drop is counted, never
   const sid = 'probe-sql';
   const rm = (command) => runIn('guard-catastrophic-rm.js', { session_id: sid, tool_name: 'Bash', tool_input: { command } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
-  const ledger = path.join(dir, '.claude', 'docs', 'hook-blocks', `${sid}.jsonl`);
+  const ledger = path.join(dir, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
   const rows = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
 
   assert.equal(rm('psql -c "DROP TABLE users"').status, 0, 'a probe never denies');
@@ -852,7 +852,7 @@ test('guard-catastrophic-rm: every git call in a chained command is judged, and 
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
   git('update-ref', 'refs/remotes/origin/main', 'HEAD');
-  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n.alfred/\n');
   fs.writeFileSync(path.join(dir, 'only-untracked.txt'), 'mine\n');
   const rm = rmAt(dir);
   for (const c of ['git reset --hard && git clean -fd', 'git checkout . && git clean -fdx',
@@ -873,7 +873,7 @@ test('guard-catastrophic-rm: a non-ASCII name and the `-` target are read the wa
   // never matched it and the untracked copy was overwritten; and `-` (the previous branch) read as a flag.
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
-  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n.alfred/\n');
   git('checkout', '-q', '-b', 'other');
   fs.writeFileSync(path.join(dir, 'café.txt'), 'theirs\n');
   git('add', '-A'); git('commit', '-qm', 'cafe');
@@ -901,7 +901,7 @@ test('guard-catastrophic-rm: a backslash is literal in PowerShell, whose escape 
   // separator, named nothing, and its discard passed. A file whose NAME holds a backslash stands in here.
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
-  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n.alfred/\n');
   fs.writeFileSync(path.join(dir, 'back\\slash.txt'), 'seed\n');
   fs.writeFileSync(path.join(dir, 'my file.txt'), 'seed\n');
   git('add', '-A'); git('commit', '-qm', 'names');
@@ -921,7 +921,7 @@ test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it
   // .claude/ was deleted with exit 0. It now comes from `git clean -n` with the command's own flags.
   const dir = cleanRepo();
   const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
-  fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n.claude/\n');
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.env\n.claude/\n.alfred/\n');
   git('add', '-A'); git('commit', '-qm', 'ignore');
   fs.writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
   const rm = rmAt(dir);
@@ -930,7 +930,7 @@ test('guard-catastrophic-rm: git clean -x / -X is judged on the ignored files it
     assert.equal(r.status, 2, `an ignored file is deleted: ${c}`);
     assert.match(r.stderr, /\.env/, `and named: ${c}`);
   }
-  for (const c of ['git clean -fd', 'git clean -n -fdx', 'git clean -fdx --dry-run', 'git clean -fdx -e .env -e .claude'])
+  for (const c of ['git clean -fd', 'git clean -n -fdx', 'git clean -fdx --dry-run', 'git clean -fdx -e .env -e .claude -e .alfred'])
     assert.equal(rm(c).status, 0, `the ignored file stays: ${c}`);
 });
 
@@ -940,7 +940,7 @@ test('guard-catastrophic-rm: the discard spellings are read from the git argv, f
   // or `-f` walked past it on a dirty tree.
   const dir = cleanRepo();
   spawnSync('git', ['-C', dir, 'update-ref', 'refs/heads/trunk', 'HEAD'], { encoding: 'utf8' });
-  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n.alfred/\n');
   fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
   fs.writeFileSync(path.join(dir, 'new.txt'), 'untracked\n');
   const rm = rmAt(dir);
@@ -1010,7 +1010,7 @@ test('guard-read-whole-file: the extension is judged against the PATH, not the w
 
 test('guard-unapproved-dispatch: the stamp lifecycle', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  const gate = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const disp = (seat, env = {}) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ...env } }).status;
@@ -1040,7 +1040,7 @@ test('guard-unapproved-dispatch: the stamp lifecycle', () => {
 // arrives prefixed, and a gate keyed on the bare name would stop gating anything at all.
 test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign one is not', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  const gate = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const disp = (seat) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt: 'x' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
@@ -1061,7 +1061,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
 
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  const gate = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go"\n');
   pause(50);
@@ -1266,7 +1266,7 @@ test('guard-unapproved-dispatch: an Explore or Plan brief carries the untrusted-
 // leaving the field out was a way around both generic gates - the same brief blocked when typed.
 test('guard-unapproved-dispatch: an untyped dispatch is the general-purpose seat it runs as', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
-  const gate = path.join(root, '.claude', 'docs', 'flow', 'APPROVAL');
+  const gate = path.join(root, '.alfred', 'docs', 'flow', 'APPROVAL');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   const untyped = (prompt) => runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { prompt } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
@@ -1447,7 +1447,7 @@ test('guard hooks record every block, and nothing on a pass', () => {
     env: { ...process.env, CLAUDE_PROJECT_DIR: proj },
   }).status;
   const ledger = () => {
-    const f = path.join(proj, '.claude', 'docs', 'hook-blocks', 'sess1.jsonl');
+    const f = path.join(proj, '.alfred', 'docs', 'hook-blocks', 'sess1.jsonl');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
   };
 
@@ -1474,8 +1474,8 @@ test('guard hooks record every block, and nothing on a pass', () => {
 test('block telemetry never interferes with the gate', () => {
   // An unwritable docs root must not turn a block into a pass, nor a pass into an error.
   const proj = fs.mkdtempSync(path.join(TMP, 'blockro-'));
-  fs.mkdirSync(path.join(proj, '.claude', 'docs'), { recursive: true });
-  fs.writeFileSync(path.join(proj, '.claude', 'docs', 'hook-blocks'), 'not a directory');
+  fs.mkdirSync(path.join(proj, '.alfred', 'docs'), { recursive: true });
+  fs.writeFileSync(path.join(proj, '.alfred', 'docs', 'hook-blocks'), 'not a directory');
   const run = (cmd) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')], {
     input: JSON.stringify({ session_id: 's', tool_name: 'Bash', tool_input: { command: cmd } }),
     encoding: 'utf8',
@@ -1562,10 +1562,10 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   // APPROVAL - this session's own, under 8h - and a root that contains the project is dropped.
   const root = fs.mkdtempSync(path.join(TMP, 'projC-'));
   const other = fs.mkdtempSync(path.join(TMP, 'projD-'));
-  const receipt = path.join(root, '.claude', 'docs', 'flow', 'CROSS-WRITE-ALLOW');
+  const receipt = path.join(root, '.alfred', 'docs', 'flow', 'CROSS-WRITE-ALLOW');
   const tp = path.join(root, 'session.jsonl');
   const go = (payload, env = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'guard-cross-project-write.js')],
-    { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.claude/docs', ...env } });
+    { input: JSON.stringify({ transcript_path: tp, ...payload }), encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ALFRED_CODE_DOCS_PATH: '.alfred/docs', ...env } });
   const target = path.join(other, 'src', 'a.ts');
   const denied = go({ tool_name: 'Write', tool_input: { file_path: target } });
   assert.equal(denied.status, 2);
@@ -1856,7 +1856,7 @@ test('guard-read-whole-file: a shell touch names the convention rule the file to
   // the generated docs root and the install's own tree are not governed by markdown-docs.md - its
   // own body says so - so a write that only touches them announces nothing
   const s3 = `m5-${Math.random().toString(36).slice(2)}`;
-  assert.equal(ctxOf(call('echo x > .claude/docs/loops/RUN-STATE.md', s3)), '', 'the generated docs root is not governed');
+  assert.equal(ctxOf(call('echo x > .alfred/docs/loops/RUN-STATE.md', s3)), '', 'the generated docs root is not governed');
   assert.match(ctxOf(call('echo x > docs/guide.md', s3)), /markdown-docs\.md/, 'a project doc still is');
   // the WinForms row is the twin of winforms-conventions.md's paths: the designer file AND the hand-written
   // *Form.cs / *Form.*.cs code-behind (a Designer-only row never named the rule on a MainForm.cs edit, so the
@@ -1903,9 +1903,9 @@ test('guard-read-whole-file: the ungoverned docs root is RESOLVED, not assumed t
   const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
   const sid = () => `md6-${Math.random().toString(36).slice(2)}`;
   assert.equal(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), 'docs')), '', 'a custom docs root is ungoverned');
-  assert.match(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), '.claude/docs')), /markdown-docs\.md/,
+  assert.match(ctxOf(call('tee docs/architecture/ARCHITECTURE.md < in', sid(), '.alfred/docs')), /markdown-docs\.md/,
     'the same path IS governed when it is not the docs root');
-  assert.equal(ctxOf(call('tee .claude/docs/loops/RUN-STATE.md < in', sid(), '.claude/docs')), '', 'the default root still drops');
+  assert.equal(ctxOf(call('tee .alfred/docs/loops/RUN-STATE.md < in', sid(), '.alfred/docs')), '', 'the default root still drops');
   assert.match(ctxOf(call('tee README.md < in', sid(), 'docs')), /markdown-docs\.md/, 'a tracked doc still announces');
 });
 
@@ -2017,7 +2017,7 @@ test('guard-ungated-commit: an ABSOLUTE docs root inside the repo does not fail 
   // authorized. Found by porting this hook to the Cursor twin, where the payload carries no
   // CLAUDE_PROJECT_DIR and an absolute docs root is the natural spelling.
   const dir = scratchRepo();
-  const docs = path.join(dir, '.claude', 'docs');           // absolute, and inside the tree
+  const docs = path.join(dir, '.alfred', 'docs');           // absolute, and inside the tree
   fs.mkdirSync(path.join(docs, 'flow'), { recursive: true });
   const head = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
   fs.writeFileSync(path.join(docs, 'flow', 'COMMIT-GATE'),
@@ -2538,11 +2538,11 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
     fs.writeFileSync(path.join(outside, '.editorconfig'), 'root = true');
     assert.strictEqual(write(path.join(outside, '.editorconfig'), ''), 0, 'outside the project - the cross-project guard owns it');
 
-    at('.claude/docs/flow/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
+    at('.alfred/docs/flow/CONFIG-EDIT-ALLOW', 'eslint.config.js\n');
     assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 0, 'the receipt is honoured');
     assert.strictEqual(edit(ts, '"strict": true', '"strict": false'), 2, 'for the file it names only');
     const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
-    fs.utimesSync(path.join(root, '.claude/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
+    fs.utimesSync(path.join(root, '.alfred/docs/flow/CONFIG-EDIT-ALLOW'), old, old);
     assert.strictEqual(edit(eslint, '[]', '[{ rules: {} }]'), 2, 'a receipt older than 8h is not');
   });
   withProject(root, { ALFRED_CODE_CONFIG_PROTECT: '0' }, () =>
@@ -2579,7 +2579,7 @@ test('guard-config-protection: the denial routes a wanted change through ONE ask
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /Blocked: \.editorconfig already exists/);
   assert.match(r.stderr, /ONE AskUserQuestion/);
-  assert.match(r.stderr, /\.claude\/docs\/flow\/CONFIG-EDIT-ALLOW/);
+  assert.match(r.stderr, /\.alfred\/docs\/flow\/CONFIG-EDIT-ALLOW/);
   // the denial names the mandate it mechanizes, so the next maintainer (and the model) can read why
   assert.match(r.stderr, /alfred-habits-done-gate/);
 });
@@ -2589,7 +2589,7 @@ test('guard-config-protection: a block writes one ledger row naming the hook', (
   fs.writeFileSync(path.join(root, '.editorconfig'), 'root = true');
   withProject(root, {}, () => {
     run('guard-config-protection.js', { session_id: 's1', tool_name: 'Write', cwd: root, tool_input: { file_path: path.join(root, '.editorconfig'), content: '' } });
-    const rows = fs.readFileSync(path.join(root, '.claude/docs/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+    const rows = fs.readFileSync(path.join(root, '.alfred/docs/hook-blocks/s1.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
     assert.strictEqual(rows.length, 1);
     assert.strictEqual(rows[0].hook, 'guard-config-protection.js');
     assert.deepStrictEqual(rows[0].detail, { file: '.editorconfig', why: 'it is a lint / format / analyzer config' });
@@ -2640,7 +2640,7 @@ test('guard-ungated-commit: the staged scan reads what THIS act commits', () => 
 
 test('guard-ungated-commit: no receipt opens the staged scan, and the block names file and line', () => {
   const dir = stagedRepo({ 'n1.txt': forty(), 'n2.txt': forty(), 'n3.txt': forty() });
-  const gate = path.join(dir, '.claude', 'docs', 'flow', 'COMMIT-GATE');
+  const gate = path.join(dir, '.alfred', 'docs', 'flow', 'COMMIT-GATE');
   fs.mkdirSync(path.dirname(gate), { recursive: true });
   fs.writeFileSync(gate, 'WAIVED - "commit it without the review"\n');
   assert.equal(gateIn(dir, 'git commit -m "x"'), 0, 'the waiver opens the gate on a clean non-trivial diff');
@@ -2649,7 +2649,7 @@ test('guard-ungated-commit: no receipt opens the staged scan, and the block name
     { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir });
   assert.equal(r.status, 2, 'the same waiver does not open the scan');
   assert.match(r.stderr, /n4\.ts:2 - a debugger statement/, 'file and line named');
-  const ledger = path.join(dir, '.claude', 'docs', 'hook-blocks', 'scan-sess.jsonl');
+  const ledger = path.join(dir, '.alfred', 'docs', 'hook-blocks', 'scan-sess.jsonl');
   const row = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop());
   assert.deepEqual(row.detail, { branch: 'staged-scan', count: 1 }, 'the block row carries the scan branch');
 });
@@ -2679,7 +2679,7 @@ test('guard-ungated-commit: the staged scan reads at most 2MB of diff, and keeps
 
 test('guard-ungated-commit: a STAGED-SCAN-ALLOW receipt keeps exactly the hits it names, for 8h', () => {
   const dir = stagedRepo({ 'a.spec.ts': "fit('x', () => {});\n", 'b.ts': 'debugger;\n' });
-  const allow = path.join(dir, '.claude', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
   fs.mkdirSync(path.dirname(allow), { recursive: true });
   fs.writeFileSync(allow, 'a.spec.ts:1\n');
   assert.equal(gateIn(dir, 'git commit -m "x"'), 2, 'one hit kept, the other still blocks');
@@ -2726,7 +2726,7 @@ test('guard-stop-contract: a turn that ends on a tool call logs one skip-tool-en
     env: { ...process.env, CLAUDE_PROJECT_DIR: dir },
   });
   assert.equal(r.status, 0);
-  const rows = fs.readFileSync(path.join(dir, '.claude', 'docs', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  const rows = fs.readFileSync(path.join(dir, '.alfred', 'docs', 'hook-blocks', 'tool-end-sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].mode, 'skip-tool-end');
   assert.equal(rows[0].hook, 'guard-stop-contract.js');
@@ -2800,10 +2800,10 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
   // side effect never leaves the folder it owns.
   const root = fs.mkdtempSync(path.join(TMP, 'sid-'));
   const r = runIn('guard-catastrophic-rm.js', { session_id: '../../escaped', tool_name: 'Bash', tool_input: { command: 'rm -rf /' } },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
   assert.equal(r.status, 2);
   assert.ok(!fs.existsSync(path.join(root, 'escaped.jsonl')), 'nothing lands outside hook-blocks');
-  assert.deepStrictEqual(fs.readdirSync(path.join(root, '.claude', 'docs', 'hook-blocks')), ['.._.._escaped.jsonl']);
+  assert.deepStrictEqual(fs.readdirSync(path.join(root, '.alfred', 'docs', 'hook-blocks')), ['.._.._escaped.jsonl']);
   // Every writer and reader spells the name the same way, or the answer-length hook reads a file the
   // stop contract never wrote.
   for (const f of fs.readdirSync(HOOKS).filter((n) => n.endsWith('.js'))) {

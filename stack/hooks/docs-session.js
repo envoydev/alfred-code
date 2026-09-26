@@ -35,7 +35,7 @@ if (require.main === module) {
   if (off) process.exit(0);
 }
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;

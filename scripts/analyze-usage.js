@@ -307,7 +307,8 @@ const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join
   .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
 const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
 const STYLE_INJECT_MARKERS = STYLE_SKILL_NAMES.map((n) => `maintained by the ${n}`);
-const docsPrefixes = ['/.claude/docs/'];
+// The default root, then the one it replaced (2.0.0): a session recorded before the move wrote there.
+const docsPrefixes = ['/.alfred/docs/', '/.claude/docs/'];
 // The same roots, spelled for the BASH route: no leading separator, because a command names the
 // path relative or absolute and the match anchors on a shell boundary instead. `--docs-root` used
 // to reach only the Read/Write route, so a project with a remapped docs root had its heredocs,
@@ -2497,7 +2498,7 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
     .filter(([id]) => id.split('@')[0] === CORE_PLUGIN).map(([, c]) => c && c.options && c.options.hook_profile).find((v) => typeof v === 'string' && v);
   const profile = hookProfile({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: process.env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored || '' });
   const on = String(setting('TURN_CHECK') || '').trim() === '1' || profile === 'strict';
-  const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.claude/docs'), 'hook-blocks');
+  const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.alfred/docs'), 'hook-blocks');
   const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
     .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
   const doneGate = newDoneGate();

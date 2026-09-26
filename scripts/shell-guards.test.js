@@ -58,7 +58,7 @@ function run(file, payload, { cwd, env = {}, args = [] } = {})
 const bashPayload = (command, cwd, tool = 'Bash') => ({ session_id: 'sg', hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command }, cwd });
 const ledgerRows = (dir, session = 'sg') =>
 {
-  const f = path.join(dir, '.claude', 'docs', 'hook-blocks', `${session}.jsonl`);
+  const f = path.join(dir, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`);
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 };
 const hooksOf = (rows) => rows.filter((r) => !r.mode).map((r) => r.hook).sort();
@@ -225,7 +225,7 @@ test('each guard\'s block reaches the combined answer, with its own ledger row',
     const payload = { ...bashPayload(command, dir), session_id: session };
     const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
     assert.strictEqual(alone.status, 2, `${guard} blocks '${command}' on its own: ${alone.stderr}`);
-    fs.rmSync(path.join(dir, '.claude', 'docs'), { recursive: true, force: true });
+    fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
     const both = run(DISPATCH, payload, { cwd: dir, env });
     assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
     assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
@@ -258,7 +258,7 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   const payload = bashPayload('rm -rf ~ && git commit -am "wip"', dir);
   // What the separate hooks do with it: each guard standalone, its ledger cleared after.
   const alone = shell.GUARDS.map((g) => ({ g, ...run(path.join(HOOKS, `${g}.js`), payload, { cwd: dir, env }) })).filter((x) => x.status === 2);
-  fs.rmSync(path.join(dir, '.claude', 'docs'), { recursive: true, force: true });
+  fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
   assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-catastrophic-rm') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
   const out = run(DISPATCH, payload, { cwd: dir, env });
   assert.strictEqual(out.status, 2);
@@ -306,7 +306,7 @@ test('empty or malformed input: every guard fails open, the dispatcher says noth
     const r = spawnSync(process.execPath, [DISPATCH], { input, encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
     assert.deepStrictEqual({ status: r.status, stdout: r.stdout, stderr: r.stderr }, { status: 0, stdout: '', stderr: '' }, `input ${JSON.stringify(input)}`);
   }
-  assert.ok(!fs.existsSync(path.join(dir, '.claude', 'docs', 'hook-blocks')), 'no ledger row');
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'docs', 'hook-blocks')), 'no ledger row');
 });
 
 test('PowerShell is the same shell route', () => {
@@ -344,7 +344,7 @@ test('a repo never set up keeps only the rm, secret and force-push guards, writi
   const rm = run(DISPATCH, bashPayload('rm -rf ~', dir), { cwd: dir, env });
   assert.strictEqual(rm.status, 2, 'a protective guard stays live');
   assert.strictEqual(run(DISPATCH, bashPayload('git commit -am "wip"', dir), { cwd: dir, env }).status, 0, 'the commit gate stands down');
-  assert.ok(!fs.existsSync(path.join(dir, '.claude', 'docs')), 'nothing is written into a repo merely opened');
+  assert.ok(!fs.existsSync(path.join(dir, '.alfred', 'docs')), 'nothing is written into a repo merely opened');
 });
 
 test('hook_profile minimal keeps the protective three inside the dispatcher', () => {

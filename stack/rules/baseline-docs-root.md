@@ -27,7 +27,8 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   `cross-project-tasks/`. Editing an EXISTING first-class repo doc where it already lives (the top-level
   `README.md`, an established ADR home) is not a generated doc and needs no ask.
 - **This install's root: `__DOCS_ROOT__`** - stamped by every install, update and configure run from
-  the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.claude/docs`. Edited
+  the `ALFRED_CODE_DOCS_PATH` env value in `.claude/settings.json`; absent = `.alfred/docs`, outside
+  `.claude/` because Claude Code prompts for every write there and no allow rule lifts it. Edited
   by hand since the last run, the env value wins. Wherever an instruction names a doc as
   `<docs-path>/<name>` - or as legacy shorthand `docs/<name>` - it means this root.
 - To move the docs, change that env value and nothing else - forward slashes on every OS. Existing
@@ -40,10 +41,12 @@ description: House baseline - the generated-docs root. Always-on (no paths), ins
   longer reflects what the run changed - never as a default next step, and never the capture that
   just ran. The user decides, and how a doc is refreshed is the owning capture skill's own contract.
 
-<!-- Operator note: the default root is machine-local (`.claude/*` is gitignored) - nothing under it
-     is committed or survives a fresh clone, so the captures are re-run after a re-clone. A committed
-     root (e.g. docs) shares the generated docs with the team; then track <docs-path>/superpowers/
-     (do not gitignore it). Configuration, not model behaviour, so it is not injected - the
+<!-- Operator note: the root carries its own .gitignore, written by the installer from
+     ALFRED_CODE_DOCS_VERSIONING: under `local` the whole root stays out of git (nothing survives a
+     fresh clone, so the captures are re-run after a re-clone); under `git` the docs are committed and
+     only the hooks' machine state (flow/, hook-blocks/, history/, tools-usage/) stays out. A committed
+     root shares the generated docs with the team; then track <docs-path>/superpowers/ too.
+     Configuration, not model behaviour, so it is not injected - the
      installer's next-steps say the same thing at install time. -->
 
 <!-- Maintainer note: the env value is read as process.env.ALFRED_CODE_DOCS_PATH by the hooks and

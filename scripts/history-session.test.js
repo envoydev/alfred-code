@@ -42,7 +42,7 @@ function run(root, payload, extra, hook = HOOK) {
   const input = typeof payload === 'string' ? payload : JSON.stringify(payload);
   return spawnSync(process.execPath, [hook], { input, encoding: 'utf8', env: env(root, extra), cwd: root });
 }
-const entryFile = (root, session) => path.join(root, '.claude', 'docs', 'history', `${session}.json`);
+const entryFile = (root, session) => path.join(root, '.alfred', 'docs', 'history', `${session}.json`);
 
 test('Stop writes the session entry and prints nothing', () => {
   const root = project();
@@ -88,7 +88,7 @@ test('ALFRED_CODE_HISTORY=0 writes nothing and prints nothing', () => {
     const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { ALFRED_CODE_HISTORY: '0' });
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
-    assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'history')));
   } finally { rmDir(root); }
 });
 
@@ -97,7 +97,7 @@ test('ALFRED_CODE_HOOKS_OFF naming the hook stands it down', () => {
   try {
     const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: '' }, { ALFRED_CODE_HOOKS_OFF: 'history-session' });
     assert.strictEqual(r.status, 0);
-    assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'history')));
   } finally { rmDir(root); }
 });
 
@@ -136,7 +136,7 @@ test('a compact SessionStart in the same session does not duplicate its rulings'
 });
 
 // R54 / Task 16 review M8: a user-scope core runs this hook in every repo the user opens. One that was
-// never set up gets no .claude/docs/ - the prelude stands the hook down before it reads a byte.
+// never set up gets no .alfred/docs/ - the prelude stands the hook down before it reads a byte.
 test('a never-set-up project under a plugin-launched hook: nothing written, nothing printed', () => {
   const root = project();
   try {

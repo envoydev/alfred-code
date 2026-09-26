@@ -42,7 +42,7 @@ if (require.main === module) {
 // CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
 // project whose settings.json has not been migrated yet keeps resolving (the installers rename the
 // key in place on the next install/update).
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));

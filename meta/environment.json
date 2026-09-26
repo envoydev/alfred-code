@@ -4,10 +4,10 @@
   "env": [
     {
       "key": "ALFRED_CODE_DOCS_PATH",
-      "default": ".claude/docs",
+      "default": ".alfred/docs",
       "ask": true,
       "renamed_from": "CLAUDE_DOCS_PATH",
-      "what": "the generated-docs root every capture, loop and hook writes under. Default is machine-local (`.claude/*` is gitignored); a committed forward-slash path like `docs` shares the captured docs with the team. Existing docs never move with it.",
+      "what": "the generated-docs root every capture, loop and hook writes under. Default `.alfred/docs` - outside `.claude/`, where Claude Code prompts for every write and no allow rule lifts it. The root carries its own `.gitignore`, shaped by ALFRED_CODE_DOCS_VERSIONING: `local` keeps it machine-local, `git` commits the docs and keeps only the hooks' machine state out. A committed forward-slash path like `docs` shares the captured docs with the team. Existing docs never move with it.",
       "validate": {
         "type": "relative-path"
       }

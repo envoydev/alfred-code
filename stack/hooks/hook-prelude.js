@@ -29,7 +29,7 @@
 //
 // GATE 4 - a project never set up. A user-scope core enables every hook in EVERY repo the user
 // opens, and a repo nobody ran /alfred-code:setup in carries none of the rules the guards enforce -
-// so a plugin-launched hook there does nothing and writes nothing (no `.claude/docs/` ledger or
+// so a plugin-launched hook there does nothing and writes nothing (no `.alfred/docs/` ledger or
 // history in a repo merely opened: R54). Set up means an install record in the project's `.claude/`,
 // or its git top level's, or - for a linked worktree - the main checkout's: the stamp (2.x, or the
 // 1.x name), or a copied engine (a 1.x global install kept its stamp in the account dir, never its

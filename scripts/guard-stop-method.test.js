@@ -45,7 +45,7 @@ function run(root, payload, extraEnv)
 }
 const ledger = (root) =>
 {
-    const f = path.join(root, '.claude', 'docs', 'hook-blocks', 'sess-1.jsonl');
+    const f = path.join(root, '.alfred', 'docs', 'hook-blocks', 'sess-1.jsonl');
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 };
 
@@ -212,7 +212,7 @@ test('done gate: what does not count as a source edit, or as a claim, writes not
     const probe = (list, text) => gate(root, steps(root, [['prompt', `go ${text}`], ...list]), text);
     assert.strictEqual(probe([['edit', 'src/money.js', 'Error: String to replace not found']], 'Fixed.').row, null, 'a rejected edit changed nothing');
     assert.strictEqual(probe([['edit', 'README.md'], ['edit', 'docs/guide.md']], 'Done - the README is updated.').row, null, 'prose files are no build input');
-    assert.strictEqual(probe([['edit', '.claude/docs/superpowers/plans/cart.md'], ['write', '.claude/docs/flow/COMMIT-GATE']], 'Ready.').row, null, 'the docs root and flow receipts');
+    assert.strictEqual(probe([['edit', '.alfred/docs/superpowers/plans/cart.md'], ['write', '.alfred/docs/flow/COMMIT-GATE']], 'Ready.').row, null, 'the docs root and flow receipts');
     assert.strictEqual(probe([['edit', path.join(os.tmpdir(), 'scratch-probe.js')]], 'Done.').row, null, 'a scratch file outside the project');
     assert.strictEqual(probe([['edit', 'src/money.js']], 'The fix is in, but it is not done until the suite runs - that is next.').row, null, 'a negated claim');
     assert.strictEqual(probe([['edit', 'src/money.js']], 'Fixed toCents to strip the comma. Not run - I could not run the tests here, no node on this machine.').row, null, 'an honest could-not-run');
@@ -391,7 +391,7 @@ const post = (root, event, tool, command, extra, extraEnv) =>
     run(root, { hook_event_name: event, tool_name: tool, tool_input: { command }, tool_use_id: `toolu_${++tu}`, ...(extra || {}) }, extraEnv);
 const rcProbes = (root) =>
 {
-    const dir = path.join(root, '.claude', 'docs', 'hook-blocks');
+    const dir = path.join(root, '.alfred', 'docs', 'hook-blocks');
     if (!fs.existsSync(dir)) return [];
     return fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'))
         .flatMap((f) => fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean))

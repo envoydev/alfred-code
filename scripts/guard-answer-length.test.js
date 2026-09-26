@@ -236,7 +236,7 @@ test('an unreadable transcript still gets the em-dash check - only the length ha
 // turn's, and the em-dash denial told the model to obey a block it never saw this turn.
 test('a stop-contract row older than this turn does not make the em-dash denial yield', () => {
     const sid = 'r5';
-    const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.claude', 'docs', 'hook-blocks');
+    const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks');
     fs.mkdirSync(ledger, { recursive: true });
     const prior = new Date(Date.now() - 60 * 1000).toISOString();
     fs.writeFileSync(path.join(ledger, `${sid}.jsonl`), JSON.stringify({ ts: prior, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: x' }) + '\n');
@@ -260,7 +260,7 @@ test('a stop-contract row older than this turn does not make the em-dash denial 
 // writes one `mode: probe` / `kind: correction` row; ALFRED_CODE_CORRECTION_NUDGE=inject also hands the
 // save line back, `0` switches it off.
 const ledgerRows = (sid) => {
-    const f = path.join(process.env.CLAUDE_PROJECT_DIR, '.claude', 'docs', 'hook-blocks', `${sid}.jsonl`);
+    const f = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
     return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 };
 const correctionRows = (sid) => ledgerRows(sid).filter((r) => r.mode === 'probe' && r.kind === 'correction');

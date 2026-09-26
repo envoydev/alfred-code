@@ -19,7 +19,7 @@ function envOf(env, suffix)
     return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
 }
 
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const historyDir = (root) => path.resolve(root, docsRootEnv(), 'history');
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)

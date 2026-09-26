@@ -41,7 +41,7 @@ if (require.main === module) {
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
 // CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
 // project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 const sw = String(envOf(process.env, 'INSTRUMENT') || '').toLowerCase();
 if (sw !== '1' && sw !== 'true') process.exit(0); // off unless explicitly switched on ("0"/"false"/unset = no-op)

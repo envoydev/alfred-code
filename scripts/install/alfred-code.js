@@ -666,7 +666,16 @@ function runLayers(ctx)
     seeds.seedAccountKeys({ configDir: ctx.configDir, env: ctx.env, log: ctx.log, note: ctx.note });
     installHooksAndRules(ctx);
     importMemory(ctx);
-    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath: copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope), log: ctx.log });
+    const docsPath = copy.resolveDocsRoot(ctx.projectRoot, ctx.args.scope);
+    docs.migrateDocsDomains({ projectRoot: ctx.projectRoot, docsPath, log: ctx.log });
+    // The root states its own versioning to git (docs.ensureDocsIgnore) - after the settings pass, so
+    // it reads the decision this run just wrote.
+    try
+    {
+        const mode = copy.resolveDocsVersioning(ctx.projectRoot, ctx.args.scope) || docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath });
+        docs.ensureDocsIgnore({ projectRoot: ctx.projectRoot, docsPath, mode, log: ctx.log });
+    }
+    catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
     if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
     serena.seedProject({

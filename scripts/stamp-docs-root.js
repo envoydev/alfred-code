@@ -24,7 +24,7 @@ const rt = require('./install/runtime.js');  // R105: every external command thr
 // yet (and, for DOCS_PATH, the pre-0.2.43 CLAUDE_DOCS_PATH).
 const { envOf } = require('../stack/hooks/hook-prelude.js');
 
-const DEFAULT_ROOT = '.claude/docs';
+const DEFAULT_ROOT = '.alfred/docs';
 const STAMP_RE = /(This install's root: `)[^`]*(`)/;
 
 function resolveDocsRoot(settingsFile)

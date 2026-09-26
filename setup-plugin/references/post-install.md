@@ -61,11 +61,13 @@ touches no committed file). The lines, minus anything the project already covers
 .mcp.json
 ```
 
-- `.claude/` - the install, the stamp, and the default docs root (`.claude/docs`) are all
-  machine-local. To COMMIT `.claude/CLAUDE.md` while ignoring the rest, the pair is
-  `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include. That ignore
-  keeps the default docs root out of git, so docs versioning should read `local`: an install that ran
-  BEFORE the ignore existed seeded `git` (the docs root was not ignored then) - switch it once with
+- `.claude/` - the install and the stamp are machine-local. To COMMIT `.claude/CLAUDE.md` while
+  ignoring the rest, the pair is `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks
+  the re-include.
+- `.alfred/docs/` - the default docs root, outside `.claude/` because Claude Code prompts for every
+  write there. It carries its own `.gitignore`, written from `ALFRED_CODE_DOCS_VERSIONING`: `local`
+  keeps the whole root out of git, `git` (a fresh project's default) commits the docs and keeps only
+  the hooks' machine state out. To keep the docs machine-local, switch it once with
   `/alfred-code:update --docs-versioning local`.
 - `.serena/` - the per-project LSP cache and the navigation server's local memories (only when the navigation server is
   installed). Never commit it.
