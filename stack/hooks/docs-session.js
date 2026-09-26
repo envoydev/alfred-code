@@ -25,11 +25,14 @@ const path = require('path');
 // of crashing.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    if (prelude.standDown('docs-session')) process.exit(0);
+    off = prelude.standDown('docs-session');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 
 const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.claude/docs';

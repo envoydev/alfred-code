@@ -35,11 +35,14 @@ const { execSync, execFileSync } = require('child_process');
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    if (prelude.standDown('guard-ungated-commit')) process.exit(0);
+    off = prelude.standDown('guard-ungated-commit');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 let payload;
 try {

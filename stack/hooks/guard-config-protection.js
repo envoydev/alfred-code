@@ -20,11 +20,14 @@ const path = require('path');
 // way.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    if (prelude.standDown('guard-config-protection')) process.exit(0);
+    off = prelude.standDown('guard-config-protection');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
 

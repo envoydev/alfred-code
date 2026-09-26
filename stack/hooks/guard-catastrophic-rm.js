@@ -39,12 +39,15 @@ let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 // R86: a repo never set up keeps this guard live but gets no block row (R54) - false fails open to logging.
 let unsetRepo = false;
 if (require.main === module) {
+  let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
-    if (prelude.standDown('guard-catastrophic-rm')) process.exit(0);
+    off = prelude.standDown('guard-catastrophic-rm');
     unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
 // CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
