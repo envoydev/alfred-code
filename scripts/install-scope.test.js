@@ -259,16 +259,31 @@ test('install-scope: at local scope a memory import that actually runs lands aut
 {
     const SEL = 'skill csharp\nrule markdown-docs\nrule baseline-memory\nmcp memory\n';
     // No run imports before /alfred-code:init marks the stamp (Task 18a I1), so the install is marked
-    // initialised by hand and the UPDATE after it is the run whose import opens.
+    // initialised by hand and the UPDATE after it is the run whose import opens. A project with no
+    // notes is switched off by the install itself (pilot 3), so the key is taken back out after it -
+    // the shape of an install made before that - to keep the update's import route under test.
     const { markInitialised } = require('./install/stamp.js');
-    const { out, result } = seedRun(['install', 'update'], SEL, {
+    const localOf = (repo) => path.join(repo, '.claude', 'settings.local.json');
+    const { outs, out, result, steps } = seedRun(['install', 'update'], SEL, {
         args: ['--scope', 'local', '--memory-level', 'global'],
-        each: (repo, i) => { if (i === 0) markInitialised(path.join(repo, '.claude')); return null; },
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const installed = JSON.parse(fs.readFileSync(localOf(repo), 'utf8'));
+            const byInstall = installed.autoMemoryEnabled;
+            delete installed.autoMemoryEnabled;
+            fs.writeFileSync(localOf(repo), `${JSON.stringify(installed, null, 2)}\n`);
+            markInitialised(path.join(repo, '.claude'));
+            return { byInstall, sharedAfterInstall: exists(repo, '.claude', 'settings.json') };
+        },
         inspect: (repo) => ({
             hasShared: exists(repo, '.claude', 'settings.json'),
             local: exists(repo, '.claude', 'settings.local.json') ? json(repo, path.join('.claude', 'settings.local.json')) : null,
         }),
     });
+    assert.match(outs[0], /settings\.local\.json: autoMemoryEnabled set to false/, 'the install with no notes switched it off in the local file');
+    assert.strictEqual(steps[0].byInstall, false, '... and the key was there before the test took it out');
+    assert.strictEqual(steps[0].sharedAfterInstall, false, 'the install never created the shared settings.json');
     assert.match(out, /settings\.local\.json: autoMemoryEnabled set to false/, out);
     assert.strictEqual(result.hasShared, false, 'the switch-off must not create the shared settings.json');
     assert.strictEqual(result.local.autoMemoryEnabled, false);
