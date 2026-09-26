@@ -330,7 +330,7 @@ otherwise. A user-scope core move (this run's own, not a prior one) logs
 until each runs /alfred-code:update` - paste it and name that as a follow-up for the user's other
 projects. Playwright keeps its browsers the same
 way: every browser the stamp's `playwright-browsers:` names is updated in place, never installed over (a legacy single `playwright` server
-migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
+migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
 comes back as the stamp's `playwright-enabled:` last left it; a disabled browser the stamp does not name stays parked.
 
@@ -352,7 +352,7 @@ moved folder switched on as a domain (`docs migration` / `docs domain:` - report
 memory registration line and the importer's own `memory import:` line or error text (present whenever
 `--memory-level` was passed, the level changed, or an install gained the memory MCP for the first
 time this run - now the fast path's own default outcome whenever it was absent, not a special case),
-the credential presence lines, the serena re-index hint, the 1.x-global-install scope line, the
+the credential presence lines, the navigation-server re-index hint, the 1.x-global-install scope line, the
 user-scope core-move line, the pruned `context7-local`'s `/mcp enable context7` line, and the
 claude-hud 'no status line yet' line. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
@@ -538,10 +538,10 @@ two-release-old policy with nothing to notice it (measured: one project's rule s
 fresh-session gate as '40% of the context window, 150k floor', a spelling retired at 0.2.70) - that
 is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-confirmed grep pair
 (measured: re-confirmed 3 extra times, ~275k tokens, against an already-conclusive first read).
-When serena is installed, also name the one-off re-index as a next step whenever this run
+When the navigation server is installed, also name the one-off re-index as a next step whenever this run
 re-seeded `.serena/project.yml` - an install predating the seeding has no `ignored_paths`, so its
-cache was built over serena's own language-server directory: `SERENA_HOME=.serena/home uvx --python
-3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - serena hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+cache was built over the navigation server's own language-server directory: `SERENA_HOME=.serena/home uvx --python
+3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`, which reads that flag from the skill's own
 frontmatter. Do not lean on the harness for it: measured both ways, one update run's call was
 refused and another slipped through. The report line is the mechanism.
@@ -549,7 +549,7 @@ refused and another slipped through. The report line is the mechanism.
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
-serena re-index, a credential to rotate or set by
+Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected

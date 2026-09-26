@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { buildEntries, coreEntry, applyToMarketplace, retiredMarketplaceEntries, aliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
+const { buildEntries, coreEntry, applyToMarketplace, retiredMarketplaceEntries, aliasEntries, mcpAliasEntries, hooksBlock, parseHookWirings, mergeHooks, FOLDED_ENTRIES } = require('./build-marketplace.js');
 const { LEGACY } = require('./install/brand.js');
 const { CORE_DEP_PLUGINS } = require('./install/plugins.js');
 const { LOCKED } = require('./install/mcp.js');
@@ -88,14 +88,14 @@ test('applying to a marketplace rewrites the core and leaves what the generator 
         metadata: { version: '9.9.9' },
         plugins: [
             { name: 'alfred-code', source: './setup-plugin', description: 'the pre-Phase-3 entry', category: 'development' },
-            { name: 'serena', source: './', description: 'generated elsewhere', mcpServers: {} },
+            { name: 'navigation', source: './', description: 'generated elsewhere', mcpServers: {} },
         ],
     };
     const after = applyToMarketplace(JSON.parse(JSON.stringify(before)), entries);
     const core = after.plugins.find(p => p.name === 'alfred-code');
     assert.strictEqual(core.source, './', 'the core is re-sourced to the shared root');
     assert.ok(Array.isArray(core.commands) && core.commands.length, 'and carries its commands now');
-    const other = after.plugins.find(p => p.name === 'serena');
+    const other = after.plugins.find(p => p.name === 'navigation');
     assert.strictEqual(other.description, 'generated elsewhere', 'an entry this generator does not own is untouched');
     assert.strictEqual(after.plugins.length, 1 + entries.length, 'the other entry plus every generated entry');
 });
@@ -190,10 +190,12 @@ test('every shipped entry reaches the core through its dependencies, with no cyc
     // beside the core on every run, and a plugin that depends on nothing can never be disabled at
     // load by a missing one. Everything else must reach the core, or enabling it would not enable
     // the baseline. The two 1.x aliases are the core under its old name and an empty id, so the old
-    // core's alias counts as the core for a retired entry, whose frozen dependency still names it.
+    // core's alias counts as the core for a retired entry, whose frozen dependency still names it. A
+    // renamed locked server's retired id carries its successor's shape, so it depends on nothing either.
+    const lockedAliases = mcpAliasEntries().filter((a) => !a.dependencies).map((a) => a.name);
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name)) continue;
+        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name) || lockedAliases.includes(e.name)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -285,7 +287,9 @@ test('the live marketplace carries no renames key, no hooks entry, and both 1.x 
     assert.strictEqual(shippedBy['alfred-code-hooks'], undefined, 'the hooks ride the core');
     for (const alias of aliasEntries())
         assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
-    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 22, '20 retired per-stack entries plus the two aliases');
+    assert.strictEqual(SHIPPED.plugins.filter((p) => /^RETIRED/.test(p.description || '')).length, 28, '20 retired per-stack entries, the two aliases and the six renamed MCP ids');
+    for (const alias of mcpAliasEntries())
+        assert.deepStrictEqual(shippedBy[alias.name], alias, `${alias.name} is listed exactly as generated`);
 });
 
 test('--write-marketplace drops a renames key and the hooks entry, and lists both aliases', () => {

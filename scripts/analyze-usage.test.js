@@ -1254,7 +1254,7 @@ function writeInventory(root) {
   fs.writeFileSync(path.join(claude, 'rules', 'demo-conventions.md'), '---\npaths: ["**/*.cs"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'shell-only-conventions.md'), '---\npaths: ["**/*.sql"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'other-conventions.md'), '---\npaths: ["**/*.{ts,tsx}"]\n---\n\nbody\n');
-  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {} } }));
+  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {} } }));
   const pluginsFile = path.join(root, 'installed_plugins.json');
   fs.writeFileSync(pluginsFile, JSON.stringify({ version: 2, plugins: { 'demo-plugin@market': [{ scope: 'user' }], 'typescript-lsp@market': [{ scope: 'user' }], 'hooks-only-plugin@market': [{ scope: 'user' }] } }));
   return { claude, pluginsFile };
@@ -1286,7 +1286,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_serena_serena__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Foo' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
@@ -1337,8 +1337,8 @@ test('inventory vs use: every layer scores what was used, HOW it was observed, a
   assert.strictEqual(invRow(inventory.plugins, 'hooks-only-plugin').used, 'no');
 
   // --- MCP
-  assert.deepStrictEqual(invRow(inventory.mcps, 'serena').how, ['calls x1']);
-  assert.strictEqual(invRow(inventory.mcps, 'context7').used, 'no');
+  assert.deepStrictEqual(invRow(inventory.mcps, 'navigation').how, ['calls x1']);
+  assert.strictEqual(invRow(inventory.mcps, 'documentation').used, 'no');
   assert.match(inventory.source.skills_agents_rules, /^project /);
   assert.strictEqual(inventory.source.sessions, 1);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1743,7 +1743,7 @@ test('a token past the label cut is still masked - the mask runs before the slic
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
-const SERENA = (tool) => `mcp__plugin_serena_serena__${tool}`;
+const SERENA = (tool) => `mcp__plugin_navigation_navigation__${tool}`;
 const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
 function navTranscript(file, calls, results = {}) {
   let body = '';
@@ -1975,20 +1975,20 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
   //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
   //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
-  //       playwright-chrome browser_click: the user declined -> an answer, not a failure
-  // seat: serena find_symbol ERROR | playwright-firefox browser_navigate ok
+  //       browser-chrome browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | browser-firefox browser_navigate ok
   // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
   const mcpName = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
   navTranscript(file, [
-    navCall('e1', mcpName('serena', 'find_symbol'), { name_path: 'A' }),
-    navCall('e2', mcpName('serena', 'find_symbol'), { name_path: 'B' }),
-    navCall('e3', mcpName('serena', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
-    navCall('e4', mcpName('context7', 'query-docs'), { query: 'x' }),
-    navCall('e5', mcpName('context7', 'resolve-library-id'), { libraryName: 'y' }),
+    navCall('e1', mcpName('navigation', 'find_symbol'), { name_path: 'A' }),
+    navCall('e2', mcpName('navigation', 'find_symbol'), { name_path: 'B' }),
+    navCall('e3', mcpName('navigation', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
+    navCall('e4', mcpName('documentation', 'query-docs'), { query: 'x' }),
+    navCall('e5', mcpName('documentation', 'resolve-library-id'), { libraryName: 'y' }),
     navCall('e6', mcpName('memory', 'memory_search'), {}),
-    navCall('e7', mcpName('playwright-chrome', 'browser_click'), { element: 'OK' }),
+    navCall('e7', mcpName('browser-chrome', 'browser_click'), { element: 'OK' }),
   ], {
     e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
     e4: { text: 'MCP error -32001: Request timed out', error: true },
@@ -1999,21 +1999,21 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   const sub = path.join(dir, 'subagents');
   fs.mkdirSync(sub);
   navTranscript(path.join(sub, 'agent-s1.jsonl'), [
-    navCall('f1', mcpName('serena', 'find_symbol'), { name_path: 'C' }),
-    navCall('f2', mcpName('playwright-firefox', 'browser_navigate'), { query: 'z' }),
+    navCall('f1', mcpName('navigation', 'find_symbol'), { name_path: 'C' }),
+    navCall('f2', mcpName('browser-firefox', 'browser_navigate'), { query: 'z' }),
   ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
   const { main, agents } = run([file]);
-  assert.strictEqual(main.mcp.serena.errors, 1);
-  assert.strictEqual(main.mcp.context7.errors, 1);
-  assert.strictEqual(main.mcp.context7.rejected, 1, 'a guard denial is a rejection, not a server failure');
+  assert.strictEqual(main.mcp.navigation.errors, 1);
+  assert.strictEqual(main.mcp.documentation.errors, 1);
+  assert.strictEqual(main.mcp.documentation.rejected, 1, 'a guard denial is a rejection, not a server failure');
   assert.strictEqual(main.mcp.memory.errors, 0);
   assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
-  assert.strictEqual(main.mcp['playwright-chrome'].errors, 0, 'a decline is an answer');
-  assert.strictEqual(agents[0].stats.mcp.serena.errors, 1);
+  assert.strictEqual(main.mcp['browser-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(agents[0].stats.mcp.navigation.errors, 1);
   const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
-  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: serena 2\/4, context7 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
+  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: navigation 2\/4, documentation 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
   const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
-  assert.match(md, /\| serena \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
+  assert.match(md, /\| navigation \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
   assert.match(md, /\| MCP failures \| 3 of 9 MCP call\(s\)/);
   // per session, in the rollup
   const roll = run([dir]);

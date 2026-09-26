@@ -48,8 +48,13 @@ function loadManifest(sourceDir)
         // What a release retired - pruned from a project that still carries it.
         retired: { skills: [], agents: [], rules: [], hooks: [], mcps: [], plugins: [], ...(raw.retired || {}) },
         // What a release RENAMED, old name -> new (a seat by its bare name): the one table update
-        // carries a pick, a seat deny and a selection line across. Each old name is retired too.
-        renamed: { skills: { ...((raw.renamed || {}).skills || {}) }, agents: { ...((raw.renamed || {}).agents || {}) } },
+        // carries a pick, a seat deny and a selection line across. Each old skill or seat is retired
+        // too; an MCP name (2.0.0: the role names) is its plugin and server alike, an engine by prefix.
+        renamed: {
+            skills: { ...((raw.renamed || {}).skills || {}) },
+            agents: { ...((raw.renamed || {}).agents || {}) },
+            mcps: { ...((raw.renamed || {}).mcps || {}) },
+        },
         rows: raw,
     };
 }

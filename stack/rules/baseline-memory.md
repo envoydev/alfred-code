@@ -19,7 +19,7 @@ documented facts.
   preference true everywhere carries none.
 - An agent saves only a lesson worth keeping past its own task - a build quirk, a fix that worked, a
   trap - typed `learning` (lesson), tagged `agent:<agent-name>` and the same project tag. Task/handoff
-  notes go to serena's memory, never here.
+  notes go to the navigation server's memory, never here.
 
 ## Before you ask or read
 

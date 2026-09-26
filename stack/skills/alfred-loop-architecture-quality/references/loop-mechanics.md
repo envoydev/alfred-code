@@ -14,7 +14,7 @@ Run a lens sweep instead of re-capturing when the Must-fix list is empty, or whe
 
 ## Seat brief shapes - step 2
 
-- **small-tier implementer brief** - the file/symbol, the smallest correct change, the check that proves it, and `memory: none`: a scoped fix has no serena hand-off. A brief that does hand a note names it literally, read side included (memory hygiene: `references/domain-trio-protocol.md`) - an un-briefed seat writes unrequested notes and fans out over the whole memory store.
+- **small-tier implementer brief** - the file/symbol, the smallest correct change, the check that proves it, and `memory: none`: a scoped fix has no navigation-server hand-off. A brief that does hand a note names it literally, read side included (memory hygiene: `references/domain-trio-protocol.md`) - an un-briefed seat writes unrequested notes and fans out over the whole memory store.
 - **substantial-tier designer brief** - the weakness, its assessment entry (strength tensions included) and the remediation as the requirement; the designer returns the decomposition, the body's step 2 gates and approves it before any implementer runs.
 - **lens-sweep analyzer brief** - ONE lens, the areas to read, the RELEVANT map sections pasted (see above).
 

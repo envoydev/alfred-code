@@ -8,7 +8,7 @@
 //
 // Four rules earned the hard way, each one a bug that shipped:
 //
-//   - R7, THE LOCKED THREE. serena, context7 and memory are plugins the installer puts beside the
+//   - R7, THE LOCKED THREE. navigation, documentation and memory are plugins the installer puts beside the
 //     core whenever the core is enabled at all - which is whenever ANY plugin route is on (not
 //     dependencies: a missing one would disable the core at load). Registering them as well
 //     double-loads them. They come back to `.mcp.json` only on the FULL copy route, where the core
@@ -28,9 +28,11 @@ const { isDeepStrictEqual } = require('node:util');
 const { entryHash } = require('./stamp.js');
 
 // The three that can never be dropped - see R7 above.
-const LOCKED = ['serena', 'context7', 'memory'];
+const LOCKED = ['navigation', 'documentation', 'memory'];
 const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
-const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`)];
+// Every name the browser server was registered under: the 1.x single `playwright`, and one
+// `browser-<engine>` per engine.
+const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `browser-${e}`)];
 
 const isLocked = (name) => LOCKED.includes(name);
 
@@ -52,7 +54,7 @@ function retiredMcps({ routes, catalog = [], authored = [] })
         return out;
     }
     for (const entry of catalog) out.push(typeof entry === 'string' ? entry.split('|')[0] : entry.name);
-    out.push(...PW_ENGINES.map((e) => `playwright-${e}`));
+    out.push(...PW_ENGINES.map((e) => `browser-${e}`));
     return out;
 }
 
@@ -264,7 +266,7 @@ function verifyUser({ expects = [], scope, getShape, reregister, owned = () => t
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
 // which have no extras suffix to sit next to - each row names its own spelling.
-const PIN_ROWS = { playwright: ['PW_PIN', '@<v>'], serena: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'] };
+const PIN_ROWS = { browser: ['PW_PIN', '@<v>'], navigation: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'] };
 
 function resolvePins({ pins, log = () => {} })
 {
@@ -310,15 +312,15 @@ function playwrightKept({ browsers = [], registered = [] })
 
 function expandPlaywright({ mcps = [], browsers = [], registered = [] })
 {
-    const has = mcps.some((e) => String(e).split('|')[0] === 'playwright');
+    const has = mcps.some((e) => String(e).split('|')[0] === 'browser');
     if (!has) return { mcps: [...mcps], browsers: [] };
     const kept = playwrightKept({ browsers, registered });
     const out = [];
     for (const entry of mcps)
     {
         const [name, args] = [String(entry).split('|')[0], String(entry).slice(String(entry).indexOf('|') + 1)];
-        if (name !== 'playwright') { out.push(entry); continue; }
-        for (const engine of kept) out.push(`playwright-${engine}|${pwArgsFor(args, engine)}`);
+        if (name !== 'browser') { out.push(entry); continue; }
+        for (const engine of kept) out.push(`browser-${engine}|${pwArgsFor(args, engine)}`);
     }
     return { mcps: out, browsers: kept };
 }
@@ -370,7 +372,7 @@ function playwrightLive({ kept = [], prior = {}, live = () => undefined })
 // run did. The stamp still records each as installed-off, so a later enable answer registers it.
 function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = [], apply = false, registered = [] })
 {
-    const name = (e) => `playwright-${e}`;
+    const name = (e) => `browser-${e}`;
     const gone = PW_SERVERS.filter((n) => routes.mcps || !kept.map(name).includes(n));
     const off = routes.mcps ? [] : kept.filter((e) => !enabled.includes(e));
     if (routes.mcps) return { disable: [], enable: gone, off, unregistered: [] };
@@ -389,7 +391,7 @@ function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = []
 function mcpjsonTrusted({ routes = {}, scope = 'project', mcps = [], off = [] })
 {
     if (routes.mcps || scope !== 'project') return [];
-    const offNames = off.map((e) => `playwright-${e}`);
+    const offNames = off.map((e) => `browser-${e}`);
     return bareNamedMcps({ routes, mcps }).filter((n) => !offNames.includes(n));
 }
 
@@ -400,7 +402,7 @@ function playwrightDrop({ routes, browsers = [] })
 {
     if (routes.mcps) return [];
     if (!browsers.length) return [];
-    const keep = new Set(browsers.map((b) => `playwright-${b}`));
+    const keep = new Set(browsers.map((b) => `browser-${b}`));
     return PW_SERVERS.filter((name) => !keep.has(name));
 }
 
@@ -451,7 +453,7 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 
 // C10 (R136 q): the scope the copy route registers at. The run's own, except at user scope on the FULL
 // copy route: there the locked three went to `mcp add --scope user`, which reaches every project on the
-// account - another project's serena and memory ran twice beside its plugins and its context7 tools
+// account - another project's navigation and memory servers ran twice beside its plugins and its documentation tools
 // turned bare. Every server that route registers goes to THIS project's .mcp.json instead.
 const registrationScope = (routes, scope) => (scope === 'user' && !corePluginOn(routes) ? 'project' : scope);
 
@@ -498,7 +500,7 @@ function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows 
         const name = text.split('|')[0];
         const id = identityOf(wantFor(expectShape({ name, args: text.slice(text.indexOf('|') + 1), remotes, tokens })));
         add(name, id);
-        if (name === 'playwright') for (const n of PW_SERVERS) add(n, id);
+        if (name === 'browser') for (const n of PW_SERVERS) add(n, id);
     }
     add('context7', 'stdio:@upstash/context7-mcp');
     for (const row of retiredRows)
@@ -575,13 +577,13 @@ function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
 // What takes a plugin-carried server's place. Claude Code connects to a server ONCE, from the highest
 // source - local, project, user, then plugins - and matches a PLUGIN server against those three by
 // ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
-// session's init row: a user- or project-scope registration of the context7 url, under `context7` or
-// any other name, left the context7 plugin out of the session, so every `mcp__plugin_context7_context7__`
+// session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
+// any other name, left the documentation plugin out of the session, so every `mcp__plugin_documentation_documentation__`
 // spelling the stack ships (its tool grants, baseline-quality-gates' ToolSearch line) resolved nothing.
 // A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
 // same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
 // registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
-const PLUGIN_ENDPOINTS = { context7: () => `http:${CONTEXT7_REMOTE.url}` };
+const PLUGIN_ENDPOINTS = { documentation: () => `http:${CONTEXT7_REMOTE.url}` };
 function shadowingRegistrations({ plugins = [], scopes = {} })
 {
     const rows = [];
@@ -610,11 +612,11 @@ function ensurePlaywrightIgnore({ projectRoot, engines = [], log = () => {} })
     if (fs.existsSync(ignore)) return false;
     fs.mkdirSync(path.dirname(ignore), { recursive: true });
     fs.writeFileSync(ignore, '*\n');
-    log('  playwright: .playwright/.gitignore written - the browser profiles hold session cookies and are never committed');
+    log('  browser: .playwright/.gitignore written - the browser profiles hold session cookies and are never committed');
     return true;
 }
 
-// The hosted context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the context7
+// The hosted Context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the documentation
 // plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
 // where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
 const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };

@@ -21,16 +21,16 @@ Before you claim your own change done, fixed, passing, works or ready - the FIRS
 ### Claims about the outside world
 
 A green build proves the code COMPILES, never that the API it calls is current: any claim about a
-package, a version floor, an API shape, a config key or a deprecation is checked against `context7`
-(the docs-lookup MCP - this rule locks it into every install) at the moment you write it - the docs
+package, a version floor, an API shape, a config key or a deprecation is checked against the `documentation` server
+(Context7, the docs-lookup MCP - this rule locks it into every install) at the moment you write it - the docs
 are the authority, recall is not, and a wrong version-coupled claim ships silently because the
 compiler has no opinion about it. Prefer the durable policy plus a fetch-at-use pointer over a
 pinned number, so the artifact keeps the judgment and the drifting fact is fetched live. Use the
 REGISTERED server, not a shell stand-in: a `npx`/`curl` at a registry answers a different, narrower
 question (a version number, not the API shape) and leaves the server that was installed for this
 unused. Its tools arrive DEFERRED - the names exist, the schemas do not - so the first use is two
-calls, not one: `ToolSearch select:mcp__plugin_context7_context7__resolve-library-id,mcp__plugin_context7_context7__query-docs`,
-then the query. context7 unreachable: say the claim is unverified rather than asserting it.
+calls, not one: `ToolSearch select:mcp__plugin_documentation_documentation__resolve-library-id,mcp__plugin_documentation_documentation__query-docs`,
+then the query. The documentation server unreachable: say the claim is unverified rather than asserting it.
 
 ### Partial work
 

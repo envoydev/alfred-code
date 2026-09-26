@@ -5,7 +5,7 @@ description: "Load when authoring or reviewing a Dockerfile, a compose file, a w
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
-For any action, image, or tool flag not pinned down here, resolve it with the `context7` MCP rather than memory.
+For any action, image, or tool flag not pinned down here, resolve it with the `documentation` MCP rather than memory.
 
 The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with whichever of these the project installed - the skill covering local cloud-native orchestration, the one covering the .NET migration workflow, and the ones covering application- and data-layer hardening (crypto primitives are a fourth). With none of them present, the rules here are the whole guidance and any check they would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 

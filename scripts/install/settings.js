@@ -588,7 +588,7 @@ function writeSettings(opts)
     if (mcpjsonDisable.length || mcpjsonEnable.length)
     {
         const had = data.disabledMcpjsonServers;
-        if (had !== undefined && !Array.isArray(had)) note(`${label}: disabledMcpjsonServers is not a list - left as it is, and no playwright engine is switched off through it`);
+        if (had !== undefined && !Array.isArray(had)) note(`${label}: disabledMcpjsonServers is not a list - left as it is, and no browser engine is switched off through it`);
         else
         {
             const off = had || [];

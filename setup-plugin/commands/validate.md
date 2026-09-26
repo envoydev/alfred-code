@@ -95,8 +95,8 @@ node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --sc
 ```
 
 `$TMP/installed.json` is the `--installed` input for the walk: `{rules, agents, skills, hooks, mcps,
-plugins, plugins_disabled, answered}` in catalog names (the playwright engines folded onto
-`playwright`). **Each plugin carries its SCOPE** (`{name,scope}`), because an uninstall is
+plugins, plugins_disabled, answered}` in catalog names (the browser engines folded onto
+`browser`). **Each plugin carries its SCOPE** (`{name,scope}`), because an uninstall is
 scope-addressed: a removal ask naming only the plugin lets the user consent to a project-local drop
 and get an account-wide one, and the wrong `--scope` fails with `not installed in project scope`
 (measured: 8 messages and 1.2M cache-read spent rediscovering the scope the listing had already
@@ -281,8 +281,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
   `installed but disabled for this project` - and its accept action is `claude plugin enable
   <name>`, never an install and never an uninstall. A DISABLED plugin the user leaves alone is a
   deliberate choice and is not re-raised in the close.
-- **`memory` joins `serena` and `context7`** as an always-required MCP (`baseline-memory.md` locks
-  it in the same way `baseline-navigation.md` locks serena) - MISSING when the project carries no
+- **`memory` joins `navigation` and `documentation`** as an always-required MCP (`baseline-memory.md` locks
+  it in the same way `baseline-navigation.md` locks the navigation server) - MISSING when the project carries no
   registration at all, never REDUNDANT: no stack owns it, so it belongs to every install regardless
   of what is detected. Whenever `memory` IS registered - shown in this table or already installed -
   read its level with `node .claude/hooks/memory.js level` (the project's own copy; fall back to
@@ -392,8 +392,8 @@ turn polling for it. Five inputs, five gates:
    check. No surfaced trail, no proposal - 'the project might grow into it' passes no gate.
 4. **Registered MCP servers the project never calls.** The mechanical passes reconcile a server
    against the project's FRAMEWORKS, which is why 14 validate runs across 6 projects never caught
-   a browser-extension project carrying `chrome-devtools` AND `playwright` and calling neither
-   across 17 sessions, or a headless .NET backend carrying `playwright` (24 tool schemas) and
+   a browser-extension project carrying `chrome-devtools` AND `browser` and calling neither
+   across 17 sessions, or a headless .NET backend carrying `browser` (24 tool schemas) and
    `sentry` (8). A registered server is not free: its schemas are injected into every session and
    every subagent. So judge each one the project did not prove:
    - **Measured first, where a measurement exists.** `ls "<docs-path>/tools-usage"/*.jsonl` - the
@@ -405,7 +405,7 @@ turn polling for it. Five inputs, five gates:
      for a run to measure)` - and fall back to the same corroboration gate 1 uses: the evidence
      scan's verdict for that server plus bounded NAMED greps for its domain markers. Never propose
      a drop on absence of a ledger alone.
-   - The two locked servers (`serena`, `context7`) are never proposed - an always-on rule names
+   - The two locked servers (`navigation`, `documentation`) are never proposed - an always-on rule names
      them, so they are closure-held. Everything else is in scope.
 
 5. **Functional overlap among kept items.** The candidates are the tool's `overlap:` lines
@@ -431,7 +431,7 @@ the usual per-item consent round:
 [step 10/12 - judgment] corroborated non-use + conflicts + corroborated need + uncalled servers + overlap · next: apply
  # | artifact                   | verdict                  | citation
 ---+----------------------------+--------------------------+--------------------------------------------------
- 1 | mcp playwright             | JUDGMENT-DROP · MATERIAL | uncalled: 0 calls across 17 sessions of tools-usage ledgers; headless .NET backend with no UI to drive; 24 tool schemas in every session; keep only if a browser check is planned here
+ 1 | mcp browser             | JUDGMENT-DROP · MATERIAL | uncalled: 0 calls across 17 sessions of tools-usage ledgers; headless .NET backend with no UI to drive; 24 tool schemas in every session; keep only if a browser check is planned here
  2 | skill dotnet-architecture  | JUDGMENT-DROP · MATERIAL | CLAUDE.md: 'keep the layered factory pattern; it is NOT Clean Architecture / DDD / VSA'
  3 | skill dotnet-realtime      | JUDGMENT-DROP · MINOR    | advisory, corroborated: 0 hits for SignalR/hub/web-host across src/ (3 greps); outbound ClientWebSocket is the skill's own do-not-load case
  4 | skill dotnet-cryptography  | JUDGMENT-ADD             | corroborated: AesGcm in src/Vault/Sealer.cs, Rfc2898DeriveBytes in src/Auth/Hasher.cs (2 greps, hits quoted); no crypto package = no scanner signal; no exclusion match
@@ -468,7 +468,7 @@ merge - write it by running `node "$TMP/repo/scripts/stamp-docs-root.js" <projec
 (it reads and writes the stamp's scope file, as the installer does), which re-probes at the write instead of trusting the
 table's preview a step stale, and report its printed line. Every other accepted row still goes
 through the generic merge. Emit + prereq-check it -
-`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever playwright is kept, so a kept `msedge` warns when Edge is not installed)
+`node "$TMP/repo/scripts/stack-select.js" --selection "$TMP/final.json" --graph "$TMP/repo/meta/stack-graph.json" --emit "$TMP/selection.txt" --check [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the kept browsers whenever the browser server is kept, so a kept `msedge` warns when Edge is not installed)
 (`--config-dir` under a `--space`
 profile), output to `$TMP/select.out` - then:
 
@@ -487,7 +487,7 @@ profile), output to `$TMP/select.out` - then:
   `CLAUDE_STACK_SEED`) the frozen twin no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
   Playwright among the ADDS: ask which browsers to install (`chrome` pre-selected, `msedge`,
   `firefox`, `webkit`), then which of those to enable (all pre-selected; each enabled one adds its ~25
-  tools to every session) and pass both; `/plugin` toggles them later. An installed playwright passes
+  tools to every session) and pass both; `/plugin` toggles them later. An installed browser server passes
   nothing (the installer reads its browsers back from the stamp, and switches none). A server 2.0.0 cut is no reconcile row: the run uninstalls the stack's own copy and prints
   its `add it back:` line - pass it through. Presence, never the value - run this
   and paste its lines as-is: `node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
@@ -501,8 +501,8 @@ profile), output to `$TMP/select.out` - then:
   <line> not applied` is an item something kept requires, or an always-on rule or server (`locked`) -
   report it as kept, with the reason; a stack entry enabled at another scope is never disabled, the
   log names the command for the user. Two removals the installer never makes, each with its command shown first:
-  `claude mcp remove <name>` for an MCP on the copy route (playwright = every
-  `playwright-<browser>` server), and
+  `claude mcp remove <name>` for an MCP on the copy route (browser = every
+  `browser-<engine>` server), and
   `claude plugin uninstall <name> --scope <the scope step 1 recorded for it>`, except a plugin every
   install carries beside the core - never propose removing one: the installer puts it back on every
   run, so the removal would only be undone. The removal ask that proposed it
@@ -532,7 +532,7 @@ profile), output to `$TMP/select.out` - then:
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and this run added or removed something it lists), a manual-only capture whose
-output this run made stale, the serena re-index, a credential to rotate or set by
+output this run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/alfred-capture-agent-capabilities` - validate added 3 skills, so the generated rule's
 inventory is short'). No AskUserQuestion over them: the walk's asks end with the installer (a

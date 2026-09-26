@@ -386,10 +386,10 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     const recs = JSON.parse(fs.readFileSync(RECS, 'utf8'));
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8'));
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
-    // memory joined serena and context7 as a locked server (baseline-memory.md names it, the same
-    // way baseline-navigation locks serena in) - the shared-memory-mcp feature made it required.
-    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['context7', 'memory', 'serena'], 'only the three rules lock in');
-    assert.ok(!(recs.always.mcps || []).includes('playwright'), 'playwright must not install into every project');
+    // memory joined navigation and documentation as a locked server (baseline-memory.md names it, the same
+    // way baseline-navigation locks the navigation server in) - the shared-memory-mcp feature made it required.
+    assert.deepStrictEqual([...(recs.always.mcps || [])].sort(), ['documentation', 'memory', 'navigation'], 'only the three rules lock in');
+    assert.ok(!(recs.always.mcps || []).includes('browser'), 'the browser server must not install into every project');
     assert.ok(!((recs.general || {}).mcps || []).includes('memory'), 'memory left the general (addable, never seeded) list once it locked in');
 
     // 2.0.0 cut five servers: no seed, no evidence row and no addable list may bring one back.
@@ -405,9 +405,9 @@ test('the always MCP baseline is stack-neutral - the browser is seeded or proven
     }
 
     // two proven routes into a project: a stack whose surface always has a browser, or the packages
-    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('playwright')).map(([st]) => st).sort();
+    const seeded = Object.entries(recs.stacks).filter(([, sel]) => (sel.mcps || []).includes('browser')).map(([st]) => st).sort();
     assert.deepStrictEqual(seeded, ['browser-extension', 'ionic-angular', 'web-angular']);
-    assert.ok((evidence.mcps || {}).playwright, 'and an evidence signal for any other stack that actually uses it');
+    assert.ok((evidence.mcps || {}).browser, 'and an evidence signal for any other stack that actually uses it');
 });
 
 test('every shipped plugin is suggested somewhere - validate cannot flag what nothing suggests', () => {
@@ -925,22 +925,22 @@ test('update: the stale-registration, kept, unreadable and here-only lines reach
     const serena = { type: 'stdio', command: 'uvx', args: ['--python', '3.13', '--from', 'serena-agent@1.6.0', 'serena', 'start-mcp-server', '--project-from-cwd'], env: {} };
     const stale = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
-        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { serena, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
+        prepare: (repo, work) => account(work, JSON.stringify({ mcpServers: { navigation: serena, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } } })),
     }).out;
     const unreadable = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         env: COPY_ENV, args: ['--scope', 'user', '--memory-level', 'project'],
         prepare: (repo, work) => account(work, '{not json'),
     }).out;
     const logs = [];
-    const row = (scope, enabled = true) => ({ name: 'playwright-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
+    const row = (scope, enabled = true) => ({ name: 'browser-chrome', marketplace: 'envoydev', version: '2.0.0', scope, enabled });
     P.engineStandDown({ rows: [row('user')], market: 'envoydev', scope: 'user', engines: ['chrome'], hereOnly: true, isOn: () => undefined, cli: () => true, log: (m) => logs.push(m) });
-    P.moveLocalRows({ plugins: ['serena@envoydev'], rows: [{ ...row('local'), name: 'serena' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
+    P.moveLocalRows({ plugins: ['navigation@envoydev'], rows: [{ ...row('local'), name: 'navigation' }], scope: 'project', cli: () => true, log: (m) => logs.push(m) });
     const report = reportOf([stale, unreadable, ...logs.map((m) => `==> ${m}`)].join('\n'));
-    assertSurfaced(report, 'mcp: serena still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove serena -s user');
+    assertSurfaced(report, 'mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove navigation -s user');
     assertSurfaced(report, 'mcp memory: the user-scope registration is not the stack\'s (another server under the same name) - kept; if it should go: claude mcp remove memory -s user');
     assertSurfaced(report, '.claude.json could not be read - no user-scope registration was removed; fix the file and re-run', { start: 'mcp: /' });
-    assertSurfaced(report, 'plugin disabled [project]: playwright-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
-    assertSurfaced(report, 'plugin moved [local -> project]: serena@envoydev', { firstRun: false });
+    assertSurfaced(report, 'plugin disabled [project]: browser-chrome@envoydev (the copy route registers it in .mcp.json; this project only - the user-scope install stays on for every other project)');
+    assertSurfaced(report, 'plugin moved [local -> project]: navigation@envoydev', { firstRun: false });
 });
 
 // F7 (observation 1): C8's line naming a settings.local.json this run created and git would commit - a

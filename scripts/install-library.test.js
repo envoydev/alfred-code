@@ -281,8 +281,8 @@ test('copy route: a rule is logged as rewritten only when its content changed - 
     const logged = (out) => out.split('\n').filter((l) => /rule \[library\]: /.test(l)).map((l) => l.replace(/^.*rule \[library\]: /, ''));
     // The bare spelling is BUILT, never typed: lint check 54 bans the literal under scripts/.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
-    assert.ok(steps[0].includes(bareTool('serena', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
-    assert.doesNotMatch(steps[0], /mcp__plugin_serena_serena__/);
+    assert.ok(steps[0].includes(bareTool('navigation', 'find_symbol')), 'the copy route registers serena bare, so the rule names it bare');
+    assert.doesNotMatch(steps[0], /mcp__plugin_navigation_navigation__/);
     assert.deepStrictEqual(logged(outs[1]), [], 'an update that changes no rule logs none as rewritten');
     assert.strictEqual(steps[1], steps[0], 'and leaves the re-spelled rule as it was');
     assert.deepStrictEqual(logged(outs[2]), ['baseline-navigation'], 'a hand-edited rule is rewritten, and says so - alone');

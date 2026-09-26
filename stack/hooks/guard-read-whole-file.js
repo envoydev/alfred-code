@@ -2,13 +2,13 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate (matchers: Read + Bash): enforce baseline-navigation.md's hard rule - "Read
 // is for code you've ALREADY located, never to find a symbol." Blocks a whole-file Read of a
-// large source file so navigation goes through serena (get_symbols_overview -> find_symbol)
+// large source file so navigation goes through the navigation server (get_symbols_overview -> find_symbol)
 // first; on Bash it blocks the same dump routed around the Read tool (a bare `cat file.ts` -
 // measured: one session cat-ed the exact file the Read matcher had blocked, unblocked, and a
 // 47-file grep loop dumped ~19.8k tokens the guard never saw). It also caps CUMULATIVE ranged
 // reads per file per session: 2-3 half-splits that reconstruct the whole file satisfied the
 // per-call check in 7 files across one run with zero counter-examples, so past ~60% coverage
-// the remainder goes through serena. A cat whose output is redirected into a file is a copy,
+// the remainder goes through the navigation server. A cat whose output is redirected into a file is a copy,
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
 // The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
@@ -91,7 +91,7 @@ const GATED_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)\b/
 const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)\b/i;
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
-// serena detour costs about what the whole-file read would - the guard only pays above 200.
+// navigation-server detour costs about what the whole-file read would - the guard only pays above 200.
 const THRESHOLD = 200;
 const lineCountOf = (p) => {
   // Lines, not newline-split pieces: a final newline ends the last line, it does not start another -
@@ -140,21 +140,21 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
-// The three trees the installers seed into serena's OWN `ignored_paths` (.serena/project.yml):
-// serena cannot index them, so naming its tools for a path under one of them hands the model a
-// remedy that errors. Measured twice - the denial named serena for a `.claude/...` path and the
+// The three trees the installers seed into the navigation server's OWN `ignored_paths` (Serena's
+// .serena/project.yml): it cannot index them, so naming its tools for a path under one of them hands the model a
+// remedy that errors. Measured twice - the denial named it for a `.claude/...` path and the
 // redirect the model made from it failed. The ranged read is the remedy there.
 const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
-// The hint must be EXECUTABLE, not just correct. serena's tools are deferred behind tool search in
+// The hint must be EXECUTABLE, not just correct. The navigation server's tools are deferred behind tool search in
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
-// saying exactly that and still made 100 Bash calls and 0 serena calls. The loading call goes in
+// saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
-const LOAD_SERENA = `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n`;
+const LOAD_SERENA = `  ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview,mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols\n`;
 const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
-  ? `serena cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
+  ? `The navigation server cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
-  : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
+  : `Locate first with the navigation server. If those tools are not loaded in this session, load them first:\n` +
   LOAD_SERENA +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
@@ -376,8 +376,8 @@ if (isShellTool(payload.tool_name)) {
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
         `variable or a find placeholder. Per baseline-navigation.md, locate what you need first\n` +
-        `(serena find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
-        `ranges that matter. If you genuinely need one whole small file, cat it by name. The serena\n` +
+        `(the navigation server's find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
+        `ranges that matter. If you genuinely need one whole small file, cat it by name. The navigation\n` +
         `tools are DEFERRED - load them first:\n` + LOAD_SERENA,
       );
       process.exit(2);
@@ -413,10 +413,10 @@ if (isShellTool(payload.tool_name)) {
         process.stderr.write(
           'Blocked: whole-file read of a source file through a language runtime.\n' +
           'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
-          'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
+          'differently. Locate the symbol first (the navigation server\'s find_symbol / get_symbols_overview), then read\n' +
           'only the range you need. An expression that only COUNTS or SEARCHES - the read feeding\n' +
           '.match/.split/.length with no print of the content - is not a dump and is not blocked.\n' +
-          'The serena tools are DEFERRED - load them first:\n' + LOAD_SERENA,
+          'The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
         );
         process.exit(2);
       }
@@ -431,8 +431,8 @@ if (isShellTool(payload.tool_name)) {
     if (unb && gatedIn(unb[1])) {
       process.stderr.write(
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
-        'Per baseline-navigation.md, read the located range - serena find_symbol, or a bounded\n' +
-        'sed -n \'<start>,<end>p\' once you know where to look. The serena tools are DEFERRED - load them first:\n' + LOAD_SERENA,
+        'Per baseline-navigation.md, read the located range - the navigation server\'s find_symbol, or a bounded\n' +
+        'sed -n \'<start>,<end>p\' once you know where to look. The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
       );
       process.exit(2);
     }
@@ -472,7 +472,7 @@ if (isShellTool(payload.tool_name)) {
     if (!resolved) {
       // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -
       // an unresolvable relative path was exactly how whole-file dumps slipped past this
-      // matcher. Re-run with an absolute path (or read the located range via serena).
+      // matcher. Re-run with an absolute path (or read the located range via the navigation server).
       process.stderr.write(
         `Blocked: cannot size ${f} (relative path did not resolve against the project root or session cwd).\n` +
         `A whole-file cat/sed of a source file must be size-checked - use an absolute path,\n` +
@@ -559,7 +559,7 @@ if (wholeShape) {
 }
 
 // Cumulative cap: merge this range into the per-session interval set for the file; if the
-// merged coverage would exceed ~60% of the file, the remainder goes through serena - two
+// merged coverage would exceed ~60% of the file, the remainder goes through the navigation server - two
 // half-splits reconstructing the file are the whole-file read in two calls (measured).
 const CAP = 0.6;
 const end = Math.min(lineCount, offset + (input.limit != null ? input.limit : lineCount) - 1);

@@ -24,7 +24,7 @@ Preference order when you need a plugin:
 
 Before adopting any third-party plugin: confirm its latest major matches your Capacitor version,
 check recent releases / commits (maintenance), and verify iOS / Android / web platform support.
-Per-plugin install and config is fetched live - context7 or the plugin's own README, since it drifts
+Per-plugin install and config is fetched live - the documentation server or the plugin's own README, since it drifts
 per release; the durable sourcing and typed-wrapping policy is here.
 
 ## Wrapping - the typed-service contract

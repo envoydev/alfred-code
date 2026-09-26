@@ -84,15 +84,15 @@ const SCOPED_PREREQS = [
     { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls', init: true },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
-    // The one kept playwright engine that needs a browser the machine must already carry and no platform
+    // The one kept browser engine that needs a browser the machine must already carry and no platform
     // ships everywhere (chrome, the default, is the server's own long-standing assumption; firefox and
     // webkit are downloaded by the installer). Probed at its install locations, not only PATH.
-    { when: { mcp: 'playwright', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the playwright browsers (--playwright-browsers)' },
+    { when: { mcp: 'browser', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the browsers (--playwright-browsers)' },
     // Advisory: the hosted registration sends `${CONTEXT7_API_KEY:-}` (unset = an empty header = the
     // keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on every call), and
     // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
     // key shows up at install time.
-    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
+    { when: { mcp: 'documentation' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'documentation server API key (Context7)', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 
@@ -517,7 +517,7 @@ const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv
 // off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
 const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
     .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
-// A parked MCP entry (`playwright-chrome`) is that server switched off here.
+// A parked MCP entry (`browser-chrome`) is that server switched off here.
 const offHere = (inv, layer) => [
     ...(layer === 'plugins' ? parkedPlugins(inv) : []),
     ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
@@ -575,12 +575,12 @@ function findEvidenceGaps(catalog, found, installed)
 // An --installed inventory to the bare-name arrays every consumer compares against. validate
 // writes `plugins` as {name,scope} (an uninstall is scope-addressed), and a bare-name compare
 // matched none of those objects - every installed plugin read as missing (measured).
-// The installer expands the ONE manifest entry `playwright` into a server per browser engine
-// (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
+// The installer expands the ONE manifest entry `browser` into a server per browser engine
+// (browser-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
 // From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
 // route.
 const manifestMcpName = n => String(n)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
+    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)

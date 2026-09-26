@@ -43,7 +43,7 @@ every message whether it fires or not.
 - A skill that needs the user to name it before it loads has a broken description - repair the
   description, not the body.
 - Where the harness is Claude Code (its skills docs, read 2026-09-25 - version-coupled, so re-check
-  through context7 before leaning on a number):
+  through the documentation server before leaning on a number):
   - the listing of every description is budgeted at 1% of the context window
     (`skillListingBudgetFraction` raises it); over budget the least-used skills lose their
     descriptions first and keep only their names, and `/doctor` shows the cost;

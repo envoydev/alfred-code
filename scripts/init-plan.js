@@ -112,7 +112,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     for (const engine of (inv.playwright && inv.playwright.installed) || [])
     {
         if (DOWNLOADED.includes(engine))
-            add(`playwright ${engine}`, probe.dir(pwDir, `${engine}-`) ? 'present' : 'missing', `npx -y -p @playwright/mcp${pinOf('playwright')} playwright install ${engine}`);
+            add(`playwright ${engine}`, probe.dir(pwDir, `${engine}-`) ? 'present' : 'missing', `npx -y -p @playwright/mcp${pinOf('browser')} playwright install ${engine}`);
         else if (MACHINE_BROWSERS[engine])
         {
             const { need, bins } = MACHINE_BROWSERS[engine];
@@ -122,7 +122,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     }
 
     const serenaHome = serenaHomeFor(platform);
-    const index = `uvx --python ${request} --from serena-agent${pinOf('serena')} serena project index`;
+    const index = `uvx --python ${request} --from serena-agent${pinOf('navigation')} serena project index`;
     add('serena index', nonEmptyDir(path.join(root, '.serena', 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
 

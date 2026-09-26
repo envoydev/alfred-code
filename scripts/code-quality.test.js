@@ -100,8 +100,8 @@ test('the seat is a read-only sonnet support seat whose findings each name a fil
     const tools = fm.tools.split(',').map((t) => t.trim());
     for (const banned of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task'])
         assert.ok(!tools.includes(banned), `a read-only seat carries no ${banned}`);
-    for (const need of ['mcp__plugin_serena_serena__find_symbol', 'mcp__plugin_serena_serena__find_referencing_symbols',
-        'mcp__plugin_serena_serena__get_symbols_overview', 'mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search',
+    for (const need of ['mcp__plugin_navigation_navigation__find_symbol', 'mcp__plugin_navigation_navigation__find_referencing_symbols',
+        'mcp__plugin_navigation_navigation__get_symbols_overview', 'mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search',
         'mcp__plugin_memory_memory__memory_list', 'Read', 'Grep', 'Glob', 'Bash', 'Skill', 'LSP'])
         assert.ok(tools.includes(need), `the seat is granted ${need}`);
 

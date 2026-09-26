@@ -69,7 +69,7 @@ function project(name, opts = {})
     }
     write(path.join(root, '.claude', 'rules', 'baseline-navigation.md'), '---\n---\n\n# nav\n', -100);
     write(path.join(root, '.claude', 'rules', 'markdown-docs.md'), '---\npaths: ["**/*.md"]\n---\n\n# md\n', -100);
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {}, memory: {}, 'playwright-chrome': {} } }, null, 2), -100);
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {}, memory: {}, 'browser-chrome': {} } }, null, 2), -100);
     write(path.join(root, '.claude', opts.stampName || 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\n', -100);
     if (opts.rule !== false) write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'), opts.rule || '---\ndescription: generated\n---\n\n# This project\'s capabilities\n\nCaptured: 2026-09-01 from 0.2.79@abcdef1\n', 0);
     return root;
@@ -140,30 +140,30 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     const bin = stubCli(path.join(TMP, 'live-cli'), {
         // `Failed to connect` carries the word `connect`, so a connected-first test would report a
         // dead server as live - the one claim in this block nothing downstream can catch.
-        mcp: 'serena: cmd - ✔ Connected\nmemory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
+        mcp: 'navigation: cmd - ✔ Connected\nmemory: uvx x - ✗ Failed to connect\nclaude.ai Notion: https://mcp.notion.com/mcp - ✔ Connected',
     });
     const { out } = run([], { cwd: root, bin });
     assert.match(out, /memory\s+registered\s+live: failed/);
     // registered but NOT connected, and live but NOT registered - the two facts the file cannot give
-    assert.match(out, /context7\s+registered\s+live: not in the live list/);
+    assert.match(out, /documentation\s+registered\s+live: not in the live list/);
     assert.match(out, /claude\.ai Notion\s+-\s+live: connected\s+\(reaches the session from the account or the harness/);
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
     assert.equal(rows.length, 4, 'one routing row per registered server');
     for (const row of rows) assert.match(row, /first call: `ToolSearch select:/, `no first call: in ${row.slice(0, 60)}`);
 });
 
-test('inventory: a playwright browser server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
+test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
 {
-    const root = project('playwright');
-    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'playwright-chrome': {} } }), -100);
+    const root = project('browser');
+    write(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { 'browser-chrome': {} } }), -100);
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'pw-cli')) });
-    assert.match(out, /playwright-chrome\s+registered .*routing: playwright/);
-    assert.match(out, /- `playwright-chrome` - drive a browser/);
+    assert.match(out, /browser-chrome\s+registered .*routing: browser/);
+    assert.match(out, /- `browser-chrome` - the browser server \(Playwright MCP\): drive a browser/);
     // A .mcp.json server's tools are `mcp__<name>__<tool>` - the plugin spelling finds nothing there
     // (R63). The bare name is assembled here so lint check 54 never reads it as shipped text.
-    const bare = `mcp_${'_playwright-chrome__'}`;
+    const bare = `mcp_${'_browser-chrome__'}`;
     assert.ok(out.includes(`${bare}browser_snapshot`), 'the catalog row is re-spelled for the registration');
-    assert.doesNotMatch(out, /mcp__plugin_playwright-chrome_playwright-chrome__/);
+    assert.doesNotMatch(out, /mcp__plugin_browser-chrome_browser-chrome__/);
 });
 
 // Every add-back line of the 2.0.0 MCP cut registers into .mcp.json, and those servers carry no
@@ -323,8 +323,8 @@ const validRule = (docsRoot = '.claude/docs') => [
     'aspnet-implementer, aspnet-verifier',
     '',
     '## MCP routing',
-    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_serena_serena__find_symbol`.',
-    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.',
+    '- `serena` - symbol navigator. first call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol`.',
+    '- `context7` - docs. first call: `ToolSearch select:mcp__plugin_documentation_documentation__query-docs`.',
     '',
     '## Plugins',
     'superpowers (enabled)',
@@ -367,7 +367,7 @@ test('--verify: an MCP row with no `first call:` exits non-zero and names the se
 {
     const root = project('verify-mcp');
     const rule = write(path.join(root, '.claude', 'rules', 'baseline-project-agent-capabilities.md'),
-        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_context7_context7__query-docs`.', '- `playwright` - browser checks, only for that target.'));
+        validRule().replace('- `context7` - docs. first call: `ToolSearch select:mcp__plugin_documentation_documentation__query-docs`.', '- `playwright` - browser checks, only for that target.'));
     const { status, out } = run(['--verify', rule], { cwd: root });
     assert.match(out, /mcp rows:\s+FAIL - 1 of 2 carry no 'first call:' - playwright/);
     assert.match(out, /VERIFY:\s+FAIL \(1 check/);

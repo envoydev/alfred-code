@@ -125,7 +125,7 @@
     },
     "angular-conventions": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -159,7 +159,7 @@
     },
     "csharp": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -169,7 +169,7 @@
     },
     "database-conventions": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -183,7 +183,7 @@
     },
     "devops": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -257,7 +257,7 @@
     },
     "dotnet-openapi": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -299,13 +299,13 @@
     },
     "dotnet-winforms": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
     "dotnet-wpf": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -327,7 +327,7 @@
     },
     "javascript": {
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": []
     },
@@ -977,7 +977,7 @@
       "skills": [],
       "agents": [],
       "mcps": [
-        "serena"
+        "navigation"
       ],
       "plugins": [],
       "paths": []
@@ -988,7 +988,7 @@
       ],
       "agents": [],
       "mcps": [
-        "context7"
+        "documentation"
       ],
       "plugins": [],
       "paths": []
@@ -1149,10 +1149,10 @@
   },
   "catalog": {
     "mcps": [
-      "context7",
+      "browser",
+      "documentation",
       "memory",
-      "playwright",
-      "serena"
+      "navigation"
     ],
     "plugins": [
       "claude-hud",

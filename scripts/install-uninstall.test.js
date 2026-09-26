@@ -79,21 +79,21 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
 {
     const rows = [
         { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
-        { name: 'serena', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
-        { name: 'playwright-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
+        { name: 'navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
+        { name: 'browser-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
         { name: 'claude-md-management', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
     ];
     const calls = [];
     // The CLI refuses a dependency first while its dependent is installed.
-    const cli = (argv) => { calls.push(argv.join(' ')); return !(argv[2] === 'serena@envoydev' && !calls.some((c) => c.startsWith('plugin uninstall alfred-code@'))); };
+    const cli = (argv) => { calls.push(argv.join(' ')); return !(argv[2] === 'navigation@envoydev' && !calls.some((c) => c.startsWith('plugin uninstall alfred-code@'))); };
     const logs = [];
     uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['claude-md-management@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'));
-    assert.ok(calls.includes('plugin uninstall serena@envoydev --scope project -y'));
-    assert.ok(!calls.some((c) => /playwright-chrome|claude-md-management/.test(c)), calls.join('\n'));
+    assert.ok(calls.includes('plugin uninstall navigation@envoydev --scope project -y'));
+    assert.ok(!calls.some((c) => /browser-chrome|claude-md-management/.test(c)), calls.join('\n'));
     const text = logs.join('\n');
     assert.doesNotMatch(text, /NOTE/, 'a dependency refused first is retried once its dependent is gone');
-    assert.match(text, /playwright-chrome@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall playwright-chrome@envoydev --scope user/);
+    assert.match(text, /browser-chrome@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall browser-chrome@envoydev --scope user/);
     assert.match(text, /claude-md-management@claude-plugins-official .*not removed.*claude plugin uninstall claude-md-management@claude-plugins-official --scope project/);
 
     const userCalls = [];
@@ -105,7 +105,7 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
 // user adds their own hook, server and key, then uninstall.
 const LISTING = JSON.stringify([
     { id: 'alfred-code@envoydev', scope: 'project', version: '2.0.0', enabled: true },
-    { id: 'serena@envoydev', scope: 'project', version: '2.0.0', enabled: true },
+    { id: 'navigation@envoydev', scope: 'project', version: '2.0.0', enabled: true },
 ]);
 const USER_HOOK = { type: 'command', command: 'node my-hook.js', timeout: 5 };
 
@@ -136,7 +136,7 @@ test('uninstall: every stack file and managed entry goes, the user\'s own hook, 
         },
     });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'), calls.join('\n'));
-    assert.ok(calls.includes('plugin uninstall serena@envoydev --scope project -y'), calls.join('\n'));
+    assert.ok(calls.includes('plugin uninstall navigation@envoydev --scope project -y'), calls.join('\n'));
     assert.deepStrictEqual(result.settings.env, { MY_KEY: 'mine', ALFRED_CODE_PUSH_GATE: '0' }, 'the user\'s key and a value they changed stay; every seed the stack wrote goes');
     assert.deepStrictEqual(result.settings.hooks, { Stop: [{ hooks: [USER_HOOK] }] });
     assert.deepStrictEqual(result.mcp, { mcpServers: { mine: { command: 'node', args: ['srv.js'] } } });
@@ -319,15 +319,15 @@ test('uninstall removes the copy route\'s own local-scope registrations and keep
         },
         inspect: (repo) => localServers(accountOf(repo)),
     });
-    assert.deepStrictEqual(steps[0], ['context7', 'memory', 'serena'], outs[0]);
-    for (const name of ['serena', 'context7', 'memory']) assert.ok(calls.includes(`mcp remove ${name} -s local`), calls.join('\n'));
+    assert.deepStrictEqual(steps[0], ['documentation', 'memory', 'navigation'], outs[0]);
+    for (const name of ['navigation', 'documentation', 'memory']) assert.ok(calls.includes(`mcp remove ${name} -s local`), calls.join('\n'));
     assert.deepStrictEqual(result, ['mine'], outs[1]);
-    assert.match(outs[1], /mcp removed: serena \(local scope\)/);
+    assert.match(outs[1], /mcp removed: navigation \(local scope\)/);
 });
 
 test('uninstall prints the user-scope registrations\' remove commands and never runs them', POSIX_ONLY, () =>
 {
-    const { calls, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\nmcp playwright\n', {
+    const { calls, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\nmcp browser\n', {
         tools: { claude: RECORDING_CLAUDE },
         env: { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
         args: [['--scope', 'user', '--playwright-browsers', 'chrome'], []],
@@ -335,6 +335,6 @@ test('uninstall prints the user-scope registrations\' remove commands and never 
     });
     const uninstallCalls = calls.slice(calls.lastIndexOf('plugin list --json'));
     assert.ok(!uninstallCalls.some((c) => c.startsWith('mcp remove')), uninstallCalls.join('\n'));
-    assert.deepStrictEqual(result, ['playwright-chrome'], outs[0]);
-    assert.match(outs[1], /playwright-chrome is registered at user scope.*claude mcp remove playwright-chrome -s user/);
+    assert.deepStrictEqual(result, ['browser-chrome'], outs[0]);
+    assert.match(outs[1], /browser-chrome is registered at user scope.*claude mcp remove browser-chrome -s user/);
 });

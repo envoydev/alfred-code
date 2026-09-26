@@ -13,7 +13,7 @@ Runner, substitute library and assertion library are project-level decisions: pi
 
 | Runner | When to pick |
 |---|---|
-| **xUnit** | Default for new projects. `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]` / `[ClassData]`. No `[SetUp]` / `[TearDown]` - use constructor + `IDisposable` / `IAsyncLifetime`. Parallel by default. v3 is the current major: its packages are `xunit.v3.*` and its `IAsyncLifetime` returns `ValueTask`, while the fixtures in these references are v2-shaped (`Task`) - on v3, match the signatures through context7. |
+| **xUnit** | Default for new projects. `[Fact]` / `[Theory]` + `[InlineData]` / `[MemberData]` / `[ClassData]`. No `[SetUp]` / `[TearDown]` - use constructor + `IDisposable` / `IAsyncLifetime`. Parallel by default. v3 is the current major: its packages are `xunit.v3.*` and its `IAsyncLifetime` returns `ValueTask`, while the fixtures in these references are v2-shaped (`Task`) - on v3, match the signatures through the documentation server. |
 | **NUnit** | When the project already uses it, or for parameterized-test ergonomics (`[TestCase]`, `[TestCaseSource]`, `[Values]`, `[ValueSource]`). |
 | **MSTest** | When the project ships with it (Visual Studio templates, internal Microsoft tooling). `[TestClass]` / `[TestMethod]` / `[DataRow]` / `[DynamicData]`. |
 

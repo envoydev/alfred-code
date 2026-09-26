@@ -340,7 +340,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
             .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
         const mcpjsonEngines = registeredEngines(mcpFile);
-        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`playwright-${e}`) : undefined);
+        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`browser-${e}`) : undefined);
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -510,7 +510,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 // ON NOW - the settings file where each is installed, which a /plugin toggle writes; the
                 // stamp's last answer only where that file names nothing. Plugin route only.
                 const isOn = engineOn({ configDir, claudeDir });
-                const specOf = (e) => `playwright-${e}@${market}`;
+                const specOf = (e) => `browser-${e}@${market}`;
                 inv.playwright = mcp.playwrightLive({
                     kept: pw.browsers, prior: priorPw,
                     live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : liveCopy(e)),
@@ -534,7 +534,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
         // The one remote server the copy route registers: context7, the hosted transport only (2.0.0).
-        const remotes = { context7: mcp.CONTEXT7_REMOTE };
+        const remotes = { documentation: mcp.CONTEXT7_REMOTE };
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
         const versionDue = mcp.dueRetired({
@@ -566,9 +566,9 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         // disabledMcpjsonServers; at local and user scope no settings key reaches a registration, so
         // there the registration is the enable and an engine left off is not registered (R124 l).
         if (ctx.pw.mcpjson.unregistered.length)
-            log(`playwright: ${ctx.pw.mcpjson.off.join(',')} left off - not registered at ${cliScope} scope, where the registration is the enable (the stamp keeps it installed; /alfred-code:configure turns it on)`);
+            log(`browser: ${ctx.pw.mcpjson.off.join(',')} left off - not registered at ${cliScope} scope, where the registration is the enable (the stamp keeps it installed; /alfred-code:configure turns it on)`);
         else if (ctx.pw.mcpjson.off.length)
-            log(`playwright: ${ctx.pw.mcpjson.off.join(',')} left off - disabledMcpjsonServers keeps it from loading (taking it out of that list, or /alfred-code:configure, turns it on)`);
+            log(`browser: ${ctx.pw.mcpjson.off.join(',')} left off - disabledMcpjsonServers keeps it from loading (taking it out of that list, or /alfred-code:configure, turns it on)`);
 
         const pinSnapshot = args.keepPins
             ? pinsLayer.snapshotPins({ files: pinFiles(ctx), log })
@@ -633,13 +633,13 @@ function runLayers(ctx)
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
     serena.seedProject({
         projectRoot: ctx.projectRoot,
-        selected: ctx.lists.mcps.some((e) => e.startsWith('serena|')),
+        selected: ctx.lists.mcps.some((e) => e.startsWith('navigation|')),
         log: ctx.log,
     });
     try { mcp.ensurePlaywrightIgnore({ projectRoot: ctx.projectRoot, engines: pwEngines(ctx), log: ctx.log }); }
     catch (err) { ctx.note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     seeds.playwrightDownloads({
-        browsers: ctx.lists.mcps.filter((e) => e.startsWith('playwright-')).map((e) => e.split('|')[0].slice(11)),
+        browsers: pwEngines(ctx),
         pin: ctx.pins.PW_PIN,
         run: (engine) => ctx.rt.runNode !== undefined && npxInstall(ctx, engine),
         log: ctx.log,
@@ -791,7 +791,7 @@ function installPlugins(ctx)
     // new scope from here on.
     const relocated = ctx.leavingLocal && !blind
         ? plugins.moveLocalRows({
-            plugins: set, rows, scope: ctx.cliScope, engines: pwEngines(ctx).map((e) => `playwright-${e}@${ctx.market}`),
+            plugins: set, rows, scope: ctx.cliScope, engines: pwEngines(ctx).map((e) => `browser-${e}@${ctx.market}`),
             isOn, cli: ctx.cli, log: ctx.log, note: ctx.note,
         })
         : { moved: [], dropped: [] };
@@ -870,8 +870,8 @@ function blindStandDown(ctx, copyRoute)
     const cmds = [
         ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
         ...pwEngines(ctx).map((e) => (copyRoute && at !== ctx.cliScope
-            ? `claude plugin disable playwright-${e}@${ctx.market} --scope ${at}`
-            : `claude plugin uninstall playwright-${e}@${ctx.market} --scope ${ctx.cliScope}`)),
+            ? `claude plugin disable browser-${e}@${ctx.market} --scope ${at}`
+            : `claude plugin uninstall browser-${e}@${ctx.market} --scope ${ctx.cliScope}`)),
     ];
     return `the plugin listing could not be read, so no stack plugin was switched off before the copy route registers its servers - any still enabled runs beside its registration; check /plugin, or: ${cmds.join('; ')}`;
 }
@@ -901,7 +901,7 @@ function playwrightMoves(ctx, { blind, rows })
     const none = { specs: [], present: [], presentScope: {}, off: [], on: null, isOn: () => undefined, uninstalled: [] };
     if (!ctx.routes.mcps) return none;
     const kept = pwEngines(ctx);
-    const specOf = (e) => `playwright-${e}@${ctx.market}`;
+    const specOf = (e) => `browser-${e}@${ctx.market}`;
     const prior = ctx.pw.prior.browsers || [];
     const uninstalled = plugins.uninstallEngines({
         specs: prior.filter((e) => !kept.includes(e)).map(specOf), rows, blind, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note,
@@ -919,12 +919,12 @@ function playwrightMoves(ctx, { blind, rows })
     });
     if (blind)
         ctx.log(known.length
-            ? `playwright: the plugin listing could not be read - the stamp or the settings name ${known.join(',')} as installed (updated in place); the rest install as new`
-            : 'playwright: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new');
+            ? `browser: the plugin listing could not be read - the stamp or the settings name ${known.join(',')} as installed (updated in place); the rest install as new`
+            : 'browser: the plugin listing could not be read and neither the stamp nor the settings name an installed engine - each installs as new');
     const { enabled, off, apply } = ctx.pw;
     ctx.log(apply
-        ? `playwright: installs ${kept.join(',')}; enabled as picked: ${enabled.join(',') || 'none'} (/plugin toggles them)`
-        : `playwright: installs ${kept.join(',')}; no enable answer given - one already installed keeps its on/off, one installed now arrives on${off.length ? `, except ${off.join(',')} (last left off)` : ''} (/plugin toggles them)`);
+        ? `browser: installs ${kept.join(',')}; enabled as picked: ${enabled.join(',') || 'none'} (/plugin toggles them)`
+        : `browser: installs ${kept.join(',')}; no enable answer given - one already installed keeps its on/off, one installed now arrives on${off.length ? `, except ${off.join(',')} (last left off)` : ''} (/plugin toggles them)`);
     return {
         specs: kept.map(specOf), present: known.map(specOf), presentScope, off: off.map(specOf),
         on: apply ? enabled.map(specOf) : null, isOn, uninstalled,
@@ -1016,7 +1016,7 @@ function installMcps(ctx)
     // M-F5-1: the names this run currently wants active - the locked three (always) and a playwright
     // engine this project keeps - shared by every registrationOf call below so the `!!` marker lands only
     // where a collision is actionable.
-    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map((e) => `playwright-${e}`)]);
+    const liveMcpNames = new Set([...mcp.LOCKED, ...pwEngines(ctx).map((e) => `browser-${e}`)]);
     // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
     // registration of the stack's own shape - another under the name is the user's (a server added back
     // with the add-back line included). An absent one costs no call.
@@ -1070,11 +1070,11 @@ function installMcps(ctx)
     // Whatever still sits ABOVE a plugin this run carries once the prunes are done (read fresh - they
     // changed the files): named, never removed here.
     if (mcp.corePluginOn(ctx.routes))
-        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map((e) => `playwright-${e}`)] : mcp.LOCKED);
+        warnShadowed(ctx, ctx.routes.mcps ? [...mcp.LOCKED, ...pwEngines(ctx).map((e) => `browser-${e}`)] : mcp.LOCKED);
 
     if (ctx.routes.mcps)
     {
-        ctx.log('mcp: carried by the plugins (serena, context7, memory, and the picks) - nothing registered here');
+        ctx.log('mcp: carried by the plugins (navigation, documentation, memory, and the picks) - nothing registered here');
         return;
     }
     const scope = mcp.registrationScope(ctx.routes, ctx.cliScope);
@@ -1288,9 +1288,9 @@ function installHooksAndRules(ctx)
     // an engine this run enabled that it still lists is named with its file, never left to look on.
     const accountFile = path.join(ctx.configDir, 'settings.json');
     const accountOff = readJson(accountFile).disabledMcpjsonServers;
-    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map((e) => `playwright-${e}`).filter((n) => ctx.pw.mcpjson.enable.includes(n));
+    const enabledNow = ctx.routes.mcps ? [] : (ctx.pw.enabled || []).map((e) => `browser-${e}`).filter((n) => ctx.pw.mcpjson.enable.includes(n));
     for (const name of (Array.isArray(accountOff) ? accountOff : []).filter((n) => enabledNow.includes(n)))
-        ctx.log(`playwright: ${name} is still rejected by ${accountFile}'s disabledMcpjsonServers - the installer never edits the account file; take it out there to load it`);
+        ctx.log(`browser: ${name} is still rejected by ${accountFile}'s disabledMcpjsonServers - the installer never edits the account file; take it out there to load it`);
 }
 
 function importMemory(ctx)
@@ -1523,7 +1523,7 @@ function summarise(ctx, failures)
     if (ctx.args.space) line += `; space=${ctx.args.space}`;
     line += ctx.args.keepPins ? '; keep-pins=on' : '; keep-pins=off (agent model/effort pins reset to catalog defaults)';
     const engines = pwEngines(ctx);
-    if (engines.length) line += `; playwright=${engines.join(',')}`;
+    if (engines.length) line += `; browser=${engines.join(',')}`;
     ctx.log(line);
     if (failures) ctx.log(`  ${failures} step(s) reported a failure above - the rest of the run completed`);
 }
@@ -1597,10 +1597,10 @@ const registeredMemoryPath = (mcpFile, claudeDir) =>
 };
 
 const registeredEngines = (mcpFile) => Object.keys(readJson(mcpFile).mcpServers || {})
-    .map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1])
+    .map((n) => (/^browser-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1])
     .filter(Boolean);
 
-const pwEngines = (ctx) => ctx.lists.mcps.filter((e) => e.startsWith('playwright-')).map((e) => e.split('|')[0].slice(11));
+const pwEngines = (ctx) => ctx.lists.mcps.filter((e) => e.startsWith('browser-')).map((e) => e.split('|')[0].slice('browser-'.length));
 
 const pinFiles = (ctx) => pinsLayer.pinFiles({
     projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,

@@ -90,7 +90,7 @@ running it.
 | Rule | What it governs |
 |---|---|
 | `.claude/rules/baseline-interaction.md` | communication style, adversarial review of user proposals, formatting + privacy, planning/execution thresholds |
-| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `context7`, background work, and tearing down what a run started or wrote |
+| `.claude/rules/baseline-quality-gates.md` | code-quality bars, the pointer to the done gate (`alfred-habits-done-gate`), claims about the outside world checked through `documentation`, background work, and tearing down what a run started or wrote |
 | `.claude/rules/baseline-security.md` | security-relevant diff review, fetched text as data never instruction, no PII or secrets in logs, credentials read for presence only, the permissions.deny caveat |
 | `.claude/rules/baseline-git.md` | commits, branches, PRs, push discipline - the checkpoint protocol itself is the `alfred-habits-commit-checkpoint` skill |
 | `.claude/rules/baseline-navigation.md` | symbol-lookup and code-reading discipline, and what a compaction must keep verbatim |

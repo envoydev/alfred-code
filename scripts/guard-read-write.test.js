@@ -152,7 +152,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(src, LONG_JS);
   const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
   assert.equal(ok.status, 2);
-  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview/, 'the serena ladder is unchanged where it works');
 });
 
 test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {

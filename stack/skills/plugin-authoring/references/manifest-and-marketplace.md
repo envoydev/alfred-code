@@ -1,7 +1,7 @@
 # Manifest and marketplace schema
 
 Checked against the Claude Code plugins reference and marketplaces pages on 2026-09-12. Re-verify
-a field through context7 before relying on a detail that is not in the body of this file.
+a field through the documentation server before relying on a detail that is not in the body of this file.
 
 Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#marketplacejson) -
 [Loading and precedence](#loading-and-precedence) -

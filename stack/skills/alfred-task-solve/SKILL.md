@@ -1,6 +1,6 @@
 ---
 name: alfred-task-solve
-description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a serena cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (alfred-task-solve-cross), not greenfield, and not a one-line edit."
+description: "Use to run a task, feature, or bug through the whole single-chat vertical with a hard user gate between every step: design -> plan audit -> user approval + build-mode choice -> build -> build review (skippable) -> done-gate. Every stop is a real pause - switch model or effort, add context, or edit the plan before saying go - and the plan file plus a navigation server cycle note make every step resumable after compaction or in a fresh session. Trigger on run the task cycle, build this with approvals, gated implementation, step-by-step with my sign-off. Not the dispatched multi-agent flow (alfred-task-solve-cross), not greenfield, and not a one-line edit."
 disable-model-invocation: true
 ---
 
@@ -17,7 +17,7 @@ run-time load.
 - **The plan file** (`<docs-path>/superpowers/plans/<feature>.md`) is the durable truth: the tasks, every stamp this cycle adds (`Gated`, `Approved` +
   build mode, `Conformance` verdict or `skipped`, `Completed`), per-task status + evidence. On any
   conflict with memory or the chat, the file wins.
-- **The serena cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
+- **The navigation server cycle note** (`write_memory` named `<feature>__cycle`) is the working cursor:
   current step, chosen modes, resume pointer (plan path + next task), any mid-task scratch worth
   carrying. Update it at EVERY stop and after every task tick; it is never more than one step
   stale when compaction hits. Local and disposable - everything essential is in the plan file.
@@ -181,7 +181,7 @@ run makes.
    into the close. The stamp CLOSES this plan file: print one line with it - `Completed - the next
    scope starts a NEW plan file, not this one` - so the rule is on screen at the moment it starts
    applying, not only in this skill's body. Delete or archive the cycle note, and in an agents-mode run purge the
-   run's minted seat notes too - `mcp__plugin_serena_serena__delete_memory` each `<feature>__<contract_version>__*`
+   run's minted seat notes too - `mcp__plugin_navigation_navigation__delete_memory` each `<feature>__<contract_version>__*`
    note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
    this run's deletes trail its writes. *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
@@ -193,7 +193,7 @@ run makes.
    55-hour session with zero plan-file writes and no ungated statement either.
    When the change affects a sibling repo's client, the handoff is a
    FILE in THIS repo - a task card under `<docs-path>/cross-project-tasks/` (the cross-project
-   write guard blocks a write into the sibling's tree; reading it stays open) or a serena note -
+   write guard blocks a write into the sibling's tree; reading it stays open) or a navigation-server note -
    never chat-only prose - and verify the sibling's actual source before writing what it must do.
    **Doc-drift awareness** - one line at most in the close report, the user decides, never
    auto-run: when the landed change touched an architecture-critical surface (the list is in
@@ -211,5 +211,5 @@ run makes.
   list) - a turn that narrates the result and waits offers the user nothing to answer.
 - Never dispatch a seat the user did not choose at a stop - dispatch is explicit-only house-wide.
 - Never keep cycle state only in chat: a stamp or tick that is not in the plan file does not
-  exist. The serena note is a cursor, never the truth.
+  exist. The navigation-server note is a cursor, never the truth.
 - Never re-run a stamped step on resume; pick up at the cursor.

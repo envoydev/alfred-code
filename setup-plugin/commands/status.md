@@ -189,8 +189,8 @@ On the copy route the set is joined against the scope file's `hooks` block:
 | instrument-tool-usage.js | yes (env-gated, off) | .* |
 
 **MCPs** - the ROUTE decides the set: with a `<server>@<key>` MCP entry in the plugins listing the
-installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` ->
-`playwright`, everything else is already its catalog name); without any such entry (the full copy
+installed set is those entry NAMES folded back onto the catalog (`browser-<engine>` ->
+`browser`, everything else is already its catalog name); without any such entry (the full copy
 route), the server names in `<root>/.mcp.json`, or at `user` scope the account's registrations.
 The `health` column is ONE `claude mcp list` call, which checks every server it lists: copy its
 status text through as written - `✔ Connected`, `! Connected · tools fetch failed`, `! Needs
@@ -201,18 +201,18 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 
 | server | transport | target | health |
 |---|---|---|---|
-| serena | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
+| the navigation server | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | memory | stdio | node .../memory-launch.js | ✔ Connected |
-| context7 | http | https://mcp.context7.com/mcp | ✔ Connected |
+| the documentation server | http | https://mcp.context7.com/mcp | ✔ Connected |
 | playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
 is the entry's own declaration. Playwright has one server per installed browser
-(`playwright-<browser>`), and any number can be on together; which are on is the user's `/plugin`
+(`browser-<engine>`), and any number can be on together; which are on is the user's `/plugin`
 toggle (the stamp's `playwright-enabled:` is their last answer, not the live state). Never print
 env values embedded in a registration - show `${VAR}` literally as written.
 
-`memory` is locked like `serena` and `context7` (every install carries it). Add ONE line under
+`memory` is locked like `navigation` and `documentation` (every install carries it). Add ONE line under
 this table whenever the row is present - the shared-memory level. `.claude/hooks/memory.js`
 present: run `node .claude/hooks/memory.js level` and render `memory level: <level> - <dbPath>`
 (or `none` if the read disagrees with the table row above - report that mismatch verbatim, never
@@ -267,7 +267,7 @@ is still on` (never read an absent key as success). The rows above are the keys 
 any other `ALFRED_CODE_*` key the file carries (`ALFRED_CODE_ALLOW_WRITE_OUTSIDE`, a key a newer
 release added) gets its own row, value as written - this table is not a filter. A key matching the
 catalog's `secret_key_pattern` (`meta/environment.json`) or a row flagged `secret: true` is printed
-as `set (N chars)` or `absent`, never by value. The context7 row reads the ACCOUNT `settings.json`
+as `set (N chars)` or `absent`, never by value. The documentation server row reads the ACCOUNT `settings.json`
 (`~/.claude/settings.json`, or the space's - the file the MCP header expands from). This table
 names values only - changing them is `configure`'s environment area.
 
@@ -313,7 +313,7 @@ It prints ONE `turn-check: advise - ...` line or nothing. A printed line goes un
 as-is; nothing printed means no row. The switch is the user's - never set it from here.
 
 **Generated docs & data** - the capture output under the docs root from the general table, plus
-serena's local memory:
+The navigation server's local memory:
 
 | artifact | present | captured | file updated |
 |---|---|---|---|

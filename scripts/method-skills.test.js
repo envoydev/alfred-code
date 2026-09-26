@@ -143,7 +143,7 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
     assert.ok(flat.includes('`Load when`'), 'the Load when opener is allowed');
     // Review I3: the frontmatter facts every skill needs live here, where every install has them.
     for (const fact of ['1% of the context window', 'skillListingBudgetFraction', '1,536', '`when_to_use`', 'defaults to the folder name',
-        '`disable-model-invocation: true`', '`user-invocable: false`', 'context7'])
+        '`disable-model-invocation: true`', '`user-invocable: false`', 'the documentation server'])
         assert.ok(flat.includes(fact), `the habit states '${fact}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');

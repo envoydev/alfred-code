@@ -30,7 +30,7 @@ Read it at step 1, before the tier is named.
   an observable, the evidence tier, every digest's key lines, the hypotheses with their verdicts,
   the proven cause, and the stamps this run adds (`Tier`, `Gathered`, `Cause`, `Outcome`). On any
   conflict with memory or the chat, the file wins.
-- **The serena note** (`write_memory` named `<slug>__diagnosis`) is the working cursor: current
+- **The navigation-server note** (`write_memory` named `<slug>__diagnosis`) is the working cursor: current
   step, chosen mode, resume pointer, the error signature and its proven fix once found - that
   last part is the reusable half, keyed to the signature, never a dump of the log.
 
@@ -99,7 +99,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At
    tier 4, with no source to pull, this step is code-first instead: locate the named behaviour
-   with serena per `.claude/rules/baseline-navigation.md`, read the paths that could produce the
+   with the navigation server per `.claude/rules/baseline-navigation.md`, read the paths that could produce the
    symptom, and attempt a repro. Never slurp a large log into this context - grep to the signal
    and quote a bounded window. If it cannot be reproduced, say so with what you tried, and work
    from the evidence and the code. Append the digests' key lines to the findings file, stamp
@@ -151,7 +151,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    *Stop* - and this close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`
-   - never chat-only prose). Delete the serena cursor note; keep the signature-to-fix note if the
+   - never chat-only prose). Delete the navigation server cursor note; keep the signature-to-fix note if the
    cause was proven, that is the reusable half.
 
 ## Do not

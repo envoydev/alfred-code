@@ -23,8 +23,8 @@
    "skill-authoring"
   ],
   "mcps": [
-   "serena",
-   "context7",
+   "navigation",
+   "documentation",
    "memory"
   ],
   "plugins": [],
@@ -135,7 +135,7 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "playwright"
+    "browser"
    ],
    "skills": [
     "angular-security",
@@ -277,7 +277,7 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "playwright"
+    "browser"
    ]
   },
   "data": {
@@ -320,7 +320,7 @@
     "typescript-lsp"
    ],
    "mcps": [
-    "playwright"
+    "browser"
    ]
   },
   "typescript": {

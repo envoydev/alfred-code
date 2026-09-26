@@ -46,7 +46,7 @@ Independently deployable, independently scalable services split by bounded conte
 
 ## Local orchestration - dev-time only
 
-Run the whole mesh locally with .NET Aspire: the AppHost models services, databases, and messaging and wires service discovery, OpenTelemetry, and resilience by default. The AppHost is a **dev-time orchestrator, not a production runtime** - production stays on your Kubernetes / Helm / GitOps pipeline. Its publish/deploy targets (Azure Container Apps, Kubernetes) change status release by release - verify the current state via context7 before leaning on one; the house default stays your own pipeline.
+Run the whole mesh locally with .NET Aspire: the AppHost models services, databases, and messaging and wires service discovery, OpenTelemetry, and resilience by default. The AppHost is a **dev-time orchestrator, not a production runtime** - production stays on your Kubernetes / Helm / GitOps pipeline. Its publish/deploy targets (Azure Container Apps, Kubernetes) change status release by release - verify the current state via the documentation server before leaning on one; the house default stays your own pipeline.
 
 ## Verify independent deployability
 

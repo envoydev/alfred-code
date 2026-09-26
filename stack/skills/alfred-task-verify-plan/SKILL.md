@@ -26,7 +26,7 @@ Before reading the plan, load `alfred-habits-plan-writing` (the Skill tool) - th
 3. **Existence.** Every thing the plan NAMES is checked to exist before the plan passes: a symbol,
    a file, a config key, a CSS or design token, an API the plan calls, a package version floor, a
    capability it assumes a tool or seat has. Check it - `find_symbol`, a read of the config, a
-   context7 lookup for the external ones - and mark anything you could not confirm `unverified` in
+   documentation-server lookup for the external ones - and mark anything you could not confirm `unverified` in
    the finding, never in the plan's prose as fact. This pass exists because asserted existence is
    the most expensive defect class in the corpus - two repairs measured in millions of tokens,
    written up in `references/evidence.md`, both from a name that was asserted rather than looked up.

@@ -1185,14 +1185,14 @@ test('instrument-tool-usage: off by default, one JSONL row per call when switche
   assert.equal(fs.existsSync(log), false, 'nothing is written while the switch is off');
   assert.equal(inst({ tool_name: 'Read', tool_input: { file_path: '/a/b/c.ts' }, session_id: 's1', cwd: '/x' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat secret', description: 'run tests' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: 'true' }), 0);
-  assert.equal(inst({ tool_name: 'mcp__plugin_serena_serena__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
+  assert.equal(inst({ tool_name: 'mcp__plugin_navigation_navigation__find_symbol', tool_input: {}, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   // a dispatch row names the SEAT (65 of 65 Agent rows were detail-blind), and a Bash call whose
   // description the model omitted falls back to the VERB - never a path or an argument
   assert.equal(inst({ tool_name: 'Task', tool_input: { subagent_type: 'architecture-analyzer', prompt: 'characterize /secret/module' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'git commit -m "wip"' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   assert.equal(inst({ tool_name: 'Bash', tool_input: { command: 'cat /home/me/.env' }, session_id: 's1' }, { ALFRED_CODE_INSTRUMENT: '1' }), 0);
   const rows = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
-  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_serena_serena__find_symbol', 'serena'],
+  assert.deepEqual(rows.map((r) => [r.tool, r.detail]), [['Read', 'c.ts'], ['Bash', 'run tests'], ['mcp__plugin_navigation_navigation__find_symbol', 'navigation'],
     ['Task', 'architecture-analyzer'], ['Bash', 'git commit'], ['Bash', 'cat']]);
   assert.ok(!JSON.stringify(rows).includes('secret'), 'a command body is never logged');
   assert.ok(!JSON.stringify(rows).includes('.env'), '... and neither is a path the fallback saw');
@@ -1219,7 +1219,7 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
   // the denial names the deferred tools AND the one line that loads them - naming a tool is not having it
   const denied = runIn('guard-unapproved-dispatch.js', { tool_name: 'Agent', tool_input: { subagent_type: 'Explore', prompt: 'Find who calls SocketConnection.Send' } },
     { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
-  assert.match(denied.stderr, /ToolSearch select:mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols,mcp__plugin_serena_serena__get_symbols_overview/, 'the loading line');
+  assert.match(denied.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols,mcp__plugin_navigation_navigation__get_symbols_overview/, 'the loading line');
 
   // a real sweep still passes - no stamp involved, so this is the no-flow path
   assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
@@ -1965,7 +1965,7 @@ test('guard-read-whole-file: the denial names the call that LOADS the serena too
   // serena calls. The remedy belongs in the denial the model is already reading.
   const r = runIn('guard-read-whole-file.js', { tool_name: 'Read', tool_input: { file_path: BIG } }, {});
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol/);
+  assert.match(r.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview,mcp__plugin_navigation_navigation__find_symbol/);
 });
 
 test('guard-read-whole-file: a file is as long as its lines - the trailing newline is not one more', () => {
@@ -2005,7 +2005,7 @@ test('guard-read-whole-file: every source-read denial carries the call that load
   for (const c of [`for f in ${dir}/*.ts; do cat $f; done`, `node -e "console.log(require('fs').readFileSync('${big}','utf8'))"`, `head -n 99999 ${big}`]) {
     const r = deny(c);
     assert.equal(r.status, 2, c);
-    assert.match(r.stderr, /ToolSearch select:mcp__plugin_serena_serena__/, `the loading line: ${c}`);
+    assert.match(r.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/, `the loading line: ${c}`);
   }
 });
 

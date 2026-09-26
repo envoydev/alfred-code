@@ -55,7 +55,7 @@ export default defineConfig({
 });
 ```
 
-Stability note: typescript-eslint's Shared Configs docs state that 'with the exception of all, strict, and strict-type-checked, all configurations are considered stable', and that strict 'is not considered stable under Semantic Versioning (semver). Its enabled rules and/or their options may change outside of major version updates.' `stylistic` and `recommended` are stable. `projectService` is the stable typed-linting API (promoted in v8); confirm the current major via context7 at setup time and pin your version regardless.
+Stability note: typescript-eslint's Shared Configs docs state that 'with the exception of all, strict, and strict-type-checked, all configurations are considered stable', and that strict 'is not considered stable under Semantic Versioning (semver). Its enabled rules and/or their options may change outside of major version updates.' `stylistic` and `recommended` are stable. `projectService` is the stable typed-linting API (promoted in v8); confirm the current major via the documentation server at setup time and pin your version regardless.
 
 ## tsconfig.json compiler options
 Start from `strict: true`, which turns on the whole strict family: noImplicitAny, strictNullChecks, strictFunctionTypes, strictBindCallApply, strictPropertyInitialization, noImplicitThis, useUnknownInCatchVariables, alwaysStrict.

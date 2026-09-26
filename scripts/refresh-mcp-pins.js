@@ -21,8 +21,8 @@ const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
 
 // registry: how to ask, and the spelling the pin takes inside the server's own command line.
 const PACKAGES = {
-    'playwright': { registry: 'npm',  package: '@playwright/mcp',       spelling: '@<v>' },
-    'serena':     { registry: 'pypi', package: 'serena-agent',          spelling: '@<v>' },
+    'browser':    { registry: 'npm',  package: '@playwright/mcp',       spelling: '@<v>' },
+    'navigation': { registry: 'pypi', package: 'serena-agent',          spelling: '@<v>' },
     // The memory pin is spelled '==<v>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<v>'),
     // not '@<v>' like the others, which have no extras suffix to sit next to.
     'memory':     { registry: 'pypi', package: 'mcp-memory-service',    spelling: '==<v>' },

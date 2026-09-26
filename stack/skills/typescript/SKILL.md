@@ -62,7 +62,7 @@ Library-grade type work - conditional types with `infer`, mapped types, template
 
 ## TypeScript version state
 
-TS 7 (the Go-native rewrite) is rolling out: same type system and syntax, roughly 10x faster type-checking - but its stability state moves fast, so verify the CURRENT release status and your toolchain's support (editor LSP, programmatic API) via context7 at adoption time rather than trusting recall. Adopt it first where risk is lowest and the win immediate: `tsc --noEmit` in CI. Hold on TS 6 if you depend on the programmatic compiler API (ts-morph, custom transformers, some framework template type-checkers) until the stable 7.x API ships. Transpilation stays on esbuild/SWC/Vite regardless - they strip types without checking; only `tsc --noEmit` is type safety.
+TS 7 (the Go-native rewrite) is rolling out: same type system and syntax, roughly 10x faster type-checking - but its stability state moves fast, so verify the CURRENT release status and your toolchain's support (editor LSP, programmatic API) via the documentation server at adoption time rather than trusting recall. Adopt it first where risk is lowest and the win immediate: `tsc --noEmit` in CI. Hold on TS 6 if you depend on the programmatic compiler API (ts-morph, custom transformers, some framework template type-checkers) until the stable 7.x API ships. Transpilation stays on esbuild/SWC/Vite regardless - they strip types without checking; only `tsc --noEmit` is type safety.
 
 ## Plain JavaScript is checked JavaScript
 

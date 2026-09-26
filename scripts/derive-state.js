@@ -135,7 +135,7 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
 // family that fans a catalog row out into several plugins.
 const HOOKS_HOME = BRAND.core;
 const catalogServer = (name) => String(name)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright');
+    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the

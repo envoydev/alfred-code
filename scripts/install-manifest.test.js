@@ -55,7 +55,7 @@ test('manifest: every MCP entry keeps its install-time placeholders intact', () 
     // JSON has no `$` expansion, so an install-time shell variable became an @PLACEHOLDER@ token the
     // argv resolver already understands. A row that lost one would register a literal.
     const m = loadManifest(ROOT);
-    const serena = m.mcps.find((e) => e.startsWith('serena|'));
+    const serena = m.mcps.find((e) => e.startsWith('navigation|'));
     assert.match(serena, /@SERENA_CONTEXT@/);
     const memory = m.mcps.find((e) => e.startsWith('memory|'));
     assert.match(memory, /@MEMORY_DB_PATH@/);

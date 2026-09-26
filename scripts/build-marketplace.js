@@ -283,7 +283,7 @@ function hooksBlock(wirings)
 // `mcpServers`, one plugin per server family. Two rulings shape what is written here, both in
 // docs/superpowers/plans/2026-09-20-plugin-native-migration-phase-6.md and both measured:
 //
-//   R1 - the plugin is NAMED for its server (`serena`, not `alfred-code-mcp-serena`), because the
+//   R1 - the plugin is NAMED for its server (`navigation`, not `alfred-code-mcp-navigation`), because the
 //        plugin name sits inside every tool name: `mcp__plugin_<plugin>_<server>__<tool>`, repeated
 //        837 times across the shipped surfaces. The short name costs 14,000 fewer characters.
 //   R3 - the version pins are resolved at RELEASE time from meta/mcp-pins.json, never from the
@@ -311,9 +311,9 @@ function readPins(options = {})
     return { suffix, pins };
 }
 
-// The four browsers the playwright catalog entry expands into - ONE PLUGIN EACH, not one plugin
+// The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
 // declaring four servers. A plugin's servers all load together, so four in one entry would put four
-// copies of playwright's tool schemas in every session of a project that kept a single browser; the
+// copies of the browser server's tool schemas in every session of a project that kept a single browser; the
 // registration route never did that (it wrote one server per KEPT engine), and the selection already
 // knows which engines those are. One plugin per engine keeps that, and drops the `/mcp disable`
 // step the one-entry shape would have needed.
@@ -323,22 +323,26 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 // `mcp__plugin_<plugin>_<server>__<tool>`, so this is what makes every shipped tool name
 // `mcp__plugin_<n>_<n>__<tool>` for a single `<n>` - readable, and mechanical to generate. Lint
 // check 53 fails on any entry that breaks it.
+//
+// The names are the ROLE (2.0.0, the user's rename): navigation, documentation, memory and one
+// browser-<engine> per browser. The upstream each one runs - Serena, Context7, Playwright MCP - is
+// named once in its description, where a reader needs it.
 
 function mcpServerShapes(options = {})
 {
     const { suffix } = readPins(options);
     const proj = '${CLAUDE_PROJECT_DIR}';
     const root = '${CLAUDE_PLUGIN_ROOT}';
-    const playwright = {};
+    const browsers = {};
     for (const engine of PW_ENGINES)
     {
-        const name = `playwright-${engine}`;
-        playwright[name] = {
-            description: `playwright (${engine}) as a plugin: drive a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
+        const name = `browser-${engine}`;
+        browsers[name] = {
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
             servers: {
                 [name]: {
                     command: 'npx',
-                    args: ['-y', `@playwright/mcp${suffix('playwright')}`, '--browser', engine,
+                    args: ['-y', `@playwright/mcp${suffix('browser')}`, '--browser', engine,
                         `--user-data-dir`, `${proj}/.playwright/${engine}`,
                         `--output-dir`, `${proj}/.playwright/${engine}/output`],
                 },
@@ -347,29 +351,29 @@ function mcpServerShapes(options = {})
     }
     return {
         // --- the three locked servers -----------------------------------------------------------
-        serena: {
+        navigation: {
             locked: true,
-            description: 'serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
+            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
-                serena: {
+                navigation: {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
                     // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another.
                     command: 'node',
                     // SERENA_HOME stays RELATIVE: it resolves against the server's cwd, which is the
                     // project. An absolute path here would pool every project into one home.
                     env: { SERENA_HOME: '.serena/home' },
-                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('serena')}`, '--', 'start-mcp-server',
+                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
                         // Always claude-code inside a Claude Code plugin; the ide-assistant value is
                         // cursor-stack's, and its own registration keeps it.
                         '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
                 },
             },
         },
-        context7: {
+        documentation: {
             locked: true,
-            description: 'context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
+            description: 'The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
             servers: {
-                context7: {
+                documentation: {
                     type: 'http',
                     url: 'https://mcp.context7.com/mcp',
                     // ':-' so an UNSET key sends an EMPTY header = the keyless free tier. A literal
@@ -395,8 +399,8 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // --- the droppable servers: one playwright plugin per browser engine -----------------------
-        ...playwright,
+        // --- the droppable servers: one browser plugin per engine ---------------------------------
+        ...browsers,
     };
 }
 
@@ -418,15 +422,47 @@ function mcpPlugins(options = {})
         };
         // The locked three depend on nothing: the installer puts them beside the core on every run,
         // and an entry with no dependency can never be disabled at load for a missing one. The
-        // droppable playwright engines are ordinary picks and name the core.
+        // droppable browser engines are ordinary picks and name the core.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });
 }
 
+// THE RENAMED MCP IDS, LISTED - the 1.x core's rule (aliasEntries) applied to the servers 2.0.0
+// renamed (meta/stack-manifest.json `renamed.mcps`). An id a catalog drops stops loading in every
+// project still enabled on it the moment its marketplace is refreshed, silently (S25) - and one
+// project's update refreshes it for every project on the account. So each old id stays listed,
+// RETIRED, carrying its successor's server under the OLD server name: a project not yet updated
+// keeps the tool names its copies spell, and its next update swaps the plugin for the new one
+// (install/plugins.js migrateRenamed). A browser engine is renamed by its prefix. Kept until
+// evidence shows no install still resolves through them - never on a release cadence.
+function mcpAliasEntries(options = {})
+{
+    const renamed = options.renamedMcps || loadManifest(options.repo || REPO).renamed.mcps;
+    const current = options.entries || mcpPlugins(options);
+    const out = [];
+    for (const [from, to] of Object.entries(renamed))
+    {
+        const pairs = current.some((e) => e.name === to) ? [[from, to]]
+            : PW_ENGINES.filter((e) => current.some((c) => c.name === `${to}-${e}`)).map((e) => [`${from}-${e}`, `${to}-${e}`]);
+        for (const [old, now] of pairs)
+        {
+            const entry = current.find((e) => e.name === now);
+            const alias = {
+                ...entry,
+                name: old,
+                description: `RETIRED in 2.0.0 - renamed ${now}. Run /alfred-code:update: it installs ${now} in its place and removes this entry.`,
+                mcpServers: { [old]: entry.mcpServers[now] },
+            };
+            out.push(alias);
+        }
+    }
+    return out;
+}
+
 function applyMcpPlugins(mkt, entries)
 {
-    const wanted = entries || mcpPlugins();
+    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
     const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
     for (const w of wanted)
     {
@@ -435,8 +471,9 @@ function applyMcpPlugins(mkt, entries)
     }
     // PRUNE what this generator used to own. An MCP entry carries servers and nothing else, so it
     // is recognisable without a list of past names - which matters, because a regeneration that
-    // only adds leaves a renamed or split entry (playwright -> one plugin per engine) behind in the
-    // marketplace, enabled on every machine that already installed it.
+    // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
+    // marketplace, enabled on every machine that already installed it. A RENAMED one is not left
+    // behind: its alias is among the wanted entries (mcpAliasEntries), so it stays listed on purpose.
     const keep = new Set(wanted.map(w => w.name));
     const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (let i = plugins.length - 1; i >= 0; i--)
@@ -463,7 +500,7 @@ function main(argv)
     {
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
-        const entries = mcpPlugins(options);
+        const entries = mcpPlugins(options).concat(mcpAliasEntries(options));
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
         if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
@@ -521,4 +558,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, aliasEntries, retiredMarketplaceEntries, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, aliasEntries, retiredMarketplaceEntries, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

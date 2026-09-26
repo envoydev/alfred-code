@@ -61,7 +61,7 @@ test('a rule pulls its skills', () => {
 
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['baseline-navigation'] });
-    assert.ok(c.mcps.includes('serena'), 'baseline-navigation genuinely depends on serena');
+    assert.ok(c.mcps.includes('navigation'), 'baseline-navigation genuinely depends on serena');
     // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
     const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
@@ -119,11 +119,11 @@ test('--hooks-answered reaches the emitted file through the CLI', () => {
 });
 
 test('raw.mcps are direct picks the closure keeps and emits', () => {
-    const c = computeClosure(graph, { mcps: ['playwright'] });
-    assert.ok(c.mcps.includes('playwright'), 'a directly chosen mcp survives the closure');
-    assert.strictEqual(c.reasons['playwright'], undefined, 'a direct mcp pick is not a closure add');
+    const c = computeClosure(graph, { mcps: ['browser'] });
+    assert.ok(c.mcps.includes('browser'), 'a directly chosen mcp survives the closure');
+    assert.strictEqual(c.reasons['browser'], undefined, 'a direct mcp pick is not a closure add');
     const { emitSelectionFile } = require('./stack-select.js');
-    assert.ok(emitSelectionFile(c).includes('mcp playwright'), 'the direct mcp reaches the emitted selection');
+    assert.ok(emitSelectionFile(c).includes('mcp browser'), 'the direct mcp reaches the emitted selection');
 });
 
 test('user-chosen items carry no reason; only closure-added ones do', () => {
@@ -149,7 +149,7 @@ test('a non-array raw field does not char-split into bogus items', () => {
 const { findUnknownNames, dropUnknownNames } = require('./stack-select.js');
 
 test('unknown selection names are detected per category and dropped', () => {
-    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['serena', 'no-such-mcp'], plugins: [] };
+    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['navigation', 'no-such-mcp'], plugins: [] };
     const unknown = findUnknownNames(graph, raw);
     assert.deepStrictEqual(unknown, [
         { category: 'skill', name: 'totally-retired-skill' },
@@ -159,7 +159,7 @@ test('unknown selection names are detected per category and dropped', () => {
     const filtered = dropUnknownNames(raw, unknown);
     assert.deepStrictEqual(filtered.skills, ['csharp']);
     assert.deepStrictEqual(filtered.agents, []);
-    assert.deepStrictEqual(filtered.mcps, ['serena']);
+    assert.deepStrictEqual(filtered.mcps, ['navigation']);
     assert.ok(!computeClosure(graph, filtered).skills.includes('totally-retired-skill'));
 });
 
@@ -200,10 +200,10 @@ test('phase-1 hard prereqs are blockers when the binary is absent', () => {
     assert.strictEqual(r.ok, false);
 });
 
-test('playwright keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
+test('the browser server keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
     // msedge is the one kept engine that uses a browser the machine must already carry and that
     // no default install has everywhere; firefox/webkit are downloaded by the installer itself.
-    const sel = { skills: [], mcps: ['playwright'], plugins: [] };
+    const sel = { skills: [], mcps: ['browser'], plugins: [] };
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
     const edge = r => r.warnings.some(w => /Microsoft Edge/.test(w.need));
     assert.ok(edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['chrome', 'msedge'] })), 'msedge kept without Edge warns');
@@ -211,13 +211,13 @@ test('playwright keeping msedge warns when Edge is not installed; the other engi
     assert.ok(!edge(evaluatePrereqs(sel, { bins: { ...bins, msedge: true }, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'Edge present is clean');
     for (const other of [undefined, [], ['chrome'], ['firefox', 'webkit']])
         assert.ok(!edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: other })), `${JSON.stringify(other)} never asks for Edge`);
-    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no playwright selected, no Edge warning');
+    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no browser selected, no Edge warning');
 });
 
-test('installed playwright-<engine> servers read back as the one manifest entry', () => {
+test('installed browser-<engine> servers read back as the one manifest entry', () => {
     const { normalizeInventory } = require('./stack-select.js');
-    const inv = normalizeInventory({ mcps: ['serena', 'playwright-chrome', { name: 'playwright-firefox' }, 'playwright', 'playwright-extra'] });
-    assert.deepStrictEqual(inv.mcps, ['serena', 'playwright', 'playwright-extra'], 'engine servers collapse to playwright; a non-engine name is left alone');
+    const inv = normalizeInventory({ mcps: ['navigation', 'browser-chrome', { name: 'browser-firefox' }, 'playwright', 'playwright-extra'] });
+    assert.deepStrictEqual(inv.mcps, ['navigation', 'browser', 'playwright', 'playwright-extra'], 'engine servers collapse to browser; a non-engine name is left alone');
 });
 
 test('a .NET skill without the dotnet SDK is a blocker', () => {
@@ -252,11 +252,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 test('emitSelectionFile produces Component B selection lines', () => {
-    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['csharp-lsp'] });
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['navigation'], plugins: ['csharp-lsp'] });
     const lines = text.trim().split('\n');
     assert.ok(lines.includes('skill csharp'));
     assert.ok(lines.includes('agent aspnet-implementer'));
-    assert.ok(lines.includes('mcp serena'));
+    assert.ok(lines.includes('mcp navigation'));
     assert.ok(lines.includes('plugin csharp-lsp'));
     assert.ok(lines.includes('rule csharp-conventions'));
 });
@@ -357,20 +357,20 @@ test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
     const unev = gaps.unevidenced.map(u => `${u.category} ${u.name}`);
     assert.deepStrictEqual(unev, ['skill dotnet-messaging'], 'installed + catalog-listed + no signal = advisory');
     assert.ok(!unev.includes('skill csharp'), 'no catalog entry -> never unevidenced');
-    assert.ok(!gaps.missing.some(m => m.name === 'playwright') && !unev.includes('mcp playwright'), 'not installed + not found = nothing');
+    assert.ok(!gaps.missing.some(m => m.name === 'browser') && !unev.includes('mcp browser'), 'not installed + not found = nothing');
 });
 
 test('findJudgment: overlap only when both installed, dormant only when installed', () => {
     const { findJudgment } = require('./stack-select.js');
     const judgment = {
-        overlaps: [{ items: ['mcp:playwright', 'skill:browser-extension'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'automation + screenshots', 'skill:browser-extension': 'live debug of an open tab' } }],
+        overlaps: [{ items: ['mcp:browser', 'skill:browser-extension'], shared: 'drive a browser', gaps: { 'mcp:browser': 'automation + screenshots', 'skill:browser-extension': 'live debug of an open tab' } }],
         occasionBound: { 'skill:capacitor-release': 'release-time - store submission' },
     };
-    const both = findJudgment(judgment, { mcps: ['playwright'], skills: ['capacitor-release', 'browser-extension'] });
-    assert.ok(both.some(l => l.startsWith('overlap: mcp playwright + skill browser-extension - shared: drive a browser')), 'overlap line for an installed pair');
+    const both = findJudgment(judgment, { mcps: ['browser'], skills: ['capacitor-release', 'browser-extension'] });
+    assert.ok(both.some(l => l.startsWith('overlap: mcp browser + skill browser-extension - shared: drive a browser')), 'overlap line for an installed pair');
     assert.ok(both.some(l => /gap skill browser-extension: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
     assert.ok(both.some(l => l === 'dormant: skill capacitor-release - release-time - store submission'), 'dormant line for an installed occasion-bound item');
-    const one = findJudgment(judgment, { mcps: ['playwright'], skills: [] });
+    const one = findJudgment(judgment, { mcps: ['browser'], skills: [] });
     assert.deepStrictEqual(one, [], 'no overlap with one side absent, no dormant when not installed');
 });
 
@@ -538,7 +538,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
         rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
         agents: ['architecture-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
         skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
-        mcps: ['serena', 'my-own-server'],
+        mcps: ['navigation', 'my-own-server'],
         plugins: ['csharp-lsp'],
         hooks: ['guard-catastrophic-rm'],
     };
@@ -593,7 +593,7 @@ test('findStackMissing flags the detected stacks + baseline closure that is not 
         rules: ['csharp-conventions'],
         agents: ['aspnet-implementer'],
         skills: ['csharp'],
-        mcps: ['serena'],
+        mcps: ['navigation'],
         plugins: [],
         hooks: [],
     };
@@ -667,7 +667,7 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const sel = path.join(dir, 'final.json');
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
-        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'serena' }, 'context7'], hooks: [],
+        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'navigation' }, 'documentation'], hooks: [],
             plugins: [{ name: 'claude-md-management', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
         fs.writeFileSync(dropped, JSON.stringify({ plugins: [{ name: 'typescript-lsp', scope: 'project' }] }));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
@@ -676,7 +676,7 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const txt = fs.readFileSync(emit, 'utf8');
         assert.match(txt, /^plugin claude-md-management$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
-        assert.match(txt, /^mcp serena$/m, 'an object mcp entry stays selected');
+        assert.match(txt, /^mcp navigation$/m, 'an object mcp entry stays selected');
     }
     finally
     {
@@ -815,11 +815,11 @@ test('a table still renders when --found and --dropped name missing files (advis
 // The remote context7 registration sends `${CONTEXT7_API_KEY:-}` - an unset key is the keyless
 // free tier, not an error, and `claude mcp list` stops warning for the `:-` form - so the
 // prerequisite check is the one place a missing key still shows.
-test('context7 selected without a key warns, never blocks; with the key, clean', () => {
+test('the documentation server selected without a key warns, never blocks; with the key, clean', () => {
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const sel = { skills: [], mcps: ['context7'], plugins: [] };
+    const sel = { skills: [], mcps: ['documentation'], plugins: [] };
     const r = evaluatePrereqs(sel, { bins, envs: {} }, {});
-    assert.ok(r.warnings.some(w => /context7 API key/.test(w.need)), 'warns without a key');
+    assert.ok(r.warnings.some(w => /documentation server API key \(Context7\)/.test(w.need)), 'warns without a key');
     assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
     const keyed = evaluatePrereqs(sel, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
     assert.ok(!keyed.warnings.some(w => /context7/i.test(w.need)), 'a set key satisfies it');
@@ -1000,7 +1000,7 @@ test('the recommended hook set is the whole catalog - a walk that takes it switc
 // denied, an item of a parked entry. That is on disk, never MISSING: validate proposing it every run
 // would re-enable what the user turned off.
 test('findStackMissing: a left_out item is switched off here, never missing', () => {
-    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['serena'], plugins: [], hooks: [],
+    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['navigation'], plugins: [], hooks: [],
         left_out: ['agent aspnet-verifier', 'skill dotnet-web-backend'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['aspnet']).map(m => `${m.category} ${m.name}`));
     assert.ok(!names.has('agent aspnet-verifier'), 'a denied seat is not proposed back');
@@ -1009,9 +1009,9 @@ test('findStackMissing: a left_out item is switched off here, never missing', ()
 });
 
 test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
-    const installed = { rules: [], agents: [], skills: [], mcps: ['serena'], plugins: [], hooks: [], plugins_disabled: ['playwright-chrome'] };
+    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['browser-chrome'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
-    assert.ok(!names.has('mcp playwright'), 'the parked engine entry folds onto its catalog row');
+    assert.ok(!names.has('mcp browser'), 'the parked engine entry folds onto its catalog row');
 });
 
 // Task 18a: setup suggests what to install BEFORE anything is installed, with validate's own two
@@ -1069,7 +1069,7 @@ function spawnSyncNode(args)
 // prerequisite check must not refuse the install over them - it names them as init's instead.
 // Every other caller (configure, validate) keeps them as blockers.
 test('--defer-init moves what init installs out of the blockers, and names it', () => {
-    const selection = { skills: [], mcps: ['serena'], plugins: ['csharp-lsp'] };
+    const selection = { skills: [], mcps: ['navigation'], plugins: ['csharp-lsp'] };
     const bins = { node: true, git: true, claude: true, uvx: false, 'csharp-ls': false };
     const plain = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
     assert.deepStrictEqual(plain.blockers.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)'], 'without the flag both still block');
@@ -1084,7 +1084,7 @@ test('--defer-init moves what init installs out of the blockers, and names it', 
     try
     {
         const sel = path.join(dir, 'raw.json');
-        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: ['serena'], plugins: [], hooks: [] }));
+        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: ['navigation'], plugins: [], hooks: [] }));
         // An empty PATH: every binary reads as absent, so uvx is deferred and node/git/claude block.
         const r = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--check', '--defer-init'],
             { encoding: 'utf8', env: { PATH: dir, HOME: dir } });

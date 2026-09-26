@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked playwright browsers, the serena index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -47,7 +47,7 @@ install · 2 the plan · 3 machine installs · 4 memory · 5 captures · 6 CLAUD
 
 ## 1. Read the install
 
-One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1` - the installer's own read-back (skills, agents, plugins, `left_out`, `playwright`), under the scope the stamp records. `--installed-only found nothing installed` means there is no install: route to `/alfred-code:setup` as above.
+One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --installed-only --print-plan --plan-out "$TMP/installed.json" > "$TMP/plan.out" 2>&1` - the installer's own read-back (skills, agents, plugins, `left_out`, `browser`), under the scope the stamp records. `--installed-only found nothing installed` means there is no install: route to `/alfred-code:setup` as above.
 
 **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell`: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
@@ -57,8 +57,8 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
-  playwright browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
-  machine does not have), the serena index, then the account's claude-hud status line and compact
+  browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
+  machine does not have), the navigation-server index, then the account's claude-hud status line and compact
   layout. The command is the exact one to run.
 - `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
   captures in their fixed order, each only when the install lists its skill AND its seat.
@@ -86,7 +86,7 @@ Run the picked commands in plan order, uv first - the `after uv` ones need it. A
 directory the running shell may not have on PATH yet: its installer prints where. When `uv` is not
 found afterwards, EVERY later command of this run carries that directory first -
 `PATH="<dir>:$PATH" <command>` - step 3's `after uv` commands and step 4's `memory.js init` alike,
-since the import it runs needs `uvx`. The serena index and a browser download take minutes:
+since the import it runs needs `uvx`. The navigation-server index and a browser download take minutes:
 start them in the background and go on to step 4, collecting each result before step 5's
 architecture capture (it navigates by symbol) and the close. Report each as installed, failed (its
 error line quoted) or skipped by the answer. A server this session started before its runtime existed

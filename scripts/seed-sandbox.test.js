@@ -49,9 +49,9 @@ test('sandbox: a run with no stubs of its own reaches neither npm nor curl on th
 
 // A picked firefox makes the seed download its build through npx - the positive control that the
 // sentinel does see what the run calls once the sandbox's own stubs are gone.
-const PW_SELECTION = `${SELECTION}mcp playwright\n`;
+const PW_SELECTION = `${SELECTION}mcp browser\n`;
 const PW_ARGS = ['--playwright-browsers', 'firefox'];
-const PW_PIN = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins.playwright.version;
+const PW_PIN = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins.browser.version;
 
 test('sandbox: with the sandbox stubs removed, the seed still asks no registry - its one outward call is the pinned browser download', POSIX_ONLY, () =>
 {

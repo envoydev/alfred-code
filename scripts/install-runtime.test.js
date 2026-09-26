@@ -322,7 +322,7 @@ test('install-runtime: the seed prints a line for a failed marketplace refresh a
     const stub = [...STUB_HEAD,
         'if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "update" ]; then echo "r105 refresh refused" >&2; exit 1; fi',
         'if [ "$1" = "plugin" ] && [ "$2" = "install" ] && [ "${3%%@*}" = "claude-hud" ]; then echo "r105 install refused" >&2; exit 1; fi',
-        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$3" = "serena" ]; then echo "r105 .mcp.json could not be parsed" >&2; exit 1; fi',
+        'if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$3" = "navigation" ]; then echo "r105 .mcp.json could not be parsed" >&2; exit 1; fi',
         'if [ "$1" = "mcp" ] && [ "$2" = "remove" ]; then echo "No MCP server named \\"$3\\" in .mcp.json" >&2; exit 1; fi',
         'exit 0', ''].join('\n');
     const run = seedRun('install', 'skill csharp\n', { prepare: (repo, work) => fs.writeFileSync(path.join(work, 'bin', 'claude'), stub, { mode: 0o755 }) });
@@ -331,9 +331,9 @@ test('install-runtime: the seed prints a line for a failed marketplace refresh a
     assert.ok(refreshes.length > 0, run.calls.join('\n'));
     for (const c of refreshes)
         assert.strictEqual(bangs.filter((l) => l.includes(`!! claude ${c} failed (exit 1): r105 refresh refused`)).length, 1, `${c}:\n${bangs.join('\n')}`);
-    assert.strictEqual(bangs.filter((l) => l.includes('!! claude mcp remove serena failed (exit 1): r105 .mcp.json could not be parsed')).length, 1, bangs.join('\n'));
-    assert.ok(run.calls.includes('mcp remove context7 -s project'), 'the absent-server remove ran');
-    assert.deepStrictEqual(bangs.filter((l) => /mcp remove/.test(l) && !/serena/.test(l)), [], 'an absent server is nothing to report');
+    assert.strictEqual(bangs.filter((l) => l.includes('!! claude mcp remove navigation failed (exit 1): r105 .mcp.json could not be parsed')).length, 1, bangs.join('\n'));
+    assert.ok(run.calls.includes('mcp remove documentation -s project'), 'the absent-server remove ran');
+    assert.deepStrictEqual(bangs.filter((l) => /mcp remove/.test(l) && !/navigation/.test(l)), [], 'an absent server is nothing to report');
     // The install failure is the caller's own note, once - never a second line from the runner.
     assert.deepStrictEqual(bangs.filter((l) => /claude-hud@/.test(l)), ['==>   !! plugin claude-hud@claude-hud failed'], bangs.join('\n'));
 });

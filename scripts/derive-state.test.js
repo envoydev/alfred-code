@@ -181,11 +181,11 @@ test('derive-state: rules and MCP servers pass through as picked - they are copi
     // backwards and let an unsorted list pass.
     const file = selectionFile([
         'skill csharp', 'agent security-auditor', 'rule csharp-conventions', 'rule baseline-security',
-        'mcp serena', 'mcp context7', 'mcp playwright-chrome', 'hook guard-secret-value',
+        'mcp documentation', 'mcp navigation', 'mcp browser-chrome', 'hook guard-secret-value',
     ]);
     const got = derive(file);
     assert.deepStrictEqual(got.rules.copy, ['baseline-security', 'csharp-conventions']);
-    assert.deepStrictEqual(got.mcps, ['context7', 'playwright-chrome', 'serena']);
+    assert.deepStrictEqual(got.mcps, ['browser-chrome', 'documentation', 'navigation']);
     assert.deepStrictEqual(got.hooks.on, ['guard-secret-value']);
 });
 
@@ -287,12 +287,12 @@ test('readInstalled: a hook HOOKS_OFF does not name is on - a new release hook i
 
 test('readInstalled: each surface reads back only while its own route is on', () =>
 {
-    const plugins = ['alfred-code', 'claude-stack-aspnet', 'serena'];
+    const plugins = ['alfred-code', 'claude-stack-aspnet', 'navigation'];
     assert.deepStrictEqual(readInstalled({ plugins, hooksOff: '', routes: {}, sourceDir: ROOT }), [],
         'the full copy route reads the disk alone');
     // The hooks ride the core (2.0.0): without it the hooks on disk decide, and so they do on the
     // hooks copy route with the core on for the skills.
-    const noCore = readInstalled({ plugins: ['serena'], hooksOff: '', routes: ALL_ROUTES, sourceDir: ROOT });
+    const noCore = readInstalled({ plugins: ['navigation'], hooksOff: '', routes: ALL_ROUTES, sourceDir: ROOT });
     assert.ok(!noCore.some((l) => l.startsWith('hook ')), 'no core enabled: the hooks on disk decide');
     const hooksCopied = readInstalled({ plugins: ['alfred-code'], hooksOff: '', routes: { skills: true, mcps: true }, sourceDir: ROOT });
     assert.ok(!hooksCopied.some((l) => l.startsWith('hook ')), 'the hooks copy route: the core carries them, the wired copies decide');
@@ -304,10 +304,10 @@ test('readInstalled: each surface reads back only while its own route is on', ()
 test('readInstalled: MCP entries fold back onto the catalog, once each - a cut server is no catalog line', () =>
 {
     const lines = readInstalled({
-        plugins: ['serena', 'context7', 'context7-local', 'playwright-firefox', 'playwright-webkit', 'claude-hud'],
+        plugins: ['navigation', 'documentation', 'context7-local', 'browser-firefox', 'browser-webkit', 'claude-hud'],
         routes: { mcps: true }, sourceDir: ROOT,
     });
-    assert.deepStrictEqual(lines.sort(), ['mcp context7', 'mcp playwright', 'mcp serena']);
+    assert.deepStrictEqual(lines.sort(), ['mcp browser', 'mcp documentation', 'mcp navigation']);
 });
 
 test('readInstalled: a denied seat is not read back, whatever plugin carries it', () =>
@@ -421,7 +421,7 @@ test('floor: only the seat\'s CURRENT home spelling denies it - Claude Code matc
 
 test('floor: a name that is no stack entry counts nothing', () =>
 {
-    const got = floor({ plugins: ['claude-hud', 'serena', 'nope'] });
+    const got = floor({ plugins: ['claude-hud', 'navigation', 'nope'] });
     assert.deepStrictEqual([got.entries, got.chars], [[], 0]);
 });
 
@@ -489,9 +489,9 @@ test('setup reports only keys the derivation prints', () =>
 
 test('floor: entries it does not count come back as `skipped`, never silently dropped', () =>
 {
-    const got = floor({ plugins: ['alfred-code', 'claude-hud', 'serena@envoydev'] });
+    const got = floor({ plugins: ['alfred-code', 'claude-hud', 'navigation@envoydev'] });
     assert.deepStrictEqual(got.entries, ['alfred-code']);
-    assert.deepStrictEqual(got.skipped, ['claude-hud', 'serena']);
+    assert.deepStrictEqual(got.skipped, ['claude-hud', 'navigation']);
 });
 
 test('floor: skill chars are the model-invocable descriptions, measured independently', () =>
@@ -650,8 +650,8 @@ const { delta } = require('./derive-state.js');
 
 test('delta: what the walk added and dropped against the inventory, one line each', () =>
 {
-    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['baseline-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['serena'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
-    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule baseline-security', 'rule sql-conventions', 'hook docs-session', 'mcp serena', 'plugin claude-hud'].join('\n');
+    const installed = { skills: ['csharp', 'dotnet'], agents: ['evidence-gatherer'], rules: ['baseline-security'], hooks: ['docs-session', 'guard-read-whole-file'], mcps: ['navigation'], plugins: [{ name: 'claude-hud', scope: 'user' }] };
+    const selectionText = ['skill csharp', 'skill markdown-style', 'agent evidence-gatherer', 'rule baseline-security', 'rule sql-conventions', 'hook docs-session', 'mcp navigation', 'plugin claude-hud'].join('\n');
     assert.deepStrictEqual(delta({ installed, selectionText }), {
         add: ['skill markdown-style', 'rule sql-conventions'],
         drop: ['skill dotnet', 'hook guard-read-whole-file'],

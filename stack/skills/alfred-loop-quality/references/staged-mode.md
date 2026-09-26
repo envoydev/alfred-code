@@ -84,6 +84,6 @@ Final report (whole pipeline):
 - DECISIONS log: `<LOOP_DIR>/DECISIONS.md` - every judgment call with its precedent, appended as it lands in either mode; the report names the file and its entry count, never re-pastes it (the close is an answer like any other - the answer-length hook blocks a wall of prose).
 - OUT OF SCOPE / COULD-NOT-APPLY: anything deliberately left, with reasons.
 - Leftovers - what the pipeline's gate and audit runs started and still have up (containers, seeded test data, background processes), or `none`; anything listed gets tear-down-vs-keep through AskUserQuestion batched with the close, teardown recommended - never touching what the run did not start.
-- `memories purged: <names|none>` - DELEGATED runs purge the serena hand-off notes fold-first at close (the rule and receipt shape: `references/delegated-mode.md`).
+- `memories purged: <names|none>` - DELEGATED runs purge the navigation-server hand-off notes fold-first at close (the rule and receipt shape: `references/delegated-mode.md`).
 - References read, as a receipt: `rules.md: <yes> | anti-gaming-sweep.md: <yes> | delegated-mode.md: <yes|n/a> | bootstrap.md: <yes|n/a> | stage-close.md: <count of stage closes and resumes>` - a `rules.md: no`, or an entry absent where the run dispatched, seeded, or closed a stage, means that read was skipped.
 - Overall summary of changes.

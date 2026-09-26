@@ -784,7 +784,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 // A cite is matched backticked OR bare: every measured miss in the descriptions is bare
 // (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
 // most - it is read by a model choosing between installed skills. A path or a longer identifier is
-// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_serena_serena__find_symbol`).
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_navigation_navigation__find_symbol`).
 // A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
 // `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
 // used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
@@ -2461,14 +2461,17 @@ function lintMcpEntries()
     catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
 
     let wanted;
-    try { wanted = build.mcpPlugins(); }
+    let aliases;
+    try { wanted = build.mcpPlugins(); aliases = build.mcpAliasEntries(); }
     catch (err) { return [`the MCP entries could not be generated: ${err.message}`]; }
 
     let mkt;
     try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
     catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
 
-    for (const entry of wanted)
+    // The RETIRED ids of the renamed servers are generated too (build-marketplace.js mcpAliasEntries):
+    // one missing strands every project still enabled on it (S25), so they are held like the rest.
+    for (const entry of wanted.concat(aliases))
     {
         const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
         if (!live)
@@ -2498,9 +2501,9 @@ function lintMcpEntries()
     const catalog = manifestFlatSet(readStackManifest().mcps, (r) => r.name);
     const carried = new Set();
     for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
-    // playwright expands into one plugin per engine; each maps back to its catalog name, the way
-    // every installed-name reader already maps `playwright-*`.
-    const family = name => name.replace(/^playwright-.*/, 'playwright');
+    // browser expands into one plugin per engine; each maps back to its catalog name, the way
+    // every installed-name reader already maps `browser-*`.
+    const family = name => name.replace(/^browser-.*/, 'browser');
     const families = new Set([...carried].map(family));
     for (const name of catalog.active)
         if (!families.has(name))
@@ -2913,7 +2916,7 @@ function lintMarketplaceEntries(liveIn)
     // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
     // they are not drift.
     const elsewhere = new Set();
-    try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    try { for (const e of build.mcpPlugins().concat(build.mcpAliasEntries())) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
     {
         if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;

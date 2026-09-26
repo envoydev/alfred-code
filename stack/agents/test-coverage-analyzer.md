@@ -1,7 +1,7 @@
 ---
 name: test-coverage-analyzer
 description: "Use to characterize one surface's coverage from an already-produced instrumented run: parses cobertura / lcov / summary output and returns per-module numbers, uncovered hot spots, weak points and test smells. Read-only, never runs the suite or writes files; the coverage capture skill is its primary caller."
-tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
 model: sonnet
 effort: medium
 color: orange
@@ -26,7 +26,7 @@ return raw structured data, not prose for a human.
   never by a remembered name; every project installs a different set - to judge the suite
   against house practice and to apply the exclusion catalog's semantics. With none matching,
   characterize coverage from the instrumented output alone and say so.
-- Locate uncovered code with serena per `.claude/rules/baseline-navigation.md`; `Read` located
+- Locate uncovered code with the navigation server per `.claude/rules/baseline-navigation.md`; `Read` located
   ranges. **Hard cap: 2 locating passes per hot spot** - still unclear after 2, record it
   uncertain rather than reading on.
 - `Bash` is here for READING only - the architecture docs engine (`node .claude/hooks/docs.js where <path>`

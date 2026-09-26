@@ -70,6 +70,6 @@ Brief: 'Start a new Angular admin dashboard.'
 
 ## Rules
 - Greenfield architecture and tech choices are the user's - present options, get the pick, never scaffold before it.
-- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check context7 or the vendor doc, never memory - an option resting on a claim no doc backs says `unverified`.
+- Design from the house architecture skills, not recall - this skill routes to them, it does not re-derive structure. Version-sensitive choices check the documentation server or the vendor doc, never memory - an option resting on a claim no doc backs says `unverified`.
 - The main session is the only orchestrator - never instruct a subagent to dispatch another; the domain seats this skill fans out carry no Agent tool.
 - An honest NEEDS_CONTEXT beats a guessed design: a blocking spec question goes to the user before options are locked.

@@ -30,8 +30,8 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 
 ## Generated rule - fill rules (references/generated-rule-template.md)
 - **Orchestration row: the first CLAUSE, max 120 chars** - measured on a 16-seat project: house first sentences run 460-588 chars, so 'the first sentence' put 4,594 chars of orchestration block into a rule every session and every subagent pays for.
-- **Each MCP row carries its `first call:` line VERBATIM** - measured: across 164 audited sessions in 9 projects, `serena` made zero calls in 6 of the 9 and `context7` in 8 of the 9, with 42-110 of their tools sitting deferred and unloaded - both servers are locked into every install, both are named in an always-on baseline rule, and naming them is what did not work.
-- **playwright: a full-page PNG Read is for the FINAL accepted state only** - measured: two sessions Read ~260k tokens of full-page PNGs while iterating styling, then re-paid them as cache-read every turn after; the evaluate/snapshot sessions verified the same class of change for under 10k each, and a target-scoped read cost 0.6k where the full page cost 22k.
+- **Each MCP row carries its `first call:` line VERBATIM** - measured: across 164 audited sessions in 9 projects, `navigation` made zero calls in 6 of the 9 and `documentation` in 8 of the 9, with 42-110 of their tools sitting deferred and unloaded - both servers are locked into every install, both are named in an always-on baseline rule, and naming them is what did not work.
+- **The browser server: a full-page PNG Read is for the FINAL accepted state only** - measured: two sessions Read ~260k tokens of full-page PNGs while iterating styling, then re-paid them as cache-read every turn after; the evaluate/snapshot sessions verified the same class of change for under 10k each, and a target-scoped read cost 0.6k where the full page cost 22k.
 
 ## 4. VERIFY
 - **The frontmatter check is node, never PyYAML** - measured: a run's verify step died on ModuleNotFoundError and the close still reported 'frontmatter parses', off a weaker check that had not been run either.

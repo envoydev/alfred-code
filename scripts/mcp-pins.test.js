@@ -17,7 +17,7 @@ const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const FLOATING = /[\w@/.-]+@latest\b/;
-const PINNED = { playwright: '@playwright/mcp', serena: 'serena-agent', memory: 'mcp-memory-service' };
+const PINNED = { browser: '@playwright/mcp', navigation: 'serena-agent', memory: 'mcp-memory-service' };
 
 test('no shipped MCP launch line runs a package on @latest - manifest or generated plugin entries', () =>
 {
@@ -41,18 +41,18 @@ test('the release pins cover every package server, and the generator spells a pi
         assert.strictEqual(PACKAGES[name].package, pkg, `refresh-mcp-pins resolves the wrong package for ${name}`);
         assert.ok(pins[name].package === pkg && /^\d+\.\d+\.\d+/.test(pins[name].version || ''), `meta/mcp-pins.json has no committed pin for ${name}`);
     }
-    const args = (pins) => mcpServerShapes({ pins })['playwright-chrome'].servers['playwright-chrome'].args.slice(0, 2);
-    assert.deepStrictEqual(args({ playwright: { version: '9.8.7', spelling: '@<v>' } }), ['-y', '@playwright/mcp@9.8.7']);
+    const args = (pins) => mcpServerShapes({ pins })['browser-chrome'].servers['browser-chrome'].args.slice(0, 2);
+    assert.deepStrictEqual(args({ browser: { version: '9.8.7', spelling: '@<v>' } }), ['-y', '@playwright/mcp@9.8.7']);
     // A pin that never resolved ships unpinned - npx then takes the newest, which is what @latest
     // said out loud; the fallback is the same, only the default moved.
-    assert.deepStrictEqual(args({ playwright: { version: null } }), ['-y', '@playwright/mcp']);
+    assert.deepStrictEqual(args({ browser: { version: null } }), ['-y', '@playwright/mcp']);
 });
 
 test('the seed takes each pin from the release, never from a registry', () =>
 {
     const release = JSON.parse(read('meta/mcp-pins.json')).pins;
     const found = mcp.resolvePins({ pins: release });
-    assert.strictEqual(found.PW_PIN, `@${release.playwright.version}`);
+    assert.strictEqual(found.PW_PIN, `@${release.browser.version}`);
     // Every module of the seed, not only its entry: a lookup moved into a layer is the same lookup.
     const modules = fs.readdirSync(path.join(ROOT, 'scripts', 'install')).filter((f) => f.endsWith('.js'));
     assert.ok(modules.includes('alfred-code.js') && modules.includes('mcp.js'), `the seed's modules were not found: ${modules.join(',')}`);
@@ -64,12 +64,12 @@ test('the seed takes each pin from the release, never from a registry', () =>
 // release's version - a literal `@PW_PIN@` is a package name npx cannot find. The registry answers a
 // NEWER version and records every call, so a lookup that still happened shows twice.
 const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
-const SELECTION = 'skill markdown-style\nmcp playwright\n';
+const SELECTION = 'skill markdown-style\nmcp browser\n';
 const RECORD = (tool) => `printf '${tool} %s\\n' "$*" >> "$HOME/registry.log"; echo 9.9.9`;
 const REGISTRY = { npm: RECORD('npm'), curl: RECORD('curl') };
-const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.playwright.version}`;
+const PW = `@playwright/mcp@${JSON.parse(read('meta/mcp-pins.json')).pins.browser.version}`;
 const servers = (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers;
-const launch = (repo) => ((servers(repo)['playwright-chrome'] || {}).args || []).slice(0, 2);
+const launch = (repo) => ((servers(repo)['browser-chrome'] || {}).args || []).slice(0, 2);
 const asked = (repo) => { try { return fs.readFileSync(path.join(path.dirname(repo), 'registry.log'), 'utf8').split('\n').filter(Boolean); } catch { return []; } };
 
 test('seed install on the MCP copy route writes the server at the release pin and asks no registry', POSIX_ONLY, () =>
@@ -89,7 +89,7 @@ test('seed install with the registry unreachable writes the same release pin, ne
 test('seed update over an install still on @latest rewrites the row to the pin', POSIX_ONLY, () =>
 {
     const old = { mcpServers: {
-        'playwright-chrome': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
+        'browser-chrome': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--browser', 'chrome'], env: {} },
         'my-browser': { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest', '--isolated'], env: {} },
     } };
     const prepare = (repo) => fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(old, null, 2) + '\n');

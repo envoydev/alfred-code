@@ -30,7 +30,7 @@ function project({ rules = [], servers = {}, plugins = {}, always } = {})
     const src = path.join(base, 'src');
     fs.mkdirSync(path.join(src, 'meta'), { recursive: true });
     fs.writeFileSync(path.join(src, 'meta', 'recommendations.json'), JSON.stringify({
-        always: always || { rules: ['baseline-interaction', 'baseline-security'], mcps: ['serena', 'context7', 'memory'] },
+        always: always || { rules: ['baseline-interaction', 'baseline-security'], mcps: ['navigation', 'documentation', 'memory'] },
     }));
     return { base, src, mcpFile: path.join(base, '.mcp.json') };
 }
@@ -121,11 +121,11 @@ test('install-stamp: installed-always records what is CARRIED, not what shipped'
 {
     const p = project({
         rules: ['baseline-interaction'],                 // security shipped but is not on disk
-        servers: { serena: {} },                         // context7 and memory are not registered
+        servers: { navigation: {} },                     // documentation and memory are not registered
     });
     const { text } = write(p);
     assert.match(text, /^installed-always-rules: baseline-interaction$/m);
-    assert.match(text, /^installed-always-mcps: serena$/m);
+    assert.match(text, /^installed-always-mcps: navigation$/m);
 });
 
 test('install-stamp: a server riding its PLUGIN counts as carried - there is no .mcp.json to read', () =>
@@ -135,22 +135,22 @@ test('install-stamp: a server riding its PLUGIN counts as carried - there is no 
     const p = project({
         rules: ['baseline-interaction', 'baseline-security'],
         servers: {},
-        plugins: { 'serena@envoydev': true, 'context7@envoydev': true, 'memory@envoydev': true },
+        plugins: { 'navigation@envoydev': true, 'documentation@envoydev': true, 'memory@envoydev': true },
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: serena,context7,memory$/m);
+    assert.match(text, /^installed-always-mcps: navigation,documentation,memory$/m);
 });
 
-test('install-stamp: a playwright ENGINE counts as its family', () =>
+test('install-stamp: a browser ENGINE counts as its family', () =>
 {
-    assert.strictEqual(family('playwright-firefox'), 'playwright');
-    assert.strictEqual(family('serena'), 'serena');
+    assert.strictEqual(family('browser-firefox'), 'browser');
+    assert.strictEqual(family('navigation'), 'navigation');
     const p = project({
-        always: { rules: [], mcps: ['playwright', 'context7'] },
-        plugins: { 'playwright-firefox@envoydev': true, 'context7@envoydev': true },
+        always: { rules: [], mcps: ['browser', 'documentation'] },
+        plugins: { 'browser-firefox@envoydev': true, 'documentation@envoydev': true },
     });
     const { text } = write(p);
-    assert.match(text, /^installed-always-mcps: playwright,context7$/m);
+    assert.match(text, /^installed-always-mcps: browser,documentation$/m);
 });
 
 test('install-stamp: a missing or malformed input is empty, never a crash', () =>
@@ -352,9 +352,9 @@ const LEDGER = {
     env: { 'settings.json': { ALFRED_CODE_INSTRUMENT: valueHash('0') }, 'settings.local.json': { ALFRED_CODE_MEMORY_DB: valueHash('/x/memory.db') } },
     deny: [{ file: 'settings.json', entry: 'Read(.env)' }, { file: 'settings.json', entry: 'Agent(alfred-code:angular-verifier)' }],
     hooks: [{ file: 'settings.json', hook: 'guard-secret-value.js', id: 'a'.repeat(64) }],
-    mcp: { serena: 'b'.repeat(64) },
+    mcp: { navigation: 'b'.repeat(64) },
     // Review finding 7: a local- or user-scope registration (the MCP copy route) is recorded with its scope.
-    mcpAt: { local: { memory: '9'.repeat(64) }, user: { 'playwright-chrome': '8'.repeat(64) } },
+    mcpAt: { local: { memory: '9'.repeat(64) }, user: { 'browser-chrome': '8'.repeat(64) } },
     files: { 'hooks/docs.js': 'c'.repeat(64), 'skills/csharp': 'd'.repeat(64), 'agents/angular-verifier.md': 'e'.repeat(64), 'CLAUDE.md': 'f'.repeat(64) },
     settings: { 'settings.json': { 'attribution.commit': valueHash('""'), 'attribution.sessionUrl': valueHash('false') } },
 };
@@ -366,7 +366,7 @@ test('install-stamp: the ledger lines record what the run manages and read back 
     assert.match(text, /^managed-env: settings\.json:ALFRED_CODE_INSTRUMENT=[0-9a-f]{64},settings\.local\.json:ALFRED_CODE_MEMORY_DB=[0-9a-f]{64}$/m);
     assert.match(text, /^managed-deny: settings\.json:Read\(\.env\),settings\.json:Agent\(alfred-code:angular-verifier\)$/m);
     assert.match(text, /^managed-hooks: settings\.json:guard-secret-value\.js:a{64}$/m);
-    assert.match(text, /^managed-mcp: serena=b{64},local:memory=9{64},user:playwright-chrome=8{64}$/m);
+    assert.match(text, /^managed-mcp: navigation=b{64},local:memory=9{64},user:browser-chrome=8{64}$/m);
     assert.match(text, /^managed-files: hooks\/docs\.js=c{64},skills\/csharp=d{64},agents\/angular-verifier\.md=e{64},CLAUDE\.md=f{64}$/m);
     assert.match(text, /^managed-settings: settings\.json:attribution\.commit=[0-9a-f]{64},settings\.json:attribution\.sessionUrl=[0-9a-f]{64}$/m);
     assert.deepStrictEqual(readLedger(dest), LEDGER);
@@ -399,7 +399,7 @@ test('install-stamp: readLedger drops every entry of a shape the installer never
         `managed-env: settings.json:ALFRED_CODE_OK=${h},../x.json:ALFRED_CODE_A=${h},settings.json:lower=${h},settings.json:ALFRED_CODE_B=nothex`,
         'managed-deny: settings.json:Read(.env),other.json:Read(*.pem),settings.json:',
         `managed-hooks: settings.json:guard-x.js:${h},settings.json:../../evil.js:${h},settings.json:guard-y.js:short`,
-        `managed-mcp: serena=${h},../evil=${h},Bad Name=${h},local:memory=${h},local:../evil=${h},global:serena=${h},user:x=short`,
+        `managed-mcp: navigation=${h},../evil=${h},Bad Name=${h},local:memory=${h},local:../evil=${h},global:navigation=${h},user:x=short`,
         `managed-files: hooks/docs.js=${h},hooks/../../etc=${h},../outside=${h},rules/x.md=${h},skills/a/b=${h},skills/..=${h},../CLAUDE.md=${h}`,
         `managed-settings: settings.json:attribution.pr=${h},settings.json:attribution.__proto__=${h},settings.json:attribution.constructor=${h},settings.json:model=${h},x.json:attribution.pr=${h}`,
         '',
@@ -408,7 +408,7 @@ test('install-stamp: readLedger drops every entry of a shape the installer never
         env: { 'settings.json': { ALFRED_CODE_OK: h } },
         deny: [{ file: 'settings.json', entry: 'Read(.env)' }],
         hooks: [{ file: 'settings.json', hook: 'guard-x.js', id: h }],
-        mcp: { serena: h },
+        mcp: { navigation: h },
         mcpAt: { local: { memory: h } },
         files: { 'hooks/docs.js': h },
         settings: { 'settings.json': { 'attribution.pr': h } },

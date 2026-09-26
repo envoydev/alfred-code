@@ -19,7 +19,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const LISTS = {
     skills: ['aspnet|project-aspnet', 'web|project-angular'],
     plugins: ['claude-hud@claude-plugins-official', 'security-guidance@claude-plugins-official'],
-    mcps: ['serena|-- uvx serena', 'playwright|-- npx pw'],
+    mcps: ['navigation|-- uvx serena', 'browser|-- npx pw'],
     agents: ['ng-implementer.md::sonnet', 'security-auditor.md::opus'],
     rules: ['baseline-security.md::x', 'markdown-docs.md::y'],
     hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js::SessionStart'],
@@ -52,11 +52,11 @@ test('filter: only the named entries survive, and the manifest is the ceiling', 
 {
     // 'skill project-invented' is not a manifest name, so it can never be installed - which is what
     // keeps a project's own skill folder safe from this filter.
-    const picked = sel.parseSelection('skill project-aspnet\nplugin claude-hud\nmcp serena\nagent ng-implementer\nrule baseline-security\nhook docs-session\nskill project-invented\n');
+    const picked = sel.parseSelection('skill project-aspnet\nplugin claude-hud\nmcp navigation\nagent ng-implementer\nrule baseline-security\nhook docs-session\nskill project-invented\n');
     const out = sel.applySelection(LISTS, picked);
     assert.deepStrictEqual(out.skills, ['aspnet|project-aspnet']);
     assert.deepStrictEqual(out.plugins, ['claude-hud@claude-plugins-official']);
-    assert.deepStrictEqual(out.mcps, ['serena|-- uvx serena']);
+    assert.deepStrictEqual(out.mcps, ['navigation|-- uvx serena']);
     assert.deepStrictEqual(out.agents, ['ng-implementer.md::sonnet']);
     assert.deepStrictEqual(out.rules, ['baseline-security.md::x']);
     assert.deepStrictEqual(out.hooks, ['docs-session.js::SessionStart']);
@@ -140,10 +140,10 @@ test('derive: the four playwright engines collapse back to the ONE manifest entr
 {
     const lines = sel.deriveFromDisk({
         claudeDir: target({ skills: ['x'] }),
-        mcpServers: ['serena', 'playwright-chrome', 'playwright-firefox', 'my-own'],
+        mcpServers: ['navigation', 'browser-chrome', 'browser-firefox', 'my-own'],
         knownPlugins: [],
     });
-    assert.deepStrictEqual(lines.filter((l) => l.startsWith('mcp ')), ['mcp serena', 'mcp playwright', 'mcp my-own']);
+    assert.deepStrictEqual(lines.filter((l) => l.startsWith('mcp ')), ['mcp navigation', 'mcp browser', 'mcp my-own']);
 });
 
 test('derive: only KNOWN plugins are taken from the listing, and none listed is none picked', () =>
@@ -162,7 +162,7 @@ test('derive: the nothing-installed guard reads the FILE layers only', () =>
 {
     // A machine-level plugin listing, or a shared .mcp.json, is no evidence that THIS target has an
     // install - a bare `any lines` test could never fail, because the plugin fallback always adds some.
-    assert.strictEqual(sel.hasInstall(['plugin claude-hud', 'mcp serena']), false);
+    assert.strictEqual(sel.hasInstall(['plugin claude-hud', 'mcp navigation']), false);
     assert.strictEqual(sel.hasInstall(['plugin claude-hud', 'rule baseline-security']), true);
 });
 
@@ -206,8 +206,8 @@ test('adopt-always: the locked baseline is adopted with NO drop exception', () =
     // never arrived - so the always set ignores the stamp entirely.
     const logs = [];
     const out = sel.adoptAlways({
-        lines: ['rule markdown-docs', 'mcp serena'],
-        always: { rules: ['baseline-security', 'baseline-memory'], mcps: ['serena', 'memory'] },
+        lines: ['rule markdown-docs', 'mcp navigation'],
+        always: { rules: ['baseline-security', 'baseline-memory'], mcps: ['navigation', 'memory'] },
         log: (m) => logs.push(m),
     });
     assert.ok(out.includes('rule baseline-memory') && out.includes('mcp memory'), out.join(', '));
@@ -218,7 +218,7 @@ test('adopt-always: a layer this install does not carry at all stays absent', ()
 {
     const out = sel.adoptAlways({
         lines: ['rule markdown-docs'],
-        always: { rules: ['baseline-security'], mcps: ['serena', 'memory'] },
+        always: { rules: ['baseline-security'], mcps: ['navigation', 'memory'] },
     });
     assert.ok(!out.some((l) => l.startsWith('mcp ')), 'servers were adopted into an install that registers none');
 });
@@ -247,12 +247,12 @@ function readBackCase({ listing = [], settings = {}, routes = ALL, hooks = [], s
 test('read-back: a healthy listing reads seats, hooks and MCP entries back, and answers both surfaces', () =>
 {
     const r = readBackCase({
-        listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev'), row('serena@envoydev')],
+        listing: [row('alfred-code@envoydev'), row('claude-stack-aspnet@envoydev'), row('navigation@envoydev')],
         settings: { permissions: { deny: ['Agent(alfred-code:security-auditor)'] }, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } },
     });
     assert.ok(r.lines.includes('agent evidence-gatherer') && !r.lines.includes('agent security-auditor'));
     assert.ok(r.lines.includes('hook docs-session') && !r.lines.includes('hook guard-answer-length'));
-    assert.ok(r.lines.includes('mcp serena'));
+    assert.ok(r.lines.includes('mcp navigation'));
     assert.deepStrictEqual(r.answered, { hooks: true, agents: true });
 });
 
@@ -294,7 +294,7 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
 {
     const r = readBackCase({ listing: [
         row('alfred-code@envoydev', { enabled: false }),
-        row('playwright-firefox@envoydev', { enabled: false }), row('playwright-webkit@envoydev'),
+        row('browser-firefox@envoydev', { enabled: false }), row('browser-webkit@envoydev'),
     ] });
     assert.strictEqual(r.answered.hooks, true, 'the core carrying the hooks is locked on - HOOKS_OFF is the hook state, not its listing flag (S22)');
     assert.deepStrictEqual(r.engines, ['webkit']);
@@ -307,33 +307,33 @@ test('read-back: an engine the stamp picked stays picked while disabled; one it 
 {
     const listing = [
         row('alfred-code@envoydev'),
-        row('playwright-chrome@envoydev', { enabled: false }), row('playwright-firefox@envoydev', { enabled: false }),
-        row('playwright-webkit@envoydev', { enabled: false }),
+        row('browser-chrome@envoydev', { enabled: false }), row('browser-firefox@envoydev', { enabled: false }),
+        row('browser-webkit@envoydev', { enabled: false }),
     ];
     const r = readBackCase({ listing, stampEngines: ['chrome', 'firefox'] });
     assert.deepStrictEqual(r.engines, ['chrome', 'firefox']);
-    assert.ok(r.lines.includes('mcp playwright') && r.closeFrom.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
-    assert.deepStrictEqual(r.parked.filter((n) => n.startsWith('playwright-')), ['playwright-webkit'], 'a picked engine read as parked');
+    assert.ok(r.lines.includes('mcp browser') && r.closeFrom.includes('mcp browser'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
+    assert.deepStrictEqual(r.parked.filter((n) => n.startsWith('browser-')), ['browser-webkit'], 'a picked engine read as parked');
     // With a record, an enabled engine it does not name is NOT kept: the record is the user's choice.
-    const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('playwright-msedge@envoydev'), row('playwright-firefox@envoydev', { enabled: false })], stampEngines: ['firefox'] });
+    const mixed = readBackCase({ listing: [row('alfred-code@envoydev'), row('browser-msedge@envoydev'), row('browser-firefox@envoydev', { enabled: false })], stampEngines: ['firefox'] });
     assert.deepStrictEqual(mixed.engines, ['firefox']);
     // Nothing recorded (an older stamp, no stamp): the listing alone speaks, as before.
     for (const stampEngines of [undefined, null, []])
     {
         const old = readBackCase({ listing, stampEngines });
         assert.deepStrictEqual(old.engines, [], JSON.stringify(stampEngines));
-        assert.ok(!old.lines.includes('mcp playwright'));
-        assert.deepStrictEqual(old.parked.filter((n) => n.startsWith('playwright-')), ['playwright-chrome', 'playwright-firefox', 'playwright-webkit']);
+        assert.ok(!old.lines.includes('mcp browser'));
+        assert.deepStrictEqual(old.parked.filter((n) => n.startsWith('browser-')), ['browser-chrome', 'browser-firefox', 'browser-webkit']);
     }
     // A listing this run could not read is no reason to lose the picks: the stamp still names them.
     const blind = readBackCase({ listing: [], stampEngines: ['webkit'] });
     assert.deepStrictEqual(blind.engines, ['webkit']);
-    assert.ok(blind.lines.includes('mcp playwright'));
+    assert.ok(blind.lines.includes('mcp browser'));
     // On the MCP copy route too (R116): a switch onto it has no registration yet, and the stamp's
     // record carries over rather than being written blank.
     const copy = readBackCase({ listing, stampEngines: ['chrome'], routes: { ...ALL, mcps: false } });
     assert.deepStrictEqual(copy.engines, ['chrome']);
-    assert.ok(copy.lines.includes('mcp playwright'));
+    assert.ok(copy.lines.includes('mcp browser'));
 });
 
 // Round 2, minor 1: a dropped engine whose uninstall failed, was refused, or sits at another scope is
@@ -343,19 +343,19 @@ test('read-back: with the stamp\'s record, an engine it does not name is never r
 {
     const logs = [];
     const listing = [
-        row('alfred-code@envoydev'), row('playwright-chrome@envoydev'), row('playwright-firefox@envoydev'),
-        row('playwright-webkit@envoydev', { scope: 'user' }),
+        row('alfred-code@envoydev'), row('browser-chrome@envoydev'), row('browser-firefox@envoydev'),
+        row('browser-webkit@envoydev', { scope: 'user' }),
     ];
     const r = readBackCase({ listing, stampEngines: ['chrome'], log: (m) => logs.push(m) });
     assert.deepStrictEqual(r.engines, ['chrome']);
-    assert.ok(r.lines.includes('mcp playwright'));
-    assert.ok(logs.some((m) => /playwright-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall playwright-firefox@envoydev --scope project/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /playwright-webkit@envoydev is installed but not among .*claude plugin uninstall playwright-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
-    // Every engine dropped (--drop mcp playwright) but one still listed: no playwright is kept at all,
+    assert.ok(r.lines.includes('mcp browser'));
+    assert.ok(logs.some((m) => /browser-firefox@envoydev is installed but not among the browsers the last install kept .*claude plugin uninstall browser-firefox@envoydev --scope project/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /browser-webkit@envoydev is installed but not among .*claude plugin uninstall browser-webkit@envoydev --scope user/.test(m)), logs.join(' | '));
+    // Every engine dropped (--drop mcp browser) but one still listed: no playwright is kept at all,
     // or the kept set would fall back to chrome and install it again.
-    const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('playwright-chrome@envoydev')], stampEngines: [] });
+    const dropped = readBackCase({ listing: [row('alfred-code@envoydev'), row('browser-chrome@envoydev')], stampEngines: [] });
     assert.deepStrictEqual(dropped.engines, []);
-    assert.ok(!dropped.lines.includes('mcp playwright'), dropped.lines.filter((l) => l.startsWith('mcp ')).join(','));
+    assert.ok(!dropped.lines.includes('mcp browser'), dropped.lines.filter((l) => l.startsWith('mcp ')).join(','));
     // No record (1.x, no stamp): the listing speaks, as before.
     assert.deepStrictEqual(readBackCase({ listing, stampEngines: null }).engines, ['chrome', 'firefox', 'webkit']);
 });
@@ -392,7 +392,7 @@ test('read-back: a claude-hud the user disabled stays parked for configure, and 
 test('read-back: another marketplace\'s same-named plugin is never read as a stack pick', () =>
 {
     const r = readBackCase({ listing: [row('alfred-code@envoydev'), row('sentry@claude-plugins-official', { scope: 'user' }), row('playwright@claude-plugins-official')] });
-    assert.ok(!r.lines.includes('mcp sentry') && !r.lines.includes('mcp playwright'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
+    assert.ok(!r.lines.includes('mcp sentry') && !r.lines.includes('mcp browser'), r.lines.filter((l) => l.startsWith('mcp ')).join(','));
 });
 
 
@@ -627,7 +627,7 @@ test('read-back: a partial hook folder is no pick unless the copy route made it 
 // is no hook item, so neither surface is answered and nothing is written back.
 test('read-back: a user\'s own hook file never answers the hooks layer - a blind or core-less listing switches nothing off (R56)', () =>
 {
-    for (const listing of [[], [row('serena@envoydev')]])
+    for (const listing of [[], [row('navigation@envoydev')]])
     {
         const r = readBackCase({ listing, hooks: ['my-own-check'] });
         assert.ok(!r.lines.some((l) => l.startsWith('hook ')), `${JSON.stringify(listing)}: ${r.lines.join(', ')}`);
@@ -697,10 +697,10 @@ test('read-back: a switch onto the full copy route reads back what the core stil
 test('closeLines: what a LEFT-OUT item requires is not pulled in either', () =>
 {
     const rule = GRAPH.rules['csharp-conventions'];
-    assert.ok(!rule.mcps.includes('context7'), 'the fixture rule does not need context7 itself');
+    assert.ok(!rule.mcps.includes('documentation'), 'the fixture rule does not need context7 itself');
     const out = sel.closeLines(['rule csharp-conventions'], { from: ['rule csharp-conventions'], graph: GRAPH, parked: ['claude-stack-csharp'] });
     assert.ok(!out.includes('skill csharp'));
-    assert.ok(!out.includes('mcp context7'), 'context7 came in only through the parked skill');
+    assert.ok(!out.includes('mcp documentation'), 'context7 came in only through the parked skill');
 });
 
 test('dropLines: --drop removes a line and keeps the hooks answer - dropping the last hook is `hook none`', () =>
@@ -721,7 +721,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
         lists: {
             skills: ['a|csharp'], agents: ['evidence-gatherer.md'], rules: ['baseline-security.md'],
             hooks: ['guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'docs-session.js'],
-            mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
+            mcps: ['browser-chrome|x', 'browser-firefox|y', 'navigation|z'], plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
         },
         listing: [row('claude-hud@claude-plugins-official', { scope: 'user' }), row('csharp-lsp@claude-plugins-official', { enabled: false }), row('claude-stack-devops@envoydev', { enabled: false }), row('superpowers@claude-plugins-official', { scope: 'user' })],
         answered: { hooks: true, agents: false },
@@ -730,7 +730,7 @@ test('planInventory: the inventory JSON - names per category, playwright folded,
     });
     assert.deepStrictEqual(inv.skills, ['csharp']);
     assert.deepStrictEqual(inv.hooks, ['guard-read-whole-file', 'docs-session']);
-    assert.deepStrictEqual(inv.mcps, ['playwright', 'serena']);
+    assert.deepStrictEqual(inv.mcps, ['browser', 'navigation']);
     assert.deepStrictEqual(inv.plugins, [{ name: 'claude-hud', scope: 'user' }, { name: 'superpowers', scope: 'user' }],
         'an enabled catalog plugin the selection never lists (an optional pick the user installed, R72) is kept all the same');
     assert.deepStrictEqual(inv.parked_plugins, ['csharp-lsp'], 'only CATALOG plugins parked here - the read-back would enable them');
@@ -744,15 +744,15 @@ test('planInventory: a kept engine the user left off is no DISABLED plugin - an 
     // validate turns every plugins_disabled name into a DISABLED row whose accept is `claude plugin
     // enable` - for a kept engine that would undo the user's choice to leave it off (R67).
     const inv = sel.planInventory({
-        lists: { mcps: ['playwright-chrome|x', 'playwright-firefox|y', 'serena|z'] },
+        lists: { mcps: ['browser-chrome|x', 'browser-firefox|y', 'navigation|z'] },
         listing: [
-            row('playwright-chrome@envoydev', { enabled: false }), row('playwright-firefox@envoydev'),
-            row('playwright-webkit@envoydev', { enabled: false }), row('serena@claude-plugins-official', { enabled: false }),
+            row('browser-chrome@envoydev', { enabled: false }), row('browser-firefox@envoydev'),
+            row('browser-webkit@envoydev', { enabled: false }), row('navigation@claude-plugins-official', { enabled: false }),
         ],
         answered: { hooks: true, agents: true },
     });
-    assert.deepStrictEqual(inv.mcps, ['playwright', 'serena']);
-    assert.deepStrictEqual(inv.plugins_disabled, ['playwright-webkit', 'serena'], 'only the engines are exempt, and only the picked ones');
+    assert.deepStrictEqual(inv.mcps, ['browser', 'navigation']);
+    assert.deepStrictEqual(inv.plugins_disabled, ['browser-webkit', 'navigation'], 'only the engines are exempt, and only the picked ones');
 });
 
 // T4: a --drop that takes a stack entry out of the plugin set must DISABLE that entry, or the
@@ -761,16 +761,16 @@ test('droppedEntries: what the drop took out of the set, folded onto the listing
 {
     const listing = [
         row('claude-stack-aspnet@envoydev'), row('claude-stack-csharp@envoydev'),
-        row('claude-stack-devops@envoydev'), row('playwright-chrome@envoydev'),
-        row('playwright-firefox@envoydev', { enabled: false }),
+        row('claude-stack-devops@envoydev'), row('browser-chrome@envoydev'),
+        row('browser-firefox@envoydev', { enabled: false }),
     ];
     const deps = { 'claude-stack-aspnet': ['claude-stack-csharp'], 'claude-stack-csharp': ['alfred-code'] };
     const got = sel.droppedEntries({
-        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'playwright', 'claude-stack-devops'],
+        before: ['alfred-code', 'claude-stack-aspnet', 'claude-stack-csharp', 'browser', 'claude-stack-devops'],
         after: ['alfred-code', 'claude-stack-devops'],
         listing, deps, marketplace: 'envoydev',
     });
-    assert.deepStrictEqual(got.map((r) => r.name), ['claude-stack-aspnet', 'claude-stack-csharp', 'playwright-chrome'],
+    assert.deepStrictEqual(got.map((r) => r.name), ['browser-chrome', 'claude-stack-aspnet', 'claude-stack-csharp'],
         'aspnet before the csharp it depends on; the parked firefox browser is not touched; devops stays');
 });
 
@@ -782,9 +782,9 @@ test('leftOut: every item a parked entry carries, and every stack seat the deny 
 
 test('droppedEntries: the core and the locked servers are never queued', () =>
 {
-    const listing = ['alfred-code', 'serena', 'context7', 'memory', 'playwright-chrome'].map((n) => row(`${n}@envoydev`));
-    const got = sel.droppedEntries({ before: ['alfred-code', 'serena', 'context7', 'memory', 'playwright'], after: [], listing, deps: {}, marketplace: 'envoydev' });
-    assert.deepStrictEqual(got.map((r) => r.name), ['playwright-chrome'], 'only the droppable browser server');
+    const listing = ['alfred-code', 'navigation', 'documentation', 'memory', 'browser-chrome'].map((n) => row(`${n}@envoydev`));
+    const got = sel.droppedEntries({ before: ['alfred-code', 'navigation', 'documentation', 'memory', 'browser'], after: [], listing, deps: {}, marketplace: 'envoydev' });
+    assert.deepStrictEqual(got.map((r) => r.name), ['browser-chrome'], 'only the droppable browser server');
 });
 
 test('deriveFromDisk: a global install reads its skills from the account dir, the rest from the project', () =>
@@ -813,11 +813,11 @@ test('read-back: a 1.x install - the old key, the core still named claude-stack 
     // A 1.x settings file carries the 1.x key name until this update's env pass renames it.
     const settings = { permissions: { deny: [`Agent(${OLD}:code-style-analyzer)`] }, env: { CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length' } }; // legacy-name
     const renamed = { ...settings, env: { ALFRED_CODE_HOOKS_OFF: 'guard-answer-length' } };
-    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('serena@envoydev')], stampPicked, settings: renamed });
+    const now = readBackCase({ listing: [row('alfred-code@envoydev'), row('navigation@envoydev')], stampPicked, settings: renamed });
     for (const listing of [
-        [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`serena@${OLD}`)],
-        [row(`alfred-code@${OLD}`), row(`serena@${OLD}`)],
-        [row(`${OLD}@${OLD}`), row(`serena@${OLD}`)],
+        [row(`${OLD}@${OLD}`), row(`${OLD}-hooks@${OLD}`), row(`navigation@${OLD}`)],
+        [row(`alfred-code@${OLD}`), row(`navigation@${OLD}`)],
+        [row(`${OLD}@${OLD}`), row(`navigation@${OLD}`)],
     ])
     {
         const r = readBackCase({ listing, stampPicked, settings, marketplace: OLD });

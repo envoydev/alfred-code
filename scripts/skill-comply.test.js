@@ -142,7 +142,7 @@ test('a verifier seat satisfies the review step the same as the in-session skill
 
 // --- solve-task: the size line and the first stop -------------------------------------------------
 
-function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_serena_serena__list_memories', approve = false } = {})
+function solveRun({ sizeFirst = true, size = 'standard', resume = 'mcp__plugin_navigation_navigation__list_memories', approve = false } = {})
 {
     const sizeRow = say(`Size: ${size} - request validation is input parsing, on the floor whatever the file count.`);
     const rows = [user('<command-name>/alfred-task-solve</command-name>\n<command-args>Add request validation to the create-order handler</command-args>')];
@@ -184,10 +184,10 @@ test('skipping the resume check fails it; a self-written Approved stamp fails no
 
 test('an MCP tool counts in both spellings: the plugin route and the registration route', () =>
 {
-    assert.strictEqual(sc.canonical('mcp__plugin_serena_serena__list_memories'), BARE('serena', 'list_memories'));
-    assert.strictEqual(sc.canonical('mcp__plugin_playwright-chrome_playwright-chrome__browser_navigate'), BARE('playwright-chrome', 'browser_navigate'));
+    assert.strictEqual(sc.canonical('mcp__plugin_navigation_navigation__list_memories'), BARE('navigation', 'list_memories'));
+    assert.strictEqual(sc.canonical('mcp__plugin_browser-chrome_browser-chrome__browser_navigate'), BARE('browser-chrome', 'browser_navigate'));
     assert.strictEqual(sc.canonical('Read'), 'Read');
-    const r = sc.grade(expectOf('alfred-task-solve'), solveRun({ resume: BARE('serena', 'list_memories') }));
+    const r = sc.grade(expectOf('alfred-task-solve'), solveRun({ resume: BARE('navigation', 'list_memories') }));
     assert.strictEqual(verdicts(r)['resume-first'], 'PASS');
 });
 
@@ -577,7 +577,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }
-        assert.ok(billed.some((b) => b.includes(BARE('serena', 'list_memories'))), 'the copy route allows the bare spelling');
+        assert.ok(billed.some((b) => b.includes(BARE('navigation', 'list_memories'))), 'the copy route allows the bare spelling');
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 12);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
@@ -592,7 +592,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         // the project gets what an init walk installs: the locked always-on set and the stack's seeds too
         const sel = JSON.parse(one.out.match(/^printf '%s\\n' '(\{.*\})' > /m)[1]);
         for (const r of ['baseline-interaction', 'baseline-navigation', 'csharp-conventions', 'dotnet-repair-agents']) assert.ok(sel.rules.includes(r), r);
-        for (const m of ['serena', 'context7', 'memory']) assert.ok(sel.mcps.includes(m), m);
+        for (const m of ['navigation', 'documentation', 'memory']) assert.ok(sel.mcps.includes(m), m);
         assert.ok(sel.skills.includes('csharp') && sel.skills.includes('dotnet-testing'));
         assert.strictEqual((one.out.match(/^# billed/mg) || []).length, 1);
         assert.strictEqual(cli(['replay', '--dry-run', '--level', 'loud']).code, 2);

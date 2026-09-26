@@ -12,11 +12,11 @@ Migrations are where a working codebase quietly acquires risk: a column drop tha
 - **Re-verify after every step.** Build and run the tests; a green pre-flight that you never re-check proves nothing.
 - **One logical change per step.** A migration, an upgrade, a bump - keep them atomic so a break bisects cleanly.
 
-Assess blast radius with serena (`find_symbol`, `find_referencing_symbols`) or the LSP. Do not `Read` whole files hunting for who touches a type - that is exactly the work the symbol tools do faster.
+Assess blast radius with the navigation server (`find_symbol`, `find_referencing_symbols`) or the LSP. Do not `Read` whole files hunting for who touches a type - that is exactly the work the symbol tools do faster.
 
 ## Flow A - EF Core schema migration
 
-1. **See where you are.** `dotnet ef migrations list` shows what is applied versus pending. Use serena to find the entities you are about to change and everything that references them.
+1. **See where you are.** `dotnet ef migrations list` shows what is applied versus pending. Use the navigation server to find the entities you are about to change and everything that references them.
 2. **Generate one named migration.** `dotnet ef migrations add <Name>` - name it Verb-then-subject so the history reads as a log: `AddOrderShippedAt`, `MakeEmailUnique`, `DropLegacyStatus`. The one-change-per-migration discipline itself belongs to the skill covering database-schema conventions (naming, keys, indexes, change granularity); this step is just the EF naming and generation mechanics, which stand on their own with nothing else installed.
 3. **Preview the SQL.** `dotnet ef migrations script --idempotent` (or `--idempotent <from> <to>` for a range). Read it for the dangerous shapes: dropped or renamed columns, a non-nullable add with no default, a type narrowing that truncates, an index or constraint added to a large table under a lock. The `--idempotent` flag guards each step with an `__EFMigrationsHistory` check so the script is safe to run against a database at any applied state, and re-running it is a no-op (provider-dependent - the SQLite provider has no idempotent scripts, so preview a plain `script <from> <to>` there). EF cannot see your data - you have to.
 4. **Stage destructive change in two deploys.** Anything that can lose data or that the old code still depends on is expand-then-contract: first add the new column and backfill (the old code keeps working), ship, then in a later migration drop the old column once nothing reads it. Never collapse both halves into one migration against a live database. A wide backfill is a data migration, not a schema one - run it in batches outside the `ALTER`, never as a single `UPDATE` under a table lock.

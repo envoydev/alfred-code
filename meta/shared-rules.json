@@ -60,168 +60,168 @@
       ]
     },
     "memory-handoff-mechanism": {
-      "_note": "The serena per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
+      "_note": "The navigation server's per-project memory handoff: name-addressed, local, never the shared memory MCP. Owner reference defines it; every seat restates it inline.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/capability-reuse.md",
-        "marker": "serena memory is local to this project and addressed by name, not searched"
+        "marker": "Navigation-server memory is local to this project and addressed by name, not searched"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-ci.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "Memory handoff: serena memory is local to this project, addressed by name"
+          "marker": "Memory handoff: navigation-server memory is local to this project, addressed by name"
         }
       ]
     },
     "orient-docs-durable-truth": {
-      "_note": "Committed docs are the durable truth, the serena note only the transient handoff.",
+      "_note": "Committed docs are the durable truth, the navigation-server note only the transient handoff.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/capability-reuse.md",
         "marker": "the durable map lives in the docs, the transient handoff in the note"
@@ -229,99 +229,99 @@
       "sites": [
         {
           "file": "stack/agents/aspnet-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-ci.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "the docs are the durable truth, the serena memory note only the transient handoff"
+          "marker": "the docs are the durable truth, the navigation-server memory note only the transient handoff"
         }
       ]
     },
@@ -1084,44 +1084,44 @@
       "_note": "The task-card anchors consumption rule - verbatim across all 10 implementers (each installs per stack).",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+        "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
       },
       "sites": [
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         },
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "go straight to them with `mcp__plugin_serena_serena__find_symbol`, re-navigating only for what they don't cover"
+          "marker": "go straight to them with `mcp__plugin_navigation_navigation__find_symbol`, re-navigating only for what they don't cover"
         }
       ]
     },
@@ -2072,55 +2072,55 @@
       ]
     },
     "designer-external-claim-verification": {
-      "_note": "External claims in a design plan (a vendor API's behavior, a package's capability, a rate limit) are verified via context7 or the vendor doc and cited - or marked unverified - never stated from recall (measured: a recalled vendor-API 'fact' forced an operating-strategy change; its retraction invalidated built-and-reviewed code). Owned by the single-chat design skill; restated at each designer's decomposition step because that is where a constraint enters a task card.",
+      "_note": "External claims in a design plan (a vendor API's behavior, a package's capability, a rate limit) are verified via the documentation server or the vendor doc and cited - or marked unverified - never stated from recall (measured: a recalled vendor-API 'fact' forced an operating-strategy change; its retraction invalidated built-and-reviewed code). Owned by the single-chat design skill; restated at each designer's decomposition step because that is where a constraint enters a task card.",
       "owner": {
         "file": "stack/skills/alfred-task-design/SKILL.md",
-        "marker": "context7 or the vendor doc"
+        "marker": "the documentation server or the vendor doc"
       },
       "sites": [
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         },
         {
           "file": "stack/skills/alfred-habits-plan-writing/SKILL.md",
-          "marker": "context7 or the vendor doc"
+          "marker": "the documentation server or the vendor doc"
         }
       ]
     },
@@ -2424,7 +2424,7 @@
       ]
     },
     "trio-note-naming-grammar-restated": {
-      "_note": "The serena note naming grammar (<feature>__<contract_version>__<seat>__<task>) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
+      "_note": "The navigation-server note naming grammar (<feature>__<contract_version>__<seat>__<task>) minted by the orchestrator - owned by the trio protocol's memory-hygiene bullet, restated operatively in solve-task's dispatch-prompt step.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
         "marker": "<feature>__<contract_version>__<seat>"
@@ -2617,7 +2617,7 @@
       ]
     },
     "verifier-blocked-target-disclosure": {
-      "_note": "Every read-only gate seat discloses a review target it could not open: reopen via serena, or name it unreviewed in the punch-list. Prose 'report what you could not verify' covered a failed build, not a file the seat never opened - measured, a seat lost 6 flagged locations in one file to a read-guard block and reported the file clean.",
+      "_note": "Every read-only gate seat discloses a review target it could not open: reopen via the navigation server, or name it unreviewed in the punch-list. Prose 'report what you could not verify' covered a failed build, not a file the seat never opened - measured, a seat lost 6 flagged locations in one file to a read-guard block and reported the file clean.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "A review target you could not open is not a target you skip"
@@ -3106,7 +3106,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (playwright - the one droppable server since 2.0.0 cut chrome-devtools and appium-mcp) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
+      "_note": "An optional MCP (the browser server - the one droppable server since 2.0.0 cut chrome-devtools and appium-mcp) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3135,35 +3135,35 @@
       ]
     },
     "context7-fetch-at-use": {
-      "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the context7 MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Seven house skills carry it inline so the sentence changes in lockstep - angular-conventions in its own variant, which also bans grepping node_modules bundles (it is also where a describe-vs-lock decision on context7 would land).",
+      "_note": "The docs-currency stance every convention skill restates: a version-coupled fact is fetched through the documentation MCP at use time rather than recalled - the durable policy stays in the skill, the drifting number is looked up live. Seven house skills carry it inline so the sentence changes in lockstep - angular-conventions in its own variant, which also bans grepping node_modules bundles (it is also where a describe-vs-lock decision on the documentation server would land).",
       "owner": {
         "file": "stack/skills/csharp/SKILL.md",
-        "marker": "`context7` MCP rather than memory"
+        "marker": "`documentation` MCP rather than memory"
       },
       "sites": [
         {
           "file": "stack/skills/database-conventions/SKILL.md",
-          "marker": "`context7` MCP rather than memory"
+          "marker": "`documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/dotnet-winforms/SKILL.md",
-          "marker": "`context7` MCP rather than memory"
+          "marker": "`documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/dotnet-wpf/SKILL.md",
-          "marker": "`context7` MCP rather than memory"
+          "marker": "`documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/devops/SKILL.md",
-          "marker": "`context7` MCP rather than memory"
+          "marker": "`documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/javascript/SKILL.md",
-          "marker": "`context7` MCP rather than memory"
+          "marker": "`documentation` MCP rather than memory"
         },
         {
           "file": "stack/skills/angular-conventions/SKILL.md",
-          "marker": "reach for the `context7` MCP rather than memory - and never by grepping"
+          "marker": "reach for the `documentation` MCP rather than memory - and never by grepping"
         }
       ]
     },
@@ -3181,7 +3181,7 @@
       ]
     },
     "flow-state-two-layers-resume": {
-      "_note": "Flow state lives in two layers (the ledger file + the serena note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
+      "_note": "Flow state lives in two layers (the ledger file + the navigation-server note) and every invocation resumes from them before starting anew. Owned by the solve-task flow; restated in the diagnosis flow.",
       "owner": {
         "file": "stack/skills/alfred-task-solve/SKILL.md",
         "marker": "On invocation, resume before starting"
@@ -3930,159 +3930,159 @@
       ]
     },
     "seat-start-memory-read": {
-      "_note": "The trio memory bus START step - list_memories then read_memory the notes for this feature and contract_version - in every dispatched seat that hands off through serena memory. Owner aspnet-implementer (the reference twin); the same sentence with 'the notes matching' (implementers, verifiers, security-auditor) or 'the note named for this feature' (designers, resolvers, diagnosers, integration-reviewer). The marker is the shared head.",
+      "_note": "The trio memory bus START step - list_memories then read_memory the notes for this feature and contract_version - in every dispatched seat that hands off through navigation-server memory. Owner aspnet-implementer (the reference twin); the same sentence with 'the notes matching' (implementers, verifiers, security-auditor) or 'the note named for this feature' (designers, resolvers, diagnosers, integration-reviewer). The marker is the shared head.",
       "owner": {
         "file": "stack/agents/aspnet-implementer.md",
-        "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+        "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/console-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/data-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/devops-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/ionic-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/web-angular-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/windows-service-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/winforms-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/wpf-implementer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/aspnet-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/aspnet-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/browser-extension-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/console-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/data-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/devops-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/ionic-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/web-angular-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/windows-service-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/winforms-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/wpf-solution-designer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/security-auditor.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/angular-test-resolver.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/ng-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/dotnet-build-error-resolver.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/dotnet-test-failure-resolver.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-ci.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/alfred-issue-diagnoser-runtime.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         },
         {
           "file": "stack/agents/integration-reviewer.md",
-          "marker": "At START, `mcp__plugin_serena_serena__list_memories` then `mcp__plugin_serena_serena__read_memory` the note"
+          "marker": "At START, `mcp__plugin_navigation_navigation__list_memories` then `mcp__plugin_navigation_navigation__read_memory` the note"
         }
       ]
     },
@@ -4300,7 +4300,7 @@
       ]
     },
     "verifier-unreviewed-target": {
-      "_note": "A review target the read guard blocks is reopened through serena; one that cannot be reviewed either way is named as unreviewed, never dropped (measured: 6 flagged locations lost to a block). Restated in every *-verifier and the integration-reviewer.",
+      "_note": "A review target the read guard blocks is reopened through the navigation server; one that cannot be reviewed either way is named as unreviewed, never dropped (measured: 6 flagged locations lost to a block). Restated in every *-verifier and the integration-reviewer.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "A target that genuinely cannot be reviewed either way is named in the punch-list as unreviewed"
@@ -5284,7 +5284,7 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A verifier writes its serena hand-off note BEFORE it composes the report, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 10 copies, one per trio verifier.",
+      "_note": "A verifier writes its navigation-server hand-off note BEFORE it composes the report, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 10 copies, one per trio verifier.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
         "marker": "Memory writes come BEFORE the report"
@@ -5375,7 +5375,7 @@
       ]
     },
     "serena-tools-are-deferred": {
-      "_note": "The serena tools arrive DEFERRED in this harness - the names exist, the schemas do not - so the first use is two calls: a `ToolSearch select:` of the three FULL `mcp__plugin_serena_serena__*` names, then the query. Two measurements hold the shape. The deferral itself: a rung never loaded is a rung the seat skips. And the FULL names: the bare short name is not a registered tool and only errors - 7 bare-name calls failed No-such-tool across 3 capture seats in one session. The measurement lives here because the rule it justifies is always-on text, where a parenthetical is paid for on every message of every session.",
+      "_note": "The navigation-server tools arrive DEFERRED in this harness - the names exist, the schemas do not - so the first use is two calls: a `ToolSearch select:` of the three FULL `mcp__plugin_navigation_navigation__*` names, then the query. Two measurements hold the shape. The deferral itself: a rung never loaded is a rung the seat skips. And the FULL names: the bare short name is not a registered tool and only errors - 7 bare-name calls failed No-such-tool across 3 capture seats in one session. The measurement lives here because the rule it justifies is always-on text, where a parenthetical is paid for on every message of every session.",
       "owner": {
         "file": "stack/rules/baseline-navigation.md",
         "marker": "naming them is not having them"

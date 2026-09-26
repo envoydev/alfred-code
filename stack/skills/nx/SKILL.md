@@ -1,6 +1,6 @@
 ---
 name: nx
-description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, serena answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them. Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
+description: Use when working in an Nx monorepo - an `nx.json` / `project.json` workspace, or `nx` commands - for the token-efficient way to navigate the project graph and scope work. Orient through the CLI's derived graph (`nx show projects`, `nx graph`, `nx show project`) rather than reading config, scope every build/test/lint to `nx affected` instead of the whole tree, scaffold with `nx generate`, and enforce module boundaries with tags. Nx answers project-graph and affected questions, the navigation server answers symbol-level ones, and a framework's own conventions skill answers its code style - this is the workspace layer above them. Not for a monorepo without Nx (pnpm or npm workspaces, Turborepo).
 ---
 
 # Nx Monorepo
@@ -42,17 +42,17 @@ touches - never dump the whole workspace or run every target.
   shows exactly what a change touches before you run it.
 
 ## Serena vs Nx - route each question to the cheaper tool
-Nx and serena do not overlap; they answer different questions at different altitudes. Route correctly
+Nx and the navigation server do not overlap; they answer different questions at different altitudes. Route correctly
 or you pay for the wrong tool:
 - **Nx = project graph and task scoping** (macro): which projects exist, how they depend on each
   other, what is affected, what targets a project has. Use `nx show projects` / `nx graph` /
   `nx affected` - and only these - for those.
-- **serena = code symbols** (micro): where a symbol is defined, who calls it, its type. Use
+- **the navigation server = code symbols** (micro): where a symbol is defined, who calls it, its type. Use
   `find_symbol` / `find_referencing_symbols`, which resolve across projects because Nx's `tsconfig`
   path mappings let the language server follow `@org/lib` imports.
-- Never reach for the graph to find a caller (that is serena), and never grep code to compute the
+- Never reach for the graph to find a caller (that is the navigation server), and never grep code to compute the
   affected set (that is Nx). Nx knows implicit dependencies and the task pipeline no language server
-  sees; serena knows symbol callers Nx has no concept of.
+  sees; the navigation server knows symbol callers Nx has no concept of.
 
 ## Scaffold and enforce boundaries
 - Generate with `nx generate` (`nx g @nx/angular:library`, `@nx/angular:component`, `@nx/js:lib`)

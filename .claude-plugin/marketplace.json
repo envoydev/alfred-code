@@ -12,7 +12,7 @@
     {
       "name": "serena",
       "source": "./",
-      "description": "serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "description": "RETIRED in 2.0.0 - renamed navigation. Run /alfred-code:update: it installs navigation in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -43,7 +43,7 @@
     {
       "name": "context7",
       "source": "./",
-      "description": "context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
+      "description": "RETIRED in 2.0.0 - renamed documentation. Run /alfred-code:update: it installs documentation in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -88,7 +88,7 @@
     {
       "name": "playwright-chrome",
       "source": "./",
-      "description": "playwright (chrome) as a plugin: drive a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
+      "description": "RETIRED in 2.0.0 - renamed browser-chrome. Run /alfred-code:update: it installs browser-chrome in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -117,7 +117,7 @@
     {
       "name": "playwright-msedge",
       "source": "./",
-      "description": "playwright (msedge) as a plugin: drive a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
+      "description": "RETIRED in 2.0.0 - renamed browser-msedge. Run /alfred-code:update: it installs browser-msedge in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -146,7 +146,7 @@
     {
       "name": "playwright-firefox",
       "source": "./",
-      "description": "playwright (firefox) as a plugin: drive a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
+      "description": "RETIRED in 2.0.0 - renamed browser-firefox. Run /alfred-code:update: it installs browser-firefox in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -175,7 +175,7 @@
     {
       "name": "playwright-webkit",
       "source": "./",
-      "description": "playwright (webkit) as a plugin: drive a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
+      "description": "RETIRED in 2.0.0 - renamed browser-webkit. Run /alfred-code:update: it installs browser-webkit in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -184,6 +184,173 @@
       "strict": false,
       "mcpServers": {
         "playwright-webkit": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "webkit",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "navigation",
+      "source": "./",
+      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "navigation": {
+          "command": "node",
+          "env": {
+            "SERENA_HOME": ".serena/home"
+          },
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+            "--package",
+            "serena-agent@1.7.0",
+            "--",
+            "start-mcp-server",
+            "--context",
+            "claude-code",
+            "--enable-web-dashboard",
+            "false",
+            "--project-from-cwd"
+          ]
+        }
+      }
+    },
+    {
+      "name": "documentation",
+      "source": "./",
+      "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "documentation": {
+          "type": "http",
+          "url": "https://mcp.context7.com/mcp",
+          "headers": {
+            "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-chrome",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-chrome": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "chrome",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-msedge",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-msedge": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "msedge",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-firefox",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-firefox": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "firefox",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-webkit",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-webkit": {
           "command": "npx",
           "args": [
             "-y",

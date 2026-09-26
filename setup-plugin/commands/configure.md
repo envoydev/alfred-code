@@ -98,7 +98,7 @@ comparable banner by banner; the content varies, the skeleton never does.
 
   `$TMP/installed.json` is the walk's inventory (`--installed`): `{rules, agents, skills, hooks,
   mcps, plugins, plugins_disabled, parked_plugins, left_out, answered}` in catalog names (the
-  playwright engines folded onto `playwright`). Each plugin carries the SCOPE the listing printed,
+  browser engines folded onto `browser`). Each plugin carries the SCOPE the listing printed,
   because an uninstall is scope-addressed. A plugin the listing marks disabled sits in
   `plugins_disabled` (`parked_plugins` is its catalog part): parked, never proposed for install or
   removal. `left_out` lists what the user switched off - a denied seat, an item of a parked retired entry -
@@ -192,7 +192,7 @@ is where the same value can also be edited by hand.
 
 ## 7. MCPs
 
-walk.md's MCPs layer, the two playwright asks pre-selected from step 1's plan (step 12 passes a
+walk.md's MCPs layer, the two browser asks pre-selected from step 1's plan (step 12 passes a
 changed answer).
 
 Whenever `memory` is PRESENT after this round - kept from before, or newly pulled in by adding
@@ -296,7 +296,7 @@ Environment step - every other key in `permissions` (`allow` / `deny` / `ask` /
 ## 11. Prerequisite check
 
 Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check [--hooks-answered] [--playwright-browsers <csv>] [--config-dir ~/.claude-<space>]`
-(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--playwright-browsers` with the step-7 kept browsers whenever playwright is kept - a kept `msedge` warns
+(`--hooks-answered` whenever the Hooks area was walked this run, so a walk that switched every hook off emits `hook none` rather than no hook line - which reads as 'every hook'; `--playwright-browsers` with the step-7 kept browsers whenever the browser server is kept - a kept `msedge` warns
 when Edge is not installed; `--config-dir` under a `--space` profile, so the env probe reads that account's
 settings.json), output redirected to `$TMP/select.out` like every recompute. **Fixed shape, three blocks:** (1) one
 verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category - closure
@@ -378,7 +378,7 @@ it, which is how the wrong post-check above was written); (2) removals - what th
 `grep -E 'installed-only: (dropping|--drop|skill .* stays loaded)|plugin disabled|plugin disable failed|scope, not this run|removed \(dropped\)|overwriting a hand-edited copy' "$TMP/install.log"` - for each `--drop <line> not applied - something kept requires it` among them, its reason is `grep -F 'installed-only: required: <line> ' "$TMP/install.log"`; a `dropping plugin <name>` for a `keep-parked` name is no removal, leave it out,
 one line per item, never deleted a second time by hand; then each removal the installer does not
 make, with its command shown before running it: `claude mcp remove <name>` for an MCP on the copy
-route (playwright = every `playwright-<browser>` server);
+route (browser = every `browser-<engine>` server);
 `claude plugin uninstall <name> --scope <the scope step 1's inventory carries for it>` for a plugin -
 except one the table showed as `dependency`, which is never proposed for removal at all: every
 install carries it beside the core, and the next run installs it again - and the removal ask that proposed it NAMES that scope ('enabled at USER scope - removing it removes
@@ -426,7 +426,7 @@ revision it installed, so the next configure diffs from here.
 **The run closes on a suggestion card, never on a question.** After the report, list the
 follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and this run changed the inventory it lists), a manual-only capture whose output this
-run made stale, the serena re-index, a credential to rotate or set by
+run made stale, the navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters ('`/alfred-capture-agent-capabilities` - the selection changed, so the generated rule still
 names what this project dropped'). No AskUserQuestion over them: the walk's asks end with the

@@ -33,7 +33,7 @@ const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
 // module and shell-guards.js the dispatcher that runs the picked shell guards - none is a hook item.
 const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards)$/;
-const PW_ENGINE = /^playwright-(chrome|msedge|firefox|webkit)$/;
+const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
 const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
@@ -101,7 +101,7 @@ const listDir = (dir, test) =>
 };
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
-// excluded; a playwright engine server collapses back to the one manifest entry it expands from.
+// excluded; a browser engine server collapses back to the one manifest entry it expands from.
 // `skillsDir`: a 1.x global install kept its skills in the account dir, everything else in the project.
 // `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
 // of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
@@ -125,7 +125,7 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     const seenMcp = new Set();
     for (const server of mcpServers)
     {
-        const name = String(server).replace(PW_ENGINE, 'playwright');
+        const name = String(server).replace(PW_ENGINE, 'browser');
         if (!seenMcp.has(name)) { seenMcp.add(name); lines.push(`mcp ${name}`); }
     }
     // Plugins are machine-level, so they come from the CLI listing rather than a project directory -
@@ -340,10 +340,10 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
     const listedEngines = routes.mcps ? names.map(engineOf).filter(Boolean) : [];
     const engines = PW_ORDER.filter((e) => listedEngines.includes(e) || pickedEngines.includes(e));
-    if (pickedEngines.length && !lines.includes('mcp playwright'))
+    if (pickedEngines.length && !lines.includes('mcp browser'))
     {
-        lines.push('mcp playwright');
-        log(`installed-only: keeping mcp playwright - the last install installed ${pickedEngines.join(',')} (on or off, still installed)`);
+        lines.push('mcp browser');
+        log(`installed-only: keeping mcp browser - the last install installed ${pickedEngines.join(',')} (on or off, still installed)`);
     }
     // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
     // is the whole answer already - a hook it does not name is on, a new release's included - and
@@ -557,7 +557,7 @@ function dropLines(lines, drop = [], log = () => {})
 // hand inventory unioned what the entries CARRY without the denied seats, so every configure run
 // switched them back on. A plugin the listing shows disabled is the third state validate keeps
 // apart - parked, neither installed nor absent.
-const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name);
+const foldMcp = (name) => (PW_ENGINE.test(name) ? 'browser' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
 // enabled one is installed whatever the selection says (a companion every run adds, or an optional
@@ -612,7 +612,7 @@ function leftOut({ parked = [], deny = [] })
 //
 // The core (the hooks ride it) and the three locked servers are never queued: a drop of them is
 // refused before it gets here anyway.
-const NEVER_DISABLED = new Set([BRAND.core, 'serena', 'context7', 'memory']);
+const NEVER_DISABLED = new Set([BRAND.core, 'navigation', 'documentation', 'memory']);
 function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));

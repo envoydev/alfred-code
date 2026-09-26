@@ -71,7 +71,7 @@ test('scanner finds package, central-package, csproj-property, npm, and file sig
         assert.match(found.skills['dotnet-data-access'], /Npgsql in src\/Worker\/Worker\.csproj/, 'a CPM version-less PackageReference is the usage signal');
         assert.match(found.skills['dotnet-source-generators'], /IsRoslynComponent/, 'csproj property signal');
         assert.match(found.skills['angular-material'], /@angular\/material in web\/package\.json/, 'npm dependency');
-        assert.match(found.mcps['playwright'], /@playwright\/test in web\/package\.json/, 'scoped npm prefix');
+        assert.match(found.mcps['browser'], /@playwright\/test in web\/package\.json/, 'scoped npm prefix');
         assert.match(found.skills['nx'], /nx\.json/, 'file-existence signal');
         assert.match(found.skills['dotnet-minimal-api'], /minimal-API Map\* wiring in Program\.cs in src\/Api\/Program\.cs/, 'content signal over a named code file, labeled');
         assert.match(found.skills['dotnet-mvc-controllers'], /ApiController\/Controller classes in src\/Web\/HomeController\.cs/, 'a base-class-only view controller fires the signal');

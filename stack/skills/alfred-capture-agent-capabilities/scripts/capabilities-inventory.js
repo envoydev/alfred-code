@@ -26,7 +26,7 @@ const RULE_REL = '.claude/rules/baseline-project-agent-capabilities.md';
 const MODEL_INVOCABLE_BY_DESIGN = new Set(['alfred-capture-architecture', 'alfred-capture-architecture-quality', 'alfred-capture-code-quality']);
 // One catalog server expands into one registration per kept browser; every installed-name reader
 // maps them back to the catalog name, and so does the routing row.
-const PLAYWRIGHT_SERVER = /^playwright-(chrome|msedge|firefox|webkit)$/;
+const PLAYWRIGHT_SERVER = /^browser-(chrome|msedge|firefox|webkit)$/;
 const SEAT_ROLES = ['-solution-designer', '-implementer', '-verifier'];
 const REQUIRED_HEADINGS = ['## Orchestration skills', '## Subagent seats', '## MCP routing'];
 
@@ -307,7 +307,7 @@ function parsePluginList(out, projectRoot)
 
 // ---------------------------------------------------------------- the routing map
 
-const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'playwright' : name);
+const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'browser' : name);
 
 function routingMap()
 {

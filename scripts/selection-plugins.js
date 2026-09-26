@@ -42,7 +42,7 @@ function parseSelectionText(raw)
 // exactly like the plugin - which is what makes each tool `mcp__plugin_<n>_<n>__<tool>` for a
 // single `<n>`, and what keeps a project from loading a server it did not pick (all of a plugin's
 // servers load together). So the mapping is the IDENTITY, and the one expanded family is expanded
-// BEFORE it reaches here: the caller passes `playwright-chrome`, not `playwright`.
+// BEFORE it reaches here: the caller passes `browser-chrome`, not `browser`.
 function mcpPlugin(server)
 {
     return String(server);

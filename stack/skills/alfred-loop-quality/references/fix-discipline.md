@@ -24,7 +24,7 @@ Before a FIX writes new code, climb the ladder and stop at the first rung that h
 
 ## Work lean
 
-- Locate symbols via navigation (serena / the LSP), not whole-file reads; read the symbol under fix and its call sites, nothing more.
+- Locate symbols via navigation (the navigation server / the LSP), not whole-file reads; read the symbol under fix and its call sites, nothing more.
 - Do not re-read a file you just edited - the edit succeeded or it errored.
 - Keep findings terse: `file:line - one-line defect -> the fix`. Do not restate the code back.
 - Batch independent reads and edits into one step rather than serial round-trips.

@@ -74,9 +74,9 @@ const { stampFile, LEGACY } = require('./brand.js');
 // drift here.
 const splitPick = (entry) => { const [name, home = ''] = String(entry).split('@'); return { name, home: home || null }; };
 
-// A playwright engine server belongs to its FAMILY: the always-list names `playwright`, and an
-// install carrying `playwright-firefox` is carrying it.
-const family = (name) => String(name).replace(/^playwright-.*/, 'playwright');
+// A browser engine server belongs to its FAMILY: the always-list names `browser`, and an
+// install carrying `browser-firefox` is carrying it.
+const family = (name) => String(name).replace(/^browser-.*/, 'browser');
 
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } };
 

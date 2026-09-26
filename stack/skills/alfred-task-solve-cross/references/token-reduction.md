@@ -71,7 +71,7 @@ token_reduction_policy:
 
 ## The third lever - eager context and redundant reads
 
-Lean work cuts the work, report terseness cuts the words; the third lever cuts the context a seat loads - load only the certain-use skill or MCP, navigate with serena, reach for context7 before a library API, and let a verifier orient from the implementer's memory note plus the diff instead of re-reading the whole module. The per-role wiring and the mechanisms live in `capability-reuse.md`, which also holds the safety floor: the verifier still runs the gates independently and never trusts the note in place of running the gate.
+Lean work cuts the work, report terseness cuts the words; the third lever cuts the context a seat loads - load only the certain-use skill or MCP, navigate with the navigation server, reach for the documentation server before a library API, and let a verifier orient from the implementer's memory note plus the diff instead of re-reading the whole module. The per-role wiring and the mechanisms live in `capability-reuse.md`, which also holds the safety floor: the verifier still runs the gates independently and never trusts the note in place of running the gate.
 
 ## The fourth lever - quiet the command output
 

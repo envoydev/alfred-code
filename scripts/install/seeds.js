@@ -113,7 +113,7 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     for (const engine of browsers)
     {
         if (!DOWNLOADED_ENGINES.includes(engine)) continue;
-        log(`playwright: downloading the ${engine} build the server launches`);
+        log(`browser: downloading the ${engine} build the server launches`);
         if (run(engine)) { done.push(engine); continue; }
         log(`  !! could not download ${engine} - run by hand: npx -y -p @playwright/mcp${pin} playwright install ${engine}`);
     }

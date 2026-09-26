@@ -43,7 +43,7 @@ The review-and-fix loop's five stages - structure, code quality, naming, logging
 
 **Reuse before recreation.** Before new code, stop at the first rung that holds: the stdlib, runtime or framework already does it; an existing helper in this repo or an already-referenced package does it (search first - a second copy is a defect, consolidate to the existing seam); it is one line; only then the minimum code that works. Less code that still works - never the flimsier algorithm, never at the cost of validation at a trust boundary, error handling that prevents data loss, or secret handling.
 
-**Callers first on a bug fix.** Before changing a function to fix a bug, list its callers (serena's `find_referencing_symbols`) and fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff.
+**Callers first on a bug fix.** Before changing a function to fix a bug, list its callers (the navigation server's `find_referencing_symbols`) and fix once where they all route through - a guard on only the reported path leaves every sibling caller broken, and one guard in the shared function is also the smaller diff.
 
 ## When the plan meets reality
 

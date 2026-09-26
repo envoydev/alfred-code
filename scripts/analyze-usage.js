@@ -181,7 +181,7 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
-// NAVIGATION, as baseline-navigation words it: locate with serena or the LSP, then read the range. A
+// NAVIGATION, as baseline-navigation words it: locate with the navigation server or the LSP, then read the range. A
 // read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
 // in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
 // over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
@@ -192,11 +192,13 @@ const NAV_WINDOW = 3;
 const WHOLE_FILE_HOOK = 'guard-read-whole-file.js';
 const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$/i;
 const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview']);
+// The navigation server's name, and the one it went by before 2.0.0 - an older transcript still says serena.
+const NAVIGATION_SERVERS = new Set(['navigation', 'serena']);
 const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
 function locateClass(name, input) {
   if (name === 'LSP') return 'symbol';
   if (name === 'Grep') return 'grep';
-  if (String(name).startsWith('mcp__') && mcpServerOf(name) === 'serena') {
+  if (String(name).startsWith('mcp__') && NAVIGATION_SERVERS.has(mcpServerOf(name))) {
     const tool = String(name).split('__').slice(2).join('__');
     if (SERENA_SYMBOL_TOOLS.has(tool)) return 'symbol';
     return tool === 'search_for_pattern' ? 'grep' : null;
@@ -649,7 +651,7 @@ function hookCommandKey(cmd) {
 // (https://code.claude.com/docs/en/plugins-reference, 'Component path fields'). MCP servers are not
 // read here at all: a plugin server's tools carry the plugin's name (`mcp__plugin_<p>_<s>__*`), which
 // is the whole attribution - matching DECLARED server names instead read only `<root>/.mcp.json`,
-// so every inline server (serena, context7, memory, the playwright engines) scored never used, and
+// so every inline server (navigation, documentation, memory, the browser engines) scored never used, and
 // it credited a bare registration of the same server name to the plugin.
 function pluginDeclarations(root, name, marketDir) {
   const out = { hookKeys: new Set(), exts: new Set() };

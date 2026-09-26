@@ -198,7 +198,7 @@ test('install-scope: a --space run with no CLAUDE_CONFIG_DIR takes the space acc
             }
         },
     });
-    const serena = calls.find((c) => /^mcp add --scope project serena /.test(c));
+    const serena = calls.find((c) => /^mcp add --scope project navigation /.test(c));
     assert.ok(serena, calls.join('\n'));
     assert.match(serena, / uvx --python 3\.10 /, `not the space account's pin: ${serena}`);
 });
@@ -610,7 +610,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
     const bin = path.join(work, 'bin');
     fs.mkdirSync(bin, { recursive: true });
     const pluginsFile = path.join(work, 'plugins.json');
-    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'serena', 'context7', 'memory']
+    fs.writeFileSync(pluginsFile, JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory']
         .map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'user', enabled: true }))));
     fs.writeFileSync(path.join(bin, 'claude'), ['#!/bin/sh', 'printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
         'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; fi', 'exit 0', ''].join('\n'), { mode: 0o755 });

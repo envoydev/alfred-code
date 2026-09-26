@@ -1,7 +1,7 @@
 # Plugin evals - `claude plugin eval`
 
 Checked against the Claude Code plugin evals page on 2026-09-12. Requires Claude Code 2.1.269 or
-later, and every run is a real model call on the account. Re-verify flags through context7 before
+later, and every run is a real model call on the account. Re-verify flags through the documentation server before
 a CI change.
 
 Contents: [What a run is](#what-a-run-is) - [Layout](#layout) - [Graders](#graders) -

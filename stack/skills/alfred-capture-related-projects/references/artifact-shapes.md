@@ -72,7 +72,7 @@ a session on another branch knows that edge may not exist in its code>
   Every OTHER sibling-repo doc (cross-repo plans, change requests, run recipes) belongs instead in
   the plain folder `<docs-path>/related-context/` - check it before re-deriving sibling state, and
   file new sibling-repo docs there, never in `related-projects/`.
-- serena binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
+- The navigation server binds to THIS repo: Read/Grep a sibling directly, but symbol-navigate it only from a
   context rooted there.
 - Dynamic cross-repo findings go to the shared `memory` MCP instead of a committed file - tag them
   with the sibling's own name (`project:<sibling>` or bare `<sibling>`), so they surface when that

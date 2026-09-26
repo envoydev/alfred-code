@@ -5,7 +5,7 @@ description: "WinForms conventions for maintenance and modernization. Load befor
 
 # WinForms conventions
 
-For any WinForms or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
+For any WinForms or NuGet API surface not pinned down here, resolve signatures with the `documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 WinForms is an immediate-mode, control-tree desktop UI. The realistic work is maintenance and
 modernization of line-of-business apps, not greenfield, so this skill floors **new** work at .NET 8 /

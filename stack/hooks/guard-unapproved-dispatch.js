@@ -23,7 +23,7 @@
 // Symbol-search rule: a SYMBOL question - who calls this, where is it declared, what
 // type resolves here - is never delegated to a grep-shaped seat (Explore/general-purpose/
 // claude). Those answer by name-match, and the built-in Explore does not even load the
-// project's rules, so baseline-navigation's 'locate with serena, inline' never reaches it
+// project's rules, so baseline-navigation's 'locate with the navigation server, inline' never reaches it
 // (measured: a consuming session handed a C# symbol hunt to Explore and got grep hits).
 // Blocked here regardless of any stamp; a broad multi-file sweep with no symbol question
 // in it still passes.
@@ -101,7 +101,7 @@ const seat = String(input.subagent_type || 'general-purpose');
 // no gate looked at (measured: a fork taken for a read-only grep job cost 869,483 cache-read over
 // 6 messages and 4 Bash calls, while a named or read-only seat would have started from its own
 // floor). The gates stay what they are for every generic seat - a symbol question goes back to
-// serena, and a generic dispatch is refused only while a flow is actively stamped.
+// the navigation server, and a generic dispatch is refused only while a flow is actively stamped.
 const GENERIC_SEATS = new Set(['general-purpose', 'claude', 'fork']);
 const SEARCH_SEATS = new Set(['Explore', 'general-purpose', 'claude', 'fork']);
 // A plugin agent is addressable ONLY as `<plugin>:<agent>` (measured, spike S1 run 4: the bare
@@ -116,7 +116,7 @@ const HOUSE_PREFIX = /^(?:alfred-code|claude-stack)(?:-[a-z0-9-]+)?:/; // legacy
 const houseSeat = !seat.includes(':') ? seat : (HOUSE_PREFIX.test(seat) ? seat.slice(seat.indexOf(':') + 1) : null);
 const isImplementer = houseSeat !== null && /-implementer$/.test(houseSeat);
 
-// A symbol question routed at a grep-shaped seat: block and send it back to serena.
+// A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
 // The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
 const SYMBOL_QUESTION = new RegExp(
@@ -141,12 +141,12 @@ if (SEARCH_SEATS.has(seat)) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +
         `A grep-shaped seat answers that by name-match, and name-matches lie; the built-in\n` +
-        `Explore does not load this project's rules at all, so it cannot know to use serena.\n` +
-        `Answer it INLINE instead: mcp__plugin_serena_serena__find_symbol for a declaration or signature,\n` +
-        `mcp__plugin_serena_serena__find_referencing_symbols for callers, mcp__plugin_serena_serena__get_symbols_overview\n` +
-        `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when serena's\n` +
-        `language server cannot resolve it. The serena tools are DEFERRED - load them first with\n` +
-        `ToolSearch select:mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols,mcp__plugin_serena_serena__get_symbols_overview\n` +
+        `Explore does not load this project's rules at all, so it cannot know to use the navigation server.\n` +
+        `Answer it INLINE instead: mcp__plugin_navigation_navigation__find_symbol for a declaration or signature,\n` +
+        `mcp__plugin_navigation_navigation__find_referencing_symbols for callers, mcp__plugin_navigation_navigation__get_symbols_overview\n` +
+        `(ONE file, depth 2 on C#) to enumerate - falling back to the LSP plugin when the navigation server's\n` +
+        `language server cannot resolve it. The navigation tools are DEFERRED - load them first with\n` +
+        `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols,mcp__plugin_navigation_navigation__get_symbols_overview\n` +
         `Dispatch a search seat only for a genuinely broad\n` +
         `multi-file sweep that asks no symbol question.`,
     );

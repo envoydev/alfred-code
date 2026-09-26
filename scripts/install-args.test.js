@@ -223,7 +223,7 @@ test('install-entry: --print-plan prints the six resolved lists and exits 0, wri
         assert.match(r.out, new RegExp(`^plan ${list}: \\S`, 'm'), `the plan named no ${list}`);
     // The playwright row is expanded into its engines BEFORE the plan is printed, so the dry run
     // reports the servers a real run would register, not the catalog row they come from.
-    assert.match(r.out, /^plan mcps: .*playwright-chrome/m);
+    assert.match(r.out, /^plan mcps: .*browser-chrome/m);
     assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
 });
 
@@ -236,7 +236,7 @@ test('install-entry: --playwright-enabled naming an engine this run does not ins
     assert.ok(!/^plan /m.test(r.out), 'the refused run still printed a plan');
     const all = run(['install', '--source', ROOT, '--print-plan', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'all']);
     assert.strictEqual(all.code, 0, all.err);
-    assert.match(all.out, /^plan mcps: .*playwright-chrome.*playwright-firefox/m);
+    assert.match(all.out, /^plan mcps: .*browser-chrome.*browser-firefox/m);
 });
 
 test('install-entry: --print-plan resolves NO runtime versions - a dry run makes no network call', () =>
@@ -322,7 +322,7 @@ test('install-entry: an update over an install carrying no server plans all thre
     // the closure brings that layer in AFTER it (csharp requires context7) - so the first update
     // registered context7 alone and the second added serena and memory. One update is the fixed point.
     const mcps = planOverSkillOnly('csharp');
-    for (const name of ['serena', 'context7', 'memory'])
+    for (const name of ['navigation', 'documentation', 'memory'])
         assert.ok(mcps.includes(name), `${name} is not in the plan: ${mcps.join(' ')}`);
 });
 
@@ -331,7 +331,7 @@ test('install-entry: an update over an install carrying no server plans all thre
 // server still registers the locked three - every install carries them - and nothing else.
 test('install-entry: an install whose picks need no server still plans the locked three on the full copy route (R83 a)', () =>
 {
-    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['context7', 'memory', 'serena']);
+    assert.deepStrictEqual(planOverSkillOnly('markdown-style').sort(), ['documentation', 'memory', 'navigation']);
 });
 
 // 2.0.0 cut the sentry and context7-local servers (R26, R32): their flags are refused in one line
@@ -348,7 +348,7 @@ test('install-args: --context7, --sentry-slug and --sentry-auth are refused - re
     }
     // The environment spellings are no flags: nothing reads them, and nothing refuses them.
     const p = ok(['install'], { SENTRY_SLUG: 'from-env', CONTEXT7_MODE: 'local' });
-    for (const key of ['context7', 'context7Given', 'sentrySlug', 'sentryAuth']) assert.ok(!(key in p), `${key} is still parsed`);
+    for (const key of ['documentation', 'context7Given', 'sentrySlug', 'sentryAuth']) assert.ok(!(key in p), `${key} is still parsed`);
 });
 
 test('args: --add is repeatable, takes <category> <name>, and belongs to --installed-only', () =>
@@ -385,6 +385,6 @@ test('install-entry: --print-plan --plan-out writes the inventory JSON and names
     assert.match(r.out, /^plan answered: hooks=yes agents=yes$/m);
     const got = JSON.parse(fs.readFileSync(inv, 'utf8'));
     for (const k of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins', 'plugins_disabled']) assert.ok(Array.isArray(got[k]), k);
-    assert.ok(got.mcps.includes('playwright') && !got.mcps.some((m) => m.startsWith('playwright-')), 'the engines fold back onto the catalog row');
+    assert.ok(got.mcps.includes('browser') && !got.mcps.some((m) => m.startsWith('browser-')), 'the engines fold back onto the catalog row');
     assert.ok(!fs.existsSync(path.join(ENTRY_CWD, '.claude')), 'the dry run wrote into the project');
 });

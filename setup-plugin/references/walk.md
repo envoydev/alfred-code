@@ -36,7 +36,7 @@ grep at 258k context to confirm this shape):
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["serena"], "plugins": ["security-guidance"] }
+  "hooks": ["guard-stop-contract"], "mcps": ["navigation"], "plugins": ["security-guidance"] }
 ```
 
 ## Per layer - the same three beats
@@ -202,16 +202,16 @@ not hold.
 
 ## MCPs
 
-Locked = the servers the kept selection pulls: `serena` via `baseline-navigation`, `context7` via
+Locked = the servers the kept selection pulls: `navigation` via `baseline-navigation`, `documentation` via
 `baseline-quality-gates`, `memory` via `baseline-memory` - required in every install, the same way
-serena and context7 are. `playwright` is the one droppable server: seeded on the web Angular, Ionic
+The navigation server and the documentation server are. `browser` is the one droppable server: seeded on the web Angular, Ionic
 and browser-extension stacks, pre-selected elsewhere only when the evidence scan matched it, and in
 DELTA preserved across runs like any direct pick (`raw.json` carries it). Those four are the whole
 catalog. A server 2.0.0 cut (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`,
 `context7-local`) is offered nowhere: the run uninstalls the stack's own copy and prints the `claude
 mcp add` line that brings it back as the user's own.
 
-Only if playwright stayed selected, ask two AskUserQuestions, in order. FRESH has no install to
+Only if the browser server stayed selected, ask two AskUserQuestions, in order. FRESH has no install to
 read, so the first pre-selects `chrome` and the second every installed browser. DELTA pre-selects
 from the LIVE install, never by hand: `jq -c '.playwright' "$TMP/installed.json"` (the step-1 plan)
 prints `{"installed": [...], "enabled": [...]}`:

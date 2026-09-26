@@ -9,7 +9,7 @@ A plugin is a directory Claude Code loads as one unit: a manifest under `.claude
 component folders beside it. Everything below is checked against the Claude Code plugins docs on
 2026-09-12 (the plugins guide, the plugins reference, the marketplaces page, the plugin evals
 page). A claim marked `community` comes from field reports, not the docs - re-verify it through
-context7 before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
+The documentation server before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
 re-checked the same way at the moment of use: the docs are the authority, this file is the map.
 
 ## When this skill applies

@@ -496,7 +496,7 @@ function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines
 {
     const gone = [];
     const off = [];
-    const names = engines.map((e) => `playwright-${e}`);
+    const names = engines.map((e) => `browser-${e}`);
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
     const at = standDownScope(scope);

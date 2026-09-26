@@ -2,7 +2,7 @@
 
 Run before the first publish and after any change to hooks, MCP config, dependencies or `userConfig`.
 Items marked `community` are field reports the docs do not state - verify the current shape
-through context7 before citing one as fact.
+through the documentation server before citing one as fact.
 
 Contents: [The threat](#the-threat) - [Checklist](#checklist) - [Incident shapes](#incident-shapes) -
 [Enterprise fit](#enterprise-fit)

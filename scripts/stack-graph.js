@@ -39,8 +39,8 @@ function bodyAfterFrontmatter(text)
 
 // Every distinct backticked token in the text (content between a pair of
 // backticks, trimmed). Catalog membership - not a shape regex - decides what is
-// an edge, so single-word MCPs (`serena`, `context7`) resolve as well as
-// hyphenated ones (`playwright-chrome`). Tokenized LINE BY LINE - a markdown inline-code
+// an edge, so single-word MCPs (`navigation`, `documentation`) resolve as well as
+// hyphenated ones (`browser-chrome`). Tokenized LINE BY LINE - a markdown inline-code
 // span never crosses a line, so scanning each line independently prevents a stray
 // or odd backtick count (including a ```` ```bash ```` fence line) from desyncing
 // the open/close pairing into later lines.
@@ -77,7 +77,9 @@ function catalogs()
     const pluginBlock = lint.manifestFlatSet(raw.plugins, (r) => r.id.split('@')[0]);
     const mcps = new Set([...mcpBlock.active, ...mcpBlock.commented]);
     const plugins = new Set([...pluginBlock.active, ...pluginBlock.commented]);
-    return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog(raw) };
+    // The names a backticked mention may make an edge to: the catalog less its COMMON WORDS.
+    const mcpEdges = new Set([...mcps].filter((n) => !MCP_COMMON_WORDS.has(n)));
+    return { skills, agents, mcps, mcpEdges, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog(raw) };
 }
 
 // The plugins every install carries beside the core from another marketplace. They are in the
@@ -99,6 +101,12 @@ function hookCatalog(raw)
     // dedupe: one hook wired on two tools (two matcher entries) is still one catalog hook
     return [...new Set(hooks)].sort();
 }
+
+// Catalog MCP names that are also ordinary words a body backticks for its own reasons: the browser
+// server (2.0.0's role names) against the WebExtension `browser` namespace or Angular's `browser`
+// builder. A mention of one is no edge - read as one, it pulled the droppable browser server into
+// every install carrying that item. The browser is proven by a stack seed or evidence instead.
+const MCP_COMMON_WORDS = new Set(['browser']);
 
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.
 // alfred-capture-agent-capabilities documents the house routing map for every server so the
@@ -129,7 +137,7 @@ function categorize(tokens, cat)
         if (p) plugins.add(p);
     }
 
-    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcps), plugins: [...plugins].sort() };
+    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcpEdges || cat.mcps), plugins: [...plugins].sort() };
 }
 
 function skillFiles(name)

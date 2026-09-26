@@ -27,7 +27,7 @@ function project({ settings } = {})
 const INV = (over = {}) => ({
     skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
-    mcps: ['serena', 'context7', 'memory', 'playwright'],
+    mcps: ['navigation', 'documentation', 'memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
     left_out: [],
     playwright: { installed: ['chrome', 'firefox'], enabled: ['chrome'] },
@@ -46,13 +46,13 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.match(lineOf(lines, /^machine: python /), /^machine: python 3\.13 - missing after uv: uv python install 3\.13$/);
     assert.match(lineOf(lines, /^machine: csharp-ls /), /^machine: csharp-ls - blocked: needs the \.NET 10 SDK \(dotnet\) first/);
     assert.strictEqual(lineOf(lines, /^machine: playwright firefox /),
-        `machine: playwright firefox - missing: npx -y -p @playwright/mcp@${PINS.playwright.version} playwright install firefox`);
+        `machine: playwright firefox - missing: npx -y -p @playwright/mcp@${PINS.browser.version} playwright install firefox`);
     // M2: chrome downloads nothing - it runs the machine's Google Chrome - so a picked one that is not
     // there is reported, with the fix the user makes (probed like stack-select probes msedge).
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the playwright browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.serena.version} serena project index`);
+        `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
     // Order is install order: uv, python, csharp-ls, the engines, the index - then the account's hud.
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
     assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index',

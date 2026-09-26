@@ -5,7 +5,7 @@ description: "Load before creating or editing any `.cs` file - writing, reviewin
 
 # C# Conventions
 
-For any BCL or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
+For any BCL or NuGet API surface not pinned down here, resolve signatures with the `documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
 C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces, file-scoped namespaces) and `EnforceCodeStyleInBuild=true`.
 

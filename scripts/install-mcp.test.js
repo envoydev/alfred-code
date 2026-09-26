@@ -17,8 +17,8 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const ROUTES = (over = {}) => ({ hooks: true, skills: true, mcps: true, ...over });
 const COPY = ROUTES({ hooks: false, skills: false, mcps: false });
-const CATALOG = ['serena|-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena', 'context7|@HTTP@',
-    'memory|@HTTP@', 'playwright|-- npx -y @playwright/mcp@1.0'];
+const CATALOG = ['navigation|-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena', 'documentation|@HTTP@',
+    'memory|@HTTP@', 'browser|-- npx -y @playwright/mcp@1.0'];
 
 let seq = 0;
 const mcpFile = (servers) =>
@@ -46,12 +46,12 @@ test('mcp-argv: a bare * is passed literally, never glob-expanded', () =>
 
 test('register-spec: a hosted server registers http with its header, and an EMPTY header registers none', () =>
 {
-    const remotes = { context7: mcp.CONTEXT7_REMOTE };
-    assert.deepStrictEqual(mcp.registerSpec({ name: 'context7', args: '@HTTP@', scope: 'project', remotes }),
-        ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'context7',
+    const remotes = { documentation: mcp.CONTEXT7_REMOTE };
+    assert.deepStrictEqual(mcp.registerSpec({ name: 'documentation', args: '@HTTP@', scope: 'project', remotes }),
+        ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'documentation',
             'https://mcp.context7.com/mcp', '--header', 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}']);
     // A remote with no header: no --header at all, so its browser consent flow stays on.
-    const oauth = mcp.registerSpec({ name: 'context7', args: '@HTTP@', scope: 'project', remotes: { context7: { url: 'https://x/mcp/a', header: '' } } });
+    const oauth = mcp.registerSpec({ name: 'documentation', args: '@HTTP@', scope: 'project', remotes: { documentation: { url: 'https://x/mcp/a', header: '' } } });
     assert.ok(!oauth.includes('--header'), oauth.join(' '));
 });
 
@@ -60,10 +60,10 @@ test('register-spec: a hosted server registers http with its header, and an EMPT
 test('R7: on the plugin route the seed registers NOTHING and retires the whole catalog', () =>
 {
     const retired = mcp.retiredMcps({ routes: ROUTES(), catalog: CATALOG, authored: ['old-server'] });
-    for (const name of ['serena', 'context7', 'memory', 'playwright', 'old-server'])
+    for (const name of ['navigation', 'documentation', 'memory', 'browser', 'old-server'])
         assert.ok(retired.includes(name), `${name} was not retired: ${retired.join(',')}`);
     // The four engine spellings an earlier release wrote are retired by name - they are not catalog rows.
-    for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`playwright-${e}`), retired.join(','));
+    for (const e of mcp.PW_ENGINES) assert.ok(retired.includes(`browser-${e}`), retired.join(','));
     assert.deepStrictEqual(mcp.bareNamedMcps({ routes: ROUTES(), mcps: CATALOG }), []);
 });
 
@@ -74,14 +74,14 @@ test('R7: the MCP route OFF but the core still on - the locked three stay plugin
     const routes = ROUTES({ mcps: false });
     const retired = mcp.retiredMcps({ routes, catalog: CATALOG, authored: [] });
     assert.deepStrictEqual(retired.sort(), [...mcp.LOCKED].sort());
-    assert.deepStrictEqual(mcp.bareNamedMcps({ routes, mcps: CATALOG }), ['playwright']);
+    assert.deepStrictEqual(mcp.bareNamedMcps({ routes, mcps: CATALOG }), ['browser']);
 });
 
 test('R7: on the FULL copy route the core is never enabled, so all three come back to .mcp.json', () =>
 {
     assert.deepStrictEqual(mcp.retiredMcps({ routes: COPY, catalog: CATALOG, authored: ['old-server'] }), ['old-server']);
     assert.deepStrictEqual(mcp.bareNamedMcps({ routes: COPY, mcps: CATALOG }),
-        ['serena', 'context7', 'memory', 'playwright']);
+        ['navigation', 'documentation', 'memory', 'browser']);
 });
 
 test('R7: a locked server installed as a plugin has no shape to verify', () =>
@@ -92,33 +92,33 @@ test('R7: a locked server installed as a plugin has no shape to verify', () =>
         .map((e) => ({ name: e.split('|')[0], args: e.split('|')[1] }))
         .filter((e) => !(mcp.isLocked(e.name) && mcp.corePluginOn(routes)))
         .map((e) => e.name);
-    assert.deepStrictEqual(expects, ['playwright']);
+    assert.deepStrictEqual(expects, ['browser']);
 });
 
 // --- the project-scope verify pass ---------------------------------------
 
 test('verify-project: a stale registration the CLI silently refused to rewrite is repaired', () =>
 {
-    const file = mcpFile({ serena: { type: 'stdio', command: 'uvx', args: ['--from', 'serena@0.0.1', 'serena'], env: {} } });
+    const file = mcpFile({ navigation: { type: 'stdio', command: 'uvx', args: ['--from', 'serena@0.0.1', 'serena'], env: {} } });
     const logs = [];
     const out = mcp.verifyProject({
         mcpFile: file,
-        expects: [mcp.expectShape({ name: 'serena', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' })],
+        expects: [mcp.expectShape({ name: 'navigation', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' })],
         log: (m) => logs.push(m),
     });
-    assert.deepStrictEqual(out.repaired, ['serena']);
-    const written = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.serena;
+    assert.deepStrictEqual(out.repaired, ['navigation']);
+    const written = JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers.navigation;
     assert.deepStrictEqual(written, { type: 'stdio', command: 'uvx', args: ['--from', 'serena@1.0', 'serena'], env: { SERENA_HOME: '.serena/home' } });
-    assert.ok(logs.some((m) => /mcp repaired: serena \(was stdio uvx --from serena@0\.0\.1/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /mcp repaired: navigation \(was stdio uvx --from serena@0\.0\.1/.test(m)), logs.join(' | '));
 });
 
 test('verify-project: an entry already in the manifest shape is left BYTE-IDENTICAL', () =>
 {
-    const expect = mcp.expectShape({ name: 'context7', args: '@HTTP@', remotes: { context7: { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}' } } });
+    const expect = mcp.expectShape({ name: 'documentation', args: '@HTTP@', remotes: { documentation: { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY}' } } });
     // Written with the PROJECT's own formatting, not ours: a no-op that rewrote the file would
     // reformat it, and every release would land as a diff in a repo that commits this file.
     const file = mcpFile();
-    fs.writeFileSync(file, `${JSON.stringify({ mcpServers: { context7: mcp.wantFor(expect) } }, null, 4)}\n`);
+    fs.writeFileSync(file, `${JSON.stringify({ mcpServers: { documentation: mcp.wantFor(expect) } }, null, 4)}\n`);
     const before = fs.readFileSync(file);
     const out = mcp.verifyProject({ mcpFile: file, expects: [expect] });
     assert.deepStrictEqual(out.repaired, []);
@@ -128,8 +128,8 @@ test('verify-project: an entry already in the manifest shape is left BYTE-IDENTI
 test('verify-project: a server the project added by hand is never read, compared or written', () =>
 {
     const mine = { type: 'stdio', command: 'node', args: ['x.js'] };
-    const file = mcpFile({ 'my-own-server': mine, serena: { type: 'stdio', command: 'old' } });
-    mcp.verifyProject({ mcpFile: file, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] });
+    const file = mcpFile({ 'my-own-server': mine, navigation: { type: 'stdio', command: 'old' } });
+    mcp.verifyProject({ mcpFile: file, expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx serena' })] });
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers['my-own-server'], mine);
 });
 
@@ -137,7 +137,7 @@ test('verify-project: malformed or unreadable input is REPORTED and changes noth
 {
     const bad = mcpFile('{ not json');
     const logs = [];
-    const out = mcp.verifyProject({ mcpFile: bad, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })], log: (m) => logs.push(m) });
+    const out = mcp.verifyProject({ mcpFile: bad, expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx serena' })], log: (m) => logs.push(m) });
     assert.strictEqual(out.read, false);
     assert.deepStrictEqual(out.repaired, []);
     assert.strictEqual(fs.readFileSync(bad, 'utf8'), '{ not json', 'an unparseable file was overwritten');
@@ -148,11 +148,11 @@ test('verify-project: an absent file is written from scratch, BOM and all handle
 {
     const missing = path.join(TMP, 'none', 'mcp.json');
     fs.mkdirSync(path.dirname(missing), { recursive: true });
-    const out = mcp.verifyProject({ mcpFile: missing, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] });
-    assert.deepStrictEqual(out.repaired, ['serena']);
+    const out = mcp.verifyProject({ mcpFile: missing, expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx serena' })] });
+    assert.deepStrictEqual(out.repaired, ['navigation']);
     const bom = mcpFile();
-    fs.writeFileSync(bom, `\uFEFF${JSON.stringify({ mcpServers: { serena: { type: 'stdio', command: 'uvx', args: ['serena'], env: {} } } })}`);
-    assert.deepStrictEqual(mcp.verifyProject({ mcpFile: bom, expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })] }).repaired, []);
+    fs.writeFileSync(bom, `\uFEFF${JSON.stringify({ mcpServers: { navigation: { type: 'stdio', command: 'uvx', args: ['serena'], env: {} } } })}`);
+    assert.deepStrictEqual(mcp.verifyProject({ mcpFile: bom, expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx serena' })] }).repaired, []);
 });
 
 // --- the user-scope verify pass ------------------------------------------
@@ -171,21 +171,21 @@ test('verify-user: a ${VAR:-default} argument printed as ${VAR} by `mcp get` is 
 
 test('verify-user: a drifted registration is re-registered through the CLI and confirmed', () =>
 {
-    const expect = mcp.expectShape({ name: 'serena', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' });
+    const expect = mcp.expectShape({ name: 'navigation', args: '-e SERENA_HOME=.serena/home -- uvx --from serena@1.0 serena' });
     let fixed = false;
     const out = mcp.verifyUser({
         expects: [expect], scope: 'user',
         getShape: () => (fixed ? 'Type: stdio\n Command: uvx\n Args: --from serena@1.0 serena\n' : 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n'),
         reregister: () => { fixed = true; },
     });
-    assert.deepStrictEqual(out.repaired, ['serena']);
+    assert.deepStrictEqual(out.repaired, ['navigation']);
 });
 
 test('verify-user: a registration the retry cannot fix is REPORTED, never silently accepted', () =>
 {
     const notes = [];
     const out = mcp.verifyUser({
-        expects: [mcp.expectShape({ name: 'serena', args: '-- uvx --from serena@1.0 serena' })], scope: 'user',
+        expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx --from serena@1.0 serena' })], scope: 'user',
         getShape: () => 'Type: stdio\n Command: uvx\n Args: --from serena@0.0.1 serena\n',
         reregister: () => {}, note: (m) => notes.push(m),
     });
@@ -196,7 +196,7 @@ test('verify-user: a registration the retry cannot fix is REPORTED, never silent
 test('verify-user: a server the account config does not expose is skipped, not re-registered', () =>
 {
     mcp.verifyUser({
-        expects: [mcp.expectShape({ name: 'serena', args: '-- uvx serena' })], scope: 'user',
+        expects: [mcp.expectShape({ name: 'navigation', args: '-- uvx serena' })], scope: 'user',
         getShape: () => '', reregister: () => assert.fail('an unreadable `mcp get` was treated as drift'),
     });
 });
@@ -206,7 +206,7 @@ test('verify-user: a server the account config does not expose is skipped, not r
 test('playwright: the engines this run does not keep are dropped, and the plugin route drops none', () =>
 {
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: ['chrome'] }),
-        ['playwright', 'playwright-msedge', 'playwright-firefox', 'playwright-webkit']);
+        ['playwright', 'browser-msedge', 'browser-firefox', 'browser-webkit']);
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: ROUTES(), browsers: ['chrome'] }), []);
     assert.deepStrictEqual(mcp.playwrightDrop({ routes: COPY, browsers: [] }), []);
 });
@@ -217,7 +217,7 @@ test('down-convert: only the servers this run registered BARE are re-spelled', (
     // keep the plugin spelling while the droppable picks are re-spelled.
     const root = path.join(TMP, `dc-${seq++}`);
     fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'a.md'), 'use mcp__plugin_sentry_sentry__find_issues and mcp__plugin_serena_serena__find_symbol\n'); // mcp-fixture
+    fs.writeFileSync(path.join(root, 'a.md'), 'use mcp__plugin_sentry_sentry__find_issues and mcp__plugin_navigation_navigation__find_symbol\n'); // mcp-fixture
     fs.writeFileSync(path.join(root, 'sub', 'b.yml'), 'mcp__plugin_sentry_sentry__find_issues\n'); // mcp-fixture
     const logs = [];
     const n = mcp.downconvertToolNames({ roots: [root], bare: ['sentry'], log: (m) => logs.push(m) });
@@ -226,7 +226,7 @@ test('down-convert: only the servers this run registered BARE are re-spelled', (
     // under scripts/, and the down-converter itself builds it the same way.
     const bareTool = (server, tool) => `mcp__${server}__${tool}`;
     assert.strictEqual(fs.readFileSync(path.join(root, 'a.md'), 'utf8'),
-        `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_serena_serena__find_symbol\n`);
+        `use ${bareTool('sentry', 'find_issues')} and mcp__plugin_navigation_navigation__find_symbol\n`);
     assert.match(fs.readFileSync(path.join(root, 'sub', 'b.yml'), 'utf8'), /mcp__plugin_sentry_sentry__/, 'a .yml is not a target extension'); // mcp-fixture
     assert.ok(logs.some((m) => /re-spelled .* in 1 file/.test(m)), logs.join(' | '));
 });
@@ -244,12 +244,12 @@ test('down-convert: an empty bare list touches nothing', () =>
 
 test('playwright: the one manifest row becomes one entry per kept engine, each with its own profile', () =>
 {
-    const row = 'playwright|-- npx -y @playwright/mcp@0.0.80 --user-data-dir .playwright';
-    const out = mcp.expandPlaywright({ mcps: ['serena|-- uvx serena', row], browsers: ['chrome', 'firefox'] });
+    const row = 'browser|-- npx -y @playwright/mcp@0.0.80 --user-data-dir .playwright';
+    const out = mcp.expandPlaywright({ mcps: ['navigation|-- uvx serena', row], browsers: ['chrome', 'firefox'] });
     assert.deepStrictEqual(out.mcps, [
-        'serena|-- uvx serena',
-        'playwright-chrome|-- npx -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir .playwright/chrome',
-        'playwright-firefox|-- npx -y @playwright/mcp@0.0.80 --browser firefox --user-data-dir .playwright/firefox',
+        'navigation|-- uvx serena',
+        'browser-chrome|-- npx -y @playwright/mcp@0.0.80 --browser chrome --user-data-dir .playwright/chrome',
+        'browser-firefox|-- npx -y @playwright/mcp@0.0.80 --browser firefox --user-data-dir .playwright/firefox',
     ]);
 });
 
@@ -309,7 +309,7 @@ test('playwright live: the enabled set is the settings file\'s word, the stamp o
 
 test('playwright: a selection without playwright is left exactly as it is', () =>
 {
-    const mcps = ['serena|-- uvx serena'];
+    const mcps = ['navigation|-- uvx serena'];
     const out = mcp.expandPlaywright({ mcps, browsers: ['chrome'] });
     assert.deepStrictEqual(out.mcps, mcps);
     assert.deepStrictEqual(out.browsers, []);
@@ -323,14 +323,14 @@ test('pins: the RELEASE pins from meta/mcp-pins.json - a package with no usable 
     // generated plugin entries launch, so both routes and the browser download run one server version.
     const logs = [];
     const pins = mcp.resolvePins({
-        pins: { playwright: { version: '0.0.80', spelling: '@<v>' }, serena: { version: null }, memory: { version: '1 2' } },
+        pins: { browser: { version: '0.0.80', spelling: '@<v>' }, navigation: { version: null }, memory: { version: '1 2' } },
         log: (m) => logs.push(m),
     });
     assert.strictEqual(pins.PW_PIN, '@0.0.80');
     assert.strictEqual(pins.SERENA_PIN, '', 'a null version ships unpinned, as the generator does');
     assert.strictEqual(pins.MEMORY_PIN, '', 'a version no package manager can read is no pin');
-    assert.ok(logs.some((m) => /pinned playwright@0\.0\.80 \(the release pin\)/.test(m)), logs.join(' | '));
-    assert.ok(logs.some((m) => /no release pin for serena in this source - installing unpinned/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /pinned browser@0\.0\.80 \(the release pin\)/.test(m)), logs.join(' | '));
+    assert.ok(logs.some((m) => /no release pin for navigation in this source - installing unpinned/.test(m)), logs.join(' | '));
     for (const garbage of [undefined, null, 'x', []])
         assert.strictEqual(mcp.resolvePins({ pins: garbage }).PW_PIN, '', `pins=${JSON.stringify(garbage)}`);
 });
@@ -342,8 +342,8 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
     const rel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const pins = mcp.resolvePins({ pins: rel });
     assert.strictEqual(pins.MEMORY_PIN, `==${rel.memory.version}`);
-    assert.strictEqual(pins.SERENA_PIN, `@${rel.serena.version}`);
-    assert.strictEqual(pins.PW_PIN, `@${rel.playwright.version}`);
+    assert.strictEqual(pins.SERENA_PIN, `@${rel.navigation.version}`);
+    assert.strictEqual(pins.PW_PIN, `@${rel.browser.version}`);
     assert.strictEqual(pins.MEMORY_BACKEND, 'sqlite_vec');
 });
 
@@ -353,14 +353,14 @@ test('context7 row: the manifest ships the hosted remote only', () =>
 {
     const { loadManifest } = require('./install/manifest.js');
     const manifest = loadManifest(path.join(__dirname, '..'));
-    assert.deepStrictEqual(manifest.mcps.filter((e) => e.startsWith('context7')), ['context7|@HTTP@']);
+    assert.deepStrictEqual(manifest.mcps.filter((e) => e.startsWith('documentation')), ['documentation|@HTTP@']);
     assert.ok(!manifest.rows.mcps.some((r) => r.variants), 'no transport variants left on any row');
 });
 
-test('context7 remote: the copy route registers the url and header the context7 plugin entry carries', () =>
+test('documentation remote: the copy route registers the url and header the documentation plugin entry carries', () =>
 {
-    const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'context7');
-    const server = entry.mcpServers.context7;
+    const entry = require('../.claude-plugin/marketplace.json').plugins.find((p) => p.name === 'documentation');
+    const server = entry.mcpServers.documentation;
     assert.strictEqual(mcp.CONTEXT7_REMOTE.url, server.url);
     const [key, ...value] = mcp.CONTEXT7_REMOTE.header.split(': ');
     assert.deepStrictEqual({ [key]: value.join(': ') }, server.headers, 'an empty header dropped the account key on the copy route');
@@ -442,14 +442,14 @@ test('withLocked: every locked catalog entry the list lacks is added, once, and 
     const out = mcp.withLocked({ mcps: [CATALOG[3], CATALOG[1]], catalog: CATALOG, log: (m) => logs.push(m) });
     assert.deepStrictEqual(out, [CATALOG[3], CATALOG[1], CATALOG[0], CATALOG[2]]);
     assert.strictEqual(logs.length, 2, logs.join('\n'));
-    assert.match(logs.join('\n'), /mcp serena: locked/);
+    assert.match(logs.join('\n'), /mcp navigation: locked/);
     assert.deepStrictEqual(mcp.withLocked({ mcps: out, catalog: CATALOG }), out, 'idempotent');
     assert.deepStrictEqual(mcp.withLocked({ mcps: [], catalog: [CATALOG[3]] }), [], 'a catalog without them adds nothing');
 });
 
 test('seed update --installed-only (full copy route): a plugin-route install whose selection named no server gets the locked three registered (R83 a)', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify(['alfred-code', 'serena', 'context7', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
+    const listing = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.0.0', scope: 'project', enabled: true })));
     const { calls, out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: listing,
         env: [{}, COPY_ENV],
@@ -462,7 +462,7 @@ test('seed update --installed-only (full copy route): a plugin-route install who
     for (const name of mcp.LOCKED) assert.ok(adds.some((c) => c.split(' ').includes(name)), `${name} not registered:\n${adds.join('\n')}\n${out}`);
     assert.doesNotMatch(out, /mcps=0\b/);
     assert.doesNotMatch(out, /the memory MCP is not part of this install/);
-    assert.match(result, /^installed-always-mcps: .*\bserena\b/m, result);
+    assert.match(result, /^installed-always-mcps: .*\bnavigation\b/m, result);
 });
 
 // M1 (Task 18b fix round 1): R91 on a FRESH install. The full copy route never enables the core, so
@@ -487,7 +487,7 @@ test('seed install (full copy route, fresh): a selection naming no server still 
 // two routes launch them differently, so Claude Code dedups neither) and the core's skills listed
 // twice (measured in the Task 8 matrix, R22). The switch disables the stack's own rows first: the core
 // and the locked three, only as `name@<stack key>` and only at the run's scope.
-const STACK_ROWS = (key, over = {}) => ['alfred-code', 'serena', 'context7', 'memory']
+const STACK_ROWS = (key, over = {}) => ['alfred-code', 'navigation', 'documentation', 'memory']
     .map((n) => ({ id: `${n}@${key}`, version: '2.0.0', scope: 'project', enabled: true, ...(over[n] || {}) }));
 const switchRun = (rows) => seedRun(['install', 'update'], 'skill markdown-style\n', {
     plugins: JSON.stringify(rows),
@@ -503,11 +503,11 @@ for (const key of ['envoydev', 'claude-stack']) // legacy-name
     test(`seed update (full copy route, key ${key}): a plugin-route install switched to the copies disables the core and the locked three before any registration (R107)`, POSIX_ONLY, () =>
     {
         const rows = [...STACK_ROWS(key),
-            { id: 'context7@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
+            { id: 'documentation@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
             { id: 'typescript-lsp@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }];
         const { calls, out, result } = switchRun(rows);
         const disables = calls.filter((c) => /^plugin disable /.test(c));
-        assert.deepStrictEqual([...disables].sort(), ['alfred-code', 'context7', 'memory', 'serena'].map((n) => `plugin disable ${n}@${key} --scope project`),
+        assert.deepStrictEqual([...disables].sort(), ['alfred-code', 'documentation', 'memory', 'navigation'].map((n) => `plugin disable ${n}@${key} --scope project`),
             `only the stack's own rows, at this scope:\n${disables.join('\n')}\n${out}`);
         const lastDisable = calls.map((c) => /^plugin disable /.test(c)).lastIndexOf(true);
         const firstAdd = calls.findIndex((c) => /^mcp add /.test(c));
@@ -519,7 +519,7 @@ for (const key of ['envoydev', 'claude-stack']) // legacy-name
 
 test('seed update (full copy route): a stack row already off is left alone, and one at another scope is named with its command, never disabled (R107)', POSIX_ONLY, () =>
 {
-    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { scope: 'user' } });
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, navigation: { enabled: false }, documentation: { enabled: false }, memory: { scope: 'user' } });
     const { calls, out } = switchRun(rows);
     assert.deepStrictEqual(calls.filter((c) => /^plugin disable /.test(c)), [], `a re-run disables nothing:\n${calls.join('\n')}`);
     assert.match(out, /memory@envoydev is enabled at user scope, not this run's - .*claude plugin disable memory@envoydev --scope user/);
@@ -531,7 +531,7 @@ test('seed update (full copy route): a stack row already off is left alone, and 
 // of the old core's items beside the copies (the R22c probe). They are DISABLED, never uninstalled: a
 // later switch back to the plugin route finds the old core's row, and with it the key and scope, and
 // runs the 1.x move from there (the switch-back test below).
-const LEGACY_ROWS = (over = {}) => ['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory'] // legacy-name
+const LEGACY_ROWS = (over = {}) => ['claude-stack', 'claude-stack-hooks', 'navigation', 'documentation', 'memory'] // legacy-name
     .map((n) => ({ id: `${n}@claude-stack`, version: '1.3.0', scope: 'project', enabled: true, ...(over[n] || {}) })); // legacy-name
 
 test('seed update (full copy route): a 1.3.0 plugin-route install switched straight to the copies has its 1.x ids disabled too, under the stack key only (R111)', POSIX_ONLY, () =>
@@ -541,7 +541,7 @@ test('seed update (full copy route): a 1.3.0 plugin-route install switched strai
         { id: 'memory@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true }];
     const { calls, out, result } = switchRun(rows);
     const disables = calls.filter((c) => /^plugin disable /.test(c));
-    assert.deepStrictEqual([...disables].sort(), ['claude-stack', 'claude-stack-hooks', 'context7', 'memory', 'serena'] // legacy-name
+    assert.deepStrictEqual([...disables].sort(), ['claude-stack', 'claude-stack-hooks', 'documentation', 'memory', 'navigation'] // legacy-name
         .map((n) => `plugin disable ${n}@claude-stack --scope project`).sort(), `the stack's own rows only:\n${disables.join('\n')}\n${out}`); // legacy-name
     assert.deepStrictEqual(calls.filter((c) => /^plugin (install|uninstall) (alfred-code|claude-stack)/.test(c)), [], 'disabled, never moved or removed on the copy route'); // legacy-name
     const lastDisable = calls.map((c) => /^plugin disable /.test(c)).lastIndexOf(true);
@@ -555,7 +555,7 @@ test('seed update (full copy route): a 1.3.0 plugin-route install switched strai
 
 test('seed update (plugin route): a copy-route install whose 1.x ids were disabled switches back through the 1.x move (R111)', POSIX_ONLY, () =>
 {
-    const rows = LEGACY_ROWS({ 'claude-stack': { enabled: false }, 'claude-stack-hooks': { enabled: false }, serena: { enabled: false }, context7: { enabled: false }, memory: { enabled: false } }); // legacy-name
+    const rows = LEGACY_ROWS({ 'claude-stack': { enabled: false }, 'claude-stack-hooks': { enabled: false }, navigation: { enabled: false }, documentation: { enabled: false }, memory: { enabled: false } }); // legacy-name
     const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows),
         env: [COPY_ENV, {}],
@@ -705,12 +705,12 @@ for (const scope of ['project', 'user'])
             'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
             `if [ "$1" = "plugin" ] && [ "$2" = "enable" ]; then printf '%s\\n' "✘ Failed to enable plugin \\"$3\\": Plugin \\"$3\\" is already enabled at ${scope} scope" >&2; exit 1; fi`,
             'exit 0'].join('\n');
-        const rows = STACK_ROWS('envoydev', { serena: { enabled: false, scope } });
+        const rows = STACK_ROWS('envoydev', { navigation: { enabled: false, scope } });
         const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\n', {
             plugins: JSON.stringify(rows), tools: { claude: stub },
             args: [['--scope', scope], ['--scope', scope, '--installed-only']],
         });
-        assert.ok(calls.includes(`plugin enable serena@envoydev --scope ${scope}`), `no stale-flag enable ran:\n${calls.join('\n')}`);
+        assert.ok(calls.includes(`plugin enable navigation@envoydev --scope ${scope}`), `no stale-flag enable ran:\n${calls.join('\n')}`);
         assert.doesNotMatch(out, /!! .*plugin enable/, out);
     });
 }
@@ -720,7 +720,7 @@ for (const scope of ['project', 'user'])
 // row's scope is, when it names the plugin - the same read the playwright engines take.
 test('seed update (full copy route): the settings file, not the listing flag, says which stack rows are on (R111)', POSIX_ONLY, () =>
 {
-    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, serena: { enabled: true } });
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, navigation: { enabled: true } });
     const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
         plugins: JSON.stringify(rows),
         env: [{}, COPY_ENV],
@@ -731,13 +731,13 @@ test('seed update (full copy route): the settings file, not the listing flag, sa
             fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), '');
             const file = path.join(repo, '.claude', 'settings.json');
             const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-            data.enabledPlugins = { ...(data.enabledPlugins || {}), 'alfred-code@envoydev': true, 'serena@envoydev': false };
+            data.enabledPlugins = { ...(data.enabledPlugins || {}), 'alfred-code@envoydev': true, 'navigation@envoydev': false };
             fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
             return null;
         },
     });
     const disables = calls.filter((c) => /^plugin disable /.test(c)).sort();
-    assert.deepStrictEqual(disables, ['alfred-code', 'context7', 'memory'].map((n) => `plugin disable ${n}@envoydev --scope project`), `${disables.join('\n')}\n${out}`);
+    assert.deepStrictEqual(disables, ['alfred-code', 'documentation', 'memory'].map((n) => `plugin disable ${n}@envoydev --scope project`), `${disables.join('\n')}\n${out}`);
 });
 
 // R116 matrix re-run (R22): the switch disabled the core, but the full copy route read its skills and
@@ -810,10 +810,10 @@ test('seed update (full copy route): the switch stamps what it copied as picked 
 // chosen state (install-plugins.test.js, 'an engine uninstalled by hand comes back').
 const PW_ROWS = [
     ...STACK_ROWS('envoydev'),
-    { id: 'playwright-chrome@envoydev', version: '1.0.0', scope: 'project', enabled: true },
-    { id: 'playwright-firefox@envoydev', version: '1.0.0', scope: 'user', enabled: true },
-    { id: 'playwright-webkit@envoydev', version: '1.0.0', scope: 'project', enabled: false },
-    { id: 'playwright-chrome@a-fork', version: '1.0.0', scope: 'project', enabled: true },
+    { id: 'browser-chrome@envoydev', version: '1.0.0', scope: 'project', enabled: true },
+    { id: 'browser-firefox@envoydev', version: '1.0.0', scope: 'user', enabled: true },
+    { id: 'browser-webkit@envoydev', version: '1.0.0', scope: 'project', enabled: false },
+    { id: 'browser-chrome@a-fork', version: '1.0.0', scope: 'project', enabled: true },
 ];
 const pwProject = (repo) =>
 {
@@ -827,19 +827,19 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
 {
     test(`seed update (${route}): a playwright engine registered in .mcp.json has its plugin row at this scope uninstalled first, under the stack key only (R111)`, POSIX_ONLY, () =>
     {
-        const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        const { calls, out, result } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
             plugins: JSON.stringify(PW_ROWS), env, args: ['--playwright-browsers', 'chrome,firefox,webkit'], prepare: pwProject,
             inspect: (repo) => Object.keys(JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}),
         });
-        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`playwright-${e}`), `playwright-${e} not registered: ${result.join(',')}\n${out}`);
-        const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) playwright-/.test(c));
+        for (const e of ['chrome', 'firefox', 'webkit']) assert.ok(result.includes(`browser-${e}`), `browser-${e} not registered: ${result.join(',')}\n${out}`);
+        const engineMoves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
         // R116: the row left off goes too - the stamp is then the one record the switch back reads.
-        assert.deepStrictEqual(engineMoves, ['chrome', 'webkit'].map((e) => `plugin uninstall playwright-${e}@envoydev --scope project -y`), `${engineMoves.join('\n')}\n${out}`);
-        const gone = calls.indexOf('plugin uninstall playwright-chrome@envoydev --scope project -y');
-        assert.ok(calls.findIndex((c) => /^mcp add .*playwright-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
-        assert.match(out, /plugin uninstalled \[project\]: playwright-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
-        assert.match(out, /playwright-firefox@envoydev is enabled at user scope, not this run's - .*claude plugin uninstall playwright-firefox@envoydev --scope user/);
-        const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|serena|context7|memory)@/.test(c));
+        assert.deepStrictEqual(engineMoves, ['chrome', 'webkit'].map((e) => `plugin uninstall browser-${e}@envoydev --scope project -y`), `${engineMoves.join('\n')}\n${out}`);
+        const gone = calls.indexOf('plugin uninstall browser-chrome@envoydev --scope project -y');
+        assert.ok(calls.findIndex((c) => /^mcp add .*browser-/.test(c)) > gone, `an engine was registered before its plugin went:\n${calls.join('\n')}`);
+        assert.match(out, /plugin uninstalled \[project\]: browser-chrome@envoydev \(the copy route registers it in \.mcp\.json/);
+        assert.match(out, /browser-firefox@envoydev is enabled at user scope, not this run's - .*claude plugin uninstall browser-firefox@envoydev --scope user/);
+        const stackDisables = calls.filter((c) => /^plugin disable (alfred-code|navigation|documentation|memory)@/.test(c));
         assert.strictEqual(stackDisables.length, route === 'full copy route' ? 4 : 0, `${stackDisables.join('\n')}`);
     });
 }
@@ -855,12 +855,12 @@ for (const [route, env] of [['MCP copy route', MCP_COPY_ENV], ['full copy route'
 // disabledMcpjsonServers in settings)'). The list moves only when the user's enable choice does.
 const PW3_ROWS = (over = {}) => [
     ...STACK_ROWS('envoydev'),
-    ...['chrome', 'firefox', 'webkit'].map((e) => ({ id: `playwright-${e}@envoydev`, version: '2.0.0', scope: 'project', enabled: e !== 'webkit', ...(over[e] || {}) })),
+    ...['chrome', 'firefox', 'webkit'].map((e) => ({ id: `browser-${e}@envoydev`, version: '2.0.0', scope: 'project', enabled: e !== 'webkit', ...(over[e] || {}) })),
 ];
 const jsonAt = (repo, rel) => { try { return JSON.parse(fs.readFileSync(path.join(repo, rel), 'utf8')); } catch { return {}; } };
 const pwState = (repo, settingsFile = 'settings.json') => ({
     stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8').split('\n').filter((l) => l.startsWith('playwright-')),
-    mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).filter((n) => n.startsWith('playwright-')),
+    mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}).filter((n) => n.startsWith('browser-')),
     disabled: jsonAt(repo, `.claude/${settingsFile}`).disabledMcpjsonServers,
     settings: fs.readFileSync(path.join(repo, '.claude', settingsFile), 'utf8'),
 });
@@ -872,7 +872,7 @@ const stepCalls = (repo) =>
     fs.writeFileSync(log, '');
     return calls;
 };
-const engineMovesOf = (calls) => calls.filter((c) => /^plugin (install|uninstall|disable|enable) playwright-/.test(c));
+const engineMovesOf = (calls) => calls.filter((c) => /^plugin (install|uninstall|disable|enable) browser-/.test(c));
 const PW_STAMP = ['playwright-browsers: chrome,firefox,webkit', 'playwright-enabled: chrome,firefox'];
 
 test('seed update: an --installed-only switch onto the MCP copy route keeps the stamp\'s engine lines, and the switch back installs each as last chosen (R116 g)', POSIX_ONLY, () =>
@@ -892,33 +892,33 @@ test('seed update: an --installed-only switch onto the MCP copy route keeps the 
     });
     const [toCopy, back] = steps;
     assert.deepStrictEqual(toCopy.stamp, PW_STAMP, `the switch blanked the record:\n${outs[0]}`);
-    assert.deepStrictEqual(toCopy.mcp, ['playwright-chrome', 'playwright-firefox', 'playwright-webkit'], outs[0]);
-    assert.deepStrictEqual(toCopy.disabled, ['playwright-webkit'], 'the engine left off loads on the copy route');
+    assert.deepStrictEqual(toCopy.mcp, ['browser-chrome', 'browser-firefox', 'browser-webkit'], outs[0]);
+    assert.deepStrictEqual(toCopy.disabled, ['browser-webkit'], 'the engine left off loads on the copy route');
     // Every stamped engine's row goes, the one left off included: the stamp is then the one record the
     // switch back reads, and a row left installed would override a choice the user made on the copy route.
-    assert.deepStrictEqual(engineMovesOf(toCopy.calls), ['chrome', 'firefox', 'webkit'].map((e) => `plugin uninstall playwright-${e}@envoydev --scope project -y`), outs[0]);
+    assert.deepStrictEqual(engineMovesOf(toCopy.calls), ['chrome', 'firefox', 'webkit'].map((e) => `plugin uninstall browser-${e}@envoydev --scope project -y`), outs[0]);
     assert.deepStrictEqual(back.stamp, PW_STAMP, `the switch back lost the record:\n${outs[1]}`);
     assert.deepStrictEqual(engineMovesOf(back.calls), [
-        'plugin install playwright-chrome@envoydev --scope project -y',
-        'plugin install playwright-firefox@envoydev --scope project -y',
-        'plugin install playwright-webkit@envoydev --scope project -y',
-        'plugin disable playwright-webkit@envoydev --scope project',
+        'plugin install browser-chrome@envoydev --scope project -y',
+        'plugin install browser-firefox@envoydev --scope project -y',
+        'plugin install browser-webkit@envoydev --scope project -y',
+        'plugin disable browser-webkit@envoydev --scope project',
     ], outs[1]);
-    assert.ok(back.calls.includes('mcp remove playwright-webkit -s project'), back.calls.join('\n'));
+    assert.ok(back.calls.includes('mcp remove browser-webkit -s project'), back.calls.join('\n'));
     assert.strictEqual(back.disabled, undefined, 'a disabledMcpjsonServers entry for a server no longer registered is dead config');
 });
 
 test('seed install (MCP copy route): an engine installed but not enabled is registered and named in disabledMcpjsonServers, and a re-run changes nothing (R116 j)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         args: [['--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--installed-only'], ['--installed-only']],
         each: (repo) => pwState(repo),
     });
     const [first, update, again] = steps;
-    assert.deepStrictEqual(first.mcp, ['playwright-chrome', 'playwright-webkit'], outs[0]);
-    assert.deepStrictEqual(first.disabled, ['playwright-webkit'], outs[0]);
-    assert.match(outs[0], /playwright: webkit left off - disabledMcpjsonServers keeps it from loading/);
+    assert.deepStrictEqual(first.mcp, ['browser-chrome', 'browser-webkit'], outs[0]);
+    assert.deepStrictEqual(first.disabled, ['browser-webkit'], outs[0]);
+    assert.match(outs[0], /browser: webkit left off - disabledMcpjsonServers keeps it from loading/);
     assert.deepStrictEqual(first.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome']);
     // The first update adopts the locked three (the sandbox listing has no core row) - its own change;
     // the list and the stamp hold from the install on, and the next re-run changes nothing at all.
@@ -930,7 +930,7 @@ test('seed install (MCP copy route): an engine installed but not enabled is regi
 
 test('seed update (MCP copy route): an engine the user enables stays enabled across re-runs, and only an answer that changes it moves the list (R116 j)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         args: [['--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--installed-only'],
             ['--installed-only', '--playwright-enabled', 'chrome'], ['--installed-only', '--playwright-enabled', 'all']],
@@ -949,11 +949,11 @@ test('seed update (MCP copy route): an engine the user enables stays enabled acr
         },
     });
     const [, kept, answeredOff, answeredOn] = steps;
-    assert.ok(!(kept.disabled || []).includes('playwright-webkit'), `a re-run switched the user's engine back off:\n${outs[1]}`);
+    assert.ok(!(kept.disabled || []).includes('browser-webkit'), `a re-run switched the user's engine back off:\n${outs[1]}`);
     assert.deepStrictEqual(kept.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome,webkit'], 'the stamp keeps the live choice');
-    assert.deepStrictEqual(answeredOff.disabled, ['playwright-webkit'], outs[2]);
+    assert.deepStrictEqual(answeredOff.disabled, ['browser-webkit'], outs[2]);
     assert.deepStrictEqual(answeredOff.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome']);
-    assert.ok(!(answeredOn.disabled || []).includes('playwright-webkit'), outs[3]);
+    assert.ok(!(answeredOn.disabled || []).includes('browser-webkit'), outs[3]);
     assert.deepStrictEqual(answeredOn.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome,webkit']);
 });
 
@@ -964,7 +964,7 @@ test('seed update (MCP copy route): an engine the user enables stays enabled acr
 // account file is never edited, so an entry there is named with its file instead.
 test('seed update (MCP copy route): an enable answer takes the engine out of settings.local.json too, and names the account file that still rejects one (M1)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         args: [['--playwright-browsers', 'chrome,webkit,firefox', '--playwright-enabled', 'chrome'], ['--installed-only', '--playwright-enabled', 'all'], ['--installed-only']],
         each: (repo, i) =>
@@ -976,10 +976,10 @@ test('seed update (MCP copy route): an enable answer takes the engine out of set
             {
                 // The approval dialog's rejection of webkit, beside a key of the user's own; firefox is
                 // rejected in the account file.
-                fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ disabledMcpjsonServers: ['playwright-webkit'], permissions: { allow: ['Bash(ls)'] } }, null, 2)}\n`);
+                fs.writeFileSync(path.join(repo, '.claude', 'settings.local.json'), `${JSON.stringify({ disabledMcpjsonServers: ['browser-webkit'], permissions: { allow: ['Bash(ls)'] } }, null, 2)}\n`);
                 const acct = jsonAt(path.dirname(account), 'settings.json');
                 fs.mkdirSync(path.dirname(account), { recursive: true });
-                fs.writeFileSync(account, `${JSON.stringify({ ...acct, disabledMcpjsonServers: ['playwright-firefox'] }, null, 2)}\n`);
+                fs.writeFileSync(account, `${JSON.stringify({ ...acct, disabledMcpjsonServers: ['browser-firefox'] }, null, 2)}\n`);
             }
             return state;
         },
@@ -988,10 +988,10 @@ test('seed update (MCP copy route): an enable answer takes the engine out of set
     assert.deepStrictEqual(answered.local, undefined, `the local rejection survived the enable answer:\n${outs[1]}`);
     // C8: `env` is the machine's memory path, which settings.local.json holds at every scope.
     assert.deepStrictEqual(answered.localKeys, ['permissions', 'env'], 'the user\'s own local key went');
-    assert.ok(!(answered.disabled || []).includes('playwright-webkit'), outs[1]);
-    assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - playwright-webkit/);
-    assert.match(outs[1], /playwright-firefox is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);
-    assert.match(answered.account, /"playwright-firefox"/, 'the account file was edited');
+    assert.ok(!(answered.disabled || []).includes('browser-webkit'), outs[1]);
+    assert.match(outs[1], /settings\.local\.json: disabledMcpjsonServers - browser-webkit/);
+    assert.match(outs[1], /browser-firefox is still rejected by .*acct\/settings\.json's disabledMcpjsonServers/);
+    assert.match(answered.account, /"browser-firefox"/, 'the account file was edited');
     assert.deepStrictEqual(again.stamp, ['playwright-browsers: chrome,firefox,webkit', 'playwright-enabled: chrome,webkit'], `the next run flipped the stamp:\n${outs[2]}`);
 });
 
@@ -1008,14 +1008,14 @@ test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE o
                 fs.writeFileSync(path.join(repo, '.claude', 'rules', 'markdown-docs.md'), '# rule\n');
                 fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), `sha: abc\nversion: 2.0.0\nplaywright-browsers: chrome,webkit\nplaywright-enabled: ${stampEnabled}\n`);
                 const server = (e) => ({ command: 'npx', args: ['-y', '@playwright/mcp@0.0.82', '--browser', e] });
-                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'playwright-chrome': server('chrome'), 'playwright-webkit': server('webkit') } }));
+                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { 'browser-chrome': server('chrome'), 'browser-webkit': server('webkit') } }));
                 fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ disabledMcpjsonServers: disabled }));
             },
             inspect: (repo) => JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'plan.json'), 'utf8')).playwright,
         });
         return result;
     };
-    assert.deepStrictEqual(planFor(['playwright-webkit'], 'chrome,webkit'), { installed: ['chrome', 'webkit'], enabled: ['chrome'] });
+    assert.deepStrictEqual(planFor(['browser-webkit'], 'chrome,webkit'), { installed: ['chrome', 'webkit'], enabled: ['chrome'] });
     assert.deepStrictEqual(planFor([], 'chrome'), { installed: ['chrome', 'webkit'], enabled: ['chrome', 'webkit'] });
 });
 
@@ -1023,17 +1023,17 @@ test('seed update --print-plan (MCP copy route): the walk pre-selects the LIVE o
 // disabledMcpjsonServers rejects only .mcp.json servers - so there the registration IS the enable. An
 // engine left off is NOT registered (an earlier registration of it is removed), the stamp still records it
 // installed-off, its browser is still downloaded, and a later enable answer registers it.
-const engineAdds = (calls) => calls.filter((c) => /^mcp add /.test(c)).map((c) => (/\bplaywright-(chrome|msedge|firefox|webkit)\b/.exec(c) || [])[1]).filter(Boolean);
+const engineAdds = (calls) => calls.filter((c) => /^mcp add /.test(c)).map((c) => (/\bbrowser-(chrome|msedge|firefox|webkit)\b/.exec(c) || [])[1]).filter(Boolean);
 for (const scope of ['user', 'local'])
 {
     test(`seed install + update (MCP copy route, ${scope} scope): an engine left off is not registered, the stamp keeps it installed-off, and no /mcp line is printed (R124 l)`, POSIX_ONLY, () =>
     {
         const settingsFile = scope === 'local' ? 'settings.local.json' : 'settings.json';
-        const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp playwright\n', {
+        const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp browser\n', {
             env: MCP_COPY_ENV,
             // A-M2: a user-scope removal takes only a registration of the stack's own shape, so the
             // earlier webkit registration is laid out in the account file.
-            prepare: (repo, work) => { if (scope === 'user') accountMcp(work, { 'playwright-webkit': STACK_PW('webkit') }); },
+            prepare: (repo, work) => { if (scope === 'user') accountMcp(work, { 'browser-webkit': STACK_PW('webkit') }); },
             args: [['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'], ['--scope', scope, '--installed-only']],
             each: (repo) => ({ ...pwState(repo, settingsFile), calls: stepCalls(repo) }),
         });
@@ -1041,25 +1041,25 @@ for (const scope of ['user', 'local'])
         {
             // The recording stub answers `mcp get`, so an install reads every name as configured already
             // and adds none; an update removes and re-adds, so its adds are the whole registration.
-            const looked = [...new Set(step.calls.filter((c) => /^mcp get playwright-/.test(c)).map((c) => c.split(' ')[2]))];
-            assert.deepStrictEqual(i === 0 ? looked : engineAdds(step.calls), i === 0 ? ['playwright-chrome'] : ['chrome'],
+            const looked = [...new Set(step.calls.filter((c) => /^mcp get browser-/.test(c)).map((c) => c.split(' ')[2]))];
+            assert.deepStrictEqual(i === 0 ? looked : engineAdds(step.calls), i === 0 ? ['browser-chrome'] : ['chrome'],
                 `step ${i} registered an engine left off:\n${step.calls.join('\n')}\n${outs[i]}`);
-            assert.ok(step.calls.includes(`mcp remove playwright-webkit -s ${scope}`), `step ${i} left an earlier webkit registration in place:\n${step.calls.join('\n')}`);
+            assert.ok(step.calls.includes(`mcp remove browser-webkit -s ${scope}`), `step ${i} left an earlier webkit registration in place:\n${step.calls.join('\n')}`);
             assert.deepStrictEqual(step.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome'], `step ${i}: ${outs[i]}`);
             assert.strictEqual(step.disabled, undefined, 'no settings key reaches a local- or user-scope registration');
             assert.doesNotMatch(outs[i], /run \/mcp and disable/, `step ${i} named a /mcp switch for an engine it did not register`);
-            assert.match(outs[i], new RegExp(`playwright: webkit left off - not registered at ${scope} scope`), outs[i]);
-            assert.match(outs[i], /playwright: downloading the webkit build the server launches/, `step ${i} dropped the browser download`);
+            assert.match(outs[i], new RegExp(`browser: webkit left off - not registered at ${scope} scope`), outs[i]);
+            assert.match(outs[i], /browser: downloading the webkit build the server launches/, `step ${i} dropped the browser download`);
         }
     });
 }
 
 test('seed update (MCP copy route, user scope): a later enable answer registers the engine left off, and turning it off again removes it (R124 l)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         // A-M2: the registrations the account holds, of the stack's own shape - the stub writes none.
-        prepare: (repo, work) => accountMcp(work, { 'playwright-chrome': STACK_PW('chrome'), 'playwright-webkit': STACK_PW('webkit') }),
+        prepare: (repo, work) => accountMcp(work, { 'browser-chrome': STACK_PW('chrome'), 'browser-webkit': STACK_PW('webkit') }),
         args: [['--scope', 'user', '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
             ['--scope', 'user', '--installed-only', '--playwright-enabled', 'all'], ['--scope', 'user', '--installed-only', '--playwright-enabled', 'chrome']],
         each: (repo) => ({ ...pwState(repo), calls: stepCalls(repo) }),
@@ -1068,7 +1068,7 @@ test('seed update (MCP copy route, user scope): a later enable answer registers 
     assert.deepStrictEqual(engineAdds(on.calls), ['chrome', 'webkit'], `the enable did not register webkit:\n${on.calls.join('\n')}\n${outs[1]}`);
     assert.deepStrictEqual(on.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome,webkit']);
     assert.deepStrictEqual(engineAdds(off.calls), ['chrome'], outs[2]);
-    assert.ok(off.calls.includes('mcp remove playwright-webkit -s user'), off.calls.join('\n'));
+    assert.ok(off.calls.includes('mcp remove browser-webkit -s user'), off.calls.join('\n'));
     assert.deepStrictEqual(off.stamp, ['playwright-browsers: chrome,webkit', 'playwright-enabled: chrome']);
 });
 
@@ -1084,16 +1084,16 @@ const withTrust = (file, list) => (repo) =>
 };
 test('seed install (MCP copy route): enabledMcpjsonServers names only the engines registered and loading - no locked three, no engine left off (R124 m)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nmcp browser\n', {
         env: MCP_COPY_ENV,
         args: [['--playwright-browsers', 'chrome,firefox,webkit', '--playwright-enabled', 'chrome,firefox'], ['--installed-only']],
-        prepare: withTrust('settings.json', ['serena', 'mine', 'playwright-webkit']),
+        prepare: withTrust('settings.json', ['navigation', 'mine', 'browser-webkit']),
         each: (repo) => ({ trusted: trusted(repo), disabled: pwState(repo).disabled }),
     });
     for (const [i, step] of steps.entries())
     {
-        assert.deepStrictEqual(step.trusted, ['mine', 'playwright-chrome', 'playwright-firefox'], `step ${i}:\n${outs[i]}`);
-        assert.deepStrictEqual(step.disabled, ['playwright-webkit'], `step ${i}`);
+        assert.deepStrictEqual(step.trusted, ['mine', 'browser-chrome', 'browser-firefox'], `step ${i}:\n${outs[i]}`);
+        assert.deepStrictEqual(step.disabled, ['browser-webkit'], `step ${i}`);
     }
 });
 
@@ -1108,10 +1108,10 @@ for (const scope of ['user', 'local'])
     test(`seed install (MCP copy route, ${scope} scope): nothing lands in .mcp.json, so enabledMcpjsonServers gains no stack name and loses the ones it held (R124 m)`, POSIX_ONLY, () =>
     {
         const file = scope === 'local' ? 'settings.local.json' : 'settings.json';
-        const { result, out } = seedRun('install', 'skill markdown-style\nmcp playwright\n', {
+        const { result, out } = seedRun('install', 'skill markdown-style\nmcp browser\n', {
             env: MCP_COPY_ENV,
             args: ['--scope', scope, '--playwright-browsers', 'chrome'],
-            prepare: withTrust(file, ['serena', 'mine', 'playwright-chrome']),
+            prepare: withTrust(file, ['navigation', 'mine', 'browser-chrome']),
             inspect: (repo) => trusted(repo, file),
         });
         assert.deepStrictEqual(result, ['mine'], out);
@@ -1126,25 +1126,25 @@ for (const scope of ['user', 'local'])
 // user scope is named, never removed: another user-scope project still loads it until its own update.
 test('seed install + update --scope user (full copy route): every stack server lands in this project\'s .mcp.json, none at user scope (C10)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         env: COPY_ENV,
         args: [['--scope', 'user', '--memory-level', 'project', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only']],
-        prepare: (repo, work) => accountMcp(work, { serena: STACK_SERENA, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } }),
+        prepare: (repo, work) => accountMcp(work, { navigation: STACK_SERENA, memory: { type: 'stdio', command: 'node', args: ['my-memory.js'], env: {} } }),
         each: (repo) => ({ calls: stepCalls(repo), mcp: jsonAt(repo, '.mcp.json').mcpServers || {}, trusted: trusted(repo), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'), real: fs.realpathSync(repo) }),
     });
     for (const [i, step] of steps.entries())
     {
         const userCalls = step.calls.filter((c) => /^mcp (add|remove) .*(--scope user|-s user)/.test(c));
         assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
-        for (const name of ['serena', 'memory', 'context7', 'playwright-chrome'])
+        for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome'])
             assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
         assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.memory-mcp', 'memory.db'), 'the project-level database is this project\'s');
-        for (const name of ['serena', 'memory', 'context7', 'playwright-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
+        for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
         assert.match(step.stamp, /^scope: user$/m);
-        assert.match(outs[i], /mcp: serena still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove serena -s user/, outs[i]);
+        assert.match(outs[i], /mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove navigation -s user/, outs[i]);
         assert.doesNotMatch(outs[i], /mcp: [^\n]*memory still registered at user scope/, 'another server under the stack\'s name is not the stack\'s');
     }
-    assert.ok(steps[1].calls.some((c) => /^mcp add --scope project serena /.test(c)), steps[1].calls.join('\n'));
+    assert.ok(steps[1].calls.some((c) => /^mcp add --scope project navigation /.test(c)), steps[1].calls.join('\n'));
 });
 
 // N5 (re-review): on that route the drop loop removes at the scope the route registers at - this project's
@@ -1152,29 +1152,29 @@ test('seed install + update --scope user (full copy route): every stack server l
 // `playwright`, stayed at user scope with nothing said. Each is named with its command like C10's stale
 // names, and never removed (another user-scope install may still load it); a server of the user's own
 // under a dropped engine's name gets the kept line instead.
-// M-F5-1 (re-review follow-up): `playwright-webkit` is not live (this run only keeps chrome), so a foreign
+// M-F5-1 (re-review follow-up): `browser-webkit` is not live (this run only keeps chrome), so a foreign
 // registration under it is noise, not something the user must act on - its kept line loses the `!!`.
 // M-F5-2 (re-review follow-up): `playwright`'s identity is the package name only (mcp.identityOf), which
 // cannot tell the stack's 1.x registration apart from the user's own `npx @playwright/mcp` under the same
 // bare name - it is never named as the stack's leftover, and the neutral wording is unmarked.
 test('seed update --scope user (full copy route): a dropped engine and a legacy playwright still registered at user scope are named with their command, never removed (N5)', POSIX_ONLY, () =>
 {
-    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         env: COPY_ENV, args: ['--scope', 'user', '--playwright-browsers', 'chrome'],
         prepare: (repo, work) =>
         {
             pwProject(repo);
-            accountMcp(work, { 'playwright-webkit': STACK_PW('webkit'), playwright: STACK_PW('chrome'), 'playwright-firefox': { type: 'stdio', command: 'node', args: ['my-firefox.js'], env: {} } });
+            accountMcp(work, { 'browser-webkit': STACK_PW('webkit'), playwright: STACK_PW('chrome'), 'browser-firefox': { type: 'stdio', command: 'node', args: ['my-firefox.js'], env: {} } });
         },
     });
     const still = (name) => (out.match(new RegExp(`!! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`, 'g')) || []).length;
-    assert.strictEqual(still('playwright-webkit'), 1, `playwright-webkit:\n${out}`);
+    assert.strictEqual(still('browser-webkit'), 1, `browser-webkit:\n${out}`);
     assert.strictEqual(still('playwright'), 0, 'the bare name cannot be told from the user\'s own - it must never claim stack authorship (M-F5-2)');
     assert.strictEqual((out.match(/playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it/g) || []).length, 1, out);
     assert.doesNotMatch(out, /!! playwright is registered at user scope/, 'the ambiguous bare name is never marked (M-F5-2)');
-    assert.strictEqual(still('playwright-firefox'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
-    assert.strictEqual((out.match(/!! mcp playwright-firefox: the user-scope registration is not the stack's/g) || []).length, 0, 'a dropped, non-live engine\'s kept line carries no actionable marker (M-F5-1)');
-    assert.strictEqual((out.match(/mcp playwright-firefox: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove playwright-firefox -s user/g) || []).length, 1, 'the kept line itself still logs, unmarked (M-F5-1)');
+    assert.strictEqual(still('browser-firefox'), 0, 'a server of the user\'s own is not the stack\'s stale registration');
+    assert.strictEqual((out.match(/!! mcp browser-firefox: the user-scope registration is not the stack's/g) || []).length, 0, 'a dropped, non-live engine\'s kept line carries no actionable marker (M-F5-1)');
+    assert.strictEqual((out.match(/mcp browser-firefox: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove browser-firefox -s user/g) || []).length, 1, 'the kept line itself still logs, unmarked (M-F5-1)');
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s user$/.test(c)), [], `a user-scope registration was removed:\n${calls.join('\n')}`);
 });
 
@@ -1183,26 +1183,26 @@ test('seed update --scope user (full copy route): a dropped engine and a legacy 
 // line, and the switch back enables it there.
 test('seed update --scope user (full copy route): a user-scope playwright engine is switched off in this project only, and the switch back enables it (C11)', POSIX_ONLY, () =>
 {
-    const rows = [...USER_ROWS(), { id: 'playwright-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
-    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const rows = [...USER_ROWS(), { id: 'browser-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const { steps, outs } = seedRun(['install', 'update', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(rows),
         env: [{}, COPY_ENV, COPY_ENV, {}],
         args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only']],
         each: (repo, i) =>
         {
             const state = { calls: stepCalls(repo), stood: stoodDownLine(repo) };
-            if (i === 1) settingsWord(repo, { ...offWord(), 'playwright-chrome@envoydev': false });
+            if (i === 1) settingsWord(repo, { ...offWord(), 'browser-chrome@envoydev': false });
             return state;
         },
     });
     const [, down, again, back] = steps;
-    assert.ok(!down.calls.some((c) => /^plugin uninstall playwright-chrome@envoydev --scope user/.test(c)), `the account's engine was uninstalled:\n${down.calls.join('\n')}`);
-    assert.ok(down.calls.includes('plugin disable playwright-chrome@envoydev --scope project'), `${down.calls.join('\n')}\n${outs[1]}`);
-    assert.match(down.stood, /project:playwright-chrome@envoydev/, down.stood);
+    assert.ok(!down.calls.some((c) => /^plugin uninstall browser-chrome@envoydev --scope user/.test(c)), `the account's engine was uninstalled:\n${down.calls.join('\n')}`);
+    assert.ok(down.calls.includes('plugin disable browser-chrome@envoydev --scope project'), `${down.calls.join('\n')}\n${outs[1]}`);
+    assert.match(down.stood, /project:browser-chrome@envoydev/, down.stood);
     assert.deepStrictEqual(again.calls.filter((c) => /^plugin (disable|enable|uninstall) /.test(c)), [], `a re-run switched something:\n${outs[2]}`);
     assert.strictEqual(again.stood, down.stood);
-    assert.ok(back.calls.includes('plugin enable playwright-chrome@envoydev --scope project'), `${back.calls.join('\n')}\n${outs[3]}`);
-    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) playwright-chrome@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
+    assert.ok(back.calls.includes('plugin enable browser-chrome@envoydev --scope project'), `${back.calls.join('\n')}\n${outs[3]}`);
+    assert.ok(!steps.some((st) => st.calls.some((c) => /^plugin (disable|enable|uninstall) browser-chrome@envoydev --scope user/.test(c))), 'the user-scope engine was switched');
 });
 
 // F7 (R22g, F1 G): C10 put the user-scope full copy route's servers in THIS project's .mcp.json, but a
@@ -1219,7 +1219,7 @@ const MCPJSON_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
     'if [ "$1" = "plugin" ] && [ "$2" = "list" ]; then cat "$CLAUDE_STUB_PLUGINS"; exit 0; fi',
     `if [ "$1" = "mcp" ] && [ "$2" = "remove" ] && [ "$4" = "-s" ] && [ "$5" = "project" ]; then exec "${process.execPath}" -e '${REMOVE_FROM_MCPJSON}' "$3"; fi`,
     'exit 0'].join('\n');
-const LEFT_BY_C10 = ['context7', 'memory', 'playwright-chrome', 'serena'];
+const LEFT_BY_C10 = ['browser-chrome', 'documentation', 'memory', 'navigation'];
 // After the full copy route's run, the user adds a server of their own to .mcp.json and approves it.
 const handAdded = (repo) =>
 {
@@ -1237,8 +1237,8 @@ const projectRemovesOf = (calls) => calls.filter((c) => /^mcp remove .* -s proje
 
 test('seed update --scope user: the switch back from the full copy route prunes the stack servers C10 put in this project\'s .mcp.json, keeps a hand-added one, and calls nothing at user scope (F7, R22g)', POSIX_ONLY, () =>
 {
-    const rows = [...USER_ROWS(), { id: 'playwright-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
-    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const rows = [...USER_ROWS(), { id: 'browser-chrome@envoydev', version: '2.0.0', scope: 'user', enabled: true }];
+    const { steps, outs } = seedRun(['install', 'update', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(rows), tools: { claude: MCPJSON_CLI },
         env: [COPY_ENV, {}, {}],
         args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only'], ['--scope', 'user', '--installed-only']],
@@ -1264,7 +1264,7 @@ test('seed update --scope user: the switch back from the full copy route prunes 
 // so the copy C10 put in .mcp.json ran chrome twice, and the locked three ran beside their plugins.
 test('seed update --scope user: leaving the full copy route for the MCP copy route prunes what C10 put in this project\'s .mcp.json - the engine registers at user scope once (F7)', POSIX_ONLY, () =>
 {
-    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const { steps, outs } = seedRun(['install', 'update'], 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(USER_ROWS()), tools: { claude: MCPJSON_CLI },
         env: [COPY_ENV, MCP_COPY_ENV],
         args: [['--scope', 'user', '--playwright-browsers', 'chrome'], ['--scope', 'user', '--installed-only']],
@@ -1279,7 +1279,7 @@ test('seed update --scope user: leaving the full copy route for the MCP copy rou
     assert.deepStrictEqual(mcpCopy.mcp, ['mine'], `stack servers left in this project's .mcp.json:\n${mcpCopy.calls.join('\n')}\n${outs[1]}`);
     assert.deepStrictEqual(projectRemovesOf(mcpCopy.calls).sort(), LEFT_BY_C10.map((n) => `mcp remove ${n} -s project`), outs[1]);
     const adds = mcpCopy.calls.filter((c) => /^mcp add /.test(c));
-    assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user playwright-chrome'], `${adds.join('\n')}\n${outs[1]}`);
+    assert.deepStrictEqual(adds.map((c) => c.split(' ').slice(0, 5).join(' ')), ['mcp add --scope user browser-chrome'], `${adds.join('\n')}\n${outs[1]}`);
 });
 
 // F7 ruling: that prune never removes the user's own server. A stack name in .mcp.json goes only when the
@@ -1294,17 +1294,17 @@ test('seed update --scope user: the prune of this project\'s .mcp.json keeps the
         {
             pwProject(repo);
             fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: {
-                serena: { type: 'stdio', command: 'node', args: ['my-serena.js'], env: {} },
-                context7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url, headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' } },
+                navigation: { type: 'stdio', command: 'node', args: ['my-serena.js'], env: {} },
+                documentation: { type: 'http', url: mcp.CONTEXT7_REMOTE.url, headers: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY:-}' } },
             } }, null, 2)}\n`);
-            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['serena', 'context7'] }, null, 2)}\n`);
+            fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), `${JSON.stringify({ enabledMcpjsonServers: ['navigation', 'documentation'] }, null, 2)}\n`);
         },
         inspect: (repo) => ({ mcp: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), trusted: trusted(repo) }),
     });
-    assert.deepStrictEqual(projectRemovesOf(calls), ['mcp remove context7 -s project'], `${projectRemovesOf(calls).join('\n')}\n${out}`);
-    assert.deepStrictEqual(result.mcp, ['serena'], 'the user\'s own serena went, or the stack\'s context7 stayed');
-    assert.strictEqual((out.match(/!! mcp serena: the project-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove serena -s project/g) || []).length, 1, out);
-    assert.deepStrictEqual(result.trusted, ['serena'], 'the kept server lost its approval, or the pruned one kept it');
+    assert.deepStrictEqual(projectRemovesOf(calls), ['mcp remove documentation -s project'], `${projectRemovesOf(calls).join('\n')}\n${out}`);
+    assert.deepStrictEqual(result.mcp, ['navigation'], 'the user\'s own navigation went, or the stack\'s documentation stayed');
+    assert.strictEqual((out.match(/!! mcp navigation: the project-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove navigation -s project/g) || []).length, 1, out);
+    assert.deepStrictEqual(result.trusted, ['navigation'], 'the kept server lost its approval, or the pruned one kept it');
     assert.deepStrictEqual(userCallsOf(calls), [], out);
 });
 
@@ -1344,12 +1344,12 @@ test('seed update --scope user (plugin route): only a stack-shaped user-scope re
         prepare: (repo, work) =>
         {
             pwProject(repo);
-            accountMcp(work, { serena: STACK_SERENA, 'playwright-webkit': STACK_PW('webkit'), context7: { type: 'http', url: 'https://docs.example.test/mcp' } });
+            accountMcp(work, { navigation: STACK_SERENA, 'browser-webkit': STACK_PW('webkit'), documentation: { type: 'http', url: 'https://docs.example.test/mcp' } });
         },
     });
     const removes = calls.filter((c) => /^mcp remove /.test(c));
-    assert.deepStrictEqual(removes.sort(), ['mcp remove playwright-webkit -s user', 'mcp remove serena -s user'], `${removes.join('\n')}\n${out}`);
-    assert.strictEqual((out.match(/mcp context7: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove context7 -s user/g) || []).length, 1, out);
+    assert.deepStrictEqual(removes.sort(), ['mcp remove browser-webkit -s user', 'mcp remove navigation -s user'], `${removes.join('\n')}\n${out}`);
+    assert.strictEqual((out.match(/mcp documentation: the user-scope registration is not the stack's \(another server under the same name\) - kept; if it should go: claude mcp remove documentation -s user/g) || []).length, 1, out);
     assert.doesNotMatch(out, /docs\.example\.test/, 'a registration of the user\'s own is never printed');
 });
 
@@ -1394,10 +1394,11 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
     assert.strictEqual(id(null), '');
     const catalog = require('./install/manifest.js').loadManifest(path.join(__dirname, '..')).catalogs.mcps;
     const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
-    const ids = mcp.stackIdentities({ catalog, remotes: { context7: mcp.CONTEXT7_REMOTE }, tokens: { PW_PIN: '@0.0.82' }, retiredRows: rows });
-    assert.ok(ids.serena.has('stdio:serena-agent'), [...ids.serena].join(','));
-    assert.ok(ids['playwright-webkit'].has('stdio:@playwright/mcp') && ids.playwright.has('stdio:@playwright/mcp'));
-    assert.deepStrictEqual([...ids.context7].sort(), ['http:https://mcp.context7.com/mcp', 'stdio:@upstash/context7-mcp']);
+    const ids = mcp.stackIdentities({ catalog, remotes: { documentation: mcp.CONTEXT7_REMOTE }, tokens: { PW_PIN: '@0.0.82' }, retiredRows: rows });
+    assert.ok(ids.navigation.has('stdio:serena-agent'), [...ids.navigation].join(','));
+    assert.ok(ids['browser-webkit'].has('stdio:@playwright/mcp') && ids.playwright.has('stdio:@playwright/mcp'));
+    assert.deepStrictEqual([...ids.documentation].sort(), ['http:https://mcp.context7.com/mcp']);
+    assert.deepStrictEqual([...ids.context7].sort(), ['stdio:@upstash/context7-mcp'], 'the 1.x local transport under the old name');
     assert.deepStrictEqual([...ids.sentry], ['http:https://mcp.sentry.dev/mcp/${SENTRY_SLUG}'], 'the add-back url is the user\'s, never the stack\'s');
     // Every retired server names what the stack registered, or its prune could never tell its own from the user's.
     const { loadManifest } = require('./install/manifest.js');
@@ -1408,28 +1409,28 @@ test('identityOf / stackIdentities: a registration is the stack\'s by the packag
 // Plugins audit (2026-09-26): Claude Code connects to a server ONCE, from the highest source - local,
 // project, user, then plugins - and matches a plugin server against those by ENDPOINT. Measured on
 // 2.1.282 through the session's init row: a user- or project-scope registration of the context7 url,
-// under `context7` or any other name, left the context7 plugin out of the session, so every
-// `mcp__plugin_context7_context7__` spelling the stack ships resolved nothing. A stdio server matches on
+// under `documentation` or any other name, left the context7 plugin out of the session, so every
+// `mcp__plugin_documentation_documentation__` spelling the stack ships resolved nothing. A stdio server matches on
 // command AND args, which a launcher-started plugin never shares - a same-NAMED one runs beside it.
 test('shadowingRegistrations: a registration above the plugins that replaces a plugin server, or runs beside it', () =>
 {
     const ctx7 = { type: 'http', url: `${mcp.CONTEXT7_REMOTE.url}/` };
     const rows = mcp.shadowingRegistrations({
-        plugins: ['serena', 'context7', 'memory'],
+        plugins: ['navigation', 'documentation', 'memory'],
         scopes: {
-            user: { docs7: ctx7, serena: STACK_SERENA, mine: { command: 'node', args: ['my-server.js'] }, 'playwright-chrome': STACK_PW('chrome') },
-            project: { context7: { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'] } },
+            user: { docs7: ctx7, navigation: STACK_SERENA, mine: { command: 'node', args: ['my-server.js'] }, 'browser-chrome': STACK_PW('chrome') },
+            project: { documentation: { type: 'stdio', command: 'npx', args: ['-y', '@upstash/context7-mcp'] } },
             local: { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]==11.0.0', 'memory', 'server'] } },
         },
     });
     assert.deepStrictEqual(rows, [
         { scope: 'local', name: 'memory', plugin: 'memory', kind: 'beside' },
-        { scope: 'project', name: 'context7', plugin: 'context7', kind: 'beside' },
-        { scope: 'user', name: 'docs7', plugin: 'context7', kind: 'replaces' },
-        { scope: 'user', name: 'serena', plugin: 'serena', kind: 'beside' },
+        { scope: 'project', name: 'documentation', plugin: 'documentation', kind: 'beside' },
+        { scope: 'user', name: 'docs7', plugin: 'documentation', kind: 'replaces' },
+        { scope: 'user', name: 'navigation', plugin: 'navigation', kind: 'beside' },
     ], 'local, project, user in precedence order; a server no carried plugin meets is no row');
     assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: [], scopes: { user: { docs7: ctx7 } } }), [], 'no plugin carried, nothing shadowed');
-    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['context7'] }), [], 'no registrations read');
+    assert.deepStrictEqual(mcp.shadowingRegistrations({ plugins: ['documentation'] }), [], 'no registrations read');
 });
 
 // The run at PROJECT scope prunes what it wrote into this project's .mcp.json, and never reads the account's user-
@@ -1444,19 +1445,19 @@ test('seed install (plugin route, project scope): a user- or local-scope registr
         {
             // Keyed by the real path too: the run's project root is the resolved one (/private/var on macOS).
             const local = { mcpServers: { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service[sqlite]==11.0.0', 'memory', 'server'] } } };
-            accountMcp(work, { docs7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url }, serena: STACK_SERENA },
+            accountMcp(work, { docs7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url }, navigation: STACK_SERENA },
                 { [repo]: local, [fs.realpathSync(repo)]: local });
-            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { context7: { type: 'http', url: mcp.CONTEXT7_REMOTE.url } } }, null, 2)}\n`);
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify({ mcpServers: { documentation: { type: 'http', url: mcp.CONTEXT7_REMOTE.url } } }, null, 2)}\n`);
         },
     });
     const line = (re) => (out.match(re) || []).length;
-    assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the context7 plugin, so Claude Code connects to it instead and the stack's mcp__plugin_context7_context7__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out);
-    assert.strictEqual(line(/mcp serena \(user scope\) starts beside the serena plugin's own server - two serena servers in every session here; if nothing else needs it: claude mcp remove serena -s user/g), 1, out);
+    assert.strictEqual(line(/!! mcp docs7 \(user scope\) calls the url of the documentation plugin, so Claude Code connects to it instead and the stack's mcp__plugin_documentation_documentation__ tools never load - if nothing else needs it: claude mcp remove docs7 -s user/g), 1, out);
+    assert.strictEqual(line(/mcp navigation \(user scope\) starts beside the navigation plugin's own server - two navigation servers in every session here; if nothing else needs it: claude mcp remove navigation -s user/g), 1, out);
     assert.strictEqual(line(/mcp memory \(local scope\) starts beside the memory plugin's own server/g), 1, out);
     // R10: no stamp yet means the stack wrote nothing here, so this project's context7 entry is the user's -
     // kept, not pruned, and named like the account's with its remove command.
-    assert.strictEqual(line(/!! mcp context7 \(project scope\) calls the url of the context7 plugin.*claude mcp remove context7 -s project/g), 1, out);
-    assert.strictEqual(line(/mcp context7: kept - the \.mcp\.json entry is not the one the stack wrote/g), 1, out);
+    assert.strictEqual(line(/!! mcp documentation \(project scope\) calls the url of the documentation plugin.*claude mcp remove documentation -s project/g), 1, out);
+    assert.strictEqual(line(/mcp documentation: kept - the \.mcp\.json entry is not the one the stack wrote/g), 1, out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp remove .* -s (user|local)$/.test(c)), [], 'a project-scope run removed an account registration');
 });
 
@@ -1483,7 +1484,7 @@ test('ensurePlaywrightIgnore: a kept engine ignores its profile folder, once, an
 
 test('seed install: a kept playwright engine leaves .playwright/.gitignore behind, and no engine leaves no folder', POSIX_ONLY, () =>
 {
-    const kept = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+    const kept = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
         inspect: (repo) => { try { return fs.readFileSync(path.join(repo, '.playwright', '.gitignore'), 'utf8'); } catch { return null; } },
     });
@@ -1525,12 +1526,12 @@ const OWN_SHAPE_CLI = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
 for (const [label, account, reregistered] of [
     ['an unreadable account file', '{not json', false],
     ['no account file while the CLI holds a registration', null, false],
-    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'playwright-chrome': STACK_PW('chrome') } }), true],
+    ['a stack-shaped registration (the control)', JSON.stringify({ mcpServers: { 'browser-chrome': STACK_PW('chrome') } }), true],
 ])
 {
     test(`seed update --scope user (MCP copy route): the verify pass with ${label} re-registers only the stack's own (N4)`, POSIX_ONLY, () =>
     {
-        const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
             plugins: JSON.stringify(USER_ROWS()), env: MCP_COPY_ENV, tools: { claude: OWN_SHAPE_CLI },
             args: ['--scope', 'user', '--playwright-browsers', 'chrome'],
             prepare: (repo, work) =>
@@ -1539,18 +1540,18 @@ for (const [label, account, reregistered] of [
                 if (account !== null) { fs.mkdirSync(path.join(work, 'acct'), { recursive: true }); fs.writeFileSync(path.join(work, 'acct', '.claude.json'), account); }
             },
         });
-        const removes = calls.filter((c) => /^mcp remove playwright-chrome -s user$/.test(c));
-        const skipped = (out.match(/!! mcp playwright-chrome: the user-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove playwright-chrome -s user, then re-run/g) || []).length;
-        assert.ok(calls.some((c) => /^mcp get playwright-chrome$/.test(c)), `the verify pass never read the shape:\n${calls.join('\n')}`);
+        const removes = calls.filter((c) => /^mcp remove browser-chrome -s user$/.test(c));
+        const skipped = (out.match(/!! mcp browser-chrome: the user-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove browser-chrome -s user, then re-run/g) || []).length;
+        assert.ok(calls.some((c) => /^mcp get browser-chrome$/.test(c)), `the verify pass never read the shape:\n${calls.join('\n')}`);
         if (reregistered)
         {
-            assert.ok(removes.length > 0 && /shape drifted at user scope: playwright-chrome - re-registering/.test(out), `the stack's own drifted registration was not re-registered:\n${calls.join('\n')}\n${out}`);
+            assert.ok(removes.length > 0 && /shape drifted at user scope: browser-chrome - re-registering/.test(out), `the stack's own drifted registration was not re-registered:\n${calls.join('\n')}\n${out}`);
             assert.strictEqual(skipped, 0, out);
             return;
         }
         assert.deepStrictEqual(removes, [], `a registration not known to be the stack's was removed:\n${calls.join('\n')}\n${out}`);
         assert.strictEqual(skipped, 1, out);
-        assert.doesNotMatch(out, /shape drifted at user scope: playwright-chrome|could not be brought to the current shape/, out);
+        assert.doesNotMatch(out, /shape drifted at user scope: browser-chrome|could not be brought to the current shape/, out);
     });
 }
 
@@ -1585,7 +1586,7 @@ test('seed install + re-run (full copy route): copies hold the registered tool n
     assert.match(front, /^ {2}- alfred-habits-root-cause$/m, front);
     assert.doesNotMatch(front, /alfred-code:/, 'a preload still names the core plugin');
     // Built, never written out: a bare spelling in a tracked file is lint check 54's finding.
-    assert.ok(front.includes(['mcp', 'serena', 'find_symbol'].join('__')), 'the tools list keeps the plugin spelling');
+    assert.ok(front.includes(['mcp', 'navigation', 'find_symbol'].join('__')), 'the tools list keeps the plugin spelling');
     assert.ok(steps[0].preloaded, 'the preloaded skill is not installed as a copy');
     const touched = Object.keys(steps[0].mtimes).filter((f) => steps[1].mtimes[f] !== steps[0].mtimes[f]);
     assert.deepStrictEqual(touched, [], `a re-run rewrote unchanged copies:\n${outs[1]}`);
@@ -1600,8 +1601,8 @@ test('seed install (plugin route): a library seat keeps its shipped alfred-code:
 });
 
 // F7 (F1 D, pre-existing since 1.3.0): every engine was re-spelled as `playwright`, a name no run
-// registers, so a copied seat kept `mcp__plugin_playwright-chrome_playwright-chrome__*` while the run
-// registered `playwright-chrome` bare - the seat lost playwright on the copy route. Each engine the run
+// registers, so a copied seat kept `mcp__plugin_browser-chrome_browser-chrome__*` while the run
+// registered `browser-chrome` bare - the seat lost playwright on the copy route. Each engine the run
 // registers bare takes its own bare name; an engine it does not register (not kept, or left off at user
 // scope, where the registration is the enable) keeps the plugin spelling. The mixed-pair line names the
 // engines for the same reason. Bare spellings are BUILT, never typed (lint check 54).
@@ -1616,14 +1617,14 @@ for (const [route, env, scope, registered] of [
 {
     test(`seed install (${route}, ${scope} scope): a copied seat names each engine the run registered bare by its own bare name, and every other engine by its plugin name (F7, F1 D)`, POSIX_ONLY, () =>
     {
-        const { result, out } = seedRun('install', `skill markdown-style\nrule markdown-docs\nmcp playwright\n${SEATS.map((s) => `agent ${s}\n`).join('')}`, {
+        const { result, out } = seedRun('install', `skill markdown-style\nrule markdown-docs\nmcp browser\n${SEATS.map((s) => `agent ${s}\n`).join('')}`, {
             env, args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
             inspect: (repo) => Object.fromEntries(SEATS.map((s) => [s, fs.readFileSync(path.join(repo, '.claude', 'agents', `${s}.md`), 'utf8').split('\n').find((l) => l.startsWith('tools:'))])),
         });
         for (const seat of SEATS)
             for (const engine of mcp.PW_ENGINES)
             {
-                const server = `playwright-${engine}`;
+                const server = `browser-${engine}`;
                 const bare = registered.includes(engine);
                 assert.ok(result[seat].includes(bare ? bareTools(server) : pluginTools(server)), `${seat}: ${server} is not spelled ${bare ? 'bare' : 'as the plugin'}:\n${result[seat]}\n${out}`);
                 assert.ok(!result[seat].includes(bare ? pluginTools(server) : bareTools(server)), `${seat}: ${server} kept the other spelling:\n${result[seat]}`);
@@ -1631,11 +1632,11 @@ for (const [route, env, scope, registered] of [
     });
 }
 
-for (const [scope, named] of [['project', 'playwright-chrome playwright-webkit'], ['user', 'playwright-chrome']])
+for (const [scope, named] of [['project', 'browser-chrome browser-webkit'], ['user', 'browser-chrome']])
 {
     test(`seed install (MCP copy route, skills on the plugin route, ${scope} scope): the mixed-pair line names the engines registered bare (F7, observation 2)`, POSIX_ONLY, () =>
     {
-        const { out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp playwright\n', {
+        const { out } = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
             env: { ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' },
             args: ['--scope', scope, '--playwright-browsers', 'chrome,webkit', '--playwright-enabled', 'chrome'],
         });
@@ -1655,17 +1656,17 @@ test('seed install (full copy route, project registrations): only .mcp.json says
         env: COPY_ENV,
         prepare: (repo, work) =>
         {
-            accountMcp(work, { serena: STACK_SERENA });
-            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { serena: STACK_SERENA } }));
+            accountMcp(work, { navigation: STACK_SERENA });
+            if (mcpJson) fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: STACK_SERENA } }));
         },
     });
     const fresh = run(false);
-    assert.ok(fresh.calls.some((c) => /^mcp add --scope project serena /.test(c)), `${fresh.calls.filter((c) => /^mcp /.test(c)).join('\n')}\n${fresh.out}`);
-    assert.doesNotMatch(fresh.out, /mcp serena already configured/);
+    assert.ok(fresh.calls.some((c) => /^mcp add --scope project navigation /.test(c)), `${fresh.calls.filter((c) => /^mcp /.test(c)).join('\n')}\n${fresh.out}`);
+    assert.doesNotMatch(fresh.out, /mcp navigation already configured/);
     assert.ok(!fresh.calls.some((c) => /^mcp get /.test(c)), 'a project-scope install asked the CLI, which answers from every scope');
     const kept = run(true);
-    assert.ok(!kept.calls.some((c) => /^mcp add --scope project serena /.test(c)), kept.calls.join('\n'));
-    assert.match(kept.out, /mcp serena already configured - skipping/);
+    assert.ok(!kept.calls.some((c) => /^mcp add --scope project navigation /.test(c)), kept.calls.join('\n'));
+    assert.match(kept.out, /mcp navigation already configured - skipping/);
 });
 
 // --- R10 THE LEDGER -----------------------------------------------------------------------------
@@ -1678,11 +1679,11 @@ test('mcp ledger: managed is what the run wrote, what the ledger recorded unchan
     const serena = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent@1.7.0', 'serena'] };
     const mine = { type: 'stdio', command: 'node', args: ['mine.js'] };
     const edited = { type: 'stdio', command: 'uvx', args: ['--from', 'serena-agent@9', 'serena'] };
-    const servers = { serena, mine, memory: edited };
+    const servers = { navigation: serena, mine, memory: edited };
     const adopt = (name) => name !== 'mine';
-    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: null, written: [], adopt }), { serena: entryHash(serena), memory: entryHash(edited) }, 'no ledger: the stack-shaped names are adopted');
-    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: { serena: entryHash(serena), memory: entryHash({ other: 1 }) }, written: [], adopt }),
-        { serena: entryHash(serena) }, 'a ledger: recorded and unchanged only - an edited entry is the user\'s');
+    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: null, written: [], adopt }), { navigation: entryHash(serena), memory: entryHash(edited) }, 'no ledger: the stack-shaped names are adopted');
+    assert.deepStrictEqual(mcp.managedMcp({ servers, prior: { navigation: entryHash(serena), memory: entryHash({ other: 1 }) }, written: [], adopt }),
+        { navigation: entryHash(serena) }, 'a ledger: recorded and unchanged only - an edited entry is the user\'s');
     assert.deepStrictEqual(mcp.managedMcp({ servers, prior: {}, written: ['memory'], adopt }), { memory: entryHash(edited) }, 'registered this run');
     assert.strictEqual(entryHash({ a: 1, b: [2, { d: 1, c: 2 }] }), entryHash({ b: [2, { c: 2, d: 1 }], a: 1 }), 'key order never changes the hash');
 });
@@ -1690,19 +1691,19 @@ test('mcp ledger: managed is what the run wrote, what the ledger recorded unchan
 test('mcp ledger: removeManaged takes a recorded unchanged entry, keeps an edited or unlisted one, and the file goes only when nothing is left (R10)', () =>
 {
     const serena = { command: 'uvx', args: ['serena'] };
-    const file = mcpFile({ serena, memory: { command: 'uvx', args: ['memory', 'edited'] }, mine: { command: 'node', args: ['mine.js'] } });
+    const file = mcpFile({ navigation: serena, memory: { command: 'uvx', args: ['memory', 'edited'] }, mine: { command: 'node', args: ['mine.js'] } });
     const logs = [];
-    const out = mcp.removeManagedMcp({ mcpFile: file, managed: { serena: entryHash(serena), memory: entryHash({ command: 'uvx', args: ['memory'] }) }, log: (m) => logs.push(m) });
-    assert.deepStrictEqual(out.removed, ['serena']);
+    const out = mcp.removeManagedMcp({ mcpFile: file, managed: { navigation: entryHash(serena), memory: entryHash({ command: 'uvx', args: ['memory'] }) }, log: (m) => logs.push(m) });
+    assert.deepStrictEqual(out.removed, ['navigation']);
     assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).mcpServers).sort(), ['memory', 'mine']);
     assert.match(logs.join('\n'), /mcp memory: kept - changed since the stack registered it, so it is yours/);
-    const only = mcpFile({ serena });
-    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: only, managed: { serena: entryHash(serena) } }).removed, ['serena']);
+    const only = mcpFile({ navigation: serena });
+    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: only, managed: { navigation: entryHash(serena) } }).removed, ['navigation']);
     assert.ok(!fs.existsSync(only), 'a .mcp.json holding nothing but the stack\'s entries goes with them');
     const garbage = path.join(TMP, `garbage-${Date.now()}.json`);
     fs.writeFileSync(garbage, '{nope');
     const notes = [];
-    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: garbage, managed: { serena: 'x' }, note: (m) => notes.push(m) }).removed, []);
+    assert.deepStrictEqual(mcp.removeManagedMcp({ mcpFile: garbage, managed: { navigation: 'x' }, note: (m) => notes.push(m) }).removed, []);
     assert.strictEqual(fs.readFileSync(garbage, 'utf8'), '{nope', 'an unreadable file is left untouched');
     assert.strictEqual(notes.length, 1);
 });

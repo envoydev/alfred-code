@@ -146,3 +146,15 @@ test('the catalog names the plugins every install carries beside the core, and s
     // R109: nor a pick - it left the plugin catalog in 2.0.0, so the walk never offers it.
     assert.ok(!graph.catalog.plugins.includes('superpowers'), 'superpowers is no catalog plugin');
 });
+
+// The browser server's catalog name is also an ordinary word a body backticks for its own reasons -
+// the WebExtension `browser` namespace, Angular's `main`->`browser` builder rename. Read as an edge,
+// each would pull the droppable browser server into every install carrying that item; the browser is
+// proven by a stack seed or evidence instead, never by a mention.
+test('a backticked `browser` is no MCP edge - the word is too common to prove a need', () => {
+    for (const kind of ['skills', 'agents', 'rules'])
+        for (const [name, node] of Object.entries(graph[kind]))
+            assert.ok(!(node.mcps || []).includes('browser'), `${kind} ${name} pulls the browser server by a mention`);
+    assert.ok(graph.catalog.mcps.includes('browser'), 'the browser server stays in the catalog');
+    assert.ok(graph.rules['baseline-navigation'].mcps.includes('navigation'), 'a role name that is no common word still makes its edge');
+});

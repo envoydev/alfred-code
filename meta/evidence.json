@@ -256,7 +256,7 @@
   }
  },
  "mcps": {
-  "playwright": {
+  "browser": {
    "packages": [
     "Microsoft.Playwright",
     "Microsoft.Playwright.",

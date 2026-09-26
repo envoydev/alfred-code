@@ -5,7 +5,7 @@ description: "Load when scaffolding or editing an AppHost or ServiceDefaults, de
 
 # .NET Aspire - local orchestration
 
-Aspire describes a distributed app as one object graph and runs the whole thing with a single F5 - everything starts together with the right connection strings already threaded between resources, and one dashboard shows every process's traces, logs, and metrics. Services floor at .NET 8 / C# 12; the AppHost itself needs a newer SDK than the services it runs, so confirm the current AppHost prerequisites through context7 before scaffolding one.
+Aspire describes a distributed app as one object graph and runs the whole thing with a single F5 - everything starts together with the right connection strings already threaded between resources, and one dashboard shows every process's traces, logs, and metrics. Services floor at .NET 8 / C# 12; the AppHost itself needs a newer SDK than the services it runs, so confirm the current AppHost prerequisites through the documentation server before scaffolding one.
 
 Aspire is two cooperating pieces, and this skill is about both:
 - the **AppHost**, a small project that declares the topology and orchestrates the local run;
