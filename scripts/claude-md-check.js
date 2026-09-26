@@ -59,15 +59,32 @@ const CMDLET = /^[A-Z][a-z]+-[A-Z][A-Za-z]+$/;
 const PLACEHOLDER = /__[A-Z][A-Z0-9_]*__/g;
 const SHINGLE = 8;
 // What the installer leaves in a file it seeded (scripts/install/seeds.js stamps the H1 with the folder
-// name, so no placeholder is left to find): the template's fill-in block, and no live section of the
-// project's own - only the H1 and `## Rules`.
+// name, so no placeholder is left to find): the template's fill-in block, no live section of the
+// project's own - only the H1 and `## Rules` - and no live line outside those two the template does not
+// carry itself (the seed's AGENTS import aside). A line of the user's own under the H1 makes it the
+// project's file: Create mode would write over it with no diff shown. The `## Rules` section is not
+// read line by line - its table changes between releases, so an older seed's rows are no user text.
 const FILL_IN = '<!-- Fill-in block - delete once done.';
-function unfilledSeed(text)
+const SEED_IMPORT = '@../AGENTS.md';
+const readFileOrNull = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
+const readTemplate = () => readFileOrNull(TEMPLATE_DEFAULT);
+function unfilledSeed(text, template)
 {
     const t = normalize(text);
     const { live } = stripComments(t);
     if (!t.includes(FILL_IN) && !/^#\s+__PROJECT_NAME__\s*$/m.test(live)) return false;
-    return ![...live.matchAll(/^\s{0,3}(#{1,6})\s+(.*)$/gm)].some((m) => m[1] !== '#' && m[2].trim() !== 'Rules');
+    const heads = [...live.matchAll(/^\s{0,3}(#{1,6})\s+(.*)$/gm)];
+    if (heads.some((m) => m[1] !== '#' && m[2].trim() !== 'Rules') || heads.filter((m) => m[1] === '#').length > 1) return false;
+    const seeded = new Set(template ? stripComments(normalize(template)).live.split('\n').map((l) => l.trim()).filter(Boolean) : []);
+    seeded.add(SEED_IMPORT);
+    let rules = false;
+    for (const line of live.split('\n'))
+    {
+        const h = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
+        if (h) { rules = h[1] === '##'; continue; }
+        if (!rules && line.trim() && !seeded.has(line.trim())) return false;
+    }
+    return true;
 }
 
 const WHY = {
@@ -372,7 +389,7 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
         }
     }
     if (template) checkTemplateText();
-    if (unfilledSeed(text)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
+    if (unfilledSeed(text, template === null ? readTemplate() : template)) add(1, -1, 'template', 'the template', 'never filled: only its H1 and ## Rules are live');
     return findings.sort((a, b) => a.line - b.line || a.col - b.col).map(({ col, ...f }) => f);
 
     function checkProgram(program, line, col)
@@ -449,10 +466,9 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
         err(`${USAGE}\n`);
         return 2;
     }
-    if (list) return listMain(root, files.length ? files : findFiles(root), { out, err });
-    let template = null;
-    try { template = fs.readFileSync(templateFile, 'utf8'); }
-    catch { err(`claude-md-check: template ${templateFile} unreadable - the template-text check did not run\n`); }
+    if (list) return listMain(root, files.length ? files : findFiles(root), { out, err, template: readFileOrNull(templateFile) });
+    const template = readFileOrNull(templateFile);
+    if (template === null) err(`claude-md-check: template ${templateFile} unreadable - the template-text check did not run\n`);
     const targets = files.length ? files : findFiles(root);
     if (!targets.length) { out('claude-md-check: no CLAUDE.md in this project\n'); return 0; }
     const docsRoot = docsRootOf(root);
@@ -472,7 +488,7 @@ function main(argv, { out = (s) => process.stdout.write(s), err = (s) => process
 }
 
 // A seeded file still carrying the template's H1 placeholder in its live text has never been filled.
-function listMain(root, targets, { out, err })
+function listMain(root, targets, { out, err, template = null })
 {
     if (!targets.length) { out('claude-md-check: no CLAUDE.md in this project\n'); return 0; }
     for (const file of targets)
@@ -481,7 +497,7 @@ function listMain(root, targets, { out, err })
         try { text = normalize(fs.readFileSync(path.join(root, file), 'utf8')); }
         catch (e) { err(`claude-md-check: ${file} unreadable (${e.code || e.message})\n`); return 2; }
         const lines = text.replace(/\n$/, '').split('\n').length;
-        const seeded = unfilledSeed(text);
+        const seeded = unfilledSeed(text, template);
         out(`${file}: ${lines} lines${seeded ? ', the seeded template (unfilled)' : ''}\n`);
     }
     return 0;

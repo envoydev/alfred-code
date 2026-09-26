@@ -256,8 +256,8 @@ test('a placeholder or a TODO left in the live text is a finding; inside a comme
         'The package marker `app/__init__.py`; a `TODO` without a ticket is rejected.',
         'Root is __DOCS_ROOT__ here.',
     ].join('\n');
-    assert.deepStrictEqual(kinds(run(root, text)), ['1 template the template', '1 placeholder __PROJECT_NAME__', '3 todo TODO', '5 placeholder __DOCS_ROOT__'],
-        'a file with no section but its placeholder H1 is an unfilled template copy too');
+    assert.deepStrictEqual(kinds(run(root, text)), ['1 placeholder __PROJECT_NAME__', '3 todo TODO', '5 placeholder __DOCS_ROOT__'],
+        'a placeholder H1 over live text of the project\'s own is no unfilled copy - the placeholder row says what is left');
 });
 
 test('a live line still carrying the template\'s own authoring text is a finding; the template\'s live Rules text is not', () =>
@@ -397,4 +397,29 @@ test('the seed the installer writes reads as the unfilled template - listed as s
     fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), filled);
     assert.doesNotMatch(cli(root, ['--list']).stdout, /unfilled/, 'a section of the project\'s own makes it the project\'s file');
     assert.doesNotMatch(cli(root).stdout, /never filled/);
+});
+
+// I3 (final review of the rename): the seed with its H1 renamed and two lines of the user's own rules under
+// it - no `##` of their own - read as unfilled, so the skill took Create mode and wrote over the user's
+// text with no diff shown. Live text outside the H1 and `## Rules` that the template does not carry is the
+// project's own; the template's own live lines, or the installer's AGENTS import, are not.
+test('I3: the seed holding the user\'s own lines under a renamed H1 is the project\'s file; the template\'s own lines or the AGENTS import keep it unfilled', () =>
+{
+    const { claudeMdBody } = require('./install/seeds.js');
+    const root = tree({ '.claude/rules/': '' }, { git: true });
+    const seed = claudeMdBody({ projectRoot: root, sourceDir: path.join(__dirname, '..') });
+    const write = (body) => fs.writeFileSync(path.join(root, '.claude/CLAUDE.md'), body);
+    const listed = () => cli(root, ['--list']).stdout;
+    const own = seed.replace(/^# [^\n]*\n/, '# Orders service\n\nAlways run the migrations before the tests.\nNever commit the generated client.\n');
+    write(own);
+    assert.doesNotMatch(listed(), /unfilled/, 'the user\'s own lines under the H1 are the project\'s text');
+    assert.doesNotMatch(cli(root).stdout, /never filled/);
+    write(seed.replace(/^# [^\n]*\n/, '# Orders service\n'));
+    assert.match(listed(), /unfilled/, 'a renamed H1 alone is still the seed');
+    const rulesLine = seed.split('\n').find((l) => l.startsWith('The rules this project runs on'));
+    write(seed.replace(/^# [^\n]*\n/, `# Orders service\n\n${rulesLine}\n`));
+    assert.match(listed(), /unfilled/, 'a line the template itself carries is not the project\'s text');
+    const withAgents = tree({ 'AGENTS.md': '# agents\n', '.claude/rules/': '' }, { git: true });
+    fs.writeFileSync(path.join(withAgents, '.claude/CLAUDE.md'), claudeMdBody({ projectRoot: withAgents, sourceDir: path.join(__dirname, '..') }));
+    assert.match(cli(withAgents, ['--list']).stdout, /unfilled/, 'the import the installer writes under the H1 is the installer\'s');
 });
