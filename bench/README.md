@@ -97,9 +97,17 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   `docker build` or Testcontainers reaches the daemon. Each session has its own temp dir under `/tmp`
   (`TMPDIR` and `CLAUDE_CODE_TMPDIR`), so parallel cells never share `/tmp/claude-<uid>`. Re-measured
   2026-09-26 (bare, one Sonnet session, `b4-probe-d4`): sandboxed `TMPDIR=/private/tmp/bench-<id>/claude-501`,
-  `cd src && dotnet build ../LendingDesk.slnx | tail -3` 0 errors in 16 s, a piped `docker build` done.
-- **D8, workspace trust.** A subagent hook fires in `ours` under print mode. If it stays silent,
-  write Claude Code's trust entry into every cell, for every arm alike.
+  `cd src && dotnet build ../LendingDesk.slnx | tail -3` 0 errors in 16 s, a piped `docker build` done;
+  a write beside the clone refused (`b4-probe-d8`). NOT fixed: a sandboxed `dotnet test` - piped
+  (`dotnet test X | tail`) or compound (`cd X && dotnet test`) - aborts after 90 s ('vstest.console
+  process failed to connect to testhost'): the sandbox lets a process bind loopback but not connect to
+  it, and CLI 2.1.283 runs those forms sandboxed although the settings reference says any matching part
+  of a compound command unsandboxes it (`b4-probe-tmp`; the same command outside Claude Code with the
+  cell's env passes 18 tests in 1 s). A bare `dotnet test X` runs outside the sandbox and passes.
+- **D8, workspace trust.** Measured 2026-09-26 (`b4-probe-d8`, `ours`, `--include-hook-events`): a
+  forced `general-purpose` dispatch fired `SubagentStart` and `SubagentStop` (both exit 0), and stderr
+  carried no untrusted-workspace warning - no trust entry is written. Print mode never applies a
+  project `.claude/settings.json` allow rule, which is why the grants go into the local settings file.
 - Every arm's machinery loaded: ten transcripts read end to end.
 - The setup routes: `ours`' selection matches a real `/alfred-code:setup` walk on the fixture; its
   onboarding, `/alfred-code:init` with `ALFRED_CODE_UNATTENDED=1` (its unattended mode: every ask
