@@ -690,7 +690,8 @@ test('guard-secret-value: a command that also CHANGES something is blocked, neve
   assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a build after the dump');
   assert.equal(bash(`jq .env ${f.secret} | tee ${path.join(f.dir, 'copy.json')}`), 2, 'a tee into a file writes as it prints');
   assert.equal(bash(`echo $SENTRY_ACCESS_TOKEN && rm -rf ${path.join(f.dir, 'gone')}`), 2, 'the variable rewrite would drop steps the same way');
-  assert.equal(bash('env && curl https://example.test'), 2, '... and so would the environment dump');
+  assert.equal(rewritten('env && curl https://example.test'), `node "${HOOK}" --redacted-env && curl https://example.test`,
+    '... but an environment dump is replaced in place, so no step is dropped and nothing needs blocking');
   assert.equal(bash(`cd ${f.dir} && ls && cat settings.json | head -5; echo "exit=$?"`), REWRITE, 'cd, ls, echo and a pipe change nothing - still the rewrite');
   assert.equal(bash(`[ -f ${f.secret} ] && cat ${f.secret} 2>/dev/null`), REWRITE, 'a test and a stderr redirect change nothing');
   assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'the edit on its own passes, as before');
@@ -779,4 +780,28 @@ test('guard-secret-value: a translation bundle holds labels, not credentials', (
   const live = path.join(dir, 'settings.json');
   fs.writeFileSync(live, SECRET_JSON);
   assert.equal(bash(`cat ${live}`), REWRITE, 'an ordinary credential file is untouched by these tells');
+});
+
+// The benchmark pilot (2026-09-26): `env | grep -i msbuild; env | grep -i dotnet_cli` was BLOCKED as 'prints the
+// whole environment AND runs a step that changes something' - the second `env` read as a changing step, and the
+// rewrite would have dropped both filters anyway. An environment dump is now replaced where it stands: its
+// pipeline keeps its filter over the masked listing, and every other step runs as written.
+test('guard-secret-value: an environment dump keeps its filter and the rest of the command - the pilot command', () => {
+  const view = `node "${HOOK}" --redacted-env`;
+  assert.equal(rewritten('env | grep -i msbuild'), `${view} --note-to-stderr | grep -i msbuild`, 'the filter runs over the masked listing');
+  assert.equal(rewritten('env | grep -i msbuild; env | grep -i dotnet_cli'),
+    `${view} --note-to-stderr | grep -i msbuild; ${view} --note-to-stderr | grep -i dotnet_cli`, 'every dump in the command, never one left raw');
+  assert.equal(rewritten('cd src && printenv | sort | grep -i MSBUILD && dotnet build -v q'),
+    `cd src && ${view} --note-to-stderr | sort | grep -i MSBUILD && dotnet build -v q`, 'nothing is dropped, so a build beside it runs');
+  assert.equal(rewritten('env'), view, 'a bare dump is still the whole listing, note first');
+  assert.equal(rewritten('env FOO=bar node app.js'), null, 'env running a command is no dump');
+  assert.equal(bash('env > /tmp/env.txt'), 0, 'into a file it never reaches the context, as before');
+  // still judged: a credential variable printed in another step takes its presence form over everything
+  assert.match(rewritten('env | grep -i x; echo $SENTRY_ACCESS_TOKEN'), /SENTRY_ACCESS_TOKEN=set/);
+  // run for real: the listing is masked before the filter sees it, the note goes to stderr
+  const r = spawnSync('bash', ['-c', rewritten('env | grep -i msbuild')], { encoding: 'utf8', env: { ...process.env, MSBUILD_TOKEN: FAKE_TOKEN, MSBUILDDISABLENODEREUSE: '1' } });
+  assert.match(r.stdout, /^MSBUILDDISABLENODEREUSE=1$/m);
+  assert.match(r.stdout, /^MSBUILD_TOKEN=<set \(40 chars\)>$/m);
+  assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
+  assert.match(r.stderr, /^# credential guard: /, 'the note says what happened');
 });

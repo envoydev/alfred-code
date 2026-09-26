@@ -447,7 +447,9 @@ if (process.argv[2] === '--redacted') {
 // variable as env prints it, a credential-shaped NAME holding a credential (or any value of a known
 // credential shape) as `<set (N chars)>`. Accepted gap, stated: a credential under a name this
 // pattern does not match and with no known shape prints as env would print it.
+// `--note-to-stderr` is the filtered form (`--redacted-env --note-to-stderr | grep KEY`), as for a file.
 if (process.argv[2] === '--redacted-env') {
+  const filtered = process.argv[3] === '--note-to-stderr';
   const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
   const lines = [];
   let masked = 0;
@@ -455,7 +457,10 @@ if (process.argv[2] === '--redacted-env') {
     const v = String(process.env[k]);
     if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${maskEmbedded(v, (x) => { masked++; return `<set (${x.length} chars)>`; })}`);
   }
-  process.stdout.write(noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it.`, receipt) + '\n' + lines.join('\n') + '\n');
+  const note = noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it`
+    + (filtered ? '; piped through the command\'s own filter.' : '.'), receipt);
+  if (filtered) process.stderr.write(note + '\n');
+  process.stdout.write((filtered ? '' : note + '\n') + lines.join('\n') + '\n');
   process.exit(0);
 }
 
@@ -862,6 +867,10 @@ if (isShellTool(payload.tool_name)) {
   }
   const code = [];
   const command = stripHeredocsOf(raw, code);
+  // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
+  // result is judged like any command, so a credential printed elsewhere still takes its own form.
+  const inPlace = !IS_PWSH && command === raw && !allowAll ? redactEnvStages(raw) : raw;
+  if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace); }
   // `main` says this text IS the command the tool will run - the one text a segment splice may
   // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
   judgeShell(command, false, command === raw);
@@ -886,6 +895,33 @@ function blockVariable(name) {
   }
   rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
+// Every stage of `text` that dumps the whole environment, replaced by the masked listing IN PLACE: the rest of
+// its pipeline (a filter) and every other step stay exactly as written, so nothing is dropped and a step that
+// changes something needs no block. The benchmark pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was
+// blocked - the second `env` read as a changing step - and the old whole-command rewrite dropped both filters.
+// A quote-blind split (unbalanced quotes) changes nothing here; the stage-by-stage judge below takes it.
+// The shape is blockEnvDump's own, inline: a const here would be in its dead zone when the Bash branch runs.
+function redactEnvStages(text) {
+  const dump = /^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*$/;
+  const seps = [];
+  const segs = splitSegments(text, seps);
+  if (seps.length !== segs.length - 1) return text;
+  let changed = false;
+  const out = segs.map((seg) => {
+    const stages = splitPipes(seg);
+    if (stages.join('|') !== seg) return seg;
+    // judgeShell's own passes: output into a file never reaches the context, and a names-only reducer
+    // (`env | cut -d= -f1`) is the presence read - neither is a dump to replace.
+    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    const hits = stages.map((st) => dump.test(st.replace(PREFIX_WORDS, '').trim()));
+    if (!hits.some(Boolean)) return seg;
+    changed = true;
+    const view = `node "${shDouble(__filename)}" --redacted-env${stages.length > 1 ? ' --note-to-stderr' : ''}`;
+    return stages.map((st, i) => (hits[i] ? st.replace(/^(\s*)[\s\S]*?(\s*)$/, `$1${view}$2`) : st)).join('|');
+  });
+  return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
+}
+
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
 // bound here would still be in its temporal dead zone and the gate would throw instead of judging.
 // A whole-environment dump becomes the masked listing.
