@@ -353,7 +353,7 @@ test('pins: each is spelled as its row says - memory ==<ver> inside the extras b
 
 // The copy route registers no launcher, so windows-desktop's tool gate reaches Windows-MCP as its own
 // WINDOWS_MCP_EXCLUDE_TOOLS, resolved at install time from the same setting the launcher reads.
-test('copy route: windows-desktop registers with the release pin and the tool gate as Windows-MCP\'s own env', () =>
+test('copy route: windows-desktop registers with the release pin and the tool gate as Windows-MCP\'s own env, both desktop servers with telemetry off', () =>
 {
     const manifest = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
     const row = manifest.catalogs.mcps.find((e) => e.startsWith('windows-desktop|'));
@@ -363,9 +363,10 @@ test('copy route: windows-desktop registers with the release pin and the tool ga
     const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }) };
     const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
     assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process',
-        '--', 'uvx', '--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
+        '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
     assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
-        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '--', 'uvx', '--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
+        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
+        'the upstream telemetry is off on the copy route too');
     assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
     assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } }), 'PowerShell');
     assert.strictEqual(mcp.identityOf({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'] }), 'stdio:windows-mcp');

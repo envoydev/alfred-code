@@ -41,5 +41,6 @@ a way around a blocked step.
   starts Claude Code - a plugin server gets no project settings `env` key.
 - **First start.** uvx downloads Python and Windows-MCP the first time; a timeout on that start clears
   with one reconnect from `/mcp`. uv must be on PATH.
-- **Telemetry.** Windows-MCP sends anonymous usage telemetry unless `ANONYMIZED_TELEMETRY=false` is set
-  in the shell that starts Claude Code.
+- **Telemetry - off.** Windows-MCP sends anonymous usage events unless `ANONYMIZED_TELEMETRY` is
+  `false`, and the stack starts it with `false` on both routes (the plugin entry's `env`, the copy
+  route's registration), so nothing leaves the machine and nothing needs setting.

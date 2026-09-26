@@ -273,6 +273,14 @@ test('the two desktop MCP plugins: one server each, launched through desktop-lau
     }
 });
 
+// Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (read in each wheel's
+// lifespan: windows-mcp 0.8.5 and macos-mcp 0.4.6 __main__.py, default 'true'). A server driving the
+// user's own desktop starts with it off.
+test('the two desktop MCP plugins start their upstream with its telemetry off', () => {
+    for (const name of ['windows-desktop', 'macos-desktop'])
+        assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
+});
+
 test('the retired entries stay listed for one release, marked retired', () =>
 {
     const mkt = applyToMarketplace({ plugins: [] }, buildEntries().concat(retiredMarketplaceEntries()));

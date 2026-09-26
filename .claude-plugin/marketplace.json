@@ -1570,7 +1570,10 @@
             "serve",
             "--exclude-tools",
             "PowerShell,Registry,Process"
-          ]
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
         }
       },
       "dependencies": [
@@ -1598,7 +1601,10 @@
             "macos-mcp==0.4.6",
             "--",
             "serve"
-          ]
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
         }
       },
       "dependencies": [

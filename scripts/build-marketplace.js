@@ -33,7 +33,7 @@ const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
 const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
 const { wiringRows } = require('../stack/hooks/shell-guards.js');
-const { DEFAULT_EXCLUDE } = require('../stack/mcp/desktop-launch.js');
+const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -413,6 +413,7 @@ function mcpServerShapes(options = {})
                     command: 'node',
                     args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`,
                         '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
+                    env: DESKTOP_ENV,
                 },
             },
         },
@@ -422,6 +423,7 @@ function mcpServerShapes(options = {})
                 'macos-desktop': {
                     command: 'node',
                     args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, '--', 'serve'],
+                    env: DESKTOP_ENV,
                 },
             },
         },

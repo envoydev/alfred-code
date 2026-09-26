@@ -44,5 +44,6 @@ Restart the server (reconnect from `/mcp`) after a grant.
 ## First start and telemetry
 
 uvx downloads Python and MacOS-MCP the first time; a timeout on that start clears with one reconnect
-from `/mcp`. MacOS-MCP sends anonymous usage telemetry unless `ANONYMIZED_TELEMETRY=false` is set in the
-shell that starts Claude Code.
+from `/mcp`. MacOS-MCP sends anonymous usage events unless `ANONYMIZED_TELEMETRY` is `false`, and the
+stack starts it with `false` on both routes (the plugin entry's `env`, the copy route's registration), so
+telemetry is off with nothing to set.

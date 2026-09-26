@@ -30,6 +30,10 @@ const DESKTOP = {
 };
 const DESKTOP_OS = Object.fromEntries(Object.entries(DESKTOP).map(([name, row]) => [name, row.os]));
 const DEFAULT_EXCLUDE = 'PowerShell,Registry,Process';
+// Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (their lifespan reads it,
+// default 'true' - windows-mcp 0.8.5 and macos-mcp 0.4.6). The plugin entries pass this env, and the copy
+// route registers the same pair: a server driving the user's own desktop reports to nobody.
+const DESKTOP_ENV = Object.freeze({ ANONYMIZED_TELEMETRY: 'false' });
 const OS_LABEL = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
 const osLabel = (platform) => OS_LABEL[platform] || platform;
 
@@ -125,4 +129,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, DESKTOP, DESKTOP_OS, DEFAULT_EXCLUDE, platformOf, offeredOn, osLabel, withExclude, copyRouteExclude, skipNote, prereqNotes };
+module.exports = { main, DESKTOP, DESKTOP_OS, DEFAULT_EXCLUDE, DESKTOP_ENV, platformOf, offeredOn, osLabel, withExclude, copyRouteExclude, skipNote, prereqNotes };

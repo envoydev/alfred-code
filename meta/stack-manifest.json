@@ -983,7 +983,7 @@
     {
       "name": "windows-desktop",
       "active": false,
-      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
+      "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
       "skills": [
         "desktop-automation"
       ],
@@ -992,7 +992,7 @@
     {
       "name": "macos-desktop",
       "active": false,
-      "args": "-- uvx --python @UV_PYTHON@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
+      "args": "-e ANONYMIZED_TELEMETRY=false -- uvx --python @UV_PYTHON@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
       "skills": [
         "desktop-automation"
       ],
