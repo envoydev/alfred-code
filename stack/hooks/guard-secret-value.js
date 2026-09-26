@@ -883,57 +883,6 @@ if (isShellTool(payload.tool_name)) {
   process.exit(0);
 }
 
-// The variables a command assigns ITSELF before it ever reads them, from a value that cannot carry an
-// inherited credential: empty (`KEY=""`), or a command substitution (`KEY=$(...)`, `"$(...)"`, backticks)
-// that names no credential-shaped variable. Printing one prints the command's own computed value, so the
-// print is not judged (pilot 2: init's source-protocol snippet assigns KEY from `claude plugin list`, prints
-// `key=${KEY:-?}`, and was blocked twice). Any other assignment of the name - a literal, another variable -
-// or a reference before the first assignment leaves it judged; a substitution that READS a credential file
-// is judged by that file's own stage. The pattern lives inside the function: a module-level const down
-// here is in its dead zone when the main flow above reaches judgeShell.
-function substitutionEnd(text, from, close) {
-  // `from` is just past the opener; single-quoted spans are skipped whole, so `awk '...(...)...'` balances.
-  let depth = 1;
-  for (let i = from; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === "'") { const q = text.indexOf("'", i + 1); if (q < 0) return -1; i = q; continue; }
-    if (ch === '\\') { i++; continue; }
-    if (close === '`') { if (ch === '`') return i; continue; }
-    if (ch === '(') depth++;
-    else if (ch === ')' && --depth === 0) return i;
-  }
-  return -1;
-}
-function ownAssignments(text) {
-  const first = new Map();
-  const unsafe = new Set();
-  for (const m of text.matchAll(/(?:^|[\n;&|({])\s*(?:(?:export|local|readonly)\s+)?([A-Za-z_][A-Za-z0-9_]*)=/g)) {
-    const name = m[1];
-    const at = m.index + m[0].length;
-    let inner = null;
-    if (/^(?:""|'')(?:[\s;&|)]|$)/.test(text.slice(at))) inner = '';
-    else {
-      const quoted = text.startsWith('"$(', at) ? 1 : 0;
-      if (text.startsWith('$(', at + quoted)) {
-        const end = substitutionEnd(text, at + quoted + 2, ')');
-        if (end > 0 && (!quoted || text[end + 1] === '"')) inner = text.slice(at + quoted + 2, end);
-      } else if (text[at] === '`') {
-        const end = substitutionEnd(text, at + 1, '`');
-        if (end > 0) inner = text.slice(at + 1, end);
-      }
-    }
-    if (inner === null || [...inner.matchAll(/\$\{?#?([A-Za-z_][A-Za-z0-9_]*)/g)].some((r) => SECRET_KEY_RE.test(r[1]))) unsafe.add(name);
-    if (!first.has(name)) first.set(name, m.index);
-  }
-  const own = new Set();
-  for (const [name, at] of first) {
-    if (unsafe.has(name)) continue;
-    const ref = new RegExp(`\\$\\{?#?${name}(?![A-Za-z0-9_])`).exec(text);
-    if (!ref || ref.index > at) own.add(name);
-  }
-  return own;
-}
-
 // A print of a credential-shaped variable becomes that variable's presence line - the idiom the
 // denial used to prescribe, run for the model instead of fed back to it - led by the note.
 // On the PowerShell route the same line is spelled in PowerShell - the Bash form is a ParserError in
@@ -1016,7 +965,6 @@ function judgePwshStage(stage) {
 
 function judgeShell(text, forceRuntime, main) {
   cwdAnchor = null;
-  const own = ownAssignments(stripComments(text));
   const segments = splitSegments(stripComments(text));
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si];
@@ -1056,9 +1004,7 @@ function judgeShell(text, forceRuntime, main) {
       const verbs = [...stage.matchAll(/(?:^|[\s(])(echo|printf|printenv)\b/g)];
       for (let i = 0; i < verbs.length; i++) {
         const args = stage.slice(verbs[i].index + verbs[i][0].length, i + 1 < verbs.length ? verbs[i + 1].index : stage.length);
-        // A variable this command assigned itself (ownAssignments) is its own value - a `$` reference to
-        // it is not judged; a `printenv NAME` below still is.
-        const names = [...args.matchAll(/\$\{?(?!#)([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]).filter((n) => !own.has(n));
+        const names = [...args.matchAll(/\$\{?(?!#)([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]);
         if (verbs[i][1] === 'printenv') {
           names.push(...shellTokens(args).map((w) => w.replace(/[^A-Za-z0-9_]/g, '')).filter((w) => /^[A-Za-z_]\w*$/.test(w)));
         }

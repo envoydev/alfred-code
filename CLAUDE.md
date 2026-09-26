@@ -118,10 +118,10 @@ change (see the invariants below).
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
-    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. A
-    variable the command assigns ITSELF before any reference - empty, or from a `$(...)` naming no
-    credential-shaped variable - is its own value and prints freely (init's source-protocol snippet
-    prints the `KEY` it assigns; pilot 2 was blocked twice); a literal or variable assignment stays judged.
+    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
+    name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
+    so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
+    is `MKT`; as `KEY` it was blocked twice in pilot 2).
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
     without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h

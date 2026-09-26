@@ -71,13 +71,13 @@ REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
-KEY=""        # the marketplace key the core is listed under - a 1.x install keeps its own
+MKT=""        # the marketplace key the core is listed under - a 1.x install keeps its own
 if command -v claude >/dev/null 2>&1; then
   for K in envoydev claude-stack; do claude plugin marketplace update "$K" >/dev/null 2>&1; done   # legacy-name: a 1.x install keeps its key
   # every stack entry installed for THIS project or the account, this project's rows first: "<scope> <id> <version>", each by its own id
   ROWS=$(claude plugin list --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const fs=require("fs"),R=p=>{try{return fs.realpathSync(p)}catch{return require("path").resolve(p)}},here=R(process.cwd());let a=JSON.parse(s);a=(Array.isArray(a)?a:a.installed||[]).filter(x=>/@(envoydev|claude-stack)$/.test(x.id||"")&&x.scope&&(!x.projectPath||R(x.projectPath)===here));a.sort((x,y)=>(y.projectPath?1:0)-(x.projectPath?1:0));for(const x of a)console.log(x.scope+" "+x.id+" "+x.version)}catch{}})')   # legacy-name
   WAS=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{n=$3;exit} $2~/^claude-stack@/&&o==""{o=$3} END{print (n!=""?n:o)}')   # legacy-name
-  KEY=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
+  MKT=$(printf '%s\n' "$ROWS" | awk '$2~/^alfred-code@/{sub(/^[^@]*@/,"",$2);n=$2;exit} $2~/^claude-stack@/&&o==""{sub(/^[^@]*@/,"",$2);o=$2} END{print (n!=""?n:o)}')   # legacy-name
   printf '%s\n' "$ROWS" | while read -r SCOPE ID _; do [ -n "$ID" ] && claude plugin update "$ID" --scope "$SCOPE" -y </dev/null >/dev/null 2>&1; done
 fi
 SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: newest valid entry, any marketplace, a 1.x dir until orphaned
@@ -90,7 +90,7 @@ else
   mkdir -p "$TMP/repo" && tar -xzf "$TMP/alfred-code.tar.gz" -C "$TMP/repo"
 fi
 VER=$(sed -n 's/^version: //p' "$TMP/repo/RELEASE-SOURCE" 2>/dev/null | head -1)
-printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}} running=${WAS:-?} key=${KEY:-?}"   # legacy-name
+printf '%s\n' "$TMP" > "$MARK"; echo "RESOLVED TMP=$TMP ${VER:-?} seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}} running=${WAS:-?} key=${MKT:-?}"   # legacy-name
 fi
 ```
 
