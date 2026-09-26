@@ -95,14 +95,18 @@ change (see the invariants below).
   - `guard-read-whole-file.js` (PreToolUse `Read` + `Bash`) - blocks whole-file dumps (also through the
     shell, any oversized file, a sweep over `.md` files). An unexpanded `$VAR` target is not judged; a
     leading `cd` moves the anchor; a counting expression is not a dump. Every denial carries the
-    `ToolSearch select:` line that loads the navigation server's tools.
+    `ToolSearch select:` line that loads the navigation server's tools. Its convention-rule announcement
+    names only a rule in the project's own `.claude/rules` - a plugin-launched hook's sibling `rules/` is
+    the whole catalog (it named `winforms-conventions.md` to a project without it, the 2026-09-26 pilot).
   - `guard-secret-value.js` (PreToolUse `Read` + `Bash`) - credentials are read for PRESENCE, never
     value. Judged by file CONTENT (a JSON/dotenv file holding a `secret_key_pattern` key with a live
     value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
-    Read tool and a credential literal stay blocked. A rewrite drops the rest of the command, so one
-    carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering read (`grep`,
-    `jq .path`, `head`) keeps its filter over the view. A connection-string / URL password and a PEM
+    Read tool and a credential literal stay blocked. A file or variable rewrite drops the rest of the
+    command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering
+    read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
+    stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
+    and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
     one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt.
   - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
@@ -251,8 +255,8 @@ change (see the invariants below).
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever;
-  the installer stamps its value over `__DOCS_ROOT__` on every run),
+  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever,
+  default `.alfred/docs`; the installer stamps its value over `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks the navigation server).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
@@ -266,7 +270,14 @@ change (see the invariants below).
     bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
     - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
     writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill through
-    `alfred-capture-claude-md`). `/alfred-code:update`
+    `alfred-capture-claude-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
+    settings value would apply over a launcher's) runs init with nobody answering: each ask takes its
+    Recommended option unless it is destructive (loses or replaces what the project or account owns - a
+    claude-hud `refresh` line) or needs a person (typed text, a restart), then the option that changes
+    nothing, one `unattended: <question> -> <choice>` line each (init.md 'Unattended'; `init-plan.js`
+    prints init's own four answers, `update-preflight.js` prints `unattended: on` for update's asks). Init
+    reads the stack's files through the Bash tool, never the Read tool, which asks before a read outside
+    the working directory. `/alfred-code:update`
     refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
     `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
     `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
@@ -526,7 +537,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
 - **The navigation server's state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
-  `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories).
+  `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories): the
+  installer writes `.serena/.gitignore` (`*`) whenever the server is kept, widening serena's own narrower
+  file (`/cache`, `/project.local.yml`) and keeping any other one as the project's.
 - **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
   the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
@@ -555,6 +568,25 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `/alfred-capture-related-projects` skill), not memory. The session HISTORY (`<docs-path>/history/`,
   `history-session.js`) is the fourth, machine-local and never shared: what each session did and what
   the user ruled, script-written, read back at the next start on the same branch - a record, not memory.
+- **The docs root lives outside `.claude/`** (2.0.0, the user's decision of 2026-09-26). Claude Code
+  protects `.claude/` (only `.claude/worktrees` is exempt): a write there is prompted in default and
+  acceptEdits mode, denied in `dontAsk`, and no `permissions.allow` rule pre-approves it
+  (code.claude.com/docs/en/permission-modes, 'Protected paths') - so every plan, capture and commit
+  receipt the model writes cost a prompt, and a headless run could not write them at all. The default
+  is `.alfred/docs`, stated in every code home of the fallback (`scripts/docs-root-default.test.js`
+  holds them to one value). The root carries its own `.gitignore` by `ALFRED_CODE_DOCS_VERSIONING`
+  (`docs.ensureDocsIgnore`, absent-only, never under `.claude/`): `local` keeps the whole root out of
+  git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
+  `tools-usage/`, `.branches/`, `docs-log.jsonl`). An install on the old default is never moved
+  silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the
+  catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - `update-preflight.js`
+  prints `docs-move: offer ...`, update asks move (recommended) or keep, and the answer is
+  `--docs-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
+  renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
+  re-stamped, a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
+  update offers again. No answer: nothing moves, and an absent key is written back as the old root so
+  the hooks keep reading where the docs are. A value the user set - in either settings file, or only in
+  the launch environment - is never offered; a conflict or an unreadable settings file moves nothing.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
@@ -687,7 +719,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `--source`; the script never deletes a borrowed source (`owned` in `scripts/install/source.js` is
   false for `--source` and the plugin cache), and the commands remove their `$TMP` on every exit path.
   Standalone (no `--source`) still resolves and cleans up what it fetched; keep that path working.
-  Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install.
+  Never `rm -rf` a plugin-cache entry: that is the CLI's own plugin install. The bash snippet keeps its
+  run marker and `$TMP` under `$TMPDIR` (`mktemp -d "$TD/alfred-code.XXXXXX"` - macOS `mktemp -d` alone
+  ignores `$TMPDIR`): a sandboxed command writes only there and in the project.
 - **The install is versioned, not the file.** `version:` exists only in plugin.json - a `version:` key on
   a skill/agent/rule is ignored; don't add one. Each run writes `alfred-code.stamp` (source commit, or
   the `v<version>` tag when the snapshot names none, + release version); configure diffs it via the GitHub compare API. A run whose source never resolved

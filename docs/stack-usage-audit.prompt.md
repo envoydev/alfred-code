@@ -160,7 +160,7 @@ always `<alfred-code repo>/docs/session-investigation/<project>/`.
 
 **Route 1 - the data is already generated.** Copy the WHOLE bundle set the project holds -
 `SUMMARY.md`, `_rollup.txt` as `rollup.txt`, and every per-session folder entire - out of
-`<project>/.claude/docs/alfred-code-usage-report/` (or its `ALFRED_CODE_DOCS_PATH` root). Add the
+`<project>/.alfred/docs/alfred-code-usage-report/` (or its `ALFRED_CODE_DOCS_PATH` root - `.claude/docs` on an install from before 2.0.0). Add the
 two ledgers per session from that same root (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`)
 where the bundle does not already carry them. Nothing is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
@@ -191,7 +191,7 @@ already stores its history, and this route reads it from here.
 | `report-usage.md` | `--report-md` (skeleton), or the authored file from the project route |
 | `<session-id>.jsonl` | copy of the transcript - ground truth, and the ONLY artifact carrying the actual messages |
 | `subagents/` | copy of the transcript's sibling folder when it exists |
-| `tool-usage-<sid>.jsonl` | the instrumentation ledger from the project's docs root (`<project>/.claude/docs/tools-usage/<sid>.jsonl`, or its `ALFRED_CODE_DOCS_PATH` root) |
+| `tool-usage-<sid>.jsonl` | the instrumentation ledger from the project's docs root (`<project>/.alfred/docs/tools-usage/<sid>.jsonl`, or its `ALFRED_CODE_DOCS_PATH` root) |
 | `hook-blocks-<sid>.jsonl` | the guard-block ledger from the same root - the only place naming WHICH hook denied a call |
 
    Pass `--hook-log <ledger>`, `--hook-blocks <that session's file, never the directory>` and
