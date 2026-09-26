@@ -383,7 +383,33 @@ function main()
                 // release CI's windows job, both pathspec tests, 0 where 2 was expected). stdio: git's
                 // own stderr is CAPTURED - inherited, a non-repo path printed `fatal: not a git
                 // repository` to the user on a call this gate then PASSED.
-                const rows = git(['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])]).split('\n').filter(Boolean);
+                const all = git(['status', '--porcelain', ...(pathspec.length ? ['--', ...pathspec] : [])]).split('\n').filter(Boolean);
+                // An untracked row is lost only to clean, or to a forced switch or reset whose TARGET tracks
+                // that path (git overwrites it); a path checkout, restore and a reset to HEAD never touch one,
+                // and clean never touches a tracked file (measured: the guard's own untracked ledger turned
+                // every whole-tree verb into a false block).
+                const untracked = (r) => r.startsWith('?? ');
+                const pathOf = (r) => r.slice(3).trim().replace(/^"|"$/g, '');
+                let rows = all.filter(untracked);
+                if (verb !== 'clean')
+                {
+                    const forced = verb === 'reset' || verb === 'switch'
+                        || (verb === 'checkout' && !pathspec.length && !args.includes('--') && args.some((a) => a.startsWith('-')));
+                    const target = forced ? args.find((a) => !a.startsWith('-')) : undefined;
+                    const loose = rows.map(pathOf);
+                    let clash = new Set();
+                    if (target && loose.length)
+                    {
+                        // a target git cannot list keeps every untracked row - never pass on our own failure
+                        try
+                        {
+                            const tracked = git(['ls-tree', '-r', '--name-only', target, '--', ...loose]).split('\n').filter(Boolean);
+                            clash = new Set(loose.filter((p) => tracked.some((t) => t === p || (p.endsWith('/') && t.startsWith(p)))));
+                        }
+                        catch { clash = new Set(loose); }
+                    }
+                    rows = all.filter((r) => !untracked(r) || clash.has(pathOf(r)));
+                }
                 return { kind: 'tree', pathspec, rows, targets: pathspec.length ? pathspec : rows.map((r) => r.slice(3).trim()) };
             }
             catch { return { kind: '', rows: [], targets: [] }; }

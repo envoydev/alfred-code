@@ -71,7 +71,8 @@ change (see the invariants below).
   - `guard-protected-force-push.js` - blocks force-push to protected branches.
   - `guard-catastrophic-rm.js` (PreToolUse `Bash`) - a recursive `rm` of an unrecoverable target, and
     `git checkout --` / `restore` / `reset --hard` / `clean -f` / a forced `checkout` or `switch` only when
-    the PATHSPEC the command names is dirty (judged where git runs: cwd, a leading `cd`, `-C`), plus
+    the PATHSPEC the command names is dirty (judged where git runs: cwd, a leading `cd`, `-C`; an untracked
+    file counts only for `clean` or a target that tracks it), plus
     `stash drop` / `stash clear` / `reflog expire` / `gc --prune=now` / `prune` by what they destroy; PowerShell `Remove-Item -Recurse`
     counts. A SQL `DROP` or `dotnet ef database drop` writes a log-only probe row. A 'discard it' answer
     is honoured via `<docs-path>/flow/DISCARD-ALLOW` (paths, `stash@{N}`, or `*`).

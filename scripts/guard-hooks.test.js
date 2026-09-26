@@ -694,6 +694,40 @@ test('guard-catastrophic-rm: the gate reads the PATHSPEC, and honours a discard 
   assert.equal(rm('git checkout -- .').status, 2, 'a receipt older than 8h reads as absent');
 });
 
+test('guard-catastrophic-rm: an untracked file is lost only to clean, or to a target that tracks the same path', () => {
+  // Measured in the 2.0.0 matrix: with only the guard's own ledger untracked, `checkout -f`, `switch
+  // --discard-changes`, `reset --hard` and `checkout -- .` were all denied, though none of them touches an
+  // untracked file. clean deletes exactly those; a forced switch or reset overwrites one only where the
+  // target tracks that path. And clean never touches a modified tracked file.
+  const dir = cleanRepo();
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('branch', 'other');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n'); // the guard's own ledger, ignored as a set-up project ignores it
+  const rm = (command) => runIn('guard-catastrophic-rm.js', { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, cwd: dir }).status;
+  fs.mkdirSync(path.join(dir, 'notes'));
+  fs.writeFileSync(path.join(dir, 'notes', 'scratch.md'), 'x\n');
+  for (const c of ['git checkout -f', 'git checkout -f other', 'git switch --discard-changes other', 'git reset --hard',
+    'git reset --hard other', 'git checkout -- .', 'git restore .'])
+    assert.equal(rm(c), 0, `an untracked file it never touches: ${c}`);
+  assert.equal(rm('git clean -fd'), 2, 'clean deletes exactly the untracked files');
+
+  git('checkout', '-q', 'other');
+  fs.writeFileSync(path.join(dir, 'clash.txt'), 'theirs\n');
+  git('add', 'clash.txt'); git('commit', '-qm', 'clash');
+  git('checkout', '-q', '-');
+  fs.writeFileSync(path.join(dir, 'clash.txt'), 'mine, untracked here\n');
+  for (const c of ['git checkout -f other', 'git switch --discard-changes other', 'git reset --hard other'])
+    assert.equal(rm(c), 2, `the target tracks clash.txt, so the untracked copy is overwritten: ${c}`);
+  assert.equal(rm('git reset --hard'), 0, 'HEAD does not track it - reset --hard keeps it');
+
+  fs.rmSync(path.join(dir, 'clash.txt'));
+  fs.rmSync(path.join(dir, 'notes'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'changed\n');
+  assert.equal(rm('git clean -fd'), 0, 'clean never touches a modified tracked file');
+  assert.equal(rm('git reset --hard'), 2, 'which reset --hard does discard');
+});
+
 test('guard-catastrophic-rm: a forced checkout or switch, a stash drop or clear and a reflog expire lose work too', () => {
   // Five verbs with no undo walked past the four the gate knew (reproduced on a dirty tree): a forced
   // branch change overwrites the tree, a dropped stash and an expired reflog are the recovery points.
