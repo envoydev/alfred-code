@@ -89,3 +89,22 @@ test('seed update on macOS over a project a Windows machine enabled windows-desk
     assert.deepStrictEqual(calls.filter((c) => /^plugin \S+ windows-desktop@/.test(c)), [], `a row the other OS enabled was touched:\n${calls.join('\n')}`);
     assert.match(out, /desktop: windows-desktop left out - it drives Windows apps and this machine runs macOS/);
 });
+
+// The skill that teaches the desktop servers arrives with either one (the graph's server -> skill edge),
+// and never without one: an --add the OS gate refuses brings no skill either.
+test('the desktop skill arrives with its server, and never with a server this OS refuses', POSIX_ONLY, () =>
+{
+    const has = (repo) => fs.existsSync(path.join(repo, '.claude', 'skills', 'desktop-automation', 'SKILL.md'));
+    const add = (platform) => seedRun('update', 'skill markdown-style\n', { plugins: INSTALLED(), args: ['--installed-only', '--add', 'mcp macos-desktop'], prepare, env: { ALFRED_CODE_PLATFORM: platform }, inspect: has });
+    const mac = add('darwin');
+    assert.strictEqual(mac.result, true, `macOS --add brought no skill:\n${mac.out}`);
+    const linux = add('linux');
+    assert.strictEqual(linux.result, false, `Linux copied the skill of a server it left out:\n${linux.out}`);
+    assert.strictEqual((linux.out.match(/desktop: macos-desktop left out/g) || []).length, 1, 'the skip is said once');
+    // setup hands the installer the walk's selection as stack-select emits it - already closed.
+    const { computeClosure, emitSelectionFile } = require('./stack-select.js');
+    const emitted = emitSelectionFile(computeClosure(require('../meta/stack-graph.json'), { skills: ['markdown-style'], rules: ['wpf-conventions'], mcps: ['windows-desktop'] }));
+    assert.ok(emitted.split('\n').includes('skill desktop-automation'), emitted);
+    const win = seedRun('install', emitted, { env: { ALFRED_CODE_PLATFORM: 'win32' }, inspect: has });
+    assert.strictEqual(win.result, true, 'a wpf selection on Windows copies the skill with its server');
+});

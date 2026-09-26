@@ -1176,3 +1176,33 @@ test('the desktop gate reaches --missing and a selection: a wrong-OS server is n
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+// A SERVER CAN BRING THE SKILL THAT TEACHES IT (meta/stack-manifest.json mcps[].skills, read into the
+// graph's `mcps` block): the desktop servers bring desktop-automation, so the skill arrives wherever
+// either server does - a walk's seed, an --add - and a configure drop cascades both ways.
+test('a server pulls the skill it brings; dropping the server orphans it, and the skill names the server as its dependent', () => {
+    const { findDependents, findOrphans } = require('./stack-select.js');
+    const g = {
+        skills: { 'desktop-automation': { mcps: [], plugins: [] }, csharp: { mcps: [], plugins: [] } },
+        agents: {}, rules: {},
+        mcps: { 'windows-desktop': { skills: ['desktop-automation'] }, 'macos-desktop': { skills: ['desktop-automation'] } },
+        catalog: { mcps: ['windows-desktop', 'macos-desktop', 'navigation'], plugins: [], hooks: [] },
+    };
+    const c = computeClosure(g, { mcps: ['macos-desktop'] });
+    assert.deepStrictEqual(c.skills, ['desktop-automation']);
+    assert.strictEqual(c.reasons['desktop-automation'], 'required by mcp macos-desktop');
+    assert.deepStrictEqual(computeClosure(g, { mcps: ['navigation'] }).skills, [], 'a server that brings nothing pulls nothing');
+    assert.deepStrictEqual(computeClosure({ ...g, mcps: undefined }, { mcps: ['windows-desktop'] }).skills, [], 'a graph with no mcps block (an older release) still closes');
+    assert.deepStrictEqual(findDependents(g, { mcps: ['windows-desktop'], skills: ['desktop-automation'] }, 'skills', 'desktop-automation'),
+        [{ category: 'mcp', name: 'windows-desktop' }]);
+    const orphans = findOrphans(g, { skills: ['desktop-automation', 'csharp'], mcps: [] }, { mcps: ['windows-desktop'] });
+    assert.deepStrictEqual(orphans.map((o) => `${o.category} ${o.name}`), ['skill desktop-automation']);
+});
+
+test('the generated graph: each desktop server brings desktop-automation, and the skill\'s own server mentions pull nothing', () => {
+    for (const name of ['windows-desktop', 'macos-desktop'])
+        assert.deepStrictEqual((graph.mcps || {})[name], { skills: ['desktop-automation'] }, name);
+    const c = computeClosure(graph, { skills: ['desktop-automation'] });
+    assert.deepStrictEqual(c.mcps, [], 'naming both servers in the skill must never install both');
+    assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-desktop'] }).skills.includes('desktop-automation'));
+});

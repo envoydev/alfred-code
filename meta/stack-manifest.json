@@ -383,6 +383,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "desktop-automation",
+      "note": "driving a native desktop app through windows-desktop / macos-desktop: observe, one action, verify; app-type quality; dialogs never driven; the OS setup failures - arrives with either desktop server"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "postgres",
       "note": "PostgreSQL engine delta: index types, JSONB, SARGability, EXPLAIN, pooling"
     },
@@ -979,12 +984,18 @@
       "name": "windows-desktop",
       "active": false,
       "args": "-e WINDOWS_MCP_EXCLUDE_TOOLS=@WINDOWS_DESKTOP_EXCLUDE@ -- uvx --python @UV_PYTHON@ --from windows-mcp@WINDOWS_DESKTOP_PIN@ windows-mcp serve",
+      "skills": [
+        "desktop-automation"
+      ],
       "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry and Process off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise"
     },
     {
       "name": "macos-desktop",
       "active": false,
       "args": "-- uvx --python @UV_PYTHON@ --from macos-mcp@MACOS_DESKTOP_PIN@ macos-mcp serve",
+      "skills": [
+        "desktop-automation"
+      ],
       "note": "the macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API; macOS only, addable, seeded by no stack; opt-in (active: false); needs Accessibility and Screen Recording for the terminal and the uv-managed Python"
     }
   ],

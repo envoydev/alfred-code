@@ -25,7 +25,7 @@ const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/des
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
 // agent -> skill/agent (to fixpoint), then every kept skill/agent/rule -> its
-// mcps/plugins. raw.mcps/raw.plugins are direct picks kept as-is - that is how a
+// mcps/plugins, then every kept server -> the skill it brings. raw.mcps/raw.plugins are direct picks kept as-is - that is how a
 // user-added MCP or plugin beyond the closure survives a re-run. raw.hooks are
 // pure leaf picks: nothing pulls a hook and a hook pulls nothing.
 function computeClosure(graph, raw)
@@ -66,6 +66,22 @@ function computeClosure(graph, raw)
     for (const s of skills) pull(graph.skills[s], `required by skill ${s}`);
     for (const a of agents) pull(graph.agents[a], `required by agent ${a}`);
     for (const r of rules) pull(graph.rules[r], `required by rule ${r}`);
+    // A server brings the skill that teaches it (the graph's `mcps` block): the desktop servers bring
+    // desktop-automation, so the skill arrives wherever either one does. What it brings pulls its own
+    // servers and plugins in turn, to a fixpoint.
+    for (let grew = true; grew;)
+    {
+        grew = false;
+        for (const m of [...mcps])
+            for (const s of ((graph.mcps || {})[m] || {}).skills || [])
+            {
+                if (skills.has(s)) continue;
+                skills.add(s);
+                note(s, `required by mcp ${m}`);
+                pull(graph.skills[s], `required by skill ${s}`);
+                grew = true;
+            }
+    }
 
     const sort = set => [...set].sort();
     return { skills: sort(skills), agents: sort(agents), rules: sort(rules), mcps: sort(mcps), plugins: sort(plugins), hooks: sort(hooks), reasons };
@@ -296,8 +312,8 @@ function categoryOf(closure, name)
 }
 
 // The inverse cascade: everything in the remaining selection that (transitively)
-// requires <name> - the rules/agents (and, for mcps/plugins, skills) whose own
-// closure reaches it. Dropping a locked item honestly means dropping these too;
+// requires <name> - the rules/agents (and, for mcps/plugins, skills; for a skill, the
+// servers that bring it) whose own closure reaches it. Dropping a locked item honestly means dropping these too;
 // the configure flow presents them for a consent-drop instead of a flat refusal.
 function findDependents(graph, remaining, category, name)
 {
@@ -308,6 +324,10 @@ function findDependents(graph, remaining, category, name)
     if (category === 'mcps' || category === 'plugins')
     {
         for (const s of remaining.skills || []) if (reaches({ skills: [s] })) deps.push({ category: 'skill', name: s });
+    }
+    if (category === 'skills')
+    {
+        for (const m of remaining.mcps || []) if (reaches({ mcps: [m] })) deps.push({ category: 'mcp', name: m });
     }
 
     return deps;

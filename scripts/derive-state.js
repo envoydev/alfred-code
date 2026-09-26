@@ -287,9 +287,13 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const hookOff = (h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') });
     const rows = [];
+    // A skill a server brings arrives with that server (the graph's `mcps` block) - offered alone, it is
+    // a skill with nothing to drive.
+    const brought = new Set(Object.values((graph && graph.mcps) || {}).flatMap((n) => n.skills || []));
     for (const { category, name, from, oldOnDisk } of added)
     {
         if (!ships[category] || !ships[category].has(name)) continue;
+        if (category === 'skill' && brought.has(name)) continue;
         const row = { category, name, verdict: 'offer', entry: null };
         if (category === 'rule') { if ((always.rules || []).includes(name)) row.verdict = 'arrives'; }
         else if (category === 'hook')

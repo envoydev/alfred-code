@@ -31,7 +31,7 @@ The stack is built for this house's verticals:
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
-| **Skills** | 87 | house conventions + workflow skills: the always-on ones ride the core plugin, every other pick is a library copy in `.claude/skills/` |
+| **Skills** | 88 | house conventions + workflow skills: the always-on ones ride the core plugin, every other pick is a library copy in `.claude/skills/` |
 | **Agents** | 44 | model/effort-pinned subagents: the core seats ride the core plugin, every other pick is a library copy in `.claude/agents/` |
 | **Rules** | 20 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |

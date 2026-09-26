@@ -349,6 +349,21 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`browser-${e}`) && !mcpjsonOff.includes(`playwright-${e}`) : undefined);
 
         let picked = null;
+        // The desktop servers drive THIS machine's own apps (stack/mcp/desktop-launch.js): each is kept on its
+        // own OS only, and one left out is said in one line - never installed to fail at launch. `io.platform`
+        // (the tests) or ALFRED_CODE_PLATFORM stands in for the OS. Gated BEFORE a closure too, so a server this
+        // OS refuses brings no skill in either.
+        const platform = io.platform || platformOf(env);
+        const desktopSaid = new Set();
+        const desktopLines = (lines) => lines.filter((l) =>
+        {
+            const m = /^mcp (\S+)$/.exec(String(l).trim());
+            const gate = m ? mcp.desktopGate({ mcps: [m[1]], platform }) : null;
+            if (!gate || gate.kept.length) return true;
+            if (!desktopSaid.has(m[1])) log(gate.lines[0]);
+            desktopSaid.add(m[1]);
+            return false;
+        });
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
         // require) - the stamp records that, never everything the enabled entries carry, or the next
         // closure would run over items no one picked.
@@ -403,7 +418,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 return 1;
             }
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
-            const withAdds = selection.addLines(back.lines, args.add, log);
+            const withAdds = desktopLines(selection.addLines(back.lines, args.add, log));
             const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
             // The always-on rules and servers are locked: the read-back adopts them whatever the disk
             // says, so a drop of one would come straight back on the next update.
@@ -416,7 +431,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // update's closure undoes is no drop at all.
             const withDrops = selection.dropLines(withAdds, drops, log);
             const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log: say });
-            const from = [...back.closeFrom, ...args.add].filter((l) => !drops.includes(l));
+            const from = desktopLines([...back.closeFrom, ...args.add]).filter((l) => !drops.includes(l));
             let closed = close(withDrops, from, log);
             // A layer the closure brought in (a skill requiring context7 in an install that carried
             // no server) is carried now, so the locked set joins it in THIS run - adopted only by the
@@ -460,16 +475,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         {
             const [category, name] = line.split(' ');
             const key = Object.keys(selection.CATEGORY).find((k) => selection.CATEGORY[k].line === category);
+            if (key === 'mcps' && desktopSaid.has(name)) continue;   // shipped, and left out by the OS gate above
             if (!(lists[key] || []).some((e) => selection.CATEGORY[key].name(e) === name))
                 note(`--add ${line} names nothing this release ships - ignored`);
         }
-        // The desktop servers drive THIS machine's own apps (stack/mcp/desktop-launch.js): each is kept on its
-        // own OS only, and one left out is said in one line - never installed to fail at launch. `io.platform`
-        // (the tests) or ALFRED_CODE_PLATFORM stands in for the OS.
-        const platform = io.platform || platformOf(env);
+        // A selection file is already closed, so the gate reads its server lines here (said once per name).
         const desktop = mcp.desktopGate({ mcps: lists.mcps, platform });
         lists.mcps = desktop.kept;
-        for (const line of desktop.lines) log(line);
+        for (const line of desktop.lines) if (!desktopSaid.has(line.split(' ')[1])) log(line);
 
         // --- the two entries assembled at install time -----------------------------
         const pins = args.printPlan

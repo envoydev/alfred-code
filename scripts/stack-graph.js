@@ -112,7 +112,9 @@ const MCP_COMMON_WORDS = new Set(['browser']);
 // alfred-capture-agent-capabilities documents the house routing map for every server so the
 // generated rule can be stamped from it - selecting it must never lock the whole MCP
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
-const DOC_MENTION_SKILLS = new Set(['alfred-capture-agent-capabilities']);
+// desktop-automation teaches BOTH desktop servers, one per OS: its mentions of them are the subject, and
+// the edge runs the other way (each server brings the skill - the graph's `mcps` block, below).
+const DOC_MENTION_SKILLS = new Set(['alfred-capture-agent-capabilities', 'desktop-automation']);
 
 // Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
 // workspace also load `ionic`') and routing-away prose ('EF logic routes through
@@ -152,6 +154,17 @@ function skillFiles(name)
     return files.filter(fs.existsSync);
 }
 
+function bringsSkills(cat)
+{
+    const out = {};
+    for (const row of lint.readStackManifest().mcps || [])
+    {
+        const skills = (Array.isArray(row.skills) ? row.skills : []).filter((s) => cat.skills.has(s)).sort();
+        if (skills.length) out[row.name] = { skills };
+    }
+    return out;
+}
+
 function buildStackGraph()
 {
     const cat = catalogs();
@@ -161,6 +174,9 @@ function buildStackGraph()
         agents: {},
         rules: {},
         catalog: { mcps: [...cat.mcps].sort(), plugins: [...cat.plugins].sort(), dependencyPlugins: cat.dependencyPlugins, hooks: cat.hooks },
+        // server -> the skill it brings (meta/stack-manifest.json mcps[].skills): the one edge that points
+        // back at a skill, so the skill arrives wherever the server does.
+        mcps: bringsSkills(cat),
     };
 
     for (const name of [...cat.skills].sort())

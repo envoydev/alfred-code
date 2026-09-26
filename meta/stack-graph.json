@@ -177,6 +177,10 @@
       "mcps": [],
       "plugins": []
     },
+    "desktop-automation": {
+      "mcps": [],
+      "plugins": []
+    },
     "dev-log-convert": {
       "mcps": [],
       "plugins": []
@@ -1185,5 +1189,17 @@
       "memory-session",
       "monitor-session"
     ]
+  },
+  "mcps": {
+    "windows-desktop": {
+      "skills": [
+        "desktop-automation"
+      ]
+    },
+    "macos-desktop": {
+      "skills": [
+        "desktop-automation"
+      ]
+    }
   }
 }

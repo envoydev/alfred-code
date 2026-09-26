@@ -802,3 +802,11 @@ test('classifyNew: an item the 1.x-named core carries arrives, and a 1.x seat de
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r.verdict]));
     assert.deepStrictEqual(by, { 'skill markdown-style': 'arrives', 'agent code-style-analyzer': 'off', 'hook docs-session': 'arrives' });
 });
+
+// A skill a server brings (the graph's `mcps` block) arrives with that server and is no pick of its own:
+// update never offers it alone - on a project without a desktop server it would be dead weight.
+test('classifyNew: a skill that arrives with its server is never offered alone', () =>
+{
+    const rows = classifyNew({ added: [{ category: 'skill', name: 'desktop-automation' }, { category: 'skill', name: 'angular-material' }], plugins: ['alfred-code'], routes: ALL_ROUTES, sourceDir: ROOT });
+    assert.deepStrictEqual(rows.map((r) => r.name), ['angular-material']);
+});
