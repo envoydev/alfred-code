@@ -62,13 +62,14 @@ platform, pre-set env var or not:
 
 ```bash
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-MARK="/tmp/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
+TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
+MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 if [ -f "$MARK" ] && [ -d "$(cat "$MARK")/repo" ]; then
   TMP=$(cat "$MARK"); echo "REUSING TMP=$TMP seed=${ALFRED_CODE_SEED:-${CLAUDE_STACK_SEED:-node}}"   # a valid marker from an earlier call; legacy-name: the 1.x setting too
 else
 REPO_URL=https://github.com/envoydev/alfred-code
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "$TD/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 WAS=""        # LATEST first: only `plugin update` lands a newer cache entry, and the newest entry IS the snapshot
 KEY=""        # the marketplace key the core is listed under - a 1.x install keeps its own
 if command -v claude >/dev/null 2>&1; then
@@ -180,16 +181,19 @@ it.** Each Bash call is its own shell, so a `TMP=$(mktemp -d)` set in one call i
 the resolve-or-reuse block above already keys and tests this marker itself, first call or later, a
 stale marker (its `$TMP/repo` gone) falling straight back to a fresh resolve with no separate check.
 The marker name is DERIVED, never a fixed path: two Claude Code sessions on one machine run these
-commands concurrently in different projects, and a shared `/tmp/alfred-code-run.path` hands the
+commands concurrently in different projects, and a shared `alfred-code-run.path` hands the
 second run's `$TMP` to the first - measured: an installer log came back holding the other session's
 lines, and the other session's cleanup step deleted the still-live `$TMP` out from under a run in
 progress. The name is a readable prefix of the root plus a hash of the WHOLE root: a prefix alone let two
 roots under one deep parent (sibling worktrees) share a marker, and one reused the other's stale `$TMP`.
-Every later call in this run just re-reads it:
+It lives under `$TMPDIR`, as does `$TMP`: a sandboxed command may write only there and in the project
+(code.claude.com/docs/en/sandboxing, 'Filesystem isolation'), so a marker in a fixed `/tmp` was refused
+and every call resolved a fresh `$TMP`. Every later call in this run just re-reads it:
 
 ```bash
 RUN_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-MARK="/tmp/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
+TD="${TMPDIR:-/tmp}"; TD="${TD%/}"   # a sandboxed command writes only under $TMPDIR (and the project)
+MARK="$TD/alfred-code-run.$(printf '%s' "$RUN_ROOT" | tr -c 'A-Za-z0-9' '-' | cut -c1-60)-$(printf '%s' "$RUN_ROOT" | git hash-object --stdin | cut -c1-12).path"
 TMP=$(cat "$MARK")
 TMP_WIN=$(cygpath -w "$TMP" 2>/dev/null || printf '%s' "$TMP")         # Windows spelling, empty-safe
 ```

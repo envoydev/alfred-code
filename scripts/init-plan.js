@@ -24,6 +24,11 @@
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
+//   unattended: <question> -> <choice>
+//     Only with ALFRED_CODE_UNATTENDED=1: the answer to each ask init itself owns, after the plan -
+//     the recommended option unless it is destructive or needs a person (init.md, 'Unattended').
+//     `--mode` alone prints `unattended: on|off` and nothing else, for init's first call.
+//
 // Exit 0 with the plan, 2 on an unreadable --installed file.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -164,12 +169,33 @@ function render({ machine, captures })
     return lines;
 }
 
-module.exports = { plan, render, probes, browsersDir, CAPTURES };
+// UNATTENDED - nobody answers the asks. The switch is exactly '1', like every other stack switch.
+const isUnattended = (env = process.env) => String(env.ALFRED_CODE_UNATTENDED || '').trim() === '1';
+// A machine line whose command REPLACES something already there (claude-hud's own status line in a
+// stale shape, after a backup) is destructive; `missing` ones only add. init.md defines the word.
+const DESTRUCTIVE_MACHINE = ['refresh'];
+function unattended({ machine, captures })
+{
+    const lines = [];
+    const take = machine.filter((m) => m.state === 'missing' || m.state === 'missing after uv').map((m) => m.what);
+    if (take.length) lines.push(`unattended: machine installs -> install ${take.join(', ')}`);
+    for (const m of machine.filter((x) => DESTRUCTIVE_MACHINE.includes(x.state)))
+        lines.push(`unattended: machine installs -> skip ${m.what} (a refresh replaces the account's existing status line - destructive)`);
+    lines.push('unattended: memory level -> global (Recommended)');
+    // Its only real answer is a sibling list someone types - an unattended run would be inventing one.
+    if (captures.some((c) => c.skill === 'alfred-capture-related-projects' && c.state === 'run'))
+        lines.push('unattended: related projects -> none - skip it (naming the siblings needs a person)');
+    lines.push('unattended: CLAUDE.md -> fill it in (Recommended)');
+    return lines;
+}
+
+module.exports = { plan, render, probes, browsersDir, CAPTURES, unattended, isUnattended, DESTRUCTIVE_MACHINE };
 
 if (require.main === module)
 {
     const argv = process.argv.slice(2);
     const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+    if (argv.includes('--mode')) { console.log(`unattended: ${isUnattended() ? 'on' : 'off'}`); process.exit(0); }
     // A --space that names no profile would plan the default account instead.
     if (argv.some((a) => a.startsWith('--space=')) || (argv.includes('--space') && !flag('--space')))
     {
@@ -186,7 +212,11 @@ if (require.main === module)
     }
     const root = path.resolve(flag('--root') || process.cwd());
     let lines;
-    try { lines = render(plan({ inv, root, pluginRoot: flag('--plugin-root') || '', space: flag('--space') || '' })); }
+    try
+    {
+        const planned = plan({ inv, root, pluginRoot: flag('--plugin-root') || '', space: flag('--space') || '' });
+        lines = render(planned).concat(isUnattended() ? unattended(planned) : []);
+    }
     catch (err) { console.error(`init-plan: ${err.message}`); process.exit(2); }
     for (const line of lines) console.log(line);
 }

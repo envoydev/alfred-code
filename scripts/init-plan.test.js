@@ -294,3 +294,79 @@ for (const rel of ['stack/CLAUDE.template.md', 'setup-plugin/references/post-ins
         assert.deepStrictEqual(firstSeen, names);
     });
 }
+
+// --- unattended (ALFRED_CODE_UNATTENDED=1) ---------------------------------------------------------
+// Nobody answers: init takes each ask's recommended option unless it is destructive or needs a person,
+// and says so in one `unattended:` line per ask. The asks init itself owns are decided HERE, so the
+// command never judges them; init.md defines the rule for the asks a capture reaches.
+const { unattended, isUnattended, DESTRUCTIVE_MACHINE } = require('./init-plan.js');
+
+test('unattended: the switch is ALFRED_CODE_UNATTENDED=1 and nothing else', () =>
+{
+    assert.strictEqual(isUnattended({ ALFRED_CODE_UNATTENDED: '1' }), true);
+    for (const v of [undefined, '', '0', 'true', 'yes']) assert.strictEqual(isUnattended({ ALFRED_CODE_UNATTENDED: v }), false, String(v));
+});
+
+test('unattended: each of init\'s own asks gets one line - additive installs taken, a refresh skipped as destructive', () =>
+{
+    const p = { machine: [
+        { what: 'uv', state: 'missing', detail: 'curl ...' },
+        { what: 'python 3.13', state: 'missing after uv', detail: 'uv python install 3.13' },
+        { what: 'csharp-ls', state: 'blocked', detail: 'needs .NET' },
+        { what: 'serena index', state: 'present', detail: '' },
+        { what: 'claude-hud status line + compact layout', state: 'refresh', detail: 'node hud ...' },
+    ], captures: [{ skill: 'alfred-capture-related-projects', state: 'run', detail: 'read x' }, { skill: 'alfred-capture-architecture', state: 'run', detail: 'read y' }] };
+    assert.deepStrictEqual(DESTRUCTIVE_MACHINE, ['refresh']);
+    assert.deepStrictEqual(unattended(p), [
+        'unattended: machine installs -> install uv, python 3.13',
+        'unattended: machine installs -> skip claude-hud status line + compact layout (a refresh replaces the account\'s existing status line - destructive)',
+        'unattended: memory level -> global (Recommended)',
+        'unattended: related projects -> none - skip it (naming the siblings needs a person)',
+        'unattended: CLAUDE.md -> fill it in (Recommended)',
+    ]);
+});
+
+test('unattended: nothing to install and no related-projects capture - no line for an ask that never fires', () =>
+{
+    const lines = unattended({ machine: [{ what: 'uv', state: 'present', detail: '' }], captures: [{ skill: 'alfred-capture-related-projects', state: 'done', detail: 'x exists' }] });
+    assert.deepStrictEqual(lines, ['unattended: memory level -> global (Recommended)', 'unattended: CLAUDE.md -> fill it in (Recommended)']);
+});
+
+test('unattended: the CLI prints the mode on --mode, and the decisions after the plan only when the switch is on', { skip: process.platform === 'win32' && 'shell stubs' }, () =>
+{
+    const root = project();
+    const inv = path.join(root, 'installed.json');
+    fs.writeFileSync(inv, JSON.stringify(INV({ browser: { installed: [], enabled: [] }, plugins: [] })));
+    const env = (on) => ({ PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...(on ? { ALFRED_CODE_UNATTENDED: '1' } : {}) });
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(true), encoding: 'utf8' }).stdout, 'unattended: on\n');
+    assert.strictEqual(spawnSync(process.execPath, [SCRIPT, '--mode'], { env: env(false), encoding: 'utf8' }).stdout, 'unattended: off\n');
+    const on = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(true), encoding: 'utf8' }).stdout.trim().split('\n');
+    const off = spawnSync(process.execPath, [SCRIPT, '--installed', inv, '--root', root], { env: env(false), encoding: 'utf8' }).stdout.trim().split('\n');
+    assert.ok(!off.some((l) => l.startsWith('unattended:')), 'attended: the plan alone');
+    assert.deepStrictEqual(on.slice(0, off.length), off, 'the plan lines are unchanged');
+    assert.ok(on.slice(off.length).every((l) => l.startsWith('unattended: ')) && on.length > off.length);
+});
+
+test('unattended: init.md defines destructive and the rule every other ask follows, and names the code\'s own classification', () =>
+{
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'init.md'), 'utf8');
+    const section = body.slice(body.indexOf('## Unattended'), body.indexOf('\n## ', body.indexOf('## Unattended') + 3));
+    assert.ok(body.includes('## Unattended'), 'the section exists');
+    assert.match(section, /\*\*Destructive\*\* means/);
+    assert.match(section, /`unattended: <question> -> <choice>`/);
+    assert.match(section, /never AskUserQuestion/i);
+    for (const state of DESTRUCTIVE_MACHINE) assert.ok(section.includes(`\`${state}\``), `the section names the ${state} machine line`);
+    assert.match(section, /never the Read tool/);
+});
+
+test('unattended: update\'s preflight says it too, so update answers its own asks by the same rule', () =>
+{
+    const root = project();
+    const snap = path.join(__dirname, '..');
+    const run = (extra) => spawnSync(process.execPath, [path.join(__dirname, 'update-preflight.js'), '--snapshot', snap, '--root', root, '--fixture', path.join(root, 'none.json')],
+        { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: ACCT, ...extra } }).stdout;
+    assert.match(run({ ALFRED_CODE_UNATTENDED: '1' }), /^unattended: on$/m);
+    assert.doesNotMatch(run({}), /^unattended:/m);
+    const body = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'commands', 'update.md'), 'utf8');
+    assert.match(body, /`unattended: on`[^\n]*\n?[^\n]*init\.md/, 'update.md reads the line and points at the one rule');
+});

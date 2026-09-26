@@ -214,7 +214,9 @@ It prints, in order:
   below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
-  and neither do you. **Never dump that file** - a plain `cat` of it put a live 71-character
+  and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
+  ask below is answered by `/alfred-code:init`'s Unattended rule (init.md) instead of AskUserQuestion.
+  **Never dump that file** - a plain `cat` of it put a live 71-character
   `SENTRY_ACCESS_TOKEN` into a transcript twice in this collection. When you need to look again,
   the safe reads are `node "$TMP/repo/stack/hooks/guard-secret-value.js" --redacted <settings.json>`
   (every credential value shown as `<set (N chars)>`, the rest as written - the one form that
@@ -275,7 +277,9 @@ each. A `conflicts=<n>` field means files already sit at the new root: do not as
 run without the flag (the old root stays in effect), and the next update offers again once they are
 moved. After a move the log carries `docs root: moved ...`, the `--log` call prints `restart: yes`,
 and until that restart this session writes under the NEW root - its loaded rule text still names
-the old one.
+the old one. Unattended, both asks take their Recommended option - the move overwrites nothing (a
+conflict already stops it) and adding the recommended items only adds - each logged as one
+`unattended: <question> -> <choice>` line.
 
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through

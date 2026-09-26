@@ -236,6 +236,39 @@ test("the protocol's bash snippet resolves the newest valid cache entry", () => 
     }
 });
 
+// A sandboxed Bash command writes only under the working directory and the session temp dir $TMPDIR
+// points to (code.claude.com/docs/en/sandboxing, 'Filesystem isolation') - a marker in a fixed /tmp is
+// refused there, so every call resolved a fresh $TMP and lost the last one's files. The marker follows
+// $TMPDIR, falling back to /tmp where nothing sets it.
+test("the protocol's bash snippet keeps its run marker under $TMPDIR, and a second call reuses it", POSIX_STUB, () => {
+    const home = work();
+    const script = path.join(home, 'resolve.sh');
+    const sbx = path.join(home, 'session-tmp');
+    fs.mkdirSync(sbx);
+    const tmps = [];
+    try
+    {
+        plantThree(home);
+        fs.writeFileSync(script, protocolSnippet('bash', 0));
+        const env = { ...process.env, TMPDIR: sbx, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), PATH: stubClaude(home, '[]') };
+        const first = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
+        const m = first.match(/RESOLVED TMP=(\S+)/);
+        assert.ok(m, first);
+        tmps.push(m[1]);
+        assert.deepStrictEqual(fs.readdirSync(sbx).filter((f) => f.startsWith('alfred-code-run.')).length, 1, 'the marker is under $TMPDIR');
+        // macOS's own mktemp -d picks the per-user temp dir whatever $TMPDIR says (measured), so the
+        // snippet names the directory in its template.
+        assert.strictEqual(path.dirname(m[1]), sbx, '$TMP itself is under $TMPDIR');
+        const second = execFileSync('bash', [script], { cwd: home, encoding: 'utf8', env });
+        assert.match(second, new RegExp(`^REUSING TMP=${m[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `, 'm'), 'the next call finds the same $TMP');
+    }
+    finally
+    {
+        for (const p of tmps) fs.rmSync(p, { recursive: true, force: true });
+        fs.rmSync(home, { recursive: true, force: true });
+    }
+});
+
 test("the protocol's PowerShell snippet resolves the same entry", { skip: skipNoPwsh }, () => {
     const home = work();
     const script = path.join(home, 'resolve.ps1');

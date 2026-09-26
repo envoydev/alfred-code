@@ -34,6 +34,7 @@
 //                                           (the one-time move out of the old default docs root;
 //                                           a project install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
+//   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
 // Exit codes are stamp-compare's, passed through so the caller's branching is unchanged:
 // 0 = compare done, 2 = no stamp, 3 = compare unreachable. A usage error is 1.
@@ -409,6 +410,8 @@ function main()
 
     const keys = settings && settings.env ? Object.keys(settings.env).sort() : [];
     console.log(`env-keys: ${keys.length ? keys.join(',') : 'none'}`);
+    // Nobody answers this run: the command answers its own asks by init.md's Unattended rule.
+    if (require('./init-plan.js').isUnattended()) console.log('unattended: on');
 
     process.exit(typeof res.status === 'number' ? res.status : 3);
 }

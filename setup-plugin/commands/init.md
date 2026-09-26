@@ -7,10 +7,12 @@ disable-model-invocation: true
 
 You are bootstrapping an install `/alfred-code:setup` laid down, in a session started AFTER its
 restart - the plugins, servers and seats it installed load at session start, and this run uses
-them. Three checks come first, in order, each one line. The first is one script read,
-`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state .`, which reads the same install
-records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied <!-- legacy-name -->
-`hooks/docs.js`) in this repo, its git top level or a worktree's main checkout:
+them. Three checks come first, in order, each one line. The first is one call,
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/install/stamp.js" state . ; node "${CLAUDE_PLUGIN_ROOT}/scripts/init-plan.js" --mode`:
+its first line reads the same install records the hooks read (`alfred-code.stamp`, the 1.x
+`claude-stack.stamp`, a copied `hooks/docs.js`) in this repo, its git top level or a worktree's <!-- legacy-name -->
+main checkout; its second, `unattended: on|off`, says whether anyone answers this run's asks
+(`on` - the Unattended section below governs every ask from here):
 
 - **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
   then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
@@ -33,11 +35,21 @@ model's row in `.claude/hooks/model-windows.json`, else `ALFRED_CODE_DEFAULT_CON
 when that hook has already injected the ask into this turn. Below the trigger, or when the figure
 cannot be read at all, SKIP the ask silently and start step 1. When it fires, put it through
 AskUserQuestion: run here anyway, or run in a fresh session (recommended), quoting the figure you
-measured; fresh session -> give the paste-ready one-liner and end the turn.
+measured; fresh session -> give the paste-ready one-liner and end the turn. Unattended, it is never
+asked: `unattended: fresh session -> run here (the recommended one hands the run to a person)`.
 
-**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
+**Read the stack's own files through the Bash tool (`cat "<file>"`), never the Read tool** - this
+protocol, a SKILL.md the plan names, every `references/` file inside one. They sit outside the
+working directory (the plugin cache, `$TMP`), where the Read tool asks before every read in default
+and acceptEdits mode, while a read-only Bash command carries the broader read access
+(code.claude.com/docs/en/security, 'Working directory boundary') and a sandboxed one runs without a
+prompt (code.claude.com/docs/en/permissions) - an unattended run has nobody to answer that ask. A
+launcher that wants the Read tool to reach them too starts the session with
+`--add-dir "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache" --add-dir "${TMPDIR:-/tmp}"`.
 
-**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid.
+**THE PLUGIN CACHE IS THE SNAPSHOT - the common run downloads nothing but a newer release** - read `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/source-protocol.md` (through Bash, as above) before step 1 and hold the whole run to it: resolve the snapshot once into `$TMP/repo`, use every tool from that snapshot, and remove `$TMP` per its 'Clean up' section on every exit path. Its 'Narrate, don't trace' section governs every tool call: one quiet call per recompute, no pasted tool output except the plan and the tables named below, one narration line between steps.
+
+**Every ask in this run goes through the AskUserQuestion tool** - concrete options, the recommended one marked, free text via Other; a prose question or a bare stop-and-wait is invalid. Unattended, no ask is put at all: the Unattended section answers each one.
 
 **House voice in every line this run emits** - narration, tables and the asks alike: single
 dashes, never em-dashes, and single quotes in prose.
@@ -53,7 +65,7 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
 
 ## 2. The plan - a script states it, never you
 
-`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order:
+`node "$TMP/repo/scripts/init-plan.js" --installed "$TMP/installed.json" --root . --plugin-root "${CLAUDE_PLUGIN_ROOT}"` (plus `--space <name>` on step 4's rule) - paste its lines byte-for-byte in ONE fenced block. It probes this machine and names, in order (unattended, followed by one `unattended:` line per ask of steps 3 to 6 - the answers, taken exactly):
 
 - `machine: <what> - present | missing: <command> | missing after uv: <command> | refresh: <command> | blocked: <why> | skip: <why>` -
   uv, the pinned Python fetched through it, `csharp-ls` when `csharp-lsp` is kept, the picked
@@ -129,8 +141,8 @@ not `global`, the close names the restart.
 
 ## 5. Captures - each SKILL.md followed inline
 
-For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` and follow it
-inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
+For every `capture: ... - run: read <path>` line, in plan order: read that `SKILL.md` (through Bash)
+and follow it inline, start to finish - never a Skill call: the reads stay in this run, and the manual-only ones
 are denied by `guard-fresh-session-start.js`. It is this step's instructions for that capture:
 its relative `references/` and `scripts/` paths resolve from the SKILL.md's own directory, and a
 plugin-root placeholder in it arrives unexpanded - read it as the plugin root the plan's path
@@ -150,7 +162,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
 `stack/CLAUDE.template.md` when the project had none; a CLAUDE.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline, start to finish,
+`$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `STACK=$TMP/repo` - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or
@@ -167,7 +179,31 @@ a level other than `global`; `claude mcp list` after it, where every row should 
 `${CLAUDE_PLUGIN_ROOT}/setup-plugin/references/post-install.md` as the durable copy. Close the card
 with this line, verbatim: 'Nothing is pending on this run - these are yours to run when you choose.'
 The line is CONDITIONAL: print it only when the card carries nothing OWED - a blocked item the
-servers need, or a failed import, IS owed: name it and put the close through the ask instead.
+servers need, or a failed import, IS owed: name it and put the close through the ask instead
+(unattended: name it in the card, list every `unattended:` line under it, and end the run - no ask).
+
+## Unattended - `ALFRED_CODE_UNATTENDED=1`
+
+The first call printed `unattended: on`: nobody answers this run (a print-mode session, a benchmark
+cell, a CI job). Every ask it would put - its own, and each one a SKILL.md followed inline reaches -
+is answered by the run itself, never AskUserQuestion, by one rule:
+
+- Take the option marked Recommended, unless it is destructive or needs a person.
+- **Destructive** means the option deletes, overwrites or rewrites something this run did not create
+  and the project or the account owns: a file or a line the project wrote, a doc an earlier capture
+  wrote, a setting or status line already set, a stored memory. Adding is never destructive - a new
+  file, a new line, a new install, a setting where none was. A machine line in `refresh` state is
+  destructive (its command replaces the account's existing status line); a `missing` one is not.
+- **Needs a person** means the option works only with free text typed via Other (a sibling list, a
+  name), or it ends the run on something a person must do (paste a fresh-session one-liner, restart).
+- Then, and on an ask with no option marked Recommended, take the option that changes nothing (skip,
+  none, stop here, run here); an ask with no such option is skipped with its step, and the close names
+  it. A multi-select ask takes every pre-selected option that is not destructive.
+- Log each answer as one line, `unattended: <question> -> <choice>`, with `(<why>)` when the choice is
+  not the Recommended option. Step 2's plan already carries the lines for init's own asks (machine
+  installs, memory level, related projects, CLAUDE.md) - apply exactly those, never re-judge them.
+- The stack's files are read through the Bash tool, never the Read tool (above): outside the working
+  directory the Read tool asks first, and here nobody answers.
 
 ## Clean up the temp dir - ALWAYS
 
