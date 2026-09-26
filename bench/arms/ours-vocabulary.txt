@@ -1,7 +1,7 @@
-# Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at v2.0.0 - read
-# from feat/alfred-code at commit c727385ca4299a40ce44443bec27c4f279d7fa63, before v2.0.0 was tagged: stack/skills,
-# stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate from the v2.0.0 tag when it
-# lands, and whenever that pin moves, over an export of the pinned tree:
+# Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at the 2.0.0
+# candidate - read from feat/alfred-code at commit 1c584b353e2bbb69afb638ffe42b7f927d9aaafe, before v2.0.0 was tagged:
+# stack/skills, stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate from the
+# v2.0.0 tag when it lands, and whenever that pin moves, over an export of the pinned tree:
 #   node -e "console.log(require('./bench/lint-prompts.js').ourNames(process.argv[1]).join('\\n'))" <tree>
 alfred-capture-agent-capabilities
 alfred-capture-architecture
@@ -126,6 +126,7 @@ status
 test-coverage-analyzer
 ts-js-testing
 typescript
+uninstall
 update
 validate
 web-angular-implementer

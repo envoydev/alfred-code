@@ -38,10 +38,14 @@ test('the four shipped arm files load against the shared session', () =>
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
 
-test('ours installs Alfred Code 2.0.0 by its README route, and onboards through its init', () =>
+test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onboards through its init', () =>
 {
     const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
-    assert.deepStrictEqual(ours.pin, { kind: 'tag', value: 'v2.0.0' });
+    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: '1c584b353e2bbb69afb638ffe42b7f927d9aaafe' });
+    assert.deepStrictEqual(ours.setup.slice(0, 2).map((s) => s.join(' ')), [
+        'git clone --quiet --no-checkout file://{root} {src}',
+        'git -C {src} checkout --quiet {pin}',
+    ], 'the pinned commit is checked out by name, never the clone\'s HEAD');
     const at = (argv) => ours.setup.findIndex((s) => s.join(' ') === argv);
     const market = at('claude plugin marketplace add {src}');
     const core = at('claude plugin install alfred-code@envoydev --scope project');

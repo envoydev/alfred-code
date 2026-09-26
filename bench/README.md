@@ -146,8 +146,8 @@ and either change re-hashes `PREREGISTRATION.md`.
 
 ### B4 - the pilot
 
-Needs the `v2.0.0` tag in this clone (`git tag -l v2.0.0`), because `ours` clones it: until the
-release is tagged, its template fails at its first step. 3 arms x 6 tasks (one per group) x 2 reps =
+`ours` checks out its pinned candidate commit from this clone, so the commit must be reachable here
+(`git cat-file -e <pin>^{commit}`); until it is, its template fails at the checkout step. 3 arms x 6 tasks (one per group) x 2 reps =
 36 cells plus two onboardings. Plan estimate: about $110-150 and 5-6 hours at parallel 3.
 
 ```
@@ -161,7 +161,7 @@ this point is fine; a change to a task or an arm re-hashes the pre-registration.
 
 ### B5 - the measured run
 
-After B4 is closed and 2.0.0 is released. The pre-registration hash is recorded at the run's start and
+After B4 is closed. The pre-registration hash is recorded at the run's start and
 `aggregate.js` refuses a copy changed since.
 
 ```
