@@ -38,9 +38,17 @@ change (see the invariants below).
   before the 2.x line ends). One `node` command on every OS, so no OS branch in the command bodies. The
   frozen shell twins are deleted (2.0.0) and `ALFRED_CODE_SEED=shell` refuses with one line.
   `meta/stack-manifest.json`, hand-edited, is the one source of the six lists the seed reads;
-  `docs/alfred-code.html` is the browser inventory.
+  `docs/alfred-code.html` is the browser inventory (lint check 60 runs `node --check` over its inline
+  script: an unescaped quote in one row string left the page with no tables).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
-  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`.
+  `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
+  authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
+  core's `alfred-capture-claude-md` skill is HOW, the one home of the fill (create, or improve with
+  every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
+  `update` and `configure` follow it inline; and `scripts/claude-md-check.js` is the verdict it closes
+  on: every named path exists, every command's program resolves on PATH, no placeholder, `TODO` or
+  template text is left, and an installer seed still unfilled is named (`--list` marks it). Validate
+  runs the check for drift.
 - `stack/hooks/` - seventeen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
@@ -255,7 +263,8 @@ change (see the invariants below).
     block first) and ends on 'restart, then /alfred-code:init'; `/alfred-code:init` is the one-time
     bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
     - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
-    writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill). `/alfred-code:update`
+    writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill through
+    `alfred-capture-claude-md`). `/alfred-code:update`
     refreshes and prunes from the stamp compare (its ONE ask offers what the release ADDED -
     `update-preflight.js`'s `new:` lines, classified by `derive-state.classifyNew`; a yes is
     `--add '<category> <name>'` on `--installed-only`), `/alfred-code:configure` adds or drops through
@@ -265,7 +274,8 @@ change (see the invariants below).
     (project-relative two-way reconcile via `stack-select.js --redundant` / `--missing` /
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
-    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed), `/alfred-code:uninstall`
+    grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
+    CLAUDE.md check - `claude-md-check.js` rows routed to the skill's improve mode), `/alfred-code:uninstall`
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
@@ -344,7 +354,8 @@ change (see the invariants below).
   `--check-report <file>` re-reads a finished report, printing every judgment number that cites no
   machine row of that same report. Its rollup skips the live session (`CLAUDE_CODE_SESSION_ID`,
   `--exclude-session <id>`) and counts a plugin only where a registry record reaches or it was used.
-  `scripts/scan-evidence.js` - deterministic manifest-only
+  `scripts/claude-md-check.js` - a project's CLAUDE.md files against the tree they describe, read-only
+  and no model call. `scripts/scan-evidence.js` - deterministic manifest-only
   evidence scan; `--orientation` prints the provisional `ORIENTATION.md` the `alfred-capture-first-look` skill writes. `scripts/skill-comply.js` - grades whether a skill's steps were followed in a transcript (`check` / `grade`, offline, over the expectation files in `meta/skill-comply/`); `replay` runs the fixtures through `claude -p` only on `--live`, which is billed; `compare` applies the A/B ship rule over two replay outputs (a step failing on both arms is INCONCLUSIVE, never not-worse; one graded by nothing offline is NOT GRADED). `README.md` stays compact (headline counts lint-checked; inventories live in the HTML).
 
 ## The stack's delivery surfaces
@@ -356,13 +367,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 |---|---|
 | Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 9 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), plus the six pre-2.0.0 ids listed as RETIRED aliases for installs not yet updated; `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
-| Plugins | 4 OPTIONAL third-party picks (`claude plugin install`), each suggested on evidence (`meta/evidence.json`): claude-md-management, the `*-lsp` pair and security-guidance (`superpowers` left them in 2.0.0, never touched - R109) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
+| Plugins | 2 OPTIONAL third-party picks (`claude plugin install`), the `*-lsp` pair, each suggested on evidence (`meta/evidence.json`) (`superpowers` left them in 2.0.0, never touched - R109; claude-md-management and security-guidance were RETIRED in 2.0.0 on the user's call, 2026-09-26, superseding R27 - `meta/retired-plugins.json`: the first update past 2.0.0 uninstalls each as `name@claude-plugins-official` at this run's scope and prints its add-back line, a row at another scope kept and named; a row put back after it is the user's own, `plugins.retirementDue`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update|uninstall>` from the snapshot, one command on every OS |
 | Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
-| Security review | `/security-review` + the `security-auditor` agent (+ the optional `security-guidance` hooks) |
+| Security review | `/security-review` + the `security-auditor` agent + the pre-commit checkpoint's security half (`alfred-habits-commit-checkpoint`) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
 | LSP | `csharp-lsp` / `typescript-lsp` plugins |
 
@@ -446,6 +457,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     `WINDOWS_MCP_EXCLUDE_TOOLS`. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
     no subcommand it exits with usage, measured). `ALFRED_CODE_PLATFORM` (or stack-select's `--platform`)
     stands in for the OS where a run must be judged as another's - the tests and the temp-project matrix.
+    Both start their upstream with `ANONYMIZED_TELEMETRY=false` (the entries' `env`, the copy route's
+    registration): both wheels read it, defaulting to `true`, and send PostHog usage events otherwise.
     Each server brings the `desktop-automation` skill through the graph (below).
   - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
     the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
@@ -618,7 +631,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (115,104 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 49,790 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, the MCP role names added +311, and the desktop-automation description +793). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (115,792 on 2026-09-26: pathless rules 36,166, agent descriptions 29,148, skill descriptions 50,478 - the 2.0.0 audit tightened rules and skill descriptions, -2,260, the MCP role names added +311, the desktop-automation description +793, and alfred-capture-claude-md's +688). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor.
 
