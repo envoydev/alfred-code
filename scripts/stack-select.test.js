@@ -1097,3 +1097,14 @@ test('--defer-init moves what init installs out of the blockers, and names it', 
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
+
+// The 2.0.0 rename: the walks pass --browsers; a command body from before it passes --playwright-browsers,
+// read as the same option for one release - the new spelling wins where both are given.
+test('the --browsers option, with --playwright-browsers read as its alias', () => {
+    const { browsersOption } = require('./stack-select.js');
+    const from = (flags) => browsersOption((name) => flags[name]);
+    assert.deepStrictEqual(from({ '--browsers': 'Chrome, msedge' }), ['chrome', 'msedge']);
+    assert.deepStrictEqual(from({ '--playwright-browsers': 'webkit' }), ['webkit']);
+    assert.deepStrictEqual(from({ '--browsers': 'firefox', '--playwright-browsers': 'webkit' }), ['firefox'], 'the new spelling wins');
+    assert.deepStrictEqual(from({}), []);
+});

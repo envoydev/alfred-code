@@ -300,7 +300,7 @@ test('read-back: a PARKED entry reads back nothing - a disabled browser stays di
     assert.deepStrictEqual(r.engines, ['webkit']);
 });
 
-// R67: an engine the user left off is still installed. The stamp's `playwright-browsers:` says what
+// R67: an engine the user left off is still installed. The stamp's `browser-engines:` says what
 // was installed - the listing flag never does (S22) - and only an engine it does not name is the
 // user's parked off-state.
 test('read-back: an engine the stamp picked stays picked while disabled; one it does not name stays parked', () =>
@@ -855,4 +855,35 @@ test('former picks: dropped from the lines with one line, the listed copy named 
         sel.dropFormerPicks({ listing, lastVersion, compare: compareVersions, log: (m) => quiet.push(m) });
         assert.deepStrictEqual(quiet, [], `stamp '${lastVersion}': the copy is the user's own, no line`);
     }
+});
+
+// The 2.0.0 rename: an install made before it lists serena, context7 and playwright-<engine>. The
+// read-back takes each under its new name - the same server the user picked - so an update keeps it,
+// a parked one stays parked, and a picked engine left off is still picked.
+test('read-back: an older install\'s serena, context7 and playwright-<engine> read back under their new names', () =>
+{
+    const listing = [
+        row('alfred-code@envoydev'), row('serena@envoydev'), row('context7@envoydev'), row('memory@envoydev'),
+        row('playwright-chrome@envoydev', { enabled: false }), row('playwright-webkit@envoydev', { enabled: false }),
+    ];
+    const r = readBackCase({ listing, stampEngines: ['chrome'] });
+    for (const line of ['mcp navigation', 'mcp documentation', 'mcp memory', 'mcp browser'])
+        assert.ok(r.lines.includes(line), `${line}: ${r.lines.filter((l) => l.startsWith('mcp ')).join(',')}`);
+    assert.ok(!r.lines.some((l) => /^mcp (serena|context7|playwright)/.test(l)), 'no old name reaches a selection line');
+    assert.deepStrictEqual(r.engines, ['chrome']);
+    assert.deepStrictEqual(r.parked, ['browser-webkit'], 'the unpicked engine left off is parked, under its new name');
+    // A copy-route install's .mcp.json names them the old way too.
+    const claudeDir = target({ rules: ['baseline-security'] });
+    const copy = sel.readBack({ claudeDir, mcpServers: ['serena', 'playwright-firefox', 'mine'], listing: [], settings: {}, routes: { hooks: false, skills: false, mcps: false },
+        manifest: MANIFEST, sourceDir: ROOT_DIR, stampHooks: [], always: {} });
+    assert.ok(copy.lines.includes('mcp navigation') && copy.lines.includes('mcp browser') && copy.lines.includes('mcp mine'), copy.lines.join(','));
+});
+
+test('selection lines: an older walk\'s mcp serena / context7 / playwright read as the new names, once each', () =>
+{
+    const logs = [];
+    const said = new Set();
+    const out = sel.renameLines(['mcp serena', 'mcp context7', 'mcp playwright', 'mcp memory', 'mcp serena', 'skill csharp'], { renamed: MANIFEST.renamed, log: (m) => logs.push(m), said });
+    assert.deepStrictEqual(out, ['mcp navigation', 'mcp documentation', 'mcp browser', 'mcp memory', 'mcp navigation', 'skill csharp']);
+    assert.deepStrictEqual(logs, ['renamed: mcp serena -> navigation', 'renamed: mcp context7 -> documentation', 'renamed: mcp playwright -> browser']);
 });

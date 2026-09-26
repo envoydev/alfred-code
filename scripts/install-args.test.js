@@ -141,47 +141,47 @@ test('install-args: --memory-level project rides every scope - the db path is re
     assert.strictEqual(ok(['install', '--memory-level', 'project', '--scope', 'global']).memoryLevel, 'project');
 });
 
-test('install-args: the playwright engines come back in ONE canonical order, however they were typed', () =>
+test('install-args: the browser engines come back in ONE canonical order, however they were typed', () =>
 {
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'webkit,chrome']).playwrightBrowsers,
+    assert.deepStrictEqual(ok(['install', '--browsers', 'webkit,chrome']).playwrightBrowsers,
         ['chrome', 'webkit'], 'the server list depends on how the flag was typed');
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'MSEdge,Firefox']).playwrightBrowsers,
+    assert.deepStrictEqual(ok(['install', '--browsers', 'MSEdge,Firefox']).playwrightBrowsers,
         ['msedge', 'firefox']);
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'chrome,chrome']).playwrightBrowsers,
+    assert.deepStrictEqual(ok(['install', '--browsers', 'chrome,chrome']).playwrightBrowsers,
         ['chrome'], 'a repeated engine produced two servers');
 });
 
-test('install-args: a playwright value naming no engine is a typo, never "no flag"', () =>
+test('install-args: a browser value naming no engine is a typo, never "no flag"', () =>
 {
-    fails(['install', '--playwright-browsers', ','], /--playwright-browsers needs at least one/);
-    fails(['install', '--playwright-browsers', 'safari'], /--playwright-browsers takes chrome, msedge, firefox, webkit/);
-    fails(['install', '--playwright-browsers='], /--playwright-browsers.*needs a value/);
+    fails(['install', '--browsers', ','], /--browsers needs at least one/);
+    fails(['install', '--browsers', 'safari'], /--browsers takes chrome, msedge, firefox, webkit/);
+    fails(['install', '--browsers='], /--browsers.*needs a value/);
 });
 
-test('install-args: --playwright-enabled takes the engines to ENABLE - a csv, all or none; absent is null, never a choice', () =>
+test('install-args: --browser-enabled takes the engines to ENABLE - a csv, all or none; absent is null, never a choice', () =>
 {
     // Two choices, both the user's (R67): which engines to install, and which of those to enable.
     // Absent means 'not asked' - a fresh install enables every engine, an update flips nothing.
     assert.strictEqual(ok(['install']).playwrightEnabled, null);
-    assert.deepStrictEqual(ok(['install', '--playwright-enabled', 'webkit,Chrome']).playwrightEnabled, ['chrome', 'webkit'],
+    assert.deepStrictEqual(ok(['install', '--browser-enabled', 'webkit,Chrome']).playwrightEnabled, ['chrome', 'webkit'],
         'the enabled set depends on how the flag was typed');
-    assert.deepStrictEqual(ok(['install', '--playwright-enabled=firefox']).playwrightEnabled, ['firefox']);
-    assert.strictEqual(ok(['install', '--playwright-enabled', 'ALL']).playwrightEnabled, 'all');
-    assert.deepStrictEqual(ok(['install', '--playwright-enabled', 'none']).playwrightEnabled, [], 'none is an empty set, not an absent flag');
-    assert.deepStrictEqual(ok(['install', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'firefox']).playwrightEnabled, ['firefox']);
-    assert.ok(require('./install/args.js').FLAG_LIST.includes('--playwright-enabled'), 'the usage does not list the flag');
+    assert.deepStrictEqual(ok(['install', '--browser-enabled=firefox']).playwrightEnabled, ['firefox']);
+    assert.strictEqual(ok(['install', '--browser-enabled', 'ALL']).playwrightEnabled, 'all');
+    assert.deepStrictEqual(ok(['install', '--browser-enabled', 'none']).playwrightEnabled, [], 'none is an empty set, not an absent flag');
+    assert.deepStrictEqual(ok(['install', '--browsers', 'chrome,firefox', '--browser-enabled', 'firefox']).playwrightEnabled, ['firefox']);
+    assert.ok(require('./install/args.js').FLAG_LIST.includes('--browser-enabled'), 'the usage does not list the flag');
 });
 
-test('install-args: --playwright-enabled refuses an engine it cannot enable, in one line', () =>
+test('install-args: --browser-enabled refuses an engine it cannot enable, in one line', () =>
 {
-    fails(['install', '--playwright-enabled', 'safari'], /--playwright-enabled takes all, none, or chrome, msedge, firefox, webkit \(got 'safari'\)/);
-    fails(['install', '--playwright-enabled', ','], /--playwright-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit/);
-    fails(['install', '--playwright-enabled', 'all,chrome'], /--playwright-enabled takes all or none ALONE/);
-    fails(['install', '--playwright-enabled', 'none,firefox'], /--playwright-enabled takes all or none ALONE/);
-    fails(['install', '--playwright-enabled'], /--playwright-enabled needs a value/);
+    fails(['install', '--browser-enabled', 'safari'], /--browser-enabled takes all, none, or chrome, msedge, firefox, webkit \(got 'safari'\)/);
+    fails(['install', '--browser-enabled', ','], /--browser-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit/);
+    fails(['install', '--browser-enabled', 'all,chrome'], /--browser-enabled takes all or none ALONE/);
+    fails(['install', '--browser-enabled', 'none,firefox'], /--browser-enabled takes all or none ALONE/);
+    fails(['install', '--browser-enabled'], /--browser-enabled needs a value/);
     // Beside an explicit install set, an engine outside it is refused - it would never be installed.
-    fails(['install', '--playwright-browsers', 'chrome', '--playwright-enabled', 'chrome,webkit'],
-        /^--playwright-enabled names webkit, which --playwright-browsers does not install \(chrome\) - enable only an engine being installed$/);
+    fails(['install', '--browsers', 'chrome', '--browser-enabled', 'chrome,webkit'],
+        /^--browser-enabled names webkit, which --browsers does not install \(chrome\) - enable only an engine being installed$/);
 });
 
 // ------------------------------------------------------------------ the entry point
@@ -227,14 +227,14 @@ test('install-entry: --print-plan prints the six resolved lists and exits 0, wri
     assert.ok(!/^plan mcps: .*(^| )playwright\|/m.test(r.out), 'the unexpanded catalog row reached the plan');
 });
 
-test('install-entry: --playwright-enabled naming an engine this run does not install is refused before anything is written', () =>
+test('install-entry: --browser-enabled naming an engine this run does not install is refused before anything is written', () =>
 {
-    // No --playwright-browsers: the kept set is chrome (the default), so firefox is not being installed.
-    const r = run(['install', '--source', ROOT, '--print-plan', '--playwright-enabled', 'firefox']);
+    // No --browsers: the kept set is chrome (the default), so firefox is not being installed.
+    const r = run(['install', '--source', ROOT, '--print-plan', '--browser-enabled', 'firefox']);
     assert.strictEqual(r.code, 1, r.out.slice(0, 400));
-    assert.match(r.err, /--playwright-enabled names firefox, which this run does not install \(installs: chrome\) - enable only an engine being installed/);
+    assert.match(r.err, /--browser-enabled names firefox, which this run does not install \(installs: chrome\) - enable only an engine being installed/);
     assert.ok(!/^plan /m.test(r.out), 'the refused run still printed a plan');
-    const all = run(['install', '--source', ROOT, '--print-plan', '--playwright-browsers', 'chrome,firefox', '--playwright-enabled', 'all']);
+    const all = run(['install', '--source', ROOT, '--print-plan', '--browsers', 'chrome,firefox', '--browser-enabled', 'all']);
     assert.strictEqual(all.code, 0, all.err);
     assert.match(all.out, /^plan mcps: .*browser-chrome.*browser-firefox/m);
 });
@@ -387,4 +387,20 @@ test('install-entry: --print-plan --plan-out writes the inventory JSON and names
     for (const k of ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins', 'plugins_disabled']) assert.ok(Array.isArray(got[k]), k);
     assert.ok(got.mcps.includes('browser') && !got.mcps.some((m) => m.startsWith('browser-')), 'the engines fold back onto the catalog row');
     assert.ok(!fs.existsSync(path.join(ENTRY_CWD, '.claude')), 'the dry run wrote into the project');
+});
+
+
+// The 2.0.0 rename: --browsers / --browser-enabled are the flags; a command body from before it passes
+// --playwright-browsers / --playwright-enabled, read as the same flag for one release. Both spellings of
+// one flag in one call is ambiguous and refused.
+test('install-args: --playwright-browsers and --playwright-enabled still read, as aliases of the browser flags', () =>
+{
+    const p = ok(['install', '--playwright-browsers', 'webkit,chrome', '--playwright-enabled', 'chrome']);
+    assert.deepStrictEqual(p.playwrightBrowsers, ['chrome', 'webkit']);
+    assert.deepStrictEqual(p.playwrightEnabled, ['chrome']);
+    assert.deepStrictEqual(ok(['install', '--playwright-browsers=firefox', '--browser-enabled', 'none']).playwrightEnabled, []);
+    fails(['install', '--browsers', 'chrome', '--playwright-browsers', 'firefox'], /--browsers and --playwright-browsers are one flag - pass --browsers alone/);
+    fails(['install', '--playwright-enabled', 'all', '--browser-enabled', 'none'], /--browser-enabled and --playwright-enabled are one flag - pass --browser-enabled alone/);
+    const flags = require('./install/args.js').FLAG_LIST;
+    assert.ok(flags.includes('--browsers') && flags.includes('--browser-enabled') && !flags.includes('--playwright-'), flags);
 });

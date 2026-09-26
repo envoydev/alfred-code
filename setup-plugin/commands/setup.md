@@ -158,7 +158,7 @@ walk.md's Plugins layer, the plugin-settings ask included - applied at step 11a.
 
 ## 10. Prerequisite check
 
-Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--playwright-browsers <csv>] [--github-cli] [--config-dir ~/.claude-<space>]` (`--playwright-browsers` with the step-8 kept browsers whenever the browser server is kept - a kept `msedge` warns when Edge is not installed; `--config-dir` only under a `--space` profile, so the env probe reads THAT account's settings.json instead of `~/.claude`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
+Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.txt" --hooks-answered --check --defer-init [--browsers <csv>] [--github-cli] [--config-dir ~/.claude-<space>]` (`--browsers` with the step-8 kept browsers whenever the browser server is kept - a kept `msedge` warns when Edge is not installed; `--config-dir` only under a `--space` profile, so the env probe reads THAT account's settings.json instead of `~/.claude`; `--github-cli` only when they opted in at step 1). Redirect its output to `$TMP/select.out` like every recompute. It writes `selection.txt` - the closed installer selection. **Fixed shape, three blocks:** (1) one verdict line - `blockers: N · warnings: N`; (2) the closed selection grouped by category, closure adds marked with their reasons; (3) the lists:
 
 - Blockers: list each with its fix, then AskUserQuestion: fix them now and continue (recommended), or drop the affected items (reopen the owning layer's table, re-run, re-emit). Never install past a blocker.
 - Warnings: list them and proceed.
@@ -188,7 +188,7 @@ the install writes.
 
 Then run the installer **from the snapshot**, and pass it back with `--source` so it installs from what you already downloaded instead of fetching again:
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--playwright-browsers <csv> --playwright-enabled <csv|none>] [--docs-versioning git|local] [--github-cli]`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" install --source "$TMP/repo" --scope <scope> --selection "$TMP/selection.txt" [--space <name>] [--browsers <csv> --browser-enabled <csv|none>] [--docs-versioning git|local] [--github-cli]`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` carries screen B's docs-versioning answer whenever screen B asked it: the installer then WRITES that decision instead of seeding a detected value, prints one `ALFRED_CODE_DOCS_VERSIONING <old> -> '<new>'` line instead of a seed line, and so leaves nothing for the re-probe below to touch.

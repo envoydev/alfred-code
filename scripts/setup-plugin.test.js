@@ -111,8 +111,8 @@ test('setup: no memory level, the init prerequisites deferred, and a close that 
 test('the walk: the playwright ENABLE pre-selection reads plan-out\'s live state in DELTA (R77)', () => {
     const walk = walkBody();
     const mcps = flat(walk.slice(walk.indexOf('## MCPs'), walk.indexOf('## Plugins')));
-    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `jq -c '\.playwright' "\$TMP\/installed\.json"`/);
-    assert.match(mcps, /Never pre-select from the stamp's own `playwright-enabled:` line/);
+    assert.match(mcps, /DELTA pre-selects from the LIVE install, never by hand: `jq -c '\.browser' "\$TMP\/installed\.json"`/);
+    assert.match(mcps, /Never pre-select from the stamp's own `browser-enabled:` line/);
     assert.match(mcps, /pre-selected: `enabled` plus any newly added one in DELTA, every one in FRESH/);
     assert.match(mcps, /18\.7k characters of schema/, 'the per-session cost stays named (R67)');
     // M2: picking a Playwright-built engine installs it in THIS run - the ask says so; init only reports.

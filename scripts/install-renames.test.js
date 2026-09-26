@@ -88,8 +88,10 @@ test('renameLines: an old skill or seat line reads under its new name, one line 
         'renamed: skill project-solve-task -> alfred-task-solve',
         'renamed: agent ci-failure-diagnoser -> alfred-issue-diagnoser-ci',
     ], 'the second sighting of a rename says nothing');
-    // A rule, a hook and an MCP are never renamed by this table, even under a same-looking name.
-    assert.deepStrictEqual(selection.renameLines(['rule project-solve-task'], opts), ['rule project-solve-task']);
+    // A rule and a hook are never renamed by this table, even under a same-looking name, and an MCP line
+    // only by its own `mcps` part (the 2.0.0 role names) - never under a skill's.
+    assert.deepStrictEqual(selection.renameLines(['rule project-solve-task', 'mcp project-solve-task'], opts), ['rule project-solve-task', 'mcp project-solve-task']);
+    assert.deepStrictEqual(selection.renameLines(['mcp serena', 'skill serena'], opts), ['mcp navigation', 'skill serena']);
 });
 
 test('renamePicked: a stamp pick keeps its home and takes the new name; no picks stays null', () =>
@@ -189,6 +191,48 @@ test('respellRenamed (I2): the longest old name wins, and a shorter one inside i
         const renamed = { skills: { 'old-loop': 'new-loop', 'old-loop-deep': 'new-deep' }, agents: {} };
         selection.respellRenamed({ projectRoot: dir, renamed, log: () => {}, note: (m) => assert.fail(m) });
         assert.strictEqual(fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8'), 'Run /new-loop, then /new-deep.\n');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// The 2.0.0 MCP rename: a generated rule names the servers the capture saw - their tool spellings (the
+// plugin form, or the bare one a copy-route registration answers) and each routing row's server. Those
+// follow the rename like a skill name does, so no seat is pointed at a tool that no longer resolves. The
+// spellings are built, never typed: lint 54 and 59 read this file.
+const pluginTool = (n, t) => `mcp__plugin_${n}_${n}__${t}`;
+const bareTool = (n, t) => `mcp_${'_'}${n}__${t}`;
+test('respellRenamed: a generated rule\'s old MCP tool spellings and routing keys follow the 2.0.0 rename, and a second run changes nothing', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));
+    try
+    {
+        const before = [
+            '## MCP routing',
+            `- \`serena\` - first call: \`ToolSearch select:${pluginTool('serena', 'find_symbol')},${pluginTool('serena', 'get_symbols_overview')}\``,
+            `- \`context7\` - first call: \`ToolSearch select:${pluginTool('context7', 'query-docs')}\``,
+            `- \`playwright-firefox\` - registered: \`${bareTool('playwright-firefox', 'browser_snapshot')}\``,
+            `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            '',
+        ].join('\n');
+        const after = [
+            '## MCP routing',
+            `- \`navigation\` - first call: \`ToolSearch select:${pluginTool('navigation', 'find_symbol')},${pluginTool('navigation', 'get_symbols_overview')}\``,
+            `- \`documentation\` - first call: \`ToolSearch select:${pluginTool('documentation', 'query-docs')}\``,
+            `- \`browser-firefox\` - registered: \`${bareTool('browser-firefox', 'browser_snapshot')}\``,
+            `- \`memory\` - \`${pluginTool('memory', 'memory_search')}\`, and my own \`serena-notes\` stay`,
+            '',
+        ].join('\n');
+        write(dir, '.claude/rules/baseline-project-agent-capabilities.md', before);
+        const logs = [];
+        const run = () => selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        run();
+        const read = () => fs.readFileSync(path.join(dir, '.claude/rules/baseline-project-agent-capabilities.md'), 'utf8');
+        assert.strictEqual(read(), after);
+        assert.deepStrictEqual(logs, ['  renamed: .claude/rules/baseline-project-agent-capabilities.md - 7 old MCP tool or server name(s) re-spelled to the new names']);
+        logs.length = 0;
+        run();
+        assert.strictEqual(read(), after, 'a second run changes nothing');
+        assert.deepStrictEqual(logs, []);
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

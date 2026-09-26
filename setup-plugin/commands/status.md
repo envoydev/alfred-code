@@ -201,15 +201,15 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 
 | server | transport | target | health |
 |---|---|---|---|
-| the navigation server | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
+| navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | memory | stdio | node .../memory-launch.js | ✔ Connected |
-| the documentation server | http | https://mcp.context7.com/mcp | ✔ Connected |
-| playwright-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... | ✘ Failed to connect |
+| documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
+| browser-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
-is the entry's own declaration. Playwright has one server per installed browser
+is the entry's own declaration. The browser server has one server per installed browser
 (`browser-<engine>`), and any number can be on together; which are on is the user's `/plugin`
-toggle (the stamp's `playwright-enabled:` is their last answer, not the live state). Never print
+toggle (the stamp's `browser-enabled:` is their last answer, not the live state). Never print
 env values embedded in a registration - show `${VAR}` literally as written.
 
 `memory` is locked like `navigation` and `documentation` (every install carries it). Add ONE line under
@@ -233,7 +233,7 @@ machine's Node)`.
 | plugin | version | scope | enabled | health |
 |---|---|---|---|---|
 | alfred-code@<key> | 2.0.0 | project | yes | ok |
-| playwright-webkit@<key> | 2.0.0 | project | yes | plugin-not-found |
+| browser-webkit@<key> | 2.0.0 | project | yes | plugin-not-found |
 
 `enabled` is the row's own `enabled` field. A disabled row is REPORTED, never dropped: a stack
 plugin that is installed but parked is invisible to every inventory that filters the listing down

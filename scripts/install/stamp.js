@@ -25,8 +25,9 @@
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
 // across (derive-state's `stampCarried`, which honours a parked entry and a denied seat).
 //
-// `playwright-browsers` is the playwright engines this run INSTALLED, and `playwright-enabled` the ones
-// the user chose to enable (R67). An engine left disabled is still installed, and the listing's
+// `browser-engines` is the browser engines this run INSTALLED, and `browser-enabled` the ones the user
+// chose to enable (R67) - `playwright-browsers` / `playwright-enabled` before the 2.0.0 rename, read as
+// the fallback. An engine left disabled is still installed, and the listing's
 // project-scope flag can read a stale false anyway (S22), so these lines, never the flag, are what the
 // next run reads: the installed set to keep (and to uninstall from, when a run keeps fewer), and the
 // last choice an engine installed again is switched back to.
@@ -236,8 +237,8 @@ function renderStamp(fields)
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
         `picked-agents: ${(picked.agents || []).join(',')}`,
-        `playwright-browsers: ${(playwright || []).join(',')}`,
-        ...(Array.isArray(playwrightEnabled) ? [`playwright-enabled: ${playwrightEnabled.join(',')}`] : []),
+        `browser-engines: ${(playwright || []).join(',')}`,
+        ...(Array.isArray(playwrightEnabled) ? [`browser-enabled: ${playwrightEnabled.join(',')}`] : []),
         ...(stoodDown.length ? [`stood-down: ${stoodDown.map((e) => `${e.scope}:${e.spec}`).join(',')}`] : []),
         `library-skills: ${hashes(library.skills)}`,
         `library-agents: ${hashes(library.agents)}`,
@@ -371,20 +372,32 @@ function readHooksRoute(file)
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
-// The playwright engines the last install installed (or, with `playwright-enabled`, enabled), in the
+// The browser engines the last install installed (or, with `browser-enabled`, enabled), in the
 // one canonical order - [] when it recorded none, null when the stamp has no such line (no stamp, or
-// one from before the line): nothing recorded.
+// one from before the line): nothing recorded. A stamp written before the 2.0.0 rename spells the lines
+// `playwright-browsers` / `playwright-enabled`: read as the fallback, the new line winning where both are.
 const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
-function readPlaywright(file, line = 'playwright-browsers')
+const BROWSER_LINES = { engines: ['browser-engines', 'playwright-browsers'], enabled: ['browser-enabled', 'playwright-enabled'] };
+function readEngineLine(text, line)
 {
-    let text = '';
-    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
     const m = new RegExp(`^${line}:(.*)$`, 'm').exec(text);
     if (!m) return null;
     const named = m[1].split(',').map((s) => s.trim().toLowerCase());
     return PW_ORDER.filter((e) => named.includes(e));
 }
-const readPlaywrightEnabled = (file) => readPlaywright(file, 'playwright-enabled');
+// Both lines at once, and whether they came from the OLD spelling - a run that cannot read the plugin
+// listing takes an engine the stamp names as installed, which only holds under the name it was installed as.
+function readBrowserLines(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return { browsers: null, enabled: null, legacy: false }; }
+    const read = ([now, old]) => { const v = readEngineLine(text, now); return v !== null ? { v, old: false } : { v: readEngineLine(text, old), old: true }; };
+    const engines = read(BROWSER_LINES.engines);
+    const enabled = read(BROWSER_LINES.enabled);
+    return { browsers: engines.v, enabled: enabled.v, legacy: engines.v !== null && engines.old };
+}
+const readPlaywright = (file) => readBrowserLines(file).browsers;
+const readPlaywrightEnabled = (file) => readBrowserLines(file).enabled;
 
 // The `stood-down` record - [] with no stamp or no line. An entry of any other shape is not ours and is
 // dropped, so a hand-edited line can never make a run enable something at a scope it did not name.
@@ -645,7 +658,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, worktreeMain, installScope,
     accountDir,
 };

@@ -109,7 +109,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
     }
 
     const pwDir = browsersDir(platform, env);
-    for (const engine of (inv.playwright && inv.playwright.installed) || [])
+    for (const engine of (inv.browser && inv.browser.installed) || [])
     {
         if (DOWNLOADED.includes(engine))
             add(`playwright ${engine}`, probe.dir(pwDir, `${engine}-`) ? 'present' : 'missing', `npx -y -p @playwright/mcp${pinOf('browser')} playwright install ${engine}`);
@@ -117,7 +117,7 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         {
             const { need, bins } = MACHINE_BROWSERS[engine];
             const found = bins.some((b) => probe.has(b, env)) || browserCandidates(engine, platform, env).some((c) => (probe.file || fs.existsSync)(c));
-            add(`playwright ${engine}`, found ? 'present' : 'blocked', `needs ${need} - install it, or drop ${engine} from the playwright browsers (/alfred-code:configure)`);
+            add(`playwright ${engine}`, found ? 'present' : 'blocked', `needs ${need} - install it, or drop ${engine} from the browsers (/alfred-code:configure)`);
         }
     }
 

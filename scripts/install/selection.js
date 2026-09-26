@@ -27,6 +27,7 @@ const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat
 const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
 const { BRAND, LEGACY, currentName, rowOn } = require('./brand.js');
 const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
+const { currentMcp } = require('./mcp.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -197,7 +198,10 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
     const renaming = { renamed: manifest.renamed, log, said };
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped }), renaming);
+    // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
+    // new one: the same server the user picked (manifest `renamed.mcps`).
+    const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
@@ -216,20 +220,20 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // whose uninstall failed, was refused, or sits at another scope is still listed, and read back here
     // it was written into the stamp again. It is left as it is and named with its command.
     const recordedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : null;
-    const unrecorded = (r) => recordedEngines !== null && engineOf(r.name) && !recordedEngines.includes(engineOf(r.name));
+    const unrecorded = (r) => recordedEngines !== null && engineOf(cur(r.name)) && !recordedEngines.includes(engineOf(cur(r.name)));
     for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
         log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
-    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(r.name));
+    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(cur(r.name)));
     const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    // The playwright engines the last install INSTALLED (the stamp's `playwright-browsers:`): a
+    // The browser engines the last install INSTALLED (the stamp's `browser-engines:`): a
     // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
     // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
     // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
     // the engines and wrote the stamp's two lines blank.
     const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
-    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(r.name))).map((r) => currentName(r.name));
+    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => currentName(cur(r.name)));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
     // reads skills and seats from the disk - where a plugin-route install holds only the extras, so the
@@ -392,7 +396,7 @@ function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, 
 // (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
 // switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
 // per run, whichever of those places names it first.
-const RENAMED_KIND = { skill: 'skills', agent: 'agents' };
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', mcp: 'mcps' };
 function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
 {
     const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
@@ -405,7 +409,7 @@ function renameLines(lines = [], opts = {})
 {
     return lines.map((l) =>
     {
-        const m = /^\s*(skill|agent)\s+(\S+)\s*$/.exec(String(l));
+        const m = /^\s*(skill|agent|mcp)\s+(\S+)\s*$/.exec(String(l));
         return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
     });
 }
@@ -444,12 +448,32 @@ function renameDeny(settings, opts = {})
 // re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
 // one (`baseline-project-related-context.md`) stays. A user's own token equal to an old stack name is
 // re-spelled too; the per-file line says how many, and a second run finds nothing.
+// The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
+// registration answers) and a backticked server name, each as written by the capture that saw it.
+function mcpRespellPairs(renamedMcps = {})
+{
+    const { renamedFrom, currentMcp } = require('./mcp.js');
+    const out = {};
+    for (const old of renamedFrom(renamedMcps))
+    {
+        const now = currentMcp(old, renamedMcps);
+        out[`mcp__plugin_${old}_${old}__`] = `mcp__plugin_${now}_${now}__`;
+        out[`mcp__${old}__`] = `mcp__${now}__`;
+        out[`\`${old}\``] = `\`${now}\``;
+    }
+    return out;
+}
+
 function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} })
 {
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
-    if (!olds.length) return 0;
-    const re = new RegExp(`(?<![A-Za-z0-9_-])(${olds.map((o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?![A-Za-z0-9_-])`, 'g');
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {});
+    const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
+    if (!olds.length && !mcpOlds.length) return 0;
+    const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
+    const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
     const rules = path.join(projectRoot, '.claude', 'rules');
     let generated = [];
     try { generated = fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
@@ -460,13 +484,16 @@ function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} 
         let text;
         try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
         let n = 0;
-        const out = text.replace(re, (old) => { n += 1; return pairs[old]; });
-        if (!n) continue;
+        let m = 0;
+        let out = re ? text.replace(re, (old) => { n += 1; return pairs[old]; }) : text;
+        if (mcpRe) out = out.replace(mcpRe, (old) => { m += 1; return mcpPairs[old]; });
+        if (!n && !m) continue;
         const rel = path.relative(projectRoot, file).split(path.sep).join('/');
         try { fs.writeFileSync(file, out); }
-        catch (err) { note(`${rel} names ${n} old skill or seat name(s) and could not be re-spelled (${err.message})`); continue; }
-        total += n;
-        log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
+        catch (err) { note(`${rel} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        total += n + m;
+        if (n) log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
+        if (m) log(`  renamed: ${rel} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
     }
     return total;
 }

@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
+const { writeStamp, shippedHooks, installedAlways, family, readPicked, readLibrary, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, stampPath, stampFiles, migrateLegacyGlobal, readStampScope, validItemName, readLedger, valueHash, emptyLedger } = require('./install/stamp.js');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'install-stamp-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
@@ -212,13 +212,13 @@ test('install-stamp: hooks-route records the route the hooks took, and a stamp w
 
 // The stamp line is the record of the installed engines, never the listing: an engine the user left
 // disabled is still installed, and the listing's project-scope flag can read a stale false (S22).
-test('install-stamp: playwright-browsers records the picked engines and reads back; a stamp without the line reads as null', () =>
+test('install-stamp: browser-engines records the picked engines and reads back; a stamp without the line reads as null', () =>
 {
     const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'] });
-    assert.match(text, /^playwright-browsers: chrome,firefox$/m);
+    assert.match(text, /^browser-engines: chrome,firefox$/m);
     assert.deepStrictEqual(readPlaywright(dest), ['chrome', 'firefox']);
     const none = write(project());
-    assert.match(none.text, /^playwright-browsers: $/m, 'no engine picked is an empty line - the record says none');
+    assert.match(none.text, /^browser-engines: $/m, 'no engine picked is an empty line - the record says none');
     assert.deepStrictEqual(readPlaywright(none.dest), [], 'recorded empty is an answer');
     const p = project();
     const file = path.join(p.base, 'old.stamp');
@@ -226,27 +226,43 @@ test('install-stamp: playwright-browsers records the picked engines and reads ba
     assert.strictEqual(readPlaywright(file), null, 'an older stamp never recorded the picks');
     assert.strictEqual(readPlaywright(path.join(p.base, 'absent.stamp')), null);
     // Only the four engines, in the one canonical order, whatever a hand edit left there.
-    fs.writeFileSync(file, 'playwright-browsers: webkit, safari,CHROME,webkit\n');
+    fs.writeFileSync(file, 'browser-engines: webkit, safari,CHROME,webkit\n');
     assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
 });
 
 // R67: which installed engines the user chose to ENABLE - their last explicit answer, read back so an
 // engine the run installs again (one uninstalled by hand) comes back the way the user left it.
-test('install-stamp: playwright-enabled records the enabled engines beside the installed ones; no line reads as null', () =>
+test('install-stamp: browser-enabled records the enabled engines beside the installed ones; no line reads as null', () =>
 {
     const { dest, text } = write(project(), { playwright: ['chrome', 'firefox'], playwrightEnabled: ['firefox'] });
-    assert.match(text, /^playwright-browsers: chrome,firefox\nplaywright-enabled: firefox$/m);
+    assert.match(text, /^browser-engines: chrome,firefox\nbrowser-enabled: firefox$/m);
     assert.deepStrictEqual(readPlaywrightEnabled(dest), ['firefox']);
     const none = write(project(), { playwright: ['chrome'], playwrightEnabled: [] });
-    assert.match(none.text, /^playwright-enabled: $/m, 'none enabled is an empty line - an answer, never a missing record');
+    assert.match(none.text, /^browser-enabled: $/m, 'none enabled is an empty line - an answer, never a missing record');
     assert.deepStrictEqual(readPlaywrightEnabled(none.dest), []);
     const p = project();
     const file = path.join(p.base, 'old.stamp');
-    fs.writeFileSync(file, 'sha: abc\nplaywright-browsers: chrome\n');
+    fs.writeFileSync(file, 'sha: abc\nbrowser-engines: chrome\n');
     assert.strictEqual(readPlaywrightEnabled(file), null, 'a stamp from before the line recorded no choice');
     assert.strictEqual(readPlaywrightEnabled(path.join(p.base, 'absent.stamp')), null);
-    fs.writeFileSync(file, 'playwright-enabled: webkit,safari, Chrome\n');
+    fs.writeFileSync(file, 'browser-enabled: webkit,safari, Chrome\n');
     assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome', 'webkit']);
+});
+
+// The 2.0.0 rename: a stamp written before it spells both lines `playwright-*`. They are read as the
+// fallback for one release - the new line wins where both exist - and `legacy` says the record came from
+// the old names, so a run that cannot read the listing never takes a browser-<engine> as installed on it.
+test('install-stamp: the old playwright-* lines read back as the fallback, and say so', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'pre-rename.stamp');
+    fs.writeFileSync(file, 'sha: abc\nplaywright-browsers: chrome,webkit\nplaywright-enabled: chrome\n');
+    assert.deepStrictEqual(readPlaywright(file), ['chrome', 'webkit']);
+    assert.deepStrictEqual(readPlaywrightEnabled(file), ['chrome']);
+    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['chrome', 'webkit'], enabled: ['chrome'], legacy: true });
+    fs.writeFileSync(file, 'browser-engines: firefox\nbrowser-enabled: \nplaywright-browsers: chrome\nplaywright-enabled: chrome\n');
+    assert.deepStrictEqual(readBrowserLines(file), { browsers: ['firefox'], enabled: [], legacy: false }, 'the new line wins');
+    assert.deepStrictEqual(readBrowserLines(path.join(p.base, 'absent.stamp')), { browsers: null, enabled: null, legacy: false });
 });
 
 // NM1 (fix round 3): markHooksRoute patches ONLY the route line, in place, before the hooks layer

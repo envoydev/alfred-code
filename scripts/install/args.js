@@ -25,6 +25,9 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 
 const VALUED = new Map([
     ['--space', 'space'], ['--scope', 'scope'],
+    ['--browsers', 'playwrightBrowsersRaw'], ['--browser-enabled', 'playwrightEnabledRaw'],
+    // The pre-2.0.0 spellings (the playwright -> browser rename), read for one release: a command body
+    // from before it still passes them. Never beside the new spelling of the same flag.
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
     ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
@@ -44,7 +47,9 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --playwright-browsers, --playwright-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
+const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled']]);
+
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -68,6 +73,7 @@ function parseArgs(argv)
         add: [], drop: [],
     };
 
+    const given = new Set();
     for (let i = 0; i < argv.length; i++)
     {
         const arg = argv[i];
@@ -93,6 +99,12 @@ function parseArgs(argv)
             // omission - the same refusal either way.
             const value = eq > -1 && name !== arg ? arg.slice(eq + 1) : argv[++i];
             if (!value) fail(`${name} needs a value`);
+            // The flag's other spelling already given: ambiguous, whichever came first.
+            const flag = ALIASES.get(name) || name;
+            const old = [...ALIASES].find(([, now]) => now === flag)?.[0];
+            const twin = name === flag ? old : flag;
+            if (twin && given.has(twin)) fail(`${flag} and ${old} are one flag - pass ${flag} alone`);
+            given.add(name);
             out[VALUED.get(name)] = value;
             continue;
         }
@@ -142,11 +154,11 @@ function parseArgs(argv)
         const want = lower(out.playwrightBrowsersRaw).split(',').map((s) => s.trim()).filter(Boolean);
         for (const engine of want)
             if (!PW_ENGINES.includes(engine))
-                fail(`--playwright-browsers takes chrome, msedge, firefox, webkit (got '${engine}')`);
+                fail(`--browsers takes chrome, msedge, firefox, webkit (got '${engine}')`);
         out.playwrightBrowsers = PW_ENGINES.filter((e) => want.includes(e));
         // A value that names no engine at all (`,`) is a typo, never 'no flag'.
         if (!out.playwrightBrowsers.length)
-            fail('--playwright-browsers needs at least one of chrome, msedge, firefox, webkit');
+            fail('--browsers needs at least one of chrome, msedge, firefox, webkit');
     }
     delete out.playwrightBrowsersRaw;
 
@@ -157,18 +169,18 @@ function parseArgs(argv)
     {
         const want = lower(out.playwrightEnabledRaw).split(',').map((s) => s.trim()).filter(Boolean);
         const word = want.filter((w) => w === 'all' || w === 'none');
-        if (word.length && want.length > 1) fail('--playwright-enabled takes all or none ALONE, never beside an engine');
-        if (!want.length) fail('--playwright-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit');
+        if (word.length && want.length > 1) fail('--browser-enabled takes all or none ALONE, never beside an engine');
+        if (!want.length) fail('--browser-enabled needs all, none, or at least one of chrome, msedge, firefox, webkit');
         for (const engine of want)
             if (!word.length && !PW_ENGINES.includes(engine))
-                fail(`--playwright-enabled takes all, none, or chrome, msedge, firefox, webkit (got '${engine}')`);
+                fail(`--browser-enabled takes all, none, or chrome, msedge, firefox, webkit (got '${engine}')`);
         out.playwrightEnabled = word[0] === 'all' ? 'all' : PW_ENGINES.filter((e) => want.includes(e));
         // Beside an explicit install set it is checked here; without one, the run checks it against
         // the set it resolves, before anything is written.
         const outside = Array.isArray(out.playwrightEnabled) && out.playwrightBrowsers.length
             ? out.playwrightEnabled.filter((e) => !out.playwrightBrowsers.includes(e)) : [];
         if (outside.length)
-            fail(`--playwright-enabled names ${outside.join(',')}, which --playwright-browsers does not install (${out.playwrightBrowsers.join(',')}) - enable only an engine being installed`);
+            fail(`--browser-enabled names ${outside.join(',')}, which --browsers does not install (${out.playwrightBrowsers.join(',')}) - enable only an engine being installed`);
     }
     delete out.playwrightEnabledRaw;
 

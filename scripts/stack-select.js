@@ -87,7 +87,7 @@ const SCOPED_PREREQS = [
     // The one kept browser engine that needs a browser the machine must already carry and no platform
     // ships everywhere (chrome, the default, is the server's own long-standing assumption; firefox and
     // webkit are downloaded by the installer). Probed at its install locations, not only PATH.
-    { when: { mcp: 'browser', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the browsers (--playwright-browsers)' },
+    { when: { mcp: 'browser', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the browsers (--browsers)' },
     // Advisory: the hosted registration sends `${CONTEXT7_API_KEY:-}` (unset = an empty header = the
     // keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on every call), and
     // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
@@ -208,6 +208,11 @@ function browserCandidates(name, platform, env)
     return platform === 'darwin' ? mac : linux;
 }
 const browserInstalled = name => browserCandidates(name, process.platform, process.env).some(c => fs.existsSync(c));
+
+// The kept browser engines the walks pass (`--browsers <csv>`); a command body from before the 2.0.0
+// rename passes `--playwright-browsers`, read as the same option for one release. `get(flag)` is the
+// CLI's own lookup.
+const browsersOption = (get) => String(get('--browsers') || get('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
 
 function detectEnvironment(opts)
 {
@@ -719,7 +724,7 @@ function main(argv)
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -775,7 +780,7 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli'), deferInit: has('--defer-init') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg), githubCli: has('--github-cli'), deferInit: has('--defer-init') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
         for (const d of report.deferred) console.log(`init: ${d.need} -> /alfred-code:init installs it in the next session`);
@@ -791,6 +796,6 @@ function main(argv)
     }
 }
 
-module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

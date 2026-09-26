@@ -434,7 +434,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "nx",
-      "note": "Nx monorepo: project-graph nav + 'nx affected' scoping, generators, module-boundary tags; CLI over MCP; serena-vs-nx routing"
+      "note": "Nx monorepo: project-graph nav + 'nx affected' scoping, generators, module-boundary tags; CLI over MCP; navigation-server-vs-nx routing"
     }
   ],
   "agents": [

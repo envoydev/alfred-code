@@ -30,9 +30,32 @@ const { entryHash } = require('./stamp.js');
 // The three that can never be dropped - see R7 above.
 const LOCKED = ['navigation', 'documentation', 'memory'];
 const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
-// Every name the browser server was registered under: the 1.x single `playwright`, and one
-// `browser-<engine>` per engine.
-const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `browser-${e}`)];
+// Every name the browser server was registered under: the 1.x single `playwright`, the
+// `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
+const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];
+
+// THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`, old -> new): an MCP name an older release
+// used reads as the name it goes by now - the plugin and its server alike, a browser engine by its
+// prefix (`playwright-chrome` -> `browser-chrome`). Any other name comes back as it is.
+function currentMcp(name, renamed = {})
+{
+    const text = String(name);
+    if (Object.hasOwn(renamed, text)) return renamed[text];
+    const m = /^(.+)-(chrome|msedge|firefox|webkit)$/.exec(text);
+    return m && Object.hasOwn(renamed, m[1]) ? `${renamed[m[1]]}-${m[2]}` : text;
+}
+
+// Every plugin and server name the rename left behind: each old name, and for the one that expands
+// per engine (the browser) each old engine name instead - the bare 1.x `playwright` is its own legacy
+// registration (PW_SERVERS), never a plugin. What an older install can still hold.
+function renamedFrom(renamed = {})
+{
+    const out = [];
+    for (const [from, to] of Object.entries(renamed || {}))
+        if (to === 'browser') out.push(...PW_ENGINES.map((e) => `${from}-${e}`));
+        else out.push(from);
+    return out;
+}
 
 const isLocked = (name) => LOCKED.includes(name);
 
@@ -45,9 +68,12 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes
 // have written a server this project no longer picks - plus the four engine spellings. On a copy
 // route with the core still on it is just the locked three. On the full copy route, only what the
 // release authored as retired.
-function retiredMcps({ routes, catalog = [], authored = [] })
+function retiredMcps({ routes, catalog = [], authored = [], legacy = [] })
 {
-    const out = [...authored];
+    // The names the 2.0.0 rename left behind go on EVERY route: this release registers none of them,
+    // so one still here is the older install's own (a registration the user made under an old name is
+    // kept by the callers' shape and ledger checks).
+    const out = [...authored, ...legacy];
     if (!routes.mcps)
     {
         if (corePluginOn(routes)) out.push(...LOCKED);
@@ -347,7 +373,7 @@ function playwrightEnabled({ kept = [], flag = null, prior = {}, live = () => un
     };
 }
 
-// The two sets configure's walk pre-selects (the --plan-out `playwright` field): the kept engines,
+// The two sets configure's walk pre-selects (the --plan-out `browser` field): the kept engines,
 // and of them the ones ON NOW. `live(engine)` is the install scope's settings file - the file a /plugin
 // toggle writes, so an unchanged answer equals the live state and switches nothing. Only an engine that
 // file does not name falls back to the stamp's last answer, and one with no record to on.
@@ -490,7 +516,7 @@ function identityOf(entry)
 // playwright engine and the 1.x single `playwright`, the 1.x local context7 (`--context7 local` put the
 // npx transport under the context7 name itself), and each retired server's `registration`
 // (meta/retired-plugins.json) - what the stack wrote, never the add-back line the user may have run.
-function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows = [] })
+function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows = [], renamed = {} })
 {
     const out = {};
     const add = (name, id) => { if (id) (out[name] ||= new Set()).add(id); };
@@ -503,6 +529,9 @@ function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows 
         if (name === 'browser') for (const n of PW_SERVERS) add(n, id);
     }
     add('context7', 'stdio:@upstash/context7-mcp');
+    // An old name (the 2.0.0 rename) was registered with its successor's shape.
+    for (const old of renamedFrom(renamed))
+        for (const id of out[currentMcp(old, renamed)] || []) add(old, id);
     for (const row of retiredRows)
     {
         const reg = row && row.registration;
@@ -641,7 +670,7 @@ function withLocked({ mcps = [], catalog = [], log = () => {} })
 }
 
 module.exports = {
-    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked,
+    CONTEXT7_REMOTE, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
     retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
     playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,

@@ -310,7 +310,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             const move = settings.leaveLocalScope({
                 claudeDir,
                 hookFiles: [...new Set(manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat('shell-guards.js'),
-                mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS),
+                mcpNames: manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS, mcp.renamedFrom(manifest.renamed.mcps)),
                 denySpecs: SECRET_DENY, seeds, written: rows.filter((r) => r.written).map((r) => r.key), log, note,
                 // R10: the ledger says exactly which local keys the stack wrote; the seeds are the fallback.
                 ledgerEnv: priorLedger && priorLedger.env ? priorLedger.env['settings.local.json'] || {} : null,
@@ -327,12 +327,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             skills: manifest.skills, agents: manifest.agents, rules: manifest.rules,
             hooks: manifest.hooks, plugins: manifest.plugins, mcps: manifest.mcps,
         };
-        // The playwright engines the last install INSTALLED, and the ones the user chose to enable (R67) -
+        // The browser engines the last install INSTALLED, and the ones the user chose to enable (R67) -
         // the stamp's word, never the listing's flag: an engine left off is still installed, and a
         // project-scope flag can read a stale false (S22). On EVERY route (R116): a switch onto the copy
         // route finds no registration yet, and read from .mcp.json alone it wrote both lines blank - the
         // record a later switch back installs the engines from.
-        const priorPw = { browsers: stampLayer.readPlaywright(stampFile), enabled: stampLayer.readPlaywrightEnabled(stampFile) };
+        // A stamp from before the 2.0.0 rename spells both lines `playwright-*` (`legacy`): the same record.
+        const priorPw = stampLayer.readBrowserLines(stampFile);
         // null when the stamp has no such line (1.x, no stamp): nothing recorded, and the listing speaks.
         const stampEngines = priorPw.browsers;
         // The copy route's own switch (R116 j): the engines .mcp.json registers before this run, and on
@@ -340,7 +341,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const mcpjsonOff = [path.join(claudeDir, 'settings.json'), path.join(claudeDir, 'settings.local.json'), path.join(configDir, 'settings.json')]
             .flatMap((f) => { const v = readJson(f).disabledMcpjsonServers; return Array.isArray(v) ? v : []; });
         const mcpjsonEngines = registeredEngines(mcpFile);
-        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`browser-${e}`) : undefined);
+        // Registered under the CURRENT name: one .mcp.json still holds as `playwright-<engine>` registers
+        // anew as `browser-<engine>`, so its off-state is listed anew too (mcp.mcpjsonSwitch).
+        const mcpjsonCurrent = registeredEngines(mcpFile, { legacy: false });
+        // An engine .mcp.json registers under its pre-rename name is switched off under that name.
+        const liveCopy = (e) => (mcpjsonEngines.includes(e) ? !mcpjsonOff.includes(`browser-${e}`) && !mcpjsonOff.includes(`playwright-${e}`) : undefined);
 
         let picked = null;
         // On --installed-only, what the user PICKED (disk, the stamp's picks, --add, what those
@@ -473,7 +478,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const pwOn = mcp.playwrightEnabled({ kept: pw.browsers, flag: args.playwrightEnabled, prior: priorPw, live: liveCopy });
         if (pwOn.outside.length)
         {
-            err(`error: --playwright-enabled names ${pwOn.outside.join(',')}, which this run does not install (installs: ${pw.browsers.join(',') || 'none'}) - enable only an engine being installed\n`);
+            err(`error: --browser-enabled names ${pwOn.outside.join(',')}, which this run does not install (installs: ${pw.browsers.join(',') || 'none'}) - enable only an engine being installed\n`);
             return 1;
         }
 
@@ -506,12 +511,12 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 const inv = selection.planInventory({
                     lists, listing, answered, leftOut, pluginCatalog: manifest.catalogs.plugins.map((id) => id.split('@')[0]),
                 });
-                // What configure's walk pre-selects for playwright: the kept engines, and of them the ones
+                // What configure's walk pre-selects for the browser: the kept engines, and of them the ones
                 // ON NOW - the settings file where each is installed, which a /plugin toggle writes; the
                 // stamp's last answer only where that file names nothing. Plugin route only.
                 const isOn = engineOn({ configDir, claudeDir });
                 const specOf = (e) => `browser-${e}@${market}`;
-                inv.playwright = mcp.playwrightLive({
+                inv.browser = mcp.playwrightLive({
                     kept: pw.browsers, prior: priorPw,
                     live: (e) => (routes.mcps ? isOn(specOf(e), plugins.scopeFor(specOf(e), cliScope, listing)) : liveCopy(e)),
                 });
@@ -533,7 +538,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
         };
-        // The one remote server the copy route registers: context7, the hosted transport only (2.0.0).
+        // The one remote server the copy route registers: documentation (Context7), the hosted transport only (2.0.0).
         const remotes = { documentation: mcp.CONTEXT7_REMOTE };
         // What a release retired from the MCP catalog and this run still prunes: the first update past
         // a retirement only (mcp.dueRetired) - after it, the name is the user's add-back registration.
@@ -553,11 +558,13 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger,
+            // The MCP plugin and server names the 2.0.0 rename left behind (manifest `renamed.mcps`).
+            legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
             accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'),
             mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
-            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonEngines }) },
+            pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonCurrent }) },
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
             // own stand-down, and what a switch back could not enable yet.
             standDown: { prior: stampLayer.readStoodDown(stampFile), now: [], owed: null },
@@ -779,8 +786,12 @@ function installPlugins(ctx)
     if (blind && (copyRoute || !ctx.routes.mcps)) ctx.note(blindStandDown(ctx, copyRoute));
     // C11: at user scope on the full copy route an engine's user-scope row is switched off here only, and
     // joins the core's in the stamp's stood-down record.
-    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), hereOnly: copyRoute }).off : [];
-    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: mcp.LOCKED })]; };
+    // The 2.0.0 rename: on the full copy route an old id is stood down with its successor's name - the
+    // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below.
+    const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => n.startsWith('playwright-')) : [];
+    const legacyLocked = copyRoute ? ctx.legacyMcps.filter((n) => !n.startsWith('playwright-')) : [];
+    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
+    const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
         stackEntries: ctx.stackEntries || [], coreDeps: CORE_DEP_PLUGINS, locked: mcp.LOCKED, market: ctx.market,
@@ -822,7 +833,15 @@ function installPlugins(ctx)
     // A failed move leaves the old core carrying the guards; a second install of the new one beside it
     // would run both, and leave nothing for the next update to move.
     if (moved.failed) set = set.filter((spec) => spec !== moved.failed);
-    const fresh = [...moved.fresh, ...relocated.moved];
+    // The 2.0.0 rename (plugins.migrateRenamed): each old MCP id swapped for its successor at the scope
+    // it is installed at, on either action - a setup over an older install would otherwise run both. A
+    // listing the run could not read shows no old row: the ids a pre-rename stamp implies are named.
+    const renamedMove = plugins.corePluginOn(ctx.routes) && !blind
+        ? plugins.migrateRenamed({ rows, renamed: ctx.manifest.renamed.mcps, set, market: ctx.market, scope: ctx.cliScope, engines, isOn, cli: ctx.cli, log: ctx.log, note: ctx.note })
+        : { fresh: [], gone: [] };
+    if (blind && predatesRename(ctx))
+        ctx.log(`  !! the plugin listing could not be read, and this install predates the 2.0.0 rename - an old id still installed loads beside its successor; check /plugin, or: ${ctx.legacyMcps.map((n) => `claude plugin uninstall ${n}@${ctx.market} --scope ${ctx.cliScope}`).join('; ')}`);
+    const fresh = [...moved.fresh, ...relocated.moved, ...renamedMove.fresh];
     // The 1.x core counts as a live home of its seat denies while any scope still carries its old id.
     const oldCore = rows.some((r) => r.name === LEGACY.core && !moved.removed.includes(r)) ? [LEGACY.core] : [];
     const installed = (gone = []) => (listing.length ? carriers.filter((n) => plugins.fieldOf(listing, n, 'version') && !gone.includes(n)).concat(oldCore) : null);
@@ -902,7 +921,9 @@ function playwrightMoves(ctx, { blind, rows })
     if (!ctx.routes.mcps) return none;
     const kept = pwEngines(ctx);
     const specOf = (e) => `browser-${e}@${ctx.market}`;
-    const prior = ctx.pw.prior.browsers || [];
+    // A pre-rename stamp's engines were installed as playwright-<engine>: none of them is a browser-<engine>
+    // to update in place or to uninstall - the rename swap (plugins.migrateRenamed) owns those rows.
+    const prior = ctx.pw.prior.legacy ? [] : (ctx.pw.prior.browsers || []);
     const uninstalled = plugins.uninstallEngines({
         specs: prior.filter((e) => !kept.includes(e)).map(specOf), rows, blind, scope: ctx.cliScope, cli: ctx.cli, log: ctx.log, note: ctx.note,
     });
@@ -929,6 +950,17 @@ function playwrightMoves(ctx, { blind, rows })
         specs: kept.map(specOf), present: known.map(specOf), presentScope, off: off.map(specOf),
         on: apply ? enabled.map(specOf) : null, isOn, uninstalled,
     };
+}
+
+// An install made before the 2.0.0 rename: its stamp spells the browser lines the old way, or names an
+// old locked server among what it carried.
+function predatesRename(ctx)
+{
+    if (ctx.pw.prior.legacy) return true;
+    let text = '';
+    try { text = fs.readFileSync(ctx.stampFile, 'utf8'); } catch { return false; }
+    const carried = ((/^installed-always-mcps:(.*)$/m.exec(text) || [])[1] || '').split(',').map((n) => n.trim());
+    return ctx.legacyMcps.some((n) => carried.includes(n));
 }
 
 // The settings file's word on a plugin at one scope - true, false, or undefined when it says nothing.
@@ -980,7 +1012,7 @@ function registrationOf(ctx, name, scope, live)
     const entry = regs.servers[name];
     if (!entry) return 'absent';
     ctx.mcpIdentities ||= mcp.stackIdentities({
-        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir),
+        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
     });
     if ((ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry))) return 'stack';
     once(`${scope}:${name}`, `  ${live ? '!! ' : ''}mcp ${name}: the ${scope}-scope registration is not the stack's (another server under the same name) - kept; if it should go: claude mcp remove ${name} -s ${scope}`);
@@ -1011,7 +1043,7 @@ function warnShadowed(ctx, carried)
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
-    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue });
+    const retired = mcp.retiredMcps({ routes: ctx.routes, catalog: ctx.manifest.catalogs.mcps, authored: ctx.retiredMcpsDue, legacy: ctx.legacyMcps });
     const addBack = (name) => (readRetiredPlugins(ctx.source.dir).find((r) => r.name === name) || {}).addBack;
     // M-F5-1: the names this run currently wants active - the locked three (always) and a playwright
     // engine this project keeps - shared by every registrationOf call below so the `!!` marker lands only
@@ -1020,7 +1052,9 @@ function installMcps(ctx)
     // A-M2 / A-M3: a user-scope removal of a stack name, and a retired name's at any scope, takes only a
     // registration of the stack's own shape - another under the name is the user's (a server added back
     // with the add-back line included). An absent one costs no call.
-    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name)) || registrationOf(ctx, name, scope, liveMcpNames.has(name)) === 'stack';
+    // A name the 2.0.0 rename left behind is no name this release registers, so it goes only in the
+    // stack's own shape at every scope - the user's own server under an old name is theirs.
+    const mayRemove = (name, scope) => (scope !== 'user' && !ctx.retiredMcpsDue.includes(name) && !ctx.legacyMcps.includes(name)) || registrationOf(ctx, name, scope, liveMcpNames.has(name)) === 'stack';
     // R10: a .mcp.json entry this release no longer writes goes only when the ledger recorded it and
     // nobody changed it since - one it does not list, or an edited one, is the user's, kept and said
     // once. No ledger (an older stamp) or no entry: the rule above. Never applied to a server this run
@@ -1057,7 +1091,7 @@ function installMcps(ctx)
         // I-F7-1: never a bare `playwright` - no user-scope run writes one there, and its identity is the
         // package name only, so one in the file is the user's own (often a committed team file).
         const held = registrationsAt(ctx, 'project');
-        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS])]
+        const names = [...new Set([...ctx.retiredMcpsDue, ...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS, ...ctx.legacyMcps])]
             .filter((name) => name !== 'playwright');
         // ... and it keeps its approval, like any server kept as the user's own.
         if (held.servers.playwright) ctx.mcpForeign.set('playwright', 'project');
@@ -1081,9 +1115,15 @@ function installMcps(ctx)
     // R124 (l): at local and user scope an engine left off is not registered - one an earlier run
     // registered goes with the dropped engines.
     const unregistered = ctx.pw.mcpjson.unregistered;
-    const dropped = mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered);
+    // C10's user-scope full copy route registers in this project's .mcp.json, where the retired pass above
+    // (at user scope) never reaches: an old name an earlier run put there goes with the drops.
+    const dropped = [...new Set(mcp.playwrightDrop({ routes: ctx.routes, browsers: pwEngines(ctx) }).concat(unregistered, scope !== ctx.cliScope ? ctx.legacyMcps : []))];
     for (const name of dropped)
+    {
+        // An old name the retired pass above already pruned at this very scope costs no second call.
+        if (scope === ctx.cliScope && ctx.legacyMcps.includes(name)) continue;
         if (mayPrune(name, scope) && ctx.cli(['mcp', 'remove', name, '-s', scope], { quiet: true, expect: MCP_ABSENT })) ctx.log(`  mcp removed: ${name}`);
+    }
 
     // A user-scope registration of the user's own under a stack name stays theirs: not re-registered,
     // not verified (the verify's re-register would remove it).
@@ -1252,7 +1292,7 @@ function installHooksAndRules(ctx)
         // local or user scope). A name the user added is not a stack name and stays.
         mcpNames: trusted,
         // A-M3: a .mcp.json server kept as the user's own under a retired name keeps its approval too.
-        mcpOff: ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS)
+        mcpOff: ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]).concat(mcp.PW_SERVERS, ctx.legacyMcps)
             .filter((n) => !trusted.includes(n)).concat(ctx.retiredMcpsDue)
             .filter((n) => ctx.mcpForeign.get(n) !== 'project'),
         mcpjsonDisable: ctx.pw.mcpjson.disable, mcpjsonEnable: ctx.pw.mcpjson.enable,
@@ -1410,10 +1450,10 @@ function ledgerOf(ctx)
 // retired) in the stack's own shape - the package it launches or the url it calls (mcp.identityOf).
 function stackShaped(ctx, name, entry)
 {
-    const names = new Set([...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS, ...ctx.manifest.retired.mcps]);
+    const names = new Set([...ctx.manifest.catalogs.mcps.map((e) => e.split('|')[0]), ...mcp.PW_SERVERS, ...ctx.manifest.retired.mcps, ...ctx.legacyMcps]);
     if (!names.has(name)) return false;
     ctx.mcpIdentities ||= mcp.stackIdentities({
-        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir),
+        catalog: ctx.manifest.catalogs.mcps, remotes: ctx.remotes, tokens: ctx.tokens, retiredRows: readRetiredPlugins(ctx.source.dir), renamed: ctx.manifest.renamed.mcps,
     });
     return (ctx.mcpIdentities[name] || new Set()).has(mcp.identityOf(entry));
 }
@@ -1596,9 +1636,11 @@ const registeredMemoryPath = (mcpFile, claudeDir) =>
     return '';
 };
 
-const registeredEngines = (mcpFile) => Object.keys(readJson(mcpFile).mcpServers || {})
-    .map((n) => (/^browser-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1])
-    .filter(Boolean);
+// Under its pre-rename name too (`playwright-<engine>`, 2.0.0) - an older copy-route install's engines -
+// unless `legacy` is false.
+const registeredEngines = (mcpFile, { legacy = true } = {}) => [...new Set(Object.keys(readJson(mcpFile).mcpServers || {})
+    .map((n) => ((legacy ? /^(?:browser|playwright)-(chrome|msedge|firefox|webkit)$/ : /^browser-(chrome|msedge|firefox|webkit)$/).exec(n) || [])[1])
+    .filter(Boolean))];
 
 const pwEngines = (ctx) => ctx.lists.mcps.filter((e) => e.startsWith('browser-')).map((e) => e.split('|')[0].slice('browser-'.length));
 

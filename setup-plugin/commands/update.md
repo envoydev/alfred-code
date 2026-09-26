@@ -328,11 +328,11 @@ line; pass the removals, their add-back lines and every kept row's line through 
 otherwise. A user-scope core move (this run's own, not a prior one) logs
 `core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies
 until each runs /alfred-code:update` - paste it and name that as a follow-up for the user's other
-projects. Playwright keeps its browsers the same
-way: every browser the stamp's `playwright-browsers:` names is updated in place, never installed over (a legacy single `playwright` server
+projects. The browser server keeps its browsers the same
+way: every browser the stamp's `browser-engines:` names is updated in place, never installed over (a legacy single `playwright` server
 migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
 at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
-comes back as the stamp's `playwright-enabled:` last left it; a disabled browser the stamp does not name stays parked.
+comes back as the stamp's `browser-enabled:` last left it; a disabled browser the stamp does not name stays parked.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,

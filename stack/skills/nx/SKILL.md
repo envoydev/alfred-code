@@ -41,7 +41,7 @@ touches - never dump the whole workspace or run every target.
 - Verification and CI gate on `nx affected`, not `nx run-many` over everything. `nx affected --graph`
   shows exactly what a change touches before you run it.
 
-## Serena vs Nx - route each question to the cheaper tool
+## The navigation server (Serena) vs Nx - route each question to the cheaper tool
 Nx and the navigation server do not overlap; they answer different questions at different altitudes. Route correctly
 or you pay for the wrong tool:
 - **Nx = project graph and task scoping** (macro): which projects exist, how they depend on each

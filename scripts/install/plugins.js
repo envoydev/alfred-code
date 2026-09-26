@@ -319,7 +319,7 @@ function engineInPlace(spec, { scope, before, engines, cli, log, note })
 }
 
 // The engines the last install installed and this run no longer keeps (a narrower
-// --playwright-browsers, a --drop of mcp playwright): each is uninstalled at this run's scope by its
+// --browsers, a --drop of mcp browser): each is uninstalled at this run's scope by its
 // full spec, or it reads back as installed and the next update keeps it again. One at another scope is
 // every project's install there - it stays and the command is named. On a listing the run could not
 // read (`blind`) the uninstall is tried at this run's scope, and a refusal most likely means the
@@ -492,11 +492,13 @@ function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}
 // (copyRouteStandDown): `disable --scope project`, returned as `{ scope, spec }` for the stamp's
 // `stood-down` record, which the switch back enables (restoreStoodDown). One already off here, or off
 // at user scope, calls nothing. Returns `{ gone, off }`.
-function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], hereOnly = false, isOn, cli, log = () => {}, note = () => {} })
+function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], hereOnly = false, legacy = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const gone = [];
     const off = [];
-    const names = engines.map((e) => `browser-${e}`);
+    // `legacy`: the full copy route's old `playwright-<engine>` ids (the 2.0.0 rename) - whichever are
+    // installed, since no swap runs with the core off; they go the same way as the engines kept here.
+    const names = [...engines.map((e) => `browser-${e}`), ...legacy];
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
     const at = standDownScope(scope);
@@ -696,6 +698,56 @@ function migrateLegacy({ rows = [], scope, retired = [], retiredRows = [], carri
     return out;
 }
 
+// THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`): serena, context7 and
+// playwright-<engine> are navigation, documentation and browser-<engine>. An install made before it
+// holds the old rows; each one this run's set carries a successor for is SWAPPED at the scope the
+// listing reports for it - the plugin's own scope wins, as on every update (scopeFor) - the new one
+// installed there first, so a failed install leaves the old server running, then the old one removed,
+// so the same server never loads twice after the run. The new one already there (a re-run after a
+// partial one) is not installed again. A browser engine keeps the user's own on/off (the settings
+// file's word at that scope, or this run's enable answer); a locked server comes on, the way update
+// enables a parked one. An old one whose successor this run does not carry (a dropped engine, the MCP
+// copy route's engines) goes at this run's scope only - one at another scope serves the projects
+// there and is named with its command. Only this stack's marketplace: the official catalog ships a
+// `serena` too. Returns `{ fresh, gone }`: the specs installed here, and the old rows removed.
+function migrateRenamed({ rows = [], renamed = {}, set = [], market = BRAND.marketplace, scope, engines = NO_ENGINES, isOn = () => undefined, cli, log = () => {}, note = () => {} })
+{
+    const { currentMcp, renamedFrom } = require('./mcp.js');
+    const olds = renamedFrom(renamed);
+    const out = { fresh: [], gone: [] };
+    const drop = (spec, at) => cli(['plugin', 'uninstall', spec, '--scope', at, '-y'], { quiet: true, expect: 'reported' });
+    for (const row of rows.filter((r) => olds.includes(r.name) && r.marketplace === market && r.version))
+    {
+        const oldSpec = `${row.name}@${market}`;
+        const newName = currentMcp(row.name, renamed);
+        const newSpec = `${newName}@${market}`;
+        const at = row.scope || scope;
+        if (!set.includes(newSpec))
+        {
+            if (at !== scope) { log(`  ${oldSpec} is installed at ${at} scope, not this run's - renamed ${newName} in 2.0.0 and not carried here; kept for the projects that use it: claude plugin uninstall ${oldSpec} --scope ${at}`); continue; }
+            if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} removed [${at}] - ${newSpec} in 2.0.0, which this run does not carry`); out.gone.push(row); }
+            else note(`plugin uninstall failed: ${oldSpec} - remove it by hand: claude plugin uninstall ${oldSpec} --scope ${at}`);
+            continue;
+        }
+        if (!rows.some((r) => r.name === newName && r.marketplace === market && r.scope === at && r.version))
+        {
+            if (!cli(['plugin', 'install', newSpec, '--scope', at, '-y'], { expect: 'reported' }))
+            {
+                note(`plugin ${newSpec} failed - ${oldSpec} stays until it installs; the next update retries the rename`);
+                continue;
+            }
+            out.fresh.push(newSpec);
+            const said = isOn(oldSpec, at);
+            const wasOn = said === undefined ? row.enabled !== false : said;
+            const engine = /^browser-/.test(newName);
+            if (engine && !(engines.on ? engines.on.includes(newSpec) : wasOn)) switchOff(newSpec, at, { cli, log, note });
+        }
+        if (drop(oldSpec, at)) { log(`  renamed: plugin ${oldSpec} -> ${newSpec} [${at}]`); out.gone.push(row); }
+        else note(`plugin uninstall failed: ${oldSpec} - it loads beside ${newSpec}, the same server twice; remove it by hand: claude plugin uninstall ${oldSpec} --scope ${at}`);
+    }
+    return out;
+}
+
 // The third-party marketplaces THIS run needs registered: the source each installed plugin's
 // manifest row names. A source for a plugin the run does not install is never added to the account.
 function extraMarketplaces(rows, set)
@@ -767,7 +819,7 @@ function parseMarketplaces(json)
 
 module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
-    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy,
+    pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
     refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,
