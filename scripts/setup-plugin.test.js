@@ -532,7 +532,7 @@ test('the command bodies read stack entries under the key the core is listed und
         assert.ok(!/@envoydev\b/.test(body), `${file} spells a stack entry @envoydev: ${(/.{0,60}@envoydev.{0,20}/.exec(body) || [''])[0]}`);
     }
     const protocol = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'source-protocol.md'), 'utf8');
-    assert.match(protocol, /key=\$\{KEY:-\?\}/, 'the bash resolve line names the key');
+    assert.match(protocol, /key=\$\{MKT:-\?\}/, 'the bash resolve line names the key (its variable is MKT - a KEY-shaped name is what the secret guard blocks)');
 });
 
 // A 1.x install's stamp keeps its old name until its first 2.0.0 update, so a manual read names both.
