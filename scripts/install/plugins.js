@@ -104,13 +104,18 @@ function committedRoutesAt({ env = {}, claudeDir, scope = 'project', log = () =>
 // keeps one row per name@marketplace instead, for a pass whose specs come from several, read through
 // `fieldOf` with the full spec. `everyScope` keeps one per name@marketplace@scope: the same plugin at
 // the account and in this project is two installs, and the 1.x migration moves only its own scope's.
+// A Windows drive path is compared case-blind: the file system is, and the listing's projectPath can
+// spell the drive or a folder unlike git's root (`c:\WINDOWS` against `C:\Windows`) - a case-exact
+// compare dropped this project's rows, and uninstall then left them behind without a word.
+const projectKey = (p) => (/^[A-Za-z]:[\\/]/.test(p) ? path.win32.resolve(p).toLowerCase() : path.resolve(p));
+
 function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false, everyScope = false } = {})
 {
     let data;
     try { data = typeof json === 'string' ? JSON.parse(json) : json; }
     catch { return []; }
     const rows = Array.isArray(data) ? data : (data && Array.isArray(data.installed) ? data.installed : []);
-    const here = path.resolve(projectRoot || '.');
+    const here = projectKey(projectRoot || '.');
     const best = new Map();
     for (const row of rows)
     {
@@ -119,7 +124,7 @@ function parsePluginList(json, projectRoot, { marketplace, byMarketplace = false
         if (!name) continue;
         if (marketplace && market !== marketplace) continue;
         const pp = row.projectPath;
-        if (pp && path.resolve(String(pp)) !== here) continue;
+        if (pp && projectKey(String(pp)) !== here) continue;
         const rank = pp ? 0 : 1;                      // this project first, then the account rows
         const key = everyScope ? `${name}@${market}@${row.scope ?? ''}` : byMarketplace ? `${name}@${market}` : name;
         const prev = best.get(key);

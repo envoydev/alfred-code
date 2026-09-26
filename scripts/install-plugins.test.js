@@ -76,6 +76,19 @@ test('plugin-list: THIS project\'s row wins over the account row, and another pr
     assert.deepStrictEqual(listing, [{ name: 'alfred-code', marketplace: 'envoydev', version: '1.0.0', scope: 'project', enabled: true }]);
 });
 
+test('plugin-list: a Windows projectPath matches this project whatever its letter case, and another project still does not (W-1)', () =>
+{
+    const json = JSON.stringify([
+        { id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', projectPath: 'c:\\WINDOWS\\SystemTemp\\p\\repo' },
+        { id: 'serena@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:/Windows/SystemTemp/p/repo/' },
+        { id: 'memory@envoydev', version: '2.0.0', scope: 'project', projectPath: 'C:\\Windows\\SystemTemp\\p\\other' },
+    ]);
+    const rows = P.parsePluginList(json, 'C:\\Windows\\SystemTemp\\p\\repo', { everyScope: true });
+    assert.deepStrictEqual(rows.map((r) => r.name), ['alfred-code', 'serena']);
+    // a POSIX path keeps its exact spelling: another case is another directory there
+    assert.deepStrictEqual(P.parsePluginList(JSON.stringify([{ id: 'a@m', scope: 'project', projectPath: '/Repo' }]), '/repo'), []);
+});
+
 test('plugin-list: a marketplace filter runs BEFORE the per-name pick - a same-named foreign row never wins', () =>
 {
     const json = JSON.stringify({ installed: [
