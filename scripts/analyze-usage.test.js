@@ -979,6 +979,10 @@ test('turn-check advice: the strict hook profile gets no row, from the hook env 
   assert.strictEqual(turnCheck(c).text, '', 'the account pluginConfigs says strict');
   fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'alfred-code@envoydev': { options: { hook_profile: 'standard' } } } }));
   assert.match(turnCheck(c).text, /^turn-check: advise/, 'standard still advises');
+  // minimal switches the build check off whatever TURN_CHECK says, so advising the key would do nothing
+  const minimal = turnCheck(turnCheckCorpus(over), [], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
+  assert.strictEqual(minimal.json.advise, false, JSON.stringify(minimal.json));
+  assert.strictEqual(minimal.text, '');
 });
 
 // Review finding 10: the command bodies built the project's transcripts folder with `pwd | sed`, which Git

@@ -2474,7 +2474,7 @@ const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over a
 // skill-loaded, loaded-earlier and missed buckets. At TURN_CHECK_THRESHOLD of them in the newest
 // TURN_CHECK_WINDOW sessions - one session in three - validate and status paste ONE advisory row. The
 // switch is the user's: nothing here writes it, and a project that already set it, or runs the strict
-// hook profile (which runs the check anyway), gets no row.
+// hook profile (which runs the check anyway) or the minimal one (which switches it off), gets no row.
 const TURN_CHECK_WINDOW = 10;
 const TURN_CHECK_THRESHOLD = 3;
 function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
@@ -2501,7 +2501,8 @@ function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
   const doneGate = newDoneGate();
   for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl')).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
   const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
-  const advise = !on && unchecked >= TURN_CHECK_THRESHOLD;
+  // minimal switches the build check off whatever TURN_CHECK says, so the key it would advise does nothing
+  const advise = !on && profile !== 'minimal' && unchecked >= TURN_CHECK_THRESHOLD;
   const row = advise ? `turn-check: advise - ${unchecked} done claims over an edit had nothing run after it in the newest ${newest.length} sessions `
     + `(threshold ${TURN_CHECK_THRESHOLD} per ${TURN_CHECK_WINDOW}): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop` : null;
   return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, profile, advise, row };
