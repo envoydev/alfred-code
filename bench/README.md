@@ -85,7 +85,15 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   binds a socket the sandbox refuses, so dotnet joins docker as the second host-equivalent hole, by the
   owner's decision. The cell's own home is writable (`~`, npm's cache), npm reaches its registry, NuGet
   restores once per template (`common.json` `restore`), and the three MSBuild switches keep parallel
-  cells from sharing a build node.
+  cells from sharing a build node. An exclusion matches a LEADING command only, so the compound forms
+  a session writes (`cd src && dotnet build | tail`) run sandboxed: a `dotnet` shim first on every
+  session's PATH (`lib/dotnet-shim.js`) runs build, test, publish, pack and msbuild in one MSBuild node
+  with no node reuse (`-m:1 -nodeReuse:false`; `run` is left alone - it hands unknown tokens to the app),
+  and local unix sockets are allowed (`allowAllUnixSockets`, the owner's answer) so a sandboxed
+  `docker build` or Testcontainers reaches the daemon. Each session has its own temp dir under `/tmp`
+  (`TMPDIR` and `CLAUDE_CODE_TMPDIR`), so parallel cells never share `/tmp/claude-<uid>`. Re-measured
+  2026-09-26 (bare, one Sonnet session, `b4-probe-d4`): sandboxed `TMPDIR=/private/tmp/bench-<id>/claude-501`,
+  `cd src && dotnet build ../LendingDesk.slnx | tail -3` 0 errors in 16 s, a piped `docker build` done.
 - **D8, workspace trust.** A subagent hook fires in `ours` under print mode. If it stays silent,
   write Claude Code's trust entry into every cell, for every arm alike.
 - Every arm's machinery loaded: ten transcripts read end to end.

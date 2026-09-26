@@ -10,10 +10,11 @@ const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { templatePaths } = require('./cells.js');
 const { resolve } = require('./arms.js');
-const { sessionEnv, pickAuth } = require('./env.js');
+const { sessionEnv, pickAuth, sessionTmp } = require('./env.js');
 const fixture = require('../fixture/verify.js');
 const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
+const { installShims } = require('./dotnet-shim.js');
 
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
@@ -83,11 +84,17 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
         if (arm.onboarding.length && typeof onboard !== 'function') throw new Error(`${arm.name}: onboarding prompts but no onboarding runner`);
         // The driver names the run's credential; a caller that names none gets the only one set, or none.
         const onboardAuth = auth || (session.auth.some((name) => base[name]) ? pickAuth(session.auth, base) : false);
-        const onboardEnv = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth });
+        const bin = installShims({ bin: path.join(paths.dir, 'bin'), PATH: base.PATH });
         arm.onboarding.forEach((prompt, i) =>
         {
-            try { onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env: onboardEnv, index: i + 1, dir: paths.dir }); }
+            const tmp = sessionTmp();
+            try
+            {
+                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin });
+                onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, index: i + 1, dir: paths.dir });
+            }
             catch (err) { throw new Error(`${arm.name} onboarding ${i + 1}: ${err.message}`); }
+            finally { removeTree(tmp); }
         });
 
         fs.writeFileSync(path.join(paths.dir, READY), `${JSON.stringify({ arm: arm.name, hash: arm.hash, pin: arm.pin, fixtureCommit: commit, builtAt: new Date().toISOString() }, null, 2)}\n`);

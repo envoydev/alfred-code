@@ -144,6 +144,16 @@ test('onboarding runs each prompt in the template repo with the template\'s own 
     for (const s of seen) assert.deepStrictEqual([s.cwd, s.config, s.home], [paths.repo, paths.config, paths.home]);
 });
 
+test('each onboarding prompt gets its own temp dir, removed after it', (t) =>
+{
+    const f = fixture(t);
+    const seen = [];
+    build({ arm: arm([], { onboarding: ['/init', 'second'] }), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock, onboard: (prompt, where) => seen.push({ tmp: where.env.TMPDIR, cc: where.env.CLAUDE_CODE_TMPDIR, there: fs.existsSync(where.env.TMPDIR) }) });
+    assert.strictEqual(seen.length, 2);
+    assert.notStrictEqual(seen[0].tmp, seen[1].tmp);
+    for (const s of seen) assert.ok(s.there && s.cc === s.tmp && !fs.existsSync(s.tmp));
+});
+
 test('onboarding gets only the credential the run chose, and setup gets none', (t) =>
 {
     const f = fixture(t);

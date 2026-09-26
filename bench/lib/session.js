@@ -11,10 +11,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const lock = require('./lock.js');
-const { sessionEnv, pickAuth } = require('./env.js');
+const { sessionEnv, pickAuth, sessionTmp } = require('./env.js');
 const { limitHit } = require('./limit.js');
 const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
+const { installShims } = require('./dotnet-shim.js');
 
 const WIN = process.platform === 'win32';
 const MIN_SECRET = 8;
@@ -172,13 +173,16 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
     fs.mkdirSync(cell.results, { recursive: true });
     const got = lock.acquire(cell.results);
     if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);
+    let sessionTmpDir = null;
     try
     {
         prepare({ cell, startRef, setup, taskDir, task: cell.task });
         const baseTree = snapshot(cell, 'base');
         const sessionId = crypto.randomUUID();
         const argv = sessionArgv({ prompt, session, sessionId });
-        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName });
+        sessionTmpDir = sessionTmp();
+        const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
+        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin });
 
         const out = fs.openSync(cell.stdout, 'w');
         const err = fs.openSync(cell.stderr, 'w');
@@ -236,7 +240,11 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         fs.renameSync(tmp, cell.session);
         return record;
     }
-    finally { lock.release(cell.results); }
+    finally
+    {
+        if (sessionTmpDir) removeTree(sessionTmpDir);
+        lock.release(cell.results);
+    }
 }
 
 // A cell a usage limit stopped is not finished: its files, already redacted, move to

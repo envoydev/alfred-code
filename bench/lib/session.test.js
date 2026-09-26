@@ -61,9 +61,45 @@ test('the session gets the cell\'s own account and home, the shared env, the arm
     assert.deepStrictEqual(seen.argv, sessionArgv({ prompt: 'Add the thing.', session: SESSION, sessionId: out.sessionId }));
     assert.strictEqual(fs.realpathSync(seen.cwd), fs.realpathSync(cell.repo));
     assert.deepStrictEqual(Object.keys(seen.env).filter((k) => !['PATH', '__CF_USER_TEXT_ENCODING'].includes(k)).sort(),
-        ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', 'CLAUDE_CONFIG_DIR', 'FAKE_RECORD', 'HOME']);
+        ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_CONFIG_DIR', 'FAKE_RECORD', 'HOME', 'TMPDIR']);
     assert.strictEqual(seen.env.CLAUDE_CONFIG_DIR, cell.config);
     assert.strictEqual(seen.env.HOME, cell.home);
+});
+
+test('each session gets its own short temp dir, gone when it ends, so parallel cells never share a build log', async (t) =>
+{
+    const one = cellFor(t, 1);
+    const two = cellFor(t, 2);
+    const seen = [];
+    for (const { dir, cell } of [one, two])
+    {
+        const record = path.join(dir, 'record.json');
+        await go(cell, { name: 'solo', env: { FAKE_RECORD: record } });
+        seen.push(JSON.parse(fs.readFileSync(record, 'utf8')));
+    }
+    const [a, b] = seen.map((s) => s.env.TMPDIR);
+    assert.notStrictEqual(a, b);
+    for (const s of seen)
+    {
+        assert.strictEqual(s.env.CLAUDE_CODE_TMPDIR, s.env.TMPDIR);
+        assert.ok(s.tmpdirExists, 'the temp dir exists while the session runs');
+        assert.ok(s.env.TMPDIR.length <= 32, `${s.env.TMPDIR} is short: Claude Code falls back to a shared sandbox TMPDIR for a long one`);
+        assert.ok(!fs.existsSync(s.env.TMPDIR), `${s.env.TMPDIR} outlived its session`);
+    }
+});
+
+test('a dotnet on the PATH is shimmed into the cell\'s own bin dir, first on the session\'s PATH', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const sdk = path.join(dir, 'sdk');
+    fs.mkdirSync(sdk);
+    fs.writeFileSync(path.join(sdk, 'dotnet'), '#!/bin/sh\necho real "$@"\n', { mode: 0o755 });
+    const record = path.join(dir, 'record.json');
+    await go(cell, { name: 'solo', env: { FAKE_RECORD: record } }, { base: { ...BASE, PATH: `${sdk}${path.delimiter}${process.env.PATH}` } });
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8')).env;
+    const [first] = seen.PATH.split(path.delimiter);
+    assert.strictEqual(first, path.join(cell.work, 'bin'));
+    assert.strictEqual(execFileSync(path.join(cell.work, 'bin', 'dotnet'), ['build'], { stdio: 'pipe' }).toString().trim(), 'real build -m:1 -nodeReuse:false');
 });
 
 test('a finished session leaves its transcript, subagents, stdout and the diff of what it changed', async (t) =>

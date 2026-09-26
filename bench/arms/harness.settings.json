@@ -17,7 +17,8 @@
       "allowedDomains": [
         "registry.npmjs.org"
       ],
-      "allowLocalBinding": true
+      "allowLocalBinding": true,
+      "allowAllUnixSockets": true
     }
   },
   "permissions": {

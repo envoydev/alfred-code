@@ -5,6 +5,15 @@
 // crosses is what a build and a test run need; the account and home are the cell's own; auth crosses
 // by NAME, only for a process that calls the model, and only the ONE name the run chose - in print mode
 // an API key outranks the subscription token, so a second credential would decide who is billed.
+//
+// Every session also gets a temp dir of its own (`tmp`): Claude Code builds the sandboxed commands'
+// TMPDIR from CLAUDE_CODE_TMPDIR (`<it>/claude-<uid>/`, default `/tmp`), and an unsandboxed one
+// (dotnet, docker) inherits TMPDIR - so without it every parallel cell shared `/tmp/claude-<uid>`
+// and read the others' build logs (first pilot). It sits under /tmp to stay SHORT: for a long
+// override Claude Code hands sandboxed commands a shared fallback instead.
+const fs = require('node:fs');
+const path = require('node:path');
+
 const PASS = [
     'PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TMPDIR', 'SHELL', 'USER', 'LOGNAME',
     'DOCKER_HOST', 'DOTNET_ROOT', 'NUGET_PACKAGES', 'npm_config_cache',
@@ -12,7 +21,7 @@ const PASS = [
 ];
 const PASS_PREFIX = ['TESTCONTAINERS_'];
 
-function sessionEnv({ base = process.env, session, arm, config, home, auth })
+function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin })
 {
     const env = {};
     for (const [k, v] of Object.entries(base))
@@ -26,8 +35,14 @@ function sessionEnv({ base = process.env, session, arm, config, home, auth })
         if (!session.auth.includes(auth)) throw new Error(`${auth} is not an auth variable common.json lists`);
         if (base[auth] !== undefined) env[auth] = base[auth];
     }
+    if (tmp) Object.assign(env, { TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp });
+    // The harness's shims (lib/dotnet-shim.js) first, so every route to `dotnet` meets them.
+    if (bin) env.PATH = env.PATH ? `${bin}${path.delimiter}${env.PATH}` : bin;
     return env;
 }
+
+// A fresh temp dir for one session, by its real path (macOS /tmp is a link); the caller removes it.
+const sessionTmp = () => fs.realpathSync(fs.mkdtempSync('/tmp/bench-'));
 
 // The one credential a run's sessions get: the name --auth gave, else the only listed name set.
 function pickAuth(names, base, chosen)
@@ -44,4 +59,4 @@ function pickAuth(names, base, chosen)
     return present[0];
 }
 
-module.exports = { sessionEnv, pickAuth, PASS, PASS_PREFIX };
+module.exports = { sessionEnv, pickAuth, sessionTmp, PASS, PASS_PREFIX };

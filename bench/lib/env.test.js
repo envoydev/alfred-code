@@ -19,6 +19,21 @@ test('only the allowlist crosses from the host, and the cell\'s own account and 
     });
 });
 
+test('a session\'s own temp dir replaces the host\'s TMPDIR, for sandboxed and unsandboxed commands alike', () =>
+{
+    const env = sessionEnv({ base: BASE, session: { ...SESSION, env: { ...SESSION.env, TMPDIR: '/shared' } }, arm: { env: {} }, config: '/c', home: '/h', auth: false, tmp: '/private/tmp/bench-a1' });
+    assert.strictEqual(env.TMPDIR, '/private/tmp/bench-a1', 'what an unsandboxed command (dotnet, docker) inherits');
+    assert.strictEqual(env.CLAUDE_CODE_TMPDIR, '/private/tmp/bench-a1', 'the base Claude Code builds the sandboxed TMPDIR from');
+    assert.strictEqual(sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false }).TMPDIR, '/tmp/x', 'no temp dir named: the host\'s passes');
+});
+
+test('the harness\'s own bin dir goes first on the PATH, so its dotnet shim wins', () =>
+{
+    const env = sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false, bin: '/w/cell/bin' });
+    assert.strictEqual(env.PATH, `/w/cell/bin${require('node:path').delimiter}/usr/bin`);
+    assert.strictEqual(sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false }).PATH, '/usr/bin');
+});
+
 test('auth crosses by name only when asked, and only the one name the run chose', () =>
 {
     const base = { ...BASE, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-value' };

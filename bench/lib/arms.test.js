@@ -44,6 +44,9 @@ test('the four shipped arm files load against the shared session', () =>
     assert.deepStrictEqual(session.settings.sandbox.excludedCommands, ['docker *', 'dotnet *'], 'the two declared holes, both host-equivalent');
     assert.deepStrictEqual(session.settings.permissions.allow, ['Bash(docker *)', 'Bash(dotnet *)']);
     assert.strictEqual(session.settings.sandbox.allowUnsandboxedCommands, false);
+    // A compound command (`cd src && docker build . | tail`) runs INSIDE the sandbox, where the Docker socket and
+    // Testcontainers need a unix socket: the owner allowed local sockets (AskUserQuestion, 2026-09-26).
+    assert.strictEqual(session.settings.sandbox.network.allowAllUnixSockets, true);
     assert.strictEqual(session.env.MSBUILDDISABLENODEREUSE, '1', 'parallel cells never share a build node');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
@@ -128,7 +131,7 @@ test('an unknown key, a bad setup step and a name that is not the file are refus
 
 test('an arm env cannot override what the harness or common.json owns', (t) =>
 {
-    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
+    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
     {
         const dir = armsDir(t, { arms: [{ ...ARM, env: { [key]: '1' } }] });
         assert.throws(() => load({ dir, names: ['solo'] }), new RegExp(`solo: env ${key} is the harness's`));
