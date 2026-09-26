@@ -581,6 +581,12 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         const installs = lines.filter((l) => l.includes('alfred-code.js install'));
         assert.strictEqual(installs.length, 12);
         for (const i of installs) assert.match(i, /env -i PATH="\$PATH" .* ALFRED_CODE_SKILLS_VIA_PLUGIN=false ALFRED_CODE_HOOKS_VIA_PLUGIN=false ALFRED_CODE_MCPS_VIA_PLUGIN=false node /);
+        // The scaffold's commit leaves ~300 loose objects, past git's loose-objects threshold (100), so an
+        // unconfigured project starts a DETACHED `git maintenance run --auto` that is still packing into
+        // .git/objects when the run is deleted (reproduced: ENOTEMPTY, a tmp_pack left behind).
+        const inits = lines.filter((l) => / init -q/.test(l));
+        assert.strictEqual(inits.length, 12);
+        for (const i of inits) assert.match(i, / init -q && git -C \S+ config maintenance\.auto false$/, 'a throwaway project runs no background maintenance');
         // bash parses the whole plan without running any of it
         const script = path.join(dir, 'plan.sh');
         fs.writeFileSync(script, r.out);

@@ -616,7 +616,9 @@ function replayPlan({ skills, levels, source, out, model, budget = 2, claude = '
             const ldir = path.join(sdir, level);
             const proj = path.join(ldir, 'project');
             const transcript = path.join(ldir, 'transcript.jsonl');
-            add(`mkdir -p ${q(proj)} && git -C ${q(proj)} init -q`, 'prep', `${skill} / ${level}`);
+            // No background maintenance: the scaffold's commit is past git's loose-objects threshold, and a
+            // detached repack still writing into .git/objects outlives the run and breaks its removal.
+            add(`mkdir -p ${q(proj)} && git -C ${q(proj)} init -q && git -C ${q(proj)} config maintenance.auto false`, 'prep', `${skill} / ${level}`);
             add(`(cd ${q(proj)} && ${clean} ${COPY_ROUTE.join(' ')} node ${q(path.join(src, 'scripts', 'install', 'alfred-code.js'))} install --source ${q(src)} --selection ${q(selTxt)} --memory-level project)`);
             add(`(cd ${q(proj)} && ${clean} bash ${q(path.join(dir, 'scaffold.sh'))})`);
             const flags = ['-p', '--output-format stream-json', '--verbose', `--max-turns ${e.run.max_turns}`, '--permission-mode dontAsk',
