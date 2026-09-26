@@ -16,7 +16,7 @@ const COMMON = {
     auth: ['ANTHROPIC_API_KEY'],
     scrub: ['CONTEXT7_API_KEY'],
 };
-const ARM = { name: 'solo', pin: { kind: 'tag', value: 'v1.0.0' }, setup: [['git', 'clone', '{root}', '{src}']], onboarding: ['/init'], env: {} };
+const ARM = { name: 'solo', pin: { kind: 'tag', value: 'v1.0.0' }, setup: [['git', 'clone', '{root}', '{src}']], onboarding: ['/init'], expects: ['CLAUDE.md'], env: {} };
 
 function armsDir(t, { common = COMMON, arms = [ARM] } = {})
 {
@@ -68,6 +68,37 @@ test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onb
     assert.ok(installer > core, 'the installer runs after the core, so it reads the pinned marketplace key rather than adding the published one');
     assert.deepStrictEqual(ours.setup[installer].slice(2), ['install', '--source', '{src}', '--scope', 'project', '--selection', '{template}/selection.txt']);
     assert.deepStrictEqual(ours.onboarding, ['/alfred-code:init']);
+    // Nobody answers an ask in print mode: the stack's unattended init takes each recommended option instead.
+    assert.deepStrictEqual(ours.env, { ALFRED_CODE_UNATTENDED: '1' });
+    assert.deepStrictEqual(ours.expects, ['.alfred/docs/architecture/ARCHITECTURE.md'], 'the architecture capture init runs, under the stack\'s default docs root');
+});
+
+test('every shipped arm with an onboarding names what it must leave behind', () =>
+{
+    const { arms } = load({ dir: ARMS_DIR, names: ['ours', 'ecc', 'bare', 'baseline'] });
+    const by = Object.fromEntries(arms.map((a) => [a.name, a.expects]));
+    assert.deepStrictEqual(by, {
+        ours: ['.alfred/docs/architecture/ARCHITECTURE.md'], ecc: ['CLAUDE.md'], bare: ['CLAUDE.md'], baseline: ['.claude/docs/architecture/ARCHITECTURE.md'],
+    });
+});
+
+test('an onboarding with no expected output, or an expected path that leaves the clone, is refused', (t) =>
+{
+    const { expects, ...none } = ARM;
+    assert.ok(expects);
+    assert.throws(() => load({ dir: armsDir(t, { arms: [none] }), names: ['solo'] }), /solo: onboarding names no expected output/);
+    for (const bad of [['/abs/CLAUDE.md'], ['../CLAUDE.md'], ['a/../../b'], [''], 'CLAUDE.md'])
+    {
+        assert.throws(() => load({ dir: armsDir(t, { arms: [{ ...ARM, expects: bad }] }), names: ['solo'] }), /solo: expects /, JSON.stringify(bad));
+    }
+    const quiet = { ...none, onboarding: [] };
+    assert.deepStrictEqual(load({ dir: armsDir(t, { arms: [quiet] }), names: ['solo'] }).arms[0].expects, [], 'no onboarding, nothing expected');
+});
+
+test('the expected outputs are part of the template key', () =>
+{
+    const session = { model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settings: {} };
+    assert.notStrictEqual(armHash({ ...ARM, expects: ['other.md'] }, session), armHash(ARM, session));
 });
 
 test('baseline stays on v1.0.0 and its own installer', () =>
@@ -131,7 +162,7 @@ test('an unknown key, a bad setup step and a name that is not the file are refus
 
 test('an arm env cannot override what the harness or common.json owns', (t) =>
 {
-    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
+    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
     {
         const dir = armsDir(t, { arms: [{ ...ARM, env: { [key]: '1' } }] });
         assert.throws(() => load({ dir, names: ['solo'] }), new RegExp(`solo: env ${key} is the harness's`));
@@ -160,7 +191,7 @@ test('the pin hash changes with the pin value and the session, never with a note
     assert.notStrictEqual(armHash({ ...ARM, pin: { kind: 'tag', value: 'v1.0.1' } }, session), h);
     assert.notStrictEqual(armHash(ARM, { ...session, model: 'claude-opus-5-5' }), h);
     assert.strictEqual(armHash({ _note: 'why', ...ARM }, session), h);
-    assert.strictEqual(armHash({ env: {}, onboarding: ['/init'], setup: ARM.setup, pin: ARM.pin, name: 'solo' }, session), h);
+    assert.strictEqual(armHash({ env: {}, expects: ['CLAUDE.md'], onboarding: ['/init'], setup: ARM.setup, pin: ARM.pin, name: 'solo' }, session), h);
 });
 
 test('a run-level override replaces model and effort for every arm, and is validated', (t) =>

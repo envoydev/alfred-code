@@ -27,7 +27,7 @@ test('drive, grade and aggregate, end to end on the real fixture', { skip: POSIX
     const lock = fixture.parseLock(fs.readFileSync(fixture.LOCK_FILE, 'utf8'));
     const w = makeWorld(t, {
         fixture: { source: ROOT, lock },
-        arms: { ours: { env: { FAKE_EDIT: 'made.txt', FAKE_LEAK: '1' }, onboarding: ['/init'] }, bare: { env: { FAKE_EDIT: 'made.txt' } } },
+        arms: { ours: { env: { FAKE_EDIT: 'made.txt', FAKE_LEAK: '1' }, onboarding: ['/init'], expects: ['made.txt'] }, bare: { env: { FAKE_EDIT: 'made.txt' } } },
         tasks: {
             'pass-1': { group: 'api', grade: { hidden: [['node', 'hidden-pass.js']], suite: [['node', '-e', '0']], timeoutMin: 2 }, hidden: { 'hidden-pass.js': check('made.txt') } },
             'fail-1': { group: 'api', grade: { hidden: [['node', 'hidden-fail.js']], suite: [['node', '-e', '0']], timeoutMin: 2 }, hidden: { 'hidden-fail.js': check('never.txt') } },

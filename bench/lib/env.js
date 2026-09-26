@@ -21,7 +21,7 @@ const PASS = [
 ];
 const PASS_PREFIX = ['TESTCONTAINERS_'];
 
-function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin })
+function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin, shared })
 {
     const env = {};
     for (const [k, v] of Object.entries(base))
@@ -35,6 +35,9 @@ function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp,
         if (!session.auth.includes(auth)) throw new Error(`${auth} is not an auth variable common.json lists`);
         if (base[auth] !== undefined) env[auth] = base[auth];
     }
+    // The run's shared stores (the uv cache and Python installs under the work root): every template step and
+    // session sees the same ones, so an MCP server launched through uvx starts warm in every cell.
+    Object.assign(env, shared || {});
     if (tmp) Object.assign(env, { TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp });
     // The harness's shims (lib/dotnet-shim.js) first, so every route to `dotnet` meets them.
     if (bin) env.PATH = env.PATH ? `${bin}${path.delimiter}${env.PATH}` : bin;

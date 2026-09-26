@@ -215,17 +215,29 @@ async function drive(opts)
         const workRoot = resolveWorkRoot(o, runP);
         const { record, loaded, tasks } = configure(o, runP, version, authName, workRoot);
 
+        // One uv cache and one Python store for every template and cell: an MCP server launched through
+        // uvx is installed once, at the template's warm-up, and starts inside the connect timeout after.
+        const shared = { UV_CACHE_DIR: path.join(workRoot, 'uv', 'cache'), UV_PYTHON_INSTALL_DIR: path.join(workRoot, 'uv', 'python') };
         const templates = {};
         for (const arm of loaded.arms)
         {
             const built = template.build({
-                arm, session: loaded.session, benchDir: o.benchDir, workRoot, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base, auth: authName,
+                arm, session: loaded.session, benchDir: o.benchDir, workRoot, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base, auth: authName, claude: o.claude, shared,
                 onboard: (prompt, where) => session.onboardSync({ prompt, where, session: loaded.session, claude: o.claude, base: o.base }),
             });
             templates[arm.name] = built.paths;
             o.log(`template ${arm.name}: ${built.built ? 'built' : 'reused'}`);
+            const kept = path.join(runP.dir, 'onboarding', arm.name);
             const onboarding = path.join(built.paths.dir, 'onboarding');
-            if (fs.existsSync(onboarding)) fs.cpSync(onboarding, path.join(runP.dir, 'onboarding', arm.name), { recursive: true });
+            if (fs.existsSync(onboarding)) fs.cpSync(onboarding, kept, { recursive: true });
+            // What the template installed and was granted, beside its onboarding: what the B4 read checks.
+            for (const name of ['plugins.json', 'grants.json', 'mcp-warm.txt'])
+            {
+                const file = path.join(built.paths.dir, name);
+                if (!fs.existsSync(file)) continue;
+                fs.mkdirSync(kept, { recursive: true });
+                fs.copyFileSync(file, path.join(kept, name));
+            }
         }
 
         const armBy = Object.fromEntries(loaded.arms.map((a) => [a.name, a]));
@@ -260,7 +272,7 @@ async function drive(opts)
                 {
                     cellsLib.reset(cell);
                     template.copyInto(templates[cell.arm], cell);
-                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName });
+                    const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared });
                     counts[rec.outcome] += 1;
                     if (rec.outcome === 'limited')
                     {

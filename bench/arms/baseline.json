@@ -1,5 +1,5 @@
 {
-  "_note": "The last release before the improvement plans (D9 in the B2 task plan: 0.2.86 was never tagged, and a 0.2.x pin would fold the plugin-native migration into what the plans bought). Otherwise the same route as ours, non-interactive: the pinned release cloned from this repo's own tag, its marketplace added from that clone, the selection a user gets by taking every recommended option of /claude-stack:init for the fixture's four stacks (bench/lib/recommended.js, run on the release's own scripts), the installer at project scope, then the architecture capture the stack tells a new project to run. B4 checks the selection against a real init walk and that the capture completes in print mode.",
+  "_note": "The last release before the improvement plans (D9 in the B2 task plan: 0.2.86 was never tagged, and a 0.2.x pin would fold the plugin-native migration into what the plans bought). Otherwise the same route as ours, non-interactive: the pinned release cloned from this repo's own tag, its marketplace added from that clone, the selection a user gets by taking every recommended option of /claude-stack:init for the fixture's four stacks (bench/lib/recommended.js, run on the release's own scripts), the installer at project scope, then the architecture capture the stack tells a new project to run. The template is refused unless the capture leaves ARCHITECTURE.md under v1.0.0's docs root, .claude/docs (expects). B4 checks the selection against a real init walk.",
   "name": "baseline",
   "pin": { "kind": "tag", "value": "v1.0.0" },
   "setup": [
@@ -9,5 +9,6 @@
     ["node", "{src}/scripts/install/claude-stack.js", "install", "--source", "{src}", "--scope", "project", "--selection", "{template}/selection.txt"]
   ],
   "onboarding": ["/claude-stack:project-architecture-analyzer"],
+  "expects": [".claude/docs/architecture/ARCHITECTURE.md"],
   "env": {}
 }

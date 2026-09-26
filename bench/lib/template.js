@@ -5,6 +5,13 @@
 // leaves nothing that could be served: the next build wipes it and starts over. Every cell then gets
 // a full copy, with the template's absolute paths rewritten to the cell's own, so no cell reads or
 // writes another's account state.
+//
+// Between setup and onboarding the template is made what a user who set the arm up interactively would
+// have, the same way for every arm: the MCP servers it installed and its own plugin code are
+// pre-approved in its local settings (the 'always allow' answers print mode cannot give), and each
+// server is started once with a long connect timeout so its uv cache is warm before any session. After
+// onboarding the CLI's plugin list is recorded beside READY, and a template whose onboarding left the
+// arm's expected outputs missing is refused - a half-installed arm is never measured.
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
@@ -19,6 +26,10 @@ const { installShims } = require('./dotnet-shim.js');
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
 const REWRITE_MAX_BYTES = 4 * 1024 * 1024;
+// A cold uvx install of a Python MCP server takes longer than Claude Code's 30 s default (MCP_TIMEOUT).
+const WARM_TIMEOUT_MS = String(10 * 60 * 1000);
+// What a failed build keeps to read, under `<template>.failed`: everything else is wiped.
+const KEPT_ON_FAILURE = ['onboarding', 'plugins.json', 'grants.json', 'mcp-warm.txt'];
 
 function isReady(paths, hash)
 {
@@ -44,7 +55,85 @@ function stepFailure(r)
     return `exited ${r.status}`;
 }
 
-function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, onboard, base = process.env, auth })
+const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+const writeJson = (file, value) => fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
+
+// The CLI's own read-back of what the template installed: the list the README asks for beside READY.
+function pluginList(claude, { cwd, env, logFile, arm, when })
+{
+    const r = spawnSync(claude[0], [...claude.slice(1), 'plugin', 'list', '--json'], { cwd, env, encoding: 'utf8', timeout: STEP_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 });
+    fs.appendFileSync(logFile, `\n$ claude plugin list --json (${when})\n${r.stderr || ''}`);
+    if (r.error || r.status !== 0) throw new Error(`${arm} plugin list (${when}) ${stepFailure(r)} - see ${logFile}`);
+    const list = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })();
+    if (!Array.isArray(list)) throw new Error(`${arm} plugin list (${when}) printed no JSON list - see ${logFile}`);
+    return list;
+}
+
+// MCP servers registered outside a plugin: user and local scope in the account's .claude.json, project
+// scope in the clone's .mcp.json (which print mode connects without an approval).
+function registeredServers({ config, repo })
+{
+    const account = readJson(path.join(config, '.claude.json')) || {};
+    const projects = account.projects || {};
+    let real = repo;
+    try { real = fs.realpathSync(repo); }
+    catch { /* judged by the path given */ }
+    const local = (projects[repo] || projects[real] || {}).mcpServers || {};
+    const project = (readJson(path.join(repo, '.mcp.json')) || {}).mcpServers || {};
+    return [...Object.keys(account.mcpServers || {}), ...Object.keys(local), ...Object.keys(project)];
+}
+
+// The rules a user who answered 'always allow' holds, derived from what the arm installed and never from a
+// list per arm: every tool of each enabled plugin's servers and of each registered server, and reads of
+// the arm's own plugin code and marketplaces (its skills and commands read their own files).
+function grantRules({ plugins, registered, config })
+{
+    const enabled = plugins.filter((p) => p && p.enabled);
+    const known = readJson(path.join(config, 'plugins', 'known_marketplaces.json')) || {};
+    const markets = Object.values(known).map((m) => m && m.installLocation).filter((d) => typeof d === 'string' && d);
+    return [...new Set([
+        ...enabled.flatMap((p) => Object.keys(p.mcpServers || {}).map((server) => `mcp__plugin_${String(p.id).split('@')[0]}_${server}__*`)),
+        ...registered.map((server) => `mcp__${server}__*`),
+        ...[...markets, ...enabled.map((p) => p.installPath).filter((d) => typeof d === 'string' && d)].map((d) => `Read(/${path.resolve(d)}/**)`),
+    ])];
+}
+
+// Into the clone's .claude/settings.local.json: an untracked local file is applied in print mode without
+// the workspace trust a project .claude/settings.json allow rule needs. Merged, never replaced.
+function grant(repo, rules)
+{
+    if (!rules.length) return;
+    const file = path.join(repo, '.claude', 'settings.local.json');
+    const settings = fs.existsSync(file) ? readJson(file) : {};
+    if (!settings || typeof settings !== 'object') throw new Error(`${file} is not JSON - the arm's own local settings cannot be merged`);
+    const permissions = settings.permissions || {};
+    const allow = permissions.allow || [];
+    settings.permissions = { ...permissions, allow: [...allow, ...rules.filter((r) => !allow.includes(r))] };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    writeJson(file, settings);
+}
+
+// Starts every configured server once with a long connect timeout, so the shared uv cache is warm and a
+// session's server connects inside the default one. Its output is kept, never judged here: a server that
+// cannot connect is the arm's own state, and the B4 read names it.
+function warm(claude, { cwd, env, file, logFile })
+{
+    const r = spawnSync(claude[0], [...claude.slice(1), 'mcp', 'list'], { cwd, env: { ...env, MCP_TIMEOUT: WARM_TIMEOUT_MS }, encoding: 'utf8', timeout: STEP_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+    const text = `${r.stdout || ''}${r.stderr || ''}${r.error ? `\n[warm-up ${stepFailure(r)}]\n` : ''}`;
+    fs.writeFileSync(file, text);
+    fs.appendFileSync(logFile, `\n$ claude mcp list (MCP_TIMEOUT=${WARM_TIMEOUT_MS})\n${text}`);
+}
+
+function keepFailure(paths)
+{
+    const kept = `${paths.dir}.failed`;
+    const present = KEPT_ON_FAILURE.filter((name) => fs.existsSync(path.join(paths.dir, name)));
+    if (!present.includes('onboarding')) return null;
+    for (const name of present) fs.cpSync(path.join(paths.dir, name), path.join(kept, name), { recursive: true });
+    return kept;
+}
+
+function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, onboard, base = process.env, auth, claude = ['claude'], shared = {} })
 {
     const paths = templatePaths({ benchDir, workRoot, arm: arm.name, hash: arm.hash });
     // Its onboarding runs in its repo, and every cell is a copy of it: nothing above it may carry instructions.
@@ -54,6 +143,7 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
     const repoRoot = root || path.dirname(benchDir);
     const logFile = `${paths.dir}.setup.log`;
     removeTree(paths.dir);
+    removeTree(`${paths.dir}.failed`);
     fs.rmSync(logFile, { force: true });
     try
     {
@@ -65,7 +155,7 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
         execFileSync('git', ['-C', paths.repo, 'remote', 'remove', 'origin'], { stdio: 'pipe' });
 
         const vars = { template: paths.dir, repo: paths.repo, config: paths.config, home: paths.home, src: paths.src, bench: benchDir, root: repoRoot, pin: arm.pin.value, arm: arm.name };
-        const setupEnv = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: false });
+        const setupEnv = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: false, shared });
         arm.setup.forEach((step, i) =>
         {
             const argv = resolve(step, vars);
@@ -81,6 +171,19 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
             if (r.error || r.status !== 0) throw new Error(`${arm.name} package restore (${argv.join(' ')}) ${stepFailure(r)} - see ${logFile}`);
         }
 
+        const granted = new Set();
+        const grantFrom = (when) =>
+        {
+            const plugins = pluginList(claude, { cwd: paths.repo, env: setupEnv, logFile, arm: arm.name, when });
+            const rules = grantRules({ plugins, registered: registeredServers({ config: paths.config, repo: paths.repo }), config: paths.config });
+            grant(paths.repo, rules);
+            for (const r of rules) granted.add(r);
+            writeJson(path.join(paths.dir, 'grants.json'), [...granted]);
+            return plugins;
+        };
+        grantFrom('after setup');
+        warm(claude, { cwd: paths.repo, env: setupEnv, file: path.join(paths.dir, 'mcp-warm.txt'), logFile });
+
         if (arm.onboarding.length && typeof onboard !== 'function') throw new Error(`${arm.name}: onboarding prompts but no onboarding runner`);
         // The driver names the run's credential; a caller that names none gets the only one set, or none.
         const onboardAuth = auth || (session.auth.some((name) => base[name]) ? pickAuth(session.auth, base) : false);
@@ -90,19 +193,29 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
             const tmp = sessionTmp();
             try
             {
-                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin });
+                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared });
                 onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, index: i + 1, dir: paths.dir });
             }
             catch (err) { throw new Error(`${arm.name} onboarding ${i + 1}: ${err.message}`); }
             finally { removeTree(tmp); }
         });
 
+        // Onboarding can install more; the list recorded is the one the cells get.
+        writeJson(path.join(paths.dir, 'plugins.json'), grantFrom('after onboarding'));
+        for (const rel of arm.expects || [])
+        {
+            const file = path.join(paths.repo, rel);
+            if (!fs.existsSync(file) || !fs.statSync(file).isFile() || fs.statSync(file).size === 0) throw new Error(`${arm.name} onboarding left ${rel} missing or empty - the arm is not set up, so no cell may run on it`);
+        }
+
         fs.writeFileSync(path.join(paths.dir, READY), `${JSON.stringify({ arm: arm.name, hash: arm.hash, pin: arm.pin, fixtureCommit: commit, builtAt: new Date().toISOString() }, null, 2)}\n`);
         return { paths, built: true, fixtureCommit: commit };
     }
     catch (err)
     {
+        const kept = keepFailure(paths);
         removeTree(paths.dir);
+        if (kept) err.message = `${err.message} - its onboarding is kept at ${kept}`;
         throw err;
     }
 }
@@ -145,4 +258,4 @@ function copyInto(paths, cell, { parts = ['config', 'home', 'repo'] } = {})
     for (const d of parts) rewrite(cell[d], pairs, skip);
 }
 
-module.exports = { build, copyInto, READY };
+module.exports = { build, copyInto, grantRules, READY };

@@ -166,7 +166,7 @@ function kill(child, signal)
     catch { /* already gone */ }
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth })
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth, shared })
 {
     const authName = auth || pickAuth(session.auth, base);
     assertIsolated(cell.repo, 'the cell');
@@ -182,7 +182,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const argv = sessionArgv({ prompt, session, sessionId });
         sessionTmpDir = sessionTmp();
         const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
-        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin });
+        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared });
 
         const out = fs.openSync(cell.stdout, 'w');
         const err = fs.openSync(cell.stderr, 'w');

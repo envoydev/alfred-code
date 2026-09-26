@@ -1,8 +1,9 @@
 {
-  "_note": "Claude Code alone after /init. Nothing to pin but the CLI, whose version enters every arm's hash through the session.",
+  "_note": "Claude Code alone after /init. Nothing to pin but the CLI, whose version enters every arm's hash through the session. The template is refused unless /init leaves its CLAUDE.md (expects).",
   "name": "bare",
   "pin": { "kind": "cli", "value": "claude" },
   "setup": [],
   "onboarding": ["/init"],
+  "expects": ["CLAUDE.md"],
   "env": {}
 }

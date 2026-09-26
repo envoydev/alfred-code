@@ -26,7 +26,7 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     fs.writeFileSync(path.join(armsDir, 'harness.settings.json'), '{}');
     for (const [name, a] of Object.entries(arms))
     {
-        fs.writeFileSync(path.join(armsDir, `${name}.json`), JSON.stringify({ name, pin: { kind: 'cli', value: 'claude' }, setup: a.setup || [], onboarding: a.onboarding || [], env: a.env || {} }));
+        fs.writeFileSync(path.join(armsDir, `${name}.json`), JSON.stringify({ name, pin: { kind: 'cli', value: 'claude' }, setup: a.setup || [], onboarding: a.onboarding || [], expects: a.expects || [], env: a.env || {} }));
     }
     for (const [id, spec] of Object.entries(tasks))
     {

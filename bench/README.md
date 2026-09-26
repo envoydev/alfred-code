@@ -98,11 +98,24 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   write Claude Code's trust entry into every cell, for every arm alike.
 - Every arm's machinery loaded: ten transcripts read end to end.
 - The setup routes: `ours`' selection matches a real `/alfred-code:setup` walk on the fixture; its
-  onboarding, `/alfred-code:init`, runs the captures it carries in print mode, where its asks cannot
-  be answered (its onboarding transcript, and `architecture/ARCHITECTURE.md` under the template's
-  docs root); ECC's hook options, stored as `pluginConfigs` by `--config`, reach its hooks.
-- The third-party plugins each template pulls at build time (`claude-hud`, the two LSP plugins) are
-  not covered by the arm's pin: record `claude plugin list --json` per template beside its READY file.
+  onboarding, `/alfred-code:init` with `ALFRED_CODE_UNATTENDED=1` (its unattended mode: every ask
+  takes the recommended option, never a destructive one), runs the captures it carries in print mode
+  (its onboarding transcript); ECC's hook options, stored as `pluginConfigs` by `--config`, reach its
+  hooks. Each arm names what its onboarding must leave in the clone (`expects` - `ours`: the
+  architecture capture under `.alfred/docs`; `ecc` and `bare`: `CLAUDE.md`), and a template without
+  it is refused, its onboarding kept at `<template>.failed` to read.
+- Every template is what a user who set the arm up by hand would have, by one rule for every arm:
+  after setup the CLI's own `claude plugin list --json` and the registered servers decide the grants
+  written to the clone's `.claude/settings.local.json` - every tool of each MCP server the arm
+  installed (`mcp__plugin_<plugin>_<server>__*`, `mcp__<server>__*`) and reads of its own plugin code
+  and marketplaces, the 'always allow' answers print mode cannot give (an untracked local file applies
+  without workspace trust; a project `settings.json` allow rule does not). Then `claude mcp list` with
+  a ten-minute `MCP_TIMEOUT` starts each server once, so the ONE uv cache and Python store under the
+  work root (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`, shared by every template and cell) is warm and a
+  session's server connects inside the 30 s default. `plugins.json` (the list after onboarding),
+  `grants.json` and `mcp-warm.txt` sit beside READY and are copied to `results/<run>/onboarding/<arm>/`
+  - the third-party plugins a template pulls (`claude-hud`, the two LSP plugins) are not covered by
+  the arm's pin, so that list is the record.
 - A copied account dir resolves: each arm's plugins load from the cell's own config.
 - Package restore time per cell, with a HOME of its own.
 - `--mode flow` stays refused until its scripted approver is built from what these transcripts show.

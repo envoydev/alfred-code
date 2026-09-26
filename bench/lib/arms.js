@@ -1,7 +1,8 @@
 'use strict';
 // The arms and the one session they all share. Fairness lives in `common.json` - model, effort,
 // permission mode, the harness settings layer, the env every session gets - so an arm file carries
-// only what makes it that arm: its pin, its setup commands, its onboarding prompts and its own env.
+// only what makes it that arm: its pin, its setup commands, its onboarding prompts, what that onboarding
+// must leave in the clone (`expects`, checked before any cell runs on the template) and its own env.
 // An arm naming a session field is refused rather than merged, because a merge is exactly how one
 // arm would quietly run a different session from the others.
 const fs = require('node:fs');
@@ -12,12 +13,12 @@ const ARMS_DIR = path.join(__dirname, '..', 'arms');
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const PERMISSION_MODES = ['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions', 'manual'];
 const SESSION_KEYS = ['model', 'effort', 'permissionMode', 'settings'];
-const ARM_KEYS = ['name', 'pin', 'setup', 'onboarding', 'env'];
+const ARM_KEYS = ['name', 'pin', 'setup', 'onboarding', 'expects', 'env'];
 const PIN_KINDS = ['tag', 'commit', 'cli'];
 // What a template's setup and onboarding may name: its own directories, the fixture's clone, the
 // arm's pinned source, the bench and repo roots, and the pin itself.
 const TEMPLATE_VARS = ['template', 'repo', 'config', 'home', 'src', 'bench', 'root', 'pin', 'arm'];
-const HARNESS_ENV = ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH'];
+const HARNESS_ENV = ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR'];
 const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
@@ -155,6 +156,13 @@ function loadArm(dir, name, session)
         if (!isStrings(step) || !step.length) throw new Error(`${name}: setup[${i}] is not a command (an array of strings)`);
     });
     if (!isStrings(arm.onboarding)) throw new Error(`${name}: onboarding is not a list of prompts`);
+    const expects = arm.expects === undefined ? [] : arm.expects;
+    if (!isStrings(expects)) throw new Error(`${name}: expects is not a list of paths in the clone`);
+    for (const rel of expects)
+    {
+        if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) throw new Error(`${name}: expects '${rel}' is not a path inside the clone`);
+    }
+    if (arm.onboarding.length && !expects.length) throw new Error(`${name}: onboarding names no expected output - list what it must leave in the clone under expects`);
     const env = arm.env === undefined ? {} : arm.env;
     if (!isStringMap(env)) throw new Error(`${name}: env is not a map of strings`);
     const owned = new Set([...HARNESS_ENV, ...session.auth, ...session.scrub, ...Object.keys(session.env)]);
@@ -166,7 +174,7 @@ function loadArm(dir, name, session)
     {
         if (!TEMPLATE_VARS.includes(used)) throw new Error(`${name}: unknown placeholder {${used}} - a template knows ${TEMPLATE_VARS.map((v) => `{${v}}`).join(' ')}`);
     }
-    const clean = { name, pin: { ...arm.pin }, setup: arm.setup.map((s) => [...s]), onboarding: [...arm.onboarding], env: { ...env } };
+    const clean = { name, pin: { ...arm.pin }, setup: arm.setup.map((s) => [...s]), onboarding: [...arm.onboarding], expects: [...expects], env: { ...env } };
     return { ...clean, hash: armHash(clean, session) };
 }
 

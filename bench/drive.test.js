@@ -20,7 +20,7 @@ const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
 function world(t)
 {
     const w = makeWorld(t, {
-        arms: { a1: { env: { FAKE_EDIT: 'a1.txt' } }, a2: { env: { FAKE_EDIT: 'a2.txt' }, onboarding: ['/init'] } },
+        arms: { a1: { env: { FAKE_EDIT: 'a1.txt' } }, a2: { env: { FAKE_EDIT: 'a2.txt' }, onboarding: ['/init'], expects: ['a2.txt'] } },
         tasks: { t1: { group: 'api' }, t2: { group: 'web' } },
     });
     w.opts.reps = 2;
@@ -57,7 +57,13 @@ test('a 2 arms x 2 tasks x 2 reps run completes, records itself, and reports cou
     const onboarding = path.join(w.bench, 'results', 'r-test', 'onboarding', 'a2', '1.jsonl');
     assert.ok(fs.existsSync(onboarding), 'the onboarding transcript is kept with the run');
     assert.ok(!fs.readFileSync(onboarding, 'utf8').includes('world-test-auth-value-0123456789'));
-    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'onboarding', 'a1')), 'an arm with no onboarding has none');
+    assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'onboarding', 'a1', '1.jsonl')), 'an arm with no onboarding has none');
+    for (const arm of ['a1', 'a2'])
+    {
+        const kept = path.join(w.bench, 'results', 'r-test', 'onboarding', arm);
+        assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(kept, 'plugins.json'), 'utf8')), [], `${arm}: the plugin list its template recorded is kept with the run`);
+        assert.ok(fs.existsSync(path.join(kept, 'mcp-warm.txt')), `${arm}: the warm-up output is kept with the run`);
+    }
 });
 
 test('cells and templates live under the work root, never under the bench dir, and the run records where', async (t) =>
@@ -115,6 +121,22 @@ test('a run recorded before work roots existed ran under the bench dir, so its r
     const { workRoot: passed, ...rest } = w.opts;
     assert.ok(passed);
     await assert.rejects(drive({ ...rest, resume: true }), /the work root sits under .*CLAUDE\.md/);
+});
+
+test('every template step and every session share one uv cache and one Python store under the work root', async (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-uv-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const rec = path.join(dir, 'record.json');
+    const warm = path.join(dir, 'warm.jsonl');
+    const w = makeWorld(t, { arms: { a1: { env: { FAKE_RECORD: rec, FAKE_WARM_RECORD: warm } } }, tasks: { t1: {} } });
+    await drive(w.opts);
+    const root = fs.realpathSync(w.workRoot);
+    const want = { UV_CACHE_DIR: path.join(root, 'uv', 'cache'), UV_PYTHON_INSTALL_DIR: path.join(root, 'uv', 'python') };
+    const seen = JSON.parse(fs.readFileSync(rec, 'utf8')).env;
+    assert.deepStrictEqual({ UV_CACHE_DIR: seen.UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR: seen.UV_PYTHON_INSTALL_DIR }, want, 'the measured session');
+    const [warmed] = fs.readFileSync(warm, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual({ UV_CACHE_DIR: warmed.UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR: warmed.UV_PYTHON_INSTALL_DIR }, want, 'the template warm-up');
 });
 
 test('--resume after a killed driver runs only the cells it left unfinished', async (t) =>

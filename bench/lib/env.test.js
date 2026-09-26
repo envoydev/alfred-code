@@ -34,6 +34,13 @@ test('the harness\'s own bin dir goes first on the PATH, so its dotnet shim wins
     assert.strictEqual(sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false }).PATH, '/usr/bin');
 });
 
+test('the harness\'s shared stores cross to every session, and nothing an arm says can move them', () =>
+{
+    const shared = { UV_CACHE_DIR: '/w/uv/cache', UV_PYTHON_INSTALL_DIR: '/w/uv/python' };
+    const env = sessionEnv({ base: { ...BASE, UV_CACHE_DIR: '/host/uv' }, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false, shared });
+    assert.deepStrictEqual([env.UV_CACHE_DIR, env.UV_PYTHON_INSTALL_DIR], ['/w/uv/cache', '/w/uv/python']);
+});
+
 test('auth crosses by name only when asked, and only the one name the run chose', () =>
 {
     const base = { ...BASE, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-value' };

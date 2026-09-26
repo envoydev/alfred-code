@@ -17,11 +17,26 @@
 //   FAKE_LIMIT_FILE=<file>    while <file> exists ({ "from": n }), the nth session started and every later
 //                             one ends on a usage-limit result (counted in <file>.count)
 //   --version                 prints a fake version, as the driver asks the real CLI
+//   plugin list --json        prints FAKE_PLUGINS (a JSON list), or [] - what a template's setup installed
+//   mcp list                  appends { cwd, MCP_TIMEOUT, UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR } to FAKE_WARM_RECORD, if set
 const fs = require('node:fs');
 const path = require('node:path');
 
 const argv = process.argv.slice(2);
 if (argv[0] === '--version') { process.stdout.write('0.0.0-fake (Claude Code)\n'); process.exit(0); }
+if (argv[0] === 'plugin' && argv[1] === 'list')
+{
+    if (process.env.FAKE_PLUGINS_FAIL) { process.stderr.write('plugin list failed\n'); process.exit(1); }
+    process.stdout.write(`${process.env.FAKE_PLUGINS || '[]'}\n`);
+    process.exit(0);
+}
+if (argv[0] === 'mcp' && argv[1] === 'list')
+{
+    const e = process.env;
+    if (e.FAKE_WARM_RECORD) fs.appendFileSync(e.FAKE_WARM_RECORD, `${JSON.stringify({ cwd: process.cwd(), MCP_TIMEOUT: e.MCP_TIMEOUT, UV_CACHE_DIR: e.UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR: e.UV_PYTHON_INSTALL_DIR })}\n`);
+    process.stdout.write('Checking MCP server health...\n\nplugin:p:s1: fake - ✔ Connected\n');
+    process.exit(0);
+}
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const env = process.env;
 const sid = flag('--session-id');
