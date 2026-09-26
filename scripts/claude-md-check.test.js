@@ -112,8 +112,77 @@ test('a path is resolved from the file\'s own folder or the project root: .claud
 test('a missing path git ignores is a local file the setup creates, never a finding', () =>
 {
     const root = tree({ 'src/': '' });
-    assert.deepStrictEqual(run(root, 'Copy `.env.example` to `.env`.', { ignored: ['.env', '.env.example'] }), []);
-    assert.deepStrictEqual(kinds(run(root, 'Copy `.env.example` to `.env`.', { ignored: ['.env'] })), ['1 path .env.example']);
+    assert.deepStrictEqual(run(root, 'Copy `.envrc` to `.env`.', { ignored: ['.env', '.envrc'] }), []);
+    assert.deepStrictEqual(kinds(run(root, 'Copy `.envrc` to `.env`.', { ignored: ['.env'] })), ['1 path .envrc']);
+});
+
+// I1 (final review of the rename): read over four real consuming projects the check gave 39 rows and 1 was
+// true. The five shapes below are what the other 38 were made of - each fixture is synthetic.
+test('I1a: a .NET part folder named <Company>.<Part> answers for the part: `Bot/Program.cs` is `src/Acme.Bot/Program.cs`', () =>
+{
+    const root = tree({ 'src/Acme.Bot/Program.cs': '', 'src/Acme.Domain/Entities/Order.cs': '', 'tests/Acme.Orders.Tests/Integration/': '', 'src/Acme.Settings.json': '' });
+    assert.deepStrictEqual(run(root, 'Entry `Bot/Program.cs`, the entity `Domain/Entities/Order.cs`, the net `Orders.Tests/Integration/`.'), []);
+    assert.deepStrictEqual(kinds(run(root, 'Gone: `Bot/Startup.cs`, `Api/Program.cs` and `Settings.json`.')), ['1 path Bot/Startup.cs', '1 path Api/Program.cs', '1 path Settings.json'],
+        'a part folder answers only for a path under it - a bare file name never matches a dotted one');
+});
+
+test('I1b: a shell line is split where the shell splits it - a trailing comment, a 2>&1 and a | inside an argument start no program', () =>
+{
+    const root = tree({});
+    const text = [
+        '## Commands',
+        '```bash',
+        'dotnet test 2>&1 | tee out.log   # full suite; slow',
+        'gulp build:client:local|develop',
+        'npm run e2e # e2e & local-only, hits the dev API',
+        'make check | less',
+        'npm ci && lint-all || true',
+        '```',
+        '',
+        '- `npm start # opens it; needs the api`',
+    ].join('\n');
+    const missing = ['1', 'develop', 'slow', 'local-only', 'hits', 'needs', 'less', 'lint-all'];
+    assert.deepStrictEqual(kinds(run(root, text, { missing })), ['6 command less', '7 command lint-all'], 'a whitespace-delimited | and && / || still split');
+});
+
+test('I1c: a project-local binary resolves - node_modules/.bin, a package.json dependency, a dotnet tool manifest, a script in the folder', () =>
+{
+    const root = tree({
+        'package.json': JSON.stringify({ devDependencies: { gulp: '^4.0.0', nx: '19.0.0', '@acme/tasks': '1.0.0' } }),
+        'node_modules/.bin/eslint': '',
+        'web/package.json': JSON.stringify({ name: 'web' }),
+        'web/node_modules/.bin/ng': '',
+        '.config/dotnet-tools.json': JSON.stringify({ version: 1, isRoot: true, tools: { 'dotnet-reportgenerator-globaltool': { version: '5.0.0', commands: ['reportgenerator'] } } }),
+        'setup_local.bat': '',
+    });
+    const text = ['## Commands', '```bash', 'gulp build', 'nx run app:serve', 'eslint .', 'tasks all', 'cd web && ng build', 'reportgenerator -reports:x', 'setup_local.bat', 'webpack --mode production', '```'].join('\n');
+    const missing = ['gulp', 'nx', 'eslint', 'tasks', 'ng', 'reportgenerator', 'setup_local.bat', 'webpack'];
+    assert.deepStrictEqual(kinds(run(root, text, { missing })), ['10 command webpack']);
+});
+
+test('I1d: a clause that denies a path is no claim it exists - No `x`, there is no `x`, NOT used here: `x`', () =>
+{
+    const root = tree({ 'src/': '' });
+    const text = [
+        '- No `appsettings.json` - config comes from the environment.',
+        '- There is no `.env`; secrets come from the vault.',
+        '- Deliberately NOT used here: `Directory.Packages.props`.',
+        '- Entry point `src/Program.cs` - not the old one.',
+        '| `src/Old.cs` | never edited by hand |',
+    ].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)), ['4 path src/Program.cs', '5 path src/Old.cs'], 'a negation in another clause of the line denies nothing');
+});
+
+test('I1e: a dot-token that is a suffix or a kind of name is no dotfile - `.api.ts`, `.hbm.xml`, `.template`, `.example`, `.invalid`', () =>
+{
+    const root = tree({ 'src/': '' });
+    const text = [
+        'Generated clients end in `.api.ts`; mappings live in `.hbm.xml` files.',
+        'Config ships as `.template` and `.example` copies, and test mail goes to an `.invalid` domain.',
+        'Each appsettings`.local` copy is per machine.',
+        'Missing dotfile `.nvmrc`.',
+    ].join('\n');
+    assert.deepStrictEqual(kinds(run(root, text)), ['4 path .nvmrc']);
 });
 
 test('the <docs-path> placeholder resolves to the install\'s docs root', () =>

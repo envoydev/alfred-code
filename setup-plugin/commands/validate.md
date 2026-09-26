@@ -596,10 +596,12 @@ node "$TMP/repo/scripts/claude-md-check.js" --root .
 Paste the output byte-for-byte in the same fenced block (`claude-md-check: clean (...)` or `no
 CLAUDE.md in this project` is the whole paste). Each row is `<file>:<line> <kind>: ...` - a named path
 that is gone, a command whose program is not on PATH, a placeholder or TODO left, or a line still
-carrying the template's authoring text. Rows get ONE AskUserQuestion: 'Fix them with
-`/alfred-capture-claude-md`' (recommended - its improve mode shows every change before writing) or
-'Leave them'. Never edit a CLAUDE.md from this command; a `command` row on a program only another OS
-runs is the user's call, not a fix.
+carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
+recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
+under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
+`/alfred-capture-claude-md`' (its improve mode shows every change before writing) or 'Leave them'.
+Never edit a CLAUDE.md from this command; a `command` row on a program only another OS runs is the
+user's call, not a fix.
 
 Then the Stop build check advisory, from this project's session transcripts and its done-gate probe
 rows:

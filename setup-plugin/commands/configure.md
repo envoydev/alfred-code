@@ -409,7 +409,8 @@ recommended / skip); a 'no' ends the run cleanly. The location: the project's ow
 seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
 On a yes, read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline
 with `STACK=$TMP/repo` - the one home of the fill: its improve mode adds the sections the template
-gained, fixes what its check reports and shows every change before writing, never overwriting the
+gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
+change before writing, never overwriting the
 project's own prose. This run's own part is the selection-tied lines - the rules table and any
 capability mentions - for what it added or dropped. Never offer skill/agent/MCP additions here -
 the walk owned the selection.

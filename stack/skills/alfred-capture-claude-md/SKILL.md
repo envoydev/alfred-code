@@ -102,8 +102,11 @@ written with its line count.
    The project's own wording, order and sections are never reworded, reordered or deleted beyond that,
    and a line the project wrote is never extended - an addition goes on a line of its own.
 4. Show every change before writing: per file, a `diff` block and one line saying why it helps a
-   future session. Then one AskUserQuestion - apply them all (recommended), apply some (named via
-   Other), or skip. A dispatched seat has no user channel: it returns the diffs in its report instead.
+   future session. Then one AskUserQuestion - apply the additions (recommended), apply the additions
+   and the check fixes, apply some (named via Other), or skip. A check fix is never in the recommended
+   option: the check is heuristic, and a row can be correct text it could not resolve, so the user
+   reads each one and picks - with only check fixes drafted, no option is marked recommended. A
+   dispatched seat has no user channel: it returns the diffs in its report instead.
 5. Apply exactly the answer.
 
 ## 6. What never goes in

@@ -7,9 +7,11 @@
 //   node scripts/claude-md-check.js --list [--root <dir>]   - the files it would check, each with its size,
 //                                                             the untouched seed marked; nothing checked
 //
-//   path        - a path the file names does not exist (a code span, an @import, a relative link)
-//   command     - a command's program does not resolve on PATH (a shell block, or a code span under a
-//                 commands / setup / build / run heading)
+//   path        - a path the file names does not exist (a code span, an @import, a relative link); a
+//                 clause that denies it ('No `x`') claims nothing
+//   command     - a command's program does not resolve on PATH or in the project (node_modules/.bin, a
+//                 package.json dependency, a dotnet tool manifest, a script in the folder) - a shell
+//                 block, or a code span under a commands / setup / build / run heading
 //   placeholder - a `__NAME__` placeholder the template seeds is still there
 //   todo        - a TODO left in the live text
 //   template    - a live line still carries the template's own authoring text
@@ -43,6 +45,16 @@ const BUILTINS = new Set(['cd', 'export', 'set', 'unset', 'source', '.', 'echo',
     'pushd', 'popd', 'true', 'false', 'test', '[', '[[', 'local', 'shift', 'trap', 'wait', 'time', 'type', 'command', 'builtin',
     'ulimit', 'umask', 'cls', 'rem', 'call', 'start', 'setlocal', 'endlocal', 'copy', 'del', 'dir', 'md', 'rd', 'ren', 'move']);
 const PROGRAM = /^(?:\.{1,2}\/|\/)?[A-Za-z0-9_][A-Za-z0-9._+/-]*$/;
+// Where a shell starts a new command: `&&`, `||`, `;` and a whitespace-delimited `|` - never the `&` of a
+// redirect (`2>&1`) or a `|` inside an argument (`gulp build:local|develop`).
+const COMMAND_SPLIT = /&&|\|\||;|(?<=\s)\|(?=\s|$)/;
+// A clause that denies what it names - 'No `x`', 'there is no `x`', 'NOT used here: `x`' - claims nothing
+// exists. A clause ends at a sentence stop, a ` - ` aside or a table cell.
+const NEGATION = /\b(no|not|never|none|nor|without)\b|n't\b/i;
+const CLAUSE_END = /[.;!?](?=\s|$)|\s-\s|\|/g;
+// A one-dot word that names a kind of copy or a reserved domain (`.template`, `.example`, `.invalid`),
+// never a dotfile of its own.
+const SUFFIX_WORDS = new Set(['template', 'tmpl', 'example', 'sample', 'dist', 'default', 'local', 'orig', 'bak', 'invalid', 'test', 'localhost']);
 const CMDLET = /^[A-Z][a-z]+-[A-Z][A-Za-z]+$/;
 const PLACEHOLDER = /__[A-Z][A-Z0-9_]*__/g;
 const SHINGLE = 8;
@@ -68,6 +80,7 @@ const WHY = {
 
 const posix = (p) => p.split(path.sep).join('/');
 const exists = (p) => { try { fs.statSync(p); return true; } catch { return false; } };
+const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
 const normalize = (text) => String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
 
 // The comments blanked out, every newline kept, so a line number means the same in both.
@@ -115,6 +128,59 @@ function projectIndex(root)
     return { files, dirs };
 }
 const endsWithPath = (list, p) => list.some((x) => x === p || x.endsWith(`/${p}`));
+// A .NET part folder carries the solution's prefix - `src/Acme.Bot/` - and a CLAUDE.md names it by the part
+// alone (`Bot/Program.cs`). Only a path with a folder in it: a bare `Settings.json` is never `Acme.Settings.json`.
+const endsWithPart = (list, p) => p.includes('/') && list.some((x) =>
+{
+    const at = x.length - p.length - 1;
+    return at > 0 && x.endsWith(`.${p}`) && x[at - 1] !== '/';
+});
+
+// The programs the project brings with it: every package.json's dependencies and bins (a package's bin
+// is usually its own name, the scope dropped), what npm linked into node_modules/.bin beside it, and
+// every command a dotnet tool manifest (.config/dotnet-tools.json) declares.
+function localPrograms(root, tree)
+{
+    const found = new Set();
+    const addDir = (dir) => { try { for (const n of fs.readdirSync(dir)) found.add(n.replace(/\.(cmd|ps1)$/i, '')); } catch { /* none installed */ } };
+    const json = (rel) => { try { return JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8')); } catch { return null; } };
+    const bare = (name) => String(name).split('/').pop();
+    addDir(path.join(root, 'node_modules', '.bin'));
+    for (const rel of tree.files)
+    {
+        const name = rel.split('/').pop();
+        if (name === 'package.json')
+        {
+            addDir(path.join(root, path.dirname(rel), 'node_modules', '.bin'));
+            const pkg = json(rel);
+            if (!pkg || typeof pkg !== 'object') continue;
+            for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'])
+                for (const dep of Object.keys(pkg[field] || {})) found.add(bare(dep));
+            if (typeof pkg.bin === 'string' && pkg.name) found.add(bare(pkg.name));
+            else if (pkg.bin && typeof pkg.bin === 'object') for (const b of Object.keys(pkg.bin)) found.add(b);
+        }
+        else if (name === 'dotnet-tools.json')
+        {
+            const manifest = json(rel);
+            for (const tool of Object.values((manifest && manifest.tools) || {}))
+                for (const cmd of (tool && Array.isArray(tool.commands) ? tool.commands : [])) found.add(String(cmd));
+        }
+    }
+    return found;
+}
+
+// True when the clause holding columns [from, to) of `prose` denies what it names.
+function denied(prose, from, to)
+{
+    let start = 0;
+    let end = prose.length;
+    for (const m of prose.matchAll(CLAUSE_END))
+    {
+        if (m.index + m[0].length <= from) start = m.index + m[0].length;
+        else if (m.index >= to) { end = m.index; break; }
+    }
+    return NEGATION.test(prose.slice(start, end));
+}
 
 // The project's files as git sees them (tracked, plus untracked it does not ignore), else a walk that
 // skips the vendored and build folders by name.
@@ -173,6 +239,9 @@ function pathOf(span, docsRoot)
     if (RECEIVER.test(s)) return null;
     const last = s.replace(/\/+$/, '').split('/').pop();
     if (/^\.[a-z0-9]+$/.test(last) && FILE_EXT.test(`x${last}`)) return null;
+    // A bare dot-token of two dots or more is a suffix (`.api.ts`, `.hbm.xml`), and one naming a kind of
+    // copy or a reserved domain is a word - neither is a dotfile.
+    if (!s.includes('/') && s.startsWith('.') && (s.slice(1).includes('.') || SUFFIX_WORDS.has(s.slice(1).toLowerCase()))) return null;
     if (/^\.{1,2}\//.test(s)) return { path: s, anchored: true };
     if (s.endsWith('/') || /^\.[a-z0-9][a-z0-9._-]*$/.test(last) || FILE_EXT.test(last)) return { path: s, anchored };
     return s.includes('/') ? { path: `?${s}`, anchored } : null;   // a slash alone proves nothing - `?` asks for a first segment that exists
@@ -185,12 +254,12 @@ function spansOf(line)
     return spans;
 }
 
-// The programs a shell line runs, each with the word as written: chains split, prompts, env
-// assignments, variables and cmdlets passed over.
+// The programs a shell line runs, each with the word as written: a trailing comment dropped, chains
+// split, prompts, env assignments, variables and cmdlets passed over.
 function programsOf(line)
 {
     const out = [];
-    for (const segment of line.split(/&&|\|\||[;|&]/))
+    for (const segment of line.replace(/(^|\s)#.*$/, '').split(COMMAND_SPLIT))
     {
         const words = segment.trim().replace(/^\(+/, '').split(/\s+/).filter(Boolean);
         let i = 0;
@@ -217,7 +286,15 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
     {
         tree = tree || projectIndex(root);
         const bare = p.replace(/\/+$/, '');
-        return p.endsWith('/') ? endsWithPath(tree.dirs, bare) : endsWithPath(tree.files, bare) || endsWithPath(tree.dirs, bare);
+        const lists = p.endsWith('/') ? [tree.dirs] : [tree.files, tree.dirs];
+        return lists.some((list) => endsWithPath(list, bare) || endsWithPart(list, bare));
+    };
+    let bins = null;
+    const localBin = (program) =>
+    {
+        tree = tree || projectIndex(root);
+        bins = bins || localPrograms(root, tree);
+        return bins.has(program);
     };
 
     // A path counts when it exists from a base the file reads from, when it is unanchored and some path
@@ -273,8 +350,11 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
 
         for (const span of spans)
         {
-            const p = pathOf(span.text, docs);
-            if (p && pathMissing(p.path, [base, root], { anchored: p.anchored })) add(n, span.col, 'path', p.path.replace(/^\?/, ''));
+            // A dot-token written onto a word (appsettings`.local`) is that word's suffix.
+            const suffix = span.text.trim().startsWith('.') && /[\w*]/.test(line[span.col - 1] || '');
+            const p = suffix ? null : pathOf(span.text, docs);
+            if (p && !denied(prose, span.col, span.col + span.text.length + 2) && pathMissing(p.path, [base, root], { anchored: p.anchored }))
+                add(n, span.col, 'path', p.path.replace(/^\?/, ''));
             if (COMMAND_HEADING.test(heading) && /\s/.test(span.text.trim()))
                 for (const program of programsOf(span.text)) checkProgram(program, n, span.col);
         }
@@ -302,6 +382,9 @@ function checkText({ root, file, text, template = null, locate = (cmd) => rt.loc
             if (![base, root].some((b) => exists(path.resolve(b, program)))) add(line, col, 'command', program, WHY.path);
             return;
         }
+        // A script in the folder the file reads from (cmd.exe runs `setup.bat` from there), or a binary the
+        // project installs, is the project's own - never a PATH question.
+        if ([base, root].some((b) => isFile(path.join(b, program))) || localBin(program)) return;
         if (!locate(program)) add(line, col, 'command', program);
     }
 

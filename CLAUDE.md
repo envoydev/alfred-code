@@ -46,9 +46,11 @@ change (see the invariants below).
   core's `alfred-capture-claude-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/claude-md-check.js` is the verdict it closes
-  on: every named path exists, every command's program resolves on PATH, no placeholder, `TODO` or
-  template text is left, and an installer seed still unfilled is named (`--list` marks it). Validate
-  runs the check for drift.
+  on: every named path exists, every command's program resolves on PATH or in the project, no
+  placeholder, `TODO` or template text is left, and an installer seed still unfilled is named
+  (`--list` marks it). Validate runs the check for drift. Its rows are heuristic (measured 2026-09-26
+  over four real projects: 39 rows with 1 true, 7 rows once the shapes behind the rest were fixed), so
+  no ask marks a check-driven fix recommended - the skill offers each one and the user picks.
 - `stack/hooks/` - seventeen hooks, folded INTO the core `alfred-code` plugin (2.0.0 - there is no
   hooks plugin). Nothing is copied or wired per project except the three engines (`docs.js`,
   `memory.js`, `history.js`) and `model-windows.json` in `.claude/hooks/`, because 22 bodies shared
@@ -275,7 +277,7 @@ change (see the invariants below).
     `--evidence-gaps`, plus the settings.json `env` layer against `environment.json`, and a read-only
     install audit at its post-check - `scripts/audit-install.js` rows on unpinned launches, wide shell
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
-    CLAUDE.md check - `claude-md-check.js` rows routed to the skill's improve mode), `/alfred-code:uninstall`
+    CLAUDE.md check - `claude-md-check.js` rows offered to the skill's improve mode, no option recommended), `/alfred-code:uninstall`
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
     worktree of an installed checkout every command stops and names the main checkout.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
