@@ -1,5 +1,5 @@
 {
-  "note": "The plugins a release took out of the stack, read by the Node seed alone. Update uninstalls each one only by its full spec - the name under the key the core is listed under (the 1.x key on a migrated install), or the `marketplace` its row names - so a same-named plugin from another marketplace (the official catalog ships a `sentry`) is never touched, and a row at another scope is kept and logged with its uninstall command. After each uninstall it prints the row's `addBack` line, `<scope>` replaced by the scope it went from. A cut MCP server is also named in the manifest's `retired.mcps`, which prunes a copy-route registration of it - only on the first update past `retiredIn`, because from then on a registration under that name is the user's own, made with this line. Its `registration` is what the stack itself registered (the package it launched, or the url it called): the prune removes only a registration of that shape, so a server the user added back under the name - with the addBack line or by hand - is kept. Keep a row while its name is retired: it is the only record of the way back.",
+  "note": "The plugins a release took out of the stack, read by the Node seed alone. Update uninstalls each one only by its full spec - the name under the key the core is listed under (the 1.x key on a migrated install), or the `marketplace` its row names - so a same-named plugin from another marketplace (the official catalog ships a `sentry`) is never touched, and a row at another scope is kept and logged with its uninstall command. After each uninstall it prints the row's `addBack` line, `<scope>` replaced by the scope it went from. A row whose `addBack` reinstalls that same plugin (a third-party pick the stack dropped) goes on the first update past `retiredIn` only, while the last install's stamp predates it - from then on a row under that spec is the user's own, put back with that line (plugins.retirementDue). A cut MCP server is also named in the manifest's `retired.mcps`, which prunes a copy-route registration of it - only on the first update past `retiredIn`, because from then on a registration under that name is the user's own, made with this line. Its `registration` is what the stack itself registered (the package it launched, or the url it called): the prune removes only a registration of that shape, so a server the user added back under the name - with the addBack line or by hand - is kept. Keep a row while its name is retired: it is the only record of the way back.",
   "plugins": [
     {
       "name": "ponytail",
@@ -51,6 +51,20 @@
         "package": "@upstash/context7-mcp"
       },
       "addBack": "claude mcp add --scope <scope> context7-local -- npx -y @upstash/context7-mcp@4.1.1"
+    },
+    {
+      "name": "claude-md-management",
+      "marketplace": "claude-plugins-official",
+      "retiredIn": "2.0.0",
+      "why": "a third-party pick the plugins audit (2026-09-26) found unused - 0 uses in 230 sessions it was enabled in; the core's alfred-capture-claude-md skill creates or improves a CLAUDE.md and closes on a deterministic check, and a session's learnings belong in the shared memory server, not the file",
+      "addBack": "claude plugin install claude-md-management@claude-plugins-official --scope <scope>"
+    },
+    {
+      "name": "security-guidance",
+      "marketplace": "claude-plugins-official",
+      "retiredIn": "2.0.0",
+      "why": "a third-party pick the plugins audit (2026-09-26) scored a blocker - a billed model review of the diff per Stop, SubagentStop and commit with 0 findings in 217 sessions, sent under the user's own credential, and an unpinned pip install at every session start; /security-review, the security-auditor seat and the commit checkpoint's security half stay",
+      "addBack": "claude plugin install security-guidance@claude-plugins-official --scope <scope>"
     }
   ]
 }

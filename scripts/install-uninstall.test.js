@@ -81,20 +81,20 @@ test('removePlugins: the stack\'s rows at project or local scope are uninstalled
         { name: 'alfred-code', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
         { name: 'navigation', marketplace: 'envoydev', scope: 'project', version: '2.0.0', enabled: true },
         { name: 'browser-chrome', marketplace: 'envoydev', scope: 'user', version: '2.0.0', enabled: true },
-        { name: 'claude-md-management', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
+        { name: 'csharp-lsp', marketplace: 'claude-plugins-official', scope: 'project', version: '1.0.0', enabled: true },
     ];
     const calls = [];
     // The CLI refuses a dependency first while its dependent is installed.
     const cli = (argv) => { calls.push(argv.join(' ')); return !(argv[2] === 'navigation@envoydev' && !calls.some((c) => c.startsWith('plugin uninstall alfred-code@'))); };
     const logs = [];
-    uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['claude-md-management@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
+    uninstall.removePlugins({ rows, market: 'envoydev', scope: 'project', thirdParty: ['csharp-lsp@claude-plugins-official'], cli, log: (m) => logs.push(m), note: (m) => logs.push(`NOTE ${m}`) });
     assert.ok(calls.includes('plugin uninstall alfred-code@envoydev --scope project -y'));
     assert.ok(calls.includes('plugin uninstall navigation@envoydev --scope project -y'));
-    assert.ok(!calls.some((c) => /browser-chrome|claude-md-management/.test(c)), calls.join('\n'));
+    assert.ok(!calls.some((c) => /browser-chrome|csharp-lsp/.test(c)), calls.join('\n'));
     const text = logs.join('\n');
     assert.doesNotMatch(text, /NOTE/, 'a dependency refused first is retried once its dependent is gone');
     assert.match(text, /browser-chrome@envoydev is installed at user scope - every project on this account loads it, so it is not removed here: claude plugin uninstall browser-chrome@envoydev --scope user/);
-    assert.match(text, /claude-md-management@claude-plugins-official .*not removed.*claude plugin uninstall claude-md-management@claude-plugins-official --scope project/);
+    assert.match(text, /csharp-lsp@claude-plugins-official .*not removed.*claude plugin uninstall csharp-lsp@claude-plugins-official --scope project/);
 
     const userCalls = [];
     uninstall.removePlugins({ rows: rows.map((r) => ({ ...r, scope: 'user' })), market: 'envoydev', scope: 'user', cli: (a) => { userCalls.push(a); return true; }, log: () => {} });

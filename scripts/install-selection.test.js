@@ -18,7 +18,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const LISTS = {
     skills: ['aspnet|project-aspnet', 'web|project-angular'],
-    plugins: ['claude-hud@claude-plugins-official', 'security-guidance@claude-plugins-official'],
+    plugins: ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'],
     mcps: ['navigation|-- uvx serena', 'browser|-- npx pw'],
     agents: ['ng-implementer.md::sonnet', 'security-auditor.md::opus'],
     rules: ['baseline-security.md::x', 'markdown-docs.md::y'],
@@ -149,7 +149,7 @@ test('derive: the four playwright engines collapse back to the ONE manifest entr
 test('derive: only KNOWN plugins are taken from the listing, and none listed is none picked', () =>
 {
     const dir = target({ skills: ['x'] });
-    const known = ['claude-hud@claude-plugins-official', 'security-guidance@claude-plugins-official'];
+    const known = ['claude-hud@claude-plugins-official', 'csharp-lsp@claude-plugins-official'];
     const got = sel.deriveFromDisk({ claudeDir: dir, plugins: ['claude-hud@x', 'someone-elses@y'], knownPlugins: known });
     assert.deepStrictEqual(got.filter((l) => l.startsWith('plugin ')), ['plugin claude-hud']);
     // update INSTALLS an absent plugin, so a manifest-set fallback put all five on a project whose

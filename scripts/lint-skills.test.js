@@ -129,14 +129,15 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
 test('lintEvidenceCatalog flags a signal kind the scanner does not read - a typo never matches', () => {
     const { lintEvidenceCatalog } = require('./lint-skills.js');
     const { SIGNAL_KINDS } = require('./scan-evidence.js');
-    assert.deepStrictEqual([...SIGNAL_KINDS].sort(), ['content', 'csprojContent', 'files', 'packages', 'tracked']);
-    const rosters = { skills: new Set(), mcps: new Set(), plugins: new Set(['claude-md-management', 'csharp-lsp']) };
+    // `tracked` left with its one row (claude-md-management, retired in 2.0.0): a kind no row reads is dead code.
+    assert.deepStrictEqual([...SIGNAL_KINDS].sort(), ['content', 'csprojContent', 'files', 'packages']);
+    const rosters = { skills: new Set(), mcps: new Set(), plugins: new Set(['typescript-lsp', 'csharp-lsp']) };
     const every = { plugins: { 'csharp-lsp': Object.fromEntries(SIGNAL_KINDS.map((k) => [k, /content/i.test(k) ? [{ glob: 'a', regex: 'b', label: 'c' }] : ['x']])) } };
     assert.deepStrictEqual(lintEvidenceCatalog(every, rosters), [], 'every kind the scanner reads passes');
-    const typo = { plugins: { 'claude-md-management': { trackd: ['CLAUDE.md'] }, 'csharp-lsp': { file: ['*.csproj'], _note: 'x' } } };
+    const typo = { plugins: { 'typescript-lsp': { tracked: ['tsconfig.json'] }, 'csharp-lsp': { file: ['*.csproj'], _note: 'x' } } };
     const findings = lintEvidenceCatalog(typo, rosters);
     assert.strictEqual(findings.length, 2, findings.join('\n'));
-    assert.ok(findings.some(f => f.includes("plugin 'claude-md-management' has unknown signal kind 'trackd'")), findings.join('\n'));
+    assert.ok(findings.some(f => f.includes("plugin 'typescript-lsp' has unknown signal kind 'tracked'")), findings.join('\n'));
     assert.ok(findings.some(f => f.includes("plugin 'csharp-lsp' has unknown signal kind 'file'")), findings.join('\n'));
 });
 
@@ -616,7 +617,7 @@ test('check 42: the plugin manifest\'s commands array equals the commands direct
 // 37 (extension). A BARE plugin name is the same class as a bare plugin skill, one level up.
 test('check 37: a backticked bare plugin name needs the clause saying what it gives', () => {
     const { lintPluginCites } = require('./lint-skills.js');
-    const plugins = new Set(['superpowers', 'claude-md-management', 'csharp-lsp']);
+    const plugins = new Set(['superpowers', 'typescript-lsp', 'csharp-lsp']);
 
     const flagged = lintPluginCites('skills/x/references/capability-reuse.md', 'Wire the `csharp-lsp` plugin in.\n', plugins);
     assert.strictEqual(flagged.length, 1, flagged.join('\n'));
@@ -624,8 +625,8 @@ test('check 37: a backticked bare plugin name needs the clause saying what it gi
 
     // The same content clause that clears a `plugin:skill` cite clears a bare one, either side.
     assert.deepStrictEqual(lintPluginCites('f.md', 'Wire `csharp-lsp` - inline Roslyn diagnostics as each edit lands - into the seat.\n', plugins), []);
-    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `claude-md-management` (the audit-and-revise pass over the instruction file) here.\n', plugins), []);
-    assert.deepStrictEqual(lintPluginCites('f.md', 'Drift in the instruction file is paid for by every seat - keep it current with `claude-md-management`.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `typescript-lsp` (the TypeScript server\'s diagnostics on each edit) here.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'A type error is paid for by every seat - catch it on the edit with `typescript-lsp`.\n', plugins), []);
 
     // Unbackticked prose is not a cite: stack-graph.js reads the backticked token, and the word
     // 'superpowers' is English before it is a plugin.
@@ -925,6 +926,11 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     assert.strictEqual(hit.length, 1, 'one line, one finding');
     assert.match(hit[0], /stack\/agents\/x\.md:2 .*ponytail.*build lean/i, 'the finding names file:line and the house term');
     assert.deepStrictEqual(lintRetiredNames([{ file: 'stack/agents/y.md', text: '- Build lean: implement the smallest correct version\n' }]), [], 'the house term is clean');
+    // 2.0.0 retired two third-party picks; a skill still pointing at their hooks or commands points at nothing.
+    const cut = lintRetiredNames([{ file: 'stack/skills/a/SKILL.md', text: 'pairs with the runtime security-guidance plugin\nkeep it current with claude-md-management\n' }]);
+    assert.deepStrictEqual(cut.map((f) => f.replace(/ names .*/, '')), ['stack/skills/a/SKILL.md:1', 'stack/skills/a/SKILL.md:2'], cut.join('\n'));
+    assert.match(cut[0], /security-guidance.*\/security-review/, 'the finding names what took its place');
+    assert.match(cut[1], /claude-md-management.*CLAUDE\.md skill/, 'the finding names what took its place');
     assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
 });

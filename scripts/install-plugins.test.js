@@ -784,11 +784,11 @@ test('seed plan: --print-plan with no --source changes no plugin - it reads the 
 });
 
 // R27: claude-hud is required - installed on every run beside the core, never a pick, and still at
-// user scope (its status line is account-wide). The other four third-party plugins are optional picks,
-// and so is superpowers (R72): a selection naming none of them installs none of them.
-const OPTIONAL = ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'];
+// user scope (its status line is account-wide). The LSP pair are optional picks (2.0.0 retired the other
+// two), and so is superpowers (R72): a selection naming none of them installs none of them.
+const OPTIONAL = ['csharp-lsp', 'typescript-lsp'];
 
-test('seed install: a selection naming no plugin still installs claude-hud at user scope, its marketplace first, and none of the optional four', POSIX_ONLY, () =>
+test('seed install: a selection naming no plugin still installs claude-hud at user scope, its marketplace first, and none of the optional two', POSIX_ONLY, () =>
 {
     const { calls } = seedRun('install', 'skill markdown-style\nrule markdown-docs\n');
     const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
@@ -801,14 +801,15 @@ test('seed install: a selection naming no plugin still installs claude-hud at us
 
 test('seed install: a selection that still names claude-hud installs it once, and an optional pick it names is installed', POSIX_ONLY, () =>
 {
-    const { calls } = seedRun('install', `${HUD_SELECTION}plugin security-guidance\n`);
+    const { calls } = seedRun('install', `${HUD_SELECTION}plugin csharp-lsp\n`);
     assert.strictEqual(calls.filter((c) => /^plugin install claude-hud@/.test(c)).length, 1, calls.join('\n'));
-    assert.ok(calls.includes('plugin install security-guidance@claude-plugins-official --scope project -y'), calls.join('\n'));
+    assert.ok(calls.includes('plugin install csharp-lsp@claude-plugins-official --scope project -y'), calls.join('\n'));
 });
 
-// An install from before R27 carries whichever of the four its walk picked, and may lack claude-hud:
-// optional is not retired, so the read-back keeps each one it finds, and the required one is added.
-test('seed update --installed-only: an older install keeps its optional plugins and gains claude-hud', POSIX_ONLY, () =>
+// An install from before R27 carries whichever optional plugins its walk picked, and may lack claude-hud:
+// optional is not retired, so the read-back keeps each one it finds, and the required one is added -
+// while a pick 2.0.0 retired leaves this scope, never updated.
+test('seed update --installed-only: an older install keeps its optional plugins, loses a retired one and gains claude-hud', POSIX_ONLY, () =>
 {
     const row = (id, extra = {}) => ({ id, version: '1.0.0', scope: 'project', enabled: true, ...extra });
     const listing = JSON.stringify([
@@ -825,11 +826,10 @@ test('seed update --installed-only: an older install keeps its optional plugins 
         fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'version: 1.3.0\nsha: 0000000\n'); // legacy-name
     };
     const { calls } = seedRun('update', 'skill markdown-style\n', { plugins: listing, args: ['--installed-only'], prepare });
-    for (const name of ['security-guidance', 'csharp-lsp'])
-    {
-        assert.ok(calls.includes(`plugin update ${name}@claude-plugins-official --scope project -y`), `${name} was not kept:\n${calls.join('\n')}`);
-        assert.ok(!calls.some((c) => c.startsWith(`plugin uninstall ${name}@`) || c.startsWith(`plugin disable ${name}@`)), `${name} was taken out:\n${calls.join('\n')}`);
-    }
+    assert.ok(calls.includes('plugin update csharp-lsp@claude-plugins-official --scope project -y'), `csharp-lsp was not kept:\n${calls.join('\n')}`);
+    assert.ok(!calls.some((c) => c.startsWith('plugin uninstall csharp-lsp@') || c.startsWith('plugin disable csharp-lsp@')), `csharp-lsp was taken out:\n${calls.join('\n')}`);
+    assert.ok(calls.includes('plugin uninstall security-guidance@claude-plugins-official --scope project -y'), `the retired pick stayed:\n${calls.join('\n')}`);
+    assert.ok(!calls.includes('plugin update security-guidance@claude-plugins-official --scope project -y'), `the retired pick was updated:\n${calls.join('\n')}`);
     for (const name of ['claude-md-management', 'typescript-lsp'])
         assert.ok(!calls.some((c) => c.startsWith(`plugin install ${name}@`)), `${name} was never picked, yet the update installed it:\n${calls.join('\n')}`);
     const add = calls.indexOf('plugin marketplace add jarrodwatts/claude-hud');
@@ -1274,6 +1274,73 @@ test('seed update: the five cut MCP plugins go by their stack spec, each with it
     assert.match(out, /add it back: claude mcp add --transport http --scope project sentry https:\/\/mcp\.sentry\.dev\/mcp/);
     assert.match(out, /angular-cli@envoydev is installed at user scope, not this run's - kept .*claude plugin uninstall angular-cli@envoydev --scope user/);
     assert.ok(!calls.some((c) => /^plugin (install|update|enable) (angular-cli|chrome-devtools|appium-mcp|sentry|context7-local)@/.test(c)), calls.join('\n'));
+});
+
+// 2.0.0 also retired the two third-party picks the plugins audit (2026-09-26) found no install using -
+// claude-md-management (0 uses in 230 sessions; the core's CLAUDE.md skill does its job) and
+// security-guidance (a billed review per stop and commit with 0 findings). Update uninstalls each row at
+// this run's scope by its official spec and prints the line that adds it back; a row at another scope
+// is every other project's install, so it stays and is named.
+test('seed update: claude-md-management and security-guidance leave a project-scope install with their add-back lines - a user-scope row stays, named', POSIX_ONLY, () =>
+{
+    const row = (id, scope = 'project') => ({ id, version: '1.0.0', scope, enabled: true });
+    const listing = JSON.stringify([
+        { id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true },
+        row('claude-md-management@claude-plugins-official'),
+        row('security-guidance@claude-plugins-official'),
+        row('security-guidance@claude-plugins-official', 'user'),
+        row('csharp-lsp@claude-plugins-official'),
+    ]);
+    // An install stamped before the retirement (every 1.x release, and this branch until its bump).
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 1.3.0\nsha: 0000000\n');
+    };
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing, prepare });
+    const uninstalls = calls.filter((c) => /^plugin uninstall /.test(c));
+    assert.deepStrictEqual(uninstalls.sort(), ['plugin uninstall claude-md-management@claude-plugins-official --scope project -y',
+        'plugin uninstall security-guidance@claude-plugins-official --scope project -y'], uninstalls.join('\n'));
+    for (const n of ['claude-md-management', 'security-guidance'])
+        assert.match(out, new RegExp(`pruned \\(retired upstream\\) \\[project\\]: ${n}@claude-plugins-official\\n==>     add it back: claude plugin install ${n}@claude-plugins-official --scope project\\n`), out);
+    assert.match(out, /security-guidance@claude-plugins-official is installed at user scope, not this run's - kept .*claude plugin uninstall security-guidance@claude-plugins-official --scope user/);
+    assert.ok(!calls.some((c) => /^plugin (install|update|enable) (claude-md-management|security-guidance)@/.test(c)), calls.join('\n'));
+});
+
+// The add-back line installs the very same spec the prune removes, so the prune runs on the first
+// update past the retirement only - the stamp's version before `retiredIn`. From then on a row under
+// that spec is the user's own, put back with that line: kept, and nothing said about it.
+test('retirementDue: a retired pick whose add-back reinstalls it is due only while the stamp predates its retirement', () =>
+{
+    const rows = [
+        { name: 'security-guidance', marketplace: 'claude-plugins-official', retiredIn: '2.0.0', addBack: 'claude plugin install security-guidance@claude-plugins-official --scope <scope>' },
+        { name: 'sentry', retiredIn: '2.0.0', addBack: 'claude mcp add --transport http --scope <scope> sentry https://mcp.sentry.dev/mcp' },
+        { name: 'ponytail', marketplace: 'ponytail', retiredIn: '0.2.85' },
+    ];
+    const cmp = (a, b) => { const x = a.split('.').map(Number); const y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
+    const due = (name, lastVersion) => P.retirementDue({ name, rows, lastVersion, compare: cmp });
+    assert.strictEqual(due('security-guidance', '1.3.0'), true, 'the first update past the retirement');
+    assert.strictEqual(due('security-guidance', '2.0.0'), false, 'a row after it is the user\'s own');
+    assert.strictEqual(due('security-guidance', ''), false, 'no stamp version: the stack never installed it');
+    assert.strictEqual(due('sentry', '2.0.0'), true, 'an add-back that registers a server never reinstalls the pruned plugin');
+    assert.strictEqual(due('ponytail', '9.0.0'), true, 'no add-back line: pruned every run, as before');
+    assert.strictEqual(due('claude-stack-web', '2.0.0'), true, 'a name with no row: pruned every run'); // legacy-name
+});
+
+test('seed update: a retired pick an install stamped at its retirement or later carries is the user\'s own - kept, nothing said', POSIX_ONLY, () =>
+{
+    const listing = JSON.stringify([
+        { id: 'alfred-code@envoydev', version: '2.0.0', scope: 'project', enabled: true },
+        { id: 'security-guidance@claude-plugins-official', version: '1.0.0', scope: 'project', enabled: true },
+    ]);
+    const prepare = (repo) =>
+    {
+        fs.mkdirSync(path.join(repo, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\nsha: 0000000\n');
+    };
+    const { calls, out } = seedRun('update', 'skill markdown-style\nrule markdown-docs\n', { plugins: listing, prepare });
+    assert.ok(!calls.some((c) => /^plugin uninstall security-guidance@/.test(c)), calls.join('\n'));
+    assert.doesNotMatch(out, /security-guidance/, out);
 });
 
 test('seed update: a 1.x project loses the cut plugins under ITS key while it moves across', POSIX_ONLY, () =>

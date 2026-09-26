@@ -856,7 +856,11 @@ function installPlugins(ctx)
     // The plugins a release cut (meta/retired-plugins.json) go the same way, each by its full spec and
     // with its add-back line - 2.0.0's five MCP entries among them.
     const retiredRows = readRetiredPlugins(ctx.source.dir);
-    const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])];
+    // A retired third-party pick goes on the first update past its retirement only (plugins.retirementDue):
+    // after it, a row under that spec is the user's own, put back with the add-back line.
+    const lastVersion = stampLayer.readVersion(ctx.stampFile);
+    const retired = [...new Set([...ctx.manifest.retired.plugins, ...retiredRows.map((r) => r.name), ...carriers])]
+        .filter((name) => plugins.retirementDue({ name, rows: retiredRows, lastVersion, compare: compareVersions }));
     // A 1.x install is moved across first - the new core installed, then the old ids removed - before
     // the core is installed or updated below (plugins.migrateLegacy).
     const moved = plugins.corePluginOn(ctx.routes)

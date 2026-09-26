@@ -130,9 +130,9 @@ test('scanner on an empty project yields an empty found map', () => {
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-// R27: the four optional plugins are picks the scan SUGGESTS, each on its own evidence, off the shipped
-// catalog. `git` makes the tree a repo so the tracked-file signal has something to ask.
-function pluginTree(files, { track = [] } = {})
+// R27: the optional plugins - the LSP pair since 2.0.0 retired the other two - are picks the scan
+// SUGGESTS, each on its own evidence, off the shipped catalog.
+function pluginTree(files)
 {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-plugins-'));
     for (const [rel, text] of Object.entries(files))
@@ -140,8 +140,6 @@ function pluginTree(files, { track = [] } = {})
         fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
         fs.writeFileSync(path.join(root, rel), text);
     }
-    execFileSync('git', ['init', '-q', root]);
-    if (track.length) execFileSync('git', ['-C', root, 'add', '--', ...track]);
     return root;
 }
 
@@ -151,18 +149,6 @@ test('the plugins layer suggests each optional plugin on its own evidence, namin
         ['csharp-lsp', { 'Shop.sln': 'Microsoft Visual Studio Solution File\n' }, /Shop\.sln present/],
         ['typescript-lsp', { 'web/tsconfig.json': '{}' }, /web\/tsconfig\.json present/],
         ['typescript-lsp', { 'web/package.json': JSON.stringify({ devDependencies: { typescript: '^5.4.0' } }) }, /typescript in web\/package\.json/],
-        ['security-guidance', { 'src/Api/Api.csproj': '<Project><ItemGroup><PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" /></ItemGroup></Project>' },
-            /Microsoft\.AspNetCore\.Authentication\.JwtBearer in src\/Api\/Api\.csproj/],
-        ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { jsonwebtoken: '^9.0.0' } }) }, /jsonwebtoken in api\/package\.json/],
-        ['security-guidance', { 'shop/package.json': JSON.stringify({ dependencies: { stripe: '^14.0.0' } }) }, /stripe in shop\/package\.json/],
-        ['security-guidance', { 'Pay/Pay.csproj': '<Project><ItemGroup><PackageReference Include="Stripe.net" Version="43.0.0" /></ItemGroup></Project>' }, /Stripe\.net in Pay\/Pay\.csproj/],
-        ['security-guidance', { 'web/package.json': JSON.stringify({ dependencies: { 'angular-auth-oidc-client': '^19.0.0' } }) }, /angular-auth-oidc-client in web\/package\.json/],
-        ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { '@nestjs/jwt': '^11.0.0' } }) }, /@nestjs\/jwt in api\/package\.json/],
-        ['security-guidance', { 'api/package.json': JSON.stringify({ dependencies: { '@nestjs/passport': '^11.0.0' } }) }, /@nestjs\/passport in api\/package\.json/],
-        ['security-guidance', { 'Old/Old.csproj': '<Project><ItemGroup><PackageReference Include="Microsoft.AspNetCore.Authentication" Version="2.3.0" /></ItemGroup></Project>' },
-            /Microsoft\.AspNetCore\.Authentication in Old\/Old\.csproj/],
-        ['security-guidance', { 'Idp/Idp.csproj': '<Project><ItemGroup><PackageReference Include="Duende.IdentityServer.EntityFramework" Version="7.0.0" /></ItemGroup></Project>' },
-            /Duende\.IdentityServer\.EntityFramework in Idp\/Idp\.csproj/],
     ];
     for (const [plugin, files, want] of cases)
     {
@@ -174,22 +160,6 @@ test('the plugins layer suggests each optional plugin on its own evidence, namin
         }
         finally { fs.rmSync(root, { recursive: true, force: true }); }
     }
-});
-
-test('claude-md-management is suggested on a TRACKED CLAUDE.md only - never an untracked one or the stack\'s own seed', () => {
-    const tracked = pluginTree({ 'CLAUDE.md': '# x\n' }, { track: ['CLAUDE.md'] });
-    const untracked = pluginTree({ 'CLAUDE.md': '# x\n' });
-    const seeded = pluginTree({ '.claude/CLAUDE.md': '# x\n' }, { track: ['.claude/CLAUDE.md'] });
-    const noGit = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-nogit-'));
-    fs.writeFileSync(path.join(noGit, 'CLAUDE.md'), '# x\n');
-    try
-    {
-        assert.match(scan(tracked).plugins['claude-md-management'] || '', /CLAUDE\.md tracked/);
-        assert.strictEqual(scan(untracked).plugins['claude-md-management'], undefined, 'an untracked copy is one person\'s note');
-        assert.strictEqual(scan(seeded).plugins['claude-md-management'], undefined, 'the installer seeds .claude/CLAUDE.md into every project');
-        assert.strictEqual(scan(noGit).plugins['claude-md-management'], undefined, 'no git, nothing is tracked');
-    }
-    finally { for (const d of [tracked, untracked, seeded, noGit]) fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 test('a project with none of the signals gets no optional plugin suggested', () => {

@@ -396,6 +396,19 @@ function retiredSpec(name, market, retiredRows = [])
     return `${name}@${(row && row.marketplace) || market}`;
 }
 
+// Whether this run still prunes a retired name. A row whose add-back line reinstalls the very plugin
+// the prune removes (a third-party pick the stack dropped) goes on the first update past its
+// retirement only - while the last install's stamp predates `retiredIn`: from then on a row under
+// that spec is the user's own, put back with that line, the rule the retired MCP registrations follow
+// (mcp.dueRetired). With no stamp version the stack never installed it. Any other name - no row, an
+// add-back that registers a server, no add-back at all - is pruned every run, as before.
+function retirementDue({ name, rows = [], lastVersion = '', compare })
+{
+    const row = rows.find((r) => r && r.name === name);
+    if (!row || !row.retiredIn || !/^claude plugin install /.test(String(row.addBack || ''))) return true;
+    return Boolean(lastVersion) && typeof compare === 'function' && compare(lastVersion, row.retiredIn) < 0;
+}
+
 // The rows of `name@<market>` for each name, at any scope, that are ON: the settings file's word at the
 // row's scope when it names the plugin, else the listing's flag - which read a running project-scope
 // core as off (docs/rebrand-evidence.md S22), while a switch the file shows made already exits 1 (S28).
@@ -821,6 +834,6 @@ module.exports = {
     OFFICIAL_MARKETPLACE, STACK_MARKETPLACE, CORE_SPEC, USER_SCOPE_PLUGINS, USER_OFF_WINS, CORE_DEP_PLUGINS,
     pluginRoutes, committedRoutes, committedRoutesAt, corePluginOn, parsePluginList, parseMarketplaces, fieldOf, scopeFor, migrateLegacy, migrateRenamed,
     resolveStackPlugins, selectionLines, pluginSet,
-    refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, updatePlugins, extraMarketplaces, uninstallEngines,
+    refreshMarketplaces, stackMarket, refreshStackSource, installPlugins, prunedRetired, retirementDue, updatePlugins, extraMarketplaces, uninstallEngines,
     copyRouteStandDown, restoreStoodDown, standDownScope, engineStandDown, rowsOn, moveLocalRows, hudStatusLineMissing,
 };

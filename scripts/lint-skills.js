@@ -874,7 +874,7 @@ function lintOptionalCites(file, text, optional, opts = {})
 // block, so a plugin added there is covered without touching this check.
 //
 // The BARE plugin name is the same class one level up, and the 2026-09-12 plugins audit found four
-// of them uncovered: a body naming `csharp-lsp` or `claude-md-management` on its own is naming a
+// of them uncovered: a body naming `csharp-lsp` or `typescript-lsp` on its own is naming a
 // per-install, droppable plugin, so a seat on an install that dropped it reads a name and nothing
 // else. Only the BACKTICKED spelling is judged - that is the token stack-graph.js reads to emit the
 // dependency edge, so backticking a cite is what puts it in the graph, while the unbackticked word
@@ -2679,7 +2679,10 @@ function shippedTextFiles(roots, root = ROOT)
 // disciplines inline under house terms; a leftover name points a seat at a plugin no install
 // carries, and the interaction rule already bans its code markers.
 const RETIRED_TERMS = [
-    { name: 'ponytail', re: /\bponytail/i, use: "'build lean' / 'question the need' / 'over-build review'" },
+    { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
+    // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
+    { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-capture-claude-md)' },
 ];
 function lintRetiredNames(files)
 {
@@ -2688,7 +2691,7 @@ function lintRetiredNames(files)
         text.split('\n').forEach((line, i) =>
         {
             for (const t of RETIRED_TERMS)
-                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - the house terms are ${t.use}`);
+                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - ${t.use}`);
         });
     return out;
 }

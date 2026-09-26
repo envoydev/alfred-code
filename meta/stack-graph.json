@@ -1166,9 +1166,7 @@
     ],
     "plugins": [
       "claude-hud",
-      "claude-md-management",
       "csharp-lsp",
-      "security-guidance",
       "typescript-lsp"
     ],
     "dependencyPlugins": [

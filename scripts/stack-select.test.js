@@ -668,13 +668,13 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
         fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'navigation' }, 'documentation'], hooks: [],
-            plugins: [{ name: 'claude-md-management', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
-        fs.writeFileSync(dropped, JSON.stringify({ plugins: [{ name: 'typescript-lsp', scope: 'project' }] }));
+            plugins: [{ name: 'typescript-lsp', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
+        fs.writeFileSync(dropped, JSON.stringify({}));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
             '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
         assert.ok(!/\[object Object\]/.test(out), `no object reads as a name:\n${out}`);
         const txt = fs.readFileSync(emit, 'utf8');
-        assert.match(txt, /^plugin claude-md-management$/m, 'a scoped plugin stays selected');
+        assert.match(txt, /^plugin typescript-lsp$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
         assert.match(txt, /^mcp navigation$/m, 'an object mcp entry stays selected');
     }
@@ -917,7 +917,7 @@ test('a plugin the core carries beside it gets its own row status, in both table
 });
 
 // R27: claude-hud is required - a `dependency` row, never a pick - and no plugin is an always-baseline
-// SEED any more: the optional four are suggested on evidence, and superpowers (R109) is no pick at all.
+// SEED any more: the optional LSP pair is suggested on evidence, and superpowers (R109) is no pick at all.
 test('claude-hud gets the dependency row, and no plugin is seeded into every install', () => {
     const fs = require('node:fs');
     const os = require('node:os');
@@ -931,7 +931,7 @@ test('claude-hud gets the dependency row, and no plugin is seeded into every ins
     fs.rmSync(dir, { recursive: true, force: true });
     const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
     assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
-    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
+    for (const name of ['csharp-lsp', 'typescript-lsp'])
         assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');
     assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');

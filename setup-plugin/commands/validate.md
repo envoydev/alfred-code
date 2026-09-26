@@ -272,8 +272,8 @@ layer, slice `redundant.out` + `missing.out` to that layer and run the SAME shap
 - **MCPs / plugins** - no plugin is always-baseline: `claude-hud` rides beside the core, so it is
   never REDUNDANT and the next update puts it back when it is gone. One exception:
   a `claude-hud` the user disabled stays off - it is in no `plugins_disabled` row and never proposed
-  for an enable. The four optional ones (`security-guidance`, `claude-md-management`, `csharp-lsp`,
-  `typescript-lsp`) show MISSING only on evidence - an `evidence-missing:` line naming the matched
+  for an enable. The two optional ones (`csharp-lsp`, `typescript-lsp`) show
+  MISSING only on evidence - an `evidence-missing:` line naming the matched
   manifest - or, for an LSP plugin, when its stack is detected but it was dropped. An LSP plugin
   with neither a signal nor a detected owning stack is REDUNDANT; any other optional plugin without
   a signal is a `no-evidence:` advisory, never a removal.

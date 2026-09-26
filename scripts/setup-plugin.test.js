@@ -417,7 +417,7 @@ test('every shipped plugin is suggested somewhere - validate cannot flag what no
     // suggestion has to reach.
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-manifest.json'), 'utf8'));
     const shipped = manifest.plugins.filter((r) => r.active !== false).map((r) => r.id.split('@')[0]).sort();
-    assert.ok(shipped.length >= 4, 'the manifest lists the shipped plugins');
+    assert.deepStrictEqual(shipped, ['csharp-lsp', 'typescript-lsp'], 'the manifest lists the shipped plugins - 2.0.0 retired the other two picks');
 
     // findStackMissing sources are the always baseline plus each DETECTED stack, both run through
     // the closure - so a plugin no seed reaches is invisible to validate's ADD side on every
@@ -436,10 +436,10 @@ test('every shipped plugin is suggested somewhere - validate cannot flag what no
     // R27: the optional plugins are suggested on EVIDENCE - each one carries a meta/evidence.json row,
     // which validate's --evidence-gaps pass reads as MISSING when the scan matched and it is absent.
     // An evidence row pre-selects and flags, so a plugin carrying one leaves the general list, whose
-    // contract is the opposite (claude-md-management left it for its tracked-CLAUDE.md row).
+    // contract is the opposite.
     const evidence = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'evidence.json'), 'utf8')).plugins || {};
     for (const name of Object.keys(evidence)) assert.ok(!general.has(name), `${name} has an evidence row and sits on the never-pre-selected general list`);
-    for (const name of ['security-guidance', 'claude-md-management', 'csharp-lsp', 'typescript-lsp'])
+    for (const name of ['csharp-lsp', 'typescript-lsp'])
         assert.ok(shipped.includes(name) && evidence[name], `${name} is an optional pick with no evidence row`);
     for (const name of shipped) assert.ok(reachable.has(name) || general.has(name) || evidence[name], `${name} is reachable from a seed closure, suggested on evidence, or deliberately on the general opt-in list`);
 });

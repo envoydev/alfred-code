@@ -36,7 +36,7 @@ grep at 258k context to confirm this shape):
 
 ```json
 { "skills": ["csharp"], "agents": ["aspnet-implementer"], "rules": ["csharp-conventions"],
-  "hooks": ["guard-stop-contract"], "mcps": ["navigation"], "plugins": ["security-guidance"] }
+  "hooks": ["guard-stop-contract"], "mcps": ["navigation"], "plugins": ["csharp-lsp"] }
 ```
 
 ## Per layer - the same three beats
@@ -258,14 +258,12 @@ registers it.
 `claude-hud` shows as `dependency`: every install carries it beside the core plugin (at user scope -
 its status line is account-wide) and the installer puts it back on every run, so it cannot be dropped
 and is never offered as a pick (a `claude-hud` the user disabled stays off: updated, never switched
-back on). The other four (`security-guidance`, `claude-md-management`, `csharp-lsp`, `typescript-lsp`) are OPTIONAL:
-pre-selected only as `evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or
-`typescript` dependency, an auth, token or payment package, a tracked `CLAUDE.md` - the reason names
-the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely addable.
-`security-guidance` costs more than its row shows: its Stop, SubagentStop and commit hooks send the
-diff to the Anthropic API under the user's own key or session - a billed model call each - and its
-SessionStart hook pip-installs `claude-agent-sdk` unpinned. Say that in one line under the table
-whenever the row is in it, so a pick is an informed one.
+back on). The other two (`csharp-lsp`, `typescript-lsp`) are OPTIONAL: pre-selected only as
+`evidence` (the scan matched a `*.csproj` / `*.sln`, a `tsconfig.json` or `typescript` dependency -
+the reason names the manifest) or as a confirmed stack's LSP seed, and otherwise `-`, freely
+addable. 2.0.0 retired `claude-md-management` and `security-guidance` (the core's CLAUDE.md skill and
+`/security-review` cover them): neither is a row, and `/alfred-code:update` removes each from this
+project's scope with the line that adds it back.
 
 **Plugin settings - part of this layer's turn.** After the selection question, for every kept
 plugin the snapshot's `$TMP/repo/meta/plugin-settings.json` has a row for (today `claude-hud`, which
