@@ -38,8 +38,8 @@ test('drive, grade and aggregate, end to end on the real fixture', { skip: POSIX
 
     const d = await drive(w.opts);
     assert.deepStrictEqual([d.ran, d.failed], [4, 0]);
-    const tpl = fs.readdirSync(path.join(w.bench, 'work', 'templates')).find((x) => x.startsWith('ours-') && !x.endsWith('.log'));
-    assert.strictEqual(execFileSync('git', ['-C', path.join(w.bench, 'work', 'templates', tpl, 'repo'), 'rev-parse', 'HEAD'], { stdio: 'pipe' }).toString().trim(), lock.commit, 'the template is the locked fixture commit');
+    const tpl = fs.readdirSync(path.join(w.workRoot, 'templates')).find((x) => x.startsWith('ours-') && !x.endsWith('.log'));
+    assert.strictEqual(execFileSync('git', ['-C', path.join(w.workRoot, 'templates', tpl, 'repo'), 'rev-parse', 'HEAD'], { stdio: 'pipe' }).toString().trim(), lock.commit, 'the template is the locked fixture commit');
 
     const g = gradeRun({ benchDir: w.bench, run: 'r-test', armsDir: w.opts.armsDir, tasksDir: w.opts.tasksDir, base: w.opts.base, log: () => {} });
     assert.deepStrictEqual([g.graded, g.infra], [4, 0]);
@@ -57,7 +57,7 @@ test('drive, grade and aggregate, end to end on the real fixture', { skip: POSIX
 
     const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
     for (const f of walk(w.runDir)) assert.ok(!fs.readFileSync(f, 'utf8').includes(AUTH), `${path.relative(w.runDir, f)} carries the auth value`);
-    assert.ok(!fs.existsSync(path.join(w.bench, 'work', 'r-test')), 'no cell work dir survives');
+    assert.ok(!fs.existsSync(path.join(w.workRoot, 'r-test')), 'no cell work dir survives');
 });
 
 test('the three command lines name a bad invocation and exit 2', () =>

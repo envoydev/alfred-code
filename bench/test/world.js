@@ -67,11 +67,11 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     const lines = [];
     const opts = {
         benchDir: bench, armsDir, tasksDir, pricesFile: prices, preregFile: path.join(bench, 'PREREGISTRATION.md'),
-        fixtureSource: src, lock, root: dir, claude: FAKE,
+        fixtureSource: src, lock, root: dir, claude: FAKE, workRoot: path.join(dir, 'work'),
         base: { PATH: process.env.PATH, ANTHROPIC_API_KEY: AUTH }, log: (l) => lines.push(l),
         arms: Object.keys(arms), tasks: 'all', reps: 1, parallel: 2, seed: 7, run, mode: 'plain',
     };
-    return { dir, bench, opts, lines, prices, runDir: path.join(bench, 'results', run) };
+    return { dir, bench, opts, lines, prices, runDir: path.join(bench, 'results', run), workRoot: opts.workRoot };
 }
 
 module.exports = { makeWorld, FAKE, AUTH, OAUTH };

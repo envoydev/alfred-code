@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { cellPaths, runPaths, templatePaths, state, reset, partition } = require('./cells.js');
+const { cellPaths, runPaths, templatePaths, state, reset, partition, defaultWorkRoot, workRootOf } = require('./cells.js');
 
 const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
 
@@ -40,6 +40,24 @@ test('the cell, run and template layout', (t) =>
     const tp = templatePaths({ benchDir: b, arm: 'ours', hash: 'abcdef0123456789' });
     assert.strictEqual(rel(tp.dir), 'work/templates/ours-abcdef01');
     assert.deepStrictEqual([tp.config, tp.home, tp.repo, tp.src].map((p) => path.basename(p)), ['config', 'home', 'repo', 'src']);
+});
+
+test('a work root takes every cell and template out of the bench dir; results stay in it', (t) =>
+{
+    const b = bench(t);
+    const w = path.join(b, 'elsewhere');
+    const c = cellPaths({ benchDir: b, workRoot: w, ...CELL });
+    assert.strictEqual(c.work, path.join(w, 'r20260923', 'ours', 'api-1', 'r2'));
+    assert.strictEqual(c.repo, path.join(c.work, 'repo'));
+    assert.strictEqual(c.results, path.join(b, 'results', 'r20260923', 'ours', 'api-1', 'r2'));
+    assert.strictEqual(templatePaths({ benchDir: b, workRoot: w, arm: 'ours', hash: 'abcdef0123456789' }).dir, path.join(w, 'templates', 'ours-abcdef01'));
+});
+
+test('the default work root is under the OS temp dir, and a run without one recorded is the bench dir\'s', () =>
+{
+    assert.strictEqual(defaultWorkRoot(), path.join(os.tmpdir(), 'alfred-bench-work'));
+    assert.strictEqual(workRootOf({ workRoot: '/w' }, '/bench'), '/w');
+    assert.strictEqual(workRootOf({}, '/bench'), path.join('/bench', 'work'));
 });
 
 test('a name that could leave its directory, and a rep that is not a count, are refused', (t) =>

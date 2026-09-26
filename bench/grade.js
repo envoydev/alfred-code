@@ -27,12 +27,13 @@ function gradeRun({ benchDir = BENCH_DIR, run, armsDir = path.join(BENCH_DIR, 'a
     {
         const record = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));
         const { session } = armsLib.load({ dir: armsDir, names: [] });
-        const templates = Object.fromEntries(record.arms.map((a) => [a.name, cellsLib.templatePaths({ benchDir, arm: a.name, hash: a.hash })]));
+        const workRoot = cellsLib.workRootOf(record, benchDir);
+        const templates = Object.fromEntries(record.arms.map((a) => [a.name, cellsLib.templatePaths({ benchDir, workRoot, arm: a.name, hash: a.hash })]));
         const counts = { graded: 0, infra: 0, skipped: 0, final: 0 };
         const queue = [];
         for (const a of record.arms) for (const t of record.tasks) for (let rep = 1; rep <= record.reps; rep++)
         {
-            const cell = cellsLib.cellPaths({ benchDir, run, arm: a.name, task: t.id, rep });
+            const cell = cellsLib.cellPaths({ benchDir, workRoot, run, arm: a.name, task: t.id, rep });
             const id = `${a.name}/${t.id}/r${rep}`;
             if (cellsLib.state(cell) !== 'done') { counts.skipped += 1; continue; }
             const gradeFile = path.join(cell.results, 'grade.json');
@@ -45,7 +46,7 @@ function gradeRun({ benchDir = BENCH_DIR, run, armsDir = path.join(BENCH_DIR, 'a
             if (g.infra) { counts.infra += 1; queue.push(id); }
             log(`graded ${counts.graded} - infrastructure ${counts.infra}`);
         }
-        removeTree(path.join(benchDir, 'work', run));
+        removeTree(path.join(workRoot, run));
         fs.writeFileSync(path.join(runP.dir, 'regrade.json'), `${JSON.stringify({ cells: queue, updatedAt: new Date().toISOString() }, null, 2)}\n`);
         return { ...counts, queue };
     }

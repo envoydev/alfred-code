@@ -30,7 +30,7 @@ dollars and ask first.
 
 ```
 node bench/drive.js --arms ours,ecc,bare --tasks all --reps 3 --parallel 3 [--seed n] [--run id]
-                    [--auth <name>] [--wait-on-limit <hours>]
+                    [--auth <name>] [--wait-on-limit <hours>] [--work-root <dir>]
 node bench/drive.js --run <id> --resume
 node bench/grade.js <id>
 node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
@@ -38,7 +38,11 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
 
 - `drive.js` takes one lock per run, builds each arm's template once per pin (setup, then onboarding,
   in the template's own account dir and home), and runs the cells in a seeded order that interleaves
-  the arms. A resume runs only unfinished cells, and refuses when an arm, a task or the Claude Code
+  the arms. Templates and cell work dirs live under the WORK ROOT, `$TMPDIR/alfred-bench-work` unless
+  `--work-root` names another, recorded in `run.json` and kept by a resume. Claude Code reads
+  `CLAUDE.md`, `CLAUDE.local.md` and `.claude/` from every directory above the one a session starts in,
+  so a work root with any of them above it is refused, and so is every template and cell under one -
+  the first pilot ran its cells inside this repository and every arm loaded its rules. A resume runs only unfinished cells, and refuses when an arm, a task or the Claude Code
   version changed since the run started. It needs ONE credential set - `ANTHROPIC_API_KEY`,
   `ANTHROPIC_AUTH_TOKEN` or the subscription's `CLAUDE_CODE_OAUTH_TOKEN`, or `--auth <name>` choosing
   one when several are - recorded by name in `run.json`, and runs on macOS and Linux only.
@@ -63,8 +67,8 @@ node bench/prove-tasks.js [--tasks all|<id,id>|group:<g>]
 
 ## What stays out of git
 
-`bench/results/` (transcripts, diffs, grades, reports) and `bench/work/` (templates and cell work
-dirs) are gitignored. Publishing any result is the user's decision.
+`bench/results/` (transcripts, diffs, grades, reports) is gitignored, and the templates and cell work
+dirs live outside the repository, under the work root. Publishing any result is the user's decision.
 
 What the harness writes is kept clean of credentials: sessions get an allowlisted env with auth
 passed by name, every auth value is redacted from what lands in `results/`, and each cell's work dir -

@@ -274,6 +274,20 @@ test('a session runs its setup after the start ref and records it', async (t) =>
     assert.doesNotMatch(diff, /wip\.txt/, 'the setup is part of the baseline, never of the arm\'s diff');
 });
 
+test('a cell with a CLAUDE.md or a .claude/ above it is refused before its session starts', async (t) =>
+{
+    for (const name of ['CLAUDE.md', '.claude'])
+    {
+        const { dir, cell } = cellFor(t);
+        if (name === '.claude') fs.mkdirSync(path.join(dir, name));
+        else fs.writeFileSync(path.join(dir, name), '# host rules\n');
+        const record = path.join(os.tmpdir(), `bench-never-${process.pid}-${name}.json`);
+        await assert.rejects(go(cell, { name: 'solo', env: { FAKE_RECORD: record } }), /the cell sits under .* every session there would load it/);
+        assert.ok(!fs.existsSync(record), 'the CLI never started');
+        assert.ok(!fs.existsSync(cell.session));
+    }
+});
+
 test('a cell another live worker holds is refused', async (t) =>
 {
     const { cell } = cellFor(t);

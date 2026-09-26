@@ -155,6 +155,21 @@ test('onboarding gets only the credential the run chose, and setup gets none', (
     assert.ok(!('ANTHROPIC_API_KEY' in seen[0]));
 });
 
+test('a template under a CLAUDE.md is refused before its setup runs, and a work root moves it out of the bench dir', (t) =>
+{
+    const f = fixture(t);
+    const runs = path.join(path.dirname(f.bench), 'runs.txt');
+    const workRoot = path.join(path.dirname(f.bench), 'host', 'work');
+    fs.mkdirSync(workRoot, { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(workRoot), 'CLAUDE.md'), '# host rules\n');
+    assert.throws(() => build({ arm: arm([counter(runs)]), session: SESSION, benchDir: f.bench, workRoot, fixtureSource: f.source, lock: f.lock }), /the template sits under .*CLAUDE\.md/);
+    assert.ok(!fs.existsSync(runs), 'no setup step ran');
+    fs.rmSync(path.join(path.dirname(workRoot), 'CLAUDE.md'));
+    const out = build({ arm: arm([counter(runs)]), session: SESSION, benchDir: f.bench, workRoot, fixtureSource: f.source, lock: f.lock });
+    assert.strictEqual(out.paths.dir, path.join(workRoot, 'templates', 'solo-abcdef01'));
+    assert.ok(!fs.existsSync(path.join(f.bench, 'work')));
+});
+
 test('a template left half-built by a killed driver is rebuilt, never served', (t) =>
 {
     const f = fixture(t);

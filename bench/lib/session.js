@@ -14,6 +14,7 @@ const lock = require('./lock.js');
 const { sessionEnv, pickAuth } = require('./env.js');
 const { limitHit } = require('./limit.js');
 const { removeTree } = require('./remove-tree.js');
+const { assertIsolated } = require('./isolation.js');
 
 const WIN = process.platform === 'win32';
 const MIN_SECRET = 8;
@@ -167,6 +168,7 @@ function kill(child, signal)
 async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth })
 {
     const authName = auth || pickAuth(session.auth, base);
+    assertIsolated(cell.repo, 'the cell');
     fs.mkdirSync(cell.results, { recursive: true });
     const got = lock.acquire(cell.results);
     if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);

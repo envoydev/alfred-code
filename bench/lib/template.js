@@ -13,6 +13,7 @@ const { resolve } = require('./arms.js');
 const { sessionEnv, pickAuth } = require('./env.js');
 const fixture = require('../fixture/verify.js');
 const { removeTree } = require('./remove-tree.js');
+const { assertIsolated } = require('./isolation.js');
 
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
@@ -42,9 +43,11 @@ function stepFailure(r)
     return `exited ${r.status}`;
 }
 
-function build({ arm, session, benchDir, root, fixtureSource, lock, onboard, base = process.env, auth })
+function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, onboard, base = process.env, auth })
 {
-    const paths = templatePaths({ benchDir, arm: arm.name, hash: arm.hash });
+    const paths = templatePaths({ benchDir, workRoot, arm: arm.name, hash: arm.hash });
+    // Its onboarding runs in its repo, and every cell is a copy of it: nothing above it may carry instructions.
+    assertIsolated(paths.dir, 'the template', { inclusive: true });
     if (isReady(paths, arm.hash)) return { paths, built: false };
 
     const repoRoot = root || path.dirname(benchDir);

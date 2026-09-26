@@ -6,6 +6,10 @@
 //   node bench/drive.js --arms ours,ecc,bare --tasks <ids|all|group:x> --reps 3 --parallel 3
 //                       [--seed n] [--model id --effort e] [--run id] [--resume] [--mode plain]
 //                       [--auth ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN] [--wait-on-limit <hours>]
+//                       [--work-root <dir>]
+//
+// Templates and cell work dirs live under the work root (the OS temp dir by default), never inside
+// this repository: the driver refuses a work root with a CLAUDE.md or a .claude/ above it.
 //
 // One driver per run (a lock with its pid), and a resume trusts the disk alone: a finished cell is
 // never rerun, a cell another worker still holds is left alone, anything else is wiped and run
@@ -31,6 +35,7 @@ const fixture = require('./fixture/verify.js');
 const { removeTree } = require('./lib/remove-tree.js');
 const { pickAuth } = require('./lib/env.js');
 const limitLib = require('./lib/limit.js');
+const { assertIsolated } = require('./lib/isolation.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -116,7 +121,7 @@ function writeJson(file, value)
 
 // Fresh: validate the invocation and write the run's record. Resume: the record IS the invocation,
 // and today's arms, tasks and CLI must still match it.
-function configure(o, runP, version, authName)
+function configure(o, runP, version, authName, workRoot)
 {
     const exists = fs.existsSync(runP.runJson);
     if (!o.resume)
@@ -139,7 +144,7 @@ function configure(o, runP, version, authName)
         const record = {
             run: o.run, createdAt: new Date().toISOString(), mode: 'plain', seed, reps: o.reps,
             model: loaded.session.model, effort: loaded.session.effort, permissionMode: loaded.session.permissionMode,
-            cliVersion: version, auth: authName, harnessCommit: harnessCommit(o.root),
+            cliVersion: version, auth: authName, harnessCommit: harnessCommit(o.root), workRoot,
             arms: loaded.arms.map((a) => ({ name: a.name, pin: a.pin, hash: a.hash })),
             tasks: tasks.map(({ prompt, ...t }) => t),
             fixture: { tag: theLock.tag, commit: theLock.commit },
@@ -169,6 +174,23 @@ function configure(o, runP, version, authName)
     return { record, loaded, tasks };
 }
 
+// Fresh: the passed work root, else the default. Resume: the one the run recorded - a run started
+// before there was one ran under the bench dir, which the isolation check then refuses.
+function resolveWorkRoot(o, runP)
+{
+    let root = o.workRoot || cellsLib.defaultWorkRoot();
+    if (o.resume && fs.existsSync(runP.runJson))
+    {
+        const recorded = cellsLib.workRootOf(JSON.parse(fs.readFileSync(runP.runJson, 'utf8')), o.benchDir);
+        const real = (dir) => { try { return fs.realpathSync(dir); } catch { return path.resolve(dir); } };
+        if (o.workRoot && real(o.workRoot) !== real(recorded)) throw new Error(`${o.run} runs under ${recorded} - not ${path.resolve(o.workRoot)}`);
+        root = recorded;
+    }
+    assertIsolated(root, 'the work root', { inclusive: true });
+    fs.mkdirSync(root, { recursive: true });
+    return fs.realpathSync(root);
+}
+
 async function drive(opts)
 {
     const o = { ...DEFAULTS, parallel: 1, mode: 'plain', claude: ['claude'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
@@ -190,13 +212,14 @@ async function drive(opts)
     try
     {
         if (held.reclaimed) o.log(`${o.run}: took over the lock of a stopped driver (pid ${held.reclaimed})`);
-        const { record, loaded, tasks } = configure(o, runP, version, authName);
+        const workRoot = resolveWorkRoot(o, runP);
+        const { record, loaded, tasks } = configure(o, runP, version, authName, workRoot);
 
         const templates = {};
         for (const arm of loaded.arms)
         {
             const built = template.build({
-                arm, session: loaded.session, benchDir: o.benchDir, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base, auth: authName,
+                arm, session: loaded.session, benchDir: o.benchDir, workRoot, root: o.root, fixtureSource: o.fixtureSource, lock: o.lock, base: o.base, auth: authName,
                 onboard: (prompt, where) => session.onboardSync({ prompt, where, session: loaded.session, claude: o.claude, base: o.base }),
             });
             templates[arm.name] = built.paths;
@@ -208,7 +231,7 @@ async function drive(opts)
         const armBy = Object.fromEntries(loaded.arms.map((a) => [a.name, a]));
         const taskBy = Object.fromEntries(tasks.map((t) => [t.id, t]));
         const list = order({ arms: loaded.arms.map((a) => a.name), tasks: tasks.map((t) => t.id), reps: record.reps, seed: record.seed })
-            .map((c) => cellsLib.cellPaths({ benchDir: o.benchDir, run: o.run, ...c }));
+            .map((c) => cellsLib.cellPaths({ benchDir: o.benchDir, workRoot, run: o.run, ...c }));
         const parts = cellsLib.partition(list);
         o.log(`${o.run}: ${list.length} cells - ${parts.done.length} done, ${parts.live.length} live elsewhere, ${parts.todo.length} to run`);
 
@@ -288,7 +311,7 @@ async function drive(opts)
         }
         if (stopped) o.log(`stopped: ${stopped} - put ${record.cliVersion} back and resume, or start a new run`);
         for (const f of failures) o.log(`harness failure: ${f}`);
-        if (!parts.live.length) removeTree(path.join(o.benchDir, 'work', o.run));
+        if (!parts.live.length) removeTree(path.join(workRoot, o.run));
 
         const ran = counts.ok + counts.timeout + counts.error;
         const latest = JSON.parse(fs.readFileSync(runP.runJson, 'utf8'));
@@ -318,6 +341,7 @@ function parseArgs(argv)
         else if (a === '--resume') o.resume = true;
         else if (a === '--auth') o.auth = next();
         else if (a === '--wait-on-limit') o.waitOnLimit = Number(next());
+        else if (a === '--work-root') o.workRoot = path.resolve(next());
         else throw new Error(`unknown argument ${a}`);
     }
     if (o.resume && !o.run) throw new Error('--resume needs --run <id>');

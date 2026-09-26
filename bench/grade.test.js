@@ -67,7 +67,7 @@ test('a session that did the work passes, one that did not fails, and the suite 
     assert.deepStrictEqual([good.hiddenPass, good.suiteGreen, good.infra, good.applied], [true, true, null, true]);
     assert.deepStrictEqual([bad.hiddenPass, bad.suiteGreen, bad.infra], [false, true, null]);
     assert.ok(fs.existsSync(path.join(w.runDir, 'good', 't1', 'r1', 'grade.log')));
-    assert.ok(!fs.existsSync(path.join(w.bench, 'work', 'r-test')), 'grading leaves no work dir');
+    assert.ok(!fs.existsSync(path.join(w.workRoot, 'r-test')), 'grading leaves no work dir');
 });
 
 test('a task with a setup step is graded on the same start state the session had', async (t) =>
@@ -151,8 +151,8 @@ test('a grader command past its limit is infrastructure', async (t) =>
 test('a baseline that no longer matches the session\'s is infrastructure, not the arm\'s fail', async (t) =>
 {
     const w = await gradedWorld(t);
-    const tpl = fs.readdirSync(path.join(w.bench, 'work', 'templates')).find((d) => d.startsWith('good-') && !d.endsWith('.log'));
-    fs.writeFileSync(path.join(w.bench, 'work', 'templates', tpl, 'repo', 'drift.txt'), 'rebuilt differently\n');
+    const tpl = fs.readdirSync(path.join(w.workRoot, 'templates')).find((d) => d.startsWith('good-') && !d.endsWith('.log'));
+    fs.writeFileSync(path.join(w.workRoot, 'templates', tpl, 'repo', 'drift.txt'), 'rebuilt differently\n');
     w.grade();
     assert.match(w.read('good').infra, /baseline/);
     assert.strictEqual(w.read('bad').infra, null);

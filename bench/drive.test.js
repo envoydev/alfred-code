@@ -50,7 +50,7 @@ test('a 2 arms x 2 tasks x 2 reps run completes, records itself, and reports cou
     assert.strictEqual(sha(path.join(w.bench, 'results', 'r-test', 'prices.json')), sha(w.prices));
     assert.strictEqual(run.prereg, null);
     assert.deepStrictEqual(run.tasks.map((x) => x.id), ['t1', 't2']);
-    assert.ok(!fs.existsSync(path.join(w.bench, 'work', 'r-test')), 'no cell work dir outlives its cell');
+    assert.ok(!fs.existsSync(path.join(w.workRoot, 'r-test')), 'no cell work dir outlives its cell');
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', '.lock')), 'the run lock is released');
     for (const l of w.lines) assert.doesNotMatch(l, /Do t[12]/, 'progress never prints a prompt');
     assert.ok(w.lines.some((l) => /8\/8/.test(l)));
@@ -58,6 +58,63 @@ test('a 2 arms x 2 tasks x 2 reps run completes, records itself, and reports cou
     assert.ok(fs.existsSync(onboarding), 'the onboarding transcript is kept with the run');
     assert.ok(!fs.readFileSync(onboarding, 'utf8').includes('world-test-auth-value-0123456789'));
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test', 'onboarding', 'a1')), 'an arm with no onboarding has none');
+});
+
+test('cells and templates live under the work root, never under the bench dir, and the run records where', async (t) =>
+{
+    const rec = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-rec-')), 'record.json');
+    t.after(() => fs.rmSync(path.dirname(rec), { recursive: true, force: true }));
+    const w = makeWorld(t, { arms: { a1: { env: { FAKE_RECORD: rec } } }, tasks: { t1: {} } });
+    await drive(w.opts);
+    assert.ok(!fs.existsSync(path.join(w.bench, 'work')), 'nothing is built inside the bench dir');
+    assert.ok(fs.readdirSync(path.join(w.workRoot, 'templates')).some((d) => d.startsWith('a1-') && !d.endsWith('.log')));
+    const cwd = JSON.parse(fs.readFileSync(rec, 'utf8')).cwd;
+    assert.ok(cwd.startsWith(`${fs.realpathSync(w.workRoot)}${path.sep}`), `the session ran at ${cwd}`);
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(w.runDir, 'run.json'), 'utf8')).workRoot, fs.realpathSync(w.workRoot));
+});
+
+for (const name of ['CLAUDE.md', '.claude'])
+{
+    test(`a work root with a ${name} above it is refused before anything is built or recorded`, async (t) =>
+    {
+        const w = world(t);
+        const host = path.join(w.dir, 'host');
+        fs.mkdirSync(host);
+        if (name === '.claude') fs.mkdirSync(path.join(host, name));
+        else fs.writeFileSync(path.join(host, name), '# host rules\n');
+        await assert.rejects(drive({ ...w.opts, workRoot: path.join(host, 'work') }), new RegExp(`the work root sits under .*host/${name.replace('.', '\\.')} - every session there would load it`));
+        assert.ok(!fs.existsSync(path.join(w.runDir, 'run.json')), 'no run is recorded');
+        assert.ok(!fs.existsSync(path.join(host, 'work', 'templates')), 'no template is built');
+    });
+}
+
+test('a resume keeps the work root the run started with, and refuses another', async (t) =>
+{
+    const rec = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-rec-')), 'record.json');
+    t.after(() => fs.rmSync(path.dirname(rec), { recursive: true, force: true }));
+    const w = makeWorld(t, { arms: { a1: { env: { FAKE_RECORD: rec } } }, tasks: { t1: {}, t2: {} } });
+    await drive(w.opts);
+    await assert.rejects(drive({ ...w.opts, resume: true, workRoot: path.join(w.dir, 'other') }), /r-test runs under .*work - not .*other/);
+    fs.rmSync(sessions(w.bench)[0]);
+    fs.rmSync(rec);
+    const { workRoot, ...rest } = w.opts;
+    assert.ok(workRoot);
+    assert.deepStrictEqual(Object.values(await drive({ ...rest, resume: true })).slice(0, 3), [1, 0, 1]);
+    assert.ok(JSON.parse(fs.readFileSync(rec, 'utf8')).cwd.startsWith(`${fs.realpathSync(w.workRoot)}${path.sep}`), 'the re-run cell ran under the recorded work root');
+});
+
+test('a run recorded before work roots existed ran under the bench dir, so its resume is refused as contaminated', async (t) =>
+{
+    const w = world(t);
+    await drive({ ...w.opts, reps: 1 });
+    const file = path.join(w.runDir, 'run.json');
+    const { workRoot, ...legacy } = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.ok(workRoot);
+    fs.writeFileSync(file, JSON.stringify(legacy));
+    fs.writeFileSync(path.join(w.dir, 'CLAUDE.md'), '# the host repo\n');
+    const { workRoot: passed, ...rest } = w.opts;
+    assert.ok(passed);
+    await assert.rejects(drive({ ...rest, resume: true }), /the work root sits under .*CLAUDE\.md/);
 });
 
 test('--resume after a killed driver runs only the cells it left unfinished', async (t) =>
@@ -309,6 +366,7 @@ test('the command line: every flag parsed, a resume needs its run, an unknown fl
     assert.throws(() => parseArgs(['--reps']), /--reps needs a value/);
     assert.strictEqual(parseArgs(['--arms', 'bare', '--auth', 'CLAUDE_CODE_OAUTH_TOKEN']).auth, 'CLAUDE_CODE_OAUTH_TOKEN');
     assert.throws(() => parseArgs(['--auth']), /--auth needs a value/);
+    assert.strictEqual(parseArgs(['--arms', 'bare', '--work-root', 'rel/dir']).workRoot, path.resolve('rel/dir'));
 });
 
 test('a price table with no models is refused before anything is built', async (t) =>

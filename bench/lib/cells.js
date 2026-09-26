@@ -4,7 +4,10 @@
 // RESULTS directory holds what the session left and is kept. A resume reads each cell's state from
 // disk alone: `done` is a complete session.json, `live` is a cell lock another worker still holds,
 // and anything else is wiped and run again - so a killed driver never leaves a half cell counted.
+// Work dirs and templates live under a WORK ROOT outside this repository (the OS temp dir by default):
+// a session started anywhere under the repo would load the repo's own CLAUDE.md and rules.
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const lock = require('./lock.js');
 const { removeTree } = require('./remove-tree.js');
@@ -24,11 +27,16 @@ function runPaths({ benchDir = BENCH_DIR, run })
     return { dir, runJson: path.join(dir, 'run.json'), prices: path.join(dir, 'prices.json') };
 }
 
-function cellPaths({ benchDir = BENCH_DIR, run, arm, task, rep })
+const defaultWorkRoot = () => path.join(os.tmpdir(), 'alfred-bench-work');
+
+// A run records its work root; one recorded before there was one ran its cells under the bench dir.
+const workRootOf = (record, benchDir = BENCH_DIR) => (record && record.workRoot) || path.join(benchDir, 'work');
+
+function cellPaths({ benchDir = BENCH_DIR, workRoot, run, arm, task, rep })
 {
     if (!Number.isInteger(rep) || rep < 1) throw new Error(`rep '${rep}' is not a count from 1`);
     const rel = [safe(run, 'run'), safe(arm, 'arm'), safe(task, 'task'), `r${rep}`];
-    const work = path.join(benchDir, 'work', ...rel);
+    const work = path.join(workRoot || path.join(benchDir, 'work'), ...rel);
     const results = path.join(benchDir, 'results', ...rel);
     return {
         run, arm, task, rep, work, results,
@@ -40,10 +48,10 @@ function cellPaths({ benchDir = BENCH_DIR, run, arm, task, rep })
 }
 
 // One template per arm and pin hash, shared by every run: its setup is paid once.
-function templatePaths({ benchDir = BENCH_DIR, arm, hash })
+function templatePaths({ benchDir = BENCH_DIR, workRoot, arm, hash })
 {
     if (!/^[0-9a-f]{8,}$/.test(hash || '')) throw new Error(`hash '${hash}' is not a hex digest`);
-    const dir = path.join(benchDir, 'work', 'templates', `${safe(arm, 'arm')}-${hash.slice(0, 8)}`);
+    const dir = path.join(workRoot || path.join(benchDir, 'work'), 'templates', `${safe(arm, 'arm')}-${hash.slice(0, 8)}`);
     return { dir, config: path.join(dir, 'config'), home: path.join(dir, 'home'), repo: path.join(dir, 'repo'), src: path.join(dir, 'src') };
 }
 
@@ -75,4 +83,4 @@ function partition(cells)
     return out;
 }
 
-module.exports = { cellPaths, runPaths, templatePaths, state, reset, partition, BENCH_DIR };
+module.exports = { cellPaths, runPaths, templatePaths, state, reset, partition, defaultWorkRoot, workRootOf, BENCH_DIR };
