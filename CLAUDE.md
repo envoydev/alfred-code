@@ -70,10 +70,11 @@ change (see the invariants below).
   the rm, secret and force-push guards stay live, writing no row - R54, R86); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
   `alfred-code@*` its `installed_plugins.json` row can load (S26). All fail open. Beside the gates,
-  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`, or the transcript's
-  newest row carrying an `entrypoint` reads `sdk-cli` (`claude -p`; interactive rows read `cli`,
-  bookkeeping rows carry none; `CLAUDE_CODE_ENTRYPOINT` is not read - its value was not confirmable in
-  the docs). Then the hooks that ASK a person stay quiet: no docs hold or Stop FINISH ask, no
+  `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; else
+  `CLAUDE_CODE_ENTRYPOINT` when set (the 2.1.283 CLI sets `sdk-cli` in print mode, rewriting an inherited
+  `cli`, and keeps an SDK launch's `sdk-ts` / `sdk-py`, which stay interactive); else the transcript's newest
+  row carrying an `entrypoint` (`sdk-cli` for `claude -p`, `cli` interactive; bookkeeping rows carry none). A
+  suite that drives these hooks deletes the runner's own `CLAUDE_CODE_ENTRYPOINT` first. Then the hooks that ASK a person stay quiet: no docs hold or Stop FINISH ask, no
   stop-contract prose-question, pending-close or fresh-session block (a `mode: unattended` row
   instead), no answer-length Stop block, no fresh-session offer. Every protective denial and the
   rotation ask are unchanged; a missing, empty or torn-last-row transcript reads as a person.

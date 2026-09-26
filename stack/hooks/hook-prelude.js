@@ -327,6 +327,11 @@ function unattended(input, env)
     {
         const source = env || process.env;
         if (String(source.ALFRED_CODE_UNATTENDED || '').trim() === '1') return true;
+        // The CLI's own answer first (review A, M8): 2.1.283 sets CLAUDE_CODE_ENTRYPOINT to sdk-cli in print mode,
+        // rewriting an inherited cli, and keeps an SDK launch's own value - one read, no torn row, and right for a
+        // resumed session before its first new row. Set to anything, it decides; unset, the transcript does.
+        const entry = String(source.CLAUDE_CODE_ENTRYPOINT || '').trim();
+        if (entry) return entry === 'sdk-cli';
         const file = input && typeof input === 'object' && typeof input.transcript_path === 'string' ? input.transcript_path : '';
         return file !== '' && transcriptEntrypoint(file) === 'sdk-cli';
     }

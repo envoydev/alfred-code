@@ -4,6 +4,7 @@
 // their ages, the files this session wrote - with no model call, and the SessionStart `compact`
 // injection points at it.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

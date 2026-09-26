@@ -3,6 +3,7 @@
 // a silent evasion the gate exists to stop, or a false positive that blocked honest work.
 // Both directions matter: a hook that fires on the wrong turn trains the model to ignore blocks.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

@@ -5,6 +5,7 @@
 // guard, a throwing guard failing open alone - and the wiring both routes generate.
 'use strict';
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

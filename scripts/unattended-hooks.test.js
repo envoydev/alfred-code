@@ -16,6 +16,8 @@ const { spawnSync } = require('node:child_process');
 // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k];
 delete process.env.CLAUDE_PLUGIN_ROOT;
+// The runner's own entrypoint (cli in an interactive session, sdk-cli under claude -p) never decides a case.
+delete process.env.CLAUDE_CODE_ENTRYPOINT;
 const { repo, section } = require('./docs-fixture');
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
@@ -80,6 +82,29 @@ test('unattended: only sdk-cli is unattended - an Agent SDK, IDE or desktop sess
     // would quiet exactly those sessions.
     for (const entrypoint of ['sdk-ts', 'sdk-py', 'claude-vscode', 'claude-desktop'])
         assert.strictEqual(unattended({ transcript_path: file(convo(entrypoint)) }, {}), false, entrypoint);
+});
+
+test('unattended: CLAUDE_CODE_ENTRYPOINT decides first, the transcript only when it is unset', () =>
+{
+    // Review A, M8: the 2.1.283 CLI sets it to sdk-cli in print mode (rewriting an inherited cli) and keeps an SDK
+    // launch's own value - O(1), immune to a torn row, and right for a resumed session before its first new row.
+    const t = transcripts();
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }), true, 'claude -p --resume of an interactive session');
+    assert.strictEqual(unattended({}, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }), true, 'no transcript needed');
+    assert.strictEqual(unattended({ transcript_path: t.garbage }, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }), true, 'a torn row no longer matters');
+    assert.strictEqual(unattended({ transcript_path: t.print }, { CLAUDE_CODE_ENTRYPOINT: 'cli' }), false, 'an interactive resume of a print session');
+    assert.strictEqual(unattended({ transcript_path: t.print }, { CLAUDE_CODE_ENTRYPOINT: 'sdk-ts' }), false, 'an SDK launch keeps its asks');
+    assert.strictEqual(unattended({ transcript_path: t.print }, { CLAUDE_CODE_ENTRYPOINT: '' }), true, 'empty is unset - the transcript decides');
+    assert.strictEqual(unattended({ transcript_path: t.interactive }, { CLAUDE_CODE_ENTRYPOINT: 'cli', ALFRED_CODE_UNATTENDED: '1' }), true, 'the launch switch still wins');
+});
+
+test('guard-answer-length: the env route quiets the Stop block with no transcript at all, and cli keeps it', () =>
+{
+    const dash = 'Fixed it \u2014 the build is green.';
+    const t = transcripts(dash);
+    const stop = (tp, entrypoint) => run('guard-answer-length.js', { hook_event_name: 'Stop', transcript_path: tp, last_assistant_message: dash }, { CLAUDE_CODE_ENTRYPOINT: entrypoint }).status;
+    assert.strictEqual(stop(t.missing, 'sdk-cli'), 0, 'print mode by the env alone');
+    assert.strictEqual(stop(t.print, 'cli'), 2, 'a person at the terminal, whatever the transcript says');
 });
 
 test('unattended: a last row longer than the first read window is still read whole', () =>
