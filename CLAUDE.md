@@ -65,7 +65,7 @@ change (see the invariants below).
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
   shell command's writes for the cross-project guard and the done gate. The eight guards with a
   `Bash|PowerShell` row are wired as ONE hook, `shell-guards.js` (R11; both generators fold the rows,
-  `wiringRows`): each guard runs in-process with its own gates and ledger row, every block reason
+  `wiringRows`): each guard runs in-process with its own gates and ledger row (its `global.BLOCK_DETAIL` cleared before and after it), every block reason
   reaches the model, a throwing guard fails open alone.
   Every guard appends one row per BLOCK to `<docs-path>/hook-blocks/<session>.jsonl`
   (`analyze-usage.js --hook-blocks` tallies it) - the block RATE is what says a gate earns its keep.

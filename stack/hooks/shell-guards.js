@@ -11,7 +11,8 @@
 // own gates and its own tests, which spawn it standalone. `runGuard` gives it the process it expects
 // - its source compiled as the main module (so its `require.main === module` gate block runs), the
 // payload on fd 0, `process.exit` ending it where it stands, its stdout and stderr captured, and
-// argv, env and exit code put back afterwards - so no guard carries a second code path to drift.
+// argv, env, exit code and its ledger detail (`global.BLOCK_DETAIL`) put back afterwards - so no guard
+// carries a second code path to drift.
 // Every gate therefore still runs PER GUARD, and so does the ledger: a guard that blocks writes its
 // own hook-blocks row under its own name.
 //
@@ -142,6 +143,9 @@ function runGuard(file, stdin)
         return encoding ? buf.toString(encoding) : Buffer.from(buf);
     };
     process.argv = [saved.argv[0], file];
+    // A guard's ledger detail is a process GLOBAL: a separate process starts without one, so each guard
+    // does here, and none survives it - a staged-scan detail used to ride the next guard's row.
+    delete global.BLOCK_DETAIL;
 
     const base = createRequire(file);
     const mod = { id: file, filename: file, path: path.dirname(file), exports: {}, loaded: false, children: [], paths: [] };
@@ -178,6 +182,7 @@ function runGuard(file, stdin)
         process.argv = saved.argv;
         process.exitCode = saved.exitCode;
         restoreEnv(saved.env);
+        delete global.BLOCK_DETAIL;
     }
     result.code = exited;
     return result;

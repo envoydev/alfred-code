@@ -266,6 +266,32 @@ test('several guards blocking one command: every reason, one ledger row per bloc
   assert.deepStrictEqual(hooksOf(ledgerRows(dir)), alone.map((x) => `${x.g}.js`).sort());
 });
 
+test('a guard\'s ledger detail never leaks into the next guard\'s row', () => {
+  // `global.BLOCK_DETAIL` is a process global, and runGuard put back argv, env, exit and the streams but
+  // not globals: a staged-scan block chained with a cross-project write wrote the cross-project row with
+  // the staged-scan detail (the 2026-09-26 hooks review).
+  const dir = project();
+  const other = fs.mkdtempSync(path.join(TMP, 'other-'));
+  fs.writeFileSync(path.join(dir, 'd.js'), 'debugger;\n');
+  git(dir, 'add', 'd.js');
+  const out = run(DISPATCH, bashPayload(`git commit -m x && echo x > ${path.join(other, 'f.txt')}`, dir),
+    { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } });
+  assert.strictEqual(out.status, 2);
+  const rows = ledgerRows(dir).filter((x) => !x.mode);
+  const commit = rows.find((x) => x.hook === 'guard-ungated-commit.js');
+  const cross = rows.find((x) => x.hook === 'guard-cross-project-write.js');
+  assert.deepStrictEqual(commit && commit.detail, { branch: 'staged-scan', count: 1 }, 'the commit guard names its branch');
+  assert.ok(cross, 'the cross-project write blocks too');
+  assert.strictEqual(cross.detail, undefined, 'and its row carries none of the commit guard\'s detail');
+
+  const probe = path.join(TMP, 'detail-probe.js');
+  fs.writeFileSync(probe, "process.stdout.write(global.BLOCK_DETAIL === undefined ? 'clean' : 'leaked');\nglobal.BLOCK_DETAIL = { from: 'probe' };\nprocess.exit(2);\n");
+  global.BLOCK_DETAIL = { stale: true };
+  const first = shell.runGuard(probe, Buffer.from('{}'));
+  assert.strictEqual(first.stdout, 'clean', 'a guard starts with no detail');
+  assert.strictEqual(global.BLOCK_DETAIL, undefined, 'and leaves none behind');
+});
+
 test('an ordinary command passes silently', () => {
   const dir = project();
   const out = run(DISPATCH, bashPayload('git status', dir), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
