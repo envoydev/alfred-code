@@ -4,7 +4,7 @@
 // arms, each cell a fresh copy of its arm's template and one measured session.
 //
 //   node bench/drive.js --arms ours,ecc,bare --tasks <ids|all|group:x> --reps 3 --parallel 3
-//                       [--seed n] [--model id --effort e] [--run id] [--resume] [--mode plain]
+//                       [--seed n] [--model id --effort e] [--run id] [--resume] [--mode plain|flow]
 //                       [--auth ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|CLAUDE_CODE_OAUTH_TOKEN] [--wait-on-limit <hours>]
 //                       [--work-root <dir>]
 //
@@ -21,6 +21,11 @@
 // --wait-on-limit, probes every 20 minutes and carries on in the same drive once the limit clears.
 // The CLI's version is read again before every session: an update landing mid-run stops the drive,
 // because the sessions after it would run a different Claude Code than the run recorded.
+//
+// --mode flow runs the flow block: only tasks that name a kind (the four the pre-registration names),
+// each cell driven through the Agent SDK with the arm's own entry for that kind and a scripted
+// approver (lib/flow.js), on the same templates as the plain block. The SDK must be the one built
+// for the CLI the run drives, and a resume refuses a changed SDK or a changed flow entry.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -37,6 +42,7 @@ const { pickAuth } = require('./lib/env.js');
 const limitLib = require('./lib/limit.js');
 const { assertIsolated } = require('./lib/isolation.js');
 const poolLib = require('./lib/pool.js');
+const flowLib = require('./lib/flow.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -49,7 +55,9 @@ const DEFAULTS = {
     probeEveryMs: 20 * 60 * 1000,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     probe: limitLib.probe,
+    sdk: flowLib.loadSdk,
 };
+const MODES = ['plain', 'flow'];
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
@@ -123,9 +131,17 @@ function writeJson(file, value)
     fs.renameSync(`${file}.tmp`, file);
 }
 
+// A flow run: every task names its kind and every arm its entry for it, or nothing is written.
+function checkFlow(arms, tasks)
+{
+    const kindless = tasks.filter((t) => !t.kind).map((t) => t.id);
+    if (kindless.length) throw new Error(`flow mode runs only the flow tasks - ${kindless.join(', ')} ${kindless.length > 1 ? 'name' : 'names'} no kind`);
+    for (const a of arms) if (!a.flow) throw new Error(`arm ${a.name} names no flow entry (flow in arms/${a.name}.json)`);
+}
+
 // Fresh: validate the invocation and write the run's record. Resume: the record IS the invocation,
 // and today's arms, tasks and CLI must still match it.
-function configure(o, runP, version, authName, workRoot)
+function configure(o, runP, version, authName, workRoot, mode, sdk)
 {
     const exists = fs.existsSync(runP.runJson);
     if (!o.resume)
@@ -135,6 +151,7 @@ function configure(o, runP, version, authName, workRoot)
         if (!Array.isArray(o.arms) || !o.arms.length) throw new Error('--arms names no arm');
         const loaded = armsLib.load({ dir: o.armsDir, names: o.arms, override: { model: o.model, effort: o.effort, cliVersion: version } });
         const tasks = selectTasks(o.tasksDir, o.tasks || 'all');
+        if (mode === 'flow') checkFlow(loaded.arms, tasks);
         const seed = o.seed !== undefined ? o.seed : crypto.randomInt(0, 2 ** 31);
         if (!Number.isInteger(seed)) throw new Error(`--seed '${o.seed}' is not an integer`);
         const prices = fs.readFileSync(o.pricesFile);
@@ -146,10 +163,11 @@ function configure(o, runP, version, authName, workRoot)
         fs.writeFileSync(runP.prices, prices);
         const theLock = o.lock || fixture.parseLock(fs.readFileSync(fixture.LOCK_FILE, 'utf8'));
         const record = {
-            run: o.run, createdAt: new Date().toISOString(), mode: 'plain', seed, reps: o.reps,
+            run: o.run, createdAt: new Date().toISOString(), mode, seed, reps: o.reps,
             model: loaded.session.model, effort: loaded.session.effort, permissionMode: loaded.session.permissionMode,
             cliVersion: version, auth: authName, harnessCommit: harnessCommit(o.root), workRoot,
-            arms: loaded.arms.map((a) => ({ name: a.name, pin: a.pin, hash: a.hash })),
+            arms: loaded.arms.map((a) => ({ name: a.name, pin: a.pin, hash: a.hash, ...(mode === 'flow' ? { flowHash: a.flowHash } : {}) })),
+            ...(mode === 'flow' ? { sdk: { package: flowLib.SDK_PACKAGE, version: sdk.version, claudeCodeVersion: sdk.claudeCodeVersion } } : {}),
             tasks: tasks.map(({ prompt, ...t }) => t),
             fixture: { tag: theLock.tag, commit: theLock.commit },
             prereg: fs.existsSync(o.preregFile) ? { sha256: sha256(fs.readFileSync(o.preregFile)) } : null,
@@ -167,13 +185,18 @@ function configure(o, runP, version, authName, workRoot)
     const loaded = armsLib.load({ dir: o.armsDir, names: record.arms.map((a) => a.name), override: { model: record.model, effort: record.effort, cliVersion: version } });
     for (const a of loaded.arms)
     {
-        if (a.hash !== record.arms.find((r) => r.name === a.name).hash) throw new Error(`arm ${a.name} changed since ${o.run} started`);
+        const was = record.arms.find((r) => r.name === a.name);
+        if (a.hash !== was.hash) throw new Error(`arm ${a.name} changed since ${o.run} started`);
+        if (mode === 'flow' && a.flowHash !== was.flowHash) throw new Error(`arm ${a.name}'s flow entry changed since ${o.run} started`);
     }
+    if (mode === 'flow' && (record.sdk || {}).version !== sdk.version) throw new Error(`the Agent SDK changed since ${o.run} started (${(record.sdk || {}).version} -> ${sdk.version})`);
     const tasks = selectTasks(o.tasksDir, record.tasks.map((t) => t.id).join(','));
     for (const t of tasks)
     {
         const was = record.tasks.find((r) => r.id === t.id);
-        if (t.promptSha256 !== was.promptSha256 || (t.setupSha256 || null) !== (was.setupSha256 || null)) throw new Error(`task ${t.id} changed since ${o.run} started`);
+        // The kind picks a flow cell's entry, so in a flow run it is part of the task like its prompt.
+        const kindChanged = mode === 'flow' && (t.kind || null) !== (was.kind || null);
+        if (t.promptSha256 !== was.promptSha256 || (t.setupSha256 || null) !== (was.setupSha256 || null) || kindChanged) throw new Error(`task ${t.id} changed since ${o.run} started`);
     }
     return { record, loaded, tasks };
 }
@@ -197,9 +220,9 @@ function resolveWorkRoot(o, runP)
 
 async function drive(opts)
 {
-    const o = { ...DEFAULTS, parallel: 1, mode: 'plain', claude: ['claude'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
+    const o = { ...DEFAULTS, parallel: 1, claude: ['claude'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
     if (o.platform === 'win32') throw new Error('the harness runs on macOS and Linux only - its host protection is Claude Code\'s sandbox, which Windows does not have (D4, D12)');
-    if (o.mode !== 'plain') throw new Error(`flow mode is not built yet - its scripted approver is carried to B4 (D11); run --mode plain`);
+    if (o.mode !== undefined && !MODES.includes(o.mode)) throw new Error(`--mode '${o.mode}' is not ${MODES.join(' or ')}`);
     if (!Number.isInteger(o.parallel) || o.parallel < 1) throw new Error(`--parallel '${o.parallel}' is not a count from 1`);
     if (o.waitOnLimit !== undefined && !(o.waitOnLimit > 0)) throw new Error(`--wait-on-limit '${o.waitOnLimit}' is not a number of hours above 0`);
     const runP = cellsLib.runPaths({ benchDir: o.benchDir, run: o.run });
@@ -217,7 +240,23 @@ async function drive(opts)
     {
         if (held.reclaimed) o.log(`${o.run}: took over the lock of a stopped driver (pid ${held.reclaimed})`);
         const workRoot = resolveWorkRoot(o, runP);
-        const { record, loaded, tasks } = configure(o, runP, version, authName, workRoot);
+        // A resume is the mode the run recorded; a --mode naming another is refused, never mixed in.
+        let mode = o.mode || 'plain';
+        if (o.resume && fs.existsSync(runP.runJson))
+        {
+            const recorded = JSON.parse(fs.readFileSync(runP.runJson, 'utf8')).mode || 'plain';
+            if (o.mode && o.mode !== recorded) throw new Error(`${o.run} is a ${recorded} run - not ${o.mode}`);
+            mode = recorded;
+        }
+        let sdk = null;
+        let cli = null;
+        if (mode === 'flow')
+        {
+            sdk = await o.sdk();
+            flowLib.assertSdkMatches(sdk, version);
+            cli = flowLib.cliPath(o.claude, o.base.PATH);
+        }
+        const { record, loaded, tasks } = configure(o, runP, version, authName, workRoot, mode, sdk);
 
         // One uv cache and one Python store for every template and cell: an MCP server launched through
         // uvx is installed once, at the template's warm-up, and starts inside the connect timeout after.
@@ -271,7 +310,8 @@ async function drive(opts)
             {
                 cellsLib.reset(cell);
                 template.copyInto(templates[cell.arm], cell);
-                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared });
+                const driver = mode === 'flow' ? flowLib.driver({ sdk, cli, prompts: armBy[cell.arm].flow[task.kind] }) : undefined;
+                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared, driver });
                 counts[rec.outcome] += 1;
                 if (rec.outcome === 'limited')
                 {

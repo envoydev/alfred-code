@@ -19,8 +19,12 @@
 //   --version                 prints a fake version, as the driver asks the real CLI
 //   plugin list --json        prints FAKE_PLUGINS (a JSON list), or [] - what a template's setup installed
 //   mcp list                  appends { cwd, MCP_TIMEOUT, UV_CACHE_DIR, UV_PYTHON_INSTALL_DIR } to FAKE_WARM_RECORD, if set
+//   --input-format stream-json   the CLI an SDK drives (test/fake-sdk.js plays its turns): it records
+//                             FAKE_RECORD, makes FAKE_EDIT, lives until its stdin closes and exits FAKE_EXIT; FAKE_HANG=<file>
+//                             never ends on its own and starts a grandchild whose pid it writes there
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const argv = process.argv.slice(2);
 if (argv[0] === '--version') { process.stdout.write('0.0.0-fake (Claude Code)\n'); process.exit(0); }
@@ -39,6 +43,26 @@ if (argv[0] === 'mcp' && argv[1] === 'list')
 }
 const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
 const env = process.env;
+if (flag('--input-format') === 'stream-json')
+{
+    if (env.FAKE_RECORD) fs.writeFileSync(env.FAKE_RECORD, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd() }));
+    for (const name of (env.FAKE_EDIT || '').split(',').filter(Boolean))
+    {
+        fs.mkdirSync(path.dirname(path.join(process.cwd(), name)), { recursive: true });
+        fs.writeFileSync(path.join(process.cwd(), name), 'edited\n');
+    }
+    if (env.FAKE_HANG)
+    {
+        const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        fs.writeFileSync(env.FAKE_HANG, String(grandchild.pid));
+        if (env.FAKE_IGNORE_TERM) process.on('SIGTERM', () => {});
+        setInterval(() => {}, 1000);
+        return;
+    }
+    process.stdin.resume();
+    process.stdin.on('end', () => process.exit(Number(env.FAKE_EXIT || 0)));
+    return;
+}
 const sid = flag('--session-id');
 const prompt = argv[argv.length - 1];
 if (env.FAKE_STDERR) process.stderr.write(`${env.FAKE_STDERR}\n`);

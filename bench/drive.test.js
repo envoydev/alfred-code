@@ -14,6 +14,7 @@ const { spawnSync } = require('node:child_process');
 const { drive, selectTasks } = require('./drive.js');
 
 const { makeWorld, OAUTH } = require('./test/world.js');
+const { fakeSdk } = require('./test/fake-sdk.js');
 const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
 
@@ -342,10 +343,93 @@ test('Windows is refused before anything is built', async (t) =>
     assert.ok(!fs.existsSync(path.join(w.bench, 'results', 'r-test')));
 });
 
-test('flow mode is refused until its approver exists', async (t) =>
+const FLOW = (tag) => ({ feature: [`/${tag}-build {prompt}`], cross: [`/${tag}-cross {prompt}`], bug: [`/${tag}-diagnose {prompt}`, `/${tag}-fix`] });
+
+function flowWorld(t, arms = { a1: { env: { FAKE_EDIT: 'a1.txt' }, flow: FLOW('a1') }, a2: { flow: FLOW('a2') } })
+{
+    const w = makeWorld(t, { arms, tasks: { t1: { kind: 'feature', prompt: 'Build t1.\n' }, t2: { kind: 'bug', prompt: 'Fix t2.\n' } } });
+    const seen = {};
+    const ask = { question: 'Go on?', header: 'Next', multiSelect: false, options: [{ label: 'Stop', description: '' }, { label: 'Go (Recommended)', description: '' }] };
+    w.opts.mode = 'flow';
+    w.opts.sdk = fakeSdk({ seen, turns: [{ asks: [[ask]] }, {}] });
+    return { ...w, seen };
+}
+
+test('flow mode runs each arm\'s own entry for the task\'s kind through the SDK, on the same templates, and records itself', async (t) =>
+{
+    const w = flowWorld(t);
+    const res = await drive(w.opts);
+    assert.deepStrictEqual([res.ran, res.failed], [4, 0]);
+    const run = JSON.parse(fs.readFileSync(path.join(w.runDir, 'run.json'), 'utf8'));
+    assert.strictEqual(run.mode, 'flow');
+    assert.deepStrictEqual(run.sdk, { package: '@anthropic-ai/claude-agent-sdk', version: '0.0.0-sdk', claudeCodeVersion: '0.0.0-fake' });
+    assert.ok(run.arms.every((a) => /^[0-9a-f]{64}$/.test(a.flowHash)), 'each arm\'s flow entry is part of the run');
+    assert.deepStrictEqual(run.tasks.map((x) => [x.id, x.kind]), [['t1', 'feature'], ['t2', 'bug']]);
+    const sent = w.seen.calls.map((c) => c.inputs.map((i) => i.content).join(' | ')).sort();
+    assert.deepStrictEqual(sent, ['/a1-build Build t1.', '/a1-diagnose Fix t2. | /a1-fix', '/a2-build Build t1.', '/a2-diagnose Fix t2. | /a2-fix']);
+    const read = (arm, task) => JSON.parse(fs.readFileSync(path.join(w.runDir, arm, task, 'r1', 'session.json'), 'utf8'));
+    assert.deepStrictEqual([read('a1', 't2').mode, read('a1', 't2').outcome, read('a1', 't2').answered], ['flow', 'ok', 1]);
+    const approvals = fs.readFileSync(path.join(w.runDir, 'a1', 't2', 'r1', 'approvals.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepStrictEqual(approvals.map((a) => a.answer), ['Go (Recommended)']);
+    assert.ok(fs.existsSync(path.join(w.runDir, 'a1', 't1', 'r1', 'diff.patch')));
+    assert.match(fs.readFileSync(path.join(w.runDir, 'a1', 't1', 'r1', 'diff.patch'), 'utf8'), /a1\.txt/, 'the plain cell\'s own env and clone: the arm env reached the CLI');
+    const plain = makeWorld(t, { arms: { a1: { env: { FAKE_EDIT: 'a1.txt' }, flow: FLOW('a1') } }, tasks: { t1: {} }, run: 'r-plain' });
+    const plainRun = await drive({ ...plain.opts, workRoot: w.workRoot, benchDir: w.bench, armsDir: w.opts.armsDir });
+    assert.strictEqual(plainRun.failed, 0);
+    const [a1Flow] = run.arms;
+    const a1Plain = JSON.parse(fs.readFileSync(path.join(w.bench, 'results', 'r-plain', 'run.json'), 'utf8')).arms[0];
+    assert.strictEqual(a1Plain.hash, a1Flow.hash, 'a flow run and a plain run share the arm\'s template');
+    assert.ok(plain.lines.concat(w.lines).some((l) => /template a1: reused/.test(l)));
+});
+
+test('flow mode refuses, before anything is written, a task with no kind, an arm with no flow entry, and an SDK built for another CLI', async (t) =>
+{
+    const noKind = flowWorld(t);
+    fs.writeFileSync(path.join(noKind.opts.tasksDir, 't2', 'meta.json'), JSON.stringify({ id: 't2', group: 'api', tags: [], timeLimitMin: 1, startRef: 'bench-fixture-v1' }));
+    await assert.rejects(drive(noKind.opts), /flow mode runs only the flow tasks - t2 names no kind/);
+    assert.ok(!fs.existsSync(path.join(noKind.runDir, 'run.json')));
+
+    const noFlow = flowWorld(t, { a1: { flow: FLOW('a1') }, a2: {} });
+    await assert.rejects(drive(noFlow.opts), /arm a2 names no flow entry/);
+    assert.ok(!fs.existsSync(path.join(noFlow.runDir, 'run.json')));
+
+    const other = flowWorld(t);
+    other.opts.sdk = fakeSdk({ claudeCodeVersion: '9.9.9' });
+    await assert.rejects(drive(other.opts), /Agent SDK 0\.0\.0-sdk is built for Claude Code 9\.9\.9 - this CLI is 0\.0\.0-fake \(Claude Code\)/);
+    assert.ok(!fs.existsSync(path.join(other.runDir, 'run.json')));
+
+    const bad = flowWorld(t);
+    await assert.rejects(drive({ ...bad.opts, mode: 'fancy' }), /--mode 'fancy' is not plain or flow/);
+});
+
+test('a flow run resumes as a flow run, and refuses a changed flow entry, a changed SDK or another mode', async (t) =>
+{
+    const w = flowWorld(t);
+    await drive(w.opts);
+    const { mode, ...asResumed } = w.opts;
+    assert.ok(mode);
+    const again = await drive({ ...asResumed, resume: true });
+    assert.deepStrictEqual([again.ran, again.skipped], [0, 4], 'a resume takes the mode the run recorded');
+    await assert.rejects(drive({ ...w.opts, resume: true, mode: 'plain' }), /r-test is a flow run - not plain/);
+    await assert.rejects(drive({ ...w.opts, resume: true, sdk: fakeSdk({ version: '0.0.1-sdk' }) }), /the Agent SDK changed since r-test started \(0\.0\.0-sdk -> 0\.0\.1-sdk\)/);
+    const file = path.join(w.opts.armsDir, 'a2.json');
+    const arm = JSON.parse(fs.readFileSync(file, 'utf8'));
+    fs.writeFileSync(file, JSON.stringify({ ...arm, flow: { ...arm.flow, bug: ['{prompt}'] } }));
+    await assert.rejects(drive({ ...w.opts, resume: true }), /arm a2's flow entry changed since r-test started/);
+    fs.writeFileSync(file, JSON.stringify(arm));
+    const meta = path.join(w.opts.tasksDir, 't1', 'meta.json');
+    fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, 'utf8')), kind: 'cross' }));
+    await assert.rejects(drive({ ...w.opts, resume: true }), /task t1 changed since r-test started/, 'the kind picks the entry, so it is part of the task');
+});
+
+test('a plain run resumes over a task that has since gained a kind: the kind means nothing to a plain cell', async (t) =>
 {
     const w = world(t);
-    await assert.rejects(drive({ ...w.opts, mode: 'flow' }), /flow mode/);
+    await drive(w.opts);
+    const meta = path.join(w.opts.tasksDir, 't1', 'meta.json');
+    fs.writeFileSync(meta, JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, 'utf8')), kind: 'feature' }));
+    const again = await drive({ ...w.opts, resume: true });
+    assert.deepStrictEqual([again.ran, again.failed], [0, 0]);
 });
 
 test('a task marked exclusive never runs two cells at once; a plain task keeps the pool\'s own parallelism', async (t) =>
@@ -410,6 +494,7 @@ test('the command line: every flag parsed, a resume needs its run, an unknown fl
     assert.strictEqual(parseArgs(['--arms', 'bare', '--auth', 'CLAUDE_CODE_OAUTH_TOKEN']).auth, 'CLAUDE_CODE_OAUTH_TOKEN');
     assert.throws(() => parseArgs(['--auth']), /--auth needs a value/);
     assert.strictEqual(parseArgs(['--arms', 'bare', '--work-root', 'rel/dir']).workRoot, path.resolve('rel/dir'));
+    assert.strictEqual(parseArgs(['--arms', 'bare', '--mode', 'flow']).mode, 'flow');
 });
 
 test('a price table with no models is refused before anything is built', async (t) =>

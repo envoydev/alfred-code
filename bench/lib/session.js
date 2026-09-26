@@ -1,6 +1,9 @@
 'use strict';
 // One measured session: `claude -p` in the cell's clone, with the shared session's flags, the cell's
 // own account dir and home, and a wall-clock limit the driver enforces itself (print mode has none).
+// A flow cell (lib/flow.js) is the same session driven through the Agent SDK: only the DRIVER - the
+// part that starts the CLI and waits for it - differs, so its start state, diff, transcript copy,
+// redaction, limit detection and record are this file's, the same as a plain cell's.
 // Before it starts, the clone's state is recorded as a tree, so the diff is exactly what the session
 // changed - never what the arm's setup left behind. After it ends, the transcript and its subagents
 // are copied out of the cell's account dir, and any auth value is redacted from every file written
@@ -175,7 +178,38 @@ function kill(child, signal)
     catch { /* already gone */ }
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth, shared })
+// The plain driver: `claude -p` with the prompt, its stdout and stderr into the cell's files, stopped
+// at the time limit. A driver returns how the CLI ended ({ code, signal, error, timedOut, started,
+// ended }), plus `failed` (a reason the session is an error though the CLI exited 0) and `extra` (its
+// own fields for session.json).
+async function plainDriver({ cell, prompt, session, sessionId, tmp, env, claude, timeLimitMin, graceMs })
+{
+    const argv = sessionArgv({ prompt, session, sessionId, tmp });
+    const out = fs.openSync(cell.stdout, 'w');
+    const err = fs.openSync(cell.stderr, 'w');
+    const started = Date.now();
+    let timedOut = false;
+    const result = await new Promise((resolve) =>
+    {
+        // detached: the session leads its own process group, so a stop reaches every build and
+        // test it started, not only the CLI.
+        const child = spawn(claude[0], [...claude.slice(1), ...argv], { cwd: cell.repo, env, stdio: ['ignore', out, err], detached: !WIN });
+        let killer = null;
+        const limit = setTimeout(() =>
+        {
+            timedOut = true;
+            kill(child, 'SIGTERM');
+            killer = setTimeout(() => kill(child, 'SIGKILL'), graceMs);
+        }, timeLimitMin * 60 * 1000);
+        child.on('error', (e) => { clearTimeout(limit); clearTimeout(killer); resolve({ code: null, signal: null, error: e.code || e.message }); });
+        child.on('exit', (code, signal) => { clearTimeout(limit); clearTimeout(killer); resolve({ code, signal, error: null }); });
+    });
+    fs.closeSync(out);
+    fs.closeSync(err);
+    return { ...result, timedOut, started, ended: Date.now(), failed: null, extra: {} };
+}
+
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth, shared, driver = plainDriver })
 {
     const authName = auth || pickAuth(session.auth, base);
     assertIsolated(cell.repo, 'the cell');
@@ -189,33 +223,11 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const baseTree = snapshot(cell, 'base');
         const sessionId = crypto.randomUUID();
         sessionTmpDir = sessionTmp();
-        const argv = sessionArgv({ prompt, session, sessionId, tmp: sessionTmpDir });
         const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
         const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared });
-
-        const out = fs.openSync(cell.stdout, 'w');
-        const err = fs.openSync(cell.stderr, 'w');
-        const started = Date.now();
-        let timedOut = false;
-        const result = await new Promise((resolve) =>
-        {
-            // detached: the session leads its own process group, so a stop reaches every build and
-            // test it started, not only the CLI.
-            const child = spawn(claude[0], [...claude.slice(1), ...argv], { cwd: cell.repo, env, stdio: ['ignore', out, err], detached: !WIN });
-            const grace = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
-            let killer = null;
-            const limit = setTimeout(() =>
-            {
-                timedOut = true;
-                kill(child, 'SIGTERM');
-                killer = setTimeout(() => kill(child, 'SIGKILL'), grace);
-            }, timeLimitMin * 60 * 1000);
-            child.on('error', (e) => { clearTimeout(limit); clearTimeout(killer); resolve({ code: null, signal: null, error: e.code || e.message }); });
-            child.on('exit', (code, signal) => { clearTimeout(limit); clearTimeout(killer); resolve({ code, signal, error: null }); });
-        });
-        fs.closeSync(out);
-        fs.closeSync(err);
-        const ended = Date.now();
+        const graceMs = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
+        const result = await driver({ cell, prompt, session, sessionId, tmp: sessionTmpDir, env, claude, timeLimitMin, graceMs });
+        const { started, ended, timedOut } = result;
 
         const transcript = findTranscript(cell.config, sessionId);
         if (transcript)
@@ -237,13 +249,13 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
 
         let outcome = 'ok';
         if (timedOut) outcome = 'timeout';
-        else if (result.error || result.code !== 0) outcome = 'error';
+        else if (result.error || result.failed || result.code !== 0) outcome = 'error';
         const record = {
             run: cell.run, arm: cell.arm, task: cell.task, rep: cell.rep, sessionId, outcome,
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
             model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree, diffExcludes: DIFF_EXCLUDES,
-            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents),
+            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), ...result.extra,
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
         const tmp = `${cell.session}.tmp`;
@@ -315,4 +327,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, DIFF_EXCLUDES };
+module.exports = { sessionArgv, run, plainDriver, kill, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, DIFF_EXCLUDES };
