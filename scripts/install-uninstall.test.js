@@ -60,6 +60,21 @@ test('removeManagedFiles: the hooks CommonJS marker stays while a hook of the us
     assert.ok(!fs.existsSync(path.join(claudeDir, 'hooks')), 'with nothing else left the marker goes, and the folder with it');
 });
 
+// Review finding 4: a stamp is project text, so a library name is a path segment only - a traversal
+// name at a matching hash never reaches the removal, whether it came through readLibrary or not.
+test('removeManagedFiles: a library name that leaves its .claude folder is never removed, even at a matching hash', () =>
+{
+    const base = path.join(TMP, `f-${seq++}`);
+    const claudeDir = path.join(base, 'repo', '.claude');
+    const outside = path.join(base, 'repo', 'src');
+    put(path.join(outside, 'index.js'), 'the project\'s own code');
+    put(path.join(claudeDir, 'rules', 'x.md'), 'rule');
+    const library = { skills: { '../../src': hashItem(outside) }, agents: { '../../src/index': hashItem(path.join(outside, 'index.js')) }, rules: { x: hashItem(path.join(claudeDir, 'rules', 'x.md')) } };
+    uninstall.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library, log: () => {} });
+    assert.ok(fs.existsSync(path.join(outside, 'index.js')), 'the directory outside .claude survives');
+    assert.ok(!fs.existsSync(path.join(claudeDir, 'rules', 'x.md')), 'a valid name still goes');
+});
+
 test('removePlugins: the stack\'s rows at project or local scope are uninstalled, dependents first; user-scope rows are printed, never run (R10, ruling)', () =>
 {
     const rows = [

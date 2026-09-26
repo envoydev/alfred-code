@@ -83,8 +83,9 @@ function check({ project, source, configDir })
         return hashItem(srcFile);
     };
     // A stamp is a project file a clone can fill with any text: a name is validated BEFORE it is joined,
-    // hashed or printed (the N1 rule, stamp.js validItemName) - an invalid one is only counted.
-    let invalid = 0;
+    // hashed or printed (the N1 rule, stamp.js validItemName) - an invalid one is only counted, readLibrary's
+    // own drop count included.
+    let invalid = stamp.invalid || 0;
     for (const kind of ['skills', 'agents', 'rules'])
         for (const [name, hash] of Object.entries(stamp[kind] || {}).sort())
         {

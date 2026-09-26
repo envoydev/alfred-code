@@ -41,8 +41,13 @@ function removeManagedFiles({ claudeDir, skillsDir, library = {}, files = {}, lo
             return [kind.replace(/s$/, ''), name, kind === 'skills' ? path.join(skillsDir, name) : path.join(claudeDir, ...rel.split('/')), h];
         }),
     ];
+    // Review finding 4: whatever the stamp named, nothing outside its own .claude folder is ever removed -
+    // the item must sit directly inside the folder of its kind (a skill directory, a seat or rule file).
+    const home = { skill: skillsDir, agent: path.join(claudeDir, 'agents'), rule: path.join(claudeDir, 'rules'), hook: path.join(claudeDir, 'hooks'), file: claudeDir };
+    const inside = (label, at) => Boolean(home[label]) && path.dirname(path.resolve(at)) === path.resolve(home[label]);
     for (const [label, name, at, hash] of items)
     {
+        if (!inside(label, at)) { log(`  ${label} name skipped (${String(name).length} chars) - not an item inside its .claude folder`); continue; }
         const have = hashItem(at);
         if (!have) continue;
         if (have !== hash) { log(`  ${label} ${name}: kept - changed since the stack wrote it, so it is yours`); continue; }

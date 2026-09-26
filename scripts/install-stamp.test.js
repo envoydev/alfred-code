@@ -295,7 +295,18 @@ test('install-stamp: the stamp records library hashes and reads them back', () =
     assert.match(text, /^library-skills: demo=aa,other=cc$/m);
     assert.match(text, /^library-agents: seat=bb$/m);
     assert.match(text, /^library-rules: $/m, 'no rules given is an empty line, like the other two');
-    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' }, rules: {} });
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa', other: 'cc' }, agents: { seat: 'bb' }, rules: {}, invalid: 0 });
+});
+
+// Review finding 4: the N1 rule for the library lines too - a name that is not one path segment of the
+// installer's own shape is dropped on read, before it can reach a path join or a removal.
+test('install-stamp: readLibrary drops every library name the installer never writes', () =>
+{
+    const p = project();
+    const file = path.join(p.base, 'hostile.stamp');
+    const h = '1'.repeat(64);
+    fs.writeFileSync(file, `version: 2.0.0\nlibrary-skills: ../../src=${h},csharp=${h},..=${h},a/b=${h},Bad=${h}\nlibrary-agents: ../x=${h},seat=${h}\nlibrary-rules: ..\\..\\win=${h},baseline-git=${h}\n`);
+    assert.deepStrictEqual(readLibrary(file), { version: '2.0.0', skills: { csharp: h }, agents: { seat: h }, rules: { 'baseline-git': h }, invalid: 6 }, 'dropped, and counted for library-check\'s finding');
 });
 
 test('install-stamp: a stamp without library lines, or no stamp, reads as null; recorded empty is an answer', () =>
@@ -306,7 +317,7 @@ test('install-stamp: a stamp without library lines, or no stamp, reads as null; 
     assert.strictEqual(readLibrary(file), null);
     assert.strictEqual(readLibrary(path.join(p.base, 'absent.stamp')), null);
     fs.writeFileSync(file, 'sha: abc\nversion: 1.3.0\nlibrary-skills: \nlibrary-agents: garbage,x=\n');
-    assert.deepStrictEqual(readLibrary(file), { version: '1.3.0', skills: {}, agents: { x: '' }, rules: {} }, 'a malformed pair is skipped, never a crash');
+    assert.deepStrictEqual(readLibrary(file), { version: '1.3.0', skills: {}, agents: { x: '' }, rules: {}, invalid: 0 }, 'a malformed pair is skipped, never a crash');
     const { text } = write(project());
     assert.match(text, /^library-skills: $/m, 'no library given is an empty line');
 });
@@ -317,7 +328,7 @@ test('install-stamp: the stamp records rule hashes alongside skills and agents',
     const p = project();
     const { dest, text } = write(p, { library: { skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } } });
     assert.match(text, /^library-rules: baseline-git=cc$/m);
-    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' } });
+    assert.deepStrictEqual(readLibrary(dest), { version: '1.0.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: { 'baseline-git': 'cc' }, invalid: 0 });
 });
 
 // R29: a stamp a 1.x (pre-rules) release wrote carries library-skills/library-agents but no
@@ -329,7 +340,7 @@ test('install-stamp: a stamp with library-skills/agents but no library-rules lin
     const p = project();
     const file = path.join(p.base, 'old.stamp');
     fs.writeFileSync(file, 'sha: abc\nversion: 1.4.0\nlibrary-skills: demo=aa\nlibrary-agents: seat=bb\n');
-    assert.deepStrictEqual(readLibrary(file), { version: '1.4.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: {} });
+    assert.deepStrictEqual(readLibrary(file), { version: '1.4.0', skills: { demo: 'aa' }, agents: { seat: 'bb' }, rules: {}, invalid: 0 });
 });
 
 // R10 THE LEDGER: what the run MANAGES beyond the copies - the env keys it wrote (a hash of the value,

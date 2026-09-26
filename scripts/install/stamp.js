@@ -339,11 +339,16 @@ function readLibrary(file)
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
     if (!/^library-(skills|agents|rules):/m.test(text)) return null;
+    // Review finding 4: the N1 rule - a stamp is project text, and these names reach path joins and the
+    // uninstall's removal, so a name of any other shape than the installer's own is dropped here, and
+    // counted (`invalid`: library-check reports a corrupted stamp as a finding).
+    let invalid = 0;
     const map = (key) => Object.fromEntries(((new RegExp(`^${key}: (.*)$`, 'm').exec(text) || [])[1] || '')
-        .split(',').map((s) => s.trim()).filter((s) => s.includes('=')).map((s) => [s.slice(0, s.indexOf('=')), s.slice(s.indexOf('=') + 1)]));
+        .split(',').map((s) => s.trim()).filter((s) => s.includes('=')).map((s) => [s.slice(0, s.indexOf('=')), s.slice(s.indexOf('=') + 1)])
+        .filter(([name]) => { if (validItemName(name)) return true; invalid += 1; return false; }));
     return {
         version: ((/^version: (.*)$/m.exec(text) || [])[1] || '').trim(),
-        skills: map('library-skills'), agents: map('library-agents'), rules: map('library-rules'),
+        skills: map('library-skills'), agents: map('library-agents'), rules: map('library-rules'), invalid,
     };
 }
 
