@@ -679,11 +679,10 @@ function runLayers(ctx)
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
     if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
-    serena.seedProject({
-        projectRoot: ctx.projectRoot,
-        selected: ctx.lists.mcps.some((e) => e.startsWith('navigation|')),
-        log: ctx.log,
-    });
+    const navigation = ctx.lists.mcps.some((e) => e.startsWith('navigation|'));
+    serena.seedProject({ projectRoot: ctx.projectRoot, selected: navigation, log: ctx.log });
+    try { serena.ensureSerenaIgnore({ projectRoot: ctx.projectRoot, selected: navigation, log: ctx.log }); }
+    catch (err) { ctx.note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
     try { mcp.ensurePlaywrightIgnore({ projectRoot: ctx.projectRoot, engines: pwEngines(ctx), log: ctx.log }); }
     catch (err) { ctx.note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
     seeds.playwrightDownloads({

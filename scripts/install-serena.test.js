@@ -150,3 +150,41 @@ test('seed: an EXISTING config with an empty language list gets both keys filled
     assert.match(text, /^language_servers: \["typescript"\]$/m);
     assert.match(text, /^ignored_paths: \[".serena", ".claude", ".playwright"\]$/m);
 });
+
+// The benchmark pilot (2026-09-26): `.serena/` reached a cell's diff - the Roslyn server's `.mef-composition`
+// cache under SERENA_HOME (~100 KB). The whole folder is machine state (CLAUDE.md), so it gets its own
+// `.gitignore` of `*`, the way `.playwright/` and a project memory database do. serena writes a narrower one
+// when none is there (`/cache` and `/project.local.yml` - src/serena/project.py), which leaves SERENA_HOME out.
+const SERENA_OWN = '/cache\n/project.local.yml\n';
+const ignoreOf = (root) => path.join(root, '.serena', '.gitignore');
+
+test('ignore: the navigation server gets .serena/.gitignore (*), written once, before serena runs', () =>
+{
+    const root = project({ 'main.py': '' });
+    assert.strictEqual(serena.ensureSerenaIgnore({ projectRoot: root, selected: true }), 'written', 'even with nothing detected - serena still runs');
+    assert.strictEqual(fs.readFileSync(ignoreOf(root), 'utf8'), '*\n');
+    assert.strictEqual(serena.ensureSerenaIgnore({ projectRoot: root, selected: true }), 'current', 'a re-run changes nothing');
+    const none = project();
+    assert.strictEqual(serena.ensureSerenaIgnore({ projectRoot: none, selected: false }), 'skipped', 'no navigation server, nothing written');
+    assert.ok(!fs.existsSync(path.join(none, '.serena')));
+});
+
+test('ignore: serena\'s own narrow file is widened, the project\'s own file is never touched', () =>
+{
+    const root = project({ '.serena/.gitignore': SERENA_OWN });
+    assert.strictEqual(serena.ensureSerenaIgnore({ projectRoot: root, selected: true }), 'replaced');
+    assert.strictEqual(fs.readFileSync(ignoreOf(root), 'utf8'), '*\n');
+    const mine = project({ '.serena/.gitignore': '/cache\n!memories/\n' });
+    const logs = [];
+    assert.strictEqual(serena.ensureSerenaIgnore({ projectRoot: mine, selected: true, log: (m) => logs.push(m) }), 'kept');
+    assert.strictEqual(fs.readFileSync(ignoreOf(mine), 'utf8'), '/cache\n!memories/\n');
+    assert.ok(logs.some((m) => /\.serena\/\.gitignore is the project's own/.test(m)), logs.join(' | '));
+});
+
+test('ignore: git then ignores everything under .serena, the Roslyn cache included', () =>
+{
+    const root = project({ '.serena/project.yml': 'project_name: x\n', '.serena/home/roslyn/.mef-composition': 'x' });
+    require('node:child_process').execFileSync('git', ['init', '-q'], { cwd: root });
+    serena.ensureSerenaIgnore({ projectRoot: root, selected: true });
+    assert.strictEqual(require('node:child_process').execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }), '');
+});

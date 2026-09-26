@@ -153,4 +153,29 @@ ignored_paths: ${IGNORED_PATHS}
     return { written: true, languages: langs, name };
 }
 
-module.exports = { detectLanguages, hasEntries, setListKey, seedProject, IGNORED_PATHS };
+// The whole `.serena/` is machine state - SERENA_HOME's language servers (the Roslyn `.mef-composition` cache
+// reached a benchmark cell's diff), the index cache, the handoff memories - so it gets its own `.gitignore` of
+// `*`, the way `.playwright/` and a project memory database do. serena writes a narrower one when none is
+// there (`/cache` and `/project.local.yml`, src/serena/project.py) that leaves SERENA_HOME out: that exact
+// text is serena's, not the project's, and is widened; any other text is the project's and stays.
+const SERENA_IGNORE = '*\n';
+const SERENA_OWN_IGNORE = '/cache\n/project.local.yml\n';
+function ensureSerenaIgnore({ projectRoot, selected = true, log = () => {} })
+{
+    if (!selected) return 'skipped';
+    const file = path.join(projectRoot, '.serena', '.gitignore');
+    let have = null;
+    try { have = fs.readFileSync(file, 'utf8'); } catch { have = null; }
+    if (have === SERENA_IGNORE) return 'current';
+    if (have !== null && have.replace(/\r\n/g, '\n') !== SERENA_OWN_IGNORE)
+    {
+        log('  serena: .serena/.gitignore is the project\'s own - left as it is (the whole .serena/ is machine state; keep it ignored)');
+        return 'kept';
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, SERENA_IGNORE);
+    log(`  serena: .serena/.gitignore ${have === null ? 'written' : 'widened from serena\'s own'} - the language servers, index and memories are never committed`);
+    return have === null ? 'written' : 'replaced';
+}
+
+module.exports = { detectLanguages, hasEntries, setListKey, seedProject, ensureSerenaIgnore, IGNORED_PATHS };
