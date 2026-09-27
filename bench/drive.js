@@ -43,6 +43,7 @@ const limitLib = require('./lib/limit.js');
 const { assertIsolated } = require('./lib/isolation.js');
 const poolLib = require('./lib/pool.js');
 const flowLib = require('./lib/flow.js');
+const readsLib = require('./lib/reads.js');
 
 const BENCH_DIR = __dirname;
 const DEFAULTS = {
@@ -283,6 +284,8 @@ async function drive(opts)
             }
         }
 
+        // What no cell may read (lib/reads.js): this checkout and, for a worktree, the main one that holds it.
+        const hostRoots = readsLib.hostRoots(o.root);
         const armBy = Object.fromEntries(loaded.arms.map((a) => [a.name, a]));
         const taskBy = Object.fromEntries(tasks.map((t) => [t.id, t]));
         const list = order({ arms: loaded.arms.map((a) => a.name), tasks: tasks.map((t) => t.id), reps: record.reps, seed: record.seed })
@@ -311,7 +314,8 @@ async function drive(opts)
                 cellsLib.reset(cell);
                 template.copyInto(templates[cell.arm], cell);
                 const driver = mode === 'flow' ? flowLib.driver({ sdk, cli, prompts: armBy[cell.arm].flow[task.kind] }) : undefined;
-                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, docker: o.docker, base: o.base, auth: authName, shared, driver });
+                const reads = readsLib.cellReads({ cell, workRoot, hostRoots, pluginSources: readsLib.pluginSourcesOf(cell) });
+                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, docker: o.docker, base: o.base, auth: authName, shared, reads, driver });
                 counts[rec.outcome] += 1;
                 if (rec.outcome === 'limited')
                 {

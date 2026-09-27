@@ -5,7 +5,7 @@
 // prints stream-json, then does what its FAKE_* variables ask. Those reach it through the arm's own
 // env, the one channel the harness lets through.
 //
-//   FAKE_RECORD=<file>        write { argv, env, cwd, tmpdirExists } there first
+//   FAKE_RECORD=<file>        write { argv, env, cwd, tmpdirExists, settings } there first (settings: the --settings file's JSON)
 //   FAKE_EDIT=<name>[,<name>] write a file into the clone per name (a relative path; its folders are made)
 //   FAKE_WRITE_OUTSIDE=<path> write a file outside it
 //   FAKE_SUBAGENT=1           add one subagent transcript
@@ -66,7 +66,8 @@ if (flag('--input-format') === 'stream-json')
 const sid = flag('--session-id');
 const prompt = argv[argv.length - 1];
 if (env.FAKE_STDERR) process.stderr.write(`${env.FAKE_STDERR}\n`);
-if (env.FAKE_RECORD) fs.writeFileSync(env.FAKE_RECORD, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd(), tmpdirExists: Boolean(env.TMPDIR) && fs.existsSync(env.TMPDIR) }));
+const settingsOf = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+if (env.FAKE_RECORD) fs.writeFileSync(env.FAKE_RECORD, JSON.stringify({ argv, env: { ...env }, cwd: process.cwd(), tmpdirExists: Boolean(env.TMPDIR) && fs.existsSync(env.TMPDIR), settings: settingsOf(flag('--settings')) }));
 
 const leakName = env.FAKE_LEAK === '1' ? 'ANTHROPIC_API_KEY' : env.FAKE_LEAK;
 const leak = leakName ? ` ${env[leakName]}` : '';

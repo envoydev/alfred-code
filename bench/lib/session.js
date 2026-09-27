@@ -162,6 +162,22 @@ function prepare({ cell, startRef, setup = [], taskDir, task })
     }
 }
 
+// A cell's own settings layer: the shared sandbox (common.json settings) plus the reads this cell may not make
+// (lib/reads.js). Written in the cell's work dir, above the clone, so the session never edits it; the shared file
+// is never changed.
+function writeCellSettings(cell, session, reads)
+{
+    const settings = JSON.parse(JSON.stringify(session.settings || {}));
+    const sandbox = { ...(settings.sandbox || {}) };
+    const filesystem = { ...(sandbox.filesystem || {}) };
+    filesystem.denyRead = [...(filesystem.denyRead || []), ...reads.denyRead];
+    filesystem.allowRead = [...(filesystem.allowRead || []), ...reads.allowRead];
+    settings.sandbox = { ...sandbox, filesystem };
+    const file = path.join(cell.work, 'settings.json');
+    fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+    return file;
+}
+
 function findTranscript(config, sessionId)
 {
     const projects = path.join(config, 'projects');
@@ -252,7 +268,7 @@ async function plainDriver({ cell, prompt, session, sessionId, tmp, env, claude,
     return { ...result, timedOut, started, ended: Date.now(), failed: null, extra: {} };
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], docker = ['docker'], base = process.env, graceSec, auth, shared, driver = plainDriver })
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], docker = ['docker'], base = process.env, graceSec, auth, shared, reads = null, driver = plainDriver })
 {
     const authName = auth || pickAuth(session.auth, base);
     assertIsolated(cell.repo, 'the cell');
@@ -272,8 +288,10 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared }), COMPOSE_PROJECT_NAME: compose.project };
         const graceMs = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
         compose.before = composeDown({ project: compose.project, env, cwd: cell.work, docker });
+        // The reads this cell may not make (lib/reads.js) go into a settings layer of its own.
+        const cellSession = reads ? { ...session, settingsFile: writeCellSettings(cell, session, reads) } : session;
         let result;
-        try { result = await driver({ cell, prompt, session, sessionId, tmp: sessionTmpDir, env, claude, timeLimitMin, graceMs }); }
+        try { result = await driver({ cell, prompt, session: cellSession, sessionId, tmp: sessionTmpDir, env, claude, timeLimitMin, graceMs }); }
         finally { compose.after = composeDown({ project: compose.project, env, cwd: cell.work, docker }); }
         const { started, ended, timedOut } = result;
 
@@ -303,7 +321,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
             model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree, diffExcludes: DIFF_EXCLUDES,
-            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), compose, ...result.extra,
+            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), compose, ...(reads ? { reads } : {}), ...result.extra,
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
         const tmp = `${cell.session}.tmp`;

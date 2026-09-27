@@ -79,6 +79,19 @@ test('every cell tears down its own compose project with the docker the driver w
     for (const p of projects) assert.strictEqual(rows.filter((r) => r.argv[2] === p).length, 2, `${p} is taken down twice`);
 });
 
+test('every cell runs under settings that deny the host checkout and the work root, and re-open its own work dir', async (t) =>
+{
+    const w = makeWorld(t, { arms: { a1: { env: { FAKE_RECORD: '' } } }, tasks: { t1: {} } });
+    const record = path.join(w.dir, 'record.json');
+    fs.writeFileSync(path.join(w.opts.armsDir, 'a1.json'), JSON.stringify({ name: 'a1', pin: { kind: 'cli', value: 'claude' }, setup: [], onboarding: [], expects: [], env: { FAKE_RECORD: record } }));
+    await drive(w.opts);
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8'));
+    const workRoot = fs.realpathSync(w.workRoot);
+    const { denyRead, allowRead } = seen.settings.sandbox.filesystem;
+    assert.deepStrictEqual(denyRead, [fs.realpathSync(w.opts.root), workRoot]);
+    assert.deepStrictEqual(allowRead, [path.join(workRoot, 'r-test', 'a1', 't1', 'r1'), path.join(workRoot, 'uv')]);
+});
+
 test('cells and templates live under the work root, never under the bench dir, and the run records where', async (t) =>
 {
     const rec = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'bench-rec-')), 'record.json');

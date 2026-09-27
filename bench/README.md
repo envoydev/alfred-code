@@ -50,7 +50,11 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   session runs in a compose project of its own (`COMPOSE_PROJECT_NAME`, a neutral `cell-<hash>`), and the
   driver runs `docker compose -p <it> down -v` before the session and again after it - that project only,
   recorded in `session.json` (`compose`) - so no cell reaches another's database (pilot 3: one `repo`
-  project for every cell).
+  project for every cell). Each session also runs under a settings layer of its own, written to its work dir
+  (`lib/reads.js`): the shared sandbox plus `denyRead` for this checkout (and the main checkout a worktree
+  sits in) and the whole work root - every other cell of every run, every template - with the cell's own
+  work dir, the plugin code its account dir loads from outside it (its `.git` still denied) and the shared uv
+  store re-opened; the narrower rule wins. `session.json` records the lists (`reads`).
 - `grade.js` grades serially under the run's lock. Each cell is re-created from its template, checked
   against the baseline its session recorded, patched, and tested with the task's hidden files. The
   patch is the task's change alone: a session's `diff.patch` leaves out the top-level folders the

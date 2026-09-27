@@ -126,6 +126,20 @@ test('a dotnet on the PATH is shimmed into the cell\'s own bin dir, first on the
     assert.strictEqual(execFileSync(path.join(cell.work, 'bin', 'dotnet'), ['build'], { stdio: 'pipe' }).toString().trim(), 'real build -m:1 -nodeReuse:false');
 });
 
+test('a session with reads to deny runs under settings of its own: the shared sandbox plus those reads', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const record = path.join(dir, 'record.json');
+    const shared = { sandbox: { enabled: true, filesystem: { allowWrite: ['~'] }, network: { allowedDomains: ['registry.npmjs.org'] } }, permissions: { allow: ['Bash(dotnet *)'] } };
+    const reads = { denyRead: ['/host', '/w'], allowRead: [cell.work, '/w/uv'] };
+    await go(cell, { name: 'solo', env: { FAKE_RECORD: record } }, { session: { ...SESSION, settings: shared }, reads });
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8'));
+    assert.strictEqual(seen.argv[seen.argv.indexOf('--settings') + 1], path.join(cell.work, 'settings.json'), 'the cell\'s own file, outside the clone the session can write');
+    assert.deepStrictEqual(seen.settings, { ...shared, sandbox: { ...shared.sandbox, filesystem: { allowWrite: ['~'], denyRead: ['/host', '/w'], allowRead: [cell.work, '/w/uv'] } } });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).reads, reads, 'the record says what the cell could not read');
+    assert.ok(!('denyRead' in shared.sandbox.filesystem), 'the shared settings are never changed');
+});
+
 test('a session runs in its own compose project, taken down before it starts and again when it ends', async (t) =>
 {
     const { dir, cell } = cellFor(t);
