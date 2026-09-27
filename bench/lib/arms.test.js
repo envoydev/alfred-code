@@ -75,14 +75,27 @@ test('the four shipped arm files load against the shared session', () =>
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
 
+// A stack's source comes from this repository, whose other branches hold every task's hidden tests and reference
+// patches: a clone of it put them in the plugin source every cell runs from (git log --all, the Read grant on src).
+// The pinned commit alone is fetched, one commit deep, and checked out - nothing else of this repository.
+const PIN_FETCH = ['git init -q {src}', 'git -C {src} fetch --quiet --depth 1 file://{root} {pin}', 'git -C {src} checkout --quiet FETCH_HEAD'];
+
+test('no arm takes more of this repository than its pinned commit', () =>
+{
+    const { arms } = load({ dir: ARMS_DIR, names: ['ours', 'ecc', 'bare', 'baseline'] });
+    for (const a of arms)
+    {
+        const fromHere = a.setup.filter((s) => s.some((w) => w.includes('{root}')));
+        for (const step of fromHere) assert.strictEqual(step.join(' '), PIN_FETCH[1], `${a.name}: '${step.join(' ')}' takes more of this repository than {pin}`);
+        if (fromHere.length) assert.deepStrictEqual(a.setup.slice(0, 3).map((s) => s.join(' ')), PIN_FETCH, `${a.name} fetches its pin alone`);
+    }
+});
+
 test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onboards through its init', () =>
 {
     const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
     assert.deepStrictEqual(ours.pin, { kind: 'commit', value: 'a6cb77711a8b79dd7d45c6703d34b101aa10586c' });
-    assert.deepStrictEqual(ours.setup.slice(0, 2).map((s) => s.join(' ')), [
-        'git clone --quiet --no-checkout file://{root} {src}',
-        'git -C {src} checkout --quiet {pin}',
-    ], 'the pinned commit is checked out by name, never the clone\'s HEAD');
+    assert.deepStrictEqual(ours.setup.slice(0, 3).map((s) => s.join(' ')), PIN_FETCH, 'the pinned commit alone, never the clone\'s HEAD');
     const at = (argv) => ours.setup.findIndex((s) => s.join(' ') === argv);
     const market = at('claude plugin marketplace add {src}');
     const core = at('claude plugin install alfred-code@envoydev --scope project');
