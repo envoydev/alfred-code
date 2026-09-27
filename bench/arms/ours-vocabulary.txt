@@ -1,5 +1,5 @@
 # Alfred Code's skill, agent and command names - the stack bench/arms/ours.json installs, pinned at the 2.0.0
-# candidate - read from feat/alfred-code at commit 89fad3e57f93c1c201750488dd9c838b7167f577, before v2.0.0 was tagged:
+# candidate - read from feat/alfred-code at commit a6cb77711a8b79dd7d45c6703d34b101aa10586c, before v2.0.0 was tagged:
 # stack/skills, stack/agents, setup-plugin/commands and setup-plugin/skills, one name per line. Regenerate from the
 # v2.0.0 tag when it lands, and whenever that pin moves, over an export of the pinned tree:
 #   node -e "console.log(require('./bench/lint-prompts.js').ourNames(process.argv[1]).join('\\n'))" <tree>

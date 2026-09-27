@@ -63,7 +63,7 @@ test('the four shipped arm files load against the shared session', () =>
 test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onboards through its init', () =>
 {
     const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
-    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: '89fad3e57f93c1c201750488dd9c838b7167f577' });
+    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: 'a6cb77711a8b79dd7d45c6703d34b101aa10586c' });
     assert.deepStrictEqual(ours.setup.slice(0, 2).map((s) => s.join(' ')), [
         'git clone --quiet --no-checkout file://{root} {src}',
         'git -C {src} checkout --quiet {pin}',
