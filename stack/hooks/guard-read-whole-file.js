@@ -2,33 +2,35 @@
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
 // PreToolUse gate (matchers: Read + Bash): enforce baseline-navigation.md's hard rule - "Read
 // is for code you've ALREADY located, never to find a symbol." Blocks a whole-file Read of a
-// large source file so navigation goes through serena (get_symbols_overview -> find_symbol)
+// large source file so navigation goes through the navigation server (get_symbols_overview -> find_symbol)
 // first; on Bash it blocks the same dump routed around the Read tool (a bare `cat file.ts` -
 // measured: one session cat-ed the exact file the Read matcher had blocked, unblocked, and a
 // 47-file grep loop dumped ~19.8k tokens the guard never saw). It also caps CUMULATIVE ranged
 // reads per file per session: 2-3 half-splits that reconstruct the whole file satisfied the
 // per-call check in 7 files across one run with zero counter-examples, so past ~60% coverage
-// the remainder goes through serena. A cat whose output is redirected into a file is a copy,
+// the remainder goes through the navigation server. A cat whose output is redirected into a file is a copy,
 // not a dump, and passes. exit 2 = block (stderr fed back); exit 0 = allow.
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const os = require('os');
 const pathMod = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-read-whole-file')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-read-whole-file');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 let payload;
 try {
@@ -56,12 +58,12 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -89,10 +91,12 @@ const GATED_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html)\b/
 const SWEEP_EXT_ANY = /\.(ts|tsx|js|jsx|mjs|cjs|cs|go|razor|cshtml|xaml|html|md)\b/i;
 // Small files are cheap to read whole. 200, not 100: measured across four real
 // sessions (315 blocks), ~71% of blocks hit 100-200-line files where the forced
-// serena detour costs about what the whole-file read would - the guard only pays above 200.
+// navigation-server detour costs about what the whole-file read would - the guard only pays above 200.
 const THRESHOLD = 200;
 const lineCountOf = (p) => {
-  try { return fs.readFileSync(p, 'utf8').split('\n').length; } catch { return 0; }
+  // Lines, not newline-split pieces: a final newline ends the last line, it does not start another -
+  // counted as one, a 200-line file sat one over the threshold it is on.
+  try { const t = fs.readFileSync(p, 'utf8'); return t ? t.replace(/\n$/, '').split('\n').length : 0; } catch { return 0; }
 };
 // Resolve a possibly-relative path the way the session sees it. The hook subprocess's own
 // cwd is NOT the Bash tool's persisted cwd (a prior `cd` in another call moves it), so a bare
@@ -104,7 +108,8 @@ const anchorDirs = [process.env.CLAUDE_PROJECT_DIR, payload.cwd, process.cwd()].
 // relative target then resolves nowhere - which failed CLOSED and denied the call. Add every
 // literal `cd` target as one more candidate anchor; a variable or `-` target is unfollowable and
 // simply contributes nothing. The sibling cross-project guard tracks the same thing positionally.
-const CD_RE = /(?:^|&&|\|\||;|\n|\(|\|)\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;|&()]+)/g;
+const CD_VERB = 'set-location|push-location|chdir|pushd|cd|sl';
+const CD_RE = new RegExp(`(?:^|&&|\\|\\||;|\\n|\\(|\\|)\\s*(?:${CD_VERB})\\s+(?:-(?:literal)?path\\s+)?("[^"]+"|'[^']+'|[^\\s;|&()]+)`, 'gi');
 // `$VAR` / `${VAR}` that this hook cannot see through. The sibling guard's rule, applied here for
 // the same reason: 6 of 12 measured denials in one project named a `$R/...` target, and judging a
 // path whose value is unknown is guessing, not gating.
@@ -135,21 +140,22 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
-// The three trees the installers seed into serena's OWN `ignored_paths` (.serena/project.yml):
-// serena cannot index them, so naming its tools for a path under one of them hands the model a
-// remedy that errors. Measured twice - the denial named serena for a `.claude/...` path and the
+// The three trees the installers seed into the navigation server's OWN `ignored_paths` (Serena's
+// .serena/project.yml): it cannot index them, so naming its tools for a path under one of them hands the model a
+// remedy that errors. Measured twice - the denial named it for a `.claude/...` path and the
 // redirect the model made from it failed. The ranged read is the remedy there.
 const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
-// The hint must be EXECUTABLE, not just correct. serena's tools are deferred behind tool search in
+// The hint must be EXECUTABLE, not just correct. The navigation server's tools are deferred behind tool search in
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
-// saying exactly that and still made 100 Bash calls and 0 serena calls. The loading call goes in
+// saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
+const LOAD_SERENA = `  ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview,mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols\n`;
 const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
-  ? `serena cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
+  ? `The navigation server cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
-  : `Locate first with serena. If those tools are not loaded in this session, load them first:\n` +
-  `  ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview,mcp__plugin_serena_serena__find_symbol,mcp__plugin_serena_serena__find_referencing_symbols\n` +
+  : `Locate first with the navigation server. If those tools are not loaded in this session, load them first:\n` +
+  LOAD_SERENA +
   `then get_symbols_overview('${p}') and find_symbol(...),\n` +
   `then Read with offset+limit on the returned range (find_symbol with include_body=true only for a SMALL symbol;\n` +
   `for a large body fetch it without the body first, then Read the range you need).`);
@@ -188,6 +194,7 @@ const CONVENTION_RULES = [
   [/\.(jsx?|mjs|cjs)\b/i, 'javascript-conventions.md'],
   [/\.sql\b/i, 'sql-conventions.md'],
   [/\bDockerfile\b|\b(docker-)?compose[^\s]*\.ya?ml\b|\.github\/workflows\/[^\s]+\.ya?ml\b/i, 'devops-conventions.md'],
+  [/(?:^|\/)SKILL\.md$|(?:^|\/)skills\/\S*\.md$/, 'skill-authoring.md'], // twin of the rule's paths: **/SKILL.md + **/skills/**/*.md, case-sensitive, no .bak
   [/\.md\b/i, 'markdown-docs.md'],
 ];
 // The announcement is HELD until the call is allowed, and only then marked as said: a denial and an
@@ -240,12 +247,16 @@ function writeTargets(text) {
   return out;
 }
 // A rule that is not INSTALLED cannot be read: one measured bundle was told to read
-// `javascript-conventions.md` in a project that has no JS and never installed that rule. The hook's
-// own sibling directory is the install's rules dir (`.claude/hooks/` -> `.claude/rules/`); with no
-// rules directory anywhere this cannot be told, and the announcement is made rather than dropped.
+// `javascript-conventions.md` in a project that has no JS and never installed that rule. A COPIED hook's
+// sibling directory is the install's rules dir (`.claude/hooks/` -> `.claude/rules/`); a plugin-launched
+// one's sibling is the plugin's `stack/rules` - the whole catalog, which named `winforms-conventions.md` to
+// a project that never installed it (the 2026-09-26 benchmark pilot) - so only a `.claude/hooks` sibling
+// counts, beside the project's own `.claude/rules`. With no rules directory anywhere this cannot be told,
+// and the announcement is made rather than dropped.
+const copiedSibling = pathMod.basename(__dirname) === 'hooks' && pathMod.basename(pathMod.dirname(__dirname)) === '.claude';
 const ruleInstalled = (rule) => {
   let known = false;
-  for (const d of [pathMod.join(__dirname, '..', 'rules'), ...anchorDirs.map((a) => pathMod.join(a, '.claude', 'rules'))]) {
+  for (const d of [...(copiedSibling ? [pathMod.join(__dirname, '..', 'rules')] : []), ...anchorDirs.map((a) => pathMod.join(a, '.claude', 'rules'))]) {
     if (!fs.existsSync(d)) continue;
     known = true;
     if (fs.existsSync(pathMod.join(d, rule))) return true;
@@ -253,20 +264,24 @@ const ruleInstalled = (rule) => {
   return !known;
 };
 // The generated docs root is not governed by markdown-docs.md - the rule's own body says so - and
-// neither is the install's own `.claude/` tree. A `.md` hit whose targets all live there is dropped.
+// neither is the install's own `.claude/` tree, so a `.md` target there names no rule - not even one
+// whose pattern its NAME happens to carry (`next.js-upgrade.md`, `Dockerfile.md`): that would spend the
+// rule's once-per-session announcement on a docs note. The one exception is skill-authoring.md -
+// `.claude/skills/` is where a project keeps its own skills, and a skill file is governed wherever it lives.
 // The docs root is RESOLVED, not assumed: hard-coding `.claude/` meant that with
-// CLAUDE_STACK_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
+// ALFRED_CODE_DOCS_PATH=docs - the committed-root case the docs-root rule itself describes - a write
 // to `docs/architecture/ARCHITECTURE.md` still drew the announcement the rule says does not apply.
 const escapeRe = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const UNGOVERNED_MD = new RegExp(
   `(?:^|[\\s"'=])(?:\\./)?(?:\\.claude|${escapeRe(docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, ''))})/`);
 function announceRules(text) {
   const docsRel = docsRootEnv().replace(/^\.\//, '').replace(/\/+$/, '');
-  const targets = writeTargets(String(text)).filter((t) => !(/\.md\b/i.test(t)
-    && (UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`))));
+  const ungoverned = (t) => UNGOVERNED_MD.test(` ${t}`) || t.includes('.claude/') || t.includes(`${docsRel}/`);
+  const targets = writeTargets(String(text));
   if (!targets.length) return;
   const hit = [];
-  for (const t of targets) for (const [re, rule] of CONVENTION_RULES) if (re.test(t) && !hit.includes(rule)) hit.push(rule);
+  for (const t of targets) for (const [re, rule] of CONVENTION_RULES)
+    if (re.test(t) && !hit.includes(rule) && !(rule !== 'skill-authoring.md' && /\.md\b/i.test(t) && ungoverned(t))) hit.push(rule);
   if (!hit.length) return;
   let state = {};
   const f = sessionStateFile();
@@ -323,7 +338,8 @@ if (isShellTool(payload.tool_name)) {
   // This pre-filter must name every verb the branches below look for: `readFileSync` / `File.read`
   // were in the runtime-dump pattern but not here, so `node -e "...readFileSync(f)..."` exited on
   // this line and that branch never ran (reproduced against the same 1371-line file).
-  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read/.test(command)) process.exit(0);
+  // Get-Content / gc / type are the PowerShell route's cat - wired on that tool, and unjudged until now.
+  if (!/\bcat\b|\bsed\b|\bhead\b|\btail\b|\bless\b|\bmore\b|\bawk\b|\bopen\(|\breadFileSync\b|File\.read|\bget-content\b|\bgc\b|\btype\b/i.test(command)) process.exit(0);
   // EVERY test below is PER SEGMENT, and the extension is tested against the PATH the verb names -
   // never against the whole command. Testing `GATED_EXT_ANY` against the whole compound command
   // denied a command for an unrelated `*.js` glob sitting in a SIBLING segment (replayed: exit 2;
@@ -364,14 +380,15 @@ if (isShellTool(payload.tool_name)) {
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +
         `variable or a find placeholder. Per baseline-navigation.md, locate what you need first\n` +
-        `(serena find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
-        `ranges that matter. If you genuinely need one whole small file, cat it by name.`,
+        `(the navigation server's find_symbol / get_symbols_overview, or grep -n for a pattern), then read only the\n` +
+        `ranges that matter. If you genuinely need one whole small file, cat it by name. The navigation\n` +
+        `tools are DEFERRED - load them first:\n` + LOAD_SERENA,
       );
       process.exit(2);
     }
   }
   for (const seg of command.split(/&&|\|\||;|\n/)) {
-    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut)\b/.test(seg)) continue;
+    if (/\|\s*(head|tail|sed|grep|rg|wc|awk|cut|select-object|select|select-string|sls|measure-object|measure|findstr)\b/i.test(seg)) continue;
     // Output redirected INTO a file never reaches the context - `cat a.ts > copy.ts` is a copy,
     // not a dump (an fd form like `2>&1` / `>&2` still prints, so only a path target is exempt).
     if (/\s>>?\s*[^&\s>]/.test(seg)) continue;
@@ -400,9 +417,10 @@ if (isShellTool(payload.tool_name)) {
         process.stderr.write(
           'Blocked: whole-file read of a source file through a language runtime.\n' +
           'Per baseline-navigation.md this is the same whole-file read the Read gate blocks, spelled\n' +
-          'differently. Locate the symbol first (serena find_symbol / get_symbols_overview), then read\n' +
+          'differently. Locate the symbol first (the navigation server\'s find_symbol / get_symbols_overview), then read\n' +
           'only the range you need. An expression that only COUNTS or SEARCHES - the read feeding\n' +
-          '.match/.split/.length with no print of the content - is not a dump and is not blocked.',
+          '.match/.split/.length with no print of the content - is not a dump and is not blocked.\n' +
+          'The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
         );
         process.exit(2);
       }
@@ -417,8 +435,8 @@ if (isShellTool(payload.tool_name)) {
     if (unb && gatedIn(unb[1])) {
       process.stderr.write(
         'Blocked: unbounded whole-file dump (head -n <huge> / tail -n +1 / less / awk \'1\').\n' +
-        'Per baseline-navigation.md, read the located range - serena find_symbol, or a bounded\n' +
-        'sed -n \'<start>,<end>p\' once you know where to look.',
+        'Per baseline-navigation.md, read the located range - the navigation server\'s find_symbol, or a bounded\n' +
+        'sed -n \'<start>,<end>p\' once you know where to look. The navigation tools are DEFERRED - load them first:\n' + LOAD_SERENA,
       );
       process.exit(2);
     }
@@ -431,6 +449,22 @@ if (isShellTool(payload.tool_name)) {
       : [];
     const sedM = seg.match(/\bsed\s+-n\s+["']1,\$p["']\s+("[^"]+"|'[^']+'|[^\s;&|<>]+)/);
     if (sedM) files.push(sedM[1].replace(/^["']|["']$/g, ''));
+    // PowerShell's reader: bounded by -TotalCount / -Head / -First / -Tail / -Last; its path is the
+    // positional argument or -Path / -LiteralPath, and the values of its other parameters are not paths.
+    // The verb must be the segment's COMMAND (its start, or after a pipe or a paren) - `grep type a.ts`
+    // and `git gc` name the word as an argument.
+    const gcM = seg.match(/(?:^\s*|[|(]\s*)(?:get-content|gc|type)\s+((?:(?:-\w+|"[^"]+"|'[^']+'|[^\s;&|<>]+)\s*)+)/i);
+    if (gcM) {
+      const words = gcM[1].trim().match(/"[^"]+"|'[^']+'|\S+/g) || [];
+      if (!words.some((w) => /^-(?:totalcount|head|first|tail|last)$/i.test(w))) {
+        for (let k = 0; k < words.length; k++) {
+          const w = words[k];
+          if (/^-(?:path|literalpath|lp|pspath)$/i.test(w)) continue;
+          if (/^-/.test(w)) { if (/^-(?:encoding|delimiter|readcount|filter|include|exclude|stream|credential)$/i.test(w)) k++; continue; }
+          files.push(w.replace(/\)+$/, '').replace(/^["']|["']$/g, ''));
+        }
+      }
+    }
     for (const rawF of files) {
     const f = expandWith(assigns, rawF);
     if (!GATED_EXT.test(f)) continue;
@@ -442,7 +476,7 @@ if (isShellTool(payload.tool_name)) {
     if (!resolved) {
       // A dump-shaped command on a gated file whose size we cannot check fails CLOSED -
       // an unresolvable relative path was exactly how whole-file dumps slipped past this
-      // matcher. Re-run with an absolute path (or read the located range via serena).
+      // matcher. Re-run with an absolute path (or read the located range via the navigation server).
       process.stderr.write(
         `Blocked: cannot size ${f} (relative path did not resolve against the project root or session cwd).\n` +
         `A whole-file cat/sed of a source file must be size-checked - use an absolute path,\n` +
@@ -452,7 +486,7 @@ if (isShellTool(payload.tool_name)) {
     }
     if (lc > THRESHOLD) {
       process.stderr.write(
-        `Blocked: whole-file dump of ${f} (${lc} lines) via Bash.\n` +
+        `Blocked: whole-file dump of ${f} (${lc} lines) via ${payload.tool_name}.\n` +
         `Per baseline-navigation.md, a bare cat/sed of a large source file is the same\n` +
         `whole-file read the Read gate blocks - routed through the shell.\n` + serenaHint(f),
       );
@@ -529,7 +563,7 @@ if (wholeShape) {
 }
 
 // Cumulative cap: merge this range into the per-session interval set for the file; if the
-// merged coverage would exceed ~60% of the file, the remainder goes through serena - two
+// merged coverage would exceed ~60% of the file, the remainder goes through the navigation server - two
 // half-splits reconstructing the file are the whole-file read in two calls (measured).
 const CAP = 0.6;
 const end = Math.min(lineCount, offset + (input.limit != null ? input.limit : lineCount) - 1);

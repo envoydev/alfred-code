@@ -2,7 +2,7 @@
 'use strict';
 // THE ONE DERIVATION - what a selection means for a project, decided once.
 //
-//   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]
+//   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope <scope>]
 //   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--settings <file>]
 //
 // Before this script, four readers answered the same question in their own words: the three guided
@@ -30,8 +30,8 @@
 //     is locked on. So a core skill the selection did not pick is REPORTED as undroppable, and there
 //     is deliberately no `off` key to mistake for a lever. Every OTHER skill is a LIBRARY copy, and
 //     a copy is droppable: deleted by a drop, or switched per project through `skillOverrides`.
-//   - HOOKS are switched off by NAME, against the whole shipped catalog, because the hooks plugin
-//     carries all thirteen whatever the project picked (`CLAUDE_STACK_HOOKS_OFF`, Phase 2).
+//   - HOOKS are switched off by NAME, against the whole shipped catalog, because the core carries
+//     every one whatever the project picked (`ALFRED_CODE_HOOKS_OFF`, Phase 2; the core since 2.0.0).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -39,18 +39,23 @@ const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./se
 const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
-const { pluginRoutes } = require('./install/plugins.js');
+const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
+const { BRAND, LEGACY, currentName } = require('./install/brand.js');
+const { validItemName } = require('./install/stamp.js');
 
 const REPO = path.resolve(__dirname, '..');
 
 // The scoped identifier - the address S1's dispatch finding and S3's deny measurement both used.
 // `Tool(param:value)` rules exist too, but only for a direct field of the tool's input ('Match by
 // input parameter', code.claude.com/docs/en/permissions) - so a plugin named like an Agent field
-// (`model`, `isolation`) would be read as one; every stack entry starts `claude-stack`.
+// (`model`, `isolation`) would be read as one; every stack entry starts `alfred-code` - or, written
+// by a 1.x release, the old core name (brand.js LEGACY).
 const denySpec = (agent, plugin) => `Agent(${plugin}:${agent})`;
 
-// The seat a stack deny names, under ANY stack entry's spelling - null for a user's own entry.
-const stackSeat = (spec) => (/^Agent\(claude-stack[a-z0-9-]*:([A-Za-z0-9_-]+)\)$/.exec(String(spec)) || [])[1] || null;
+// The seat a stack deny names, under ANY stack entry's spelling, 1.x ones included - null for a
+// user's own entry.
+const SEAT_DENY = new RegExp(`^Agent\\((?:${BRAND.core}|${LEGACY.core})[a-z0-9-]*:([A-Za-z0-9_-]+)\\)$`);
+const stackSeat = (spec) => (SEAT_DENY.exec(String(spec)) || [])[1] || null;
 
 // Which plugin carries each agent - the deny spelling needs the home, not just the name.
 function agentHomes(place)
@@ -76,7 +81,7 @@ const pickedLines = (text) =>
 
 // `selection` is a FILE; `selectionText` is the same lines already in hand, which is what the
 // installer holds on the --installed-only route where nothing was written to disk.
-function deriveState({ selection, selectionText, sourceDir = REPO, marketplace = 'claude-stack' } = {})
+function deriveState({ selection, selectionText, sourceDir = REPO, marketplace = 'envoydev' } = {})
 {
     // readSelection throws with the path in the message when the file is unreadable; an empty
     // install derived from a missing file is the failure mode this refuses to have.
@@ -122,28 +127,29 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
         rules: { copy: [...flat.rules].sort() },
         hooks: { on: hooksOn, off: hooksOff, answered: hooksAnswered },
         mcps: [...picked.mcps].sort(),
-        env: { CLAUDE_STACK_HOOKS_OFF: hooksOff.join(',') },
+        env: { ALFRED_CODE_HOOKS_OFF: hooksOff.join(',') },
     };
 }
 
-// The hooks entry and the two MCP families that fan one catalog row out into several plugins.
-const HOOKS_ENTRY = 'claude-stack-hooks';
+// The entry the hooks ride - the core, since 2.0.0 folded the hooks entry into it - and the one MCP
+// family that fans a catalog row out into several plugins.
+const HOOKS_HOME = BRAND.core;
 const catalogServer = (name) => String(name)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
-    .replace(/^context7-local$/, 'context7');
+    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
 // project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the
 // disk read alone found no seat and no hook - and the derivation above then switched every one of
 // them off. Each surface is read from the state ITS route writes: the enabled entries' contents
-// minus the seats `permissions.deny` names, the hook catalog minus CLAUDE_STACK_HOOKS_OFF, the MCP
+// minus the seats `permissions.deny` names, the hook catalog minus ALFRED_CODE_HOOKS_OFF, the MCP
 // entries folded onto the catalog. Deriving from these lines writes back the state they came from,
 // which is how a seat or hook the user switched off survives an update. `plugins` is this stack's
 // ENABLED entries only (`install/selection.js` readBack filters the listing); a surface whose route
 // is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
 function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO } = {})
 {
-    const names = [...new Set(plugins.map((p) => String(p).split('@')[0]))];
+    // A 1.x listing's core is the same entry under its old name, and it carries the hooks.
+    const names = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])))];
     const lines = [];
     if (routes.skills)
     {
@@ -164,10 +170,10 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
         }
     }
     const manifest = loadManifest(sourceDir);
-    if (routes.hooks && names.includes(HOOKS_ENTRY))
+    if (routes.hooks && names.includes(HOOKS_HOME))
     {
         // The prelude's own matcher, so the read-back honours exactly the spellings the hooks do.
-        const env = { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') };
+        const env = { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') };
         const shipped = [...new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, '')))];
         const on = shipped.filter((h) => !hookDisabled(h, env));
         for (const h of on) lines.push(`hook ${h}`);
@@ -203,15 +209,20 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
 {
     if (!routes.skills) return [];
     const place = placement();
-    const on = new Set(enabled);
-    const off = new Set(parked);
+    const on = new Set(enabled.map(currentName));
+    const off = new Set(parked.map(currentName));
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
     const retiredNames = new Set(readRetiredEntries().map((e) => e.name));
     const lines = [];
     for (const [kind, line] of [['skills', 'skill'], ['agents', 'agent']])
         for (const entry of stamp[kind] || [])
         {
-            const { name, home: was } = splitPick(entry);
+            // A 1.x stamp homes a core pick `@claude-stack`: the same entry, never a moved-from one. // legacy-name
+            const { name, home: stamped } = splitPick(entry);
+            // R78: the one name check every stamp reader runs - a carried name becomes a selection
+            // line the library layer joins into a path.
+            if (!validItemName(name)) continue;
+            const was = stamped && currentName(stamped);
             const home = homeOf(place, kind, name);
             // Homed in a retired entry that is still enabled, library now: carried as a pick.
             if (was && retiredNames.has(was) && on.has(was) && !home)
@@ -247,7 +258,7 @@ function costOfTaking({ category, name, place, graph, enabled, copied })
 
 // THE NEW-ITEM VERDICT, one row per item a release added:
 //   arrives  - this refresh brings it, on (a hook on the plugin route always does: the installer
-//              enables the hooks entry whatever the listing says, so only HOOKS_OFF can say no);
+//              enables the core that carries it whatever the listing says, so only HOOKS_OFF can say no);
 //   renamed  - a copied item under a new name whose OLD copy is on disk: the update carries it;
 //   offer    - only the user's yes brings it; `recommend` is `take` only for a rule whose closure
 //              enables no entry and copies no library item the project lacks (`copied`, the
@@ -256,8 +267,10 @@ function costOfTaking({ category, name, place, graph, enabled, copied })
 //              switched off before (`noneBefore` - the walk's None), a parked entry;
 //   unknown  - the plugin listing could not be read (`plugins` null); never offered on a guess.
 // A renamed item carries `from`, and `wasOff` when the OLD name was switched off - the installer
-// matches the off-state by name, so the new name comes on and the report must say so.
-function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, sourceDir = REPO } = {})
+// matches the off-state by name, so the new name comes on and the report must say so. M8: an offer
+// whose OLD name is neither on disk nor in `picked` (the stamp's picks by kind, null when it records
+// none) was declined under that name, so it is left out - never offered as new.
+function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, picked = null, sourceDir = REPO } = {})
 {
     const place = placement();
     const manifest = loadManifest(sourceDir);
@@ -269,21 +282,25 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         rule: new Set(manifest.rules.map((e) => String(e).replace(/\.md$/, ''))),
         hook: new Set(manifest.catalogs.hooks.map((row) => row.split('::')[0].replace(/\.js$/, ''))),
     };
-    const enabled = plugins === null ? null : new Set(plugins.map((p) => String(p).split('@')[0]));
-    const off = new Set(parked);
+    const enabled = plugins === null ? null : new Set(plugins.map((p) => currentName(String(p).split('@')[0])));
+    const off = new Set(parked.map(currentName));
     const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
-    const hookOff = (h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(hooksOff || '') });
+    const hookOff = (h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(hooksOff || '') });
     const rows = [];
+    // A skill a server brings arrives with that server (the graph's `mcps` block) - offered alone, it is
+    // a skill with nothing to drive.
+    const brought = new Set(Object.values((graph && graph.mcps) || {}).flatMap((n) => n.skills || []));
     for (const { category, name, from, oldOnDisk } of added)
     {
         if (!ships[category] || !ships[category].has(name)) continue;
+        if (category === 'skill' && brought.has(name)) continue;
         const row = { category, name, verdict: 'offer', entry: null };
         if (category === 'rule') { if ((always.rules || []).includes(name)) row.verdict = 'arrives'; }
         else if (category === 'hook')
         {
             if (routes.hooks)
             {
-                row.entry = HOOKS_ENTRY;
+                row.entry = HOOKS_HOME;
                 row.verdict = hookOff(name) || noneBefore ? 'off' : 'arrives';
             }
             else if (hasHooks && !noneBefore) row.verdict = 'arrives';
@@ -300,6 +317,7 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         }
         if (from)
         {
+            if (row.verdict === 'offer' && !oldOnDisk && picked && picked[category] && !picked[category].has(from)) continue;
             row.from = from;
             // The old copy is pruned whatever the new name's verdict - an arriving rename leaves it too.
             if (oldOnDisk) row.oldOnDisk = true;
@@ -320,13 +338,22 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
 // answers only what it found evidence of (`answered`), so a failed `claude plugin list` writes
 // nothing instead of switching every hook and seat off. The off-lists exist only on the routes
 // that load through a plugin: on the copy routes absence from disk is the off-state.
-function writable(state, { routes = {}, answered = { hooks: true, agents: true } } = {})
+// `wired` / `shipped`: the hook names this run copies and wires, and every hook the release ships -
+// the installer passes both on the hooks copy route.
+function writable(state, { routes = {}, answered = { hooks: true, agents: true }, wired = null, shipped = [] } = {})
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
     const agents = Boolean(state && answered.agents && routes.skills);
+    // The hooks copy route with the core on: the core carries every hook, and a hook the project does
+    // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
+    // complement of what the run WIRES, whatever the read-back answered - a pre-11b install never
+    // wrote one, absence on disk being its off-state.
+    const besideCore = !routes.hooks && corePluginOn(routes) && Array.isArray(wired);
     return {
-        hooksOff: hooks && routes.hooks ? state.hooks.off : [],
-        hooksAnswered: hooks,
+        // Otherwise written whenever the CORE is on; on the full copy route there is no core, and
+        // absence is off.
+        hooksOff: besideCore ? shipped.filter((h) => !wired.includes(h)) : hooks && corePluginOn(routes) ? state.hooks.off : [],
+        hooksAnswered: besideCore || hooks,
         agentDeny: agents ? state.agents.deny : [],
         agentAllow: agents ? state.agents.allow : [],
         // Carried without a pick only where a plugin carries skills; the copy route copies the picks.
@@ -349,7 +376,7 @@ const manualOnly = (skill) =>
 function floor({ plugins = [], deny = [] } = {})
 {
     const place = placement();
-    const named = [...new Set(plugins.map((p) => String(p).split('@')[0]).filter(Boolean))];
+    const named = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])).filter(Boolean))];
     // A retired entry still enabled here loads what it carried every session until update removes it.
     const retired = readRetiredEntries().filter((e) => named.includes(e.name));
     const entries = named.filter((n) => place.plugins[n] || retired.some((e) => e.name === n)).sort();
@@ -360,13 +387,16 @@ function floor({ plugins = [], deny = [] } = {})
     const homes = agentHomes(place);
     for (const e of retired) for (const a of e.agents) if (!homes.has(a)) homes.set(a, e.name);
     const specs = new Set(Array.isArray(deny) ? deny.map(String) : []);
-    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))));
+    // A core seat's 1.x spelling still hides it after the rename (docs/rebrand-evidence.md S6).
+    const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))
+        || (!homes.has(a) || homes.get(a) === CORE) && specs.has(denySpec(a, LEGACY.core))));
     const skills = carried.skills.filter((s) => !manualOnly(s));
     const seats = carried.agents.filter((a) => !denied.has(a));
     const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);
-    // `skipped`: the entries this count does not cover - the hooks entry, whose SessionStart
-    // injections are text a script cannot size ahead, and the MCP entries. The caller counts them
-    // as any other plugin; a name dropped here without a word is how a floor under-reports.
+    // `skipped`: the entries this count does not cover - the MCP entries, and any other plugin. The
+    // caller counts them as any other plugin; a name dropped here without a word is how a floor
+    // under-reports. The core's hooks ride it, and their SessionStart injections are text a script
+    // cannot size ahead - the caller counts those as the core's hooks, not here.
     const out = {
         entries,
         skipped: named.filter((n) => !place.plugins[n]).sort(),
@@ -399,7 +429,7 @@ function main(argv)
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
     }
     if (argv.includes('--delta'))
@@ -420,11 +450,13 @@ function main(argv)
     const state = deriveState({
         selection: path.resolve(selection),
         sourceDir: arg('--source') ? path.resolve(arg('--source')) : REPO,
-        marketplace: arg('--marketplace') || 'claude-stack',
+        marketplace: arg('--marketplace') || 'envoydev',
     });
     // What THIS environment's routes write, by the installer's own rule - so a walk reporting the
-    // derivation before the install reports the copy routes as writing no off-state.
-    const routes = pluginRoutes(process.env);
+    // derivation before the install reports the copy routes as writing no off-state. N6: read the way the
+    // installer reads them (C5) - a switch only settings.local.json holds yields to settings.json at
+    // project and user scope - from the project `--root` names (the cwd by default) at `--scope`.
+    const routes = committedRoutesAt({ env: process.env, claudeDir: path.join(path.resolve(arg('--root') || '.'), '.claude'), scope: arg('--scope') || 'project' });
     console.log(JSON.stringify({ ...state, routes, written: writable(state, { routes }) }, null, 2));
     return 0;
 }

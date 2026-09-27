@@ -1,8 +1,10 @@
 // scripts/docs-session.test.js - the docs session hook, driven through stdin payloads in throwaway git repos.
 'use strict';
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 const { repo, section } = require('./docs-fixture');
 
 let n = 0;
@@ -21,7 +23,7 @@ test('session start pushes the orientation block and how to read by section', ()
     assert.match(text, /node \.claude\/hooks\/docs\.js where <path>/);
     assert.match(text, /node \.claude\/hooks\/docs\.js show <file>#<id>/);
     assert.match(text, /Before your first change under src\/ or tests\//);
-    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_BLOCK: '0' }).stdout, '');
+    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_BLOCK: '0' }).stdout, '');
   } finally { r.rm(); }
 });
 
@@ -111,10 +113,10 @@ test('the start block names a versioning mismatch in both directions', () => {
   const ignored = repo({ docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   const committed = repo({ tracked: true, docs: { 'references/patterns.md': PATTERNS, 'ORIENTATION.md': ORIENT } });
   try {
-    assert.match(ctx(ignored.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' })),
-      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/);
-    assert.match(ctx(committed.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'local' })),
-      /Versioning mismatch: CLAUDE_STACK_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
+    assert.match(ctx(ignored.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_VERSIONING: 'git' })),
+      /Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'git', but \.claude\/docs is not tracked by git - the setting wins, so doc sections are written in place/);
+    assert.match(ctx(committed.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_VERSIONING: 'local' })),
+      /Versioning mismatch: ALFRED_CODE_DOCS_VERSIONING declares 'local', but \.claude\/docs is tracked by git - the setting wins, so this branch's sections stay in the overlay/);
     for (const r of [ignored, committed]) assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /Versioning mismatch/, 'nothing declared, nothing said');
   } finally { ignored.rm(); committed.rm(); }
 });
@@ -126,14 +128,14 @@ test('the start block names doc versions stranded by git versioning', () => {
   try {
     r.git('switch', '-qc', 'feat/left');
     assert.strictEqual(r.cli(['set', 'patterns#orders'], '## orders\n<!-- id: orders -->\nBranch rule.\n').status, 0);
-    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' }));
+    const text = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_VERSIONING: 'git' }));
     // The 30-day sweep stands down under git versioning, so this line returns every session until the overlay is
     // gone: it names the command that ends it, with the branch filled in, or it is a nag nobody can act on.
     assert.match(text, /Doc versions stranded by this install's git versioning: feat-left - nothing reads or promotes \.branches\/ any more, and this line returns every session until they are gone: re-apply what is still wanted with `node \.claude\/hooks\/docs\.js set <file>#<id>`, then end it with `node \.claude\/hooks\/docs\.js prune feat-left`\./);
     assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /stranded/, 'nothing is stranded while the overlay is the mode');
     r.git('switch', '-qc', 'feat/right');
     assert.strictEqual(r.cli(['set', 'patterns#users'], '## users\n<!-- id: users -->\nSecond branch rule.\n').status, 0);
-    const two = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { CLAUDE_STACK_DOCS_VERSIONING: 'git' }));
+    const two = ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() }, { ALFRED_CODE_DOCS_VERSIONING: 'git' }));
     assert.match(two, /stranded by this install's git versioning: feat-left, feat-right - /);
     assert.match(two, /prune feat-left` \(one prune per name\)\./, 'with more than one name the command is an example, and says so');
   } finally { r.rm(); }
@@ -154,7 +156,7 @@ test('a status object from an older engine still produces the start block', () =
     fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(dir, 'docs-session.js'));
     const out = require('node:child_process').spawnSync(process.execPath, [path.join(dir, 'docs-session.js')], {
       cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: 'git' },
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root, ALFRED_CODE_DOCS_PATH: '.claude/docs', CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: 'git' },
     });
     assert.strictEqual(out.stderr, '', 'the older engine is not an error');
     assert.match(ctx(out), /Orders own refunds/, 'the session is still oriented');
@@ -182,6 +184,52 @@ test('no docs folder, garbage stdin, unknown event: silent and exit 0', () => {
     assert.strictEqual(b.status, 0); assert.strictEqual(b.stdout, '');
     assert.strictEqual(r.hook({ hook_event_name: 'Notification', session_id: sid() }).stdout, '');
   } finally { r.rm(); }
+});
+
+// M1 (R47, fix round 1): on the plugin route docs.js/memory.js/history.js are all tracked beside
+// this hook in the marketplace clone, so a never-set-up project under a user-scope core never
+// reaches the missing-module case - it is reachable only on the HOOKS COPY ROUTE
+// (ALFRED_CODE_HOOKS_VIA_PLUGIN=false) when docs.js failed to land beside the hook. The catch is
+// narrowed to exactly that MODULE_NOT_FOUND-for-docs.js case; anything else (a syntax error in a
+// PRESENT engine) rethrows to the outer wrapper's stderr line - see the sibling test just below.
+test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const path = require('node:path');
+  const os = require('node:os');
+  const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-lone-'));
+  try {
+    const { HOOKS } = require('./docs-fixture');
+    fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(lone, 'docs-session.js'));
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(lone, 'docs-session.js')], {
+      cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root },
+    });
+    assert.strictEqual(out.status, 0);
+    assert.strictEqual(out.stdout, '');
+    assert.strictEqual(out.stderr, '');
+  } finally { r.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
+});
+
+// M1 (R47, fix round 1): the narrowed catch swallows ONLY 'docs.js is missing' - a genuine load
+// failure in a PRESENT engine (a syntax error, here) must still surface on stderr through the outer
+// wrapper, never be silently treated as the never-set-up case above.
+test('a syntax error in a PRESENT engine surfaces on stderr, never swallowed as a missing engine', () => {
+  const r = repo({ docs: { 'references/patterns.md': PATTERNS } });
+  const path = require('node:path');
+  const os = require('node:os');
+  const lone = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-broken-'));
+  try {
+    const { HOOKS } = require('./docs-fixture');
+    fs.copyFileSync(path.join(HOOKS, 'docs-session.js'), path.join(lone, 'docs-session.js'));
+    fs.writeFileSync(path.join(lone, 'docs.js'), 'const x = ;\n');
+    const out = require('node:child_process').spawnSync(process.execPath, [path.join(lone, 'docs-session.js')], {
+      cwd: r.root, input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: sid() }), encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: r.root },
+    });
+    assert.strictEqual(out.stdout, '');
+    assert.match(out.stderr, /^docs-session: /, 'a genuine load failure must reach the outer wrapper, not be swallowed');
+    assert.doesNotMatch(out.stderr, /Cannot find module/, 'this is a syntax error, never a missing-module one');
+  } finally { r.rm(); fs.rmSync(lone, { recursive: true, force: true }); }
 });
 
 const pre = (tool, input, session) => ({ hook_event_name: 'PreToolUse', session_id: session, tool_name: tool, tool_input: input });
@@ -249,7 +297,7 @@ test('a fold of two sections leaves the ranking its slot, block or no block', ()
     r.git('switch', '-q', 'develop');
     r.git('merge', '-q', '--no-ff', '-m', 'merge', 'feat/drawer');
     const s = sid();
-    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: s }, { CLAUDE_STACK_DOCS_BLOCK: '0' }).stdout, '', 'no block text');
+    assert.strictEqual(r.hook({ hook_event_name: 'SessionStart', session_id: s }, { ALFRED_CODE_DOCS_BLOCK: '0' }).stdout, '', 'no block text');
     const held = r.hook(pre('Edit', { file_path: 'src/Api/Orders/Refund.cs' }, s));
     assert.match(held.stdout, /boundaries#paging covers src\/Api\/Orders\/Refund\.cs - here it is/);
     assert.match(held.stdout, /Also covering it: boundaries#envelope .*patterns#a /, 'the second fold, then the ranking');
@@ -338,12 +386,12 @@ test('PowerShell is the same shell route as Bash: its writes are held and its do
   } finally { r.rm(); }
 });
 
-test('source roots come from watch.json; CLAUDE_STACK_DOCS_GATE=0 turns the gate off', () => {
+test('source roots come from watch.json; ALFRED_CODE_DOCS_GATE=0 turns the gate off', () => {
   const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
   try {
     assert.ok(denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()))));
     assert.ok(!denied(r.hook(pre('Edit', { file_path: 'src/Other.cs' }, sid()))));
-    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { CLAUDE_STACK_DOCS_GATE: '0' })));
+    assert.ok(!denied(r.hook(pre('Edit', { file_path: 'app/Orders/Refund.cs' }, sid()), { ALFRED_CODE_DOCS_GATE: '0' })));
   } finally { r.rm(); }
 });
 
@@ -429,6 +477,21 @@ test('a change to a watched file asks once, naming the section; a second stop is
   } finally { r.rm(); }
 });
 
+// Pilot 4 (b4-pilot-4-flow): all 8 flow cells ended on the docs reply ('docs ok'), so the last message a host reads
+// carried no task summary. The Stop ask's reply is the session's last message, so it asks for the docs line FOLLOWED
+// by the summary; a seat's SubagentStop ask keeps its own shape (pinned by the finished-agent test below).
+test('the Stop ask keeps the task summary last: the docs line, then the summary in at most three lines', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const { reason } = JSON.parse(r.hook(stopEv(s)).stdout);
+    assert.match(reason, /  Yes -> reply: docs ok\n/);
+    assert.match(reason, /\n\nThis reply is your last message, so it carries the task summary: the docs line first \(docs ok, or\nthe section you rewrote\), then what you did in at most three lines\.$/);
+  } finally { r.rm(); }
+});
+
 test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent', () => {
   const r = repo({ files: { 'src/Api/Program.cs': 'x\n', 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
   try {
@@ -438,7 +501,7 @@ test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent',
     const b = sid(); start(r, b);
     r.write('src/Api/Program.cs', 'y\n');
     assert.strictEqual(r.hook(stopEv(b, true)).stdout, '', 'stop_hook_active');
-    assert.strictEqual(r.hook(stopEv(b), { CLAUDE_STACK_DOCS_ASK: '0' }).stdout, '', 'switched off');
+    assert.strictEqual(r.hook(stopEv(b), { ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'switched off');
     fs.rmSync(`${r.root}/.claude/docs/architecture/watch.json`);
     const c = sid(); start(r, c);
     r.write('src/Api/Program.cs', 'z\n');
@@ -474,7 +537,7 @@ test('a new module folder hits newModule; a committed script change counts', () 
 
 // ---- the finish ask, per agent: what THAT agent changed, asked once, against the section's text as it stands now ----
 // The agent that made a change is the only context that knows why, so SubagentStop is where the ask has an answer.
-const GIT = { CLAUDE_STACK_DOCS_VERSIONING: 'git' };
+const GIT = { ALFRED_CODE_DOCS_VERSIONING: 'git' };
 const subStart = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStart', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
 const subStop = (s, id, extra = {}) => ({ hook_event_name: 'SubagentStop', session_id: s, agent_id: id, agent_type: 'dotnet-implementer', stop_hook_active: false, ...extra });
 const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 'app.Run();\n', 'src/Api/Orders/Refund.cs': 'class Refund {}\n', 'src/Api/Users/User.cs': 'class User {}\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH(), ...extra } });
@@ -482,7 +545,7 @@ const watched = (extra) => repo({ tracked: true, files: { 'src/Api/Program.cs': 
 const preBy = (s, id, file, extra = {}) => ({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: file }, agent_id: id, agent_type: 'dotnet-implementer', ...extra });
 // A write is attributed where the call PROCEEDS, so these helpers drive the allowed call - the gate's own hold, and
 // what it means for attribution, is the subject of its own tests rather than a side effect of every other one.
-const ALLOW = { CLAUDE_STACK_DOCS_GATE: '0' };
+const ALLOW = { ALFRED_CODE_DOCS_GATE: '0' };
 const wroteBy = (r, s, id, file, body, env = GIT) => { r.hook(preBy(s, id, file), { ...env, ...ALLOW }); r.write(file, body); };
 const touch = (r) => r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
 const touchBy = (r, s, id, env = GIT) => wroteBy(r, s, id, 'src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n', env);
@@ -680,12 +743,12 @@ test('the ask switch turns the whole thing off, snapshot included', () => {
     const s = sid();
     r.hook(subStart(s, 'a1'), GIT);
     touchBy(r, s, 'a1');
-    assert.strictEqual(r.hook(subStop(s, 'a1'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' }).stdout, '', 'the ask is off');
+    assert.strictEqual(r.hook(subStop(s, 'a1'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0' }).stdout, '', 'the ask is off');
     const t = sid();
-    r.hook(subStart(t, 'a2'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' });
+    r.hook(subStart(t, 'a2'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0' });
     assert.strictEqual(r.hook(subStop(t, 'a2'), GIT).stdout, '', 'and no snapshot was taken to compare against');
     // The orientation block has its own switch and is untouched by this one.
-    assert.match(r.hook(subStart(sid(), 'a3'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0' }).stdout, /"hookEventName":"SubagentStart"/);
+    assert.match(r.hook(subStart(sid(), 'a3'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0' }).stdout, /"hookEventName":"SubagentStart"/);
   } finally { r.rm(); }
 });
 
@@ -831,7 +894,7 @@ test('a write this hook denied is never attributed to the seat that tried it', (
     const denied = r.hook(preBy(s, 'held', 'src/Api/Program.cs'), GIT);
     assert.match(denied.stdout, /"permissionDecision":"deny"/, 'the first change is held, so nothing was written');
     // The writer's own change, with the gate out of the way so this call is the one that proceeds.
-    r.hook(preBy(s, 'writer', 'src/Api/Program.cs'), { ...GIT, CLAUDE_STACK_DOCS_GATE: '0' });
+    r.hook(preBy(s, 'writer', 'src/Api/Program.cs'), { ...GIT, ALFRED_CODE_DOCS_GATE: '0' });
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
     assert.strictEqual(r.hook(subStop(s, 'held'), GIT).stdout, '', 'the seat that wrote nothing is silent');
     assert.match(r.hook(subStop(s, 'writer'), GIT).stdout, /"decision":"block"/, 'the seat that did write is asked');
@@ -849,7 +912,7 @@ test('the main session is asked about its OWN change to a section a seat already
     touchBy(r, s, 'seat');
     assert.match(r.hook(subStop(s, 'seat'), GIT).stdout, /patterns#orders/, 'the seat is asked');
     // Now the session itself edits the same file - its own tool events carry no agent id.
-    r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, { ...GIT, CLAUDE_STACK_DOCS_GATE: '0' });
+    r.hook({ hook_event_name: 'PreToolUse', session_id: s, tool_name: 'Edit', tool_input: { file_path: 'src/Api/Program.cs' } }, { ...GIT, ALFRED_CODE_DOCS_GATE: '0' });
     r.write('src/Api/Program.cs', 'app.UseAuth();\napp.UseCors();\napp.Run();\n');
     assert.match(JSON.parse(r.hook(stopEv(s), GIT).stdout).reason, /patterns#orders/, 'the session answers for what it wrote itself');
   } finally { r.rm(); }
@@ -872,7 +935,7 @@ test('the silence an unattributed agent falls into is logged, and the switch ski
     assert.match(r.read('.claude/docs/docs-log.jsonl'), /"why":"nothing this agent wrote changed"/);
     // With the ask switched off no write is recorded at all.
     const u = sid();
-    r.hook(preBy(u, 'offseat', 'src/Api/Program.cs'), { ...GIT, CLAUDE_STACK_DOCS_ASK: '0', CLAUDE_STACK_DOCS_GATE: '0' });
+    r.hook(preBy(u, 'offseat', 'src/Api/Program.cs'), { ...GIT, ALFRED_CODE_DOCS_ASK: '0', ALFRED_CODE_DOCS_GATE: '0' });
     assert.ok(!fs.existsSync(`${require('node:os').tmpdir()}/docs-session-${u}--offseat.json`), 'no state file is written for a switched-off ask');
   } finally { r.rm(); }
 });

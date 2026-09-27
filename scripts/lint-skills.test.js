@@ -1,12 +1,92 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+// F4 item 4: two UNRELATED checks each carried a '// 27.' header - the real check 27 (the removed
+// `suggests:` edge, rationale at ~:559, call site 'No install edge from a name...') and the
+// environment-catalog check (~:2076, meta/environment.json vs the Node seed), which is its own
+// check and must carry its own number. CLAUDE.md then had to hedge with 'not check 27' rather than
+// name the real one. This pins both: check 27 stays the suggests-edge check, and the
+// environment-catalog check carries the next unused id (58 - checks 1-57 are all spoken for,
+// including the historical gap at 17, which a retired check leaves unreused).
+test('lint-skills.js: the environment-catalog check and the suggests-edge check no longer share the id 27', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'lint-skills.js'), 'utf8');
+    const envCatalogHeader = /\/\/ (\d+)\. The environment catalog \(meta\/environment\.json\) against what the Node seed actually/.exec(src);
+    assert.ok(envCatalogHeader, 'the environment-catalog check header must still be findable by its own text');
+    assert.strictEqual(envCatalogHeader[1], '58', 'the environment-catalog check must carry the next unused id, not 27');
+
+    const suggestsRationale = /\/\/ (\d+)\. No artifact may put a skill into a project's install by NAMING it\./.exec(src);
+    const suggestsCallSite = /\/\/ (\d+)\. No install edge from a name: the removed `suggests:` frontmatter must not return\./.exec(src);
+    assert.ok(suggestsRationale && suggestsCallSite, 'the suggests-edge check must keep both its rationale and call-site headers');
+    assert.strictEqual(suggestsRationale[1], '27');
+    assert.strictEqual(suggestsCallSite[1], '27');
+});
+
+// F4 re-review N3: CLAUDE.md's Install-stamp row lists who reads a 1.x account-dir stamp, written
+// before F1/F2 merged - it omitted stamp.js's own `scope` command (installScope falls back to
+// legacyGlobalStamp, A-I1, stamp.js:409/431-434) and the library-stamp.js SessionStart hook (B-I1,
+// setup-plugin/hooks/library-stamp.js:39-41).
+test('N3: CLAUDE.md names stamp.js scope and library-stamp.js among the 1.x account-dir stamp readers', () => {
+    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const readerLine = /A 1\.x account-dir stamp is read by[^|]*\|/.exec(claudeMd);
+    assert.ok(readerLine, 'the Install stamp row must still name its stamp readers');
+    assert.match(readerLine[0], /stamp\.js scope/, 'stamp.js scope must be named - it falls back to the legacy account stamp');
+    assert.match(readerLine[0], /library-stamp\.js/, 'the library-stamp.js SessionStart hook must be named');
+});
+
+// F4 re-review N8: README.md's 'Writes, in the account dir' row must name the account writes every
+// `claude plugin install` makes (the plugin cache + installed_plugins.json, at every scope - measured
+// repeatedly in docs/rebrand-evidence.md) and the MCP copy route's ~/.claude.json write at user/local
+// scope (mcp.js:505-506, alfred-code.js:522), or the 'nothing else is written' sentence below it lies.
+test('N8: README.md names installed_plugins.json/the plugin cache and .claude.json among the account-dir writes', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+    const acctRow = /\| \*\*Writes, in the account dir\*\* \|[^\n]*\|/.exec(readme);
+    assert.ok(acctRow, 'the account-dir writes row must still exist');
+    assert.match(acctRow[0], /installed_plugins\.json/, 'the plugin-install bookkeeping file must be named');
+    assert.match(acctRow[0], /plugins\/cache/, 'the plugin cache directory must be named');
+    assert.match(acctRow[0], /~\/\.claude\.json/, 'the MCP copy route\'s user/local-scope account file must be named');
+    assert.match(readme, /Nothing is written outside the project and the account-dir writes named above/, 'the closing claim must still point at this row');
+});
+
+// F4 re-review M-F4-1: the instrument hook is a plain node launch that exits at its switch check (its
+// own header, instrument-tool-usage.js), yet the catalog row the walks print to the user still said a
+// shell test - the claim item 5 removed everywhere else.
+test('M-F4-1: meta/environment.json describes ALFRED_CODE_INSTRUMENT=0 as a node start, never a shell test', () => {
+    const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8')).env;
+    const row = rows.find((r) => r.key === 'ALFRED_CODE_INSTRUMENT');
+    assert.ok(row, 'the instrument row must still exist');
+    assert.doesNotMatch(row.what, /shell/, row.what);
+    assert.match(row.what, /node start per call/, row.what);
+});
+
+// F4 re-review M-F4-2: since C8 every scope writes ALFRED_CODE_MEMORY_DB into settings.local.json, and the
+// hook engine reads that file first - its comments still said the key lands in settings.json (the account
+// file for a global install), and that only a local-scope install writes the local file.
+test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.json\'s at every scope', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', 'memory.js'), 'utf8');
+    const block = src.slice(src.indexOf('function memoryEnvPath'), src.indexOf('for (const file of files)', src.indexOf('function settingsEnvDbPath')));
+    assert.doesNotMatch(block, /in the project's\s*\/\/\s*settings\.json|the only file a local-scope/, 'a pre-C8 layout is still described');
+    assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
+});
+
+// F4 re-review M-F4-3: the copied agents' `alfred-code:<skill>` preloads are re-spelled only where no core
+// plugin serves them - the FULL copy route (copyRender, `!corePluginOn`) - not whenever the MCP route is off.
+test('M-F4-3: CLAUDE.md conditions the preload re-spell on the full copy route alone', () => {
+    const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+    const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
+    assert.ok(sentence, 'the MCP copy-route sentence must still exist');
+    assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
+    assert.match(claudeMd, /On the FULL copy\s+route alone[^.]*`alfred-code:<skill>`\s+preloads are re-spelled/, 'the preload re-spell names its own condition');
+});
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
     const lint = require('./lint-skills.js');
-    assert.strictEqual(typeof lint.parseFlatBlock, 'function');
-    assert.strictEqual(typeof lint.parseManifest, 'function');
-    assert.strictEqual(typeof lint.parseStringArray, 'function');
+    assert.strictEqual(typeof lint.manifestFlatSet, 'function');
+    assert.strictEqual(typeof lint.manifestSkillMap, 'function');
+    assert.strictEqual(typeof lint.manifestFileList, 'function');
+    assert.strictEqual(typeof lint.readStackManifest, 'function');
     assert.strictEqual(typeof lint.localSkillDirs, 'function');
     assert.strictEqual(typeof lint.lintEvidenceCatalog, 'function');
     assert.ok(lint.NON_SKILL_TOKENS instanceof Set);
@@ -19,14 +99,14 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     const { lintEvidenceCatalog } = require('./lint-skills.js');
     const rosters = {
         skills: new Set(['dotnet-performance']),
-        mcps: new Set(['sentry']),
+        mcps: new Set(['playwright']),
         plugins: new Set(),
     };
 
     const clean = {
         _comment: 'x',
         skills: { 'dotnet-performance': { packages: ['BenchmarkDotNet'], content: [{ glob: 'Program.cs', regex: 'x', label: 'x wiring' }] } },
-        mcps: { sentry: { packages: ['Sentry.'] } },
+        mcps: { playwright: { packages: ['@playwright/'] } },
         plugins: {},
     };
     assert.deepStrictEqual(lintEvidenceCatalog(clean, rosters), []);
@@ -44,6 +124,21 @@ test('lintEvidenceCatalog passes a clean catalog and flags unknown names, unlabe
     assert.ok(findings.some(f => f.includes("skill 'dotnet-perf'")));
     assert.ok(findings.some(f => f.includes('csprojContent signal without a label')));
     assert.ok(findings.some(f => f.includes('content signal without a label')));
+});
+
+test('lintEvidenceCatalog flags a signal kind the scanner does not read - a typo never matches', () => {
+    const { lintEvidenceCatalog } = require('./lint-skills.js');
+    const { SIGNAL_KINDS } = require('./scan-evidence.js');
+    // `tracked` left with its one row (claude-md-management, retired in 2.0.0): a kind no row reads is dead code.
+    assert.deepStrictEqual([...SIGNAL_KINDS].sort(), ['content', 'csprojContent', 'files', 'packages']);
+    const rosters = { skills: new Set(), mcps: new Set(), plugins: new Set(['typescript-lsp', 'csharp-lsp']) };
+    const every = { plugins: { 'csharp-lsp': Object.fromEntries(SIGNAL_KINDS.map((k) => [k, /content/i.test(k) ? [{ glob: 'a', regex: 'b', label: 'c' }] : ['x']])) } };
+    assert.deepStrictEqual(lintEvidenceCatalog(every, rosters), [], 'every kind the scanner reads passes');
+    const typo = { plugins: { 'typescript-lsp': { tracked: ['tsconfig.json'] }, 'csharp-lsp': { file: ['*.csproj'], _note: 'x' } } };
+    const findings = lintEvidenceCatalog(typo, rosters);
+    assert.strictEqual(findings.length, 2, findings.join('\n'));
+    assert.ok(findings.some(f => f.includes("plugin 'typescript-lsp' has unknown signal kind 'tracked'")), findings.join('\n'));
+    assert.ok(findings.some(f => f.includes("plugin 'csharp-lsp' has unknown signal kind 'file'")), findings.join('\n'));
 });
 
 test('lintPreloadClaims flags body-claimed preloads missing from frontmatter skills:', () => {
@@ -84,24 +179,24 @@ test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gap
     const rosters = {
         skills: new Set(['capacitor-release']),
         agents: new Set(['security-auditor']),
-        mcps: new Set(['playwright', 'chrome-devtools', 'angular-cli']),
+        mcps: new Set(['playwright', 'serena']),
         plugins: new Set(),
     };
     const clean = {
         _comment: 'x',
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'a', 'mcp:chrome-devtools': 'b' } }],
-        versionConflicts: [{ item: 'mcp:angular-cli', package: '@angular/core', below: '17', conflict: 'newer-major guidance', survives: 'docs lookups' }],
+        overlaps: [{ items: ['mcp:playwright', 'mcp:serena'], shared: 'read the page structure', gaps: { 'mcp:playwright': 'a', 'mcp:serena': 'b' } }],
+        versionConflicts: [{ item: 'mcp:serena', package: '@angular/core', below: '17', conflict: 'newer-major guidance', survives: 'docs lookups' }],
         occasionBound: { 'skill:capacitor-release': 'release-time', 'agent:security-auditor': 'audit-time' },
     };
     assert.deepStrictEqual(lintJudgmentCatalog(clean, rosters), []);
 
     const bad = {
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtool'], shared: '', gaps: { 'mcp:playwright': 'a' } }],
+        overlaps: [{ items: ['mcp:playwright', 'mcp:serenaa'], shared: '', gaps: { 'mcp:playwright': 'a' } }],
         versionConflicts: [{ item: 'skill:nope', package: '@angular/core', below: 'seventeen', conflict: 'x', survives: 'y' }],
         occasionBound: { 'skill:capacitor-release': '  ' },
     };
     const findings = lintJudgmentCatalog(bad, rosters);
-    assert.ok(findings.some(f => f.includes("'mcp:chrome-devtool'")), 'unknown ref flagged');
+    assert.ok(findings.some(f => f.includes("'mcp:serenaa'")), 'unknown ref flagged');
     assert.ok(findings.some(f => f.includes('no gap')), 'overlap item without its gap flagged');
     assert.ok(findings.some(f => f.includes('shared')), 'empty shared flagged');
     assert.ok(findings.some(f => f.includes("'skill:nope'")), 'unknown versionConflicts item flagged');
@@ -112,7 +207,7 @@ test('lintJudgmentCatalog passes a clean catalog and flags bad refs, missing gap
 test('optionalSkills is every skill no seed closure reaches', () => {
     const { optionalSkills } = require('./lint-skills.js');
     const recs = {
-        always: { skills: ['project-solve-task'], agents: ['security-auditor'] },
+        always: { skills: ['alfred-task-solve'], agents: ['security-auditor'] },
         stacks: {
             aspnet: { skills: ['dotnet-architecture'], agents: ['aspnet-implementer'] },
         },
@@ -124,11 +219,11 @@ test('optionalSkills is every skill no seed closure reaches', () => {
         },
         rules: {},
     };
-    const dirs = new Set(['project-solve-task', 'dotnet-architecture', 'csharp', 'dotnet-testing', 'dotnet-architecture-tests', 'postgres']);
+    const dirs = new Set(['alfred-task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing', 'dotnet-architecture-tests', 'postgres']);
     const optional = optionalSkills(recs, graph, dirs);
 
     // seeded directly, or pulled through a seeded agent -> always installed
-    for (const reached of ['project-solve-task', 'dotnet-architecture', 'csharp', 'dotnet-testing'])
+    for (const reached of ['alfred-task-solve', 'dotnet-architecture', 'csharp', 'dotnet-testing'])
     {
         assert.ok(!optional.has(reached), `${reached} is reachable from a seed`);
     }
@@ -246,14 +341,14 @@ test('lintOptionalCites flags a NAMED load of a skill that can be absent; a desc
 
 // The usage-policy block ships VERBATIM into every project's generated capabilities rule and is
 // never re-fetched, so a project can carry a two-release-old policy with nothing able to notice.
-// The stamp is what /claude-stack:validate compares a project's copy against - so it has to be
+// The stamp is what /alfred-code:validate compares a project's copy against - so it has to be
 // true in the source first, and the lint is what keeps it true.
 test('check 29: the capabilities usage policy carries a stamp that matches its own block', () =>
 {
     const fs = require('node:fs');
     const path = require('node:path');
     const { paths } = require('./lint-skills.js');
-    const file = path.join(paths.SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
+    const file = path.join(paths.SKILLS_DIR, 'alfred-capture-agent-capabilities', 'SKILL.md');
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     const start = lines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
     assert.ok(start >= 0, 'the stamped block is still where the lint and the skill both look for it');
@@ -331,7 +426,7 @@ test('check 35: a Companions list, a Points-at line, a routes-to sentence and a 
 test('check 36: an agent name is cited under the same absence rule as a skill name', () => {
     const { lintOptionalCites, optionalAgents, absentAgentsFor, seedClosures } = require('./lint-skills.js');
     const recs = {
-        always: { skills: ['project-architecture-quality-loop'] },
+        always: { skills: ['alfred-loop-architecture-quality'] },
         general: { agents: ['related-project-analyzer'] },
         stacks: {
             aspnet: { agents: ['dotnet-build-error-resolver'] },
@@ -345,7 +440,7 @@ test('check 36: an agent name is cited under the same absence rule as a skill na
     assert.deepStrictEqual([...optionalAgents(recs, graph, seats)], ['related-project-analyzer']);
 
     const closures = seedClosures(recs, graph);
-    const absent = absentAgentsFor(closures, 'skills', 'project-architecture-quality-loop', seats);
+    const absent = absentAgentsFor(closures, 'skills', 'alfred-loop-architecture-quality', seats);
     assert.ok(absent.has('dotnet-build-error-resolver') && absent.has('ng-build-error-resolver'));
 
     const body = 'A red routes to the matching resolver (dotnet-build-error-resolver / ng-build-error-resolver).\n';
@@ -374,7 +469,7 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     const { lintPluginCites } = require('./lint-skills.js');
     const plugins = new Set(['superpowers', 'claude-hud']);
 
-    // the golden form, live in baseline-quality-gates.md - the name, then the clause
+    // the golden form (baseline-quality-gates.md's until R72 folded the gate in) - the name, then the clause
     const golden = 'satisfy `superpowers:verification-before-completion` - build + relevant tests run, output quoted - before any done word.\n';
     assert.deepStrictEqual(lintPluginCites('rules/baseline-quality-gates.md', golden, plugins), []);
     assert.deepStrictEqual(lintPluginCites('f.md', 'Use `superpowers:writing-plans`: the plan format the house writes to.\n', plugins), []);
@@ -395,13 +490,42 @@ test('check 37: a plugin-qualified cite carries a content clause, or it is bare'
     // a frontmatter `skills:` preload is the GUARANTEE shape, not a cite: the skill is injected whole
     // at seat start, a YAML list item cannot carry a content clause, and there is nothing to teach a
     // seat that already holds it. Two seats were permanently red on this line.
-    const preload = '---\nname: ci-failure-diagnoser\ntools: Read\nskills:\n  - superpowers:systematic-debugging\n  - project-ci-failure-signatures\n---\n\nYou are a diagnostician.\n';
-    assert.deepStrictEqual(lintPluginCites('agents/ci-failure-diagnoser.md', preload, plugins), []);
+    const preload = '---\nname: alfred-issue-diagnoser-ci\ntools: Read\nskills:\n  - superpowers:systematic-debugging\n  - alfred-issue-signatures-ci\n---\n\nYou are a diagnostician.\n';
+    assert.deepStrictEqual(lintPluginCites('agents/alfred-issue-diagnoser-ci.md', preload, plugins), []);
     // ... and the BODY of that same seat is still scanned
     assert.strictEqual(lintPluginCites('agents/x.md', preload.replace('You are a diagnostician.', 'Run `superpowers:systematic-debugging` and report.'), plugins).length, 1);
     // the description stays in scope - it is shipped prose a router reads, not a registration
     const inDesc = '---\nname: x\ndescription: Use for a red build. Follow `superpowers:systematic-debugging` and report.\nskills:\n  - superpowers:systematic-debugging\n---\n\nbody\n';
     assert.strictEqual(lintPluginCites('agents/x.md', inDesc, plugins).length, 1);
+});
+
+// R72: superpowers is an optional pick, so nothing the stack ships may rest on one of its skills -
+// each one it leaned on has a house home now (the done gate, the plan format, the test-first line,
+// the clarify gate, alfred-habits-root-cause). History keeps its words; the optional plugin row names the
+// plugin, never a skill of it. A `<docs-path>/superpowers/plans/` PATH is the stack's own folder.
+test('no shipped text cites a superpowers skill - by qualified name or in prose', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.join(__dirname, '..');
+    const history = new Set(['meta/migrations.json', 'meta/retired-entries.json', 'meta/retired-plugins.json']);
+    const cite = /superpowers:[a-z]/;
+    const prose = /superpowers['’]?s? +(systematic-debugging|brainstorm\w*|writing-plans|verification|verify|test-driven|tdd|plan-format|dispatch\w*|subagent-driven|executing-plans)/i;
+    const hits = [];
+    const walk = (rel) =>
+    {
+        for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true }))
+        {
+            const r = `${rel}/${e.name}`;
+            if (e.isDirectory()) { walk(r); continue; }
+            if (history.has(r) || !/\.(md|json|js|ya?ml)$/.test(e.name)) continue;
+            fs.readFileSync(path.join(root, r), 'utf8').split('\n').forEach((line, i) =>
+            {
+                if (cite.test(line) || prose.test(line)) hits.push(`${r}:${i + 1}: ${line.trim().slice(0, 120)}`);
+            });
+        }
+    };
+    for (const dir of ['stack', 'setup-plugin', 'meta']) walk(dir);
+    assert.deepStrictEqual(hits, [], 'a shipped cite of a superpowers skill');
 });
 
 // 38. The Availability blanket covers its own section, never the whole file.
@@ -434,7 +558,7 @@ test('check 40: an agent tools: entry must be a real tool name or an mcp__ grant
     const { lintAgentTools, TOOL_NAMES } = require('./lint-skills.js');
     assert.ok(TOOL_NAMES.has('LSP'), 'LSP is in the tools reference - the audit left this unverified');
 
-    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_playwright-chrome_playwright-chrome__*, mcp__github\n';
+    const clean = 'tools: Read, Grep, Glob, LSP, Skill, mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_browser-chrome_browser-chrome__*, mcp__github\n';
     assert.deepStrictEqual(lintAgentTools('agents/x.md', clean), []);
     assert.deepStrictEqual(lintAgentTools('agents/x.md', 'no frontmatter tools line here\n'), []);
 
@@ -493,7 +617,7 @@ test('check 42: the plugin manifest\'s commands array equals the commands direct
 // 37 (extension). A BARE plugin name is the same class as a bare plugin skill, one level up.
 test('check 37: a backticked bare plugin name needs the clause saying what it gives', () => {
     const { lintPluginCites } = require('./lint-skills.js');
-    const plugins = new Set(['superpowers', 'claude-md-management', 'csharp-lsp']);
+    const plugins = new Set(['superpowers', 'typescript-lsp', 'csharp-lsp']);
 
     const flagged = lintPluginCites('skills/x/references/capability-reuse.md', 'Wire the `csharp-lsp` plugin in.\n', plugins);
     assert.strictEqual(flagged.length, 1, flagged.join('\n'));
@@ -501,8 +625,8 @@ test('check 37: a backticked bare plugin name needs the clause saying what it gi
 
     // The same content clause that clears a `plugin:skill` cite clears a bare one, either side.
     assert.deepStrictEqual(lintPluginCites('f.md', 'Wire `csharp-lsp` - inline Roslyn diagnostics as each edit lands - into the seat.\n', plugins), []);
-    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `claude-md-management` (the audit-and-revise pass over the instruction file) here.\n', plugins), []);
-    assert.deepStrictEqual(lintPluginCites('f.md', 'Drift in the instruction file is paid for by every seat - keep it current with `claude-md-management`.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'Use `typescript-lsp` (the TypeScript server\'s diagnostics on each edit) here.\n', plugins), []);
+    assert.deepStrictEqual(lintPluginCites('f.md', 'A type error is paid for by every seat - catch it on the edit with `typescript-lsp`.\n', plugins), []);
 
     // Unbackticked prose is not a cite: stack-graph.js reads the backticked token, and the word
     // 'superpowers' is English before it is a plugin.
@@ -550,7 +674,7 @@ test('check 43: an agent tools: allowlist must grant the shared memory tools', (
     assert.deepStrictEqual(MEMORY_TOOLS, ['mcp__plugin_memory_memory__memory_store', 'mcp__plugin_memory_memory__memory_search', 'mcp__plugin_memory_memory__memory_list']);
 
     // A fixture agent with serena tools but no memory tools - the new check reports it by file.
-    const noMemory = 'tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const noMemory = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     const found = lintAgentMemoryTools('agents/fixture.md', noMemory);
     assert.strictEqual(found.length, 1, found.join('\n'));
     assert.match(found[0], /agents\/fixture\.md/);
@@ -559,7 +683,7 @@ test('check 43: an agent tools: allowlist must grant the shared memory tools', (
     assert.match(found[0], /mcp__plugin_memory_memory__memory_list/);
 
     // The granted allowlist is clean.
-    const granted = 'tools: mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
+    const granted = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Edit, Skill, Bash, Grep, Glob\n';
     assert.deepStrictEqual(lintAgentMemoryTools('agents/fixture.md', granted), []);
 
     // Partial grant still fails, naming only what is missing.
@@ -586,10 +710,10 @@ test('check 44: a second plugin, a double home and a lost item are all findings'
 
     const second = placement();
     second.plugins['claude-stack-aspnet'] = { skills: [], agents: [], dependencies: [] };
-    assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than claude-stack/.test(f)), 'a per-stack plugin is caught');
+    assert.ok(lintPluginPlacement(second).some(f => /ships plugins other than alfred-code/.test(f)), 'a per-stack plugin is caught');
 
     const doubled = placement();
-    doubled.plugins['claude-stack'].skills.push('dotnet');   // already library
+    doubled.plugins['alfred-code'].skills.push('dotnet');   // already library
     assert.ok(lintPluginPlacement(doubled).some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
 
     const lost = placement();
@@ -630,10 +754,46 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-test('check 48: the hooks entry matches the installer table, and every wired hook carries the gate', () => {
+test('check 48: the core carries the manifest\'s hook wiring, and every wired hook carries the gate', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
     assert.deepStrictEqual(lintHooksEntry(), [],
-        'the committed claude-stack-hooks entry must match `build-marketplace.js --hooks-entry`');
+        'the committed core entry\'s hooks must match `build-marketplace.js --hooks-entry`');
+});
+
+// The fixtures below are the live file with one thing changed, so each finding is that change's.
+const liveMarketplace = () => JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
+
+test('check 48: a core missing a stack wiring, or a core with no hooks, is a finding', () => {
+    const { lintHooksEntry } = require('./lint-skills.js');
+    const lost = liveMarketplace();
+    const core = lost.plugins.find((p) => p.name === 'alfred-code');
+    core.hooks.Stop = core.hooks.Stop.slice(1);
+    assert.ok(lintHooksEntry(lost).some((f) => /core entry's hooks are STALE/.test(f)), 'a dropped Stop hook is caught');
+    const none = liveMarketplace();
+    none.plugins = none.plugins.filter((p) => p.name !== 'alfred-code');
+    assert.ok(lintHooksEntry(none).some((f) => /no `alfred-code` entry/.test(f)), 'no core at all is caught');
+});
+
+test('check 49: the two 1.x aliases pass as generated, and a drifted alias, a renames key or a hooks entry fail', () => {
+    const { lintMarketplaceEntries } = require('./lint-skills.js');
+    const { LEGACY } = require('./install/brand.js');
+    assert.deepStrictEqual(lintMarketplaceEntries(liveMarketplace()), [], 'the live file, aliases and all, is clean');
+
+    const drifted = liveMarketplace();
+    drifted.plugins.find((p) => p.name === LEGACY.hooks).hooks = { Stop: [] };
+    assert.ok(lintMarketplaceEntries(drifted).some((f) => f.includes(`entry ${LEGACY.hooks} does not match the generated one`)), 'an alias edited by hand is drift');
+
+    const missing = liveMarketplace();
+    missing.plugins = missing.plugins.filter((p) => p.name !== LEGACY.core);
+    assert.ok(lintMarketplaceEntries(missing).some((f) => f.includes(`missing the generated entry ${LEGACY.core}`)), 'a dropped alias strands a 1.x install (S25)');
+
+    const renamed = liveMarketplace();
+    renamed.renames = { [LEGACY.core]: 'alfred-code' };
+    assert.ok(lintMarketplaceEntries(renamed).some((f) => /`renames` key/.test(f)), 'a renames map is a finding');
+
+    const hooks = liveMarketplace();
+    hooks.plugins.push({ name: 'alfred-code-hooks', source: './', description: 'x', hooks: {} });
+    assert.ok(lintMarketplaceEntries(hooks).some((f) => /alfred-code-hooks.*folded into the core/.test(f)), 'a hooks entry is a finding');
 });
 
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
@@ -649,36 +809,41 @@ test('check 48: a drifted matcher, a missing file and a missing gate are all fin
         'a wiring naming a missing file still generates, so the lint is what catches it');
 });
 
-// Check 51. Every route installs the core's cross-marketplace companion itself, so the seed and both
-// twins carry that list, and the three must agree. A name added to the seed and not to the twins is a
-// shell-route install without superpowers; a name left in a twin installs a plugin nothing needs.
-test('check 51: the twins\' CORE_DEP_PLUGINS is clean today, and drift in either direction is a finding', () => {
+// Check 51. Every route installs the core's cross-marketplace companion itself, so the seed
+// (install/plugins.js CORE_DEP_PLUGINS) and the manifest's PARKED (active: false) plugin rows must
+// agree - a name added to the seed and not parked in the manifest is a companion the catalog never
+// promised; a row parked for no reason the seed acts on installs nothing extra but misleads the walk.
+test('check 51: the manifest\'s parked plugins are clean today, and drift in either direction is a finding', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const path = require('node:path');
     const { lintCoreDependencies, paths } = require('./lint-skills.js');
-    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped twins already agree with the seed');
+    assert.deepStrictEqual(lintCoreDependencies(), [], 'the shipped manifest already agrees with the seed');
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coredep-'));
-    const sh = path.join(tmp, 'sh');
-    const ps1 = path.join(tmp, 'ps1');
-    const write = (shList, psList) => {
-        fs.writeFileSync(sh, `CORE_DEP_PLUGINS=(${shList.map(n => `"${n}@m"`).join(' ')})\n`);
-        fs.writeFileSync(ps1, `$CoreDepPlugins = @(${psList.map(n => `'${n}@m'`).join(', ')})\n`);
-    };
+    const manifestFile = path.join(tmp, 'stack-manifest.json');
+    const write = (plugins) => fs.writeFileSync(manifestFile, JSON.stringify({ plugins }));
     const seed = ['superpowers@m'];
 
-    write(['superpowers'], ['superpowers']);
-    assert.deepStrictEqual(lintCoreDependencies(sh, ps1, seed), [], 'a matching trio is clean');
+    write([{ id: 'superpowers@m', active: false }, { id: 'other@n' }]);
+    assert.deepStrictEqual(lintCoreDependencies(manifestFile, seed), [], 'a matching pair is clean');
 
-    write(['superpowers'], ['superpowers', 'other']);
-    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /differs across the twins/, 'the twins must agree with each other');
+    write([{ id: 'superpowers@m' }, { id: 'other@n' }]);   // superpowers no longer parked
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /manifest parks \[nothing\]/, 'an un-parked companion is a finding');
 
-    write(['superpowers'], ['superpowers']);
-    assert.match(lintCoreDependencies(sh, ps1, ['superpowers@m', 'other@m'])[0], /in the seed - update both twins/, 'a companion the seed added is a finding');
+    write([{ id: 'superpowers@m', active: false }, { id: 'other@n', active: false }]);
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /manifest parks \[other, superpowers\]/, 'an extra parked row the seed never names is a finding');
 
-    fs.writeFileSync(sh, '# no block here\n');
-    assert.match(lintCoreDependencies(sh, ps1, seed)[0], /no CORE_DEP_PLUGINS/, 'a missing block is a finding, not a silent pass');
+    write([{ id: 'other@n', active: false }]);   // the seed names a plugin the manifest never lists
+    assert.match(lintCoreDependencies(manifestFile, seed).find((f) => /has no row/.test(f)), /CORE_DEP_PLUGINS names 'superpowers'.*has no row/);
+
+    fs.writeFileSync(manifestFile, 'not json');
+    assert.match(lintCoreDependencies(manifestFile, seed)[0], /could not be read/, 'unreadable JSON is a finding, not a crash');
+
+    write([{ id: 'other@n' }]);
+    assert.deepStrictEqual(lintCoreDependencies(manifestFile, []),
+        ['install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.']);
+
     fs.rmSync(tmp, { recursive: true, force: true });
     assert.ok(paths, 'paths stays exported');
 });
@@ -716,6 +881,29 @@ test('hiddenChars flags zero-width, bidi, mid-file BOM and tag characters with t
     assert.deepStrictEqual(at('plain text with an escape \\u200B written out\n'), [], 'an escape spelled out is not the character');
 });
 
+test('hiddenChars keeps a joiner or direction mark a script needs, and flags the rest of the class wherever it sits', () => {
+    // A README emoji built with a ZWJ, or a Persian word with its ZWNJ, was flagged 'write it as an
+    // escape', which Markdown and JSON prose cannot do (the 2026-09-26 hooks review).
+    const { hiddenChars } = require('./lint-skills.js');
+    const at = (text, file = 'x.md') => hiddenChars(text, file).map((h) => `${h.line}:${h.hex}`);
+    const ZWJ = '\u200D';
+    const ZWNJ = '\u200C';
+    assert.deepStrictEqual(at(`dev \u{1F468}${ZWJ}\u{1F4BB} here\n`), [], 'a ZWJ emoji sequence is text');
+    assert.deepStrictEqual(at(`\u{1F3F3}\uFE0F${ZWJ}\u{1F308}\n`), [], 'a ZWJ after a variation selector too');
+    assert.deepStrictEqual(at(`\u{1F469}\u{1F3FD}${ZWJ}\u{1F4BB}\n`), [], 'and after a skin tone');
+    assert.deepStrictEqual(at(`می${ZWNJ}خواهم\n`, 'fa.json'), [], 'a Persian ZWNJ between letters is text');
+    assert.deepStrictEqual(at(`שלום\u200F ok\n`), [], 'an RLM beside a Hebrew letter is text');
+    assert.deepStrictEqual(at(`a${ZWJ}b\n`), ['1:200D'], 'a ZWJ between ASCII letters is hidden');
+    assert.deepStrictEqual(at(`1${ZWJ}2 #${ZWJ}#\n`), ['1:200D', '1:200D'], 'ASCII digits and # are no emoji part');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWJ}a\n`), ['1:200D'], 'an emoji on one side only is no sequence');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWNJ}\u{1F4BB}\n`), ['1:200C'], 'a ZWNJ between emoji is hidden');
+    assert.deepStrictEqual(at('x\u200Ey\n'), ['1:200E'], 'a mark between ASCII letters is hidden');
+    assert.deepStrictEqual(at('م\u202Eم\n'), ['1:202E'], 'an override is hidden even between Arabic letters');
+    assert.deepStrictEqual(at('é\u200Bé\n'), ['1:200B'], 'a zero-width space is hidden between any letters');
+    assert.deepStrictEqual(at(`\u{1F468}${ZWJ}${ZWJ}\u{1F4BB}\n`), ['1:200D', '1:200D'], 'a hidden character never vouches for its neighbour');
+    assert.deepStrictEqual(at(`\u{1F3F4}${ZWJ}\u{E0067}\n`), ['1:200D', '1:E0067'], 'nor does a tag character');
+});
+
 test('lintWorkflows flags script injection, floating third-party actions and a pull_request_target head checkout', () => {
     const { lintWorkflows } = require('./lint-skills.js');
     const fs = require('node:fs');
@@ -738,6 +926,269 @@ test('lintRetiredNames flags a retired plugin name left in shipped stack text, a
     assert.strictEqual(hit.length, 1, 'one line, one finding');
     assert.match(hit[0], /stack\/agents\/x\.md:2 .*ponytail.*build lean/i, 'the finding names file:line and the house term');
     assert.deepStrictEqual(lintRetiredNames([{ file: 'stack/agents/y.md', text: '- Build lean: implement the smallest correct version\n' }]), [], 'the house term is clean');
+    // 2.0.0 retired two third-party picks; a skill still pointing at their hooks or commands points at nothing.
+    const cut = lintRetiredNames([{ file: 'stack/skills/a/SKILL.md', text: 'pairs with the runtime security-guidance plugin\nkeep it current with claude-md-management\n' }]);
+    assert.deepStrictEqual(cut.map((f) => f.replace(/ names .*/, '')), ['stack/skills/a/SKILL.md:1', 'stack/skills/a/SKILL.md:2'], cut.join('\n'));
+    assert.match(cut[0], /security-guidance.*\/security-review/, 'the finding names what took its place');
+    assert.match(cut[1], /claude-md-management.*CLAUDE\.md skill/, 'the finding names what took its place');
     assert.ok(stackTextFiles().length > 100, 'the walk reaches the shipped tree');
     assert.deepStrictEqual(lintRetiredNames(stackTextFiles()), [], 'no retired plugin name is left under stack/');
+});
+
+// Check 57. The 1.x spellings are built from these two, so no fixture line below spells one out.
+const OLD = 'claude-stack'; // legacy-name
+const OLD_ENV = 'CLAUDE_STACK_'; // legacy-name
+
+test('check 57: a 1.x name outside the legacy readers is a finding, named file:line', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`] });
+    const skill = of('stack/skills/x/SKILL.md', `intro\nrun /${OLD}:update first\n`);
+    assert.strictEqual(skill.length, 1, 'one line, one finding');
+    assert.match(skill[0], /^stack\/skills\/x\/SKILL\.md:2 /, 'the finding names file:line');
+    assert.match(skill[0], /legacy-name/, 'the finding names the way out');
+    assert.strictEqual(of('stack/hooks/h.js', `const v = env.${OLD_ENV}MONITOR;\n`).length, 1, 'the env prefix is a 1.x name too');
+    assert.strictEqual(of('stack/hooks/h.js', `a ${OLD}\nb ${OLD_ENV}X\nc\n`).length, 2, 'every line is its own finding');
+    assert.deepStrictEqual(of('README.md', 'the Cursor twin is cursor-stack\n'), [], 'cursor-stack never matches');
+    assert.strictEqual(of('docs/notes.md', `${OLD}\n`).length, 1, 'a docs file that is not evidence is checked');
+    assert.strictEqual(of('scripts/install/brand.js', `const X = '${OLD}';\n`).length, 1, 'brand.js outside its LEGACY block is checked');
+});
+
+test('check 57: every allowed shape passes - evidence, history files, the retired entries and the marker', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const retiredEntries = [`${OLD}-wpf`, `${OLD}-aspnet`, `${OLD}-aspnet-data`];
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries });
+    for (const file of ['docs/rebrand-evidence.md', 'docs/plugin-migration-evidence.md', 'meta/migrations.json', 'meta/retired-entries.json'])
+        assert.deepStrictEqual(of(file, `${OLD} and ${OLD_ENV}X\n`), [], `${file} is allowed whole`);
+    // brand.js LEGACY and the manifest's retired block carry no allowance of their own: every LEGACY
+    // line is marked, and the retired lists hold no 1.x name.
+    const brand = `'use strict';\nconst LEGACY = {\n    core: '${OLD}', // legacy-name\n    stamp: '${OLD}.stamp',\n};\n`;
+    assert.deepStrictEqual(of('scripts/install/brand.js', brand).map((f) => f.split(' ')[0]), ['scripts/install/brand.js:4'], 'an unmarked LEGACY line is a finding');
+    const manifest = `{\n  "retired": {\n    "plugins": [\n      "${OLD}-old"\n    ]\n  }\n}\n`;
+    assert.deepStrictEqual(of('meta/stack-manifest.json', manifest).map((f) => f.split(' ')[0]), ['meta/stack-manifest.json:4'], 'the retired block is checked like any other');
+    assert.deepStrictEqual(of('scripts/x.test.js', `const home = '${OLD}-wpf';\nconst deny = 'Agent(${OLD}-aspnet-data:seat)';\n`), [], 'a retired per-stack entry name is allowed wherever it appears');
+    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpf@${OLD}';\n`).length, 1, 'the key beside a retired entry name is still the 1.x key');
+    assert.strictEqual(of('scripts/x.test.js', `const id = '${OLD}-wpfx';\n`).length, 1, 'a longer name is not a retired entry');
+    assert.deepStrictEqual(of('stack/hooks/h.js', `const old = env.${OLD_ENV}X; // legacy-name\n`), [], 'a marked code line');
+    assert.deepStrictEqual(of('CLAUDE.md', `the 1.x \`${OLD}.stamp\` <!-- legacy-name -->\n`), [], 'a marked markdown line');
+    assert.deepStrictEqual(of('.github/workflows/w.yml', `cp a ${OLD}.zip # legacy-name - the 1.x fallback\n`), [], 'a marked shell / yaml line');
+    assert.deepStrictEqual(of('setup-plugin/references/p.md', `x ${OLD} # a probe; legacy-name: the 1.x cache dir\n`), [], 'the marker with a colon after it');
+});
+
+test('check 57: the marker is a whole word in a comment - a line merely containing the letters is checked', () => {
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (file, text) => lintLegacyNames([{ file, text }], { retiredEntries: [] });
+    assert.strictEqual(of('scripts/x.js', `const a = 'my-legacy-names-list ${OLD}';\n`).length, 1, 'a longer word is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // legacy-names\n`).length, 1, 'a plural in a comment is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = '${OLD}'; // old-legacy-name\n`).length, 1, 'a prefixed word is not the marker');
+    assert.strictEqual(of('scripts/x.js', `const a = 'legacy-name ${OLD}';\n`).length, 1, 'the word outside a comment is not the marker');
+});
+
+test('check 57: in the marketplace only the generated plugins[] passes - name, owner and metadata are checked', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { lintLegacyNames } = require('./lint-skills.js');
+    const of = (text) => lintLegacyNames([{ file: '.claude-plugin/marketplace.json', text }], { retiredEntries: [] }).map((f) => f.split(' ')[0]);
+    const market = [
+        '{',
+        '  "name": "envoydev",',
+        '  "owner": {',
+        `    "url": "https://github.com/envoydev/${OLD}"`,
+        '  },',
+        '  "metadata": {',
+        `    "description": "installed via the ${OLD} plugin",`,
+        '    "version": "2.0.0"',
+        '  },',
+        '  "plugins": [',
+        '    {',
+        `      "name": "${OLD}",`,
+        `      "description": "[RETIRED] ] ${OLD} - brackets in a string do not end the list"`,
+        '    },',
+        `    { "name": "${OLD}-hooks" }`,
+        '  ]',
+        '}',
+        '',
+    ].join('\n');
+    assert.deepStrictEqual(of(market), ['.claude-plugin/marketplace.json:4', '.claude-plugin/marketplace.json:7'], 'owner.url and metadata.description are findings, every plugins[] line passes');
+    // The live file: the plugins[] entries check 49 generates pass, and a 1.x name in the hand-edited
+    // metadata is caught.
+    const live = fs.readFileSync(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'), 'utf8');
+    assert.deepStrictEqual(of(live), [], 'the committed marketplace is clean');
+    const bumped = JSON.parse(live);
+    bumped.metadata.description = `installed via the ${OLD} plugin`;
+    bumped.owner.url = `https://github.com/envoydev/${OLD}`;
+    assert.strictEqual(of(`${JSON.stringify(bumped, null, 2)}\n`).length, 2, 'a hand edit to metadata.description or owner.url is a finding');
+});
+
+test('check 57: the walk reads tracked text files, and the live tree carries no unmarked 1.x name', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintLegacyNames, repoTextFiles } = require('./lint-skills.js');
+    // A tree with no .git (the clean export the gate runs in) is walked: node_modules and binary
+    // files are skipped, a text file is read.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lint57-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'a.md'), `${OLD}\n`);
+        fs.mkdirSync(path.join(dir, 'node_modules'));
+        fs.writeFileSync(path.join(dir, 'node_modules', 'b.js'), `${OLD}\n`);
+        fs.writeFileSync(path.join(dir, 'c.bin'), Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(OLD)]));
+        const files = repoTextFiles(dir);
+        assert.deepStrictEqual(files.map((f) => f.file), ['a.md'], 'only the text file outside node_modules');
+        assert.strictEqual(lintLegacyNames(files, { retiredEntries: [] }).length, 1);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+
+    const live = repoTextFiles();
+    assert.ok(live.length > 300, `the walk reaches the tree (${live.length} files)`);
+    assert.deepStrictEqual(lintLegacyNames(live), [], 'every 1.x spelling left is a marked legacy reader or an allowed history file');
+});
+
+// Check 27. Task 12 rewrote lintEnvironmentCatalog from a twin-diff to a seed-literal-name diff
+// (settings.js's `written:true` rows plus the two special-cased decision keys), and shipped it with
+// no committed regression test (review, Minor: "a future edit to this function has nothing pinning
+// its negative-case behavior"). Pin every mismatch shape the function actually checks, plus one
+// clean pass, the way check 51's test does.
+test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration drift, and a clean set passes', () => {
+    const { lintEnvironmentCatalog } = require('./lint-skills.js');
+
+    const commandSrcOk = { init: 'reads meta/environment.json here', configure: 'meta/environment.json', validate: 'meta/environment.json' };
+    const baseRows = () => ([
+        { key: 'ALFRED_CODE_FOO', default: 'bar', what: 'does foo', written: true },
+        { key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'docs versioning' },
+        { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'hooks off csv' },
+    ]);
+    const seedSrcOk = 'ALFRED_CODE_FOO ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF';
+    const migrationsOk = { migrations: [] };
+
+    // Clean pass: consistent catalog, seed, commands and migrations report nothing.
+    assert.deepStrictEqual(
+        lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsOk, commandSrcOk),
+        [], 'a fully consistent catalog/seed/migrations/commands set is clean');
+
+    // A guided command that never reads the catalog.
+    const badCommandSrc = { ...commandSrcOk, status: 'no catalog mention here' };
+    assert.match(
+        lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsOk, badCommandSrc).find((f) => /^status/.test(f)),
+        /status does not read meta\/environment\.json/);
+
+    // `env` is not an array at all.
+    assert.deepStrictEqual(
+        lintEnvironmentCatalog({ env: 'nope' }, seedSrcOk, migrationsOk, commandSrcOk),
+        ['environment.json has no `env` array - the guided commands would read an empty environment layer']);
+
+    // A row with no `key`.
+    assert.ok(lintEnvironmentCatalog({ env: [...baseRows(), { default: 'x', what: 'y' }] }, seedSrcOk, migrationsOk, commandSrcOk)
+        .includes('environment.json has a row with no `key`'));
+
+    // The same key listed twice.
+    assert.ok(lintEnvironmentCatalog({ env: [...baseRows(), { key: 'ALFRED_CODE_FOO', default: 'x', what: 'y' }] }, seedSrcOk, migrationsOk, commandSrcOk)
+        .includes('environment.json lists ALFRED_CODE_FOO twice'));
+
+    // No string `default`.
+    const noDefault = baseRows().map((r) => (r.key === 'ALFRED_CODE_FOO' ? { key: r.key, what: r.what, written: r.written } : r));
+    assert.ok(lintEnvironmentCatalog({ env: noDefault }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO has no string `default`/.test(f)));
+
+    // No `what`.
+    const noWhat = baseRows().map((r) => (r.key === 'ALFRED_CODE_FOO' ? { key: r.key, default: r.default, written: r.written } : r));
+    assert.ok(lintEnvironmentCatalog({ env: noWhat }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO has no `what`/.test(f)));
+
+    // written:true but the seed's own source never names the key literally.
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO is marked written, but scripts\/install\/settings\.js never names it literally/.test(f)));
+
+    // A decision key missing from the catalog.
+    const noDocsVersioningRow = baseRows().filter((r) => r.key !== 'ALFRED_CODE_DOCS_VERSIONING');
+    assert.ok(lintEnvironmentCatalog({ env: noDocsVersioningRow }, seedSrcOk, migrationsOk, commandSrcOk)
+        .some((f) => /settings\.js special-cases ALFRED_CODE_DOCS_VERSIONING, which environment\.json does not list/.test(f)));
+
+    // A decision key missing from the seed's own source.
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, 'ALFRED_CODE_FOO ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /ALFRED_CODE_DOCS_VERSIONING is a catalog row, but scripts\/install\/settings\.js does not name it/.test(f)));
+
+    // More than 4 `ask: true` rows blows the AskUserQuestion cap.
+    const askRows = ['A', 'B', 'C', 'D', 'E'].map((n) => ({ key: `ALFRED_CODE_${n}`, default: '', what: n, ask: true }))
+        .concat([{ key: 'ALFRED_CODE_DOCS_VERSIONING', default: 'git', what: 'x' }, { key: 'ALFRED_CODE_HOOKS_OFF', default: '', what: 'y' }]);
+    assert.ok(lintEnvironmentCatalog({ env: askRows }, 'ALFRED_CODE_DOCS_VERSIONING ALFRED_CODE_HOOKS_OFF', migrationsOk, commandSrcOk)
+        .some((f) => /asks 5 questions on setup's environment screen/.test(f)));
+
+    // A migration renaming to a key the catalog does not list.
+    const migrationsMissing = { migrations: [{ id: 'm1', rename_settings_env: { from: 'OLD_KEY', to: 'ALFRED_CODE_MISSING' } }] };
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMissing, commandSrcOk)
+        .some((f) => /migrations\.json 'm1' renames OLD_KEY to ALFRED_CODE_MISSING, which environment\.json does not list/.test(f)));
+
+    // A migration landing on a real key whose row disagrees on `renamed_from`.
+    const migrationsMismatch = { migrations: [{ id: 'm2', rename_settings_env: { from: 'OLD_FOO', to: 'ALFRED_CODE_FOO' } }] };
+    assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMismatch, commandSrcOk)
+        .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
+});
+
+// Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and
+// `ToolSearch select:` line - a spelling check 54 cannot see, since it only bans the BARE form. The
+// stale spellings below are fixtures, so each line carries the marker the check skips.
+test('lintStaleMcpToolNames flags a plugin tool spelling no shipped server answers, and the live tree carries none', () => {
+    const { lintStaleMcpToolNames } = require('./lint-skills.js');
+    const entries = [
+        { name: 'memory', mcpServers: { memory: {} } },
+        { name: 'browser-chrome', mcpServers: { 'browser-chrome': {} } },
+    ];
+    const clean = 'tools: mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-chrome_browser-chrome__browser_navigate\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/a.md', text: clean }] }), [], 'shipped spellings pass');
+    const stale = 'line one\ntools: mcp__plugin_gone_gone__find_symbol\n'; // mcp-fixture
+    const hit = lintStaleMcpToolNames({ entries, files: [{ file: 'stack/agents/b.md', text: stale }] });
+    assert.strictEqual(hit.length, 1, 'one stale spelling, one finding');
+    assert.match(hit[0], /stack\/agents\/b\.md:2 .*mcp__plugin_gone_gone__.*'gone'/, 'the finding names file:line, the spelling and the plugin'); // mcp-fixture
+    const wrongServer = 'mcp__plugin_memory_other__x\n'; // mcp-fixture
+    assert.match(lintStaleMcpToolNames({ entries, files: [{ file: 'meta/x.json', text: wrongServer }] })[0], /'memory' carries no server 'other'/, 'a server the plugin does not declare');
+    const marked = 'mcp__plugin_gone_gone__x // mcp-fixture\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, files: [{ file: 'scripts/t.test.js', text: marked }] }), [], 'a marked fixture line passes');
+    assert.deepStrictEqual(lintStaleMcpToolNames(), [], 'no stale plugin tool spelling under stack/, setup-plugin/, meta/ or scripts/');
+});
+
+// Check 60. The inventory page is ONE inline script building every table; a string that does not parse
+// (an unescaped double quote in a row) leaves the page blank in the browser, and no other check reads
+// the script as code. The check runs `node --check` over each inline script and names the page line.
+test('lintPageScripts flags an inline page script node --check refuses, and the live inventory page parses', () => {
+    const { lintPageScripts } = require('./lint-skills.js');
+    const page = (body) => `<!doctype html>\n<html><body>\n<p>x</p>\n<script>\n${body}\n</script>\n<script src="https://cdn.example.invalid/x.js"></script>\n</body></html>\n`;
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["a", "fine"],\n];') }), [], 'a script that parses passes');
+    const broken = lintPageScripts({ file: 'docs/p.html', html: page('const rows = [\n  ["a", "says "quoted" words"],\n];') });
+    assert.strictEqual(broken.length, 1, broken.join('\n'));
+    assert.match(broken[0], /docs\/p\.html:6 .*node --check.*SyntaxError/, 'the finding names the page line, the tool and the error');
+    assert.deepStrictEqual(lintPageScripts({ file: 'docs/p.html', html: '<html><body>no script</body></html>' }), [], 'no inline script, nothing to check');
+    assert.deepStrictEqual(lintPageScripts(), [], 'docs/alfred-code.html: its script parses');
+});
+
+// Pilot 2 (2026-09-27): the dispatcher's agent listing carried 13.5k chars of descriptions for 30 seats
+// in every session's first call. A description is the 'Use when...' sentence plus its 'Do NOT use' clause;
+// anything longer belongs in the agent's own body, which only a dispatched seat pays for.
+test('an agent description is capped at 300 chars', () =>
+{
+    const { lintAgentDescription } = require('./lint-skills.js');
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', 'x'.repeat(299)), [], 'one under');
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', 'x'.repeat(300)), [], 'at the cap');
+    const over = lintAgentDescription('agents/a.md', 'x'.repeat(301));
+    assert.strictEqual(over.length, 1, 'one over');
+    assert.match(over[0], /agents\/a\.md description is 301 chars \(> 300\)/);
+    assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
+});
+
+// Review A, M7: the 300-char cut dropped the seat to use instead from three 'Do NOT use' clauses; where the cap has
+// room, the alternative is named.
+test('a capped agent description still names the seat to use instead', () =>
+{
+    const yaml = require('js-yaml');
+    const desc = (seat) => String(yaml.load(/^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(__dirname, '..', 'stack', 'agents', `${seat}.md`), 'utf8'))[1]).description);
+    for (const [seat, alternative] of [
+        ['console-solution-designer', 'windows-service-solution-designer'],
+        ['devops-solution-designer', 'alfred-issue-diagnoser-ci'],
+        ['data-implementer', 'aspnet-implementer'],
+    ])
+    {
+        const d = desc(seat);
+        assert.ok(d.slice(d.indexOf('Do NOT use')).includes(alternative), `${seat}: its Do NOT use clause names ${alternative}`);
+        assert.ok(d.length <= 300, `${seat}: ${d.length} chars`);
+    }
 });

@@ -4,19 +4,21 @@
 // their ages, the files this session wrote - with no model call, and the SessionStart `compact`
 // injection points at it.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-fresh-session-start.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-state-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
-for (const k of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_STACK_HOOKS_OFF', 'CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW', 'CLAUDE_STACK_DOCS_ASK',
-    'CLAUDE_STACK_FRESH_SESSION_200K', 'CLAUDE_STACK_FRESH_SESSION_1M', 'CLAUDE_STACK_FRESH_SESSION_DEFAULT'])
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW', 'ALFRED_CODE_DOCS_ASK',
+    'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_DEFAULT'])
     delete BASE_ENV[k];
 
 let seq = 0;
@@ -32,7 +34,7 @@ function project()
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: sid, cwd: root, ...payload }),
         encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, TMPDIR: tmpdir, TEMP: tmpdir, TMP: tmpdir, ...env },
     });
-    const flow = path.join(root, '.claude', 'docs', 'flow');
+    const flow = path.join(root, '.alfred', 'docs', 'flow');
     const state = path.join(flow, 'COMPACT-STATE');
     const stamp = (name, minutesOld) =>
     {
@@ -64,7 +66,7 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     p.wrote('agent-x', ['stack/hooks/b.js', 'docs/c.md']);
     const tp = p.transcript([
         toolUse('Read', { file_path: '/r/docs/superpowers/plans/2026-01-01-old.md' }),
-        toolUse('Edit', { file_path: '/r/.claude/docs/superpowers/plans/2026-09-20-live.md', old_string: 'a', new_string: 'b' }),
+        toolUse('Edit', { file_path: '/r/.alfred/docs/superpowers/plans/2026-09-20-live.md', old_string: 'a', new_string: 'b' }),
         toolUse('Bash', { command: 'git status' }),
     ]);
     const r = p.run({ hook_event_name: 'PreCompact', trigger: 'auto', custom_instructions: null, transcript_path: tp });
@@ -73,7 +75,7 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     const text = fs.readFileSync(p.state, 'utf8');
     assert.match(text, new RegExp(`^session: ${p.sid}$`, 'm'));
     assert.match(text, /^trigger: auto$/m);
-    assert.match(text, /^live plan: \/r\/\.claude\/docs\/superpowers\/plans\/2026-09-20-live\.md$/m);
+    assert.match(text, /^live plan: \/r\/\.alfred\/docs\/superpowers\/plans\/2026-09-20-live\.md$/m);
     assert.match(text, /^ {2}APPROVAL - 30 min old$/m);
     assert.match(text, /^ {2}COMMIT-GATE - 2 min old$/m);
     assert.doesNotMatch(text, /monitor-sess/);
@@ -85,14 +87,14 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
 test('compact-state: with no plan in the transcript the newest plan under the docs root is taken, else none', () =>
 {
     const p = project();
-    const plans = path.join(p.root, '.claude', 'docs', 'superpowers', 'plans');
+    const plans = path.join(p.root, '.alfred', 'docs', 'superpowers', 'plans');
     fs.mkdirSync(plans, { recursive: true });
     fs.writeFileSync(path.join(plans, 'a.md'), 'a');
     fs.writeFileSync(path.join(plans, 'b.md'), 'b');
     const old = new Date(Date.now() - 3600000);
     fs.utimesSync(path.join(plans, 'a.md'), old, old);
     p.run({ hook_event_name: 'PreCompact', trigger: 'manual', transcript_path: p.transcript([toolUse('Bash', { command: 'ls' })]) });
-    assert.match(fs.readFileSync(p.state, 'utf8'), /^live plan: \.claude\/docs\/superpowers\/plans\/b\.md \(newest under the docs root\)$/m);
+    assert.match(fs.readFileSync(p.state, 'utf8'), /^live plan: \.alfred\/docs\/superpowers\/plans\/b\.md \(newest under the docs root\)$/m);
 
     const none = project();
     none.run({ hook_event_name: 'PreCompact', trigger: 'manual' });
@@ -135,7 +137,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
     const ctx = (r) => JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
     const mine = ctx(p.run({ hook_event_name: 'SessionStart', source: 'compact' }));
     assert.match(mine, /AUTO-COMPACTED/, 'the fresh-session ask is gone');
-    assert.match(mine, /\.claude\/docs\/flow\/COMPACT-STATE/);
+    assert.match(mine, /\.alfred\/docs\/flow\/COMPACT-STATE/);
     const other = ctx(p.run({ hook_event_name: 'SessionStart', source: 'compact', session_id: 'someone-else' }));
     assert.doesNotMatch(other, /COMPACT-STATE/, 'another session was pointed at this snapshot');
 });
@@ -143,7 +145,7 @@ test('compact-state: the compact injection points at the snapshot of THIS sessio
 test('compact-state: with every fresh-session offer off, the compact start still points at the snapshot - and says nothing else', () =>
 {
     const p = project();
-    const off = { CLAUDE_STACK_FRESH_SESSION_200K: '0', CLAUDE_STACK_FRESH_SESSION_1M: '0', CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' };
+    const off = { ALFRED_CODE_FRESH_SESSION_200K: '0', ALFRED_CODE_FRESH_SESSION_1M: '0', ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' };
     p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, off);
     const r = p.run({ hook_event_name: 'SessionStart', source: 'compact' }, off);
     const text = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
@@ -154,9 +156,9 @@ test('compact-state: with every fresh-session offer off, the compact start still
     assert.strictEqual(q.run({ hook_event_name: 'SessionStart', source: 'compact' }, off).stdout, '');
 });
 
-test('compact-state: CLAUDE_STACK_HOOKS_OFF naming the hook writes nothing', () =>
+test('compact-state: ALFRED_CODE_HOOKS_OFF naming the hook writes nothing', () =>
 {
     const p = project();
-    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, { CLAUDE_STACK_HOOKS_OFF: 'guard-fresh-session-start' });
+    p.run({ hook_event_name: 'PreCompact', trigger: 'auto' }, { ALFRED_CODE_HOOKS_OFF: 'guard-fresh-session-start' });
     assert.ok(!fs.existsSync(p.state));
 });

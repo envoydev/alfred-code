@@ -1,5 +1,5 @@
 {
-  "_comment": "installer-managed - replaced on every install/update, so a local edit is lost. The ONE source of the context window (max input tokens) per model id for guard-stop-contract.js and guard-fresh-session-start.js; a model missing here takes CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW. A key matches the id itself, a dated snapshot (claude-haiku-4-5-20251001) and a provider-prefixed id (us.anthropic.claude-opus-5); the longest matching key wins. A model whose window is wrong here is fixed here, in the release.",
+  "_comment": "installer-managed - replaced on every install/update, so a local edit is lost. The ONE source of the context window (max input tokens) per model id for guard-stop-contract.js and guard-fresh-session-start.js; a model missing here takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW. A key matches the id itself, a dated snapshot (claude-haiku-4-5-20251001) and a provider-prefixed id (us.anthropic.claude-opus-5); the longest matching key wins. A model whose window is wrong here is fixed here, in the release.",
   "_source": "Claude models reference (claude-api skill, shared/models.md, cached 2026-06-24, bundled with Claude Code 2.1.270); older models carry no window there and are not listed",
   "models": {
     "claude-fable-5-1": 1000000,

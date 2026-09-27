@@ -18,9 +18,12 @@
 //
 // Resolution order for the database, first hit wins:
 //   1. MCP_MEMORY_SQLITE_PATH already in the environment - someone set it deliberately, obey it
-//   2. CLAUDE_STACK_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
-//   3. CLAUDE_STACK_MEMORY_DB in <cwd>/.claude/settings.local.json `env` (a per-machine override)
-//   4. CLAUDE_STACK_MEMORY_DB in the ACCOUNT settings.json `env`
+//   2. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.local.json `env` (a per-machine override -
+//      read BEFORE the shared file, the same order uv-python.js already uses: I7, R47 fix round 1.
+//      A local-scope install (T16) now writes this key ONLY here, so reading the shared file first
+//      would open the wrong project's database whenever both files register one.)
+//   3. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
+//   4. ALFRED_CODE_MEMORY_DB in the ACCOUNT settings.json `env`
 //   5. ~/.memory-mcp/memory.db - the global default, which is what a fresh install picks
 const fs = require('node:fs');
 const os = require('node:os');
@@ -37,6 +40,18 @@ function envFrom(file)
     catch { return {}; }   // absent, unreadable or malformed is not a failure - fall through
 }
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This launcher ships without // legacy-name
+// hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
+// the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 function accountDir()
 {
     if (process.env.CLAUDE_CONFIG_DIR) return process.env.CLAUDE_CONFIG_DIR;
@@ -47,12 +62,12 @@ function resolveDb(projectDir)
 {
     if (process.env.MCP_MEMORY_SQLITE_PATH) return process.env.MCP_MEMORY_SQLITE_PATH;
     for (const file of [
-        path.join(projectDir, '.claude', 'settings.json'),
         path.join(projectDir, '.claude', 'settings.local.json'),
+        path.join(projectDir, '.claude', 'settings.json'),
         path.join(accountDir(), 'settings.json'),
     ])
     {
-        const value = envFrom(file).CLAUDE_STACK_MEMORY_DB;
+        const value = envOf(envFrom(file), 'MEMORY_DB');
         if (value) return path.isAbsolute(value) ? value : path.join(projectDir, value);
     }
     return path.join(os.homedir(), '.memory-mcp', 'memory.db');

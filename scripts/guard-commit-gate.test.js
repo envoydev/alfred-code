@@ -9,15 +9,16 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-commit-gate-'));
 
 // Pin an empty account dir and a scratch project root for the whole run - a real machine's
-// account settings and this checkout's own `.claude/docs/hook-blocks/` must never be touched by
+// account settings and this checkout's own `.alfred/docs/hook-blocks/` must never be touched by
 // a test run (the same containment guard-hooks.test.js's head applies).
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
-delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 
 const runIn = (hook, payload, opts) =>
@@ -69,7 +70,7 @@ function pushReceipt(head, over = {}) {
   ].filter((l) => l != null).join('\n') + '\n';
 }
 const writeReceipt = (dir, name, body) => {
-  const flow = path.join(dir, '.claude', 'docs', 'flow');
+  const flow = path.join(dir, '.alfred', 'docs', 'flow');
   fs.mkdirSync(flow, { recursive: true });
   fs.writeFileSync(path.join(flow, name), body);
 };
@@ -128,12 +129,12 @@ test('guard-ungated-commit: plain top-level folders are not projects - only a fo
 
 test('guard-ungated-commit: a pure docs diff, and a NOT RUN probe, are not scope-gated at all', () => {
   const { dir, git } = pushRepo();
-  fs.mkdirSync(path.join(dir, '.claude', 'docs', 'architecture'), { recursive: true });
-  fs.writeFileSync(path.join(dir, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), forty());
+  fs.mkdirSync(path.join(dir, '.alfred', 'docs', 'architecture'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), forty());
   git('add', '-A'); git('commit', '-qm', 'docs: architecture notes');
   const docsHead = headOf(dir);
   writeReceipt(dir, 'PUSH-GATE', pushReceipt(docsHead, { scope: null }));
-  assert.equal(gateIn(dir, 'git push', { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }), 0,
+  assert.equal(gateIn(dir, 'git push', { ALFRED_CODE_DOCS_PATH: '.alfred/docs' }), 0,
     'a docs-only diff touches no identifiable project - no scope: line required');
 
   fs.mkdirSync(path.join(dir, 'apps', 'auth'), { recursive: true });
@@ -223,4 +224,174 @@ test('guard-ungated-commit: a bare `git add -N` with no chained reset is blocked
   const withCommit = gateFull(dir, 'git add -N . && git commit -am wip');
   assert.equal(withCommit.status, 2, 'the add -N check fires before the commit gate is even reached');
   assert.match(withCommit.stderr, /git reset -q/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 7. hidden characters on an added line (ECC comparison R9 - the Trojan Source class)
+// ---------------------------------------------------------------------------------------------
+// A bidi override, a tag-block character or a zero-width mark reads one way to the reviewer and
+// another to the compiler or the model. Written as escapes: lint check 32 sweeps scripts/ too.
+test('guard-ungated-commit: a hidden character on an added line blocks, a byte-0 BOM does not', () => {
+  const clean = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-hidden-'));
+    const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+    git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+    fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n');
+    git('add', '-A'); git('commit', '-qm', 'seed');
+    return { dir, git };
+  };
+  const RLO = '\u202E';
+  const TAG_A = String.fromCodePoint(0xE0041);
+  const BOM = '\uFEFF';
+
+  for (const [name, text, hex] of [
+    ['bidi.js', `const access = 'user${RLO} // admin';\n`, '202E'],
+    ['tag.md', `Read me.${TAG_A}\n`, 'E0041'],
+    ['zw.cs', `var is\u200BAdmin = false;\n`, '200B'],
+    ['bom.cs', `using System;\nvar a = 1;${BOM}\n`, 'FEFF'],
+  ]) {
+    const { dir, git } = clean();
+    fs.writeFileSync(path.join(dir, name), text);
+    git('add', name);
+    const r = gateFull(dir, 'git commit -m one');
+    assert.equal(r.status, 2, `${name}: a hidden U+${hex} on an added line blocks`);
+    assert.match(r.stderr, new RegExp(`${name.replace('.', '\\.')}:\\d+ - a hidden character U\\+${hex}`), `${name}: the hit names file, line and code point`);
+    assert.match(r.stderr, /STAGED-SCAN-ALLOW/, `${name}: the same receipt route`);
+  }
+
+  const { dir, git } = clean();
+  fs.writeFileSync(path.join(dir, 'setup.ps1'), `${BOM}Write-Host 'hi'\n`);
+  fs.writeFileSync(path.join(dir, 'Program.cs'), `${BOM}using System;\nconst string Rlo = "\\u202E";\n`);
+  git('add', '-A');   // two files, so the trivial-diff exemption keeps the commit gate out of it
+  assert.equal(gateIn(dir, 'git commit -m bom'), 0, 'a byte-0 BOM (a .ps1, or an editor-written .cs) and an escape written as text pass');
+  git('commit', '-qm', 'bom');
+
+  fs.writeFileSync(path.join(dir, 'late.js'), `const s = 'x${RLO}y';\n`);
+  assert.equal(gateIn(dir, 'git commit -m nothing-staged'), 0, 'an untracked file the commit does not take in is not scanned');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 2, 'a chained add takes it in, so it is scanned');
+  const allow = path.join(dir, '.alfred', 'docs', 'flow', 'STAGED-SCAN-ALLOW');
+  fs.mkdirSync(path.dirname(allow), { recursive: true });
+  fs.writeFileSync(allow, 'late.js:1\n');
+  assert.equal(gateIn(dir, 'git add -A && git commit -m late'), 0, 'the receipt naming the hit opens it');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the repo git runs in: a session whose shell sits in a git worktree of its project commits THERE
+// ---------------------------------------------------------------------------------------------
+test('guard-ungated-commit: a commit from a worktree is judged on the worktree, not the clean main checkout', () => {
+  const main = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-main-'));
+  const git = (dir, ...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git(main, 'init', '-q'); git(main, 'config', 'user.email', 't@example.com'); git(main, 'config', 'user.name', 'test');
+  fs.writeFileSync(path.join(main, 'a.txt'), 'seed\n');
+  git(main, 'add', '-A'); git(main, 'commit', '-qm', 'seed');
+  fs.appendFileSync(path.join(main, '.git', 'info', 'exclude'), '.claude/\n'); // as a set-up project ignores it
+  const wt = path.join(main, '.claude', 'worktrees', 'feat');
+  git(main, 'worktree', 'add', '-q', '-b', 'feat', wt);
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(wt, f), forty());
+  const inWorktree = (command) => runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command }, cwd: wt }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: main }, cwd: main,
+  });
+  assert.equal(inWorktree('git commit -am x').status, 2, 'the worktree diff is non-trivial - no receipt, blocked');
+  writeReceipt(wt, 'COMMIT-GATE', ['VERIFIED the worktree change', 'authorized: "commit it"', `head: ${headOf(wt)}`,
+    'spec: 3 files', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
+  assert.equal(inWorktree('git commit -am x').status, 0, 'the receipt in the worktree opens it');
+
+  const sub = path.join(main, 'src');
+  fs.mkdirSync(sub);
+  for (const f of ['a.txt', 'b.txt', 'c.txt']) fs.writeFileSync(path.join(main, f), forty());
+  writeReceipt(main, 'COMMIT-GATE', ['VERIFIED the main change', 'authorized: "commit it"', `head: ${headOf(main)}`,
+    'spec: 3 files', 'live-probe: `npm test` 12/12'].join('\n') + '\n');
+  const fromSub = runIn('guard-ungated-commit.js', { tool_name: 'Bash', tool_input: { command: 'git commit -am x' }, cwd: sub }, {
+    env: { ...process.env, CLAUDE_PROJECT_DIR: main }, cwd: main,
+  });
+  assert.equal(fromSub.status, 0, 'a subfolder of the project still reads the project receipt');
+});
+
+// ---------------------------------------------------------------------------------------------
+// the staged scan reads what the commit takes in (2026-09-26 hooks review): a commit naming its
+// paths, a spaced or non-ASCII name, and a file past the cap beside a real hit
+// ---------------------------------------------------------------------------------------------
+const TOKEN = ['ghp', '0123456789abcdefghij0123456789abcdef'].join('_');
+const SCAN_BLOCK = /Blocked: the commit adds what must never land/;
+function scanRepo(files = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-scan-'));
+  const git = (...a) => spawnSync('git', ['-C', dir, ...a], { encoding: 'utf8' });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'test');
+  fs.appendFileSync(path.join(dir, '.git', 'info', 'exclude'), '.claude/\n');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 'seed\n');
+  for (const [f, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), body);
+  git('add', '-A'); git('commit', '-qm', 'seed');
+  return { dir, git, write: (f, body) => fs.writeFileSync(path.join(dir, f), body) };
+}
+
+test('guard-ungated-commit: a commit naming paths is scanned for what git commits from them', () => {
+  // `commitScope` read only -a and a chained add, so `git commit <path>` - which stages that path's
+  // working tree itself - committed a credential literal with exit 0.
+  const { dir, git, write } = scanRepo({ 'a.js': 'const a = 1;\n', 'b.js': 'const b = 1;\n' });
+  write('a.js', `const a = '${TOKEN}';\n`);
+  for (const c of ['git commit a.js -m x', 'git commit -m x -- a.js', 'git commit -o a.js -m x', 'git commit --only -m x a.js',
+    'git commit -i a.js -m x', 'git commit --include -m "fix; wip" a.js']) {
+    const r = gateFull(dir, c);
+    assert.match(r.stderr, SCAN_BLOCK, `the named path's working tree is committed: ${c}`);
+    assert.match(r.stderr, /a\.js:1 - a credential-shaped literal/, `and the hit is named: ${c}`);
+  }
+  write('b.js', 'const b = 2;\n');
+  assert.doesNotMatch(gateFull(dir, 'git commit b.js -m x').stderr, SCAN_BLOCK, 'a path the commit does not name is not in it');
+  write('c.js', 'debugger;\n'); git('add', 'c.js');
+  assert.doesNotMatch(gateFull(dir, 'git commit b.js -m x').stderr, SCAN_BLOCK, '--only leaves the rest of the index out');
+  assert.match(gateFull(dir, 'git commit -i b.js -m x').stderr, /c\.js:1 - a debugger statement/, '--include takes the index as well');
+  assert.match(gateFull(dir, 'git commit -m x').stderr, /c\.js:1/, 'a plain commit takes the index');
+});
+
+test('guard-ungated-commit: a chained add of a quoted name, a spaced name and a non-ASCII name are scanned', () => {
+  // The chained add was split on whitespace before unquoting, and git's `+++ b/my file.js<TAB>` header
+  // kept its TAB, so the extension tests missed and a STAGED-SCAN-ALLOW line never matched.
+  const { dir, git, write } = scanRepo();
+  write('cfg file.js', `module.exports = '${TOKEN}';\n`);
+  const chained = gateFull(dir, 'git add "cfg file.js" && git commit -m x');
+  assert.match(chained.stderr, /cfg file\.js:1 - a credential-shaped literal/, 'the quoted path of a chained add is taken in');
+  git('add', '-A');
+  write('my file.js', 'debugger;\n'); write('café.js', 'debugger;\n'); write('my notes.md', `token ${TOKEN}\n`);
+  git('add', '-A');
+  const r = gateFull(dir, 'git commit -m x');
+  assert.match(r.stderr, /my file\.js:1 - a debugger statement/, 'a spaced name keeps its extension');
+  assert.match(r.stderr, /café\.js:1 - a debugger statement/, 'a non-ASCII name is read as written');
+  assert.match(r.stderr, /my notes\.md:1 - a credential-shaped literal/);
+  writeReceipt(dir, 'STAGED-SCAN-ALLOW', ['cfg file.js', 'my file.js:1', 'café.js:1', 'my notes.md:1'].join('\n') + '\n');
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'every hit named in the receipt - the scan opens');
+});
+
+test('guard-ungated-commit: a binary or oversize file is skipped, and a hit beside it still blocks', () => {
+  // Over the 2MB cap the scan threw and returned no findings at all, so a credential in leak.js
+  // committed beside one oversize (or binary, read raw as UTF-8) untracked file.
+  const LIMIT = 2 * 1024 * 1024;
+  const { dir, git, write } = scanRepo();
+  write('huge.log', `token ${TOKEN}\n${'x'.repeat(LIMIT + 10)}\n`);
+  write('blob.bin', Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from(`\n${TOKEN}\n`)]));
+  write('leak.js', `const t = '${TOKEN}';\n`);
+  const loose = gateFull(dir, 'git add -A && git commit -m x');
+  assert.match(loose.stderr, /leak\.js:1 - a credential-shaped literal/, 'the untracked hit beside them stands');
+  assert.doesNotMatch(loose.stderr, /huge\.log|blob\.bin/, 'an oversize or binary file is skipped, not scanned');
+  git('add', '-A');
+  const staged = gateFull(dir, 'git commit -m x');
+  assert.match(staged.stderr, /leak\.js:1 - a credential-shaped literal/, 'the staged hit beside them stands');
+  assert.doesNotMatch(staged.stderr, /huge\.log|blob\.bin/, 'staged, they are skipped the same way');
+  git('rm', '-q', '--cached', 'leak.js'); fs.rmSync(path.join(dir, 'leak.js'));
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'alone, a file past the cap is not scanned');
+});
+
+test('guard-ungated-commit: a joiner or mark a script needs is text, and the rest of the hidden class still blocks', () => {
+  // `hidden-chars.js` flagged a README emoji built with a ZWJ and a Persian ZWNJ as 'write it as an
+  // escape', which Markdown and JSON prose cannot do. The commit scan and lint check 32 share the class.
+  const { dir, git, write } = scanRepo();
+  write('README.md', 'Built by a \u{1F468}\u200D\u{1F4BB}.\n');
+  write('fa.json', '{ "want": "می\u200Cخواهم" }\n');
+  write('he.md', 'שלום\u200F.\n');
+  git('add', '-A');
+  assert.doesNotMatch(gateFull(dir, 'git commit -m x').stderr, SCAN_BLOCK, 'an emoji ZWJ, a Persian ZWNJ and an RLM pass');
+  for (const [name, text, hex] of [['a.js', 'const ab = "a\u200Db";\n', '200D'], ['b.md', 'text \u202E here\n', '202E'], ['c.md', 'zero\u200Bwidth\n', '200B']]) {
+    write(name, text); git('add', name);
+    assert.match(gateFull(dir, 'git commit -m x').stderr, new RegExp(`${name.replace('.', '\\.')}:1 - a hidden character U\\+${hex}`), `${name}: still blocks`);
+    git('rm', '-q', '--cached', name); fs.rmSync(path.join(dir, name));
+  }
 });

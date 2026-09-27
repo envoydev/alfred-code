@@ -38,6 +38,18 @@ const path = require('path');
 const crypto = require('crypto');
 const { execFileSync, spawn } = require('child_process');
 
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied // legacy-name
+// beside memory-session.js, without hook-prelude.js), so its own copy of envOf is inline rather
+// than required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
 function pathForLevel(level, { home, space, projectRoot } = {}) {
   if (level === 'global') return path.join(home, '.memory-mcp', 'memory.db');
   if (level === 'scoped') return path.join(home, '.memory-mcp', `memory_${space || 'default'}.db`);
@@ -114,22 +126,26 @@ function memoryEnvPath(entry, home) {
 
 // The settings.json `env` key the PLUGIN route writes first, then the registration route's own
 // files. From 1.0.0 the memory server arrives through a plugin and there is no `.mcp.json` entry to
-// read: the install writes its resolved db path to CLAUDE_STACK_MEMORY_DB in the project's
-// settings.json (the account file for a global install), which is exactly what the plugin's
-// launcher reads at start-up - so this resolver and the running server agree by construction.
-// The registration lookups below stay for the copy route and for every install made before 1.0.0.
+// read: the install writes its resolved db path to ALFRED_CODE_MEMORY_DB in the project's
+// settings.local.json at every scope (C8 - this machine's path, never the committed settings.json),
+// which is exactly what the plugin's launcher reads at start-up - so this resolver and the running
+// server agree by construction. settings.json and the account settings are still read after it,
+// because an install made before C8 wrote the key there. The registration lookups below stay for
+// the copy route and for every install made before 1.0.0.
 // Never throws - every read is its own try/catch, and a missing or unreadable file is simply
 // "not registered here".
 function settingsEnvDbPath(projectRoot, home, configDir) {
   const files = [
-    path.join(projectRoot, '.claude', 'settings.json'),
+    // settings.local.json first - Claude Code's own precedence, and the file every install writes
+    // ALFRED_CODE_MEMORY_DB into since C8 (memory-launch.js resolves it in the same order).
     path.join(projectRoot, '.claude', 'settings.local.json'),
+    path.join(projectRoot, '.claude', 'settings.json'),
     path.join(configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'settings.json'),
   ];
   for (const file of files) {
     try {
       const data = readJson(file);
-      const value = data && data.env && data.env.CLAUDE_STACK_MEMORY_DB;
+      const value = data && data.env && envOf(data.env, 'MEMORY_DB');
       if (typeof value !== 'string' || !value) continue;
       // Same resolution the plugin's own launcher uses (stack/mcp/memory-launch.js): a relative
       // value is the project's, never the reader's cwd, or the two would disagree about the db.
@@ -168,7 +184,7 @@ function registeredDbPath(projectRoot, { home = os.homedir(), configDir } = {}) 
 }
 
 // The MAIN repo directory, not the checkout's own - inside a git worktree, `--show-toplevel` answers
-// with the WORKTREE's own folder (measured: 'branch-aware-docs', not 'claude-stack'), which would tag
+// with the WORKTREE's own folder (measured: 'branch-aware-docs', not 'alfred-code'), which would tag
 // every memory a worktree session saves with the wrong project, hide every memory the main checkout
 // already holds, and (levelOfPath, below) read the installer's own project-level db path as 'unknown'.
 // `--git-common-dir` is shared by every worktree of one repo and always ends in '.git' for a normal or
@@ -199,7 +215,7 @@ const headingName = (line) => { const m = /^##\s+(.+?)\s*$/.exec(line); return m
 const ruleFieldName = (line) => { const m = /^\s*-?\s*name:\s*(.+?)\s*$/.exec(line); return m ? m[1].replace(/^['"]|['"]$/g, '').trim() : null; };
 const linesOf = (text, pick) => String(text).split(/\r?\n/).map(pick).filter(Boolean);
 
-// Names from the related-projects domain (shape: stack/skills/project-related-context/references/artifact-shapes.md):
+// Names from the related-projects domain (shape: stack/skills/alfred-capture-related-projects/references/artifact-shapes.md):
 // `<docsRoot>/related-projects/RELATED-PROJECTS.md` first - one '## <name>' heading per sibling - else
 // the generated awareness rule `.claude/rules/baseline-project-related-context.md` (a 'name:' field per
 // sibling entry). Neither PRESENT (not neither non-empty) -> []; the doc wins whenever it exists at all,
@@ -312,6 +328,12 @@ const ageDays = (row, now) => {
 };
 const ageLabel = (days) => (days == null ? '' : days === 0 ? ', today' : `, ${days} day${days === 1 ? '' : 's'} old`);
 
+// pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes).
+// The database is shared across accounts and projects and a stored note can quote a token; the start
+// block re-sends every line it picks into every session, so a value is redacted before it is injected.
+const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
+const redactSecrets = (text) => String(text).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>');
+
 // The four selection groups, in order, newest first within each (the SQL query already orders every
 // row newest-first, and each group below is a single pass over that same order, so 'newest first'
 // holds within a group without a separate sort), `agent:`-tagged rows dropped entirely, a row picked
@@ -360,7 +382,7 @@ function selectForSession(dbPath, { project = '', related = [], capBytes = 4096,
   const lines = [];
   let bytes = 0;
   for (const { row, key } of picked) {
-    const line = `- [${kindLabel(row.memory_type)}${ageLabel(ageDays(row, now))}] ${truncate(oneLine(row.content), LINE_CONTENT_CAP)}`;
+    const line = `- [${kindLabel(row.memory_type)}${ageLabel(ageDays(row, now))}] ${truncate(redactSecrets(oneLine(row.content)), LINE_CONTENT_CAP)}`;
     const size = Buffer.byteLength(lines.length ? `\n${line}` : line, 'utf8');
     if (bytes + size > capBytes) continue;
     lines.push(line);
@@ -503,7 +525,7 @@ async function reembedPass({ entry, cwd, rows }) {
   };
   let index = 0;
   try {
-    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-reembed', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+    await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-reembed', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
     rpc.notify('notifications/initialized');
     for (; index < rows.length; index++) {
       const { row, mode } = rows[index];
@@ -591,7 +613,11 @@ const backupDir = () => path.join(os.homedir(), '.memory-mcp', 'backups');
 const backupLine = (row) => JSON.stringify({ ...row, tags: splitTags(row.tags), metadata: parseMeta(row.metadata) });
 const fromBackup = (b) => ({ ...b, tags: Array.isArray(b.tags) ? b.tags.join(',') : String(b.tags || ''), metadata: JSON.stringify(b.metadata && typeof b.metadata === 'object' ? b.metadata : {}) });
 
-const STACK_MEMORY_PLUGIN = 'memory@claude-stack';
+const STACK_MEMORY_PLUGIN = 'memory@envoydev';
+// A 1.x install's plugin id: the marketplace KEY never migrates (docs/rebrand-evidence.md S4/S9), so
+// its installed_plugins.json row still keys the server this way for the whole 2.x line - read only
+// when the current key carries no row.
+const STACK_MEMORY_PLUGIN_LEGACY = 'memory@claude-stack'; // legacy-name
 
 // A registration the copy route (or a pre-1.0.0 install) wrote: the project's .mcp.json, then the
 // account file's user-scope and project-scope entries - the files registeredDbPath reads.
@@ -609,15 +635,22 @@ function registrationEntry(projectRoot, home, configDir) {
   return withCommand(proj && proj.mcpServers && proj.mcpServers.memory);
 }
 
-// From 1.0.0 the server rides the memory@claude-stack PLUGIN, and no registration exists to read. The
-// plugin's install directory is the whole stack repo (every marketplace entry is sourced from its
-// root), so its own marketplace.json declares the server exactly as Claude Code launches it. This
-// project's install first, then an account-level one; another project's install, or a `memory`
-// plugin from any other marketplace, is never used.
+// From 1.0.0 the server rides a `memory@<marketplace key>` PLUGIN, and no registration exists to
+// read. The plugin's install directory is the whole stack repo (every marketplace entry is sourced
+// from its root), so its own marketplace.json declares the server exactly as Claude Code launches
+// it. The key is the marketplace's REGISTERED name, not a constant one: a fresh install adds the
+// marketplace as `envoydev`, but a 1.x install's marketplace key never migrates on rename
+// (docs/rebrand-evidence.md S4/S9), so its row still keys `memory@claude-stack` for the whole 2.x // legacy-name
+// line - read only as a fallback, and the current key's row wins when both exist. This project's
+// install first, then an account-level one; another project's install, or a `memory` plugin from
+// any other marketplace, is never used.
 function installedPluginRoots(projectRoot, home, configDir) {
   const dir = configDir || process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude');
   const data = readJson(path.join(dir, 'plugins', 'installed_plugins.json'));
-  const rows = data && data.plugins && Array.isArray(data.plugins[STACK_MEMORY_PLUGIN]) ? data.plugins[STACK_MEMORY_PLUGIN] : [];
+  const plugins = data && data.plugins ? data.plugins : {};
+  const current = Array.isArray(plugins[STACK_MEMORY_PLUGIN]) ? plugins[STACK_MEMORY_PLUGIN] : [];
+  const legacy = Array.isArray(plugins[STACK_MEMORY_PLUGIN_LEGACY]) ? plugins[STACK_MEMORY_PLUGIN_LEGACY] : []; // legacy-name
+  const rows = current.length ? current : legacy;
   const here = new Set([projectRoot, mainCheckoutRoot(projectRoot)].map(dirKey));
   const valid = rows.filter((r) => r && typeof r.installPath === 'string' && r.installPath);
   const mine = valid.filter((r) => r.projectPath && here.has(dirKey(String(r.projectPath))));
@@ -657,7 +690,7 @@ const SHUTDOWN_WAIT_MS = 5000;
 const PRESENT_QUERY = 'SELECT 1 FROM memories WHERE (content_hash = ? OR content = ?) AND deleted_at IS NULL LIMIT 1';
 
 // Test hook: forces the path a genuinely unavailable node:sqlite takes, on any Node version.
-const storeSqlite = () => (process.env.CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE === '1' ? null : nodeSqlite());
+const storeSqlite = () => (envOf(process.env, 'MEMORY_IMPORT_FORCE_NO_SQLITE') === '1' ? null : nodeSqlite());
 
 function openForPrecheck(DatabaseSync, dbPath) {
   try { return new DatabaseSync(dbPath, { readOnly: true }); } catch {}
@@ -771,7 +804,7 @@ async function storeThroughService({ entry, cwd, items }) {
     const deadline = Date.now() + OVERALL_TIMEOUT_MS;
     const timeLeft = () => Math.max(1, deadline - Date.now());
     try {
-      await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'claude-stack-memory-import', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
+      await rpc.call('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'alfred-code-memory-import', version: '1.0.0' } }, Math.min(INIT_TIMEOUT_MS, timeLeft()));
       rpc.notify('notifications/initialized');
       for (const item of pendingItems) {
         if (Date.now() > deadline) throw new Error('import timed out after 5 minutes');
@@ -867,7 +900,7 @@ async function cliImport(args) {
   if (!items.length) { console.log(`memory import: nothing to import, from ${file}`); return 0; }
   const projectRoot = cliRoot(opts);
   const entry = serviceEntry(projectRoot);
-  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it\n'); return 1; }
+  if (!entry) { process.stderr.write('memory import: no memory server found for this project - no registration, and no memory@envoydev plugin installed for it\n'); return 1; }
   try {
     const res = await storeThroughService({ entry, cwd: projectRoot, items });
     console.log(`memory import: ${res.imported} imported, ${res.present} already present, from ${file}${res.sqliteNote}`);
@@ -900,7 +933,7 @@ function cliDuplicates(args) {
   return 0;
 }
 
-const NO_SERVER = 'no memory server found for this project - no registration, and no memory@claude-stack plugin installed for it';
+const NO_SERVER = 'no memory server found for this project - no registration, and no memory@envoydev plugin installed for it';
 
 // The registered server, pointed at the database this run judges.
 function reembedEntry(projectRoot, dbPath) {

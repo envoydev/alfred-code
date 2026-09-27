@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // installer-managed - update overwrites local edits; put project policy in a separate hook file.
-// Three wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
+// Four wirings, one contract: the blocking-ask mandate (baseline-interaction.md) and the
 // fresh-session construction check (the flow skills' stop contracts) both failed as prose in
 // every audited strengthening - measured across 123 sessions: ~25 sessions ended turns on
 // 'say the word' / 'want me to X?' prose (stalls of 13min-37h, one plaintext-credential
@@ -16,6 +16,14 @@
 //   or resume fresh. It fires only after the work is done (never mid-response, which is what the
 //   old PreToolUse denial did), and re-arms only when the context has grown 1.5x since the last
 //   one - so a long session is asked once per real cost step, not once per question.
+//   It also carries the DONE-GATE PROBE, log-only: a close claiming the change done / fixed / passing /
+//   works / ready over a turn with a source edit (a file tool's, or a shell write read through
+//   shell-writes.js) writes one row per turn - `unrun` when the edit landed after the turn's last run
+//   (ALFRED_CODE_DONE_GATE=0 off). And the RATIONALIZATION PROBE, log-only: a close dismissing a
+//   failure in a turn with a red run, a skipped test or an added skip marker writes one row per turn.
+// PostToolUse + PostToolUseFailure (Bash|PowerShell) wiring: LOG-ONLY - a red build or test run writes one
+//   probe row per failure streak (where `alfred-habits-root-cause` was needed); the streak ends when every
+//   command that ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
 // PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
@@ -27,22 +35,23 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-stop-contract')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
+    if (prelude.standDown('guard-stop-contract')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -69,12 +78,12 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -90,6 +99,118 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
     exit(code);
   };
 })();
+
+// --- build and test runs: one classifier for the two method triggers -----------------------------
+// A command is a build or test run when one of its segments STARTS with a known runner, after env
+// assignments and wrappers (npx, time, env). Quoted strings and heredoc bodies are arguments, never
+// the command: `grep -rn "npm test" docs` is a search. The KIND names the runner; the KEY is the run
+// as typed, less its wrappers and redirections - `npm test` piped to `tail` is the same run as
+// `npm test`, and `npm test -- -t cart` is a scoped run of it. This list is NARROW on purpose: a
+// runner it misses costs the root-cause probe one row. The done gate asks a wider question below.
+const SHELL_TOOL_RE = /^(?:Bash|PowerShell)$/;
+const RUNNERS = [
+  [/^(jest|vitest|mocha|ava|karma|pytest|tsc|playwright\s+test|cypress\s+run)(?=\s|$)/, (m) => m[1].replace(/\s+/g, ' ')],
+  [/^(npm|pnpm|yarn|bun)\s+(?:run\s+)?(?!lint)(t|test|build|[\w:.-]*(?:test|build|check|typecheck|compile)[\w:.-]*)(?=\s|$)/, (m) => `${m[1]} ${m[2]}`],
+  [/^node\s+(?:--[\w-]+(?:=\S+)?\s+)*--test(?=\s|$)/, () => 'node --test'],
+  [/^(?:python3?|py)\s+-m\s+(pytest|unittest)(?=\s|$)/, (m) => m[1]],
+  [/^dotnet\s+(build|test)(?=\s|$)/, (m) => `dotnet ${m[1]}`],
+  [/^(ng|nx)\s+(build|test)(?=\s|$)/, (m) => `${m[1]} ${m[2]}`],
+  [/^go\s+(build|test|vet)(?=\s|$)/, (m) => `go ${m[1]}`],
+  [/^cargo\s+(build|test|check|clippy|nextest)(?=\s|$)/, (m) => `cargo ${m[1]}`],
+  [/^(?:\.[\\/])?(mvnw?|gradlew?)(?:\.bat|\.cmd)?(?:\s+-[\w.=:-]+)*(?:\s+[\w:-]+)*?\s+(test|verify|package|install|compile|build|check|assemble)(?=\s|$)/, (m) => `${m[1].replace(/w$/, '')} ${m[2]}`],
+];
+const WRAPPER_RE = /^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx))\s+/;
+const stripWrappers = (seg, re) => { for (let prev = ''; prev !== seg;) { prev = seg; seg = seg.replace(re, ''); } return seg; };
+function buildTestRun(command) {
+  const cmd = String(command || '')
+    .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1(?=\s|$)/g, ' ')
+    .replace(/'[^'\n]*'|"(?:[^"\\\n]|\\.)*"/g, ' ')
+    .replace(/\d*[<>]&\d*-?|&>>?/g, ' ');
+  for (const raw of cmd.split(/&&|\|\||[;|&\n]/)) {
+    const seg = stripWrappers(raw.trim().replace(/^[({]+\s*/, ''), WRAPPER_RE);
+    for (const [re, name] of RUNNERS) {
+      const m = re.exec(seg);
+      if (m) return { kind: name(m), key: seg.replace(/\s*\d*>>?\s*\S+/g, '').replace(/\s+/g, ' ').trim() };
+    }
+  }
+  return null;
+}
+const buildTestKind = (command) => (buildTestRun(command) || {}).kind || null;
+
+// One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a
+// probe and never as a block. Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
+}
+
+// --- PostToolUse / PostToolUseFailure on Bash and PowerShell: a red run, measured ---------------------
+// The fix that follows a red run is where a guess lands - where `alfred-habits-root-cause` is NEEDED.
+// LOG-ONLY since 2026-09-25 (the user's ruling: rely on the skill's description and the flows that
+// load it, and count the misses): a build or test command that FAILED writes one `mode: probe` row per
+// failure streak and says nothing to the model. The row carries the run's `tool_use_id` and actor, so
+// `analyze-usage.js --hook-blocks` reads the transcript after it - the skill loaded before the next
+// fix, after it, or never. A piped run (`npm test | tail`) exits 0 whatever the tests did, so a green
+// exit is read for the runner's own red summary too. The streak is per session and per actor - a
+// subagent's red run is its own - and ONE per actor: a second spelling of the failing suite (`npm
+// test`, then `npx vitest run`), or another red run inside the same stretch, is the same need. Each
+// red run's KEY stays open until that run is green again (an unscoped green also closes its scoped
+// runs; a scoped green never closes the full suite), and a new row comes only once no key is open. A
+// key with no red run for an hour lapses, so a suite the session stopped running never mutes it.
+const RED_SUMMARY_RE = /(?:^|\n)\s*(?:ℹ|#)\s*fail\s+[1-9]|\b[1-9]\d*\s+(?:failed|failing)\b|\bFailed:\s*[1-9]|\bBuild FAILED\b|\bBUILD (?:FAILED|FAILURE)\b|\berror (?:TS|CS|NG|MSB|NETSDK)\d+|(?:^|\n)npm (?:ERR!|error)\s|(?:^|\n)\s*FAIL\s|(?:^|\n)--- FAIL:|test result: FAILED|✘ \[ERROR\]|\berror\[E\d{4}\]|\berror: could not compile\b/;
+// The Angular CLI's own verdict is a bare `Error:` line - too common in a passing run's logs to read
+// as red for any other runner.
+const NG_RED_RE = /(?:^|\n)Error: /;
+// A run that SKIPPED tests says so in its own summary (node --test, jest, vitest, pytest, mocha's
+// 'pending', dotnet's 'Skipped:'); an edit that adds a skip marker skips one at the source. Both are
+// what the rationalization probe below counts as something to dismiss, beside a red run.
+const SKIPPED_RE = /(?:^|\n)\s*(?:ℹ|#)\s*(?:skipped|skip)\s+[1-9]|\b[1-9]\d*\s+(?:skipped|pending)\b|\bSkipped:\s*[1-9]/;
+const SKIP_MARKER_RE = /\b(?:it|test|describe|context)\.skip\s*\(|\bx(?:it|test|describe)\s*\(|\bSkip\s*=\s*["']|@pytest\.mark\.skip|\bt\.skip\s*\(|\[Ignore\b|@Disabled\b|\{\s*skip\s*:\s*true/;
+const STREAK_TTL_MS = 60 * 60 * 1000;
+function runFailed(p, kind) {
+  if (p.hook_event_name === 'PostToolUseFailure') return p.is_interrupt ? null : true;
+  const r = p.tool_response;
+  const red = (text) => RED_SUMMARY_RE.test(text) || (/^(?:ng|nx) /.test(kind || '') && NG_RED_RE.test(text));
+  if (typeof r === 'string') return red(r.slice(-4096));
+  if (!r || typeof r !== 'object' || r.interrupted) return null;
+  const code = r.exitCode !== undefined ? r.exitCode : r.exit_code;
+  if (typeof code === 'number' && code !== 0) return true;
+  return red(`${r.stdout || ''}\n${r.stderr || ''}`.slice(-4096));
+}
+if (payload.hook_event_name === 'PostToolUse' || payload.hook_event_name === 'PostToolUseFailure') {
+  if (!SHELL_TOOL_RE.test(String(payload.tool_name || ''))) process.exit(0);
+  const input = payload.tool_input;
+  const runOf = buildTestRun(typeof input === 'string' ? input : input && input.command);
+  const kind = runOf ? runOf.kind : null;
+  const failed = kind ? runFailed(payload, kind) : null;
+  if (failed === null) process.exit(0);
+  const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+  const stateFile = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rootcause-${safe(payload.session_id || 'nosession')}-${safe(payload.agent_id || 'main')}.json`;
+  let streaks = {};
+  try { streaks = JSON.parse(fs.readFileSync(stateFile, 'utf8')) || {}; } catch { /* no streak yet */ }
+  const now = Date.now();
+  const open = Object.keys(streaks).filter((k) => now - Date.parse(streaks[k]) < STREAK_TTL_MS);
+  const save = (next) => { try { fs.writeFileSync(stateFile, JSON.stringify(next)); } catch { /* a lost marker re-injects once - never a block */ } };
+  if (!failed) {
+    const left = open.filter((k) => k !== runOf.key && !k.startsWith(`${runOf.key} `));
+    if (left.length !== Object.keys(streaks).length) save(Object.fromEntries(left.map((k) => [k, streaks[k]])));
+    process.exit(0);
+  }
+  save({ ...Object.fromEntries(open.map((k) => [k, streaks[k]])), [runOf.key]: new Date(now).toISOString() });
+  if (open.length) process.exit(0); // logged once already in this streak
+  ledgerRow({
+    mode: 'probe', kind: 'root-cause', reason: `probe: a red ${kind} run - logged, nothing injected`,
+    detail: { run: kind, key: runOf.key, tool_use_id: payload.tool_use_id || null, agent: payload.agent_id || null, agent_type: payload.agent_type || null },
+  });
+  process.exit(0);
+}
 
 // The fresh-session arithmetic lives in fresh-session.js beside this hook, shared with
 // guard-fresh-session-start.js. An update from an older install can run this hook before that file
@@ -112,7 +233,7 @@ const { FRESH_OFF, ctxThreshold, coldFloor, worthResuming } = fresh;
 // the installers: the trigger NUMBERS are the user's ruling and this one is deliberately an
 // override, not a setting, until the block rate says what it should be.
 const FRESH_AFTER_HOURS = (() => {
-  const n = parseFloat(process.env.CLAUDE_STACK_FRESH_SESSION_AFTER_HOURS);
+  const n = parseFloat(envOf(process.env, 'FRESH_SESSION_AFTER_HOURS'));
   return Number.isNaN(n) || n < 0 ? 2 : n;
 })();
 
@@ -182,7 +303,7 @@ const RETRO_YOUR_CALL_RE = /\b(record(ed)?|noted?|logged|captured|set|chosen|dec
 // The quoted token is the other measured half: the model writes its own hand-back word in quotes,
 // so the literal `say go` saw none of the five asks it made in one session.
 const PROSE_ASK_CLAUSE_RE = /(?:^|[\n.;:,!?)\]-]\s*|\b(?:then|and|or|so|when|otherwise)\s+)(?:(?:just |please )?tell me\b(?!\s+(?:if|when|whenever|whether|why|what|how)\b)|(?:just |then )?say\s+['"‘’“”]?(?:go|yes|ok|okay|allowed|proceed|approved?)['"‘’“”]?\b)/i;
-// project-quality-loop's two structural pauses - the run-start mode ask and the stage-close
+// alfred-loop-quality's two structural pauses - the run-start mode ask and the stage-close
 // fresh-session ask - live in its SKILL.md as sentences, so the loop can word them as a statement
 // that ends on no '?' ('Continue in a fresh session from the loops folder (recommended), or
 // continue here.') and the question shape never sees them (improvement plan 2.5). Each needs the
@@ -355,28 +476,54 @@ const ROTATE_RE = /\b(rotate|revoke|purge|scrub|regenerate)\b[^\n]{0,120}\b(cred
 // credential and none of the one route the USER takes. This is still turn-END detection; catching
 // it at paste time would need a UserPromptSubmit wiring this hook does not have, and the exposure
 // is already on disk by then either way - what matters is that the rotate ask happens at all.
-function secretInSession() {
+// Only what the MODEL was sent counts. The CLI stores its own copy of every tool result beside the one
+// it sends (`toolUseResult` - an Edit's whole `originalFile`, a Read's `file.content`), and that copy
+// never reaches the model: pilot 3's guard-02 cells asked for rotation on a JWT the secret guard had
+// kept out of context, found only in the Edit's `originalFile` (2 of 12 print finals replaced). A torn
+// row - the tail window's first line, or one still being written - is judged up to the stored copy,
+// which the CLI writes after `message`.
+function visibleRow(line) {
   try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 256 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    for (const line of buf.toString('utf8').split('\n')) {
-      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
-      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
-      if (!line.includes('"toolUseResult"') && !line.includes('"tool_result"')
-        && !/"type"\s*:\s*"user"/.test(line)) continue;
-      if (SECRET_SHAPE.test(line)) return true;
-    }
-    return false;
+    return JSON.stringify(JSON.parse(line), (k, v) => (k === 'toolUseResult' ? undefined : v));
   } catch {
-    return false;
+    const at = line.indexOf('"toolUseResult"');
+    return at < 0 ? line : line.slice(0, at);
   }
 }
+// The window is the whole session up to 64MB, read once per run: pilot 3's ecc guard-02 cells read the
+// JWT 250-300KB before a print turn ended, outside the old 256KB tail (only the Edit's stored copy near
+// the end had caught them). A 32MB transcript scans in about 110 ms.
+let TAIL = null;
+function transcriptTail() {
+  if (TAIL !== null) return TAIL;
+  const p = payload.transcript_path;
+  if (!p) return (TAIL = '');
+  const size = fs.statSync(p).size;
+  const start = Math.max(0, size - 64 * 1024 * 1024);
+  const fd = fs.openSync(p, 'r');
+  const buf = Buffer.alloc(size - start);
+  fs.readSync(fd, buf, 0, buf.length, start);
+  fs.closeSync(fd);
+  return (TAIL = buf.toString('utf8'));
+}
+// The newest row that put a credential shape in front of the model, or null.
+function secretExposure() {
+  try {
+    let found = null;
+    for (const line of transcriptTail().split('\n')) {
+      if (!SECRET_SHAPE.test(line)) continue;
+      const seen = visibleRow(line);
+      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
+      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
+      if (!seen.includes('"tool_result"') && !/"type"\s*:\s*"user"/.test(seen)) continue;
+      if (SECRET_SHAPE.test(seen)) found = line;
+    }
+    return found;
+  } catch {
+    return null;
+  }
+}
+const secretInSession = () => secretExposure() !== null;
 
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
 // user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
@@ -406,26 +553,27 @@ function secretReadAllowed() {
 // messages'). An answered rotate ask (the harness's own 'Your questions have been answered' row
 // naming rotation, or the defer option) covers every credential shape that entered the session
 // BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
-// again. Judged over the same 256KB tail secretInSession reads, and fail-open like it.
-// CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
+// again. Judged over the same window secretExposure reads, and fail-open like it.
+// ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
-const ROTATE_ASK_ON = process.env.CLAUDE_STACK_ROTATE_ASK !== '0';
+const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
 const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
+// ANY answered or declined ask after this hook's own rotate-ask block is the answer to it (review of pilot 4, M3): a
+// free-text 'Other' ('leave it, test token') or a question worded without 'rotate' matched nothing above, so the ask
+// came back every turn. The block is the harness's hook-feedback row carrying ROTATE_ASK_HEAD - never a tool result,
+// which is how the model reading this file would carry it.
+const ROTATE_ASK_HEAD = 'A credential appears to have entered this session';
+const ANY_ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user (?:declined|chose not) to answer)/;
+const isRotateBlock = (line) => line.includes(ROTATE_ASK_HEAD) && !line.includes('"tool_result"') && /Stop hook feedback|"stop_hook_summary"/.test(line);
 function rotateAskAnswered() {
   try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 256 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
     let lastAnswer = -1;
     let lastShape = -1;
-    buf.toString('utf8').split('\n').forEach((line, i) => {
-      if (ROTATE_ANSWER_RE.test(line)) lastAnswer = i;
-      if (SECRET_SHAPE.test(line)) lastShape = i;
+    let lastBlock = -1;
+    transcriptTail().split('\n').forEach((line, i) => {
+      if (isRotateBlock(line)) lastBlock = i;
+      if (ROTATE_ANSWER_RE.test(line) || (lastBlock >= 0 && ANY_ANSWER_RE.test(line))) lastAnswer = i;
+      if (SECRET_SHAPE.test(line) && SECRET_SHAPE.test(visibleRow(line))) lastShape = i;
     });
     return lastAnswer >= 0 && lastAnswer > lastShape;
   } catch {
@@ -441,14 +589,16 @@ function rotateAskAnswered() {
 // the published triggers could not be reconstructed at all (measured: one status turn blocked at
 // 142,455 cache-read, and this audit hit the same wall three times). A block that cannot be
 // explained cannot be tuned, and an untunable gate is the one the model learns to work around.
+// The matched text is the model's own prose, and a close can quote a credential - the row and the
+// breadcrumb are files on disk, so a value in them is a second copy of the exposure. Redacted first.
 function blockDetail(branch, matched) {
-  const detail = { branch, matched: String(matched == null ? '' : matched).slice(0, 120) };
+  const detail = { branch, matched: String(matched == null ? '' : matched).replace(new RegExp(SECRET_SHAPE.source, 'g'), '<redacted>').slice(0, 120) };
   global.BLOCK_DETAIL = detail;
   breadcrumb(`block ${branch}: ${detail.matched}`);
 }
 function breadcrumb(why) {
   try {
-    const dir = process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir();
+    const dir = envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir();
     fs.appendFileSync(`${dir}/guard-stop-contract.log`, `${new Date().toISOString()} ${why}\n`);
   } catch { /* never let logging break the gate */ }
 }
@@ -491,6 +641,7 @@ function subagentOwnTools(file) {
   return tools;
 }
 if (payload.hook_event_name === 'SubagentStop') {
+  if (payload.stop_hook_active) process.exit(0); // a continuation this hook caused - the once-marker's twin, never a loop
   const text = (typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '').replace(/```[\s\S]*?```/g, ' ');
   const tools = subagentOwnTools(payload.agent_transcript_path);
   if (!tools) process.exit(0);
@@ -500,7 +651,7 @@ if (payload.hook_event_name === 'SubagentStop') {
   const reportsBack = tools.some((b) => (b.input && b.input.run_in_background === true) || /^(Agent|Task|Monitor)$/.test(b.name));
   if (reportsBack) process.exit(0);
   const key = String(payload.agent_id || payload.agent_transcript_path).replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  const held = `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
+  const held = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-subagent-${key}.held`;
   if (fs.existsSync(held)) process.exit(0); // held once already - never a loop
   try { fs.writeFileSync(held, new Date().toISOString()); } catch { /* the hold still fires; only the once-marker is lost */ }
   blockDetail('subagent-wait', claim ? claim[0] : 'ScheduleWakeup');
@@ -510,6 +661,348 @@ if (payload.hook_event_name === 'SubagentStop') {
     + 'belong to the session that dispatched you, not to you. Do the task in your directive now. '
     + "If you truly cannot, reply with 'BLOCKED: <reason>' and stop.\n");
   process.exit(2);
+}
+
+// --- Stop: the done-gate probe - a done claim over a turn's source edit, measured ---------------------
+// 'Fixed' typed over a change nothing ran is the claim `alfred-habits-done-gate` exists to stop. LOG-ONLY
+// since 2026-09-25: a close claiming the change done, fixed, passing, works or ready over a turn with a
+// source edit writes one probe row per turn - `unrun` when the edit landed after the turn's last run, or
+// none ran - and the analyzer counts the misses; it never holds the close.
+// The CLAIM is a claim shape, never the word: 'how it works', 'a fixed trigger', 'the done gate', a
+// second-person 'when you're ready' and a colour ('the header is green') pass, and a sentence saying
+// it did not run disarms itself - only the skill's own 'not run - <why>' result line (a dash or colon
+// after 'not run') disarms the close; 'Not tested on Windows.' is a caveat, never that line (C1).
+// A source edit is a write that landed inside the project, outside `.claude/` and the docs root, on no
+// prose file and none of git's own (`.gitignore`, `.gitattributes`, `.git/`): a file tool's, or a shell
+// write (redirection, `tee`, in-place `sed`/`perl`, a copy or move destination, `rm`, an interpreter
+// script's literal path) read through shell-writes.js - under a Bash-first harness the shell IS the
+// write route. What a rule-following close writes after its check is none either (C2): a path git
+// ignores (one `git check-ignore`, at a Stop that holds a claim over edits past the last run), and a
+// path this turn created and then deleted - the scratch the quality-gates baseline says to delete.
+// A RUN is wider than the root-cause list above,
+// because here a miss counts an honest close as unrun: any shell command that is not a read, a write, git or a
+// package install counts, and so does a dispatched agent (its own runs are in its own transcript).
+// A run's own output file is no edit. A call a hook denied before it ran counts as neither.
+const EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
+const DISPATCH_TOOL_RE = /^(?:Agent|Task)$/;
+const PROSE_FILE_RE = /\.(?:md|mdx|markdown|txt|rst|adoc)$/i;
+// git's own bookkeeping, never a build input: setup's git-hygiene write lands here (B-M5)
+const GIT_OWN_RE = /(?:^|[\\/])\.git(?:[\\/]|$|ignore$|attributes$)/i;
+// a shell write that makes the whole file, so deleting that path later in the turn undoes it (C2)
+const MAKES_WHAT_RE = /^(?:a shell redirection|a `tee` write|a copy\/move destination|an interpreter write)$/;
+// what a run leaves behind, never a source file: `make test > test.log`, `| tee run.out`
+const RUN_OUTPUT_RE = /\.(?:log|out|err|tmp|temp|bak|orig|rej|pid|trx)$/i;
+// a shell write that changes no source content: a directory, a mode, an empty file
+const NO_CONTENT_VERB_RE = /^(?:mkdir|rmdir|touch|chmod|chown)$/;
+const DONE_NOISE_RE = /\bdone[- ](?:gate|word|claim)s?\b|\bdefinition of done\b/gi;
+const NOT_RUN_RE = /\b(?:could ?n[o']?t|can ?n[o']?t|cannot|unable to|did ?n[o']?t|was ?n[o']?t able to|ha(?:ve|s) ?n[o']?t)\s+(?:yet\s+)?(?:be(?:en)?\s+)?(?:run|ran|build|built|test|tested|verif(?:y|ied)|execut(?:e|ed))\b|\bnot (?:yet )?(?:run|built|tested|verified)\b|\b(?:untested|unverified)\b/i;
+// the result line `alfred-habits-done-gate` asks for in place of a claim: 'not run - <why>' (C1)
+const NOT_RUN_LINE_RE = /^not (?:yet )?run\**\s*[-:\u2013\u2014]/i;
+// 'when you're ready', 'once you are done reviewing' - the user's state, not the change's
+const YOU_CLAUSE_RE = /\byou(?:'re|\u2019re|\s+are|\s+were|'ve been|\s+have been)\b[^,;]*/gi;
+// 'once the cache warms', 'if it works for you' - a condition, never a claim
+const COND_CLAUSE_RE = /\b(?:when|whenever|once|until|unless|if|as soon as)\b[^,;]*/gi;
+const CLAIM_RES = [
+  /^(?:all |now |everything(?:'s| is) )?(done|fixed|ready|works|passing|resolved)\b/i,
+  /\b(?:is|are|'s|'re|was|were|be|been|now|looks?|seems?)\s+(?:now\s+|all\s+|fully\s+|already\s+)?(done|fixed|ready|working|passing|resolved)\b(?!\s+(?:by|at|on)\b)/i,
+  /(?<!\b(?:how|what|why|where|whether|if)\s)\b(?:tests?|suites?|specs?|builds?|checks?|it|this|that|everything|all)\s+(?:now\s+|all\s+|should\s+|will\s+)?(pass(?:es|ing)?|works?|succeeds?)\b/i,
+  /\b(works|passes)\s+(?:now|again|fine|correctly|as expected)\b/i,
+  /\bI(?:'ve| have)?\s+(?:now\s+|just\s+)?(fixed)\b/i,
+  // green only over a build or test subject - 'the header is green' is a colour
+  /\b(?:tests?|suites?|specs?|builds?|ci|checks?|pipelines?|runs?)\s+(?:(?:is|are|'s|'re|was|were|looks?|seems?|stays?|now)\s+)*(?:all\s+)?(green)\b/i,
+  /^all\s+(green)\b/i,
+  // the signs `alfred-habits-done-gate` names: 'this fixes it', 'should be good to go', 'all set'
+  /(?<!\b(?:how|what|why|whether|if)\s)\b(?:this|that|it|which)\s+(?:should\s+|will\s+|now\s+)?(fix(?:es)?)\s+(?:it|this|that|the|a|an)\b/i,
+  /\b(good to go)\b/i,
+  /(?:^|\b(?:is|are|'s|'re)\s+)all\s+(set)\b/i,
+];
+function doneClaim(text) {
+  const sentences = String(text || '').replace(DONE_NOISE_RE, ' ').split(/(?<=[.!?])\s+|\n+/)
+    .map((raw) => raw.trim().replace(/^(?:[-*>]|\d+\.)\s+/, '').replace(/^\*\*|\*\*$/g, ''));
+  if (sentences.some((s) => NOT_RUN_LINE_RE.test(s))) return null; // the honest close the skill asks for
+  for (const whole of sentences) {
+    if (!whole || /\?["')\]*]*$/.test(whole)) continue; // a question claims nothing
+    if (NOT_RUN_RE.test(whole)) continue; // this sentence says it did not run
+    const s = whole.replace(YOU_CLAUSE_RE, ' ').replace(COND_CLAUSE_RE, ' ').replace(/^[\s,;:-]+/, '');
+    for (const re of CLAIM_RES) {
+      const m = re.exec(s);
+      if (m && !/\b(?:not|never|no|nothing|yet to)\s+(?:\w+\s+)?$|n't\s+(?:\w+\s+)?$/i.test(s.slice(Math.max(0, m.index - 30), m.index + m[0].length - m[1].length))) return m[1];
+    }
+  }
+  return null;
+}
+
+// --- what ran: the done gate's own, wider question --------------------------------------------------
+// Not a run: a read, a navigation, a write verb, git, a shell keyword or builtin, and the PowerShell
+// cmdlets of the same families (Invoke-Pester and the like stay runs).
+const NOT_A_RUN_RE = new RegExp('^(?:' + [
+  'cat', 'bat', 'head', 'tail', 'less', 'more', 'grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'find', 'fd', 'ls', 'll', 'dir', 'tree', 'wc', 'file',
+  'stat', 'du', 'df', 'echo', 'printf', 'pwd', 'which', 'where', 'whereis', 'type', 'cd', 'pushd', 'popd', 'true', 'false', ':', 'sleep', 'wait',
+  'date', 'whoami', 'hostname', 'uname', 'id', 'export', 'set', 'unset', 'alias', 'source', '\\.', 'diff', 'cmp', 'comm', 'sort', 'uniq', 'cut',
+  'tr', 'paste', 'column', 'nl', 'od', 'xxd', 'hexdump', 'strings', 'jq', 'yq', 'sed', 'awk', 'gawk', 'tee', 'cp', 'mv', 'rm', 'rmdir', 'mkdir',
+  'touch', 'truncate', 'chmod', 'chown', 'ln', 'install', 'rsync', 'git', 'gh', 'open', 'xdg-open', 'start', 'code', 'clear', 'basename',
+  'dirname', 'realpath', 'readlink', 'mktemp', 'history', 'kill', 'pkill', 'killall', 'ps', 'pgrep', 'lsof', 'xargs', 'base64', 'shasum',
+  'sha256sum', 'md5', 'md5sum', 'cksum', 'zip', 'unzip', 'tar', 'gzip', 'gunzip', 'exit', 'return', 'read', 'for', 'while', 'until', 'do',
+  'done', 'if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'in', 'function', 'test', '\\[\\[?',
+  '(?:get|set|add|out|write|select|where|foreach|measure|test|new|remove|copy|move|rename|resolve|split|join|format|sort|group|compare|convertto|convertfrom|clear|push|pop)-[a-z]+',
+].join('|') + ')$', 'i');
+// a package manager fetching or listing, never building or testing
+const NOT_A_RUN_CMD_RE = /^(?:(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add|remove|rm|uninstall|un|view|info|ls|list|outdated|why|config|init|link|login|whoami|pack|publish|version)|pip3?\s+(?:install|uninstall|list|show|freeze|download)|(?:python3?|py)\s+-m\s+pip|dotnet\s+(?:restore|add|new|tool|nuget|remove|list|sln)|(?:uv|poetry|pdm)\s+(?:add|remove|sync|lock|install|pip|show)|cargo\s+(?:add|remove|install|update|fetch)|go\s+(?:get|mod)|brew|apt(?:-get)?)(?=\s|$)/i;
+const RUN_WRAPPER_RE = /^(?:[A-Za-z_]\w*=\S*|time|timeout\s+\S+|command|exec|nice|sudo|env(?:\s+-u\s+\S+|\s+-\w+)*|npx(?:\s+-[-\w]+)*|bunx|(?:pnpm|yarn)\s+(?:exec|dlx)|(?:uv|poetry|pipenv|hatch|pdm|rye)\s+run|bundle\s+exec|xvfb-run|then|do|else|if|while|until|!)\s+/;
+let shellWrites = null;
+try { shellWrites = require(require('path').join(__dirname, 'shell-writes.js')); } catch { /* a copy that runs before it lands counts no shell edit */ }
+// A shell call, as ordered steps: { index, run } for a segment that ran something, { index, file,
+// make, del, mkdir } for a written path, resolved from `root` through the call's own `cd`s - `make` a
+// whole-file write, `del` a removal (`rm`, a move's source), `mkdir` a directory made (no edit, only
+// what a later removal can undo). Without shell-writes.js beside the hook, the whole call is one run.
+function shellSteps(command, root) {
+  const cmd = String(command || '');
+  if (!shellWrites) return cmd.trim() ? [{ index: 0, run: cmd.trim().replace(/\s+/g, ' ').slice(0, 60) }] : [];
+  const scan = shellWrites.scanShell(cmd);
+  const chars = scan.command.split('');
+  for (const [a, b] of scan.quoted) for (let i = a; i < b; i += 1) if (chars[i] !== '\n') chars[i] = ' ';
+  const masked = chars.join('').replace(/\d*[<>]&\d*-?|&>>?/g, (m) => ' '.repeat(m.length));
+  const cuts = [...masked.matchAll(/&&|\|\||[;|&\n]/g)];
+  const out = [];
+  let from = 0;
+  for (const cut of cuts.concat([{ index: masked.length, 0: '' }])) {
+    const at = from;
+    const end = cut.index;
+    from = cut.index + cut[0].length;
+    const text = masked.slice(at, end);
+    if (!text.trim()) continue;
+    const mine = scan.targets.filter((t) => t.index >= at && t.index < end);
+    const kind = buildTestKind(text);
+    const head = stripWrappers(text.trim().replace(/^[({]+\s*/, ''), RUN_WRAPPER_RE);
+    const word = head.split(/\s+/)[0] || '';
+    const edits = mine.some((t) => t.what === 'an in-place edit' || t.what === 'an interpreter write');
+    if (kind || (!edits && word && !NOT_A_RUN_RE.test(word) && !NOT_A_RUN_CMD_RE.test(head))) {
+      out.push({ index: at, run: kind || scan.command.slice(at, end).trim().replace(/\s+/g, ' ').slice(0, 60) });
+      continue; // a run's own redirection is its output, never an edit
+    }
+    for (const t of mine) {
+      const mkdir = t.verb === 'mkdir';
+      if ((NO_CONTENT_VERB_RE.test(t.verb) && !mkdir) || /^a git write/.test(t.what)) continue;
+      const raw = scan.expandVars(t.raw);
+      if (shellWrites.isVar(raw) || raw.startsWith('~')) continue;
+      const base = shellWrites.anchorAt(scan.cds, t.index, root);
+      if (base === null && !require('path').isAbsolute(raw)) continue; // relative to a cd it cannot follow
+      out.push({ index: t.index, file: require('path').resolve(base || root, raw), make: MAKES_WHAT_RE.test(t.what),
+        del: t.verb === 'rm' || /^a move OUT/.test(t.what), mkdir });
+    }
+  }
+  return out.sort((x, y) => x.index - y.index);
+}
+// C2: the edits git ignores, asked ONCE for every candidate. A deleted directory no longer says it was
+// one, and `node_modules/` matches only the slash form, so a removal is asked both ways (a deleted
+// TRACKED file an ignore pattern also matches answers to the slash form too - the one miss, accepted).
+// Git echoes each ignored path as asked. No git, no repo (exit 128) or a timeout ignores nothing,
+// which is the gate as it was.
+function ignoredEdits(root, edits) {
+  const byQuery = new Map();
+  const ask = (q, e) => { if (!byQuery.has(q)) byQuery.set(q, []); byQuery.get(q).push(e); };
+  for (const e of edits) {
+    const q = e.rel.split(/[\\/]/).join('/');
+    ask(q, e);
+    if (e.del) ask(`${q}/`, e);
+  }
+  let out = '';
+  try {
+    const r = require('child_process').spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+      cwd: root, input: [...byQuery.keys()].join('\0') + '\0', encoding: 'utf8', timeout: 3000, windowsHide: true,
+    });
+    if (!r.error && r.status === 0) out = r.stdout || '';
+  } catch { /* no git: nothing is ignored */ }
+  const hit = new Set();
+  for (const q of out.split('\0')) for (const e of byQuery.get(q) || []) hit.add(e);
+  return hit;
+}
+
+// The turn's source edits and runs, in order, after its last TYPED row.
+function turnWork() {
+  const p = payload.transcript_path;
+  if (!p) return null;
+  const path = require('path');
+  const readRows = (tail) => {
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - tail);
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    const rows = [];
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      try { const o = JSON.parse(line); if (o && o.message) rows.push(o); } catch { /* the window's partial first line */ }
+    }
+    return { rows, partial: start > 0 };
+  };
+  const boundary = (rows) => {
+    for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].type === 'user' && !rows[i].isCompactSummary && isTypedTurn(rows[i])) return i;
+    return -1;
+  };
+  let { rows, partial } = readRows(2 * 1024 * 1024);
+  let b = boundary(rows);
+  if (b < 0 && partial) { ({ rows } = readRows(8 * 1024 * 1024)); b = boundary(rows); }
+  const turn = rows.slice(b + 1);
+  const results = new Map();
+  for (const o of turn) {
+    const c = o.type === 'user' && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const blk of c) {
+      if (!blk || blk.type !== 'tool_result') continue;
+      const text = typeof blk.content === 'string' ? blk.content
+        : Array.isArray(blk.content) ? blk.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('\n') : '';
+      results.set(blk.tool_use_id, { error: blk.is_error === true, text });
+    }
+  }
+  const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
+  let realRoot = root;
+  try { realRoot = fs.realpathSync(root); } catch { /* compare the spelled root only */ }
+  const relIn = (base, f) => { const rel = path.relative(base, f); return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : null; };
+  const sourceEdit = (file) => {
+    if (typeof file !== 'string' || !file || PROSE_FILE_RE.test(file)) return null;
+    const f = path.resolve(root, file);
+    for (const base of [root, realRoot]) {
+      const rel = relIn(base, f);
+      if (!rel) continue;
+      if (rel.split(/[\\/]/)[0] === '.claude' || GIT_OWN_RE.test(rel) || relIn(path.resolve(base, docsRootEnv()), f)) return null;
+      return rel;
+    }
+    return null;
+  };
+  // A red run RAN ('Exit code N'); a denial, a rejection or a timeout did not. A missing result counts
+  // as a run (the transcript can lag, and the gate fails open) but never as an edit.
+  const ranCode = (res) => /^\s*(?:Error:\s*)?Exit code -?\d+/i.test(res.text);
+  let at = 0;
+  const edits = []; // { at, rel, file, make, del, mkdir }, in order
+  let lastRun = null;
+  let skill = false;
+  const red = [];      // build / test runs of this turn that went red (the root-cause list's runners)
+  const skipped = [];  // ... and those whose summary reports a skipped test
+  let skipEdit = false; // a source edit this turn that ADDED a skip marker
+  for (const o of turn) {
+    const c = o.type === 'assistant' && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const blk of c) {
+      if (!blk || blk.type !== 'tool_use') continue;
+      at += 1;
+      const res = results.get(blk.id);
+      const input = blk.input || {};
+      const name = String(blk.name);
+      if (name === 'Skill') {
+        if (res && !res.error && DONE_GATE_SKILL_RE.test(String(input.skill || ''))) skill = true;
+      } else if (EDIT_TOOL_RE.test(name)) {
+        const file = input.file_path || input.notebook_path;
+        const rel = res && !res.error ? sourceEdit(file) : null;
+        if (rel) edits.push({ at, rel, file: path.resolve(root, file), make: name === 'Write' });
+        const multi = Array.isArray(input.edits) ? input.edits : [];
+        const added = [input.new_string, input.content, ...multi.map((e) => e && e.new_string)].filter((x) => typeof x === 'string').join('\n');
+        const removed = [input.old_string, ...multi.map((e) => e && e.old_string)].filter((x) => typeof x === 'string').join('\n');
+        if (rel && SKIP_MARKER_RE.test(added) && !SKIP_MARKER_RE.test(removed)) skipEdit = true;
+      } else if (DISPATCH_TOOL_RE.test(name)) {
+        if (!res || !res.error) lastRun = { at, kind: `the dispatched ${input.subagent_type || 'agent'}` };
+      } else if (SHELL_TOOL_RE.test(name)) {
+        if (res && res.error && !ranCode(res)) continue;
+        const command = String(typeof input === 'string' ? input : input.command || '');
+        const bt = res ? buildTestRun(command) : null;
+        if (bt) {
+          const out = res.text.slice(-4096);
+          if ((res.error && ranCode(res)) || RED_SUMMARY_RE.test(out) || (/^(?:ng|nx) /.test(bt.kind) && NG_RED_RE.test(out))) red.push(bt.kind);
+          if (SKIPPED_RE.test(out)) skipped.push(bt.kind);
+        }
+        for (const step of shellSteps(command, root)) {
+          const pos = at + (step.index + 1) / (command.length + 2);
+          if (step.run) lastRun = { at: pos, kind: step.run };
+          else if (res && !RUN_OUTPUT_RE.test(step.file)) {
+            const rel = sourceEdit(step.file);
+            if (rel) edits.push({ at: pos, rel, file: step.file, make: step.make, del: step.del, mkdir: step.mkdir });
+          }
+        }
+      }
+    }
+  }
+  // A removal of a path this turn made (or of one inside a directory it made) undoes that path's
+  // writes: neither they nor the removal changed the tree. Any other removal is an edit.
+  const inside = (p, dir) => p === dir || p.startsWith(dir + path.sep);
+  const made = [];
+  let kept = [];
+  for (const e of edits) {
+    if (e.del && made.some((m) => inside(e.file, m))) { kept = kept.filter((k) => !inside(k.file, e.file)); continue; }
+    if (e.make || e.mkdir) made.push(e.file);
+    if (!e.mkdir) kept.push(e);
+  }
+  const since = lastRun ? kept.filter((e) => e.at > lastRun.at) : kept;
+  const ignored = since.length ? ignoredEdits(root, since) : new Set();
+  const left = since.filter((e) => !ignored.has(e));
+  const lastEdit = left.length ? left[left.length - 1] : null;
+  const first = b >= 0 ? rows[b] : null;
+  return { turnKey: first ? String(first.uuid || first.timestamp || 'turn') : 'noturn', lastEdit, lastRun,
+    lastKept: kept.length ? kept[kept.length - 1] : null, skill, red, skipped, skipEdit };
+}
+
+// --- rationalization phrases (ECC comparison R8; LOG-ONLY - never holds, never injects) --------
+// ECC's delivery gate warns on a regex over the close: 'skipping tests for now', 'pre-existing bug',
+// 'tests are failing but I'll fix', 'leaving the failing tests'. Its four, plus the dismissals the
+// local corpus replay found after a red run ('unrelated to this change', 'not related to this change',
+// 'flaky', 'transient ... failures'). A phrase counts only beside something to dismiss in the SAME
+// turn (the Stop branch checks that), so the replay wrote no row on any other close; a negated
+// 'not a pre-existing failure' says the opposite and is no match.
+const RATIONALIZATION_RE = /\b(?:this|that|it|these|those)(?:'s| is| are| was| were) (?:a |an )?pre[- ]?existing\b|(?<!\bnot (?:a |an )?)\bpre[- ]?existing\b[^.\n]{0,30}?\b(?:issue|bug|failure|problem|error|flak\w*)s?\b|\b(?:skip(?:ping|ped)?|disabl(?:e|ed|ing)|comment(?:ed|ing)? out) (?:the |this |that |these |those )?(?:\w+ )?(?:tests?|lint|coverage|type[- ]?check|specs?)\b[^.\n]{0,30}\bfor now\b|\b(?:tests?|coverage|build)\s+(?:are|is)\s+(?:still )?(?:failing|broken|red)\s+but\s+(?:i|we)\s*(?:'ll|can|will)\s+(?:fix|address|resolve|handle)|\b(?:not addressing|won'?t fix|leaving|ignoring) the (?:failing|broken|red|flaky) (?:tests?|builds?|specs?|integration tests?)\b|\bunrelated to (?:my|this|the|our) (?:change|changes|edit|edits|fix|work|diff|pr)\b|\b(?:not|isn'?t|aren'?t|wasn'?t|weren'?t) (?:caused by|related to|from|introduced by) (?:my|this|the|our) (?:change|changes|edit|edits|fix|diff)\b|\b(?:a |the |this |that |is |are |was |were |seems |looks |likely |probably |just )flaky\b|\bgood enough for now\b|\b(?:transient|intermittent)(?:ly)?\b[^.\n]{0,40}?\b(?:fail\w*|error\w*|flak\w*)\b/i;
+function rationalization(text) {
+  const m = String(text || '').replace(/`[^`\n]*`/g, ' ').replace(/[‘’]/g, "'").match(RATIONALIZATION_RE);
+  return m ? m[0].replace(/\s+/g, ' ').slice(0, 60) : null;
+}
+// --- end rationalization phrases
+
+// What the analyzer splits an unrun claim by - the user's two named exceptions. Both read the disk
+// only when a row is written, at most once per turn.
+// Does the project declare tests at all: a package.json test script other than npm init's
+// placeholder, a runner config or a pytest config at the root, a Go module or a Cargo crate (their
+// toolchain's test runner is always there), a test folder at the root or under src/, and a .NET test
+// project or a test file (`*_test.go`, `*.test.*`, `*.spec.*`) up to two folders down.
+const TEST_DIR_RE = /^(?:tests?|specs?|__tests__)$/i;
+const TEST_CONFIG_RE = /^(?:(?:vitest|jest|playwright|cypress)\.config\.[cm]?[jt]s|karma\.conf\.[cm]?js|pytest\.ini|conftest\.py|tox\.ini|go\.mod|Cargo\.toml)$/i;
+const TEST_FILE_RE = /test[\w.]*\.csproj$|_test\.go$|\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+function testsDeclared(root) {
+  const path = require('path');
+  try {
+    const t = ((JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) || {}).scripts || {}).test;
+    if (typeof t === 'string' && t.trim() && !/no test specified/i.test(t)) return 'declared';
+  } catch { /* no package.json, or not JSON */ }
+  const list = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; } };
+  const walkable = (d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules';
+  const top = list(root);
+  if (top.some((d) => d.isFile() && (TEST_CONFIG_RE.test(d.name) || TEST_FILE_RE.test(d.name)))) return 'declared';
+  if ([...top, ...list(path.join(root, 'src'))].some((d) => d.isDirectory() && TEST_DIR_RE.test(d.name))) return 'declared';
+  for (const d of top.filter(walkable)) {
+    const inner = list(path.join(root, d.name));
+    if (inner.some((e) => e.isFile() && TEST_FILE_RE.test(e.name))) return 'declared';
+    for (const e of inner.filter(walkable))
+      if (list(path.join(root, d.name, e.name)).some((f) => f.isFile() && TEST_FILE_RE.test(f.name))) return 'declared';
+  }
+  return 'none-found';
+}
+// Does an instruction file forbid running tests: the project's CLAUDE.md, CLAUDE.local.md, AGENTS.md,
+// .claude/CLAUDE.md and .claude/rules/*.md, then the account CLAUDE.md. The first matching line, named
+// with its file. A line about HOW or WHEN to run them - which tests, how often, in which mode - is no
+// rule against running them ('never run the full suite while iterating'), and the account file is read
+// for every project, so one such line there would excuse every claim everywhere.
+const NO_TEST_RULE_RE = /\b(?:do not|don['\u2019]?t|never|must not|should not|avoid)\b[^.\n]{0,40}\b(?:run|execut|launch)\w*\b[^.\n]{0,30}\btests?\b|\btests?\b[^.\n]{0,30}\b(?:must not|should not|are not to|cannot|can['\u2019]t) be (?:run|executed)\b/i;
+const TEST_RULE_QUALIFIER_RE = /\b(?:full|whole|entire|all the|every|each|watch|while|until|before|after|only|again|twice|more than|in parallel)\b/i;
+function noTestRule(root) {
+  const path = require('path');
+  const files = ['CLAUDE.md', 'CLAUDE.local.md', 'AGENTS.md', path.join('.claude', 'CLAUDE.md')].map((f) => path.join(root, f));
+  try {
+    for (const f of fs.readdirSync(path.join(root, '.claude', 'rules')).sort()) if (f.endsWith('.md')) files.push(path.join(root, '.claude', 'rules', f));
+  } catch { /* no rules folder */ }
+  files.push(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude'), 'CLAUDE.md'));
+  for (const f of files) {
+    let text;
+    try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+    const line = text.split('\n').find((l) => NO_TEST_RULE_RE.test(l) && !TEST_RULE_QUALIFIER_RE.test(l));
+    if (line) return `${path.basename(f)}: ${line.trim().slice(0, 160)}`;
+  }
+  return null;
 }
 
 if (payload.hook_event_name === 'Stop') {
@@ -527,21 +1020,7 @@ if (payload.hook_event_name === 'Stop') {
     if (hasToolUse) {
       // The turn ended on a tool call, not prose - nothing to judge. LOGGED, never denied: how often a
       // Stop lands here is the number that says whether this early exit hides closes it should read.
-      try {
-        const path = require('path');
-        const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
-        fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
-          ts: new Date().toISOString(),
-          hook: path.basename(__filename),
-          event: payload.hook_event_name || '',
-          tool: '',
-          mode: 'skip-tool-end',
-          kind: 'tool-ended-turn',
-          reason: 'skip: the turn ended on a tool call - logged, not judged',
-        }) + '\n');
-      } catch { /* a log row never changes the verdict and never throws */ }
+      ledgerRow({ tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call - logged, not judged' });
       process.exit(0);
     }
     text = blocks.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
@@ -583,14 +1062,70 @@ if (payload.hook_event_name === 'Stop') {
     && !(BACKGROUND_RE.test(tail) && WAITER_RE.test(tail))
     // ...and a close that says the run itself has nothing pending is finished, not stalled.
     && !NOTHING_PENDING_RE.test(tail);
+  // The done-gate PROBE, log-only since 2026-09-25 (the user's ruling: rely on the skill's description
+  // and the flows that load it, and count the misses). A claim over a turn with a source edit writes
+  // one row per turn - `unrun` when the last edit came after the last run (or none ran), `ran` when a
+  // run followed it - and never holds the close. It runs BEFORE every branch that can hold: a held
+  // close's continuation arrives with stop_hook_active, so a probe placed after one never ran.
+  // Everything it reads sits inside one try, so nothing it does can skip the branches below.
+  try {
+    const claim = envOf(process.env, 'DONE_GATE') !== '0' ? doneClaim(prose) : null;
+    const work = claim ? turnWork() : null;
+    const outcome = !work ? null : work.lastEdit ? 'unrun' : work.lastKept && work.lastRun ? 'ran' : null;
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const probed = outcome && `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-donegate-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.probed`;
+    if (probed && !fs.existsSync(probed)) {
+      try { fs.writeFileSync(probed, new Date().toISOString()); } catch { /* a lost marker logs the turn twice at most */ }
+      const root = require('path').resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
+      ledgerRow({
+        tool: '', mode: 'probe', kind: 'done-gate', reason: `probe: a done claim, ${outcome} - logged, not held`,
+        detail: { claim, file: (work.lastEdit || work.lastKept).rel, outcome, run: work.lastRun ? work.lastRun.kind : null,
+          skill: work.skill, tests: testsDeclared(root), rule: noTestRule(root) },
+      });
+    }
+  } catch { /* an unreadable turn is no proof of an edit - no row, and the branches below still run */ }
+  // The RATIONALIZATION probe, log-only (the user's 'count first' ruling): a close dismissing a
+  // failure ('unrelated to my change', 'pre-existing', 'flaky', 'skipping the tests for now') in a
+  // turn that had a red build or test run, a run reporting a skipped test, or an edit adding a skip
+  // marker writes one row per turn. The phrase is read first, so a close without one reads no
+  // transcript. It sits before every holding branch for the done gate's reason.
+  try {
+    const phrase = rationalization(prose);
+    const work = phrase ? turnWork() : null;
+    const evidence = !work ? null : work.red.length ? 'red' : work.skipped.length ? 'skipped' : work.skipEdit ? 'skip-edit' : null;
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const probed = evidence && `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rationalization-${safe(payload.session_id || 'nosession')}-${safe(work.turnKey)}.probed`;
+    if (probed && !fs.existsSync(probed)) {
+      try { fs.writeFileSync(probed, new Date().toISOString()); } catch { /* a lost marker logs the turn twice at most */ }
+      ledgerRow({
+        tool: '', mode: 'probe', kind: 'rationalization', reason: `probe: a dismissal after ${evidence === 'red' ? 'a red run' : 'a skipped test'} - logged, not held`,
+        detail: { phrase, evidence, red: work.red, skipped: work.skipped, skipEdit: work.skipEdit },
+      });
+    }
+  } catch { /* an unreadable turn logs nothing, and the branches below still run */ }
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
-  if (ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered() && (ROTATE_RE.test(prose) || (secretInSession() && !secretReadAllowed()))) {
+  const exposure = ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered()
+    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !secretReadAllowed() ? { route: 'shape', row } : null; })())
+    : null;
+  // With nobody at the terminal (hook-prelude.js unattended - print mode, never an SDK session) the ask
+  // cannot be answered and only replaced the final answer (pilot 3, 2 of 12 finals): one ledger row per
+  // exposure records it instead, keyed on the row that exposed it, and the close stands.
+  if (exposure && unattended(payload)) {
+    const key = require('crypto').createHash('sha1').update(exposure.row || prose).digest('hex').slice(0, 16);
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rotate-${safe(payload.session_id || 'nosession')}-${key}.logged`;
+    if (!fs.existsSync(marker)) {
+      try { fs.writeFileSync(marker, new Date().toISOString()); } catch { /* a lost marker logs the exposure twice at most */ }
+      ledgerRow({ tool: '', mode: 'unattended', kind: 'rotate-ask',
+        reason: `skip: a credential entered this session (${exposure.route === 'close' ? 'named for rotation in the close' : 'a shape the model was sent'}) and nobody is at the terminal - logged, not held` });
+    }
+  } else if (exposure) {
     // Which of the two routes found the credential, in the ledger row - they are tuned separately.
     blockDetail('rotate-ask', (prose.match(ROTATE_RE) || [])[0] || 'secret shape in a tool result or a pasted message');
     process.stderr.write(
-      'A credential appears to have entered this session - either named for rotation in this\n' +
+      ROTATE_ASK_HEAD + ' - either named for rotation in this\n' +
       'turn, matched by shape in a tool result, or pasted into the chat. Measured seven times in\n' +
       'the audited corpus:\n' +
       'the run states it as a closing bullet, the user reads it and does not act (19m, 1h40m,\n' +
@@ -600,9 +1135,19 @@ if (payload.hook_event_name === 'Stop') {
       "'Rotate it now (Recommended)' and 'Acknowledge and defer'. Name the credential by its KEY\n" +
       'and its shape only - never repeat the value, and never pass it to a tool.\n' +
       'This ask comes once: answered, it covers every credential already in this session, and only\n' +
-      'a new exposure asks again. CLAUDE_STACK_ROTATE_ASK=0 in the settings.json env turns it off.',
+      'a new exposure asks again. ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns it off.',
     );
     process.exit(2);
+  }
+  // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
+  // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
+  // probes above still log, and so does the credential branch - its row is the record of the exposure.
+  if (unattended(payload)) {
+    if (proseAsk(tail) || doneClose || endsOnQuestion) {
+      ledgerRow({ tool: '', mode: 'unattended', kind: proseAsk(tail) ? 'prose-ask' : doneClose ? 'done-close' : 'ends-on-question',
+        reason: 'skip: nobody is at the terminal - logged, not held' });
+    }
+    process.exit(0);
   }
   if (!proseAsk(tail) && !doneClose && !endsOnQuestion) {
     // The turn closed cleanly - the work is DONE, which is the only moment this offer belongs at.
@@ -665,10 +1210,12 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
-      'finished?" from the user 2-22 minutes later. Put the pending decision (push or hold,\n' +
-      'continue or stop, which deliverable next) through ONE AskUserQuestion call with the\n' +
-      'options you already have in mind, recommended one marked. If nothing is actually\n' +
-      'pending, say so in one line with no open next action and stop.',
+      'finished?" from the user 2-22 minutes later. Put the pending decision (continue or stop,\n' +
+      'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
+      'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
+      'a commit waits for their own word (baseline-git.md), so it is never the recommended\n' +
+      'next move. If nothing is actually pending, say so in one line with no open next action\n' +
+      'and stop.',
     );
     process.exit(2);
   }
@@ -724,7 +1271,7 @@ function recordBlockCtx(ctx) {
 function blockStateFile() {
   const os = require('os');
   const key = String(payload.transcript_path || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-stop-fresh-${key}.blocked`;
 }
 
 
@@ -852,7 +1399,9 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
 
     // 4. CREDENTIAL.
-    if (secretInSession()) {
+    // The Stop branch's own conditions: once per exposure, off under ROTATE_ASK=0, and not while the
+    // user's SECRET-READ-ALLOW consent stands.
+    if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !secretReadAllowed()) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +
         'cannot be unsent. If this ask closes the turn, one of its questions must be whether to ' +
         'rotate it now - name the key and its shape only, never the value.');
@@ -949,7 +1498,7 @@ function solveTaskCycle() {
     const buf = Buffer.alloc(size - start);
     fs.readSync(fd, buf, 0, buf.length, start);
     fs.closeSync(fd);
-    return /<command-name>\s*\/?project-solve-(cross-)?task\s*<\/command-name>|"skill"\s*:\s*"[^"]*project-solve-(cross-)?task/.test(buf.toString('utf8'));
+    return /<command-name>\s*\/?(?:[a-z0-9-]+:)?alfred-task-solve(-cross)?\s*<\/command-name>|"skill"\s*:\s*"[^"]*alfred-task-solve(-cross)?/.test(buf.toString('utf8'));
   } catch {
     return false;
   }
@@ -978,7 +1527,7 @@ function freshStateReadThisTurn() {
       if (o.type === 'user' && isTypedTurn(o)) return false;
       if (o.type === 'assistant' && Array.isArray(o.message.content)) {
         for (const b of o.message.content) {
-          if (!b || b.type !== 'tool_use' || b.name !== 'Bash') continue;
+          if (!b || b.type !== 'tool_use' || !SHELL_TOOL_RE.test(String(b.name))) continue;
           const cmd = String((b.input && b.input.command) || '');
           if (/\bgit\s+(status|diff|log|show|rev-parse|rev-list|ls-files|fetch)\b|\bgh\s+(pr|run|api|repo)\b/.test(cmd)) return true;
         }

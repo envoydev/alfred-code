@@ -29,8 +29,9 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 
 // ---------------------------------------------------------------------------
 // The wiring. This is the SAME table the installers write into settings.json -
-// keep it in step with scripts/os/claude-stack.sh's HOOKS list, which is the
-// source of truth. `deny` marks a route whose verdict is exit 2; the rest are
+// keep it in step with meta/stack-manifest.json's `hooks` list, which is the
+// source of truth. `deny` marks a route whose verdict is exit 2; `probe` a LOG-ONLY route, which fires
+// when it wrote its own `mode: probe` row of that kind to the hook-blocks ledger; the rest are
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
 const ROUTES = [
@@ -45,6 +46,12 @@ const ROUTES = [
   { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
+  // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
+  // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -
+  // in the field the once-per-streak latch lowers it. Log-only since 2026-09-25: a red run writes a
+  // `root-cause` probe row and injects nothing.
+  { hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', deny: false, probe: 'root-cause' },
+  { hook: 'guard-stop-contract.js', event: 'PostToolUse', deny: false, probe: 'root-cause' },
   // One stop per recorded SUBAGENT transcript (<session>/subagents/agent-*.jsonl): its final text, the
   // whole file as agent_transcript_path, and agent_type from the sibling .meta.json - the payload the
   // harness sends when that agent finished.
@@ -172,6 +179,7 @@ function extract(files, opts) {
     const answerRows = [];   // every long assistant text
     const typedUserRows = []; // where the user actually took the turn back
     let cwd = '';
+    const shellUses = new Map(); // tool_use id -> the shell call, for its result's PostToolUse payload
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -186,6 +194,7 @@ function extract(files, opts) {
         for (const b of content) {
           if (b && b.type === 'tool_use') {
             counts.toolUse++;
+            if (b.id && /^(?:Bash|PowerShell)$/.test(b.name)) shellUses.set(b.id, b);
             for (const r of ROUTES) {
               if (r.event !== 'PreToolUse' || !r.tools.includes(b.name)) continue;
               const payload = { hook_event_name: 'PreToolUse', tool_name: b.name, tool_input: b.input || {}, cwd };
@@ -195,6 +204,23 @@ function extract(files, opts) {
           }
           // A text block long enough to be a real answer is a Stop point: the turn ended there.
           if (b && b.type === 'text' && String(b.text || '').length > 200) answerRows.push(i);
+        }
+      }
+
+      if (o.type === 'user' && Array.isArray(content)) {
+        for (const b of content) {
+          const use = b && b.type === 'tool_result' && shellUses.get(b.tool_use_id);
+          if (!use) continue;
+          const text = typeof b.content === 'string' ? b.content
+            : Array.isArray(b.content) ? b.content.map((x) => (x && typeof x.text === 'string' ? x.text : '')).join('\n') : '';
+          const event = b.is_error === true ? 'PostToolUseFailure' : 'PostToolUse';
+          for (const r of ROUTES) {
+            if (r.event !== event) continue;
+            const key = routeId(r) + '|' + sha(JSON.stringify([use.name, use.input, text.slice(-512), cwd]));
+            const payload = { hook_event_name: event, session_id: `replay-${sha(key).slice(0, 12)}`, tool_name: use.name, tool_input: use.input || {}, cwd,
+              ...(event === 'PostToolUseFailure' ? { error: text.slice(0, 4096) } : { tool_response: { stdout: text.slice(-4096), stderr: '', interrupted: false } }) };
+            if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, probe: r.probe, payload, cwd });
+          }
         }
       }
 
@@ -251,7 +277,7 @@ function extract(files, opts) {
 
 // ---------------------------------------------------------------------------
 // Replay. Each job is the shipped hook, spawned exactly as the harness spawns
-// it. The isolation matters: CLAUDE_STACK_DOCS_PATH goes to scratch so no state
+// it. The isolation matters: ALFRED_CODE_DOCS_PATH goes to scratch so no state
 // file or hook-block row lands in a real project, and CLAUDE_CONFIG_DIR is empty
 // so a real account settings.json model id cannot move a context threshold.
 // ---------------------------------------------------------------------------
@@ -259,12 +285,12 @@ function makeEnv(scratch, cwd) {
   return {
     ...process.env,
     CLAUDE_PROJECT_DIR: cwd || scratch,
-    CLAUDE_STACK_DOCS_PATH: path.join(scratch, 'docs'),
+    ALFRED_CODE_DOCS_PATH: path.join(scratch, 'docs'),
     CLAUDE_CONFIG_DIR: path.join(scratch, 'config'),
-    CLAUDE_STACK_INSTRUMENT: '0',
+    ALFRED_CODE_INSTRUMENT: '0',
     // Once-markers and latches (the SubagentStop hold, the fresh-session latch) land in scratch: in the
     // default os.tmpdir() a second replay would read the first run's markers and pass every repeat.
-    CLAUDE_STACK_HOOK_LOG_DIR: scratch,
+    ALFRED_CODE_HOOK_LOG_DIR: scratch,
   };
 }
 
@@ -292,9 +318,16 @@ function runOne(job, scratch) {
     child.on('error', () => resolve({ ...job, status: -1, fired: false, error: 'spawn' }));
     child.on('close', (status) => {
       if (prefixPath) { try { fs.unlinkSync(prefixPath); } catch {} }
-      // A deny route fires on exit 2. An injection route fires when it actually emitted
-      // additionalContext - a silent exit 0 is the hook deciding there was nothing to say.
-      const fired = job.deny ? status === 2 : /additionalContext/.test(out);
+      // A deny route fires on exit 2. A probe route fires when its row landed in the job's own
+      // session ledger. An injection route fires when it actually emitted additionalContext - a
+      // silent exit 0 is the hook deciding there was nothing to say.
+      const probed = () => {
+        try {
+          return fs.readFileSync(path.join(scratch, 'docs', 'hook-blocks', `${payload.session_id}.jsonl`), 'utf8').split('\n')
+            .some((l) => { try { const o = JSON.parse(l); return o.mode === 'probe' && o.kind === job.probe; } catch { return false; } });
+        } catch { return false; }
+      };
+      const fired = job.deny ? status === 2 : job.probe ? probed() : /additionalContext/.test(out);
       resolve({ key: job.key, route: job.route, status, fired, error: status !== 0 && status !== 2 ? err.slice(0, 200) : '' });
     });
     child.stdin.end(JSON.stringify(payload));
@@ -432,5 +465,5 @@ async function main() {
 }
 
 // The test pins ROUTES against the installer's wiring; running as a script still calls main().
-module.exports = { ROUTES, UNEXERCISED };
+module.exports = { ROUTES, UNEXERCISED, extract };
 if (require.main === module) main();

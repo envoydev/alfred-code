@@ -15,8 +15,10 @@
 //   - THE REPLACEMENT MUST BE COMPLETE: the memory server in this run's MCP set AND
 //     `baseline-memory.md` (the rule that tells Claude to save to it) both selected AND on disk.
 //     Without either, the notes stay where Claude reads them.
-//   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S settings.json, always - even at global scope.
-//     The account file would silence every other project's memory too.
+//   - THE SWITCH-OFF IS WRITTEN TO THIS PROJECT'S OWN settings file, never the account one (that
+//     would silence every other project's memory too) - and, per R47, to the SAME file this run's
+//     other settings writes use: settings.local.json at local scope, settings.json otherwise
+//     (settingsTarget in settings.js is the one place that decides which).
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -101,7 +103,7 @@ function writeSwitchOff(settingsFile, { log = () => {} } = {})
     data.autoMemoryEnabled = false;
     fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
     fs.writeFileSync(settingsFile, `${JSON.stringify(data, null, 2)}\n`);
-    log(`  settings.json: autoMemoryEnabled set to false (${settingsFile})`);
+    log(`  ${path.basename(settingsFile)}: autoMemoryEnabled set to false (${settingsFile})`);
     return true;
 }
 
@@ -128,6 +130,21 @@ function importGate({ projectRoot, settingsFile, mcps = [], rules = [], tools = 
         if (!present) return { go: false, reason: `  !! ${tool} not found - the memory notes import was skipped; Claude's own memory stays on until it succeeds` };
 
     return { go: true };
+}
+
+// How many of Claude's own notes this project has, found the way the import finds them. 0 means nothing
+// to import, so nothing waits on init's level choice; null means the folders could not be read, which
+// the caller treats as notes present (the switch-off then waits for init, the old path).
+function countNotes({ projectRoot, configDir, home })
+{
+    try
+    {
+        // This run's account dir is always scanned; the importer's own scan adds $HOME/.claude and its
+        // `.claude-<space>` siblings, so a folder the import would read is never missed here.
+        const { findNotes } = require('../memory-import.js');
+        return findNotes(projectRoot, configDir, configDir, home, null).noteEntries.length;
+    }
+    catch { return null; }
 }
 
 // The import, then the switch-off - in that order, and the second only if the first succeeded.
@@ -157,4 +174,164 @@ function importNotes({ gate, importer, runImport, settingsFile, log = () => {} }
     return { switchedOff: writeSwitchOff(settingsFile, { log }), imported: true };
 }
 
-module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes };
+// --- /alfred-code:init's memory step --------------------------------------------
+//
+//   node scripts/install/memory.js init --project-root <root> --level <global|scoped|project>
+//        [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]
+//
+// setup installs with no level (the import waits); init asks it and lands it HERE - the settings key
+// the plugin's launcher reads, the project database's own .gitignore, then the gated import and the
+// switch-off above, and on success the stamp's `initialised:` line - the one signal the router and
+// every later run read (Task 18a I1). No reinstall: nothing else under .claude/ is touched. A copy-route
+// registration is the installer's to re-point, so a different path there is refused, never edited - in
+// the file the importer would spawn from: .mcp.json, else the account .claude.json (M4).
+// Exit 0: imported, already off, or nothing to import. 1: a refusal or a failed import. 2: usage.
+const USAGE = 'usage: memory.js init --project-root <root> --level <global|scoped|project> [--space <name>] [--config-dir <dir>] [--memory-dir <dir>]';
+
+function readObject(file)
+{
+    let raw;
+    try { raw = fs.readFileSync(file, 'utf8'); }
+    catch (err) { return err.code === 'ENOENT' ? { data: null } : { error: `${file} cannot be read` }; }
+    try
+    {
+        const data = raw.trim() ? JSON.parse(raw) : {};
+        return data && typeof data === 'object' && !Array.isArray(data) ? { data } : { error: `${file} top level is not an object` };
+    }
+    catch { return { error: `${file} is not valid JSON` }; }
+}
+
+// The `scope:` line of this project's stamp (2.x, else the 1.x name), '' when there is none.
+function stampScope(claudeDir)
+{
+    for (const name of ['alfred-code.stamp', 'claude-stack.stamp']) // legacy-name
+    {
+        try { return (/^scope: *(\S+)/m.exec(fs.readFileSync(path.join(claudeDir, name), 'utf8')) || [])[1] || ''; }
+        catch { /* absent: the next name */ }
+    }
+    return '';
+}
+
+// The registration the importer spawns the server from, in its own order (the engine's
+// registrationEntry): this project's .mcp.json, then the account file's user-scope entry, then its
+// entry for this project. The account file is `<config-dir>/.claude.json` when a config dir is named or
+// live, else `$HOME/.claude.json`. Null when none registers memory - the plugin route.
+function registeredMemory(projectRoot, { home, configDir })
+{
+    const withPath = (file, entry) =>
+    {
+        if (!entry || typeof entry.command !== 'string' || !entry.command) return null;
+        const raw = entry.env && entry.env.MCP_MEMORY_SQLITE_PATH;
+        return { file, path: typeof raw === 'string' && raw ? raw.replace(/^~(?=[/\\]|$)/, home) : '' };
+    };
+    const mcpFile = path.join(projectRoot, '.mcp.json');
+    const project = withPath(mcpFile, (readObject(mcpFile).data || {}).mcpServers?.memory);
+    if (project) return project;
+    const acctFile = path.join(configDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json');
+    const account = readObject(acctFile).data || {};
+    const user = withPath(acctFile, account.mcpServers?.memory);
+    if (user) return user;
+    const projects = account.projects || {};
+    const own = projects[projectRoot] || projects[projectRoot.split(path.sep).join('/')];
+    return withPath(acctFile, own && own.mcpServers && own.mcpServers.memory);
+}
+
+// A project-level database lives in the repo, so it gets its own `.gitignore` (`*`) the moment the
+// level lands - from init, update or configure alike (M5). An existing one is the user's, left alone.
+function ensureProjectIgnore(projectRoot, log = () => {})
+{
+    const ignore = path.join(projectRoot, MEMORY_DIR, '.gitignore');
+    if (fs.existsSync(ignore)) return false;
+    fs.mkdirSync(path.dirname(ignore), { recursive: true });
+    fs.writeFileSync(ignore, '*\n');
+    log(`  memory: ${MEMORY_DIR}/.gitignore written - the project database is never committed`);
+    return true;
+}
+
+function initMemory(argv, { which, runNode, homedir, log = console.log, err = console.error })
+{
+    const flag = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : undefined; };
+    const level = String(flag('--level') || '').toLowerCase();
+    const root = flag('--project-root');
+    if (!root || !['global', 'scoped', 'project'].includes(level))
+    {
+        err(`memory init: ${root ? '--level must be global, scoped or project' : '--project-root is required'}\n${USAGE}`);
+        return 2;
+    }
+    const projectRoot = path.resolve(root);
+    const home = homedir();
+    const dbPath = pathForLevel(level, { home, space: flag('--space'), projectRoot });
+    const claudeDir = path.join(projectRoot, '.claude');
+
+    const registered = registeredMemory(projectRoot, { home, configDir: flag('--config-dir') });
+    if (registered && registered.path && path.normalize(registered.path) !== path.normalize(dbPath))
+    {
+        const where = path.basename(registered.file) === '.mcp.json' ? '.mcp.json' : registered.file;
+        log(`  !! memory: ${where} registers memory at ${registered.path} - the copy route re-points it through the installer: /alfred-code:update --memory-level ${level}`);
+        return 1;
+    }
+
+    // The switch-off goes to the file this install's other settings writes use (R47): the stamp's scope
+    // names it; with no readable stamp, the file that already holds the key. C8 (R100, R101): the key
+    // itself is this machine's database path, so it goes to settings.local.json at every scope, and a
+    // copy an older run left in settings.json leaves it - unless settings.json is a file this install
+    // never writes (the local scope).
+    const local = path.join(claudeDir, 'settings.local.json');
+    const shared = path.join(claudeDir, 'settings.json');
+    const localRead = readObject(local);
+    const scope = stampScope(claudeDir);
+    const target = scope ? require('./settings.js').settingsTarget(claudeDir, scope)
+        : (localRead.data && localRead.data.env && localRead.data.env.ALFRED_CODE_MEMORY_DB !== undefined ? local : shared);
+    const targetRead = target === local ? localRead : readObject(target);
+    const failed = localRead.error || targetRead.error;
+    if (failed)
+    {
+        log(`  !! ${failed} - the memory level was not written; fix it and run /alfred-code:init again`);
+        return 1;
+    }
+    const envOfData = (data) => { data.env = data.env && typeof data.env === 'object' && !Array.isArray(data.env) ? data.env : {}; return data.env; };
+    const localData = localRead.data || {};
+    if (envOfData(localData).ALFRED_CODE_MEMORY_DB !== dbPath)
+    {
+        localData.env.ALFRED_CODE_MEMORY_DB = dbPath;
+        fs.mkdirSync(claudeDir, { recursive: true });
+        fs.writeFileSync(local, `${JSON.stringify(localData, null, 2)}\n`);
+    }
+    if (target === shared && targetRead.data && targetRead.data.env && typeof targetRead.data.env === 'object' && 'ALFRED_CODE_MEMORY_DB' in targetRead.data.env)
+    {
+        delete targetRead.data.env.ALFRED_CODE_MEMORY_DB;
+        fs.writeFileSync(shared, `${JSON.stringify(targetRead.data, null, 2)}\n`);
+        log("  settings.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings.local.json from here on");
+    }
+    log(`memory: level ${level} -> ${dbPath} (settings.local.json env ALFRED_CODE_MEMORY_DB)`);
+    if (level === 'project') ensureProjectIgnore(projectRoot, log);
+
+    const settingsFile = target;
+    const gate = importGate({ projectRoot, settingsFile, mcps: ['memory'], rules: ['baseline-memory.md'], tools: { uvx: which('uvx') } });
+    const importer = path.join(__dirname, '..', 'memory-import.js');
+    const pass = ['--config-dir', '--memory-dir'].flatMap((name) => (flag(name) ? [name, flag(name)] : []));
+    const out = importNotes({
+        gate, importer, settingsFile, log,
+        runImport: () =>
+        {
+            const r = runNode(importer, ['--project-root', projectRoot, ...pass], { cwd: projectRoot, env: process.env });
+            return { ok: r.ok, output: `${r.stdout}\n${r.stderr}` };
+        },
+    });
+    if (gate.already) log("memory: Claude's own memory is already off - nothing to import again");
+    if (!out.switchedOff) return 1;
+    const stamp = require('./stamp.js');
+    if (stamp.markInitialised(claudeDir)) log(`memory: initialised - the stamp records it, so no later run defers to /alfred-code:init`);
+    else log('  !! memory: no install stamp to mark - run /alfred-code:setup first');
+    return 0;
+}
+
+module.exports = { MEMORY_DIR, pathForLevel, levelOfPath, resolveLevel, autoMemoryState, writeSwitchOff, importGate, importNotes, countNotes, initMemory, ensureProjectIgnore };
+
+if (require.main === module)
+{
+    const argv = process.argv.slice(2);
+    if (argv[0] !== 'init') { console.error(USAGE); process.exit(2); }
+    const { which, runNode } = require('./runtime.js');
+    process.exit(initMemory(argv.slice(1), { which, runNode, homedir: require('node:os').homedir }));
+}

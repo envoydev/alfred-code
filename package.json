@@ -1,5 +1,5 @@
 {
-  "name": "claude-stack",
+  "name": "alfred-code",
   "version": "1.0.0",
   "private": true,
   "description": "Coding-agent skills and the Claude Code stack - repo tooling (skill/manifest/template/README parity + hygiene lint). The Cursor twin stack lives in the cursor-stack repo.",
@@ -10,7 +10,7 @@
     "test": "node --test",
     "test:memory": "node scripts/memory-usage.eval.js",
     "corpus": "node scripts/corpus-replay.js",
-    "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace && node scripts/build-marketplace.js --hooks-entry && node scripts/build-marketplace.js --mcp-entries",
+    "marketplace": "node scripts/build-marketplace.js --write && node scripts/build-marketplace.js --write-marketplace && node scripts/build-marketplace.js --mcp-entries",
     "eval-bundle": "node scripts/build-eval-bundle.js",
     "scope-preloads": "node scripts/scope-agent-preloads.js --write"
   },

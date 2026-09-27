@@ -122,7 +122,7 @@ operational, not editorial:
 ## House integration
 
 How the repo's architecture capture consumes the decision log at ORIENT is
-`project-architecture-analyzer`'s protocol - this file owns only the ADR format it reads. Keep
+`alfred-capture-architecture`'s protocol - this file owns only the ADR format it reads. Keep
 rationale here, not on diagrams - a diagram shows the outcome and links the ADR that chose it.
 
 ## Checklist

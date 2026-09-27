@@ -19,7 +19,7 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
 const fs = require('fs');
 
-const MARKER = 'claude-stack layer-table gate';
+const MARKER = 'alfred-code layer-table gate';
 const MAX_DENIALS = 3;
 
 let payload;

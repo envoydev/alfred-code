@@ -178,7 +178,7 @@ test('generated-docs touches: a Windows Write target matches the docs prefix', (
   });
   const file = fixture(dir, [
     w('w1', 'C:\\Projects\\app\\.claude\\docs\\architecture\\ARCHITECTURE.md'), result('w1'),
-    w('w2', '/home/u/app/.claude/docs/architecture/ARCHITECTURE.md'), result('w2'),
+    w('w2', '/home/u/app/.alfred/docs/architecture/ARCHITECTURE.md'), result('w2'),
   ]);
   const { main } = run([file]);
   const touch = main.docTouches && main.docTouches['architecture/ARCHITECTURE.md'];
@@ -193,14 +193,14 @@ test('user prompts: one typed turn counts once; echoes, stdout siblings and comp
     { type: 'user', timestamp: '2026-07-15T07:00:00.000Z', parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'run the audit' } },
     // the same typed turn's sibling records share the parentUuid - they are not new prompts
     { type: 'user', timestamp: '2026-07-15T07:00:00.100Z', parentUuid: 'p1', origin: { kind: 'human' }, message: { content: '<local-command-stdout>done</local-command-stdout>' } },
-    { type: 'user', timestamp: '2026-07-15T07:01:00.000Z', parentUuid: 'p2', origin: { kind: 'slash_command' }, message: { content: '<command-name>/claude-stack:setup</command-name>' } },
+    { type: 'user', timestamp: '2026-07-15T07:01:00.000Z', parentUuid: 'p2', origin: { kind: 'slash_command' }, message: { content: '<command-name>/alfred-code:setup</command-name>' } },
     { type: 'user', timestamp: '2026-07-15T07:02:00.000Z', parentUuid: 'p3', isCompactSummary: true, message: { content: 'summary' } },
     // no origin at all: the exclusion list is the fallback
     { type: 'user', timestamp: '2026-07-15T07:03:00.000Z', parentUuid: 'p4', message: { content: '<task-notification>agent done</task-notification>' } },
   ]);
   const { main } = run([file]);
   assert.strictEqual(main.userPrompts, 1, 'prompt count was inflated up to 500% by echoes and siblings');
-  assert.strictEqual(main.commandInvocations['claude-stack:setup'], 1, 'the slash command is still stamped');
+  assert.strictEqual(main.commandInvocations['alfred-code:setup'], 1, 'the slash command is still stamped');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -225,15 +225,15 @@ test('git acts: a quoted or heredoc mention is prose, a denied commit never ran,
 test('doc touches: assignments and globs open no row, rm clears, a heredoc mention is not a write', () => {
   const dir = tmp();
   const file = fixture(dir, [
-    bash('d1', 'D=.claude/docs/architecture/ARCHITECTURE.md'),
+    bash('d1', 'D=.alfred/docs/architecture/ARCHITECTURE.md'),
     result('d1'),
-    bash('d2', 'cat .claude/docs/architecture/ARCHITECTURE.md'),
+    bash('d2', 'cat .alfred/docs/architecture/ARCHITECTURE.md'),
     result('d2'),
-    bash('d3', 'rm -f .claude/docs/flow/COMMIT-GATE.md'),
+    bash('d3', 'rm -f .alfred/docs/flow/COMMIT-GATE.md'),
     result('d3'),
-    bash('d4', "cat <<'EOF' > /dev/null\nsee .claude/docs/architecture/ASSESSMENT.md\nEOF"),
+    bash('d4', "cat <<'EOF' > /dev/null\nsee .alfred/docs/architecture/ASSESSMENT.md\nEOF"),
     result('d4'),
-    bash('d5', 'ls .claude/docs/*.md; head -5 .claude/docs/PROJECT-CODE-STYLE.md.'),
+    bash('d5', 'ls .alfred/docs/*.md; head -5 .alfred/docs/PROJECT-CODE-STYLE.md.'),
     result('d5'),
   ]);
   const { main } = run([file]);
@@ -429,9 +429,9 @@ test('hook-block ledger: a directory is narrowed to the analyzed session, never 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// The generated-docs table read one hardcoded spelling on each route: `/.claude/docs/` with
+// The generated-docs table read one hardcoded spelling on each route: `/.alfred/docs/` with
 // forward slashes for Read/Write (blank for every Windows project - 4 of the 9 audited) and the
-// literal `.claude/docs/` for Bash (so `--docs-root` fixed only half the table).
+// literal `.alfred/docs/` for Bash (so `--docs-root` fixed only half the table).
 test('generated docs: both routes honour --docs-root, and a Windows path is not invisible', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
     const file = path.join(dir, 'session.jsonl');
@@ -477,9 +477,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
     const at = (i) => `2026-07-15T07:${String(i).padStart(2, '0')}:00.000Z`;
     let body = '';
     // two Skill calls in one turn: the second reads as an in-protocol companion load
-    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'project-solve-task' } }] } });
-    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'project-solve-task', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'create-ticket' } }] } });
-    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'project-solve-task', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
+    body += line({ type: 'assistant', timestamp: at(1), message: { id: 'm1', model: 'claude-opus-5', usage: usage(1, 0, 900, 20), content: [{ type: 'tool_use', id: 's1', name: 'Skill', input: { skill: 'alfred-task-solve' } }] } });
+    body += line({ type: 'assistant', timestamp: at(2), attributionSkill: 'alfred-task-solve', message: { id: 'm2', model: 'claude-opus-5', usage: usage(1, 0, 1000, 20), content: [{ type: 'tool_use', id: 's2', name: 'Skill', input: { skill: 'create-ticket' } }] } });
+    body += line({ type: 'assistant', timestamp: at(3), attributionSkill: 'alfred-task-solve', message: { id: 'm3', model: 'claude-opus-5', usage: usage(1, 0, 1100, 20), content: [] } });
     // a big Bash result with its own description, and a failing one 30 minutes earlier in the day
     body += line({ type: 'assistant', timestamp: at(4), message: { id: 'm4', model: 'claude-opus-5', usage: usage(1, 0, 1200, 20), content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'cat meta/migrations.json', description: 'read the migrations catalog' } }] } });
     body += line({ type: 'user', timestamp: at(5), message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'x'.repeat(5180) }] } });
@@ -495,9 +495,9 @@ test('report joins: a folded companion, an unattributed denial, the biggest resu
 
     const { main, hookBlocks } = JSON.parse(execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
     // the companion's cost is charged to its parent, and the terminal row says so instead of 0
-    assert.strictEqual(main.companionOf['create-ticket'], 'project-solve-task', 'the second Skill call in one turn is a companion load');
+    assert.strictEqual(main.companionOf['create-ticket'], 'alfred-task-solve', 'the second Skill call in one turn is a companion load');
     const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
-    assert.match(text, /create-ticket\s+1\s+~\d+\s+folded -> project-solve-task/, 'the companion row names where its cost went, never a bare 0');
+    assert.match(text, /create-ticket\s+1\s+~\d+\s+folded -> alfred-task-solve/, 'the companion row names where its cost went, never a bare 0');
     // the unattributed denial is joined to the ledger row 300ms away
     assert.match(text, /joined by ledger timestamp \(within 300ms\): guard-stop-contract\.js×1/, 'the phantom guard becomes the one that actually fired');
     // the biggest results carry the call's own label
@@ -702,6 +702,319 @@ test('hook-blocks: every log-only row (any mode) is counted apart from the block
   assert.ok(!hookBlocks.byHook['guard-stop-contract.js'], 'a skip row is not a stop-contract block');
 });
 
+// The done gate and the root-cause trigger are LOG-ONLY probes (2026-09-25): guard-stop-contract.js
+// writes where each skill was needed, and the analyzer counts what the session did about it.
+const tool = (id, name, input, ts) => ({
+  type: 'assistant', timestamp: ts || '2026-07-15T07:00:00.000Z',
+  message: { id: `m-${id}`, model: 'claude-sonnet-5', usage: usage(1, 0, 10, 1), content: [{ type: 'tool_use', id, name, input }] },
+});
+const doneRow = (detail) => line({ ts: '2026-07-15T07:00:05.000Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate',
+  reason: 'probe: a done claim - logged, not held', detail: { claim: 'Fixed', file: 'src/a.js', run: null, skill: false, tests: 'declared', rule: null, outcome: 'unrun', ...detail } });
+const redRow = (id, extra) => line({ ts: '2026-07-15T07:00:01.000Z', hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause',
+  reason: 'probe: a red npm test run - logged, nothing injected', detail: { run: 'npm test', key: 'npm test', tool_use_id: id, agent: null, agent_type: null, ...(extra || {}) } });
+
+// R3 (ECC comparison): guard-answer-length.js writes one `kind: correction` probe row per correction
+// turn, `injected` when ALFRED_CODE_CORRECTION_NUDGE=inject handed the save line back.
+test('hook-blocks: correction probe rows are counted, split by whether the save line was injected', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  const corr = (injected, marker) => line({ ts: '2026-07-15T07:00:03.000Z', hook: 'guard-answer-length.js', event: 'UserPromptSubmit', tool: '', mode: 'probe', kind: 'correction',
+    injected, reason: 'probe: a correction turn - logged, nothing injected', detail: { marker, chars: 20 } });
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [corr(false, 'no'), corr(false, 'I meant'), corr(true, 'shorter')].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.correction, { turns: 3, injected: 1 });
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /CORRECTION NUDGE \(probe\): 3 correction turn\(s\) - 1 with the save line injected, 2 logged only/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| correction nudge \| 3 \| 1 \| 2 \|/);
+  const roll = JSON.parse(execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+  assert.deepStrictEqual(roll.probes.correction, { turns: 3, injected: 1 }, 'the rollup sums the corpus');
+});
+
+// R8 (ECC comparison): guard-stop-contract.js writes one `kind: rationalization` probe row when a close
+// dismisses a failure in a turn that had a red run, a skipped test or an added skip marker.
+test('hook-blocks: rationalization probe rows split by the evidence and by the kind of dismissal', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  const rat = (phrase, evidence) => line({ ts: '2026-07-15T07:00:04.000Z', hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'rationalization',
+    reason: 'probe: a dismissal after a red run - logged, not held', detail: { phrase, evidence, red: evidence === 'red' ? ['npm test'] : [], skipped: [], skipEdit: evidence === 'skip-edit' } });
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    rat('unrelated to my change', 'red'), rat('pre-existing failure', 'red'), rat('is flaky', 'skipped'),
+    rat('transient connection failures', 'red'), rat('Skipping the e2e tests for now', 'skip-edit'),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.rationalization, { closes: 5, red: 3, skipped: 1, skipEdit: 1, preExisting: 1, unrelated: 1, flaky: 2, deferred: 1 });
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /RATIONALIZATION \(probe\): 5 close\(s\) dismissing a failure - 3 after a red run, 1 after a skipped test, 1 after an added skip marker; 1 pre-existing, 1 unrelated to the change, 2 flaky or transient, 1 deferred/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| rationalization \| 5 \| 3 \| 1 \| 1 \| 1 \| 1 \| 2 \| 1 \|/);
+  const roll = JSON.parse(execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks, '--json'], { encoding: 'utf8' }));
+  assert.deepStrictEqual(roll.probes.rationalization, { closes: 5, red: 3, skipped: 1, skipEdit: 1, preExisting: 1, unrelated: 1, flaky: 2, deferred: 1 });
+});
+
+test('hook-blocks: done-gate probe rows split into ran, and unrun by rule, no tests, skill loaded and missed', () => {
+  const dir = tmp();
+  const file = fixture(dir, [bash('t1', 'echo'), result('t1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    doneRow({ outcome: 'ran', run: 'npm test' }),
+    doneRow({ rule: 'CLAUDE.md: - Do not run the tests: they need the staging database.' }),
+    doneRow({ rule: 'AGENTS.md: Tests must not be run by the agent.', tests: 'none-found' }),
+    doneRow({ tests: 'none-found' }),
+    doneRow({ skill: true }),
+    doneRow({}),
+    doneRow({ run: 'npm test' }),
+  ].join(''));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.doneGate, { claims: 7, ran: 1, unrun: 6, byRule: 2, noTests: 1, skillLoaded: 1, inContext: 0, missed: 2 },
+    'exclusive buckets, a rule first, then no tests, then a loaded skill, then one loaded earlier');
+  assert.strictEqual(hookBlocks.rows, 0, 'a probe is never a block');
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /DONE GATE \(probe\): 7 done claim\(s\) over an edit - 1 ran after the edit, 6 unrun: 2 excused by a rule, 1 with no tests found, 1 with the skill loaded, 0 with it loaded earlier, 2 MISSED/);
+  const md = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| done gate \| 7 \| 1 \| 2 \| 1 \| 1 \| 0 \| 2 \|/);
+});
+
+test('hook-blocks: a root-cause probe is resolved against the transcript after the red run', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1\nnot ok 1', is_error: true };
+  // main: an edit before the load (after-fix), then a second streak with the skill already in context
+  const file = fixture(dir, [
+    tool('t1', 'Bash', { command: 'npm test' }), result('t1', red),
+    tool('t2', 'Edit', { file_path: 'src/a.js', old_string: 'a', new_string: 'b' }), result('t2'),
+    tool('t3', 'Skill', { skill: 'alfred-habits-root-cause' }), result('t3'),
+    tool('t4', 'Bash', { command: 'dotnet build' }), result('t4', red),
+    tool('t5', 'Edit', { file_path: 'src/b.cs', old_string: 'a', new_string: 'b' }), result('t5'),
+  ]);
+  const sub = path.join(dir, 'session', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  const agent = (name, records) => fs.writeFileSync(path.join(sub, `agent-${name}.jsonl`), records.map(line).join(''));
+  // a shell fix with no load: missed
+  agent('a1', [tool('s1', 'Bash', { command: 'npm test' }), result('s1', red), tool('s2', 'Bash', { command: "sed -i 's/x/y/' src/b.js" }), result('s2')]);
+  // a prose edit and a read, then nothing: no fix followed
+  agent('a2', [tool('u1', 'Bash', { command: 'npm test' }), result('u1', red), tool('u2', 'Edit', { file_path: 'README.md', old_string: 'a', new_string: 'b' }), result('u2'),
+    tool('u3', 'Read', { file_path: 'src/a.js' }), result('u3')]);
+  // a seat whose definition preloads the skill
+  agent('a3', [tool('v1', 'Bash', { command: 'dotnet test' }), result('v1', red), tool('v2', 'Edit', { file_path: 'src/c.cs', old_string: 'a', new_string: 'b' }), result('v2')]);
+  // the skill loaded before the fix
+  agent('a4', [tool('x1', 'Bash', { command: 'npm test' }), result('x1', red), tool('x2', 'Skill', { skill: 'alfred-code:alfred-habits-root-cause' }), result('x2'),
+    tool('x3', 'Edit', { file_path: 'src/d.js', old_string: 'a', new_string: 'b' }), result('x3')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), [
+    redRow('t1'), redRow('t4'), redRow('s1', { agent: 'a1' }), redRow('u1', { agent: 'a2' }),
+    redRow('v1', { agent: 'a3', agent_type: 'alfred-code:dotnet-test-failure-resolver' }), redRow('x1', { agent: 'a4' }), redRow('nope'),
+  ].join(''));
+  // a scratch write under /tmp is no fix: the red run with only that after it had no fix
+  agent('a5', [tool('y1', 'Bash', { command: 'npm test' }), result('y1', red), tool('y2', 'Write', { file_path: '/tmp/probe.js', content: '1' }), result('y2')]);
+  fs.appendFileSync(path.join(blocks, 'session.jsonl'), redRow('y1', { agent: 'a5' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(hookBlocks.rootCause, { streaks: 8, beforeFix: 1, inContext: 1, preloaded: 1, afterFix: 1, missed: 1, noFix: 2, unmatched: 1 });
+  const text = execFileSync('node', [SCRIPT, file, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
+});
+
+test('hook-blocks: a fix is judged against the session\'s own cwd - inside it counts wherever it lives, outside it is scratch', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1', is_error: true };
+  const proj = path.join('/private/tmp', 'proj-under-tmp');
+  const at = (r) => ({ ...r, cwd: proj });
+  const file = fixture(dir, [
+    at(tool('a1', 'Bash', { command: 'npm test' })), at(result('a1', red)),
+    at(tool('a2', 'Write', { file_path: path.join(os.homedir(), 'elsewhere', 'probe.js'), content: '1' })), at(result('a2')),
+    at(tool('a3', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('a3')),
+    at(tool('a4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('a4')),
+  ]);
+  const sub = path.join(dir, 'session', 'subagents');
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(path.join(sub, 'agent-b.jsonl'), [at(tool('b1', 'Bash', { command: 'npm test' })), at(result('b1', red)),
+    at(tool('b2', 'Edit', { file_path: path.join(proj, 'src', 'b.js'), old_string: 'a', new_string: 'b' })), at(result('b2'))].map(line).join(''));
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), redRow('a1') + redRow('b1', { agent: 'b' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rootCause.beforeFix, 1, 'a write outside the cwd is scratch, so the load came before the fix');
+  assert.strictEqual(hookBlocks.rootCause.missed, 1, 'a project file under /private/tmp is still the fix');
+});
+
+// Review I7: a done-gate skill loaded in an EARLIER turn is in context, not a trigger that failed.
+test('hook-blocks: an unrun claim whose session loaded the done-gate skill earlier is counted in context, not missed', () => {
+  const dir = tmp();
+  const file = fixture(dir, [tool('k1', 'Skill', { skill: 'alfred-code:alfred-habits-done-gate' }, '2026-07-15T06:00:00.000Z'), result('k1')]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), doneRow({}) + line({ ...JSON.parse(doneRow({})), ts: '2026-07-15T05:00:00.000Z' }));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.doneGate.inContext, 1, 'the claim after the load');
+  assert.strictEqual(hookBlocks.doneGate.missed, 1, 'the claim before it');
+});
+
+// Review I5: a write the shell aims elsewhere through a cd or a variable, a denied edit, and a failed
+// Skill call change nothing - none of them is a fix or a load.
+test('hook-blocks: a shell write outside the cwd through a cd or a variable, a denied edit and a failed load are neither fix nor load', () => {
+  const dir = tmp();
+  const red = { content: 'Exit code 1', is_error: true };
+  const proj = path.join(os.homedir(), 'proj-x');
+  const at = (r) => ({ ...r, cwd: proj });
+  const file = fixture(dir, [
+    at(tool('c1', 'Bash', { command: 'npm test' })), at(result('c1', red)),
+    at(tool('c2', 'Bash', { command: "cd /tmp/x && cat > p.js <<'EOF'\n1\nEOF" })), at(result('c2')),
+    at(tool('c3', 'Bash', { command: 'echo 1 > "$TMPDIR/p.js"' })), at(result('c3')),
+    at(tool('c4', 'Edit', { file_path: path.join(proj, 'src', 'a.js'), old_string: 'a', new_string: 'b' })), at(result('c4', { content: 'Edit operation blocked by hook', is_error: true })),
+    at(tool('c5', 'Skill', { skill: 'alfred-habits-root-cause' })), at(result('c5', { content: 'Unknown skill', is_error: true })),
+  ]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), redRow('c1'));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rootCause.noFix, 1, JSON.stringify(hookBlocks.rootCause));
+});
+
+test('hook-blocks: directory mode sums the probe rows of each session it reads, and no one else\'s', () => {
+  const dir = tmp();
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  for (const [sid, rows] of [['s-one', [doneRow({}), doneRow({ outcome: 'ran' })]], ['s-two', [doneRow({ tests: 'none-found' })]]]) {
+    fs.writeFileSync(path.join(dir, `${sid}.jsonl`), [bash('t1', 'echo'), result('t1')].map(line).join(''));
+    fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), rows.join(''));
+  }
+  fs.writeFileSync(path.join(blocks, 's-other.jsonl'), doneRow({}));
+  const out = run([dir, '--hook-blocks', blocks]);
+  assert.deepStrictEqual(out.probes.doneGate, { claims: 3, ran: 1, unrun: 2, byRule: 0, noTests: 1, skillLoaded: 0, inContext: 0, missed: 1 });
+  assert.deepStrictEqual(out.probes.rootCause, { streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+  const text = execFileSync('node', [SCRIPT, dir, '--hook-blocks', blocks], { encoding: 'utf8' });
+  assert.match(text, /DONE GATE \(probe\): 3 done claim\(s\)/);
+  assert.ok(!('probes' in run([dir])), 'no --hook-blocks, no probe tally');
+});
+
+// R5: the Stop build check ships off and turns on 'after a measured week' - the done-gate probe is that
+// measurement. Past 3 unexcused unrun claims in the newest 10 sessions, validate and status paste ONE row.
+function turnCheckCorpus(counts, opts = {}) {
+  const dir = tmp();
+  const sessions = path.join(dir, 'projects');
+  const root = path.join(dir, 'proj');
+  const docs = opts.docsPath || '.alfred/docs';
+  const blocks = path.join(root, docs, 'hook-blocks');
+  fs.mkdirSync(sessions, { recursive: true });
+  fs.mkdirSync(blocks, { recursive: true });
+  counts.forEach((rows, i) => {
+    const sid = `s-${String(i).padStart(2, '0')}`;
+    const file = path.join(sessions, `${sid}.jsonl`);
+    fs.writeFileSync(file, [bash('t1', 'echo'), result('t1')].map(line).join(''));
+    // index 0 is the NEWEST session
+    const at = new Date(Date.UTC(2026, 8, 25) - i * 3600e3);
+    fs.utimesSync(file, at, at);
+    if (rows.length) fs.writeFileSync(path.join(blocks, `${sid}.jsonl`), rows.join(''));
+  });
+  fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+  if (opts.settings !== undefined) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), opts.settings);
+  return { sessions, root, blocks };
+}
+const turnCheck = (c, extra = [], extraEnv = {}) => {
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: path.join(c.root, 'no-account') };
+  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH; delete env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE;
+  Object.assign(env, extraEnv);
+  const args = [SCRIPT, c.sessions, '--turn-check-advice', c.root, ...extra];
+  return { json: JSON.parse(execFileSync('node', [...args, '--json'], { encoding: 'utf8', env })), text: execFileSync('node', args, { encoding: 'utf8', env }) };
+};
+const excused = [doneRow({ rule: 'CLAUDE.md: Do not run the tests.' }), doneRow({ tests: 'none-found' }), doneRow({ outcome: 'ran', run: 'npm test' })];
+
+test('turn-check advice: 2 unexcused unrun claims in the newest 10 sessions stay silent; the rule, no-tests and ran rows never count', () => {
+  const { json, text } = turnCheck(turnCheckCorpus([[doneRow({}), ...excused], [doneRow({ skill: true })], [], ...excused.map((r) => [r])]));
+  assert.strictEqual(json.unchecked, 2, JSON.stringify(json));
+  assert.strictEqual(json.advise, false);
+  assert.strictEqual(text, '', 'one under the threshold prints nothing');
+});
+
+test('turn-check advice: exactly 3 prints the one row; 4 prints it too', () => {
+  for (const n of [3, 4]) {
+    const { json, text } = turnCheck(turnCheckCorpus([Array.from({ length: n }, () => doneRow({})), excused]));
+    assert.strictEqual(json.unchecked, n);
+    assert.strictEqual(json.advise, true);
+    assert.strictEqual(text.trim().split('\n').length, 1, 'ONE row');
+    assert.match(text, new RegExp(`^turn-check: advise - ${n} done claims over an edit had nothing run after it in the newest 2 sessions \\(threshold 3 per 10\\): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop\\n$`));
+  }
+});
+
+test('turn-check advice: only the newest 10 sessions count - an 11th, older one is outside the window', () => {
+  const counts = Array.from({ length: 11 }, () => []);
+  counts[0] = [doneRow({}), doneRow({})];
+  counts[10] = [doneRow({}), doneRow({})];
+  const { json, text } = turnCheck(turnCheckCorpus(counts));
+  assert.strictEqual(json.sessions, 10);
+  assert.strictEqual(json.unchecked, 2, 'the 11th session is out of the window');
+  assert.strictEqual(text, '');
+});
+
+test('turn-check advice: a project that already set ALFRED_CODE_TURN_CHECK=1 gets no row; a malformed settings file is no setting', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const on = turnCheck(turnCheckCorpus(over, { settings: JSON.stringify({ env: { ALFRED_CODE_TURN_CHECK: '1' } }) }));
+  assert.strictEqual(on.json.on, true);
+  assert.strictEqual(on.json.advise, false);
+  assert.strictEqual(on.text, '');
+  const junk = turnCheck(turnCheckCorpus(over, { settings: '{not json' }));
+  assert.strictEqual(junk.json.on, false);
+  assert.strictEqual(junk.json.advise, true);
+});
+
+// Review finding 9: under the strict hook profile the Stop build check already runs, so there is nothing to
+// advise. A hook reads the profile from its env; a command body's shell has none, so the account settings'
+// pluginConfigs (the only file Claude Code reads it from) answers too.
+test('turn-check advice: the strict hook profile gets no row, from the hook env or the account pluginConfigs', () => {
+  const over = [[doneRow({}), doneRow({}), doneRow({})]];
+  const env = turnCheck(turnCheckCorpus(over), [], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict' });
+  assert.strictEqual(env.json.advise, false, JSON.stringify(env.json));
+  assert.strictEqual(env.text, '');
+  const c = turnCheckCorpus(over);
+  const account = path.join(c.root, 'no-account');
+  fs.mkdirSync(account, { recursive: true });
+  fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'alfred-code@envoydev': { options: { hook_profile: 'strict' } } } }));
+  assert.strictEqual(turnCheck(c).text, '', 'the account pluginConfigs says strict');
+  fs.writeFileSync(path.join(account, 'settings.json'), JSON.stringify({ pluginConfigs: { 'alfred-code@envoydev': { options: { hook_profile: 'standard' } } } }));
+  assert.match(turnCheck(c).text, /^turn-check: advise/, 'standard still advises');
+  // minimal switches the build check off whatever TURN_CHECK says, so advising the key would do nothing
+  const minimal = turnCheck(turnCheckCorpus(over), [], { CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
+  assert.strictEqual(minimal.json.advise, false, JSON.stringify(minimal.json));
+  assert.strictEqual(minimal.text, '');
+});
+
+// Review finding 10: the command bodies built the project's transcripts folder with `pwd | sed`, which Git
+// Bash spells '-c-Users-...' while Claude Code names the folder from the NATIVE path ('C--Users-...'). The
+// analyzer derives it itself, from its own cwd, when no folder is passed.
+test('sessionsDirOf: the transcripts folder Claude Code names from a native path, a Windows one included', () => {
+  const { sessionsDirOf } = require('./analyze-usage.js');
+  assert.strictEqual(sessionsDirOf('C:\\Users\\me\\my repo', '/acct'), path.join('/acct', 'projects', 'C--Users-me-my-repo'));
+  assert.strictEqual(sessionsDirOf('/Users/me/my.repo', '/acct'), path.join('/acct', 'projects', '-Users-me-my-repo'));
+});
+
+test('turn-check advice: with no folder passed, the project\'s own transcripts folder is derived from the cwd', () => {
+  const c = turnCheckCorpus([[doneRow({}), doneRow({}), doneRow({})]]);
+  const account = path.join(c.root, 'acct');
+  const own = path.join(account, 'projects', fs.realpathSync(c.root).replace(/[^a-zA-Z0-9]/g, '-'));
+  fs.mkdirSync(path.dirname(own), { recursive: true });
+  fs.renameSync(c.sessions, own);
+  const env = { ...process.env, CLAUDE_CONFIG_DIR: account };
+  delete env.ALFRED_CODE_TURN_CHECK; delete env.ALFRED_CODE_DOCS_PATH; delete env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; delete env.CLAUDE_CODE_SESSION_ID;
+  const text = execFileSync('node', [SCRIPT, '--turn-check-advice', '.'], { encoding: 'utf8', env, cwd: c.root });
+  assert.match(text, /^turn-check: advise - 3 done claims/);
+});
+
+test('turn-check advice: the ledger is found under the project\'s own docs root, and a missing corpus prints nothing', () => {
+  const c = turnCheckCorpus([[doneRow({}), doneRow({}), doneRow({})]], { docsPath: 'notes/gen', settings: JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'notes/gen' } }) });
+  assert.strictEqual(turnCheck(c).json.unchecked, 3, 'read from notes/gen/hook-blocks');
+  const gone = { ...c, sessions: path.join(c.root, 'no-such-dir') };
+  const out = turnCheck(gone);
+  assert.strictEqual(out.json.sessions, 0);
+  assert.strictEqual(out.text, '');
+});
+
 // ---------- the efficiency scorecard ----------
 // Each row is a measured practice with a denominator; these pin the classifiers on synthetic
 // transcripts so a regex drift cannot silently move a rate the observation week is read from.
@@ -809,6 +1122,24 @@ test('scorecard: a green claim with no check in its turn is listed, a checked or
   assert.strictEqual(e.longAnswered, 4);
   assert.strictEqual(e.finalAnswers, 8);
   assert.deepStrictEqual(e.correctionStreaks, [scT(15)], 'recorded once, at the third short turn, not again at the fourth');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// The single-turn test is guard-answer-length.js's own (the pinned copy): a short turn that follows an
+// answer of ANY length and carries a correction marker. A status question after a long answer is no
+// correction any more; a correction after a short answer now counts.
+test('scorecard: corrections are the hook\'s marker test, not a short turn after a long answer', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'analyze-usage-'));
+  const endTurn = (id, ts, text) => scAsst(id, ts, usage(1, 0, 100, 5), [{ type: 'text', text }], { stop_reason: 'end_turn' });
+  let a = scHuman(scT(0), 'write it') + endTurn('a1', scT(1), 'prose '.repeat(280)) + scHuman(scT(2), 'how much time is left?');
+  a += endTurn('a2', scT(3), 'About ten minutes.') + scHuman(scT(4), 'I meant the CI pipeline');
+  a += endTurn('a3', scT(5), 'Switched to the CI pipeline.') + scHuman(scT(6), 'Are you still running?') + endTurn('a4', scT(7), 'No.');
+  const fa = path.join(dir, 'a.jsonl');
+  fs.writeFileSync(fa, a);
+  const ea = run([fa]).main.efficiency;
+  assert.strictEqual(ea.correctionTurns, 1, 'the streak view still counts the short turn after the long answer');
+  assert.strictEqual(ea.correctionsSaved, 0);
+  assert.deepStrictEqual(ea.correctionsUnsaved, [scT(4)], 'only the marked turn is a correction');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -923,7 +1254,7 @@ function writeInventory(root) {
   fs.writeFileSync(path.join(claude, 'rules', 'demo-conventions.md'), '---\npaths: ["**/*.cs"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'shell-only-conventions.md'), '---\npaths: ["**/*.sql"]\n---\n\nbody\n');
   fs.writeFileSync(path.join(claude, 'rules', 'other-conventions.md'), '---\npaths: ["**/*.{ts,tsx}"]\n---\n\nbody\n');
-  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { serena: {}, context7: {} } }));
+  fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({ mcpServers: { navigation: {}, documentation: {} } }));
   const pluginsFile = path.join(root, 'installed_plugins.json');
   fs.writeFileSync(pluginsFile, JSON.stringify({ version: 2, plugins: { 'demo-plugin@market': [{ scope: 'user' }], 'typescript-lsp@market': [{ scope: 'user' }], 'hooks-only-plugin@market': [{ scope: 'user' }] } }));
   return { claude, pluginsFile };
@@ -955,7 +1286,7 @@ function writeInventoryTranscript(dir, root, name) {
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:02.000Z', attachment: { type: 'nested_memory', path: `${root}/.claude/rules/demo-conventions.md`, displayPath: '.claude/rules/demo-conventions.md', content: { type: 'Project', content: 'body' } } }),
     // guard-read-whole-file's shell-route reminder names its rule, and nothing else does
     line({ type: 'attachment', timestamp: '2026-07-15T07:03:03.000Z', attachment: { type: 'hook_additional_context', hookName: 'guard-read-whole-file.js', content: ['This command touches files governed by `.claude/rules/shell-only-conventions.md`. Read the rule.'] } }),
-    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_serena_serena__find_symbol', { name_path: 'Foo' })])),
+    line(invAsst('m4', '2026-07-15T07:04:00.000Z', [use('t4', 'mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Foo' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:04:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't4', content: 'sym' }] } }),
     line(invAsst('m5', '2026-07-15T07:05:00.000Z', [use('t5', 'LSP', { method: 'definition' })])),
     line({ type: 'user', timestamp: '2026-07-15T07:05:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't5', content: 'def' }] } }),
@@ -999,15 +1330,15 @@ test('inventory vs use: every layer scores what was used, HOW it was observed, a
     'the shell route attaches no rule, so the guard notice is the only record there is');
   assert.strictEqual(invRow(inventory.rules, 'other-conventions.md').used, 'no');
 
-  // --- plugins: a namespace, an LSP call, and one that ships only hooks and can never score
+  // --- plugins: a namespace, an LSP call, and one that ships only hooks and left no hook row
   assert.deepStrictEqual(invRow(inventory.plugins, 'demo-plugin').how.sort(), ['namespaced skill/command x1', 'preloaded skill x1'],
     "a plugin skill named in a seat's preload list is that plugin's body entering the seat, on its own evidence line");
   assert.deepStrictEqual(invRow(inventory.plugins, 'typescript-lsp').how, ['LSP call x1']);
   assert.strictEqual(invRow(inventory.plugins, 'hooks-only-plugin').used, 'no');
 
   // --- MCP
-  assert.deepStrictEqual(invRow(inventory.mcps, 'serena').how, ['calls x1']);
-  assert.strictEqual(invRow(inventory.mcps, 'context7').used, 'no');
+  assert.deepStrictEqual(invRow(inventory.mcps, 'navigation').how, ['calls x1']);
+  assert.strictEqual(invRow(inventory.mcps, 'documentation').used, 'no');
   assert.match(inventory.source.skills_agents_rules, /^project /);
   assert.strictEqual(inventory.source.sessions, 1);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -1263,7 +1594,7 @@ test("inventory: the session's own roster wins, and a stamp that postdates the s
   fs.writeFileSync(path.join(claude, 'rules', 'baseline-demo.md'), '---\ndescription: always-on\n---\n\nbody\n');
   // the install landed AFTER the session ran - the very drift that reported 44 skills to a session
   // whose own transcript proves `.claude` did not exist
-  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'source: x\nref: main\nsha: abcdef1234567890\nversion: 0.9.9\ninstalled: 2026-08-01T00:00:00Z\n');
+  fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'source: x\nref: main\nsha: abcdef1234567890\nversion: 0.9.9\ninstalled: 2026-08-01T00:00:00Z\n');
   const file = path.join(dir, 'session.jsonl');
   fs.writeFileSync(file, [
     line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
@@ -1293,7 +1624,7 @@ test('--report-md carries a Session vintage block naming what the session loaded
   // today's source has a section the session never saw
   fs.writeFileSync(path.join(claude, 'skills', 'demo-skill', 'SKILL.md'),
     '---\nname: demo-skill\ndescription: "fixture"\n---\n\n# Demo\n\nstep one\n\n## A rule added later\n\nnever load a whole file\n');
-  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\ninstalled: 2026-07-01T00:00:00Z\n');
+  fs.writeFileSync(path.join(claude, 'alfred-code.stamp'), 'sha: abcdef1234567890\nversion: 0.2.79\ninstalled: 2026-07-01T00:00:00Z\n');
   const file = path.join(dir, 'session.jsonl');
   fs.writeFileSync(file, [
     line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' }, version: '2.1.0' }),
@@ -1412,7 +1743,7 @@ test('a token past the label cut is still masked - the mask runs before the slic
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
-const SERENA = (tool) => `mcp__plugin_serena_serena__${tool}`;
+const SERENA = (tool) => `mcp__plugin_navigation_navigation__${tool}`;
 const navCall = (id, name, input = {}) => ({ type: 'tool_use', id, name, input });
 function navTranscript(file, calls, results = {}) {
   let body = '';
@@ -1644,20 +1975,20 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   //       serena get_symbols_overview ok | context7 query-docs ERROR (MCP timeout)
   //       context7 resolve-library-id: a guard denial -> REJECTED, never ran
   //       memory memory_search: an InputValidationError -> REJECTED by the harness, never ran
-  //       playwright-chrome browser_click: the user declined -> an answer, not a failure
-  // seat: serena find_symbol ERROR | sentry search_issues ok
+  //       browser-chrome browser_click: the user declined -> an answer, not a failure
+  // seat: serena find_symbol ERROR | browser-firefox browser_navigate ok
   // hand count: 9 calls, 3 server errors (serena 2 of 4, context7 1 of 2), 2 rejected
   const dir = tmp();
   const file = path.join(dir, 'session.jsonl');
   const mcpName = (server, tool) => `mcp__plugin_${server}_${server}__${tool}`;
   navTranscript(file, [
-    navCall('e1', mcpName('serena', 'find_symbol'), { name_path: 'A' }),
-    navCall('e2', mcpName('serena', 'find_symbol'), { name_path: 'B' }),
-    navCall('e3', mcpName('serena', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
-    navCall('e4', mcpName('context7', 'query-docs'), { query: 'x' }),
-    navCall('e5', mcpName('context7', 'resolve-library-id'), { libraryName: 'y' }),
+    navCall('e1', mcpName('navigation', 'find_symbol'), { name_path: 'A' }),
+    navCall('e2', mcpName('navigation', 'find_symbol'), { name_path: 'B' }),
+    navCall('e3', mcpName('navigation', 'get_symbols_overview'), { relative_path: 'src/a.cs' }),
+    navCall('e4', mcpName('documentation', 'query-docs'), { query: 'x' }),
+    navCall('e5', mcpName('documentation', 'resolve-library-id'), { libraryName: 'y' }),
     navCall('e6', mcpName('memory', 'memory_search'), {}),
-    navCall('e7', mcpName('playwright-chrome', 'browser_click'), { element: 'OK' }),
+    navCall('e7', mcpName('browser-chrome', 'browser_click'), { element: 'OK' }),
   ], {
     e2: { text: 'Error executing tool find_symbol: language server not running', error: true },
     e4: { text: 'MCP error -32001: Request timed out', error: true },
@@ -1668,21 +1999,21 @@ test('MCP failures: a server error counts per server across main and seats; a gu
   const sub = path.join(dir, 'subagents');
   fs.mkdirSync(sub);
   navTranscript(path.join(sub, 'agent-s1.jsonl'), [
-    navCall('f1', mcpName('serena', 'find_symbol'), { name_path: 'C' }),
-    navCall('f2', mcpName('sentry', 'search_issues'), { query: 'z' }),
+    navCall('f1', mcpName('navigation', 'find_symbol'), { name_path: 'C' }),
+    navCall('f2', mcpName('browser-firefox', 'browser_navigate'), { query: 'z' }),
   ], { f1: { text: 'Error executing tool find_symbol: timeout', error: true } });
   const { main, agents } = run([file]);
-  assert.strictEqual(main.mcp.serena.errors, 1);
-  assert.strictEqual(main.mcp.context7.errors, 1);
-  assert.strictEqual(main.mcp.context7.rejected, 1, 'a guard denial is a rejection, not a server failure');
+  assert.strictEqual(main.mcp.navigation.errors, 1);
+  assert.strictEqual(main.mcp.documentation.errors, 1);
+  assert.strictEqual(main.mcp.documentation.rejected, 1, 'a guard denial is a rejection, not a server failure');
   assert.strictEqual(main.mcp.memory.errors, 0);
   assert.strictEqual(main.mcp.memory.rejected, 1, 'a schema failure never reached the server');
-  assert.strictEqual(main.mcp['playwright-chrome'].errors, 0, 'a decline is an answer');
-  assert.strictEqual(agents[0].stats.mcp.serena.errors, 1);
+  assert.strictEqual(main.mcp['browser-chrome'].errors, 0, 'a decline is an answer');
+  assert.strictEqual(agents[0].stats.mcp.navigation.errors, 1);
   const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
-  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: serena 2\/4, context7 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
+  assert.match(txt, /MCP failures\s+3 of 9 MCP call\(s\) returned an error: navigation 2\/4, documentation 1\/2; 2 more rejected before the server ran \(a guard or the harness\)/);
   const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
-  assert.match(md, /\| serena \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
+  assert.match(md, /\| navigation \| 4 \| [^|]+ \| 2 \|/, 'the MCP table counts server errors only');
   assert.match(md, /\| MCP failures \| 3 of 9 MCP call\(s\)/);
   // per session, in the rollup
   const roll = run([dir]);
@@ -1699,4 +2030,42 @@ test('MCP failures: a session with no MCP call says so', () => {
   const txt = execFileSync('node', [SCRIPT, file], { encoding: 'utf8' });
   assert.match(txt, /MCP failures\s+no MCP call/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// A session recorded before 2.0.0 names the stack's items under the 1.x plugin names, and the
+// project it ran in may still hold the 1.x stamp: both are the house's own, read like the new ones.
+test('a 1.x session: its claude-stack scoped names join the bare inventory, and its stamp is the vintage', () => { // legacy-name
+  const dir = tmp();
+  const root = path.join(dir, 'proj');
+  const { claude, pluginsFile } = writeInventory(root);
+  fs.writeFileSync(path.join(claude, 'claude-stack.stamp'), 'sha: abcdef1234567890\nversion: 1.3.0\ninstalled: 2026-07-01T00:00:00Z\n'); // legacy-name
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file, [
+    line({ type: 'user', timestamp: '2026-07-15T07:00:00.000Z', cwd: root, parentUuid: 'p1', origin: { kind: 'human' }, message: { content: 'go' } }),
+    line(invAsst('m1', '2026-07-15T07:00:10.000Z', [use('t1', 'Skill', { skill: 'claude-stack:alpha-skill' })])), // legacy-name
+    line({ type: 'user', timestamp: '2026-07-15T07:00:11.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } }),
+    line(invAsst('m2', '2026-07-15T07:01:00.000Z', [use('t2', 'Task', { subagent_type: 'claude-stack-web-angular:demo-implementer', description: 'build one task' })])), // legacy-name
+    line({ type: 'user', timestamp: '2026-07-15T07:01:01.000Z', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'done' }] } }),
+  ].join(''));
+  const { inventory } = run([file, '--inventory', claude, '--plugins', pluginsFile]);
+  assert.deepStrictEqual(invRow(inventory.skills, 'alpha-skill').how, ['Skill call x1']);
+  assert.strictEqual(invRow(inventory.skills, 'claude-stack:alpha-skill'), undefined, 'the row did not split in two'); // legacy-name
+  assert.deepStrictEqual(invRow(inventory.agents, 'demo-implementer').how, ['dispatched x1']);
+  const md = execFileSync('node', [SCRIPT, file, '--report-md'], { encoding: 'utf8' });
+  assert.match(md, /\| Stack install \| v1\.3\.0 .*installed before this session ran \|/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// Task 22: the code-style capture was renamed, and a rule it generated before that names its old
+// spelling. Both count as a rule attach; the old spelling comes from the manifest's `renamed` map.
+test('style rule attaches: a rule generated under the capture\'s old name still counts', () => {
+  const renamed = require('../meta/stack-manifest.json').renamed.skills;
+  const old = Object.keys(renamed).find((k) => renamed[k] === 'alfred-capture-code-style');
+  assert.ok(old, 'the map names the capture\'s old spelling');
+  const dir = tmp();
+  const said = (ts, name) => ({ type: 'user', timestamp: ts, message: { content: `# Project code style (generated - the ${name} skill owns this rule)` } });
+  const file = fixture(dir, [said('2026-07-15T07:00:00.000Z', old), said('2026-07-15T07:00:01.000Z', 'alfred-capture-code-style'),
+    { type: 'assistant', timestamp: '2026-07-15T07:00:02.000Z', message: { id: 'm1', model: 'claude-sonnet-5', usage: usage(1, 0, 1, 1), content: [{ type: 'text', text: 'ok' }] } }]);
+  try { assert.strictEqual(run([file]).main.styleRuleAttaches, 2); }
+  finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

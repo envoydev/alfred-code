@@ -1,53 +1,477 @@
 {
-  "name": "claude-stack",
+  "name": "envoydev",
   "owner": {
     "name": "envoydev",
     "url": "https://github.com/envoydev"
   },
   "metadata": {
-    "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the claude-stack plugin.",
+    "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
     "version": "1.3.0"
   },
   "plugins": [
     {
-      "name": "claude-stack-hooks",
+      "name": "serena",
       "source": "./",
-      "description": "The seventeen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.",
+      "description": "RETIRED in 2.0.0 - renamed navigation. Run /alfred-code:update: it installs navigation in its place and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
       },
       "strict": false,
+      "mcpServers": {
+        "serena": {
+          "command": "node",
+          "env": {
+            "SERENA_HOME": ".serena/home"
+          },
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+            "--package",
+            "serena-agent@1.7.0",
+            "--",
+            "start-mcp-server",
+            "--context",
+            "claude-code",
+            "--enable-web-dashboard",
+            "false",
+            "--project-from-cwd"
+          ]
+        }
+      }
+    },
+    {
+      "name": "context7",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - renamed documentation. Run /alfred-code:update: it installs documentation in its place and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "context7": {
+          "type": "http",
+          "url": "https://mcp.context7.com/mcp",
+          "headers": {
+            "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"
+          }
+        }
+      }
+    },
+    {
+      "name": "memory",
+      "source": "./",
+      "description": "memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "memory": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
+            "--package",
+            "mcp-memory-service[sqlite]==11.13.0"
+          ],
+          "env": {
+            "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
+            "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
+          }
+        }
+      }
+    },
+    {
+      "name": "playwright-chrome",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - renamed browser-chrome. Run /alfred-code:update: it installs browser-chrome in its place and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "playwright-chrome": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "chrome",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "playwright-msedge",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - renamed browser-msedge. Run /alfred-code:update: it installs browser-msedge in its place and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "playwright-msedge": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "msedge",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "playwright-firefox",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - renamed browser-firefox. Run /alfred-code:update: it installs browser-firefox in its place and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "playwright-firefox": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "firefox",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "playwright-webkit",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - renamed browser-webkit. Run /alfred-code:update: it installs browser-webkit in its place and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "playwright-webkit": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "webkit",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "navigation",
+      "source": "./",
+      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "navigation": {
+          "command": "node",
+          "env": {
+            "SERENA_HOME": ".serena/home"
+          },
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
+            "--package",
+            "serena-agent@1.7.0",
+            "--",
+            "start-mcp-server",
+            "--context",
+            "claude-code",
+            "--enable-web-dashboard",
+            "false",
+            "--project-from-cwd"
+          ]
+        }
+      }
+    },
+    {
+      "name": "documentation",
+      "source": "./",
+      "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "documentation": {
+          "type": "http",
+          "url": "https://mcp.context7.com/mcp",
+          "headers": {
+            "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-chrome",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-chrome": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "chrome",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-msedge",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-msedge": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "msedge",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-firefox",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-firefox": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "firefox",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "browser-webkit",
+      "source": "./",
+      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "browser-webkit": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "@playwright/mcp@0.0.82",
+            "--browser",
+            "webkit",
+            "--user-data-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
+            "--output-dir",
+            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+          ]
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "alfred-code",
+      "source": "./",
+      "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "category": "development",
+      "tags": [
+        "setup",
+        "installer",
+        "skills",
+        "agents",
+        "mcp",
+        "bootstrap"
+      ],
+      "userConfig": {
+        "hook_profile": {
+          "type": "string",
+          "title": "Hook profile",
+          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
+          "default": "standard"
+        }
+      },
+      "commands": [
+        "./setup-plugin/commands/init.md",
+        "./setup-plugin/commands/setup.md",
+        "./setup-plugin/commands/update.md",
+        "./setup-plugin/commands/configure.md",
+        "./setup-plugin/commands/validate.md",
+        "./setup-plugin/commands/status.md",
+        "./setup-plugin/commands/uninstall.md"
+      ],
+      "skills": [
+        "./setup-plugin/skills/alfred-code",
+        "./stack/skills/alfred-capture-agent-capabilities",
+        "./stack/skills/alfred-capture-architecture",
+        "./stack/skills/alfred-capture-architecture-quality",
+        "./stack/skills/alfred-capture-claude-md",
+        "./stack/skills/alfred-capture-code-quality",
+        "./stack/skills/alfred-capture-code-style",
+        "./stack/skills/alfred-capture-first-look",
+        "./stack/skills/alfred-capture-test-coverage",
+        "./stack/skills/alfred-habits-clarify",
+        "./stack/skills/alfred-habits-commit-checkpoint",
+        "./stack/skills/alfred-habits-done-gate",
+        "./stack/skills/alfred-habits-plan-writing",
+        "./stack/skills/alfred-habits-root-cause",
+        "./stack/skills/alfred-habits-skill-writing",
+        "./stack/skills/alfred-habits-test-first",
+        "./stack/skills/alfred-issue-diagnoser",
+        "./stack/skills/alfred-issue-signatures-ci",
+        "./stack/skills/alfred-issue-signatures-runtime",
+        "./stack/skills/alfred-loop-architecture-quality",
+        "./stack/skills/alfred-loop-quality",
+        "./stack/skills/alfred-loop-test-coverage",
+        "./stack/skills/alfred-task-design",
+        "./stack/skills/alfred-task-implement",
+        "./stack/skills/alfred-task-solve",
+        "./stack/skills/alfred-task-solve-cross",
+        "./stack/skills/alfred-task-verify-code",
+        "./stack/skills/alfred-task-verify-plan",
+        "./stack/skills/alfred-task-version-upgrade",
+        "./stack/skills/docs-as-code",
+        "./stack/skills/markdown-style"
+      ],
+      "agents": [
+        "./stack/agents/alfred-issue-diagnoser-ci.md",
+        "./stack/agents/alfred-issue-diagnoser-runtime.md",
+        "./stack/agents/architecture-analyzer.md",
+        "./stack/agents/code-quality-analyzer.md",
+        "./stack/agents/code-style-analyzer.md",
+        "./stack/agents/evidence-gatherer.md",
+        "./stack/agents/integration-reviewer.md",
+        "./stack/agents/security-auditor.md",
+        "./stack/agents/test-coverage-analyzer.md"
+      ],
       "hooks": {
         "PreToolUse": [
+          {
+            "matcher": "AskUserQuestion",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          },
           {
             "matcher": "Bash|PowerShell",
             "hooks": [
               {
                 "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-protected-force-push.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-catastrophic-rm.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
-                "timeout": 10
-              },
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-ungated-commit.js\"",
-                "timeout": 10
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
+                "timeout": 80
               }
             ]
           },
@@ -87,16 +511,6 @@
             ]
           },
           {
-            "matcher": "AskUserQuestion",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
             "matcher": "Skill",
             "hooks": [
               {
@@ -107,7 +521,7 @@
             ]
           },
           {
-            "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit",
             "hooks": [
               {
                 "type": "command",
@@ -117,7 +531,7 @@
             ]
           },
           {
-            "matcher": "Write|Edit|NotebookEdit|Bash|PowerShell",
+            "matcher": "Write|Edit|NotebookEdit",
             "hooks": [
               {
                 "type": "command",
@@ -127,7 +541,7 @@
             ]
           },
           {
-            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob",
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
             "hooks": [
               {
                 "type": "command",
@@ -142,6 +556,52 @@
               {
                 "type": "command",
                 "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "SessionStart": [
+          {
+            "matcher": "startup",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "compact",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/memory-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
                 "timeout": 10
               }
             ]
@@ -194,6 +654,49 @@
             ]
           }
         ],
+        "PostToolUseFailure": [
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
         "UserPromptSubmit": [
           {
             "hooks": [
@@ -215,7 +718,234 @@
             ]
           }
         ],
+        "PreCompact": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "SubagentStart": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "claude-stack",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "category": "development",
+      "tags": [
+        "setup",
+        "installer",
+        "skills",
+        "agents",
+        "mcp",
+        "bootstrap"
+      ],
+      "userConfig": {
+        "hook_profile": {
+          "type": "string",
+          "title": "Hook profile",
+          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
+          "default": "standard"
+        }
+      },
+      "commands": [
+        "./setup-plugin/commands/init.md",
+        "./setup-plugin/commands/setup.md",
+        "./setup-plugin/commands/update.md",
+        "./setup-plugin/commands/configure.md",
+        "./setup-plugin/commands/validate.md",
+        "./setup-plugin/commands/status.md",
+        "./setup-plugin/commands/uninstall.md"
+      ],
+      "skills": [
+        "./setup-plugin/skills/alfred-code",
+        "./stack/skills/alfred-capture-agent-capabilities",
+        "./stack/skills/alfred-capture-architecture",
+        "./stack/skills/alfred-capture-architecture-quality",
+        "./stack/skills/alfred-capture-claude-md",
+        "./stack/skills/alfred-capture-code-quality",
+        "./stack/skills/alfred-capture-code-style",
+        "./stack/skills/alfred-capture-first-look",
+        "./stack/skills/alfred-capture-test-coverage",
+        "./stack/skills/alfred-habits-clarify",
+        "./stack/skills/alfred-habits-commit-checkpoint",
+        "./stack/skills/alfred-habits-done-gate",
+        "./stack/skills/alfred-habits-plan-writing",
+        "./stack/skills/alfred-habits-root-cause",
+        "./stack/skills/alfred-habits-skill-writing",
+        "./stack/skills/alfred-habits-test-first",
+        "./stack/skills/alfred-issue-diagnoser",
+        "./stack/skills/alfred-issue-signatures-ci",
+        "./stack/skills/alfred-issue-signatures-runtime",
+        "./stack/skills/alfred-loop-architecture-quality",
+        "./stack/skills/alfred-loop-quality",
+        "./stack/skills/alfred-loop-test-coverage",
+        "./stack/skills/alfred-task-design",
+        "./stack/skills/alfred-task-implement",
+        "./stack/skills/alfred-task-solve",
+        "./stack/skills/alfred-task-solve-cross",
+        "./stack/skills/alfred-task-verify-code",
+        "./stack/skills/alfred-task-verify-plan",
+        "./stack/skills/alfred-task-version-upgrade",
+        "./stack/skills/docs-as-code",
+        "./stack/skills/markdown-style"
+      ],
+      "agents": [
+        "./stack/agents/alfred-issue-diagnoser-ci.md",
+        "./stack/agents/alfred-issue-diagnoser-runtime.md",
+        "./stack/agents/architecture-analyzer.md",
+        "./stack/agents/code-quality-analyzer.md",
+        "./stack/agents/code-style-analyzer.md",
+        "./stack/agents/evidence-gatherer.md",
+        "./stack/agents/integration-reviewer.md",
+        "./stack/agents/security-auditor.md",
+        "./stack/agents/test-coverage-analyzer.md"
+      ],
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "AskUserQuestion",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/shell-guards.js\"",
+                "timeout": 80
+              }
+            ]
+          },
+          {
+            "matcher": "Read",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-read-whole-file.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Grep",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-secret-value.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Task|Agent",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-unapproved-dispatch.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Skill",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-config-protection.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|NotebookEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-cross-project-write.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": ".*",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
         "SessionStart": [
+          {
+            "matcher": "startup",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
+                "timeout": 10
+              }
+            ]
+          },
           {
             "matcher": "compact",
             "hooks": [
@@ -251,6 +981,117 @@
             ]
           }
         ],
+        "Stop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 60
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/history-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "SubagentStop": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUseFailure": [
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "PostToolUse": [
+          {
+            "matcher": "Bash|PowerShell",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-stop-contract.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
+        "UserPromptSubmit": [
+          {
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-fresh-session-start.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-answer-length.js\"",
+                "timeout": 10
+              },
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
+                "timeout": 10
+              }
+            ]
+          }
+        ],
         "PreCompact": [
           {
             "hooks": [
@@ -272,432 +1113,25 @@
               }
             ]
           }
-        ],
-        "PostToolUse": [
-          {
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/monitor-session.js\"",
-                "timeout": 10
-              }
-            ]
-          },
-          {
-            "matcher": "Write|Edit|MultiEdit",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
-                "timeout": 60
-              }
-            ]
-          }
-        ]
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "serena",
-      "source": "./",
-      "description": "serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "serena": {
-          "command": "node",
-          "env": {
-            "SERENA_HOME": ".serena/home"
-          },
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
-            "--package",
-            "serena-agent@1.7.0",
-            "--",
-            "start-mcp-server",
-            "--context",
-            "claude-code",
-            "--enable-web-dashboard",
-            "false",
-            "--project-from-cwd"
-          ]
-        }
-      }
-    },
-    {
-      "name": "context7",
-      "source": "./",
-      "description": "context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. This is the one the core depends on, so it can never be dropped; `--context7 local` adds the context7-local entry beside it for the npx transport.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "context7": {
-          "type": "http",
-          "url": "https://mcp.context7.com/mcp",
-          "headers": {
-            "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY:-}"
-          }
-        }
-      }
-    },
-    {
-      "name": "memory",
-      "source": "./",
-      "description": "memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "memory": {
-          "command": "node",
-          "args": [
-            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/memory-launch.js",
-            "--package",
-            "mcp-memory-service[sqlite]==11.13.0"
-          ],
-          "env": {
-            "MCP_MEMORY_STORAGE_BACKEND": "sqlite_vec",
-            "MCP_MEMORY_SQLITE_PRAGMAS": "busy_timeout=15000"
-          }
-        }
-      }
-    },
-    {
-      "name": "angular-cli",
-      "source": "./",
-      "description": "The Angular CLI MCP server as a plugin: workspace-aware Angular tooling. Unpinned on purpose - it matches the ng the workspace itself resolves.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "angular-cli": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@angular/cli",
-            "mcp"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "chrome-devtools",
-      "source": "./",
-      "description": "chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "chrome-devtools": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "chrome-devtools-mcp@1.9.0"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "appium-mcp",
-      "source": "./",
-      "description": "The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "appium-mcp": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "appium-mcp@1.94.3"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "sentry",
-      "source": "./",
-      "description": "Sentry's hosted remote MCP as a plugin: issues, events and releases from the project's own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "sentry": {
-          "type": "http",
-          "url": "https://mcp.sentry.dev/mcp/${SENTRY_SLUG}",
-          "headersHelper": "node \"${CLAUDE_PLUGIN_ROOT}/stack/mcp/sentry-headers.js\" \"${CLAUDE_PROJECT_DIR}\""
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "context7-local",
-      "source": "./",
-      "description": "context7 over the local npx transport, as a plugin: the same up-to-date library and framework documentation as the hosted server, run as a local process instead - for a setup that bakes CONTEXT7_API_KEY into the registration rather than reading it from the account settings. Added by `--context7 local`; disable the hosted `context7` server beside it, or both answer.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "context7-local": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@upstash/context7-mcp@4.1.1"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "playwright-chrome",
-      "source": "./",
-      "description": "playwright (chrome) as a plugin: drive a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "playwright-chrome": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@playwright/mcp@0.0.82",
-            "--browser",
-            "chrome",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "playwright-msedge",
-      "source": "./",
-      "description": "playwright (msedge) as a plugin: drive a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "playwright-msedge": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@playwright/mcp@0.0.82",
-            "--browser",
-            "msedge",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "playwright-firefox",
-      "source": "./",
-      "description": "playwright (firefox) as a plugin: drive a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "playwright-firefox": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@playwright/mcp@0.0.82",
-            "--browser",
-            "firefox",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "playwright-webkit",
-      "source": "./",
-      "description": "playwright (webkit) as a plugin: drive a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "mcpServers": {
-        "playwright-webkit": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@playwright/mcp@0.0.82",
-            "--browser",
-            "webkit",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
-          ]
-        }
-      },
-      "dependencies": [
-        "claude-stack"
-      ]
-    },
-    {
-      "name": "claude-stack",
-      "source": "./",
-      "description": "The Claude Code stack, guided: init installs it from scratch into a project (or globally; setup is its alias for one release), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables.",
-      "version": "1.3.0",
-      "author": {
-        "name": "envoydev",
-        "url": "https://github.com/envoydev"
-      },
-      "strict": false,
-      "category": "development",
-      "tags": [
-        "setup",
-        "installer",
-        "skills",
-        "agents",
-        "mcp",
-        "bootstrap"
-      ],
-      "commands": [
-        "./setup-plugin/commands/init.md",
-        "./setup-plugin/commands/setup.md",
-        "./setup-plugin/commands/update.md",
-        "./setup-plugin/commands/configure.md",
-        "./setup-plugin/commands/validate.md",
-        "./setup-plugin/commands/status.md"
-      ],
-      "skills": [
-        "./setup-plugin/skills/claude-stack",
-        "./stack/skills/docs-as-code",
-        "./stack/skills/markdown-style",
-        "./stack/skills/project-agent-capabilities",
-        "./stack/skills/project-architecture-analyzer",
-        "./stack/skills/project-architecture-quality-analyzer",
-        "./stack/skills/project-architecture-quality-loop",
-        "./stack/skills/project-ci-failure-signatures",
-        "./stack/skills/project-code-style-analyzer",
-        "./stack/skills/project-commit-checkpoint",
-        "./stack/skills/project-diagnose-failure",
-        "./stack/skills/project-first-look",
-        "./stack/skills/project-implementer",
-        "./stack/skills/project-quality-loop",
-        "./stack/skills/project-runtime-failure-signatures",
-        "./stack/skills/project-solution-design",
-        "./stack/skills/project-solve-cross-task",
-        "./stack/skills/project-solve-task",
-        "./stack/skills/project-test-coverage-analyzer",
-        "./stack/skills/project-test-coverage-loop",
-        "./stack/skills/project-verify-code",
-        "./stack/skills/project-verify-plan",
-        "./stack/skills/project-version-upgrade"
-      ],
-      "agents": [
-        "./stack/agents/architecture-analyzer.md",
-        "./stack/agents/ci-failure-diagnoser.md",
-        "./stack/agents/code-style-analyzer.md",
-        "./stack/agents/evidence-gatherer.md",
-        "./stack/agents/integration-reviewer.md",
-        "./stack/agents/runtime-failure-diagnoser.md",
-        "./stack/agents/security-auditor.md",
-        "./stack/agents/test-coverage-analyzer.md"
-      ],
-      "hooks": {
-        "PreToolUse": [
-          {
-            "matcher": "AskUserQuestion",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/guard-layer-table.js\"",
-                "timeout": 10
-              }
-            ]
-          }
-        ],
-        "SessionStart": [
-          {
-            "matcher": "startup",
-            "hooks": [
-              {
-                "type": "command",
-                "command": "node \"${CLAUDE_PLUGIN_ROOT}/setup-plugin/hooks/library-stamp.js\"",
-                "timeout": 10
-              }
-            ]
-          }
         ]
       }
+    },
+    {
+      "name": "claude-stack-hooks",
+      "source": "./",
+      "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "skills": []
     },
     {
       "name": "claude-stack-aspnet",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -722,7 +1156,7 @@
     {
       "name": "claude-stack-browser-extension",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -746,7 +1180,7 @@
     {
       "name": "claude-stack-console",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -767,7 +1201,7 @@
     {
       "name": "claude-stack-ionic-angular",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -793,7 +1227,7 @@
     {
       "name": "claude-stack-typescript",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -809,7 +1243,7 @@
     {
       "name": "claude-stack-web-angular",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -830,7 +1264,7 @@
     {
       "name": "claude-stack-windows-service",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -854,7 +1288,7 @@
     {
       "name": "claude-stack-data",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -878,7 +1312,7 @@
     {
       "name": "claude-stack-javascript",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -893,7 +1327,7 @@
     {
       "name": "claude-stack-winforms",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -916,7 +1350,7 @@
     {
       "name": "claude-stack-wpf",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -939,7 +1373,7 @@
     {
       "name": "claude-stack-angular",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -963,7 +1397,7 @@
     {
       "name": "claude-stack-aspnet-data",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -980,7 +1414,7 @@
     {
       "name": "claude-stack-csharp",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -999,7 +1433,7 @@
     {
       "name": "claude-stack-devops",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1021,7 +1455,7 @@
     {
       "name": "claude-stack-dotnet",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1050,7 +1484,7 @@
     {
       "name": "claude-stack-dotnet-hosting",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1067,7 +1501,7 @@
     {
       "name": "claude-stack-javascript-shared",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1084,7 +1518,7 @@
     {
       "name": "claude-stack-tsjs",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1101,7 +1535,7 @@
     {
       "name": "claude-stack-typescript-shared",
       "source": "./",
-      "description": "RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.",
+      "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
       "version": "1.3.0",
       "author": {
         "name": "envoydev",
@@ -1113,6 +1547,70 @@
       ],
       "dependencies": [
         "claude-stack"
+      ]
+    },
+    {
+      "name": "windows-desktop",
+      "source": "./",
+      "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "windows-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "windows-desktop",
+            "--package",
+            "windows-mcp==0.8.5",
+            "--",
+            "serve",
+            "--exclude-tools",
+            "PowerShell,Registry,Process"
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
+        }
+      },
+      "dependencies": [
+        "alfred-code"
+      ]
+    },
+    {
+      "name": "macos-desktop",
+      "source": "./",
+      "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
+      "version": "1.3.0",
+      "author": {
+        "name": "envoydev",
+        "url": "https://github.com/envoydev"
+      },
+      "strict": false,
+      "mcpServers": {
+        "macos-desktop": {
+          "command": "node",
+          "args": [
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js",
+            "--server",
+            "macos-desktop",
+            "--package",
+            "macos-mcp==0.4.6",
+            "--",
+            "serve"
+          ],
+          "env": {
+            "ANONYMIZED_TELEMETRY": "false"
+          }
+        }
+      },
+      "dependencies": [
+        "alfred-code"
       ]
     }
   ]

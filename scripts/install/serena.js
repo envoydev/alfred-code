@@ -92,7 +92,7 @@ function setListKey(cfgFile, key, value, comment, { log = () => {} } = {})
         log(`  serena: ${key} set to ${value} (was empty)`);
         return true;
     }
-    fs.writeFileSync(cfgFile, `${text}\n# Added by claude-stack: ${comment}\n${key}: ${value}\n`);
+    fs.writeFileSync(cfgFile, `${text}\n# Added by alfred-code: ${comment}\n${key}: ${value}\n`);
     log(`  serena: ${key} ${value} appended to project.yml`);
     return true;
 }
@@ -134,7 +134,7 @@ function seedProject({ projectRoot, selected = true, log = () => {} })
     }
     const name = path.basename(projectRoot);
     fs.mkdirSync(path.dirname(cfg), { recursive: true });
-    fs.writeFileSync(cfg, `# Seeded by claude-stack. serena binds this repo via --project-from-cwd; the config it would
+    fs.writeFileSync(cfg, `# Seeded by alfred-code. serena binds this repo via --project-from-cwd; the config it would
 # auto-generate instead is written with an EMPTY language list in async mode and with only the
 # single top language otherwise, so it is stated here explicitly. Detected from the files in this
 # repo at install time; edit freely - a key that carries entries is never rewritten by an update.
@@ -153,4 +153,29 @@ ignored_paths: ${IGNORED_PATHS}
     return { written: true, languages: langs, name };
 }
 
-module.exports = { detectLanguages, hasEntries, setListKey, seedProject, IGNORED_PATHS };
+// The whole `.serena/` is machine state - SERENA_HOME's language servers (the Roslyn `.mef-composition` cache
+// reached a benchmark cell's diff), the index cache, the handoff memories - so it gets its own `.gitignore` of
+// `*`, the way `.playwright/` and a project memory database do. serena writes a narrower one when none is
+// there (`/cache` and `/project.local.yml`, src/serena/project.py) that leaves SERENA_HOME out: that exact
+// text is serena's, not the project's, and is widened; any other text is the project's and stays.
+const SERENA_IGNORE = '*\n';
+const SERENA_OWN_IGNORE = '/cache\n/project.local.yml\n';
+function ensureSerenaIgnore({ projectRoot, selected = true, log = () => {} })
+{
+    if (!selected) return 'skipped';
+    const file = path.join(projectRoot, '.serena', '.gitignore');
+    let have = null;
+    try { have = fs.readFileSync(file, 'utf8'); } catch { have = null; }
+    if (have === SERENA_IGNORE) return 'current';
+    if (have !== null && have.replace(/\r\n/g, '\n') !== SERENA_OWN_IGNORE)
+    {
+        log('  serena: .serena/.gitignore is the project\'s own - left as it is (the whole .serena/ is machine state; keep it ignored)');
+        return 'kept';
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, SERENA_IGNORE);
+    log(`  serena: .serena/.gitignore ${have === null ? 'written' : 'widened from serena\'s own'} - the language servers, index and memories are never committed`);
+    return have === null ? 'written' : 'replaced';
+}
+
+module.exports = { detectLanguages, hasEntries, setListKey, seedProject, ensureSerenaIgnore, IGNORED_PATHS };

@@ -1,4 +1,4 @@
-# /project-solve-task and /project-solve-cross-task - when and how
+# /alfred-task-solve and /alfred-task-solve-cross - when and how
 
 The two entry points for feature work in the stack. Both are manual-only (invoked with `/`, never
 auto-fired), both drive the same underlying seats and twin skills - they differ in WHERE the work
@@ -8,10 +8,10 @@ API + SPA project pair; treat them as ratios, not prices.
 
 ## One line each
 
-- **`/project-solve-task`** - the gated single-chat vertical: one task through
+- **`/alfred-task-solve`** - the gated single-chat vertical: one task through
   design -> plan audit -> your approval -> build -> review -> done-gate, with a hard stop between
   every step. You hold every gate; the work stays in (or is dispatched from) this chat.
-- **`/project-solve-cross-task`** - the router and orchestrator: scopes the task in-session, picks
+- **`/alfred-task-solve-cross`** - the router and orchestrator: scopes the task in-session, picks
   the smallest safe execution mode (inline -> one implementer -> a domain trio -> cross-domain
   producer-first), and for multi-domain work freezes the contract and drives both verticals
   through a mandatory integration gate.
@@ -21,20 +21,20 @@ API + SPA project pair; treat them as ratios, not prices.
 | Situation | Use |
 |---|---|
 | Trivial or single-file change | neither - just ask; the mode ladder's `single_chat` exists for exactly this |
-| One task you want to READ and gate before it builds, or will resume across sessions | `/project-solve-task` |
-| A feature you want routed to the right execution shape (may fan out) | `/project-solve-cross-task` |
-| Anything touching two domains or a wire contract (API + SPA, shared DTO, migration a consumer feels) | `/project-solve-cross-task` - the contract + integration gate is the point |
-| A runtime crash or broken screen | neither - `/project-runtime-failure-signatures` first, fix after diagnosis |
+| One task you want to READ and gate before it builds, or will resume across sessions | `/alfred-task-solve` |
+| A feature you want routed to the right execution shape (may fan out) | `/alfred-task-solve-cross` |
+| Anything touching two domains or a wire contract (API + SPA, shared DTO, migration a consumer feels) | `/alfred-task-solve-cross` - the contract + integration gate is the point |
+| A runtime crash or broken screen | neither - `/alfred-issue-signatures-runtime` first, fix after diagnosis |
 
 ---
 
-## /project-solve-task - the gated single-chat vertical
+## /alfred-task-solve - the gated single-chat vertical
 
 Six steps, a stop after each: DESIGN (plan written to a file under the docs root) -> GATE
-(`project-verify-plan`'s four-pass audit, stamped) -> APPROVE (your word + the build mode -
+(`alfred-task-verify-plan`'s four-pass audit, stamped) -> APPROVE (your word + the build mode -
 'session' or 'agents'; an answer that names no mode is not an approval) -> BUILD -> CONFORMANCE
 (inline review, the verifier seat, or an honest recorded skip) -> CLOSE (done-gate with per-task
-evidence). The plan file plus a serena cycle note carry ALL state - every stamp, every task tick.
+evidence). The plan file plus a navigation-server cycle note carry ALL state - every stamp, every task tick.
 
 ### Advantages
 
@@ -75,11 +75,11 @@ evidence). The plan file plus a serena cycle note carry ALL state - every stamp,
 ### Example
 
 ```text
-/project-solve-task Add a GET /api/tasks/overdue endpoint returning overdue tasks
+/alfred-task-solve Add a GET /api/tasks/overdue endpoint returning overdue tasks
 (dueDate strictly before today, status not done), newest first, with unit + integration
 tests covering the boundary: a task due today is NOT overdue.
 
-  -> DESIGN writes .claude/docs/superpowers/plans/overdue-tasks.md, stops.
+  -> DESIGN writes .alfred/docs/superpowers/plans/overdue-tasks.md, stops.
 you: go
   -> GATE stamps 'Gated: passed | 1 gap fixed', presents the audit, stops at APPROVE.
 you: Approved - build it in agents mode.
@@ -92,7 +92,7 @@ you: go
 
 ---
 
-## /project-solve-cross-task - the router for multi-agent work
+## /alfred-task-solve-cross - the router for multi-agent work
 
 You describe the task; it scopes in-session (awareness rules + a bounded code pass), then picks
 the smallest mode on the ladder: `single_chat` -> `implementer_only` -> `domain_trio` ->
@@ -134,7 +134,7 @@ producer's frozen interface and the integration gate are what keep two repos hon
 Single-stack, pinned - the hint routes straight down the ladder:
 
 ```text
-/project-solve-cross-task Add soft delete to tasks - just the API, the SPA is out of scope:
+/alfred-task-solve-cross Add soft delete to tasks - just the API, the SPA is out of scope:
 an IsDeleted flag with an EF migration, DELETE flips it, every read path excludes soft-deleted
 rows, plus a restore endpoint; unit + integration tests cover exclusion and restore.
 
@@ -148,7 +148,7 @@ you: approved, proceed
 Cross-domain - producer first, contract frozen, gate mandatory:
 
 ```text
-/project-solve-cross-task Add task archiving across the pair: isArchived on the wire contract,
+/alfred-task-solve-cross Add task archiving across the pair: isArchived on the wire contract,
 archived tasks excluded from the default list and stats, includeArchived=true opt-in; the SPA
 gets an Archive action and a 'Show archived' toggle with muted rows.
 

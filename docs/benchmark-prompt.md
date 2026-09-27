@@ -14,14 +14,14 @@ visibly separate. Never fabricate a number.
 
 ## 0. What you are benchmarking
 
-The stack lives in the `claude-stack` repo (referred to below as `<STACK>`). It provides, per consuming
+The stack lives in the `alfred-code` repo (referred to below as `<STACK>`). It provides, per consuming
 project: ~53 house **skills**, 32 **agents** (a `cross-stack-agents-flow` router over `main-stack-agents-flow`; per-domain
 `solution-designer -> implementer -> verifier` trios for asp.net/angular/wpf/mobile/data/devops; cross
-cutting `architecture-analyzer`, `task-analyzer`, `runtime-failure-diagnoser`, `ci-failure-diagnoser`,
+cutting `architecture-analyzer`, `task-analyzer`, `alfred-issue-diagnoser-runtime`, `alfred-issue-diagnoser-ci`,
 `cross-stack-contract-designer`, `integration-reviewer`, `security-auditor`, four build/test resolvers,
 and a read-only `evidence-gatherer` the diagnosers dispatch), 3 **hooks**, 8 path-scoped **rules**, 8
-**plugins** (incl. `caveman` terse-output), and 7 **MCPs** (`serena`,
-`context7`, `memory`, `playwright`, `angular-cli`, `chrome-devtools`, `appium-mcp`).
+**plugins** (incl. `caveman` terse-output), and 4 **MCPs** (`serena`,
+`context7`, `memory`, `playwright`).
 
 **Read these before you start** (do not skip - they define the flow you are measuring):
 `<STACK>/CLAUDE.md`, `<STACK>/skills/cross-stack-agents-flow/SKILL.md`,
@@ -43,7 +43,7 @@ They share one `Task` contract (`id`, `title`, `description`, `status`, `priorit
 
 ## 1. Setup (Requirement 1 - install the stack per project)
 
-These projects currently live as tracked content inside `claude-stack`, so they have **no git repo of
+These projects currently live as tracked content inside `alfred-code`, so they have **no git repo of
 their own**. The installer resolves the project root via `git rev-parse` and serena binds via
 `--project-from-cwd`, so each must be a standalone git repo or the install scopes to the wrong root.
 
@@ -56,9 +56,10 @@ the source repo:
 2. `cd` into each, `git init`, restore deps (`dotnet restore` / `npm ci`), confirm the **baseline is
    GREEN** (`dotnet test` = 9 passing; `ng build` + `ng test --watch=false --browsers=ChromeHeadless`
    = 21 passing), commit, and `git tag baseline`.
-3. Install the stack into each: run `<STACK>/claude/claude-stack.sh install` from inside the project
-   (skills git-copied from the stack repo, MCPs into `.mcp.json`, hooks/rules/agents fetched, plugins installed).
-   Enable the `angular-cli` MCP for `angular-project` and comment it out for `aspnet-api-project`;
+3. Install the stack into each: run `node <STACK>/scripts/install/alfred-code.js install --source <STACK>`
+   from inside the project (skills/agents via the plugin closure, MCPs into `.mcp.json` on the copy
+   route, hooks/rules fetched, plugins installed).
+   Enable the `playwright` MCP for `angular-project` and comment it out for `aspnet-api-project`;
    comment out the `memory` MCP in **both** - it is not needed here (the static cross-project map lives
    in `docs/RELATED-PROJECTS.md`, step 4, and serena's per-repo local memory carries the per-feature
    handoff).

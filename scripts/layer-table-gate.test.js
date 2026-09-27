@@ -26,13 +26,13 @@ function run(rows, input = ask) {
 }
 
 test('denies the layer ask when the table ran but was never pasted', () => {
-  const r = run([typed('/claude-stack:setup'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
+  const r = run([typed('/alfred-code:setup'), say('[step 5/12 - agents] adjust the agent roster · next: skills'), table('agents'), result('t1', ' 1  x\ntotal: 43 agents - if fewer')]);
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /agents table ran/);
 });
 
 test('allows the ask once the footer line is in the assistant text', () => {
-  const r = run([typed('/claude-stack:setup'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
+  const r = run([typed('/alfred-code:setup'), table('agents'), result('t1', 'total: 43 agents'), say('```\n 1  x\ntotal: 43 agents - if fewer rows are visible above\n```')]);
   assert.strictEqual(r.status, 0);
 });
 
@@ -41,7 +41,7 @@ test('a footer for a DIFFERENT layer does not satisfy the gate', () => {
   assert.strictEqual(r.status, 2);
 });
 
-const denied = (n) => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, 'claude-stack layer-table gate: ...', true)];
+const denied = (n) => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, 'alfred-code layer-table gate: ...', true)];
 
 test('keeps denying a retry that only CLAIMS the paste - the measured skills turn did it three times', () => {
   const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), say('[step 6/12 - skills] full 78-row catalog, pasted below'), ...denied(2)]);

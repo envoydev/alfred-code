@@ -1,0 +1,1288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alfred Code - agent roster + inventory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="assets/alfred-code-icon-64.png">
+<style>
+  :root {
+    --ground: #131519;
+    --panel: #191C22;
+    --panel-2: #20242D;
+    --line: #2B313C;
+    --line-soft: #23272F;
+    --ink: #E9EBF0;
+    --muted: #99A1B0;
+    --faint: #69707E;
+    --brass: #D8A85B;      /* accent */
+    --design: #67AABB;     /* domain design tier */
+    --build: #8FB18C;      /* domain build tier */
+    --qa: #A896CC;         /* verify */
+    --repair: #CB855F;     /* repair / ops */
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 620px at 82% -8%, rgba(216,168,91,0.07), transparent 60%),
+      var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: none; margin: 0; padding: 40px clamp(20px, 3.5vw, 60px) 84px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--brass); margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(30px, 5.4vw, 52px);
+    line-height: 1.03; letter-spacing: -0.025em; font-weight: 800;
+    margin: 0 0 16px; text-wrap: balance;
+  }
+  h1 .q { color: var(--brass); }
+  .lede { font-size: 17px; color: var(--muted); margin: 0 0 28px; }
+  .lede b { color: var(--ink); font-weight: 600; }
+  .stat-row {
+    display: flex; flex-wrap: wrap; gap: 10px 12px;
+    border-top: 1px solid var(--line); padding-top: 20px;
+  }
+  .stat {
+    display: flex; align-items: baseline; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 13px;
+  }
+  .stat b {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: 18px; font-weight: 700; color: var(--ink);
+  }
+  .stat b.up { color: var(--build); }
+  .stat b.down { color: var(--repair); }
+  .stat span { font-size: 12.5px; color: var(--muted); }
+
+  /* ---- domain flow ---- */
+  .flow { margin-top: 34px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; }
+  .flow .cap { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin-bottom: 16px; }
+  .flow-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .node {
+    display: flex; flex-direction: column; gap: 3px; padding: 10px 13px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    border-left: 3px solid var(--nc, var(--brass));
+  }
+  .node .nn { font-family: var(--mono); font-size: 12.5px; font-weight: 700; color: var(--ink); }
+  .node .nd { font-size: 11px; color: var(--faint); }
+  .node.design { --nc: var(--design); }
+  .node.build { --nc: var(--build); }
+  .node.verify { --nc: var(--qa); }
+  .node.diagnose { --nc: var(--repair); }
+  .node.sm { padding: 6px 10px; }
+  .node.sm .nn { font-size: 11.5px; font-weight: 600; }
+  .fan { display: flex; flex-direction: column; gap: 6px; }
+  .fan-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.03em; color: var(--build); }
+  .fan-nodes { display: flex; flex-direction: column; gap: 5px; padding-left: 12px; border-left: 1px dashed var(--build); }
+  .arrow { color: var(--faint); font-family: var(--mono); font-size: 16px; }
+  .loopback { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line-soft); font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .loopback .dash { color: var(--qa); }
+
+  section { margin-top: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .sec-num { font-family: var(--mono); font-size: 12px; color: var(--faint); letter-spacing: 0.1em; }
+  h2 { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+  .sec-sub { color: var(--muted); font-size: 14.5px; margin: 6px 0 26px; }
+  .sec-sub b { color: var(--ink); font-weight: 600; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 24px; }
+  .key { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .key .solid { width: 22px; height: 15px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel-2); }
+
+  .matrix-scroll { overflow-x: auto; padding-bottom: 6px; }
+  .matrix { min-width: 880px; display: flex; flex-direction: column; gap: 14px; }
+  .band { display: grid; grid-template-columns: 138px 1fr; gap: 14px; align-items: stretch; }
+  .tier-label {
+    display: flex; flex-direction: column; justify-content: center; gap: 3px;
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--tier, var(--brass));
+  }
+  .tier-label .t { font-family: var(--mono); font-size: 12.5px; font-weight: 700; letter-spacing: 0.03em; color: var(--ink); text-transform: uppercase; }
+  .tier-label .d { font-size: 11.5px; color: var(--faint); line-height: 1.35; }
+
+  .spanning {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-content: center;
+  }
+  .cols { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; }
+  .col-heads { display: grid; grid-template-columns: 138px 1fr; gap: 14px; margin-bottom: 2px; }
+  .col-heads .heads { display: grid; grid-template-columns: repeat(10, 1fr); gap: 10px; }
+  .dom {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; color: var(--muted);
+    text-align: center; padding: 2px 4px 8px; border-bottom: 1px solid var(--line-soft);
+  }
+  .dom b { display: block; color: var(--ink); font-size: 12px; font-weight: 700; }
+  .cell {
+    background: var(--panel); border: 1px solid var(--line-soft); border-radius: 10px;
+    padding: 10px; min-height: 62px; display: flex; flex-direction: column; gap: 7px;
+  }
+
+  .agent {
+    display: block; font-family: var(--mono); font-size: 12px; line-height: 1.3;
+    padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink);
+  }
+  .agent .role { display: block; font-size: 10px; color: var(--faint); margin-top: 2px; font-weight: 600; letter-spacing: 0.03em; }
+  .agent.arch { border-color: rgba(216,168,91,0.45); }
+  .agent.qa .role { color: var(--qa); }
+  .agent.repair .role { color: var(--repair); }
+  .agent.arch .role { color: var(--brass); }
+  .agent.design .role { color: var(--design); }
+  .agent.build .role { color: var(--build); }
+  .mdl {
+    display: inline-block; margin-top: 5px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.03em; font-weight: 600;
+    padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  }
+  .mdl.opus { color: var(--brass); border-color: rgba(216,168,91,0.42); background: rgba(216,168,91,0.06); }
+  .mdl.sonnet { color: var(--muted); }
+
+  .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 13px;
+    border-top: 2px solid var(--card, var(--brass));
+  }
+  .card-head { display: flex; flex-direction: column; gap: 4px; }
+  .card-head .kicker { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+  .card-head h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .card-head .seat { font-family: var(--mono); font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .card-head .seat b { color: var(--card, var(--brass)); font-weight: 600; }
+
+  .row { display: flex; flex-direction: column; gap: 6px; }
+  .row .rl { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; padding: 3px 7px; border-radius: 6px;
+    background: var(--panel-2); border: 1px solid var(--line-soft); color: var(--muted);
+  }
+  .chip.lang { color: var(--ink); border-color: var(--line); }
+  .row.tests .rl { color: var(--build); }
+  .chip.test { color: var(--build); border-color: rgba(143,177,140,0.28); }
+  .serve { margin-top: 2px; padding-top: 12px; border-top: 1px solid var(--line-soft); display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip.mcp { color: var(--design); border-color: rgba(103,170,187,0.3); }
+  .chip.plugin { color: var(--build); border-color: rgba(143,177,140,0.3); }
+
+  footer {
+    margin-top: 54px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--faint); font-size: 12px; font-family: var(--mono);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  a { color: var(--brass); }
+  @media (max-width: 640px) {
+    .wrap { padding: 28px 16px 56px; }
+    .band, .col-heads { grid-template-columns: 1fr; }
+    .col-heads .heads { display: none; }
+  }
+
+
+  /* ---- folded-in stack inventory (the browser from alfred-code.html) ---- */
+  .counts { display: flex; gap: 12px 22px; flex-wrap: wrap; margin: 6px 0 16px; padding: 13px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; font-family: var(--mono); }
+  .counts div { color: var(--muted); }
+  .counts strong { color: var(--brass); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .controls { display: flex; gap: 12px; margin-bottom: 18px; }
+  input[type=search] { flex: 1; min-width: 220px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--ink); font-size: 14px; font-family: var(--sans); }
+  input[type=search]::placeholder { color: var(--faint); }
+  input[type=search]:focus { outline: none; border-color: var(--brass); }
+  #content h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--brass); border: 0; border-bottom: 1px solid var(--line); padding: 0 0 7px; margin: 30px 0 4px; font-weight: 700; }
+  #content h2 .src { color: var(--faint); font-weight: 400; }
+  .group-meta { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; line-height: 1.5; }
+  table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 6px; }
+  thead { background: var(--panel-2); }
+  th, td { padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--line-soft); vertical-align: top; overflow-wrap: anywhere; }
+  th { font-weight: 600; font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--mono); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--panel-2); }
+  .name { font-family: var(--mono); font-size: 12px; color: var(--ink); font-weight: 600; }
+  td code { font-family: var(--mono); font-size: 11.5px; color: #c7cdd8; overflow-wrap: anywhere; }
+  .src { color: var(--muted); font-size: 12px; }
+  td a { color: var(--brass); text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .desc { color: var(--muted); line-height: 1.55; }
+  details.skills { margin-top: 7px; }
+  details.skills > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; color: var(--design); user-select: none; }
+  details.skills > summary::-webkit-details-marker { display: none; }
+  details.skills > summary::before { content: "\25B8"; color: var(--faint); font-size: 10px; }
+  details.skills[open] > summary::before { content: "\25BE"; }
+  details.skills > summary:hover { color: var(--brass); }
+  .skills-list { list-style: none; margin: 8px 0 2px; padding: 0; border-left: 1px solid var(--line); }
+  .skills-list li { padding: 3px 0 3px 12px; line-height: 1.5; }
+  .skills-list li .sk { font-family: var(--mono); font-size: 11.5px; color: var(--ink); font-weight: 600; }
+  .skills-list li .sk-area { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-left: 6px; }
+  .skills-list li .sk-desc { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+  .inv-sources { color: var(--faint); font-size: 12px; margin-top: 18px; font-family: var(--mono); line-height: 1.6; }
+  .inv-sources code { color: var(--muted); }
+  .logo { display: block; width: 88px; height: 88px; border-radius: 16px; margin-bottom: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <img class="logo" src="assets/alfred-code-icon.png" alt="Alfred Code">
+  <p class="eyebrow">envoydev/alfred-code · Claude Code stack reference</p>
+  <h1>Everything the stack installs<span class="q">.</span><br>The agents, and every tool behind them.</h1>
+  <p class="lede">
+    One place to find it all. The <b>agent roster</b> maps the specialist team - what each seat does,
+    and how a solution designer, several implementers and a verifier take a feature from plan to
+    verified. Below it, the <b>full inventory</b> lists everything else the installer lays down - every
+    skill, MCP server, subagent, plugin, hook and path-scoped rule - searchable, each with how it's
+    installed. Look here for any agent or tool in the stack: what it is, what it does, and how it gets
+    there.
+  </p>
+  <div class="stat-row">
+    <div class="stat"><b>44</b><span>subagents</span></div>
+    <div class="stat"><b>87</b><span>house skills</span></div>
+    <div class="stat"><b>4</b><span>MCP servers</span></div>
+    <div class="stat"><b>5</b><span>plugins</span></div>
+    <div class="stat"><b>17</b><span>hooks</span></div>
+    <div class="stat"><b>20</b><span>rules</span></div>
+    <div class="stat"><b>10</b><span>domains</span></div>
+  </div>
+
+  <div class="flow">
+    <div class="cap">How one domain runs - a feature or a bug fix</div>
+    <div class="flow-row" style="flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px">
+      <div class="fan">
+        <span class="fan-label">the plan comes from one of two</span>
+        <div class="fan-nodes">
+          <span class="node design sm"><span class="nn">solution-designer</span><span class="nd">a feature &rarr; tasks + contracts</span></span>
+          <div style="display:flex; align-items:center; gap:7px; flex-wrap:nowrap">
+            <span class="node diagnose sm"><span class="nn">alfred-issue-diagnoser-runtime</span><span class="nd">a bug &rarr; a decomposed fix plan</span></span>
+            <span class="arrow" style="font-size:15px" title="alfred-issue-diagnoser-runtime dispatches a gather-task; evidence-gatherer returns quoted digests">&#8644;</span>
+            <span class="node diagnose sm"><span class="nn">evidence-gatherer &times;N</span></span>
+          </div>
+        </div>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="fan">
+        <span class="fan-label">implementers &middot; in parallel &middot; one task each</span>
+        <div class="fan-nodes">
+          <span class="node build sm"><span class="nn">implementer &middot; task A</span></span>
+          <span class="node build sm"><span class="nn">implementer &middot; task B</span></span>
+          <span class="node build sm"><span class="nn">implementer &middot; task C</span></span>
+        </div>
+      </div>
+      <span class="arrow">&rarr;</span>
+      <div class="node verify">
+        <span class="nn">verifier</span>
+        <span class="nd">once all parts land: vs plan + code quality</span>
+      </div>
+    </div>
+    <div class="loopback"><span class="dash">&larr; &middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;&middot;</span> &nbsp;gaps return to the implementers as a punch-list, and re-verify, until the verifier signs off. The main session runs the fan-out - the vertical's seats never dispatch agents; the two diagnosers are the one exception, each dispatching a read-only evidence-gatherer.</div>
+  </div>
+
+  <!-- ===================== TEAM MATRIX ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>The team</h2></div>
+    <p class="sec-sub">
+      Role down the side, domain across the top. The <b>integration</b>, <b>diagnose</b> and
+      <b>analysis</b> rows span every stack; the <b>design</b>, <b>build</b> and <b>verify</b> rows
+      get one seat per domain. The architecture capture is a skill now (/alfred-capture-architecture),
+      run in the main session - there is no dispatched architect seat.
+    </p>
+
+    <div class="legend">
+      <span class="key"><span class="swatch" style="background:var(--design)"></span> solution design</span>
+      <span class="key"><span class="swatch" style="background:var(--build)"></span> implementation</span>
+      <span class="key"><span class="swatch" style="background:var(--qa)"></span> verify</span>
+      <span class="key"><span class="swatch" style="background:var(--repair)"></span> repair / ops</span>
+    </div>
+
+    <div class="matrix-scroll">
+      <div class="matrix">
+
+        <!-- column headings -->
+        <div class="col-heads">
+          <div></div>
+          <div class="heads">
+            <div class="dom">ASP.NET Core<b>Backend · API</b></div>
+            <div class="dom">WPF<b>Desktop</b></div>
+            <div class="dom">WinForms<b>Desktop · LOB</b></div>
+            <div class="dom">Console<b>Worker · Bot · CLI</b></div>
+            <div class="dom">SCM<b>Windows Service</b></div>
+            <div class="dom">Angular<b>Web</b></div>
+            <div class="dom">Ionic<b>Mobile</b></div>
+            <div class="dom">SQL<b>Data</b></div>
+            <div class="dom">Docker<b>DevOps</b></div>
+            <div class="dom">MV3<b>Browser Ext</b></div>
+          </div>
+        </div>
+
+        <!-- Design row -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--design)">
+            <span class="t">Solution design</span>
+            <span class="d">best practice · plan · test strategy · splits the work</span>
+          </div>
+          <div class="cols">
+            <div class="cell"><span class="agent design">aspnet-solution-designer<span class="role">clean-arch · API shape · auth</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">wpf-solution-designer<span class="role">strict MVVM · view composition</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">winforms-solution-designer<span class="role">MVP seam · binding · disposal</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">console-solution-designer<span class="role">Generic Host · lifecycle · resilience</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">windows-service-solution-designer<span class="role">SCM recovery · budgets · identity</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">web-angular-solution-designer<span class="role">components · state · routing</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">ionic-angular-solution-designer<span class="role">shell · native bridge · release</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">data-solution-designer<span class="role">schema · model · perf</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">devops-solution-designer<span class="role">containers · CI/CD · deploy</span><span class="mdl opus">opus · xhigh</span></span></div>
+            <div class="cell"><span class="agent design">browser-extension-solution-designer<span class="role">SW topology · messaging · permissions</span><span class="mdl opus">opus · xhigh</span></span></div>
+          </div>
+        </div>
+
+        <!-- Build row -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--build)">
+            <span class="t">Implementation</span>
+            <span class="d">several in parallel, one task each; code + tests</span>
+          </div>
+          <div class="cols">
+            <div class="cell"><span class="agent build">aspnet-implementer<span class="role">C# + xUnit / integration</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">wpf-implementer<span class="role">XAML + VM unit tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">winforms-implementer<span class="role">forms + presenter tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">console-implementer<span class="role">host/worker + fake-gateway tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">windows-service-implementer<span class="role">SCM worker + exit-code discipline</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">web-angular-implementer<span class="role">TS + Jest / TestBed</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">ionic-angular-implementer<span class="role">Ionic + Appium E2E</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">data-implementer<span class="role">SQL + migration tests</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">devops-implementer<span class="role">Docker + Actions + deploy</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+            <div class="cell"><span class="agent build">browser-extension-implementer<span class="role">TS + Vitest fake-chrome</span><span class="mdl sonnet">sonnet · medium</span></span></div>
+          </div>
+        </div>
+
+        <!-- Verify row (per-domain) -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--qa)">
+            <span class="t">Verify</span>
+            <span class="d">once all parts land: vs plan + quality, loops back</span>
+          </div>
+          <div class="cols">
+            <div class="cell"><span class="agent qa">aspnet-verifier<span class="role">vs clean-arch + async</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">wpf-verifier<span class="role">vs MVVM + bindings</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">winforms-verifier<span class="role">vs code-behind line + disposal</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">console-verifier<span class="role">vs lifecycle + captive deps</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">windows-service-verifier<span class="role">vs recovery + paths + hardening</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">web-angular-verifier<span class="role">vs signals / OnPush / a11y</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">ionic-angular-verifier<span class="role">vs native + platform parity</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">data-verifier<span class="role">vs schema + query safety</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">devops-verifier<span class="role">vs pinned builds + secrets</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+            <div class="cell"><span class="agent qa">browser-extension-verifier<span class="role">vs SW state + permissions + CSP</span><span class="mdl sonnet">sonnet · xhigh</span></span></div>
+          </div>
+        </div>
+
+        <!-- Integration gate band -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--qa)">
+            <span class="t">Integration gate</span>
+            <span class="d">cross-domain final check before commit</span>
+          </div>
+          <div class="spanning">
+            <span class="agent qa">integration-reviewer<span class="role">gates the assembled cross-domain build vs the frozen contract - the mandatory gate no single-stack verifier is</span><span class="mdl sonnet">sonnet · xhigh</span></span>
+          </div>
+        </div>
+
+        <!-- Repair row -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--repair)">
+            <span class="t">Repair</span>
+            <span class="d">bounded fix loops, already per-domain</span>
+          </div>
+          <div class="cols">
+            <div class="cell" style="grid-column: span 5">
+              <span class="agent repair">dotnet-build-error-resolver<span class="role">build · every C# vertical (XAML + WinForms compile through dotnet)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">dotnet-test-failure-resolver<span class="role">tests · every C# vertical</span><span class="mdl sonnet">sonnet · high</span></span>
+            </div>
+            <div class="cell" style="grid-column: span 2">
+              <span class="agent repair">ng-build-error-resolver<span class="role">build · Angular + Ionic (ionic wraps ng build)</span><span class="mdl sonnet">sonnet · high</span></span>
+              <span class="agent repair">angular-test-resolver<span class="role">tests · Angular + Ionic</span><span class="mdl sonnet">sonnet · high</span></span>
+            </div>
+            <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no compile loop</span></span></div>
+            <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no compile loop</span></span></div>
+            <div class="cell"><span class="agent repair" style="opacity:.48">-<span class="role">no resolver seat</span></span></div>
+          </div>
+        </div>
+
+        <!-- Diagnose band -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--repair)">
+            <span class="t">Diagnose</span>
+            <span class="d">find the cause, route the fix</span>
+          </div>
+          <div class="spanning">
+            <span class="agent repair">alfred-issue-diagnoser-ci<span class="role">reads red pipelines via gh</span><span class="mdl opus">opus · high</span></span>
+            <span class="agent repair">alfred-issue-diagnoser-runtime<span class="role">reads logs / errors / screenshots, plans the fix</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent repair">security-auditor<span class="role">audits the security posture, routes an OWASP/CWE punch-list</span><span class="mdl opus">opus · xhigh</span></span>
+            <span class="agent repair">evidence-gatherer<span class="role">the diagnosers' cheap hands · repro + log pulls</span><span class="mdl sonnet">sonnet · low</span></span>
+          </div>
+        </div>
+
+        <!-- Analysis band -->
+        <div class="band">
+          <div class="tier-label" style="--tier:var(--design)">
+            <span class="t">Analysis</span>
+            <span class="d">read-only characterizers the capture skills fan out</span>
+          </div>
+          <div class="spanning">
+            <span class="agent design">architecture-analyzer<span class="role">one module per dispatch - digest for the architecture capture + task-flow scoping</span><span class="mdl sonnet">sonnet · low</span></span>
+            <span class="agent design">code-style-analyzer<span class="role">one language family per dispatch - the code-style capture merges the reports</span><span class="mdl sonnet">sonnet · medium</span></span>
+            <span class="agent design">code-quality-analyzer<span class="role">one module per dispatch - findings against the loops prompts, conventions and code style, each at file:line with its rule</span><span class="mdl sonnet">sonnet · medium</span></span>
+            <span class="agent design">test-coverage-analyzer<span class="role">one surface per dispatch - the coverage capture reasons over the digests</span><span class="mdl sonnet">sonnet · medium</span></span>
+            <span class="agent design">related-project-analyzer<span class="role">one sibling repo per dispatch - the related-context capture upserts the entries</span><span class="mdl sonnet">sonnet · medium</span></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== DOMAIN GROUPING ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>The areas each seat owns</h2></div>
+    <p class="sec-sub">
+      The installed inventory, regrouped by the <b>ten domains</b> each vertical owns. Each domain
+      inherits a <b>language</b> tier, a <b>framework</b> tier, its own <b>tests</b> (owned by the
+      implementer), and the plugins, MCPs and rules that serve it. Shared services at the end belong
+      to no single seat.
+    </p>
+
+    <div class="grid-cards">
+
+      <!-- Backend -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 01 · C#</span>
+          <h3>ASP.NET Core Backend &amp; API</h3>
+          <span class="seat">designed by <b>aspnet-solution-designer</b><br>built by <b>aspnet-implementer</b><br>verified by <b>aspnet-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span><span class="chip">csharp-design-patterns</span>
+          <span class="chip">dotnet-performance</span><span class="chip">dotnet-source-generators</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-web-backend</span><span class="chip">dotnet-minimal-api</span>
+          <span class="chip">dotnet-mvc-controllers</span><span class="chip">dotnet-openapi</span>
+          <span class="chip">dotnet-grpc</span><span class="chip">dotnet-realtime</span>
+          <span class="chip">dotnet-messaging</span><span class="chip">dotnet-aspire</span>
+          <span class="chip">dotnet-hosted-services</span><span class="chip">dotnet-authentication</span>
+          <span class="chip">dotnet-web-error-handling</span>
+        </div></div>
+        <div class="row"><span class="rl">Architecture</span><div class="chips">
+          <span class="chip">dotnet-architecture</span><span class="chip">dotnet-project-setup</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">dotnet-testing</span><span class="chip test">dotnet-architecture-tests</span>
+          <span class="chip test">testcontainers</span><span class="chip test">aspire-integration-testing</span>
+          <span class="chip test">snapshot-testing</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">dotnet · router</span>
+          <span class="chip">dotnet-security</span><span class="chip">dotnet-cryptography</span>
+          <span class="chip">dotnet-diagnostics</span><span class="chip">observability</span>
+        </div>
+      </div>
+
+      <!-- Angular web -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 02 · TypeScript</span>
+          <h3>Angular Web</h3>
+          <span class="seat">designed by <b>web-angular-solution-designer</b><br>built by <b>web-angular-implementer</b><br>verified by <b>web-angular-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips"><span class="chip lang">typescript</span></div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">angular-conventions</span><span class="chip">angular-material</span>
+          <span class="chip">angular-styling</span><span class="chip">angular-security</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">Jest / Karma</span><span class="chip test">TestBed</span>
+          <span class="chip test">CDK harnesses</span><span class="chip test">HttpTestingController</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">typescript-lsp</span>
+          <span class="chip mcp">browser</span><span class="chip">scss rule</span>
+        </div>
+      </div>
+
+      <!-- WPF -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 03 · C#</span>
+          <h3>WPF Desktop</h3>
+          <span class="seat">designed by <b>wpf-solution-designer</b><br>built by <b>wpf-implementer</b><br>verified by <b>wpf-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-wpf</span><span class="chip">strict MVVM</span>
+          <span class="chip">dotnet-hosted-services · companion Windows Service</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · ViewModels only</span><span class="chip test">INotifyPropertyChanged / commands</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">xaml rule</span>
+          <span class="chip">wpf-conventions rule</span><span class="chip">dotnet-diagnostics</span>
+        </div>
+      </div>
+
+      <!-- Mobile -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 04 · TypeScript</span>
+          <h3>Ionic / Capacitor Mobile</h3>
+          <span class="seat">designed by <b>ionic-angular-solution-designer</b><br>built by <b>ionic-angular-implementer</b><br>verified by <b>ionic-angular-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Base</span><div class="chips">
+          <span class="chip lang">typescript</span><span class="chip">angular-conventions</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">ionic</span>
+          <span class="chip">ionic · Angular+Capacitor glue</span><span class="chip">nav + lifecycle · owned</span>
+          <span class="chip">capacitor-release</span><span class="chip">ionic-security</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">Jest · specs</span><span class="chip test">Appium · native E2E</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip mcp">browser</span><span class="chip">shares the Angular web tier</span>
+        </div>
+      </div>
+
+      <!-- Data -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 05 · SQL</span>
+          <h3>Data &amp; Persistence</h3>
+          <span class="seat">designed by <b>data-solution-designer</b><br>built by <b>data-implementer</b><br>verified by <b>data-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Conventions</span><div class="chips">
+          <span class="chip lang">database-conventions</span><span class="chip">database-security</span>
+        </div></div>
+        <div class="row"><span class="rl">ORM / data access</span><div class="chips">
+          <span class="chip">dotnet-data-access</span>
+        </div></div>
+        <div class="row"><span class="rl">Engine</span><div class="chips">
+          <span class="chip">postgres</span><span class="chip">sqlite</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">Testcontainers · real engine</span><span class="chip test">migration tests</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip">dotnet-migrate</span><span class="chip">shares C# with the backend seat</span>
+        </div>
+      </div>
+
+      <!-- DevOps -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 06 · Docker</span>
+          <h3>DevOps &amp; Delivery</h3>
+          <span class="seat">designed by <b>devops-solution-designer</b><br>built by <b>devops-implementer</b><br>verified by <b>devops-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Conventions</span><div class="chips">
+          <span class="chip lang">devops</span>
+        </div></div>
+        <div class="row"><span class="rl">Containers &amp; CI/CD</span><div class="chips">
+          <span class="chip">seccomp / cap-drop / pids-limit</span><span class="chip">BuildKit syntax pin</span>
+          <span class="chip">multi-stage / digest-pinned / non-root</span><span class="chip">GitHub Actions graph</span>
+        </div></div>
+        <div class="row"><span class="rl">Deploy &amp; release</span><div class="chips">
+          <span class="chip">expand-contract migrations</span><span class="chip">health-gated blue-green / rolling</span>
+          <span class="chip">OIDC secrets</span><span class="chip">dotnet-aspire · AppHost</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Validation · owned here</span><div class="chips">
+          <span class="chip test">docker build</span><span class="chip test">actionlint</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip">devops-conventions rule</span><span class="chip">shares the C# / Angular build tiers</span>
+        </div>
+      </div>
+
+      <!-- Console worker -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 07 · C#</span>
+          <h3>Console · Worker · CLI</h3>
+          <span class="seat">designed by <b>console-solution-designer</b><br>built by <b>console-implementer</b><br>verified by <b>console-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-console-apps · surface + bots</span>
+          <span class="chip">dotnet-hosted-services · Generic Host</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · FakeTimeProvider, never real waits</span><span class="chip test">fake gateways</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span>
+          <span class="chip">dotnet-diagnostics</span>
+        </div>
+      </div>
+
+      <!-- Browser extension -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 08 · TypeScript</span>
+          <h3>Browser Extension · MV3</h3>
+          <span class="seat">designed by <b>browser-extension-solution-designer</b><br>built by <b>browser-extension-implementer</b><br>verified by <b>browser-extension-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">typescript</span><span class="chip lang">javascript</span>
+        </div></div>
+        <div class="row"><span class="rl">Platform</span><div class="chips">
+          <span class="chip">browser-extension · SW model + messaging + permissions</span>
+          <span class="chip">WXT toolkit · cross-browser</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">Vitest · fake chrome API</span><span class="chip test">Playwright persistent-context E2E</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">typescript-lsp</span><span class="chip">typescript-conventions rule</span>
+          <span class="chip mcp">browser</span>
+        </div>
+      </div>
+
+      <!-- Windows service -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 09 · C#</span>
+          <h3>Windows Service · SCM</h3>
+          <span class="seat">designed by <b>windows-service-solution-designer</b><br>built by <b>windows-service-implementer</b><br>verified by <b>windows-service-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Platform</span><div class="chips">
+          <span class="chip">dotnet-windows-service · SCM layer</span>
+          <span class="chip">dotnet-hosted-services · Generic Host</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · FakeTimeProvider, never real waits</span><span class="chip test">non-zero-exit fatal path</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span>
+          <span class="chip">sc.exe install + recovery</span>
+        </div>
+      </div>
+
+      <!-- WinForms -->
+      <div class="card" style="--card:var(--design)">
+        <div class="card-head">
+          <span class="kicker">Domain 10 · C#</span>
+          <h3>WinForms · Desktop LOB</h3>
+          <span class="seat">designed by <b>winforms-solution-designer</b><br>built by <b>winforms-implementer</b><br>verified by <b>winforms-verifier</b></span>
+        </div>
+        <div class="row"><span class="rl">Language</span><div class="chips">
+          <span class="chip lang">csharp</span>
+        </div></div>
+        <div class="row"><span class="rl">Framework</span><div class="chips">
+          <span class="chip">dotnet-winforms · MVP + binding + disposal</span>
+          <span class="chip">4.8 maintenance + .NET 8 modern</span>
+        </div></div>
+        <div class="row tests"><span class="rl">Tests · owned here</span><div class="chips">
+          <span class="chip test">xUnit · presenters vs mocked view</span><span class="chip test">FlaUI smoke · critical path only</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip plugin">csharp-lsp</span><span class="chip">csharp-conventions rule</span><span class="chip">winforms-conventions rule</span>
+          <span class="chip">dotnet-migrate · upgrades</span>
+        </div>
+      </div>
+
+      <!-- Shared services -->
+      <div class="card" style="--card:var(--faint)">
+        <div class="card-head">
+          <span class="kicker">Belongs to no seat</span>
+          <h3>Shared services</h3>
+          <span class="seat" style="color:var(--muted)">every agent draws on these</span>
+        </div>
+        <div class="row"><span class="rl">Navigation</span><div class="chips">
+          <span class="chip mcp">navigation · nav + hand-off</span><span class="chip mcp">documentation · design/build/fix seats</span>
+        </div></div>
+        <div class="row"><span class="rl">Quality &amp; security</span><div class="chips">
+          <span class="chip">alfred-loop-quality</span><span class="chip">alfred-capture-code-quality</span><span class="chip">dotnet-code-quality</span>
+        </div></div>
+        <div class="row"><span class="rl">Process</span><div class="chips">
+          <span class="chip">alfred-task-build-from-scratch</span>
+          <span class="chip">create-ticket</span><span class="chip">markdown-style</span>
+        </div></div>
+        <div class="serve">
+          <span class="chip">guard-read-whole-file</span><span class="chip">guard-secret-value</span><span class="chip">guard-protected-force-push</span>
+          <span class="chip">guard-catastrophic-rm</span><span class="chip">guard-unapproved-dispatch</span><span class="chip">guard-ungated-commit</span><span class="chip">guard-stop-contract</span><span class="chip">guard-answer-length</span><span class="chip">guard-fresh-session-start</span><span class="chip">guard-cross-project-write</span><span class="chip">guard-config-protection</span><span class="chip">monitor-session</span><span class="chip">check-turn-build</span><span class="chip">history-session</span><span class="chip">instrument-tool-usage</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== FULL INVENTORY (folded in from alfred-code.html) ===================== -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>The full inventory</h2></div>
+    <p class="sec-sub">
+      Everything the installer lays down, live-filterable: the <b>subagents</b>, the <b>skills</b> (built-in and house - the repository tier is empty, every stack skill is house-owned), the <b>plugins</b> (one row each, expand to see the skills / commands / hooks a pack ships), the <b>MCP servers</b>, the <b>hooks</b>, and the path-scoped <b>rules</b>. Type to filter across name, source, and description.
+    </p>
+
+    <div class="counts">
+      <div><strong id="c-total">112</strong> total</div>
+      <div><strong id="c-subagents">37</strong> subagents</div>
+      <div><strong id="c-bi">14</strong> built-in</div>
+      <div><strong id="c-house">52</strong> house</div>
+      <div><strong id="c-plugins">7</strong> plugins</div>
+      <div><strong id="c-mcp">7</strong> MCP</div>
+      <div><strong id="c-hooks">17</strong> hooks</div>
+    </div>
+
+    <div class="controls">
+      <input type="search" id="q" placeholder="Filter by name, source, or description...">
+    </div>
+
+    <div id="content"></div>
+
+    <div class="inv-sources">
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, the always-on ones carried by the core <code>alfred-code</code> plugin, every other pick copied into the project as a library copy (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
+    </div>
+  </section>
+
+  <footer>
+    <span>envoydev/alfred-code &middot; agent roster + full stack inventory</span>
+    <span>10 domains &middot; 30 seats &middot; 4 cross-cutting &middot; 4 resolvers &middot; 4 analysis/support &middot; 42 total</span>
+  </footer>
+</div>
+<script>
+// rows: [name, description]
+const builtin = {
+  title: "Skills (Built-in)",
+  meta: "Ships with Claude Code CLI. No install needed.",
+  source: "built-in (Claude Code CLI)",
+  install: "ships with CLI",
+  rows: [
+    ["claude-api","Claude API / SDK","Build, debug, and optimize Claude API / Anthropic SDK applications."],
+    ["code-review","Code review","Review current diff at chosen effort (low/medium/high/max/ultra). --comment posts to PR; --fix applies."],
+    ["deep-research","Research","Fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report."],
+    ["fewer-permission-prompts","CLI config","Scan transcripts for read-only Bash/MCP calls; build allowlist in project settings."],
+    ["init","Project setup","Initialize a new CLAUDE.md file with codebase documentation."],
+    ["keybindings-help","CLI config","Customize keyboard shortcuts in ~/.claude/keybindings.json."],
+    ["loop","Automation","Run a prompt or slash command on a recurring interval."],
+    ["review","Code review","Review a pull request (alias)."],
+    ["run","Verification","Launch and drive the project's app to see a change working."],
+    ["schedule","Automation","Create/list/run cron-scheduled remote agents (routines)."],
+    ["security-review","Security","Security review of pending branch changes."],
+    ["simplify","Code review","Shorthand for /code-review --fix."],
+    ["update-config","CLI config","Edit settings.json (permissions, env vars, hooks, automated behaviors)."],
+    ["verify","Verification","Launch the app, observe behavior - manual feature validation."],
+  ]
+};
+
+const house = {
+  title: "Skills (House)",
+  meta: "Convention skills, authored in this repo and published to envoydev/alfred-code. The always-on ones ride the core plugin; every other pick is copied into the project as a library copy, hashed in the install stamp. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+  invokeColumn: true,
+  source: "https://github.com/envoydev/alfred-code",
+  install: "node scripts/install/alfred-code.js install --skills-only",
+  rows: [
+    ["create-ticket","Tickets / tracker","Generate a bug, user story, epic, or technical task ticket in English from a raw description (Ukrainian or English input). Detects the type and routes to a per-type template (references/{bug,story,epic,task}.md). Tracker-agnostic Markdown (Jira, Azure DevOps, GitHub, GitLab, YouTrack); offers to file via a connected tracker MCP."],
+    ["dev-log-convert","Logs / docs","Convert daily Ukrainian/English/mixed raw work logs into structured form. Trigger: literal 'dev-log'."],
+    ["explain-code-tutor","Learning / explain","Explain code, a bug, a concept, or an approach/architecture trade-off like a patient senior engineer: one everyday analogy fit to the mechanism, numbered steps with short snippets quoted from the real project files, a marked break-point (bug) / key insight (concept) / trade-off verdict (compare), the real fix or recommendation, and a one-line takeaway. Adjustable depth (ELI5/intermediate/expert); answers in the user's language."],
+    ["angular-conventions","Frontend / Angular","Angular 17+: signals, RxJS, OnPush, new control flow templates, a11y, performance, feature-boundary decoupling. TS/JS language baseline -> typescript."],
+    ["angular-testing","Frontend / Angular","Angular testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via alfred-capture-test-coverage): TestBed + component-harness patterns for standalone components, per-role test strategy, runner routing (whichever the workspace runs - detect, never install), HttpTestingController, fakeAsync timing, the TestBed-masking smoke spec, the Angular exclusion catalog. Ionic shares it. .NET -> dotnet-testing."],
+    ["angular-material","Frontend / Angular","Angular Material (@angular/material) + CDK: selective component-module imports (tree-shaking), M3 mat.theme() theming + CSS custom properties, CDK primitives (Overlay, virtual scroll, FocusTrap/LiveAnnouncer), Material test harnesses. Framework baseline -> angular-conventions."],
+    ["angular-styling","Frontend / Angular","Angular CSS/SCSS architecture (Material or not): ViewEncapsulation choice, :host / :host-context, the discouraged ::ng-deep and its sanctioned ways out, design tokens as CSS custom properties, mobile-first + container queries + fluid type, global vs scoped styles, utility-first vs scoped SCSS, a11y-affecting styling. Material token work -> angular-material; framework -> angular-conventions."],
+    ["angular-security","Security / Angular","Angular / web frontend security hardening: XSS and the DomSanitizer bypassSecurityTrust* escape hatches, [innerHTML] injection, CSP (nonce-based, no unsafe-inline), CSRF via HttpClient XSRF, no secrets in the bundle (environment.ts, source maps), token storage (httpOnly cookie over localStorage an XSS drains), SSR/TransferState leaks, open-redirect + window.opener, vulnerable npm deps. API side -> dotnet-security; Capacitor native shell -> ionic-security."],
+    ["ionic","Mobile / Ionic","House Ionic/Capacitor conventions: standalone+signals Ionic UI, IonRouterOutlet + lazy routes, CSS-variable theming, Capacitor lifecycle + isNativePlatform guards, runtime permissions, Capacitor plugin sourcing (official -> Capawesome -> capacitor-community) + typed-service wrapping. Mechanics -> capacitor-plugins."],
+    ["capacitor-release","Mobile / release","House Ionic/Capacitor release pipeline: cap sync + native build (.ipa/.aab), iOS signing (cert + profile, App Store Connect API key, Fastlane match) + Android signing (upload key vs Play app-signing key), store submission (TestFlight + Play tracks), OTA / live updates and the native-binary boundary, marketing-version vs build-number sync, Fastlane / GitHub Actions CI with secrets, dSYM + sourcemap upload. App under release -> ionic; native plugin mechanics -> capacitor-plugins."],
+    ["ionic-security","Security / Mobile","Ionic/Capacitor mobile security hardening: secret storage in Keychain/Keystore (never plaintext localStorage/Preferences), deep-link + custom-scheme input validation, least-privilege native permissions at point of use, cleartext-traffic + WebView-debugging off in release, allowNavigation allowlist + no live-reload server.url, FLAG_SECURE / backgrounding-snapshot data protection, plugin trust, optional cert pinning + biometric gating. Web layer -> angular-security; API -> dotnet-security; signing -> capacitor-release."],
+    ["csharp","C# / conventions","Style + runtime: file layout, naming, ordering, modern C# 12/13/14 syntax (primary constructors default for DI capture), design-pattern (GoF) awareness, forbidden patterns, XML doc; DateTime/TimeProvider, async, dispose, exceptions + Result, structured logging, secrets/config, LINQ, System.Text.Json, DI lifetimes."],
+    ["csharp-design-patterns","C# / patterns","All 23 GoF patterns with modern .NET 8+ idioms: problem-to-pattern selection table, anti-pattern checks, framework-native forms (keyed DI, yield, events, pattern matching). Companion: csharp. NOT for architectural patterns (CQRS, repository, layering) - those route via dotnet to dotnet-architecture."],
+    ["database-conventions","Database","Postgres/SQL Server/SQLite/Mongo schema, migrations, indexes, transactions + per-engine pitfalls."],
+    ["database-security","Security / Data","SQL / data-layer security hardening: parameterized-only injection (no interpolated FromSqlRaw/ExecuteSqlRaw, sp_executesql for dynamic proc SQL), least-privilege DB accounts (never sa/db_owner, split migration/runtime logins), row-level security + tenant isolation (the data-layer IDOR), connection-string secrets (managed identity/Key Vault, Encrypt=true), TDE/column encryption, dynamic data masking, audit-logging. App-layer EF -> dotnet-security; primitives -> dotnet-cryptography; migrations -> dotnet-migrate."],
+    ["dotnet",".NET / router","Router for .NET/C# specialist skills - picks the focused skill per area (concurrency, type/memory design, design patterns, serialization, DI registration, options binding, domain model, architecture/layer placement, NuGet/packaging, project structure, decompile). Companion: csharp."],
+    ["dotnet-architecture","Architecture / .NET","Choose and hold a .NET architecture - the decision hub (topology single -> modular-monolith -> microservices, internal clean-vs-vertical-slice, DDD additive) with each style's depth in references/. Owns the pick-one rule + the shared inward-dependency rule; enforcement routes to dotnet-architecture-tests. Original house skill (.NET 8 floor)."],
+    ["dotnet-architecture-tests","Architecture / .NET","Architecture fitness tests that fail the build when a boundary is crossed: NetArchTest.Rules (lightweight fluent default) vs ArchUnitNET (richer modelling - slices, cycles, custom predicates), the rules worth enforcing (domain depends on nothing, application on abstractions not infrastructure, no layer-skipping, slice isolation, naming/sealing/placement, no cycles), a dedicated test project resolved by type marker. Enforces what dotnet-architecture prescribes. Original house skill (.NET 8 floor)."],
+    ["dotnet-aspire","Backend / Aspire","Local cloud-native orchestration: AppHost (AddProject/AddPostgres/AddRedis/AddRabbitMQ, WithReference), shared ServiceDefaults, service discovery, dashboard. Orchestration-only; OTel/health/resilience -> dotnet-web-backend. Original house skill (.NET 8 floor)."],
+    ["dotnet-authentication","Auth / ASP.NET Core","Authn/authz: JWT bearer / OIDC / ASP.NET Identity, policy-based authorization over role strings, custom requirements, API keys, secret storage. Original house skill (.NET 8 floor)."],
+    ["dotnet-code-quality","Quality / .NET","Mechanically enforce house C# style: CSharpier formatter ownership (vs dotnet format), first-party SDK analyzers (EnableNETAnalyzers / AnalysisLevel / AnalysisMode in Directory.Build.props), one root .editorconfig as the single severity source, TreatWarningsAsErrors discipline (never suppress to go green) + gradual batch-promotion for a legacy warning backlog, optional Roslynator, and the dotnet build CI gate. Original house skill (.NET 8 floor)."],
+    ["dotnet-console-apps","Backend / console","The console app's interface surface on top of the generic host: CLI argument parsing (System.CommandLine 2.0 GA / Spectre.Console.Cli / Cocona, subcommands, exit codes) and long-running bots / gateway consumers (Telegram / Discord / Slack / trading via CryptoExchange.Net / queue-workers) run inside a BackgroundService. Host lifecycle + 24/7 hardening -> dotnet-hosted-services. Original house skill (.NET 8 floor)."],
+    ["dotnet-cryptography","Security / .NET","System.Security.Cryptography: SHA-2 hashing, AES-GCM authenticated encryption, RSA-OAEP/ECDSA, PBKDF2 (600k)/Argon2id key derivation, FixedTimeEquals, deprecated-algorithm matrix; PQC noted .NET 10+. Original house skill (.NET 8 floor)."],
+    ["dotnet-data-access","Data access / EF Core","EF Core + NHibernate ORM hub: session/context lifetime + pooling, change tracking, Include/AsSplitQuery and N+1, projection to read models, bounded results, set-based bulk ops, ORM-vs-Dapper split; per-ORM depth in references/efcore.md + references/nhibernate.md. Engine SQL routes to postgres / sqlite. Original house skill."],
+    ["dotnet-web-error-handling","Errors / ASP.NET Core","Result pattern for expected failures + ProblemDetails (RFC 9457) + global IExceptionHandler (.NET 8+) + FluentValidation via endpoint filter. Original house skill (.NET 8 floor)."],
+    ["dotnet-grpc","Backend / gRPC","gRPC lifecycle: .proto + Grpc.Tools codegen, Grpc.AspNetCore host, typed clients via IHttpClientFactory, four streaming modes, JWT/mTLS, interceptors, health, gRPC-Web. Original house skill (.NET 8 floor)."],
+    ["dotnet-hosted-services","Backend / hosting","Hosted-service / worker conventions: the two host shapes, BackgroundService vs IHostedService vs IHostedLifecycleService, the ExecuteAsync unobserved-exception trap, scoped services via IServiceScopeFactory, PeriodicTimer, graceful shutdown, and Channels-backed work - plus references/ for 24/7 hardening (HttpClient/socket exhaustion, Polly v8, rate limiting, ClientWebSocket reconnect), scheduling (Hangfire/Quartz/Coravel) + leader election, and deployment/signals (systemd/container/Kubernetes, worker observability). Original house skill (.NET 8 floor)."],
+    ["dotnet-windows-service","Backend / Windows Service","The SCM layer over the generic host: AddWindowsService and the dual-mode binary, SCM start/stop budgets, non-zero exit codes so recovery actions fire, the System32 working-directory trap, scripted sc.exe install with recovery actions, gMSA / least-privilege accounts, unquoted-path + ACL hardening - plus references/ for operations (publish, install, secrets ranked, diagnostics) and the maintained .NET Framework ServiceBase shape + migration path. Original house skill."],
+    ["dotnet-messaging","Backend / messaging","Event-driven messaging: Wolverine (MIT default) / MassTransit, transactional outbox, choreography vs sagas, message contracts, RabbitMQ / Azure Service Bus. Original house skill (.NET 8 floor)."],
+    ["dotnet-migrate","Migrations / .NET","Safe-migration workflow: EF Core schema, .NET version upgrades, NuGet updates - rollback plan + build/test verification per step. Original house skill (.NET 8 floor)."],
+    ["dotnet-minimal-api","Backend / ASP.NET Core","Minimal API endpoint mechanics: feature-folder organization, MapGroup, TypedResults / Results<> unions, IEndpointFilter, parameter binding, metadata. Original house skill (.NET 8 floor)."],
+    ["dotnet-mvc-controllers","Backend / ASP.NET Core","Controller-based Web API mechanics: [ApiController], attribute routing, ActionResult<T> vs typed HttpResults, the automatic-400 model-validation filter and suppressing it, binding sources, IAsyncActionFilter, thin controllers, and controllers-vs-minimal-APIs. Original house skill (.NET 8 floor)."],
+    ["dotnet-openapi","API docs / ASP.NET Core","OpenAPI document generation (Swashbuckle on .NET 8, built-in Microsoft.AspNetCore.OpenApi on .NET 9+) + transformers, security schemes, multi-doc, and the Scalar docs UI. Original house skill (.NET 8 floor)."],
+    ["dotnet-realtime","Real-time / ASP.NET Core","ASP.NET Core SignalR: strongly-typed Hub<TClient>, IHubContext push from outside the hub, group/user/presence targeting, the reconnection model (groups not restored - rejoin explicitly), connection-time JWT-over-query-string auth + per-message validation, MessagePack, and multi-server scale-out via a Redis backplane or Azure SignalR Service. The durable last hop pairs with dotnet-messaging. Original house skill (.NET 8 floor)."],
+    ["dotnet-security","Security / ASP.NET Core","OWASP Top 10 (2021) mapped to .NET 8 mitigations: access control/IDOR, injection+XSS, deserialization, misconfig, vulnerable deps, SSRF, logging; deprecated-pattern warnings. Delegates auth -> dotnet-authentication, crypto -> dotnet-cryptography. Original house skill (.NET 8 floor)."],
+    ["dotnet-source-generators","C# / Roslyn","Authoring Roslyn IIncrementalGenerator (netstandard2.0, ForAttributeWithMetadataName, value-equatable models, diagnostics, snapshot testing) + consuming built-ins (GeneratedRegex/LoggerMessage/STJ JsonSerializable). Original house skill (.NET 8 floor)."],
+    ["dotnet-testing","Testing","Per-layer strategy, coverage, library tables (xUnit/NSubstitute/FluentAssertions), test isolation + builders/object mothers."],
+    ["dotnet-web-backend","Backend / HTTP","HTTP-service cross-cutting: IHttpClientFactory, FluentValidation, Polly, API versioning, OpenAPI, observability (Serilog, OpenTelemetry, correlation IDs, health checks), caching (IMemoryCache, HybridCache, Redis)."],
+    ["dotnet-winforms","WinForms / Desktop","Logic out of code-behind (MVP passive view / the .NET 8 MVVM binding engine), DI-resolvable forms, no UI-thread blocking, BindingSource binding, disciplined control / component / GDI disposal under the handle wall, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests; version mechanics in references (4.8 vs .NET 8/9/10 + migration)."],
+    ["dotnet-wpf","WPF / Desktop","Strict MVVM, dep/attached props, explicit binding modes, async commands, INotifyDataErrorInfo validation, virtualization, VM testing."],
+    ["desktop-automation","Desktop / UI automation","Driving a native app through windows-desktop (Windows-MCP) or macos-desktop (MacOS-MCP): observe, one action, verify; semantic vs coordinate control by app type (WPF/WinForms/Win32/UWP, native macOS, Java SWT/JavaFX/Swing); stops at elevation, credential, payment and destructive dialogs; stays in the UI, not shell/registry/file tools; the English-language, privilege, Accessibility and Screen Recording failures. Arrives with either desktop server."],
+    ["alfred-loop-quality","Review / automation","Deliberate code-quality analyze-triage-fix loop: mode asked at run start (current session or the stack seats), then each round the alfred-capture-code-quality capture judges the code against the project's own rules and recomputes <docs-path>/quality/CODE-ASSESSMENT.md, and the loop works its Must-fix findings by tier - small to a domain implementer, substantial through a designer -> implementers -> verifier with the plan approved first, structural flagged for a user decision and never auto-applied - then an anti-gaming sweep over the cumulative diff and one reconcile at stop. Cap 3 rounds, a fresh-session ask at each boundary. The numbered prompts under <docs-path>/loops/ are its rules (a missing folder is seeded from the starter set, a user folder is never overwritten); `staged` keeps the pre-2.0.0 numbered-prompt pipeline, one stage at a time to each prompt's bar.","manual"],
+    ["alfred-loop-architecture-quality","Review / automation","Deliberate architecture analyze-assess-improve loop: asks at run start whether to work in the current session or dispatch the stack seats, then the alfred-capture-architecture capture maps the project (ARCHITECTURE.md) and a separate pros/cons capture judges it fresh every round (<docs-path>/quality/ASSESSMENT.md), then works the weaknesses by tier (small -> implementer, substantial -> designer-led build with plan approval, structural -> flagged for a decision, declined ones held in-run so they do not re-interrupt). This loop writes neither doc itself - it proposes decisions in its report, never writes the decision log - and reconciles both captures once at stop, not per round. Manual, /-only - the heavy counterpart to alfred-loop-quality.","manual"],
+    ["alfred-capture-architecture","Review / automation","Deliberate architecture capture: mode asked at first capture (session or seats), then dispatches architecture-analyzer per module (parallel, cap 3 gather rounds), reasons over the digests IN the main session (declared-vs-enforced reconciliation, the stack-keyed hazard catalog), and writes <docs-path>/architecture/ARCHITECTURE.md (lean core map + references/ deep-dives, user-authored reference files never touched) and the generated always-on awareness rule baseline-project-architecture.md (a docs pointer - where the docs live and how to read them by section; the orientation itself arrives through the docs hook - loaded every session and subagent). No dispatched architecture seat - run on an Opus session. Maps only, does not judge - the pros/cons read is alfred-capture-architecture-quality's. Deliberate-only, never mid-build."],
+    ["alfred-capture-first-look","Review / automation","First-look orientation for a project with no architecture capture yet: one deterministic scan of the manifests (scripts/scan-evidence.js --orientation - csproj and solutions, package.json with angular.json, an extension manifest.json) writes a PROVISIONAL <docs-path>/architecture/ORIENTATION.md - stack, modules, build / test / run commands, entry points, every row read from a manifest. The docs hook pushes it with a stale warning, docs.js status and stale report it as stale by definition, and the architecture capture replaces it. Never written over a capture; no model check - the script does the reading."],
+    ["alfred-capture-claude-md","Review / automation","Create or improve a project's CLAUDE.md: the script lists the files and marks an unfilled seed (create) from one with the project's own text (improve); facts come from the first-look scan, the manifests and the CI workflow, never guessed; create fills the template's outline (Setup and Key files among it) and a separate part's own &lt;part&gt;/CLAUDE.md, improve shows every change as a diff before writing and never rewrites the project's prose; scripts/claude-md-check.js closes it - every named path exists, every command's program resolves on PATH, no placeholder, TODO or template text left. /alfred-code:init step 6 runs it; /alfred-code:validate runs the check for drift."],
+    ["alfred-capture-architecture-quality","Review / automation","Deliberate pros/cons capture over the architecture map: dispatches architecture-analyzer per module (parallel, cap 3 gather rounds) scoped toward weaknesses and strengths, runs the four-question findings gate IN the main session on every candidate, and writes <docs-path>/quality/ASSESSMENT.md fresh every run (gate-passing strengths/weaknesses in three buckets: must-fix tiered, worth-knowing, deliberate tradeoffs - counts are outputs, never targets). Reads the decision log, never writes it - a candidate worth deciding rather than fixing is named as a proposed decision in the doc and the report, for a person to accept. quality/ carries no watch.json, so the docs engine never sections, versions or asks about this doc - it is recomputed, not stored. No dispatched architecture seat - run on an Opus session. Judgment only - alfred-loop-architecture-quality drives it across rounds and works the weaknesses."],
+    ["alfred-capture-code-quality","Review / automation","Deliberate code-quality capture, the code twin of the architecture-quality one: collects the rule sources (the numbered prompts under <docs-path>/loops/ - each stage prompt's bar is a rule, the 0. fix discipline and the run records never are; the recorded CODE-STYLE.md; the path-scoped convention rules and their house skills - no loops/ folder is said and the other two judged alone), dispatches code-quality-analyzer per module (parallel, cap 3 gather rounds), runs the four-question findings gate IN the main session and writes <docs-path>/quality/CODE-ASSESSMENT.md fresh every run: every Must-fix finding names its file:line, the rule it breaks, the rule's severity and a tier (small / substantial / structural); worth-knowing and deliberate tradeoffs beside it. Reads the decision log, never writes it; architecture and coverage candidates are handed off, never written. quality/ carries no watch.json, so the docs engine never sections or versions it. alfred-loop-quality drives it across rounds and works the findings."],
+    ["alfred-capture-test-coverage","Review / automation","Deliberate test-coverage capture: detects each stack's test-and-coverage tooling (.NET coverlet/cobertura, Angular via the builder angular.json names (Vitest default, Karma on older workspaces), plain JS/TS via the script -> config -> devDependencies ladder; all rungs empty = a 'no test infrastructure' verdict, never installs a runner), runs the instrumented suite ONCE per surface ALWAYS in the main session (a seat babysitting a slow run burns ~half its cost - measured), fans out the read-only test-coverage-analyzer agent per surface over the raw results (mode asked at first capture; inline when no dispatch), and judges against the USER's requirement - asked at first capture, 90% line after exclusions offered as the house default, recorded in the doc - writing <docs-path>/test-coverage/COVERAGE.md (per-stack + per-module data, verdict, weak points tiered small/substantial/structural, each with a simplify-testing action) plus raw/ machine-readable results (no HTML report trees). Re-run reconciles both in place. Capture only - fixing the gaps is alfred-loop-test-coverage, which invokes this as its ANALYZE step. Fires on its triggers or is typed as a /-command - never a build gate.","auto"],
+    ["alfred-loop-test-coverage","Review / automation","Deliberate coverage analyze-triage-fix loop: runs the alfred-capture-test-coverage capture, then works COVERAGE.md's weak points by tier - missing tests as scoped briefs (mode asked at run start: current session or <stack>-implementer seats, 3-cap, reds to the matching resolvers), testability refactors designer-led with plan approval first, structural gaps flagged for a user decision and never auto-applied, 'no test infrastructure' as the FIRST substantial fix (runner per the stack's house testing default) - re-runs the capture to reconcile COVERAGE.md, the only doc this loop maintains (the architecture assessment is the architecture capture's, reconciled at its own cadence, never touched from here), and loops until SATISFIED / PLATEAU / CAPPED / BLOCKED (hard cap 3 rounds). Never pads with assertion-free tests, never widens exclusions or lowers the requirement. Manual, /-only - the coverage counterpart to alfred-loop-architecture-quality.","manual"],
+    ["alfred-task-version-upgrade","Review / automation","Deliberate flow for any BREAKING version event - framework/runtime major, EOL, load-bearing package major: DETECT classifies the event from the manifests (green baseline is a precondition), GATHER pulls the breaking-change surface via the documentation server and located usage via architecture-analyzer digests, PLAN sequences foundation-first (applicable changes only, engine-vs-hand split, rollback point per stage), an APPROVAL GATE presents the plan (auto mode skips it ONLY on the user's explicit ask), then staged execution: implementers edit, resolvers clear reds, a gate after every stage, verify at the end. Pinned opus/xhigh. Manual, /-only.","manual"],
+    ["alfred-capture-agent-capabilities","Review / automation","Deliberate capabilities capture: inventories what THIS project actually has - the slash-only orchestration skills (detected from .claude/skills frontmatter), the subagent seats (.claude/agents), the MCP servers (.mcp.json), plugins best-effort - and generates the always-on awareness rule baseline-project-agent-capabilities.md wholesale from the real inventory (no assumed stack, no row for anything the project dropped). Re-run after install / update / a manifest trim. Manual, /-only.","manual"],
+    ["alfred-capture-code-style","Review / automation","Deliberate project code-style capture: fans out code-style-analyzer agents (one per detected language, parallel; mode asked at first capture), merges their structured reports into <docs-path>/code-style/CODE-STYLE.md (the project's ACTUAL style - config-enforced rules + idioms a linter cannot encode, house-skill divergence flagged), then generates the path-scoped .claude/rules/project-code-style.md rule from its template - paths: globs derived from the agents' observed extensions, body = the condensed style core. The rules channel attaches it on any matching file touch, in the main session AND dispatched subagents (a hook's injected context never reaches subagent calls - why the hook was replaced). Re-run reconciles the doc in place, regenerates the rule, and retires a legacy inject-code-style hook if present. Manual, /-only.","manual"],
+    ["alfred-capture-related-projects","Review / automation","Deliberate related-projects capture, args-driven (paths or git URLs, never a scan): fans out related-project-analyzer agents (one per sibling, parallel, mode asked at start; URL siblings shallow-cloned to scratch), writes both tiers from their YAML entries (evidence-grounded or UNVERIFIED) - the generated always-on awareness rule .claude/rules/baseline-project-related-context.md (name/location/relation/seam, loaded every session and subagent) and <docs-path>/related-projects/RELATED-PROJECTS.md (first_read + the evidence behind each seam, read on a seam touch; a docs domain holding only this doc - every OTHER sibling-repo doc, cross-repo plans, change requests, run recipes, stays in the plain <docs-path>/related-context/ folder). Re-run upserts entries per passed sibling in both files, keeps the rest. Manual, /-only.","manual"],
+    ["alfred-task-build-from-scratch","Greenfield / scaffolding","Build a new application or major module from scratch: DESIGN runs in-session on the session model the skill asks you to set (the spec becomes 2-3 reasoned architecture options, grounded in the house architecture skills - no dispatched greenfield seat), the user picks (hard gate - nothing scaffolds before it), then the stack's real new-project command + baseline wiring, then the build slice by slice through the domain seats (mode asked before the first slice; designer -> implementers -> verifier; multi-stack slices producer-first per alfred-task-solve-cross). Ends by suggesting the capture skills so the new repo gets its map + style artifacts. Manual, /-only.","manual"],
+    ["alfred-task-solve-cross","Build / orchestration","Entry-point router for multi-agent engineering work: scopes the task IN-SESSION (the generated awareness rules + a bounded navigation-server pass; deep reads via a architecture-analyzer digest), then asks session-or-agents up front (an invocation naming the mode is the answer) and routes to the smallest safe agent mode - single chat, one implementer, a single-stack domain trio (its domain-trio-protocol reference), or a producer-first cross-domain run ordered by the dependency direction. Two tasks sharing a directory run as isolated worktree seats (branched from HEAD - the installer seeds worktree.baseRef head, add-only) and fan in uncommitted. The producer designer's interface IS the contract; consumer seats build against it and the integration-reviewer gates the assembled whole before commit. Home of the shared subagent policies: execution modes, contract change, structured output, progress ledger, model and token routing.","manual"],
+    ["alfred-task-verify-plan","Build / orchestration","Audit an implementation plan or design BEFORE writing code: a risk-coverage review that checks the plan names the non-obvious traps its stack will hit (routing to the stack skill - dotnet-web-backend, angular-conventions, dotnet-wpf - for the trap list), matches the requirement's scope, covers the edge and safety cases, and stays minimal. The cheapest place to catch a design error, since a flawed plan built perfectly is still wrong. Pairs with alfred-task-design (creates the plan, in its plan format) and precedes alfred-task-verify-code (reviews the built code)."],
+    ["alfred-task-verify-code","Build / orchestration","Review an assembled build in ONE chat with no dispatch - the single-chat, no-agents form of the verifier seat and the inline alternative to /code-review's fan-out. Loads the stack trap-list skills, reruns build + tests, gates the code against its plan, RUNS the app on failable inputs (a test can pass under WebApplicationFactory while the live endpoint 500s), traces a changed wire contract to its consumers, and returns a ranked punch-list - dispatching nothing. The review you run when you want deterministic cost and zero agents; use /code-review or the stack verifier seat when you want breadth or an isolated subagent."],
+    ["alfred-habits-commit-checkpoint","Build / orchestration","The pre-commit checkpoint and the publish ceremony, loaded when a commit or a publish is the next act instead of riding in the always-on git rule: the formatter fresh after the last edit, the alfred-task-verify-code review (or a dispatched verifier pass), /security-review on auth/crypto/secrets/payment/data-access paths, the exemptions, then the five-line docs-root flow/COMMIT-GATE receipt (VERIFIED or WAIVED, authorized, head, spec, live-probe) written as its own call and cleared once the commit lands; PUSH-GATE for git push and gh pr merge. The guard-ungated-commit denial names it."],
+    ["alfred-task-implement","Build / orchestration","Single-chat build step - the implementer seat's execution protocol in your context: take a verified plan (alfred-task-design -> alfred-task-verify-plan), execute it task by task honoring each card's contract (files owned, traps, anchors, acceptance criterion), gate every task green (resolving reds inline; mode asked at start when the invocation names none, dispatching only on the user's word), flag scope beyond the plan instead of riding it along, then finish via alfred-task-verify-code + the done-gate - completing the in-session designer -> implementer -> verifier vertical. Builds to the quality loop's bar on the first pass - the five stages held as it writes, comments carrying the why, each judgment call decided against precedent into the plan's Decisions ledger."],
+    ["alfred-task-design","Build / orchestration","Work out how a feature fits the existing code before building, in a single chat - the in-context form of the solution-designer seat. Reads <docs-path>/architecture/ARCHITECTURE.md, judges where the change belongs (extend an existing seam, refactor first, or isolate a new boundary) tied to the forcing edge, loads the stack skill (dotnet-web-backend, angular-conventions, dotnet-wpf) for the real traps, and decomposes the work into an ordered, minimal plan. Feeds alfred-task-verify-plan (which audits the plan) and precedes the build under the stack skill. The single-chat twin of the dispatched designer agent, kept in your context so you check each step. Every judgment call lands in the plan's Decisions ledger with its precedent (or an explicit none)."],
+    ["alfred-habits-clarify","Build / orchestration","The clarify discipline's one home: before any design, list the readings of the ask and, where more than one is left, ask one question at a time through AskUserQuestion - 2-3 concrete options, the recommended one marked - until one reading is left; the answers are recorded verbatim as the requirement. Clarifies the requirement, never the implementation. Loaded by alfred-task-solve's step 1, alfred-task-solve-cross and alfred-task-build-from-scratch before any design; a dispatched seat returns NEEDS_CONTEXT instead."],
+    ["alfred-habits-plan-writing","Build / orchestration","The plan file's one shape: the header lines (Oriented, Asked, Resume), the task card (files, anchors, traps, the test written first, acceptance, log points), the status marks a build stamps, the Decisions ledger, and what a plan never carries. Loaded by alfred-task-design at method step 4, and by alfred-task-verify-plan and alfred-task-implement before they read a plan."],
+    ["alfred-habits-test-first","Build / orchestration","Test first, as a fixed loop: write the test, watch it fail for the expected reason (a compile error or a skipped test is not red), write the minimal code that passes, see it green with its neighbours, refactor while green. A bug fix starts from a test that reproduces it. Preloaded by every implementer seat, loaded by alfred-task-implement, pointed at by the interaction baseline."],
+    ["alfred-habits-done-gate","Build / orchestration","The done gate: before claiming your own change done, fixed, passing, works or ready, the build and the relevant tests run after the last edit with the output quoted - a green summary line, a red run's full trace, scoped runs while iterating and the full suite once, never a gamed pass. Preloaded by every verifier and implementer seat, pointed at by the quality-gates baseline and loaded by the solve flow's close and each implement task's close; the stop contract logs every done claim over an edit (a probe row, never a hold) so its misses are counted."],
+    ["alfred-task-solve","Build / orchestration","The gated single-chat vertical for one task, feature, or bug: alfred-task-design writes the plan file, alfred-task-verify-plan audits and stamps it, the user approves and picks the build mode via one options question (session or domain implementer agents - the task-fit choice marked recommended), alfred-task-implement builds resume-proof (IN_PROGRESS/DONE ticks + resume note in the plan file), a skippable plan-conformance verify, then alfred-task-verify-code + the done-gate. A hard user stop between every step - switch model/effort, add context, or edit the plan before saying go - and a navigation-server cycle note keeps the cursor so compaction or a fresh session resumes exactly where it stopped. Every step builds to the quality loop's bar: the plan's Decisions ledger grows through design and build, and the review gates the code against it.","manual"],
+    ["alfred-issue-diagnoser","Diagnostics","The gated single-chat investigation for a failure of any kind, from whatever evidence exists: triage it to an evidence tier (stack trace / log window or CI run / written repro steps / a bare client report - tier 4 is the default case, not the edge), gather through evidence-gatherer seats or inline per the run-start mode ask, prove the root cause through the house root-cause loop (alfred-habits-root-cause) against the matching signature catalogue, then a user FORK - write a report, plan the fix as contracted tasks for the gated build cycle, or emit a log-points card so the next occurrence arrives one tier higher. Read-only throughout, so no approval stamp and no commit gate; a red pipeline routes out to alfred-issue-diagnoser-ci, and an unreachable link is named, never guessed at.","manual"],
+    ["alfred-issue-signatures-runtime","Diagnostics","A lookup of the common local-runtime failure signatures - null-reference, DI / composition-root resolution, async deadlock / sync-over-async hang, race / shared mutable state, disposed-lifecycle, config / environment drift, boundary / off-by-one, database contention / exhaustion, HTTP error with a clean response - each mapped to where the cause actually lives, which is almost never the line that threw. The single-chat form of the diagnoser seat's failure catalogue; pairs with alfred-habits-root-cause (this names the signature, that runs the hypothesis-and-test loop)."],
+    ["alfred-habits-root-cause","Diagnostics","The house root-cause loop every diagnosis runs on: read the whole failure, make it fail on demand, walk back from where it threw, compare with a case that works, one hypothesis per change, fix at the root test-first, and stop to question the design after three fixes that each surface a new failure. Preloaded by both diagnoser seats and the four resolvers, cited by the gated investigation, pointed at by the interaction baseline, and loaded as the first action of the investigation's root-cause step; the stop contract logs the first red run of each failure streak (a probe row, nothing injected) so the misses are counted. Written fresh in 2.0.0."],
+    ["alfred-issue-signatures-ci","Diagnostics","Triage a red CI pipeline or PR check in the current chat - match the failure to a signature (compile/restore, green-locally-red-on-the-runner, quality gate, signing/release, workflow-config drift, infra flake), make the red-in-CI/green-locally call between a real code defect and an environment/pin/config/workflow failure that never touched the code, and route it. The single-chat form of the alfred-issue-diagnoser-ci seat and the CI sibling of alfred-issue-signatures-runtime; pull the failing log yourself via gh rather than dispatching evidence-gatherers."],
+    ["alfred-capture-stack-usage","Diagnostics","Token/tool usage audit of stack skill runs - is Claude Code with the stack efficient here, in tokens and in effectiveness: sweeps EVERY session transcript of this project for stack-skill invocations (scope asked up front - all matching / today / current / custom; already-audited sessions skipped), runs the stack&#39;s analyze-usage.js per session (read from the plugin cache, release-archive then clone fallback; --report-md skeleton keeps the numbers machine-written; --hook-log join when a ALFRED_CODE_INSTRUMENT ledger exists), and writes &lt;docs-path&gt;/alfred-code-usage-report/&lt;session-id&gt;/ - report-usage.md (machine tables plus the efficiency scorecard - cache misses by Claude Code&#39;s own rule, compaction re-reads, build-dir reads, scoped vs whole-suite runs, checked commits, green claims with no check, correction streaks, dispatch overhead - and the authored waste analysis, protocol check, efficiency verdict, verdict) plus the --json dumps and raw session data, and a cross-session SUMMARY.md when several sessions are audited. Report body: aggregates, tool names, paths only - never file contents. Manual, /-only.","manual"],
+    ["alfred-habits-skill-writing","Plugins / authoring","The skill-writing habit, the sixth one: whether a piece of guidance is a skill at all (or a hook, a path-scoped rule, an always-on rule, a reference file), the description as the trigger (Use when, the words that fire it, a Not for clause), one home per piece and a named cite only where the skill is guaranteed beside it, a lean platform-neutral body with detail in references/ read on demand, and the proof before shipping: a baseline run without the skill, the same task with it, the adverse and plain phrasings. Loaded by the skill-authoring rule on any skill file, pointed at by plugin-authoring; written fresh in 2.0.0."],
+    ["plugin-authoring","Plugins / authoring","Claude Code plugin authoring: the plugin.json / marketplace.json schema, layout and load precedence, plugin root vs persistent data paths, per-component rules (commands, skills, agents, hooks, MCP, LSP), the validate / --plugin-dir / details / eval verification loop and the security review. Evidence-gated on a plugin manifest; opt-in otherwise."],
+    ["devops","Build / DevOps","Containers, CI/CD, and safe deploys for the .NET/Angular house: multi-stage, cache-ordered, digest-pinned, non-root Docker images; GitHub Actions CI/CD (lint/test/build graph, lockfile-hash cache keys, real service-container integration tests, masked secrets, SHA-pinned actions, least-privilege permissions, OIDC over stored creds); safe deploy (environments + approvals, expand-contract migrations gated before the roll, health-gated blue-green/rolling cutover with rollback). Points at dotnet-aspire, dotnet-migrate, dotnet-security/database-security."],
+    ["postgres","Database / Postgres","PostgreSQL engine delta over database-conventions: index-type selection (B-tree/GIN/GiST/BRIN), JSONB + full-text, SARGable rewrites, the planner (EXPLAIN ANALYZE, pg_stat_statements, autovacuum, work_mem), connection pooling modes. Original house skill."],
+    ["sqlite","Database / SQLite","SQLite engine delta over database-conventions: WAL / single-writer concurrency + busy_timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables, limited ALTER TABLE + table-rebuild, connection-per-thread, FTS5. Original house skill."],
+    ["typescript","TypeScript / JavaScript","Framework-agnostic TS/JS baseline: strict flags, discriminated unions, utility types, ESM modules, async (no floating promises), typed errors + Result, readonly, plain-JS via JSDoc + checkJs, ESLint/Prettier/tsconfig. The TYPE layer over the javascript base skill (load both for .ts work): strict+extra flags incl. the transpiler-safety set, never-lie rules (unknown + schema parsing, ts-expect-error, guard predicates), type modeling (discriminated unions, satisfies, branded primitives), type-only imports + module augmentation, TS 7 adoption state, checked JS via JSDoc/checkJs. Reference: typescript-style (enforced config + rule-by-rule style)."],
+    ["javascript","TypeScript / JavaScript","JavaScript base-language conventions, framework-agnostic - the layer every JS-family file gets: ES modules only (named exports, boundary-only barrels), async/await discipline with AbortSignal cancellation, the two failure channels (result object vs thrown Error subclass with cause), untrusted-input rules (prototype-pollution guards, postMessage origin, no eval), naming/shape, Vitest as the default runner. References: modern-runtime (ES2025/2026 feature adoption, Temporal, decorators, module mechanics), async-patterns (composition/cancellation/retry), performance (Core Web Vitals, event loop, profiling). The typescript type layer stacks on this."],
+    ["ts-js-testing","TypeScript / JavaScript","Plain TypeScript/JavaScript testing hub - practices and tooling only, no coverage numbers (the % bar is user-set via alfred-capture-test-coverage): runner routing (Vitest default, Jest where signaled, node:test floor - detect, never install), a test strategy keyed off role (pure module / boundary seam / DOM-adjacent / Node-runtime / published types), fake timers vs real async, the mock-masking smoke spec, the TS/JS exclusion catalog. Covers libraries, Node CLIs/tooling, and the browser-extension unit layer (chrome.* seam + extension E2E -> browser-extension). Angular -> angular-testing; .NET -> dotnet-testing."],
+    ["npm","TypeScript / JavaScript","Professional npm usage, consuming and publishing: committed lockfile + npm ci everywhere non-interactive, the supply-chain baseline (.npmrc ignore-scripts + min-release-age cooldown + allow-git=none, OIDC trusted publishing, scoped internal packages vs dependency confusion), honest npm-audit gating with behavioral-scanner layering, overrides vs --legacy-peer-deps discipline, exports maps + ESM-first library publishing, Renovate/Dependabot cooldowns. References: supply-chain (worm lessons, SBOM/CRA), publishing, ci-and-operations (caching, package-manager landscape, monorepo tooling)."],
+    ["browser-extension","TypeScript / JavaScript","Manifest V3 browser-extension engineering: the ephemeral service-worker model (event router, storage-backed state, chrome.alarms over timers), typed cross-context messaging, content-script isolated vs MAIN world + shadow-DOM UI, storage tiers and quotas, least-privilege permissions (activeTab + optional hosts), no-secrets-in-bundle + OAuth PKCE via launchWebAuthFlow, CSP-safe UI frameworks (AOT only), WXT-first tooling, Playwright persistent-context E2E, Web Store/AMO review and monetization reality. References: platform-and-lifecycle, tooling-and-testing, store-and-distribution."],
+    ["webpack","TypeScript / JavaScript","Webpack 5 build engineering with a library-in-monorepo focus: the transpile/type-check split (swc-loader + fork-ts-checker async-dev/blocking-CI + tsc --emitDeclarationOnly - webpack never emits .d.ts), externals computed from package.json (never bundle dependencies - the two-React failure), the tree-shaking precondition chain (ESM preserved end-to-end, accurate sideEffects), experimental ESM library output with the commonjs2 fallback, extensionAlias + rule-scoped fullySpecified resolution fixes, the shared defineConfig factory pattern, filesystem-cache invalidation pitfalls, Statoscope profiling. References: library-config, caching-and-speed."],
+    ["markdown-style","Docs / Markdown","Markdown authoring + review: a syntax canon (valid, portable Markdown) plus an opinionated house style overlay, applied in a two-pass procedure - fix syntax bugs directly, then batch the style judgment calls. Form only, not prose clarity (Vale) or spelling. The markdown-docs rule routes .md authoring here."],
+    ["docs-as-code","Docs / Diagrams + ADRs","Docs-as-code authoring: Mermaid sequenceDiagram (interaction flows) + erDiagram (schema sketches), architecture decision records (Nygard default, MADR 4 for option analysis, plus the operational discipline that keeps a log alive), and C4 context/container views - routing per doc type via references/, syntax canon, pitfalls, graduation points (DBML/dbdiagram, Structurizr DSL). The committed architecture map stays owned by alfred-capture-architecture."],
+    ["ilspy-decompile","C# / .NET","Decompile a compiled .NET assembly with ilspycmd (via dnx) to read its real implementation - framework internals, NuGet source you do not ship, or behavior confirmation before a framework upgrade. For source you already have, use the navigation server / the LSP."],
+    ["dotnet-project-setup","Setup / .NET","Set up a new .NET solution's build spine: the src / tests / .config layout, .slnx solution files, Directory.Build.props (shared Nullable / ImplicitUsings / LangVersion / global usings), global.json SDK pinning, central package management (Directory.Packages.props), and pinning a dotnet tool in .config/dotnet-tools.json. Analyzers route to dotnet-code-quality, CI and packaging to devops."],
+    ["dotnet-performance","Performance / .NET","Performance-aware .NET design decisions and where they matter: allocation and memory layout (struct vs class, readonly struct, seal by default, Span, ValueTask, frozen collections) and serialization-format choice (System.Text.Json source-gen, Protobuf, MessagePack). Measure first with the benchmarking / diagnostics skills."],
+    ["dotnet-diagnostics","Diagnostics / .NET","Measure and diagnose a live .NET process: BenchmarkDotNet microbenchmarks (separate Release project, [MemoryDiagnoser], reading mean/alloc/ratio, comparing implementations) and crash/hang/OOM dump capture (dotnet-dump, dotnet-gcdump, DOTNET_DbgEnableMiniDump, containers) with a first-look SOS pass."],
+    ["nx","Monorepo / Nx","Nx monorepo project-graph layer over an Angular/mixed workspace: navigate via the CLI (nx show projects, nx graph, nx show project) instead of dumping config, scope every build/test/lint to nx affected, scaffold with nx generate, and enforce module boundaries with tags + @nx/enforce-module-boundaries. Draws the serena-vs-Nx routing line (project graph vs code symbols) and teaches the CLI over the Nx MCP (keep it minimal-mode)."],
+  ]
+};
+
+// repository: [name, area, sourceUrl, description] - flat list, alphabetical by name
+const repository = [
+  ["claude-hud:configure","CLI config","https://github.com/jarrodwatts/claude-hud","Configure HUD display (layout, language, presets, manual overrides)."],
+  ["claude-hud:setup","CLI config","https://github.com/jarrodwatts/claude-hud","Configure claude-hud as your statusline."],
+];
+
+function renderFixedSource(g, filtered) {
+  const isUrl = g.source.startsWith("http");
+  const srcCell = isUrl
+    ? `<a href="${g.source}" target="_blank" rel="noopener">${g.source}</a>`
+    : `<span class="src">${g.source}</span>`;
+  // Source is identical for every row here (a fixed-source group), so state it once in the
+  // header; Install stays a per-row column by request (uniform within the group).
+  const meta = (g.meta ? g.meta + " &middot; " : "") + `Source ${srcCell}`;
+  let html = `<h2>${g.title}</h2><div class="group-meta">${meta}</div>`;
+  const inv = g.invokeColumn === true;
+  html += `<table><thead><tr><th style="width:15%">Skill</th><th style="width:12%">Area</th>${inv ? `<th style="width:13%">Invocation</th>` : ``}<th style="width:${inv ? 20 : 26}%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, area, desc, invoke] of filtered) {
+    const invCell = inv ? `<td><code>${invoke === "manual" ? `/${name} (manual)` : "auto (description)"}</code></td>` : ``;
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td>${invCell}<td><code>${g.install}</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// Plugin marketplaces installed via `/plugin install` -> map repo URL to install command.
+const pluginInstallByUrl = {
+  "https://github.com/anthropics/claude-plugins-official":
+    name => "/plugin install " + name.split(":")[0] + "@claude-plugins-official",
+  "https://github.com/jarrodwatts/claude-hud":
+    name => "/plugin install " + name.split(":")[0] + "@claude-hud",
+};
+
+// Any repo not in pluginInstallByUrl has no automated install path (the snapshot-copy step only
+// fetches STACK_SKILLS_REPO) - falls back to "manual".
+function installCmdFor(url) {
+  if (pluginInstallByUrl[url]) return null;  // handled per-row
+  return "manual";
+}
+
+// Compact source link: a known code-forge URL (GitHub, Codeberg, GitLab, Bitbucket) shows as
+// owner/repo, anything else as its hostname. The full URL stays in the href, so a narrow column
+// no longer costs the description its width.
+function shortSource(url) {
+  const forge = url.match(/^https?:\/\/(?:www\.)?(?:github\.com|codeberg\.org|gitlab\.com|bitbucket\.org)\/([^\/]+\/[^\/]+?)(?:\.git)?\/?$/);
+  let label;
+  if (forge) label = forge[1];
+  else { try { label = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { label = url; } }
+  return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+}
+
+// One PLUGIN is the unit, not one skill. All installable plugins - the marketplace
+// skill packs AND the LSP / hook / UI plugins - share a single section
+// instead of being split by marketplace across several tables. A pack that ships many
+// skills lists them under an expandable toggle rather than giving each skill its own row.
+// The underlying `repository` / `otherTools` data arrays stay untouched (the parity lint
+// reads them); this is a render-only regrouping. pluginMeta carries the editorial per-plugin
+// line and kind; install + source are derived from the data, so nothing is duplicated.
+// `provides` names what the expandable toggle lists (skills / commands / hooks); a plugin that
+// ships hooks or commands rather than skills (claude-hud ships commands) still lists them here,
+// like the skill packs do, rather than in the Hooks section.
+const pluginMeta = {
+  "claude-hud":           { kind: "statusline",       provides: "commands", blurb: "Required - installed beside the core on every run, at user scope (its status line is account-wide); one you disable stays off. /alfred-code:init wires its status line and the compact layout, never over a status line of your own. A live session heads-up display for the statusline - configure layout, presets, and manual overrides." },
+  "csharp-lsp":           { kind: "C# / diagnostics", blurb: "Optional pick, suggested on a *.csproj or *.sln. Roslyn language server - inline diagnostics after each edit without a full dotnet build round-trip. Complements the navigation server (Serena)." },
+  "typescript-lsp":       { kind: "TS / diagnostics", blurb: "Optional pick, suggested on a tsconfig.json or a typescript dependency. TypeScript language server - inline diagnostics on edit for Angular/TS work." },
+};
+const pluginOrder = ["claude-hud", "csharp-lsp", "typescript-lsp"];
+
+// Marketplace slug per URL, so a plugin's own install line reads `/plugin install <plugin>@<marketplace>`.
+const marketplaceByUrl = {
+  "https://github.com/anthropics/claude-plugins-official": "claude-plugins-official",
+  "https://github.com/jarrodwatts/claude-hud":             "claude-hud",
+};
+
+// Route an otherTools row to its section by type - shared by collectPlugins (which claims
+// the plugin rows) and render() (which splits the rest into renderSubagents / renderMcps).
+const bucketOfType = type =>
+  type === "subagent"            ? "agents"  :
+  type.startsWith("MCP server")  ? "mcps"    :
+  type.startsWith("plugin")      ? "plugins" : "tools";
+
+// Fold both data arrays into the plugin descriptors: marketplace skill rows aggregate
+// into their plugin and become its expandable items; each otherTools plugin row is a single
+// plugin. Returns them in pluginOrder.
+function collectPlugins() {
+  const byName = {};
+  const ensure = name => (byName[name] ||= { name, source: "", install: "", items: [] });
+
+  for (const [name, area, url, desc] of repository) {
+    if (!pluginInstallByUrl[url]) continue;
+    const plugin = name.split(":")[0];
+    const p = ensure(plugin);
+    p.source = url;
+    p.install = "/plugin install " + plugin + "@" + (marketplaceByUrl[url] || plugin);
+    if (name.includes(":")) p.items.push({ label: name.split(":")[1], area, desc });
+    else p.soloDesc = desc;   // no `:` in the name - the catalog row IS the whole plugin
+  }
+
+  for (const [name, type, area, install, url, desc] of otherTools) {
+    if (bucketOfType(type) !== "plugins") continue;
+    const p = ensure(name);
+    p.source = url;
+    p.install = install;
+    p.soloDesc = desc;
+    p.area = area;
+  }
+
+  return pluginOrder.filter(n => byName[n]).map(n => {
+    const p = byName[n];
+    const meta = pluginMeta[n] || {};
+    return {
+      name: n,
+      kind: meta.kind || p.area || "plugin",
+      blurb: meta.blurb || p.soloDesc || "",
+      install: p.install,
+      source: p.source,
+      provides: meta.provides || "skills",
+      items: p.items.length ? p.items.sort((a, b) => a.label.localeCompare(b.label)) : (meta.items || []),
+    };
+  });
+}
+
+// A plugin matches the filter on any of its own fields OR any nested skill.
+function filterPlugins(plugins, query) {
+  if (!query) return plugins;
+  return plugins.filter(p => {
+    const hay = [p.name, p.kind, p.blurb, p.install, p.source,
+      ...p.items.flatMap(i => [i.label, i.area, i.desc])].join(" ").toLowerCase();
+    return hay.includes(query);
+  });
+}
+
+function renderPlugins(plugins) {
+  let html = `<h2>Plugins</h2><div class="group-meta">Every installable plugin, one row each - the marketplace skill packs and the LSP / hook / UI plugins together. Installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code>; a pack that ships several skills, commands, or hooks lists them under an expandable toggle. ${plugins.length} plugins.</div>`;
+  html += `<table><thead><tr><th style="width:15%">Plugin</th><th style="width:13%">Kind</th><th style="width:27%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const p of plugins) {
+    const src = p.source ? `<div class="src" style="margin-top:4px">${shortSource(p.source)}</div>` : "";
+    let desc = `<span class="desc">${p.blurb}</span>`;
+    if (p.items.length) {
+      const lis = p.items.map(i =>
+        `<li><span class="sk">${i.label}</span><span class="sk-area">${i.area}</span><span class="sk-desc">${i.desc}</span></li>`).join("");
+      desc += `<details class="skills"><summary>${p.items.length} ${p.provides}</summary><ul class="skills-list">${lis}</ul></details>`;
+    }
+    html += `<tr><td><span class="name">${p.name}</span></td><td><code>${p.kind}</code></td><td><code>${p.install}</code>${src}</td><td>${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// Repository: plugin-bundled commands, installed with their plugin. Multi-skill repos get a sub-group.
+function renderRepository(filtered) {
+  // Group by url; build counts on the full non-plugin repo set (so single-skill status doesn't flip when filtering).
+  const fullCounts = {};
+  for (const [, , u] of repository) {
+    if (pluginInstallByUrl[u]) continue;
+    fullCounts[u] = (fullCounts[u] || 0) + 1;
+  }
+
+  const multi = {};
+  const others = [];
+  for (const row of filtered) {
+    const u = row[2];
+    if (fullCounts[u] > 1) (multi[u] ||= []).push(row);
+    else                   others.push(row);
+  }
+
+  const orderedUrls = Object.keys(multi).sort((a, b) => {
+    const d = multi[b].length - multi[a].length;
+    return d !== 0 ? d : a.localeCompare(b);
+  });
+
+  let html = `<h2>Repository</h2><div class="group-meta">Installed with their plugin (see Plugins) - no separate skill-install step. ${filtered.length} skills. Repos with multiple skills get a dedicated sub-group; single-skill repos go to "Other".</div>`;
+
+  for (const url of orderedUrls) {
+    const rows = multi[url];
+    const groupInstall = installCmdFor(url);
+    html += `<h2 style="font-size:13px;margin-top:18px">${url} <span class="src" style="font-weight:400">(${rows.length} skills)</span></h2>`;
+    html += `<div class="group-meta">Install <code>${groupInstall}</code></div>`;
+    html += `<table><thead><tr><th style="width:16%">Skill</th><th style="width:13%">Area</th><th>Description</th></tr></thead><tbody>`;
+    for (const [name, area, u, desc] of rows.sort((a, b) => a[0].localeCompare(b[0]))) {
+      html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td class="desc">${desc}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  if (others.length) {
+    html += `<h2 style="font-size:13px;margin-top:18px">Other (single-skill repos) <span class="src" style="font-weight:400">(${others.length} skills)</span></h2>`;
+    html += `<table><thead><tr><th style="width:15%">Skill</th><th style="width:12%">Area</th><th style="width:24%">Install</th><th style="width:14%">Source</th><th>Description</th></tr></thead><tbody>`;
+    for (const [name, area, u, desc] of others.sort((a, b) => a[0].localeCompare(b[0]))) {
+      const install = installCmdFor(u) ?? "manual";
+      html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${install}</code></td><td>${shortSource(u)}</td><td class="desc">${desc}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+  }
+
+  return html;
+}
+
+function render(query) {
+  const root = document.getElementById("content");
+  root.innerHTML = "";
+  const q = query;
+  const has = (...parts) => !q || parts.join(" ").toLowerCase().includes(q);
+
+  // Subagents and MCP servers get their own top-level sections (subagents first).
+  const otherF     = otherTools.filter(([n, t, a, i, u, d]) => has(n, t, a, u, d));
+  const subagentsF = otherF.filter(r => bucketOfType(r[1]) === "agents");
+  const mcpsF      = otherF.filter(r => bucketOfType(r[1]) === "mcps");
+
+  const biF       = builtin.rows.filter(([n, a, d]) => has(n, a, d, builtin.source));
+  const houseF = house.rows.filter(([n, a, d]) => has(n, a, d, house.source));
+  const plugins   = filterPlugins(collectPlugins(), q);
+  const repoF     = (q ? repository.filter(([n, a, u, d]) => has(n, a, u, d)) : repository)
+                      .filter(r => !pluginInstallByUrl[r[2]]);
+  const hooksF    = hooks.filter(([n, m, d]) => has(n, m, d));
+  const rulesF    = rules.filter(([n, p, d]) => has(n, p, d));
+
+  const add = h => root.insertAdjacentHTML("beforeend", h);
+  if (subagentsF.length) add(renderSubagents(subagentsF));
+  if (biF.length)        add(renderFixedSource(builtin, biF));
+  if (houseF.length)  add(renderFixedSource(house, houseF));
+  if (plugins.length)    add(renderPlugins(plugins));
+  if (repoF.length)      add(renderRepository(repoF));
+  if (mcpsF.length)      add(renderMcps(mcpsF));
+  if (hooksF.length)     add(renderHooks(hooksF));
+  if (rulesF.length)     add(renderRules(rulesF));
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set("c-subagents", subagentsF.length);
+  set("c-bi", biF.length);
+  set("c-house", houseF.length);
+  set("c-plugins", plugins.length);
+  set("c-mcp", mcpsF.length);
+  set("c-hooks", hooksF.length);   // hooks tallied separately, never folded into c-total
+  set("c-total", subagentsF.length + biF.length + houseF.length + plugins.length + repoF.length + mcpsF.length);
+}
+
+// Non-skill capabilities: plugins providing only agents/LSPs/commands, plus top-level MCP servers.
+const otherTools = [
+  // [name, type, area, install, sourceUrl, description]
+  // Order: plugin agent -> plugin commands -> plugin hooks -> MCP server. Alphabetical within each type.
+  // Stack-native Claude subagents (fetched into .claude/agents/; all model/effort-pinned): four resolvers (sonnet/high; Cursor twins live in the cursor-stack repo) + the pipeline:
+  ["dotnet-build-error-resolver", "subagent", ".NET / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Autonomous dotnet-build fix loop: categorize CS/NU/MSB errors, locate via the navigation server, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to disable tests/warnings or stub code to pass. Implement phase, after the design and its plan. Pinned sonnet/high."],
+  ["dotnet-test-failure-resolver", "subagent", ".NET / test", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Autonomous dotnet-test red->green loop: fix the real defect (production vs test side), never skip/weaken/game a test or coverage threshold (5-cycle cap). Pairs after the build-error resolver. Pinned sonnet/high."],
+  ["ng-build-error-resolver", "subagent", "Frontend / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Autonomous ng build fix loop: parse TS/template/bundler errors, locate via the navigation server, apply the minimal correct edit, rebuild until clean (5-cycle cap). Refuses to weaken types (any / @ts-ignore), disable lint, or stub logic. Obeys angular-conventions + typescript. Pinned sonnet/high."],
+  ["angular-test-resolver", "subagent", "Frontend / test", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Autonomous ng test / Jest red->green loop: fix the real defect (component vs spec), never xit/skip/weaken a spec or fake timing (5-cycle cap). Pairs after the ng build resolver. Pinned sonnet/high."],
+  ["architecture-analyzer", "subagent", "Analysis / support", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only per-module ARCHITECTURE data-gatherer the alfred-capture-architecture capture fans out per module (the task-flow scoping pass uses it too; also independently callable): reads one module/topic and returns a compact structured verdict - purpose, public surface, inbound/outbound dependencies with edge direction, patterns in use, and structural smells - every claim tied to a located symbol, no whole-project synthesis; a dispatch may carry a focus hint (a boundary or hazard to weight). Keeps the code reading off the opus seat. Pinned sonnet/medium."],
+  ["code-style-analyzer", "subagent", "Analysis / code style", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only per-language style characterizer: given one language scope it reads that language's style config (.editorconfig, eslint/prettier, tsconfig, SQL linter) plus representative code and RETURNS a structured report - project type, the extensions the language actually occupies, the config-enforced rules, the idioms a linter cannot encode (error handling, naming intent, DI/async, test/file conventions), house-skill divergence flagged. Writes NO files - the alfred-capture-code-style skill fans several out in parallel and merges the reports into <docs-path>/code-style/CODE-STYLE.md + the generated project-code-style rule's path globs. Pinned sonnet/medium."],
+  ["code-quality-analyzer", "subagent", "Analysis / code quality", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only per-module code-quality judge the alfred-capture-code-quality capture fans out: given one module and the rule list (the numbered loops prompts, the convention skills its file families attach - loaded by description, the pasted CODE-STYLE.md sections), it returns one line per finding - severity, file:line, the rule broken, what breaks and who notices, the smallest fix - with an enumerable class paired to its deterministic scan, and hands architecture or coverage candidates back instead of reporting them. Writes nothing; the capture gates, tiers and writes. Pinned sonnet/medium."],
+  ["test-coverage-analyzer", "subagent", "Analysis / test coverage", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only per-surface coverage characterizer: given one measured surface and its raw instrumented output (cobertura/lcov/summary - produced by the main session, NEVER by this seat) it parses the numbers, reads the uncovered code and the tests behind suspicious lines, and RETURNS a structured digest - per-module numbers, uncovered hot spots, tiered weak-point candidates with simplify-testing suggestions, suite-quality smells. Writes NO files - the alfred-capture-test-coverage skill fans one out per surface and reasons over the digests. Pinned sonnet/medium."],
+  ["related-project-analyzer", "subagent", "Analysis / related projects", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only sibling-repo characterizer: given the host project and ONE related repo (local path, or git URL shallow-cloned to scratch and cleaned up), it returns a structured YAML entry - name, relation from the host's perspective (consumes/provides-to/peer/depends-on/embeds, judged from cross-references on both sides), first_read (the sibling's real orientation docs, verified to exist), seam (the shared surface a change can break) - every field evidence-grounded or flagged UNVERIFIED. Writes NO files - the alfred-capture-related-projects skill fans several out and merges <docs-path>/related-projects/RELATED-PROJECTS.md. Pinned sonnet/medium."],
+  ["alfred-issue-diagnoser-ci", "subagent", "CI / diagnosis", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only CI red-run diagnosis: pulls the failing run logs via the gh CLI (gh pr checks, gh run view --log-failed), categorizes each failure (build/test/lint/workflow/signing/environment/flake), attempts one local repro where an equivalent exists, and routes to the matching resolver or domain verifier. Pinned opus/high."],
+  ["alfred-issue-diagnoser-runtime", "subagent", "Diagnosis / bug", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only bug diagnosis: reads the evidence (a stack trace, a log excerpt, an error message, or a screenshot of a crash / broken UI), reproduces the failure where possible, isolates the root cause to a file and symbol, and routes it to the matching domain implementer or a resolver - never fixes what it finds. Pinned opus/xhigh."],
+  ["evidence-gatherer", "subagent", "Diagnosis / support", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gather-task runner a diagnoser dispatches: reproduces a failure, pulls a run log via gh, greps to the failing frames, or locates a symbol, then returns a compact quoted digest - keeping the raw log volume off the opus diagnoser. Never diagnoses or fixes. Pinned sonnet/low."],
+  ["security-auditor", "subagent", "Security / audit", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only cross-stack security posture audit: sweeps auth, authorization, input/injection, secrets, config, and data exposure across ASP.NET/Angular/WPF/mobile/SQL, proves each finding against the code, and returns an OWASP/CWE punch-list routed to the domain implementers to fix and the verifier to confirm. Complements /security-review (diff/PR-scoped) and the pre-commit checkpoint's security half; finds and reports, never fixes. Pinned opus/xhigh."],
+  ["integration-reviewer", "subagent", "Review / integration gate", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only cross-domain final gate: after every affected domain verifier signs off, checks the assembled feature as a whole - the frozen contract honored end to end and the current contract_version used everywhere, the full solution builds, unit/integration/E2E pass, DB migrations apply from a clean DB and from the previous version, the API matches every Angular/mobile/WPF consumer, auth and the error envelope match the contract, deploy order safe - then returns a commit-or-punch-list verdict. Independent of the Team Lead; the mandatory gate before a cross-domain commit that no single-stack verifier is. Pinned sonnet/xhigh - a verifier's pin for a verifier's job."],
+  // Per-domain specialist team (10 stacks x solution-designer/implementer/verifier), dispatched by the alfred-task-solve-cross skill (single-stack modes):
+  ["aspnet-solution-designer", "subagent", "ASP.NET / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only ASP.NET Core backend/API design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the aspnet-implementer fan-out and the aspnet-verifier. Pinned opus/xhigh."],
+  ["aspnet-implementer", "subagent", "ASP.NET / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from an aspnet-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["aspnet-verifier", "subagent", "ASP.NET / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every aspnet-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["web-angular-solution-designer", "subagent", "Angular / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only Angular web design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the web-angular-implementer fan-out and the web-angular-verifier. Pinned opus/xhigh."],
+  ["web-angular-implementer", "subagent", "Angular / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from an web-angular-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["web-angular-verifier", "subagent", "Angular / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every web-angular-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["wpf-solution-designer", "subagent", "WPF / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only WPF desktop design pass: fixes architecture, plan, and test strategy for the C# stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the wpf-implementer fan-out and the wpf-verifier. Pinned opus/xhigh."],
+  ["wpf-implementer", "subagent", "WPF / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a wpf-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["wpf-verifier", "subagent", "WPF / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every wpf-implementer task has landed: verifies the assembled work against the designer plan and C# code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["console-solution-designer", "subagent", "Console / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only headless-.NET design pass (Generic Host worker, background service, bot, daemon, or one-shot CLI): settles the host and DI composition, the hosted-service lifecycle (stopping-token, graceful shutdown), and the external-gateway resilience seam, then decomposes the work into independent parallel tasks with clear contracts. Feeds the console-implementer fan-out and the console-verifier. Pinned opus/xhigh."],
+  ["console-implementer", "subagent", "Console / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a console-solution-designer decomposition: writes the host/worker/handler code AND its tests (fake gateway, FakeTimeProvider) for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["console-verifier", "subagent", "Console / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every console-implementer task has landed: verifies the assembled headless-.NET work against the designer plan and C# quality (captive-dependency, stopping-token, host lifecycle, gateway resilience), reruns the build and tests, hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["ionic-angular-solution-designer", "subagent", "Mobile / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only Ionic/Capacitor mobile design pass: fixes architecture, plan, and test strategy for the TypeScript stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the ionic-angular-implementer fan-out and the ionic-angular-verifier. Pinned opus/xhigh."],
+  ["ionic-angular-implementer", "subagent", "Mobile / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a ionic-angular-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["ionic-angular-verifier", "subagent", "Mobile / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every ionic-angular-implementer task has landed: verifies the assembled work against the designer plan and TypeScript code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["data-solution-designer", "subagent", "Data / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only data and persistence (SQL) design pass: fixes architecture, plan, and test strategy for the SQL stack, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the data-implementer fan-out and the data-verifier. Pinned opus/xhigh."],
+  ["data-implementer", "subagent", "Data / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a data-solution-designer decomposition: writes the code AND its tests for its assigned part, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["data-verifier", "subagent", "Data / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every data-implementer task has landed: verifies the assembled work against the designer plan and SQL code quality, reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["devops-solution-designer", "subagent", "DevOps / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only DevOps design pass: settles the container build, the CI job graph, the deploy/release strategy, and the secret seam, then decomposes the work into independent parallel tasks with clear contracts so several implementers can build them at once. Feeds the devops-implementer fan-out and the devops-verifier. Pinned opus/xhigh."],
+  ["devops-implementer", "subagent", "DevOps / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a devops-solution-designer decomposition: writes the Dockerfile/workflow/deploy files AND validates them locally (docker build, actionlint, dotnet build), inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["devops-verifier", "subagent", "DevOps / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every devops-implementer task has landed: re-validates the assembled delivery work against the designer plan and devops quality (pinned reproducible builds, no leaked secrets, safe migration-in-deploy, non-root healthy containers), hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["browser-extension-solution-designer", "subagent", "Browser extension / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only MV3 browser-extension design pass: settles the service-worker/content-script/UI topology and storage tiers, the typed message contract, the permission surface, and the cross-browser strategy, then decomposes the work into independent parallel tasks with clear contracts. Feeds the browser-extension-implementer fan-out and the browser-extension-verifier. Pinned opus/xhigh."],
+  ["browser-extension-implementer", "subagent", "Browser extension / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a browser-extension-solution-designer decomposition: writes the service-worker handlers, content scripts, extension UI, and typed messages AND their Vitest fake-chrome tests, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["browser-extension-verifier", "subagent", "Browser extension / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every browser-extension-implementer task has landed: verifies the assembled extension against the designer plan and TypeScript quality (service-worker statelessness, message-contract adherence, permission creep, content-script isolation, CSP), reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["windows-service-solution-designer", "subagent", "Windows Service / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only Windows-Service design pass: settles the SCM recovery topology (non-zero exit paths so recovery actions fire), start/stop budgets, BaseDirectory path anchoring, service identity and install surface, plus the Generic-Host composition, then decomposes the work into independent parallel tasks with clear contracts. Feeds the windows-service-implementer fan-out and the windows-service-verifier. Pinned opus/xhigh."],
+  ["windows-service-implementer", "subagent", "Windows Service / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a windows-service-solution-designer decomposition: writes the SCM-hosted worker code with its exit-code and path discipline AND its tests, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["windows-service-verifier", "subagent", "Windows Service / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every windows-service-implementer task has landed: verifies the assembled service against the designer plan and C# quality (clean-stop fatal paths, relative paths, budget breaches, identity/hardening drift, the worker traps), reruns the build and tests and runs the dual-mode binary as a console app, hands a punch-list back. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["winforms-solution-designer", "subagent", "WinForms / design", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only WinForms design pass: settles the code-behind line (MVP passive view, or the .NET 8+ MVVM binding engine, by runtime), DI-resolvable forms, the BindingSource + INotifyPropertyChanged binding design, the UI-thread and disposal topology, then decomposes the work into independent parallel tasks with clear contracts and single owners for the composition root and each form's Designer.cs. Feeds the winforms-implementer fan-out and the winforms-verifier. Pinned opus/xhigh."],
+  ["winforms-implementer", "subagent", "WinForms / build", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Builds ONE task from a winforms-solution-designer decomposition: writes the forms, presenters, binding wiring, and thin event-translating code-behind AND the xUnit presenter tests against a mocked view, inside the task contract. Several run in parallel, one task each. Pinned sonnet/medium."],
+  ["winforms-verifier", "subagent", "WinForms / verify", "fetched into .claude/agents/", "https://github.com/envoydev/alfred-code", "Read-only gate once every winforms-implementer task has landed: verifies the assembled work against the designer plan and C# quality (the code-behind line, UI-thread blocking, binding pin-leaks, the disposal families, DPI consistency, virtual-mode discipline), reruns the build and tests, hands a punch-list back naming exactly what each implementer must fix. Loops until it signs off. Pinned sonnet/xhigh."],
+  ["csharp-lsp", "plugin (LSP)", "C# / diagnostics", "/plugin install csharp-lsp@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "Roslyn language server: inline diagnostics after each edit without a full dotnet build round-trip. Complements the navigation server (Serena)."],
+  ["typescript-lsp", "plugin (LSP)", "TypeScript / diagnostics", "/plugin install typescript-lsp@claude-plugins-official", "https://github.com/anthropics/claude-plugins-official", "TypeScript language server: inline diagnostics on edit for Angular/TS work."],
+  ["documentation", "MCP server", "Library docs", "plugin documentation@envoydev - Context7, the hosted remote only, locked (installed beside the core on every run)", "https://github.com/upstash/context7", "The documentation server (Context7): fetch current library/framework/SDK docs (React, Next.js, Prisma, etc.). The hosted server - key via ${CONTEXT7_API_KEY:-} from the ACCOUNT settings.json env (an exported CONTEXT7_API_KEY is written there by every installer run, at project scope too; unset = the keyless free tier). Tools: mcp__plugin_documentation_documentation__resolve-library-id, query-docs."],
+  ["memory", "MCP server", "Memory / recall", "plugin memory@envoydev - a node launcher reads ALFRED_CODE_MEMORY_DB from the project settings and execs uvx --from mcp-memory-service[sqlite]; --memory-level global|scoped|project picks the db", "https://codeberg.org/doobidoo/mcp-memory-service", "Required like navigation and documentation, chosen per install by LEVEL rather than a droppable pick: global (~/.memory-mcp/memory.db, every Claude/Cursor install on the machine - the default), scoped (~/.memory-mcp/memory_&lt;space&gt;.db), project (&lt;project&gt;/.memory-mcp/memory.db under the main checkout, gitignored; safe at any install scope and route, the full copy route at user scope included - it registers in this project's own .mcp.json). Cross-project semantic recall - the one thing the navigation server's per-project store cannot do; the per-project subagent hand-off still runs on it. /alfred-code:init (never setup) imports the project's existing notes into the chosen database once (idempotent), then switches Claude's own auto-memory off; the switch-off waits for that import AND for the server and baseline-memory.md to be installed, and lands in this project's settings.json (settings.local.json at local scope), never the account file. Tools: mcp__plugin_memory_memory__memory_store, memory_search, memory_list."],
+  ["navigation", "MCP server", "Code navigation + local memory", "plugin navigation@envoydev - Serena; a node launcher pins the Python (3.13, the x64 3.13 on Windows on ARM) and execs uvx --from serena-agent@<pinned>, PyPI not git", "https://github.com/oraios/serena", "The navigation server (Serena): code-aware symbol navigation, find-references, call-hierarchy via LSP. Project-scoped memory under <project>/.serena/memories/ - now also the subagent hand-off bus (name-addressed notes: a seat writes one named <feature>__<contract_version>__<seat> at hand-off, the next reads it by name). Pinned PyPI version + web dashboard off for fast launch. Tools: mcp__plugin_navigation_navigation__find_symbol, find_referencing_symbols, write_memory, read_memory, list_memories, etc."],
+  ["browser", "MCP server", "Browser automation / web dev", "one plugin per kept browser: browser-chrome|msedge|firefox|webkit@envoydev (Playwright MCP: npx @playwright/mcp@<pinned> --browser <engine>)", "https://github.com/microsoft/playwright-mcp", "The browser server (Playwright MCP): browser navigation, click, type, screenshot. Pinned version (no @latest registry check at launch). Writes under <project>/.playwright/<engine>. Setup/configure ask which browsers to install (--browsers) and which of those to enable (--browser-enabled, all by default; each enabled one adds its own tools to every session). Any number can be on together, and /plugin toggles them. chrome/msedge use the installed browser; firefox/webkit are downloaded; update keeps the set and switches none on or off."],
+  ["windows-desktop", "MCP server", "Desktop automation (Windows)", "plugin windows-desktop@envoydev - Windows-MCP; a node launcher (desktop-launch.js) pins the Python (3.13) and execs uvx --from windows-mcp==<pinned> windows-mcp serve --exclude-tools PowerShell,Registry,Process", "https://github.com/CursorTouch/Windows-MCP", "The Windows desktop server (Windows-MCP): drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (Snapshot, Click, Type, Shortcut, WaitFor). Windows only: never offered on macOS or Linux, and the launcher refuses to start on another OS. Opt-in, seeded for the WPF and WinForms stacks. Shell, registry and process control stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool). Needs the English display language and Claude Code at the app's privilege level. Brings the desktop-automation skill."],
+  ["macos-desktop", "MCP server", "Desktop automation (macOS)", "plugin macos-desktop@envoydev - MacOS-MCP; a node launcher (desktop-launch.js) pins the Python (3.13) and execs uvx --from macos-mcp==<pinned> macos-mcp serve", "https://github.com/jeomon/MacOS-MCP", "The macOS desktop server (MacOS-MCP): drives native macOS apps through the Accessibility API (Snapshot, Click, Type, Shortcut, App). macOS only; addable, seeded by no stack. Needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python - an empty snapshot means Accessibility is missing, black screenshots mean Screen Recording is. Its Shell tool has no off switch (the skill keeps a UI task out of it). Brings the desktop-automation skill."],
+];
+
+// Subagents: their own top-level section (rendered first). Install + source are uniform, so
+// source lifts to the header; Install stays a column by request.
+function renderSubagents(rows) {
+  const src = rows.length ? shortSource(rows[0][4]) : "";
+  let html = `<h2>Subagents</h2><div class="group-meta">Stack-native Claude subagents fetched into <code>.claude/agents/</code>, all model/effort-pinned - not skills. Source ${src}. ${rows.length} entries.</div>`;
+  html += `<table><thead><tr><th style="width:16%">Subagent</th><th style="width:14%">Area</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, type, area, install, url, desc] of rows) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${install}</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// MCP servers: their own section, no Type column.
+function renderMcps(rows) {
+  let html = `<h2>MCP servers</h2><div class="group-meta">Top-level MCP servers, wired per project into the repo's <code>.mcp.json</code>. ${rows.length} entries.</div>`;
+  html += `<table><thead><tr><th style="width:13%">Server</th><th style="width:15%">Area</th><th style="width:30%">Install</th><th style="width:10%">Source</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, type, area, install, url, desc] of rows) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${area}</code></td><td><code>${install}</code></td><td>${shortSource(url)}</td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// Hooks (Claude-only; PreToolUse, Stop and UserPromptSubmit) - shipped inside the core alfred-code plugin, declared
+// inline in its marketplace entry. Not skills; tallied separately (c-hooks),
+// kept in sync with the manifest's hooks[] wiring table by scripts/lint-skills.js.
+const hooks = [
+  // [name, event or matcher, description]
+  ["guard-protected-force-push", "Bash", "Blocks a force-push to main / master / develop. Deterministic, fires ~never in normal work."],
+  ["guard-catastrophic-rm", "Bash", "Also covers the git verbs that destroy work with no undo - every git call in the command, read from its argv: a path `checkout` / `restore`, `reset --hard`, `clean -f`, a forced `checkout` / `switch`, `stash drop` / `clear`, `reflog expire`, `prune` and a `gc` given a prune date or a `-c gc.*Expire` - and only when the call would actually destroy something (dirty paths where git runs, what `clean -n` lists, a stash entry, a reflog entry or unreachable object a dry run would prune), one block naming every loss, so a clean checkout passes untouched; a quoted mention of one is prose. A SQL DROP and `dotnet ef database drop` are counted as log-only probe rows, never denied. The guard had zero git coverage: 225 lines with no occurrence of `git`, and a destructive `git checkout --` replayed exit 0 against every guard in the stack. Blocks a recursive rm (or PowerShell Remove-Item -Recurse) of /, ~, $HOME, a Windows drive or its /c mount, the cwd or its parent (., .., $PWD), a bare *, or several top-level system dirs at once. Deterministic, fires ~never in normal work."],
+  ["guard-read-whole-file", "Read + Bash", "Blocks a whole-file Read of a >200-line source / template file (.ts/.tsx/.js/.jsx/.mjs/.cjs/.cs/.go/.razor/.cshtml/.xaml/.html) whose offset/limit span the file - locate via the navigation server first, then read the range. Also blocks the same dump routed through Bash (a bare `cat`/`sed`, an unbounded `head`/`tail`/`less`/`awk`, a loop/find/xargs sweep, or a runtime read such as `python -c open().read()`; a relative path that cannot be sized fails closed), and caps cumulative ranged reads at ~60% of a file per session so half-splits cannot reconstruct it. Targeted reads, small files, and non-source files pass."],
+  ["guard-secret-value", "Read + Bash", "A credential is read for its PRESENCE, never its value - baseline-security.md's rule mechanized after it failed as prose (a session checking whether SENTRY_ACCESS_TOKEN was set printed the whole env block with JSON.stringify on its first attempt). Judges CONTENT, not paths: blocks a Read or a dump verb (cat / head / sed / jq / grep, an inline node / python read) on a JSON or dotenv file holding a key that matches environment.json's secret_key_pattern with a live value (a ${VAR} placeholder or a blank is not one), an echo / printf / printenv of a credential-shaped variable (a ${#VAR} length is presence and passes), a bare env / printenv dump unless reduced to names, and a credential-shaped literal typed into a command. Presence-shaped pipelines (grep -c, wc, jq keys / length) pass. On the SHELL route the dump, the variable print and the env dump are REWRITTEN (hookSpecificOutput.updatedInput) rather than blocked: `--redacted <file>` returns the file with every credential value as `<set (N chars)>` and the rest as written, the print becomes its presence line, `--redacted-env` the masked listing - the model gets the placeholder, no turn is retried; the Read tool and a literal stay blocked. The denial names the key path and the sanctioned read - the hook's own CLI mode, `node guard-secret-value.js --presence <file> [KEY ...]` -> `KEY=set (N chars)` | `KEY=absent` - which the five guided commands run instead of improvising. Content is judged both ways: a test fixture holding a fake credential under a credential-shaped key blocks like a real one - the --presence route reads it - and a documented sample credential shape (the jwt.io example, a ghp_ README placeholder) typed into a command is refused by the literal check. A block ends in ONE AskUserQuestion (presence only - recommended; show or use the value this session; drop): the 'show' answer writes the &lt;docs-path&gt;/flow/SECRET-READ-ALLOW receipt (a file, a variable name or *; this session's own, under 8h), which the guard and the stop contract's rotate ask both honour - a remote user cannot run the copy-ready command themselves."],
+  ["guard-unapproved-dispatch", "Task|Agent", "Blocks a `*-implementer` subagent dispatch unless the docs-root flow/APPROVAL gate file opens with APPROVED or AUTO - the mechanical form of the fan-out approval gate: the flows write the stamp quoting the user's explicit approval (or explicit no-stops waiver), so an ambiguous 'go' can no longer fan out implementers. Designers, verifiers, resolvers, and support seats pass ungated. A generic general-purpose/claude dispatch is blocked while a stamp is live; a stamp older than 8h or older than the session counts as absent. Also routes SYMBOL questions away from grep-shaped seats: an Explore / general-purpose / claude dispatch whose brief asks who calls, where a symbol is declared, or what type resolves is blocked (stamp or no stamp) and sent back to the navigation server inline - the built-in Explore never loads the project's rules, so baseline-navigation cannot reach it. For the same reason an Explore or Plan dispatch that passes is answered with baseline-security's untrusted-content sentence appended to its brief (hookSpecificOutput.updatedInput, about 250 chars), never denied."],
+  ["guard-ungated-commit", "Bash", "Blocks a non-trivial `git commit` unless the docs-root flow/COMMIT-GATE receipt opens with WAIVED - '&lt;the user's words&gt;' or with VERIFIED plus a second line authorized: '&lt;the user's words asking for THIS commit&gt;' - the mechanical form of the pre-commit checkpoint: the gate step (alfred-task-verify-code, plus /security-review on auth/crypto/data-access diffs) writes the receipt when its checks pass, or records the user's explicit waiver verbatim. Trivial diffs (<=2 files, <=15 changed lines) pass ungated; receipts older than 2h are treated as absent. The same hook gates the PUBLISH verbs: `git push` and `gh pr merge` need their own flow/PUSH-GATE receipt of the same shape (measured: across four sessions every push and merge passed every guard, one putting 40 files on a shared develop). A dry run and a branch level with its upstream publish nothing and are never gated; ALFRED_CODE_PUSH_GATE=0 turns that half off where the remote is already gated. Every commit, trivial or not, first gets a scan of the lines it ADDS - the index, plus what -a or a chained git add takes in, or the working tree of the paths a commit names (alone under --only, on top of the index under --include), at most 2MB with a binary file or one past the cap skipped and every hit read kept: a conflict marker, a debugger statement (JS/TS, or Debugger.Break/Launch in C#), a focused test (fdescribe, fit, .only in a test file), a credential-shaped literal or a hidden character (zero-width, bidi override or isolate, tag block, a BOM past byte 0 - the lint's own class, from stack/hooks/hidden-chars.js; a joiner or direction mark a script needs, as in an emoji sequence or a Persian word, is text) blocks, markdown and text exempt from the debugger and focused-test checks. No commit-gate receipt opens it; a hit meant to land goes through ONE AskUserQuestion and the &lt;docs-path&gt;/flow/STAGED-SCAN-ALLOW receipt (file:line, a file or *; this session's own, under 8h)."],
+  ["guard-stop-contract", "Stop, SubagentStop, PreToolUse AskUserQuestion (inject only), PostToolUse + PostToolUseFailure on Bash and PowerShell (log only)", "Five wirings, one stop contract. As a SubagentStop hook: holds ONCE a subagent that stops on a wait nobody will end - a first-person 'I'll wait for...' close, or its own ScheduleWakeup call - while it started no background work of its own; the reason tells it the parent's waits are not its own and to do its directive or reply BLOCKED (field report: a fork read the parent's pending pilot fork as its own, closed on 'I'll just wait for the pilot fork's completion notification' and dropped its whole brief). As a Stop hook: blocks a turn that ends on a decision-shaped question in PROSE ('say the word', 'want me to X?'), or on a 'done - next step pending' close stated as fact - the blocking-ask mandate mechanized (a close that says the RUN has nothing pending is finished, not stalled - the guided walks end their suggestion card on that line instead of an ask); the model re-emits the decision as an AskUserQuestion call (measured: ~25 sessions stalled 13min-37h on prose asks, one credential decision died at /exit). Its credential branch demands the rotate ask once a credential shape has entered the session - ONCE per exposure: an answered ask covers every shape already in the transcript, only a new one asks again, and ALFRED_CODE_ROTATE_ASK=0 turns it off. Its DONE-GATE PROBE is log-only: a close claiming the change done, fixed, passing, works or ready over a turn with a source edit writes one row per turn to the hook-blocks ledger - unrun when the edit landed after the turn's last run, or nothing ran - with whether alfred-habits-done-gate was loaded, whether the project has tests at all and whether an instruction file forbids running them; analyze-usage.js --hook-blocks counts the misses, and the close is never held (ALFRED_CODE_DONE_GATE=0 turns it off). A source edit is a file tool's write or a shell write (redirection, tee, in-place sed or perl, a copy or move, rm, an interpreter script's literal path), read through shell-writes.js, the parser the cross-project guard blocks with. A run is any shell command that is not a read, a write, git or a package install, or a dispatched agent - wider than the root-cause list, because here a miss counts an honest close as unrun. As a PostToolUse / PostToolUseFailure hook on Bash and PowerShell it only logs: the first red build or test run of a failure streak writes one probe row with the run's tool_use_id, and the analyzer reads the transcript after it - alfred-habits-root-cause loaded before the next fix, already in context, after it, or never; one streak per actor, ended when every run that went red in it is green again (a scoped green never closes the full suite), or after an hour with no red run. Its RATIONALIZATION PROBE is log-only too: a close that dismisses a failure ('pre-existing', 'unrelated to my change', 'flaky', 'skipping the tests for now' - ECC's delivery-gate phrases plus the dismissals the local transcripts showed) in a turn that had a red build or test run, a run reporting a skipped test, or an edit adding a skip marker writes one row per turn; analyze-usage.js --hook-blocks splits the rows by that evidence and by what the phrase claims. It also carries the fresh-session offer: on a CLEAN close past the window's own ABSOLUTE trigger per message (ALFRED_CODE_FRESH_SESSION_200K, default 150000, on a 200k window; ALFRED_CODE_FRESH_SESSION_1M, default 400000, on a 1M one; ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, on any other window and on one that cannot be read - a token count per case, because one percentage was inert at its default on both tiers at once and the clamp that fixed that made the number in the box a lie; 0 on one of them turns that case's offer off; the WINDOW is DETECTED, never configured - the window suffix on the settings.json model id, which the transcript strips and cost-state.modelUsage keys off the same id), the turn is held ONCE so the user is asked whether to continue here or resume fresh, re-arming only after the context has grown 1.5x. That offer used to be a PreToolUse denial of the AskUserQuestion call itself, which interrupted Claude mid-response to rebuild a question; it now waits until the turn's work is finished. The PreToolUse AskUserQuestion wiring that remains never denies: it injects presence-only checks into the ask being built (stale scope, a recommendation contradicting an un-actioned request, the fresh-session offer for a flow whose every stop is a tool call, a live credential, the house voice). Fail-open on anything unparseable."],
+  ["guard-answer-length", "UserPromptSubmit + Stop", "The short-answer contract mechanized. As a UserPromptSubmit hook: appends the answer budget (at most 3 sentences plus points, ~900 characters of prose; code, tables and command output exempt) to every turn's context, where it is read last - immediately before the answer is written, instead of sitting mid-list in an always-on rule. As a Stop hook: blocks an answer whose prose passes the 1800-character hard cap when nothing in the user's own message asked for depth ('in detail', 'walk me through', 'write a plan' lift the cap, in English, Ukrainian or Russian - the only languages whose stems are matched; 'explain' does not), and the model re-answers at budget. The UserPromptSubmit half also names the FORMAT ASK after the third consecutive short turn that follows a long answer - the interaction rule's re-ask clause, lost as prose through nine redrafts of one report (measured, 1.64M cache-read); injection only. It also writes the CORRECTION probe: a short prompt that follows an answer and carries a correction marker ('no, ...', 'I meant', 'why did you', 'shorter') writes one probe row to the hook-blocks ledger - ALFRED_CODE_CORRECTION_NUDGE is seeded `log` (rows only, the count-first week), `inject` also asks the model to store it with memory_store as a user_correction, `0` is off; analyze-usage.js counts the rows and scores the saved share over the same turns. One block per turn; fail-open on anything unparseable."],
+  ["guard-fresh-session-start", "Skill + UserPromptSubmit + SessionStart(compact) + PreCompact", "Blocks a DELIBERATE orchestration run - a capture, a quality/architecture/coverage loop, a solve flow - when the session already carries another finished run's history past the same per-window trigger (ALFRED_CODE_FRESH_SESSION_200K, default 150000, on a 200k window; ALFRED_CODE_FRESH_SESSION_1M, default 400000, on a 1M one; ALFRED_CODE_FRESH_SESSION_DEFAULT, default 180000, on anything else - including a window the gate cannot read, which is what the window suffix on the settings model id decides), and routes the choice through AskUserQuestion (fresh session, recommended, versus continuing here with the cost stated). Three routes, because a Skill call is only one of the ways a run starts: the Skill matcher BLOCKS, UserPromptSubmit INJECTS the same ask for a slash-invoked run (which emits no Skill event at all - measured 4 of 4 runs slash-injected, zero Skill events in 45 messages) and never denies, since a UserPromptSubmit denial erases the user's prompt, and SessionStart(compact) injects it at the auto-compaction, the one moment the harness guarantees at exactly the level the gate cares about. The rule existed as prose in the generated capabilities rule and lost four times in audited sessions, once in a run that named the fresh-session need in its own text and continued anyway to 380k per message where the same step cost 134k run fresh. The compaction route also carries two post-compaction lines: keep the user's language, not the summary's, and re-read a live plan file's header first (both measured lost). PreCompact writes <docs-path>/flow/COMPACT-STATE just before the compaction - the live plan file, the open flow stamps with their ages, the files this session wrote - with no model call, and the compact start points at that snapshot, even when every fresh-session offer is off. Only orchestration entry points are gated; every other Skill call passes, as does any session under the threshold. Fail-open on anything unparseable."],
+  ["guard-cross-project-write", "Write + Edit + NotebookEdit + Bash", "One session belongs to ONE project. Blocks a WRITE whose target resolves outside the project root - the file tools and the shell routes around them (redirection, tee, in-place sed/perl, cp/mv destinations, rm/mkdir/chmod, `git -C &lt;other&gt;` with a mutating subcommand, or a `cd &lt;other&gt;` followed by one - or by a relative write). Reading and investigating another repo is untouched, because writing a specific handoff needs it: the block sends the change to a task card under the docs root (cross-project-tasks/&lt;project&gt;.md) naming what must change and where, the contract, and how the other side verifies it. The session's own scratch, the ~/.claude and ~/.claude-&lt;space&gt; account dirs and /dev stay writable, a `&gt;` or verb inside a quoted string is prose, an unexpanded variable is never judged, a block ends in ONE AskUserQuestion (task card here - recommended; allow that tree for this session, honoured through the &lt;docs-path&gt;/flow/CROSS-WRITE-ALLOW receipt - this session's own, under 8h; or drop), and ALFRED_CODE_ALLOW_WRITE_OUTSIDE opens a second tree a project really owns, permanently. Also carries the fork-liveness PROBE, log-only: a mutating call while another session of the same conversation lineage (a fork's parent or sibling) touched its transcript within 60s appends a mode: probe row to the hook-blocks ledger and denies nothing - measured once, a backgrounded fork that kept editing and running the suite for 15 minutes after the foreground's user said stop; the week's rows decide whether a denial follows."],
+  ["guard-config-protection", "Write + Edit + MultiEdit + NotebookEdit + Bash + PowerShell", "A check is not made green by weakening the check. Blocks a change to a lint / format / analyzer config that ALREADY exists in the project (eslint, prettier, stylelint, biome, .editorconfig, a .ruleset or .globalconfig), and to the strictness keys inside tsconfig and MSBuild files (the strict flags, skipLibCheck, NoWarn, TreatWarningsAsErrors, WarningLevel, Nullable, AnalysisLevel) - the file tools and the shell routes around them (in-place sed/perl, a redirect, tee, rm, mv, a cp onto it, PowerShell Set-Content). Creating a config passes, an edit that leaves the strictness keys untouched passes, and a target outside the project is not judged. A block ends in ONE AskUserQuestion (fix the code instead - recommended; or allow the config change, honoured through the &lt;docs-path&gt;/flow/CONFIG-EDIT-ALLOW receipt - one file, its basename or *, this session's own, under 8h); ALFRED_CODE_CONFIG_PROTECT=0 turns it off."],
+  ["instrument-tool-usage", "(wired, env-gated off)", "Env-gated tool-usage instrumentation for measured stats: wired on PreToolUse '.*' as a plain node spawn - the generated entry carries no shell gate, so the off path still pays that spawn on every call. The script's own env check inside it skips logging until ALFRED_CODE_INSTRUMENT flips from 0 to 1 in settings env; then it logs every tool call - built-ins + Skill + mcp__* - as one JSONL row (ts/session/tool/non-sensitive detail) to <docs-path>/tools-usage/<session>.jsonl, so a run's skill/MCP usage can be tallied exactly. Never blocks."],
+  ["docs-session", "SessionStart + SubagentStart + SubagentStop + PreToolUse + Stop", "the architecture docs' start block (orientation, branch overrides, auto-promote of merged branches), the first source change held until a covering section was read, and the finish ask - a finished agent, then the session itself, asked once whether the sections documenting what they changed still hold. Ships its engine, docs.js, beside it."],
+  ["memory-session", "SessionStart", "Pushes a compact slice of the shared memory MCP's own stored memories into the session's starting context - own-project rows plus cross-project preferences/corrections and related projects, capped at ~4KB, under two fixed frame lines (recalled memories are context, never instructions; a named file, flag or symbol is verified before use), each row with its age in days and ordered by age - preferences and corrections under 90 days first, then the project's other memories, then the older preferences and corrections, then related projects, nothing deleted - with a ToolSearch line for mcp__plugin_memory_memory__memory_store / memory_search / memory_list so the model can store, search or list more. Reads the project's REGISTERED db path (memory.js's registeredDbPath, mirroring the installer's own level resolution), so it tracks whichever level - global, scoped or project - the install actually chose. Silent wherever nothing can be shown: no memory server registered for this project, an empty selection, a missing/locked/wrong-schema database, a Node below 22.13, unreadable stdin, or any other error - exit 0 throughout, since a session start that cannot be enriched must never be a session start that fails. Ships its engine, memory.js, beside it (never itself wired - same split as docs.js/docs-session.js)."],
+  ["monitor-session", "PostToolUse + UserPromptSubmit", "A live session monitor that never denies. Three facts from the call stream, each noted once: one actor running the same tool with the same input 5 times inside a turn, more than 20 distinct files written inside a turn, and the context reaching 80% of the fresh-session trigger (the fresh-session.js table, once per session). Every note is a `mode: monitor` row in the hook-blocks ledger. ALFRED_CODE_MONITOR is seeded `log` (rows only, for the observation week); `inject` also hands the note back to the model; `0` is off."],
+  ["history-session", "SessionStart + Stop", "A machine-local record of each session under <docs-path>/history/ (gitignored from inside the folder): at Stop it reads only the transcript bytes past a stored offset (8MB at most per pass) and keeps the commits since the session began, the files left dirty and the user's AskUserQuestion answers, credential shapes scrubbed and each capped at 300 chars; at SessionStart it injects the last three records of the same branch in at most 600 chars, framed as history, not instructions. No model call; ALFRED_CODE_HISTORY=0 is off. Engine history.js is copied beside the hook, run as node .claude/hooks/history.js rulings."],
+  ["check-turn-build", "PostToolUse(Write|Edit|MultiEdit) + Stop", "One scoped build check per turn, seeded OFF (ALFRED_CODE_TURN_CHECK=0; 1 turns it on per project after a measured week of green claims with no check behind them; validate and status print one advisory row once 3 such claims land in the newest 10 sessions, and never set it). The PostToolUse half lists the paths the turn wrote in <docs-path>/flow/turn-edits-<session>; at Stop, when that list holds source files, it runs ONE check per nearest root - the project's own tsc --noEmit -p for TypeScript, dotnet build --no-restore -v q for C# - and hands the first 20 error lines back as a block, once per turn: the continuation Stop passes, and its fix-up edits wait for the next turn. A missing compiler, a timeout or anything unreadable is a pass. Its timeout is 60s, the one declared exception to the 10s rule, with its checks kept inside 50s of it."],
+];
+
+function renderHooks(filtered) {
+  let html = `<h2>Hooks</h2><div class="group-meta">Hook guards (PreToolUse, PostToolUse, PreCompact, Stop and UserPromptSubmit) shipped inside the core <code>alfred-code</code> plugin, which the installer registers and enables (Claude-only; not skills). Nothing is copied or wired per project except the engines (<code>docs.js</code>, <code>memory.js</code>, <code>history.js</code>) and <code>model-windows.json</code>; a project switches one off by naming it in <code>ALFRED_CODE_HOOKS_OFF</code>, the user picks a profile for every project in <code>/config</code> (the core's <code>hook_profile</code>: <code>minimal</code> keeps only the rm, secret and force-push guards, <code>standard</code> is the default set, <code>strict</code> adds the Stop build check; the csv still wins), and <code>ALFRED_CODE_HOOKS_VIA_PLUGIN=false</code> restores the old copy route. The eight guards judging a Bash or PowerShell call run in ONE process, <code>shell-guards.js</code> (timeout 80s, 10 per guard): each guard runs in-process with its own gates and ledger row, every blocking reason reaches the model, and a guard that throws fails open for itself alone. ${filtered.length} entries. The installer also writes a <code>permissions.deny</code> secret-read block into <code>settings.json</code> (<code>.env</code>, <code>.env.*</code>, <code>*.pem</code>, <code>*.pfx</code>, <code>*.p12</code>, <code>*.key</code>) - hard-blocking the Read tool at any depth - the Read tool ONLY (measured: a Bash <code>cat</code> of a denied file returned its content), which is the credential guard's job on the shell route. The four account-settings entries earlier releases wrote (<code>Read(~/.claude/settings.json)</code> and its local / space twins) are retired and dropped on every run: the credential guard judges that file by content on both routes, and a deny entry cannot be lifted by the guard's SECRET-READ-ALLOW receipt, so it took the user's own consented read away. It also writes an <code>enabledMcpjsonServers</code> allow-list naming the registered MCP servers, so the project <code>.mcp.json</code> is pre-approved without a per-launch trust prompt (never a blanket <code>enableAllProjectMcpServers</code>). Finally it seeds the <code>env</code> block this stack owns - the docs root, the instrumentation switch, the push gate, the rotate ask and the fresh-session gate's three per-window triggers - every key written only when absent, so a hand-set value survives every update. Claude Code's own <code>CLAUDE_AUTOCOMPACT_PCT_OVERRIDE</code> is no longer among them: the installer used to write 40 into every project, a value nobody chose.</div>`;
+  html += `<table><thead><tr><th style="width:19%">Hook</th><th style="width:13%">Matcher</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, matcher, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${matcher}</code></td><td><code>alfred-code plugin</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+// Path-scoped Claude rules - fetched into .claude/rules/, auto-attached by the
+// harness on a matching file path. Not skills; kept in sync with the installer
+// CLAUDE_RULES=() array by scripts/lint-skills.js.
+const rules = [
+  // [name, paths glob, description]
+  ["baseline-interaction", "(none - always on)", "House baseline: interaction - communication style (direct, concise, recommendation-first, label uncertainty), asking the user (AskUserQuestion with a marked recommendation), adversarial review of user proposals (strongest objection first, BLOCKER/MATERIAL/MINOR), and planning thresholds (plan-and-test-first at 3+ files vs apply-then-summarize, each pointing at its alfred-habits skill)."],
+  ["baseline-quality-gates", "(none - always on)", "House baseline: quality gates - code quality (no dead code, tests for new code, keep it simple, comments explain why), the pointer to the alfred-habits-done-gate skill before any done claim, outside-world claims checked through the documentation server, and long-running and leftover work (background jobs, started infrastructure, scratch files)."],
+  ["baseline-security", "(none - always on)", "House baseline: security-review routing, never log secrets/PII, hardcoded-secret protocol, deny-list caveat."],
+  ["baseline-git", "(none - always on)", "House baseline: Conventional Commits, review-before-commit, no AI attribution, PR shape; points at the alfred-habits-commit-checkpoint skill for the pre-commit checkpoint and the publish ceremony."],
+  ["baseline-navigation", "(none - always on)", "House baseline: serena-first symbol navigation, read-before-edit, never guess an ambiguous reference."],
+  ["baseline-docs-root", "(none - always on)", "House baseline: the generated-docs root - ALFRED_CODE_DOCS_PATH resolution (absent = .alfred/docs, outside the .claude/ folder Claude Code protects), the &lt;docs-path&gt; shorthand, machine-local vs committed root."],
+  ["baseline-memory", "(none - always on)", "House baseline: what belongs in the memory MCP - a user correction, preference, or undocumented project fact goes in with memory_store, a project:&lt;name&gt; tag and its kind as memory_type (preference_signal, user_correction, reference, learning); an agent saves only a lesson worth keeping past its task; search with memory_search before asking or before reading a related project's repo. Locks the memory MCP into every install, the same way baseline-navigation locks the navigation server."],
+  ["markdown-docs", "**/*.md", "Routes .md authoring/restructuring to the markdown-style skill."],
+  ["skill-authoring", "**/SKILL.md,**/skills/**/*.md", "Routes skill authoring (a SKILL.md, its frontmatter or a file under its references/) to the alfred-habits-skill-writing habit."],
+  ["dotnet-repair-agents", "**/*.cs,**/*.csproj,**/*.sln,**/*.slnx,**/*.xaml,**/Directory.Build.props,**/Directory.Packages.props,**/*.targets,**/nuget.config,**/NuGet.Config", "Routes .NET build/test repair to the dotnet build/test resolvers."],
+  ["angular-repair-agents", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.spec.ts,**/*.component.scss,**/src/styles.scss,**/src/theme/**/*.scss,**/src/app/**/*.ts,**/src/app/**/*.html,**/src/app/**/*.scss,**/src/lib/**/*.ts,**/src/lib/**/*.html,**/src/lib/**/*.scss", "Routes Angular build/test repair to the ng resolvers."],
+  ["typescript-conventions", "**/*.ts,**/*.tsx", "TS conventions: points any .ts/.tsx edit at the typescript skill + its javascript base layer."],
+    ["javascript-conventions", "**/*.js,**/*.jsx,**/*.mjs,**/*.cjs", "JS conventions: points any JS-family edit at the javascript skill - the base language layer."],
+  ["angular-conventions", "**/angular.json,**/*.component.ts,**/*.component.html,**/*.service.ts,**/*.directive.ts,**/*.pipe.ts,**/*.guard.ts,**/*.resolver.ts,**/*.module.ts,**/*.routes.ts,**/src/app/**/*.ts,**/src/app/**/*.html,**/src/lib/**/*.ts,**/src/lib/**/*.html", "Angular/Ionic conventions: points Angular file shapes at the angular-conventions skill, on top of the typescript baseline (the src/app + src/lib globs catch v20 suffix-less names)."],
+  ["angular-styling-conventions", "**/*.component.scss,**/*.component.css,**/src/styles.scss,**/src/styles.css,**/src/global.scss,**/src/theme/**/*.scss,**/src/app/**/*.scss,**/src/app/**/*.css,**/src/lib/**/*.scss,**/src/lib/**/*.css", "Angular styling conventions: points stylesheet edits at the angular-styling skill."],
+  ["csharp-conventions", "**/*.cs", "C# baseline conventions: points any .cs edit at the csharp skill - backend, desktop, or console (a WPF view-model is C# too)."],
+  ["wpf-conventions", "**/*.xaml", "WPF conventions: points a .xaml edit at the dotnet-wpf skill."],
+  ["winforms-conventions", "**/*.Designer.cs,**/*Form.cs,**/*Form.*.cs", "WinForms conventions: points a Form/UserControl designer-file edit at the dotnet-winforms skill (generated Resources/Settings wrappers excluded in the rule text)."],
+  ["sql-conventions", "**/*.sql", "SQL conventions: points a hand-written .sql edit at the database-conventions skill."],
+  ["devops-conventions", "**/Dockerfile*,**/docker-compose*.yml,**/compose*.yml,**/.github/workflows/*.yml,**/deploy*.sh,**/deploy*.ps1", "DevOps conventions (rest): points a Dockerfile/compose/workflow/deploy-script edit at the devops skill."],
+];
+
+function renderRules(filtered) {
+  let html = `<h2>Rules</h2><div class="group-meta">Rules fetched into <code>.claude/rules/</code> (Claude-only; not skills): the always-on baseline set, the rest path-scoped. ${filtered.length} entries.</div>`;
+  html += `<table><thead><tr><th style="width:18%">Rule</th><th style="width:27%">Paths</th><th style="width:22%">Install</th><th>Description</th></tr></thead><tbody>`;
+  for (const [name, paths, desc] of filtered) {
+    html += `<tr><td><span class="name">${name}</span></td><td><code>${paths}</code></td><td><code>fetched into .claude/rules/</code></td><td class="desc">${desc}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+document.getElementById("q").addEventListener("input", e => {
+  render(e.target.value.trim().toLowerCase());
+});
+render("");
+</script>
+</body>
+</html>

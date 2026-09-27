@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // check-turn-build.js - PostToolUse (Write|Edit|MultiEdit) + Stop. ONE scoped build check per turn,
-// seeded OFF: nothing runs unless CLAUDE_STACK_TURN_CHECK=1, and it turns on per project only after a
+// seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1, and it turns on per project only after a
 // measured week shows 'green' claims with no check behind them.
 //   PostToolUse  appends the written path to <docs-path>/flow/turn-edits-<session>.
 //   Stop         when that list holds source files, runs ONE check per nearest root - `tsc --noEmit -p
@@ -101,22 +101,30 @@ module.exports = { groupRoots, runChecks, commandFor, MAX_LINES, BUDGET_MS };
 
 if (require.main === module)
 {
-  // STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. Fail-open.
+  // STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in
+  // every hook. Fail-open: envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour: 'an
+  // install without the prelude runs the hook unchanged') when hook-prelude.js cannot be loaded - a
+  // skewed copy (a newer hook beside an older/missing engine) must still orient, not crash.
+  let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+  let switchOn = (suffix) => String(envOf(process.env, suffix) || '').trim() === '1';
   try
   {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('check-turn-build')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    // the hook profile applies here: strict reads the seeded 0 as on
+    if (typeof prelude.switchOn === 'function') switchOn = (suffix) => prelude.switchOn(suffix);
+    if (prelude.standDown('check-turn-build')) process.exit(0);
   }
   catch { /* an install without the prelude runs the hook unchanged */ }
-  if (String(process.env.CLAUDE_STACK_TURN_CHECK || '').trim() !== '1') process.exit(0);
+  if (!switchOn('TURN_CHECK')) process.exit(0);
 
   let payload;
   try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
   if (!payload || typeof payload !== 'object') process.exit(0);
   const event = payload.hook_event_name;
   const root = path.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd());
-  const docs = path.resolve(root, process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs');
-  const sid = String(payload.session_id || 'nosession');
+  const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
+  const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
   const list = path.join(docs, 'flow', `turn-edits-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
 
   if (event === 'PostToolUse')
@@ -154,7 +162,7 @@ if (require.main === module)
     const dir = path.join(docs, 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
     fs.appendFileSync(path.join(dir, `${sid}.jsonl`), `${JSON.stringify({
-      ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', mode: 'block',
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: 'Stop', tool: '',
       reason: `the turn's build check failed: ${errors.length} error line(s) shown`, detail: { roots: outcomes },
     })}\n`);
   }
@@ -163,7 +171,7 @@ if (require.main === module)
     `This turn changed source files and the build check for them fails - ${commands.join('; ')}.\n` +
     `The first ${errors.length} error line(s):\n${errors.join('\n')}\n` +
     'Fix them, or say plainly why they stand, before ending the turn. The check runs once per turn;\n' +
-    'CLAUDE_STACK_TURN_CHECK=0 in the settings.json env switches it off.\n',
+    'ALFRED_CODE_TURN_CHECK=0 in the settings.json env switches it off.\n',
   );
   process.exit(2);
 }

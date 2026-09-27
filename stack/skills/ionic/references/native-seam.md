@@ -24,7 +24,7 @@ Preference order when you need a plugin:
 
 Before adopting any third-party plugin: confirm its latest major matches your Capacitor version,
 check recent releases / commits (maintenance), and verify iOS / Android / web platform support.
-Per-plugin install and config is fetched live - context7 or the plugin's own README, since it drifts
+Per-plugin install and config is fetched live - the documentation server or the plugin's own README, since it drifts
 per release; the durable sourcing and typed-wrapping policy is here.
 
 ## Wrapping - the typed-service contract
@@ -56,4 +56,4 @@ Run the full cycle, in order, for any permission-gated API (camera, geolocation,
 
 - Unit-test the wrapping service, not the device: with the plugin mocked (the workspace runner's spy - `vi.fn()`, `jest.fn()`, or `jasmine.createSpyObj`, per `angular-testing`), assert the web-fallback branch and the permission-denied path return the typed `Result` the UI renders. These run in jsdom with no device or emulator.
 - Do not try to drive real native plugin behavior in a jsdom unit test - the bridge is not there, so a test that 'exercises' the native path is only exercising your mock. Keep those tests honest about that boundary.
-- Reserve the MCP that drives the native mobile shell (an Appium-class server - opt-in and heavy, it needs Xcode / the Android SDK + Java) for true device/E2E smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface; with no such server registered, list those flows as UNVERIFIED in the report instead of faking them in jsdom.
+- Reserve a device E2E suite (Appium or WebdriverIO against a device or simulator - heavy, it needs Xcode / the Android SDK + Java) for true smoke of the few native-critical flows (push tap -> route, deep-link cold start, an offline-then-reconnect drain). Smoke the handful that would silently break in production, not the whole surface; with no such suite in the project, list those flows as UNVERIFIED in the report instead of faking them in jsdom.

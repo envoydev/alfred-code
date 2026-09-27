@@ -4,7 +4,7 @@ Loaded from the `npm` skill when wiring CI installs, configuring update bots, ch
 
 ## CI install speed
 
-- **GitHub Actions**: `actions/setup-node` with `node-version-file: '.nvmrc'` and `cache: 'npm'` (keyed on the lockfile) - a warm `npm ci` runs in ~10s. Pin the action to a major or a SHA.
+- **GitHub Actions**: `actions/setup-node` with `node-version-file: '.nvmrc'` and `cache: 'npm'` (keyed on the lockfile) - a warm `npm ci` runs in ~10s. Pin the action to a full commit SHA, never a moving major tag - the tag is mutable, and the action runs with the workflow's token.
 - **Azure DevOps**: the Cache task keyed on the lockfile. **GitLab**: `cache:key:files: [package-lock.json]`.
 - Cache keys include platform + Node version + lockfile hash. Split lint/type-check/test into parallel jobs, fail fast.
 - **Docker**: copy only `package.json` + `package-lock.json`, then `npm ci --ignore-scripts` (or `--omit=dev` for the runtime image), then copy sources - preserves the layer cache.

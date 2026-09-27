@@ -79,6 +79,24 @@ test('a wide shell allow, a hook with no timeout, a hook splicing tool input and
     assert.ok(!JSON.stringify(rows).includes(TOKEN), 'a row echoed the credential it found');
 });
 
+// R12: the add-back line a retirement prints is the stack's own advice, so obeying it must not earn
+// a high row here. Every npx / uvx line names a version - the last one the stack pinned - except the
+// audit's own named exception, which must match the ng the workspace resolves.
+test('every retired server\'s add-back line launches a pinned package, so obeying it audits clean', () =>
+{
+    const rows = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'retired-plugins.json'), 'utf8')).plugins;
+    const servers = {};
+    for (const row of rows)
+    {
+        const words = String(row.addBack || '').split(/\s+/);
+        const cut = words.indexOf('--');
+        if (cut < 0 || !['npx', 'uvx'].includes(words[cut + 1])) continue;
+        servers[row.name] = { command: words[cut + 1], args: words.slice(cut + 2) };
+    }
+    assert.ok(Object.keys(servers).length >= 3, `too few npx / uvx add-back lines parsed: ${Object.keys(servers)}`);
+    assert.deepStrictEqual(finds(project({ '.mcp.json': { mcpServers: servers } })), []);
+});
+
 test('garbage JSON is one unreadable row, an absent file is none', () =>
 {
     assert.deepStrictEqual(finds(project({ '.mcp.json': '{nope' })), ['.mcp.json is unreadable']);

@@ -12,7 +12,7 @@
 //   node scripts/clean-export.js [<repo>] <dest>
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 function cleanExport(repo, dest)
 {
@@ -21,7 +21,7 @@ function cleanExport(repo, dest)
     let listing;
     try
     {
-        listing = execFileSync('git', ['-C', src, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+        listing = rt.execCommand('git', ['-C', src, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     }
     catch (err)
     {
@@ -42,7 +42,7 @@ function cleanExport(repo, dest)
     }
     // The export has no .git, and the installer reads a source's revision from HEAD or, failing
     // that, from a RELEASE-SOURCE file - the same file a real release archive carries. Without it
-    // the run resolves no revision and deliberately writes NO claude-stack.stamp, which would make
+    // the run resolves no revision and deliberately writes NO alfred-code.stamp, which would make
     // every stamp assertion in the matrix fail for a reason the change under test did not cause.
     // Synthesizing it here is what makes the export behave like the archive a user installs from.
     const sha = git(src, ['rev-parse', 'HEAD']) || '';
@@ -59,7 +59,7 @@ function cleanExport(repo, dest)
 
 function git(cwd, args)
 {
-    try { return execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    try { return rt.execCommand('git', ['-C', cwd, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
     catch { return ''; }
 }
 

@@ -12,7 +12,9 @@
 //   carries the FORMAT ASK on a correction streak: the third consecutive short human turn that
 //   follows a long answer gets one line naming the interaction rule's 're-ask on the SAME
 //   deliverable -> ONE format AskUserQuestion' - injection only, never a denial. Measured lost as
-//   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask.
+//   prose: nine corrections and nine redrafts of one report, 1.64M cache-read, no ask. And it writes
+//   the CORRECTION probe: one ledger row per correction turn (ALFRED_CODE_CORRECTION_NUDGE, seeded
+//   `log`; `inject` adds the memory-save line).
 // Stop wiring: an answer whose prose (code blocks, tables and inline spans excluded) runs past the
 //   hard cap with no depth request in the user's own message is blocked, and the model re-answers
 //   at budget. The answer measured is the payload's `last_assistant_message`; the transcript's
@@ -24,22 +26,25 @@
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
+// way.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-answer-length')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
+    if (prelude.standDown('guard-answer-length')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving (the installers rename the
+// key in place on the next install/update).
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -66,12 +71,12 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -126,6 +131,7 @@ function tailLines() {
 function lastMessages() {
   let assistant = null;
   let user = null;
+  let userTs = NaN;
   for (const line of tailLines()) {
     if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
     let o;
@@ -154,10 +160,10 @@ function lastMessages() {
       const typed = typeof c === 'string'
         ? c
         : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
-      if (typed.trim()) user = typed;
+      if (typed.trim()) { user = typed; userTs = Date.parse(o.timestamp); }
     }
   }
-  return { assistant, user };
+  return { assistant, user, userTs };
 }
 
 // Prose only: code blocks, tables, inline spans and link targets are the parts a short answer is
@@ -194,34 +200,40 @@ const BUDGET_TEXT =
 const STREAK_TURNS = 3;
 const STREAK_SHORT = 200;
 const STREAK_LONG = 1500;
+// In order: { role, len } - assistant rows merged by message.id, prose only; a user turn also keeps
+// its text, and an interruption row is marked, because it sits between an answer and its correction.
+function conversationTurns() {
+  const turns = [];
+  let lastId = null;
+  let lastUserText = '';
+  for (const line of tailLines()) {
+    if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || !o.message) continue;
+    if (o.type === 'assistant' && Array.isArray(o.message.content)) {
+      const text = o.message.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+      const len = proseOf(text).length;
+      const id = o.message.id;
+      const prev = turns[turns.length - 1];
+      if (id && id === lastId && prev && prev.role === 'assistant') prev.len += len;
+      else turns.push({ role: 'assistant', len });
+      lastId = id || null;
+    } else if (o.type === 'user' && !o.isMeta) {
+      const c = o.message.content;
+      const typed = typeof c === 'string' ? c
+        : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
+      // tool results, harness markers and slash commands are not corrections
+      if (!typed.trim() || /^\s*</.test(typed)) continue;
+      lastUserText = typed.trim();
+      turns.push({ role: 'user', len: lastUserText.length, text: lastUserText, interrupt: /^\[Request interrupted by user/.test(lastUserText) });
+    }
+  }
+  return { turns, lastUserText };
+}
 function correctionStreak(currentPrompt) {
   try {
-    const turns = [];   // in order: { role, len } - assistant rows merged by message.id, prose only
-    let lastId = null;
-    let lastUserText = '';
-    for (const line of tailLines()) {
-      if (!line.includes('"assistant"') && !line.includes('"user"')) continue;
-      let o;
-      try { o = JSON.parse(line); } catch { continue; }
-      if (!o || !o.message) continue;
-      if (o.type === 'assistant' && Array.isArray(o.message.content)) {
-        const text = o.message.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
-        const len = proseOf(text).length;
-        const id = o.message.id;
-        const prev = turns[turns.length - 1];
-        if (id && id === lastId && prev && prev.role === 'assistant') prev.len += len;
-        else turns.push({ role: 'assistant', len });
-        lastId = id || null;
-      } else if (o.type === 'user' && !o.isMeta) {
-        const c = o.message.content;
-        const typed = typeof c === 'string' ? c
-          : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n') : '';
-        // tool results, harness markers and slash commands are not corrections
-        if (!typed.trim() || /^\s*</.test(typed)) continue;
-        lastUserText = typed.trim();
-        turns.push({ role: 'user', len: lastUserText.length });
-      }
-    }
+    const { turns, lastUserText } = conversationTurns();
     // the prompt being submitted is the last turn - unless the transcript already holds it
     const now = String(currentPrompt || '').trim();
     if (now && now !== lastUserText && !/^</.test(now)) turns.push({ role: 'user', len: now.length });
@@ -234,6 +246,59 @@ function correctionStreak(currentPrompt) {
     }
     return streak;
   } catch { return 0; }
+}
+
+// --- correction-turn test (the one single-turn test; analyze-usage.js carries the pinned copy) ---
+// The old test was a SHAPE - a short turn right after a 1,500+ char answer - so it counted whatever
+// the user said next: replayed over the local transcripts, 51 of its 60 hits were status checks,
+// questions and requests (and it missed the corrections that followed a short answer). A correction
+// is now a short typed turn that follows an answer of any length AND carries a correction marker -
+// in-sample, 3 of the replay's 52 hits were not corrections. A STRONG marker counts anywhere; a WEAK
+// one (an opening 'but', 'instead', 'it should') only in a turn that asks nothing, where it is a
+// correction rather than a challenge. 'why can't you' is a question about a limit, not a correction.
+// The Cyrillic stems are bounded by a non-letter lookbehind (JS \b is ASCII-only); too few Cyrillic
+// turns exist in the corpus to measure them.
+const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
+function correctionMarker(text) {
+  const t = String(text || '').replace(/[‘’]/g, "'").trim();
+  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  return m ? m[0].trim().slice(0, 40) : null;
+}
+// --- end correction-turn test
+
+// The prompt being submitted, judged by the test above: it follows an assistant answer (an
+// interruption row between them does not count) and is a typed turn of at most STREAK_SHORT chars.
+function correctionTurn(currentPrompt) {
+  try {
+    const now = String(currentPrompt || '').trim();
+    if (!now || now.length > STREAK_SHORT || /^[</]/.test(now)) return null;
+    const marker = correctionMarker(now);
+    if (!marker) return null;
+    const { turns } = conversationTurns();
+    let end = turns.length;
+    if (end && turns[end - 1].role === 'user' && turns[end - 1].text === now) end -= 1; // the prompt's own row
+    for (let i = end - 1; i >= 0; i -= 1) {
+      if (turns[i].role === 'assistant') return marker;
+      if (!turns[i].interrupt) return null;
+    }
+    return null;
+  } catch { return null; }
+}
+
+// One MEASUREMENT row in the hook-blocks ledger (a `mode`, so the analyzer reads a probe, never a
+// block). Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const path = require('path');
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || '', tool: '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
 }
 
 // --- the verbatim re-ask: the same question, typed again ------------------------------------
@@ -288,8 +353,23 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       'AskUserQuestion on the format - shape, length, language, what to keep - not another redraft ' +
       '(measured: nine corrections and nine redrafts of one report with no ask, 1.64M cache-read).'
     : '';
+  // The correction nudge, LOG-ONLY by default (the user's 'count first' ruling): 38 of 38 and then
+  // 35 of 35 measured corrections were never saved to the shared memory. ALFRED_CODE_CORRECTION_NUDGE:
+  // `log` (the seed, and the value when absent) writes one row per correction turn and injects
+  // nothing; `inject` also hands the save line back; `0` (or `off`) is off.
+  const nudgeMode = String(envOf(process.env, 'CORRECTION_NUDGE') || 'log').trim().toLowerCase();
+  const marker = nudgeMode === '0' || nudgeMode === 'off' ? null : correctionTurn(payload.prompt);
+  const inject = !!marker && nudgeMode === 'inject';
+  if (marker) {
+    ledgerRow({ mode: 'probe', kind: 'correction', injected: inject,
+      reason: `probe: a correction turn - ${inject ? 'save line injected' : 'logged, nothing injected'}`,
+      detail: { marker, chars: String(payload.prompt).trim().length } });
+  }
+  const nudge = inject
+    ? ' CORRECTION: this reads as a correction - store it with memory_store (user_correction, project tag) before continuing.'
+    : '';
   process.stdout.write(JSON.stringify({
-    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat },
+    hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },
   }));
   process.exit(0);
 }
@@ -311,18 +391,25 @@ if (payload.hook_event_name === 'SessionStart') {
 // (<docs-path>/hook-blocks/<session>.jsonl), so the row is the only cross-hook evidence there is -
 // the two run as separate processes in an order nothing guarantees. Read the tail of this session's
 // own file and accept a guard-stop-contract row from the last two minutes; anything older belongs
-// to an earlier turn. Best-effort in every direction: an unreadable ledger simply means no yield.
-function stopContractBlockedThisTurn() {
+// to an earlier turn. Only a BLOCK counts: a row carrying a `mode` (the red-run injection, the skip
+// at a tool-ended turn) blocked nothing, and yielding to it tells the model to obey a block it never
+// saw - measured in the A/B, where the rewrite dropped the verification line. A row older than
+// this turn's typed prompt is an earlier turn's, however recent: two minutes alone read the previous
+// turn's block as this one's. Best-effort in every direction: an unreadable ledger means no yield.
+function stopContractBlockedThisTurn(turnStartMs) {
   try {
     const path = require('path');
     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${payload.session_id || 'nosession'}.jsonl`);
+    const file = path.resolve(root, docsRootEnv(), 'hook-blocks', `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`);
     const rows = fs.readFileSync(file, 'utf8').trim().split('\n').slice(-20);
     for (const line of rows) {
       let o;
       try { o = JSON.parse(line); } catch { continue; }
-      if (!o || o.hook !== 'guard-stop-contract.js') continue;
-      if (Date.now() - Date.parse(o.ts) <= 2 * 60 * 1000) return true;
+      if (!o || o.hook !== 'guard-stop-contract.js' || o.mode) continue;
+      if (o.event !== 'Stop' && o.event !== 'SubagentStop') continue;
+      const at = Date.parse(o.ts);
+      if (Number.isFinite(turnStartMs) && at < turnStartMs) continue;
+      if (Date.now() - at <= 2 * 60 * 1000) return true;
     }
     return false;
   } catch { return false; }
@@ -332,10 +419,14 @@ if (payload.hook_event_name === 'Stop') {
   if (payload.stop_hook_active) process.exit(0); // continuation we caused - one block per turn
   let last;
   let user;
+  let userTs = NaN;
+  // An unreadable transcript leaves the LENGTH half fail-open (no user row, so depth cannot be ruled
+  // out), never the em-dash half: that reads last_assistant_message, which the payload carries anyway.
+  let transcriptRead = true;
   try {
-    ({ assistant: last, user } = lastMessages());
+    ({ assistant: last, user, userTs } = lastMessages());
   } catch {
-    process.exit(0);
+    transcriptRead = false;
   }
   // The harness's `last_assistant_message` is the turn's final text; the transcript is written
   // asynchronously and can lag it (documented), so the field wins and the transcript's assistant
@@ -359,7 +450,7 @@ if (payload.hook_event_name === 'Stop') {
   // legitimately names a string value and the false positives would cost a turn each.
   const DASHES = /[\u2014\u2015]/g;
   const dashes = (body.match(DASHES) || []).length;
-  let overLength = body.length > HARD_CAP;
+  let overLength = transcriptRead && body.length > HARD_CAP;
   if (!overLength && !dashes) process.exit(0);
   // The three length exemptions below excuse the LENGTH only. An em-dash is a character to
   // replace, not content to drop, so no exemption reaches it and the re-answer loses nothing.
@@ -376,6 +467,13 @@ if (payload.hook_event_name === 'Stop') {
   if (overLength && SELF_CORRECTION_RE.test(text)) overLength = false;
   if (overLength && MANDATED_FIELD_RE.test(text)) overLength = false;
   if (!overLength && !dashes) process.exit(0);
+  // Nobody at the terminal (hook-prelude.js unattended): a block would only re-send a finished answer. The row
+  // keeps the skipped block countable, as the stop contract's and the docs hook's do (review A, M3).
+  if (unattended(payload)) {
+    ledgerRow({ mode: 'unattended', kind: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
+      reason: 'skip: nobody is at the terminal - logged, not held', detail: { chars: body.length, dashes } });
+    process.exit(0);
+  }
 
   global.BLOCK_DETAIL = { branch: overLength && dashes ? 'length+em-dash' : overLength ? 'length' : 'em-dash',
     matched: overLength ? `${body.length} chars of prose` : `${dashes} em-dash(es)` };
@@ -390,7 +488,7 @@ if (payload.hook_event_name === 'Stop') {
       `baseline-interaction.md and this hook injects it into every turn, including the one you just\n` +
       `answered (measured: 32 em-dashes in 21,434 characters of prose in one audited session, with\n` +
       `the rule loaded three times in the same transcript).\n` +
-      (stopContractBlockedThisTurn()
+      (stopContractBlockedThisTurn(userTs)
         ? `guard-stop-contract.js has already blocked this same turn, so do what IT asks and fold the\n` +
           `dash fix into that turn - replace every em-dash with a single dash in the text you re-send.\n` +
           `Its instruction wins on everything else.`

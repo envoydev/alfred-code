@@ -21,6 +21,6 @@ pipeline, not the old `SqlMembershipProvider` / `FormsAuthentication` stack. The
   claims `[Authorize]`.
 
 The named-policy and authorization-handler model from SKILL.md still applies. Anti-forgery for
-cookie-authenticated endpoints is `dotnet-mvc-controllers`' `references/net-framework-48.md`; key
-primitives (RS256 vs HS256, constant-time compare) are `dotnet-cryptography`'s
-`references/net-framework-48.md`; where secrets live is `dotnet-security`.
+cookie-authenticated endpoints is the controller-based Web API skill's net48 reference; key
+primitives (RS256 vs HS256, constant-time compare) are the .NET cryptography skill's net48
+reference; where secrets live is the .NET application-security skill's.

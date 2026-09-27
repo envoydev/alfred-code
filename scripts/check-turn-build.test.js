@@ -2,13 +2,14 @@
 // check-turn-build.js (improvement plan 2.4): PostToolUse on Write|Edit|MultiEdit records the path; at
 // Stop, when the turn's list holds source files, ONE scoped check per root runs - tsc --noEmit -p for
 // TypeScript, dotnet build --no-restore -v q for C# - and the first 20 error lines go back as a Stop
-// block, once per turn. Seeded OFF: nothing runs unless CLAUDE_STACK_TURN_CHECK=1.
+// block, once per turn. Seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'check-turn-build.js');
 const { runChecks, groupRoots, commandFor, MAX_LINES } = require(HOOK);
@@ -17,7 +18,7 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const posix = process.platform !== 'win32';
 
 const BASE_ENV = { ...process.env };
-for (const k of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_STACK_HOOKS_OFF', 'CLAUDE_STACK_TURN_CHECK']) delete BASE_ENV[k];
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_TURN_CHECK', 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE']) delete BASE_ENV[k];
 
 let seq = 0;
 function project()
@@ -26,10 +27,10 @@ function project()
     const log = path.join(root, 'spawned.log');
     const run = (payload, env = {}) => spawnSync(process.execPath, [HOOK], {
         input: typeof payload === 'string' ? payload : JSON.stringify({ session_id: 'sess', cwd: root, ...payload }),
-        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_TURN_CHECK: '1', ...env },
+        encoding: 'utf8', env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_TURN_CHECK: '1', ...env },
     });
     const write = (rel) => run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, rel), content: 'x' } });
-    const list = path.join(root, '.claude', 'docs', 'flow', 'turn-edits-sess');
+    const list = path.join(root, '.alfred', 'docs', 'flow', 'turn-edits-sess');
     // A stub tsc: logs where and how it ran, prints `errors` error lines, exits 2 when there are any.
     const tsc = (dir, errors) =>
     {
@@ -49,10 +50,10 @@ test('turn-build: off by default - no list, and a Stop never spawns a check', { 
     const p = project();
     p.file('tsconfig.json', '{}');
     p.tsc('.', 3);
-    const off = { CLAUDE_STACK_TURN_CHECK: '' };
+    const off = { ALFRED_CODE_TURN_CHECK: '' };
     assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }, off).status, 0);
     assert.ok(!fs.existsSync(p.list), 'the off hook kept a list');
-    assert.strictEqual(p.run({ hook_event_name: 'Stop' }, { CLAUDE_STACK_TURN_CHECK: '0' }).status, 0);
+    assert.strictEqual(p.run({ hook_event_name: 'Stop' }, { ALFRED_CODE_TURN_CHECK: '0' }).status, 0);
     assert.deepStrictEqual(p.spawned(), []);
 });
 
@@ -73,9 +74,39 @@ test('turn-build: a TypeScript error blocks the Stop with the first 20 error lin
     assert.deepStrictEqual(p.spawned().length, 1, 'one check for one root');
     assert.match(p.spawned()[0], /--noEmit -p .*tsconfig\.json/);
     assert.ok(!fs.existsSync(p.list), 'the list outlived the check');
-    const row = fs.readFileSync(path.join(p.root, '.claude', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
+    const row = fs.readFileSync(path.join(p.root, '.alfred', 'docs', 'hook-blocks', 'sess.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)).pop();
     assert.strictEqual(row.hook, 'check-turn-build.js');
     assert.strictEqual(row.event, 'Stop');
+    // A row carrying a `mode` is a PROBE to analyze-usage.js (every guard's block row has none), so a
+    // real block written with mode 'block' was tallied as a probe and left out of the block rate.
+    assert.strictEqual(row.mode, undefined, 'a block row carries no mode');
+    assert.strictEqual(row.tool, '', 'and the tool field every block row has');
+});
+
+// R13: the core's hook_profile userConfig - strict runs the check over the seeded ALFRED_CODE_TURN_CHECK=0,
+// the project's csv still switches it off, and minimal stands it down even where the project set it on.
+test('turn-build: profile strict runs the check over a seeded 0; the csv and profile minimal still keep it off', { skip: !posix && 'stub binaries are shell scripts' }, () =>
+{
+    const setUp = (env) =>
+    {
+        const p = project();
+        p.file('tsconfig.json', '{}');
+        p.tsc('.', 2);
+        p.run({ hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(p.root, 'src/a.ts') } }, env);
+        return { p, stop: p.run({ hook_event_name: 'Stop' }, env) };
+    };
+    const strict = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict' });
+    assert.strictEqual(strict.stop.status, 2, strict.stop.stderr);
+    assert.match(strict.stop.stderr, /problem 2$/m);
+    const standard = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'standard' });
+    assert.strictEqual(standard.stop.status, 0);
+    assert.deepStrictEqual(standard.p.spawned(), [], 'standard reads the seeded 0');
+    const csv = setUp({ ALFRED_CODE_TURN_CHECK: '0', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'strict', ALFRED_CODE_HOOKS_OFF: 'check-turn-build' });
+    assert.strictEqual(csv.stop.status, 0);
+    assert.deepStrictEqual(csv.p.spawned(), [], 'the csv wins over strict');
+    const minimal = setUp({ ALFRED_CODE_TURN_CHECK: '1', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
+    assert.strictEqual(minimal.stop.status, 0);
+    assert.deepStrictEqual(minimal.p.spawned(), [], 'minimal keeps only the three protective guards');
 });
 
 test('turn-build: once per turn - the continuation Stop after a block passes, even with errors still there', { skip: !posix && 'stub binaries are shell scripts' }, () =>
@@ -179,7 +210,7 @@ test('turn-build: garbage stdin, garbage list lines and the hooks-off switch nev
     fs.writeFileSync(p.list, '\u0000\n\n{]\n');
     assert.strictEqual(p.run({ hook_event_name: 'Stop' }).status, 0);
     const off = project();
-    off.run({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(off.root, 'a.ts') } }, { CLAUDE_STACK_HOOKS_OFF: 'check-turn-build' });
+    off.run({ hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(off.root, 'a.ts') } }, { ALFRED_CODE_HOOKS_OFF: 'check-turn-build' });
     assert.ok(!fs.existsSync(off.list));
 });
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-error-handling
-description: "Use when deciding how an ASP.NET Core API reports failures: ProblemDetails, IExceptionHandler, UseExceptionHandler, Result types, error envelopes, FluentValidation endpoint filters. Keeps expected failures (Result) apart from unexpected ones (exceptions caught once). Not for non-HTTP code."
+description: "Use when deciding how an ASP.NET Core API reports failures: ProblemDetails, IExceptionHandler, UseExceptionHandler, Result types, error envelopes, FluentValidation endpoint filters. Keeps expected failures (Result) apart from unexpected ones (exceptions caught once). Not for non-HTTP code - the C# baseline's exception and Result rules cover that."
 ---
 
 # ASP.NET Core error handling
@@ -48,7 +48,7 @@ A `Result<T>` carries either the value or one such `Error`; the handler ends wit
 
 ## One global handler for the unexpected
 - **.NET 8+ (preferred):** implement `IExceptionHandler.TryHandleAsync`, register with `AddExceptionHandler<T>()` next to `AddProblemDetails()`, and switch it on with `app.UseExceptionHandler()`. Register several handlers in order if you want known-exception-to-status mapping ahead of a final catch-all.
-- Either way the handler must: log the exception once with structured context (route, trace ID), default to 500 but map recognized exception types to their status, suppress `detail` and stack traces outside `Development`, and still answer in RFC 9457. It is the single `catch` for unexpected errors in the whole application.
+- The handler must: log the exception once with structured context (route, trace ID), default to 500 but map recognized exception types to their status, suppress `detail` and stack traces outside `Development`, and still answer in RFC 9457. It is the single `catch` for unexpected errors in the whole application.
 
 ```csharp
 public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILogger<GlobalExceptionHandler> log)
@@ -79,6 +79,10 @@ app.UseExceptionHandler();
 ## Validate at the edge
 - Validate the request before the handler body runs, inside an `IEndpointFilter` (`ValidationFilter<TRequest>`) that short-circuits with `TypedResults.ValidationProblem(...)` on failure - this is the filter the minimal-API surface attaches to its route groups. FluentValidation is the default; fall back to built-in data annotations / `ModelState` only for trivial DTOs.
 - A validation failure is an expected failure - it returns from the filter and never reaches the global exception handler.
+
+## Prove it
+
+Before any done word, send three requests and quote each response: an expected failure returns its mapped status as `ProblemDetails`; a thrown exception returns one 500 `ProblemDetails` with no stack trace outside `Development`; an invalid request returns one `ValidationProblemDetails` 400 from the filter, never from the global handler.
 
 ## Don't
 - Wrap each endpoint body in its own `try`/`catch` rather than relying on the one global handler.

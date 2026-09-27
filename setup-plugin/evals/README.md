@@ -1,4 +1,4 @@
-# claude-stack plugin evals
+# Alfred Code plugin evals
 
 `claude plugin eval` runs these cases against the plugin and again WITHOUT it, and reports the
 delta. Every run is a real, billed model call on your own account.
@@ -6,7 +6,7 @@ delta. Every run is a real, billed model call on your own account.
 ## Why this suite exists at all
 
 The standing excuse for not evaluating this plugin was that nothing in it is model-invocable: all
-six commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
+seven commands and the router skill carry `disable-model-invocation`. That excuse is wrong. A case's
 `prompt.md` is a USER turn, which is exactly how a manual-only command is invoked, so a read-only
 walk makes a valid case - and its without-arm cannot resolve the command at all, which is the
 cleanest delta a suite can produce.
@@ -19,28 +19,30 @@ install to change.
 
 | case | prompt | what it proves |
 |---|---|---|
-| `status-no-install` | `/claude-stack:status` | with nothing installed, the command says so and routes to `/claude-stack:init` instead of rendering its fixed table shapes from the command body |
-| `router-hands-back-one-command` | `/claude-stack` | the router reads the state, names ONE command, and does not start the walk itself |
-| `size-first-trivial` | `/project-solve-task fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
-| `size-first-small` | `/project-solve-task the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
-| `size-first-floor` | `/project-solve-task add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
+| `status-no-install` | `/alfred-code:status` | with nothing installed, the command says so and routes to `/alfred-code:setup` instead of rendering its fixed table shapes from the command body |
+| `router-hands-back-one-command` | `/alfred-code` | the router reads the state, names ONE command, and does not start the walk itself |
+| `size-first-trivial` | `/alfred-task-solve fix the typo in the README title` | a one-file typo is sized trivial: a size line first, the edit, no design step, no stop |
+| `size-first-small` | `/alfred-task-solve the date pipe shows UTC in two components, fix it` | a two-file fix is sized small: no design step, one stop at most, both components fixed |
+| `size-first-floor` | `/alfred-task-solve add a password reset endpoint` | the floor holds - an auth task on a one-file API is standard and starts at the design step |
 
-The three `size-first-*` cases grade the `## Size first` section of `project-solve-task`. They are the
+The three `size-first-*` cases grade the `## Size first` section of `alfred-task-solve`. They are the
 only cases that write (`Edit` is granted, the floor case excepted), each into its own scaffolded
 workspace - `scaffold.sh` beside `case.yaml`, run only under `--scaffold`. The small row's verifier seat
 is a library item, copied per project and never in the core, so no case here grades it (the library
 cases live in `meta/evals/library/`, run through the eval bundle).
 
-## Last recorded run
+## Last recorded run - 2026-09-12, before the 2.0.0 grader change
 
-2026-09-12, Claude Code 2.1.269, default model, `--judge-model claude-haiku-4-5`, 3 runs per arm.
+The cases were re-graded on 2026-09-25 (setup/init split). This run: Claude Code 2.1.269, default model, `--judge-model claude-haiku-4-5`, 3 runs per arm.
 
 | case | with | without | delta |
 |---|---|---|---|
 | `router-hands-back-one-command` | 1.00 | 0.00 | +1.00 |
 | `status-no-install` | 1.00 | 0.33 | +0.67 |
 
-Mean delta +0.83 over 12 runs, 112s, $0.84. The without-arm's one passing grader is
+Mean delta +0.83 over 12 runs, 112s, $0.84. Both cases then graded `/alfred-code:init`; 2.0.0 routes a
+project with nothing installed to `/alfred-code:setup`, so these numbers describe the old graders and
+are not re-run here (the run is billed). The without-arm's one passing grader is
 `no-invented-tables`, which a session with no plugin passes for free - it has no tables to invent.
 Re-record this table whenever a command body changes; a delta that falls is the command losing its
 own contract, and a `with` score under 1.00 is the command failing it outright.
@@ -50,11 +52,11 @@ own contract, and a `with` score under 1.00 is the command failing it outright.
 ```bash
 claude plugin eval setup-plugin --case '[rs][ot]*' --max-cost-usd 3 --judge-model claude-haiku-4-5   # router + status
 claude plugin eval setup-plugin --case status-no-install --runs 1 --ablation none   # iterate cheaply
-claude plugin eval claude-stack@claude-stack --eval-dir setup-plugin/evals --case 'size-first-*' --scaffold --max-cost-usd 5
+claude plugin eval alfred-code@envoydev --eval-dir setup-plugin/evals --case 'size-first-*' --scaffold --max-cost-usd 5
 ```
 
 The `size-first-*` cases need the CORE plugin as the target, because `setup-plugin/` alone does not
-carry `project-solve-task`. That target resolves the INSTALLED release; to grade a working tree, add
+carry `alfred-task-solve`. That target resolves the INSTALLED release; to grade a working tree, add
 it as the marketplace first (`claude plugin marketplace add <repo>`) in a throwaway config dir.
 
 Two things measured on 2.1.269 that the docs page does not spell out, so do not re-derive them: a

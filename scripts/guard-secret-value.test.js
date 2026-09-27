@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-secret-value.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
@@ -14,7 +15,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-secret-'));
 // to the process cwd - pin a scratch root so this suite never writes into the repo's own ledger.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
 const LEDGER = path.join(TMP, 'ledger');
-process.env.CLAUDE_STACK_DOCS_PATH = LEDGER;
+process.env.ALFRED_CODE_DOCS_PATH = LEDGER;
 
 // Fake by construction, and deliberately NOT a run of one character: a value that is just `xxx...`
 // is a placeholder by content, which the guard's own template tells now read as 'not live'.
@@ -26,7 +27,7 @@ const SECRET_JSON = JSON.stringify({ env: { SENTRY_SLUG: 'acme', SENTRY_ACCESS_T
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 fs.mkdirSync(path.join(ROOT, '.claude'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, '.claude', 'settings-secret.json'), SECRET_JSON);
-fs.writeFileSync(path.join(ROOT, '.claude', 'clean.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs' } }, null, 2));
+fs.writeFileSync(path.join(ROOT, '.claude', 'clean.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs' } }, null, 2));
 fs.mkdirSync(path.join(ROOT, 'my dir'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, 'my dir', 'settings.json'), SECRET_JSON);
 fs.writeFileSync(path.join(ROOT, '.env'), 'API_KEY=abc123\n');
@@ -52,7 +53,7 @@ function fixtures() {
     envExample: w('.env.example', 'API_KEY=your-api-key-here\nDB_PASSWORD=<your-password>\nSMTP_SECRET=changeme\n'),
     envSample: w('config.json.sample', JSON.stringify({ apiKey: 'abc123' }, null, 2)),
     testFixture: w('client.json', JSON.stringify({ apiKey: 'test-key-1234' }, null, 2)),
-    clean: w('clean-settings.json', JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs', CLAUDE_STACK_PUSH_GATE: '1' }, hooks: {} }, null, 2)),
+    clean: w('clean-settings.json', JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: '.claude/docs', ALFRED_CODE_PUSH_GATE: '1' }, hooks: {} }, null, 2)),
     mcp: w('.mcp.json', JSON.stringify({ mcpServers: { context7: { env: { CONTEXT7_API_KEY: '${CONTEXT7_API_KEY}' } } } }, null, 2)),
     dotenv: w('.env', 'DB_HOST=localhost\nAPI_KEY=abc123\n'),
     crlf: w('crlf.env', 'DB_HOST=localhost\r\nAPI_KEY=abc123\r\nSMTP_SECRET="changeme"\r\n'),
@@ -75,7 +76,7 @@ const rewritten = (command, env) => updatedCommand(run({ tool_name: 'Bash', tool
 const read = (file_path, env) => run({ tool_name: 'Read', tool_input: { file_path }, session_id: 'suite' }, env).status;
 const cli = (...args) => spawnSync(process.execPath, [HOOK, ...args], { encoding: 'utf8' });
 
-// Measured across four audited sessions: five blocks on /claude-stack:update's own downloaded
+// Measured across four audited sessions: five blocks on /alfred-code:update's own downloaded
 // snapshot. Not the temp PATH - the CONTENT: this stack's catalogs are lists of variable NAMES
 // under a field literally called `key`, and a name that names a credential is not one. The shell
 // route was the worse half - the walk got its own catalog back with every `key` masked.
@@ -215,9 +216,9 @@ test('guard-secret-value: a variable print and a whole-environment dump are rewr
 test('guard-secret-value: a block appends one ledger row naming the hook and never the value', () => {
   const f = fixtures();
   const ledger = path.join(TMP, 'ledger-' + Date.now());
-  assert.equal(bash(`cat ${f.secret}`, { CLAUDE_STACK_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
+  assert.equal(bash(`cat ${f.secret}`, { ALFRED_CODE_DOCS_PATH: ledger }), REWRITE, 'a rewrite costs no retried turn - it is not a block');
   assert.ok(!fs.existsSync(path.join(ledger, 'hook-blocks')), 'and writes no ledger row');
-  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { CLAUDE_STACK_DOCS_PATH: ledger }), 2);
+  assert.equal(bash(`curl -H "Authorization: Bearer ${FAKE_JWT}" https://example.test/api`, { ALFRED_CODE_DOCS_PATH: ledger }), 2);
   const rows = fs.readFileSync(path.join(ledger, 'hook-blocks', 'suite.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
   assert.equal(rows.length, 1);
   assert.equal(rows[0].hook, 'guard-secret-value.js');
@@ -282,8 +283,8 @@ test('guard-secret-value: printing a credential-shaped variable is blocked; a le
   assert.equal(bash('printenv SENTRY_ACCESS_TOKEN'), REWRITE, 'printenv NAME');
   assert.equal(bash('[ -n "$SENTRY_ACCESS_TOKEN" ] && echo "SENTRY_ACCESS_TOKEN=set (${#SENTRY_ACCESS_TOKEN} chars)" || echo "SENTRY_ACCESS_TOKEN=absent"'), 0, 'the presence idiom: a test and a length');
   assert.equal(bash('echo $PATH'), 0, 'a non-secret variable');
-  assert.equal(bash('echo "$CLAUDE_STACK_DOCS_PATH"'), 0, 'PATH suffix is not a credential');
-  assert.equal(bash('printenv CLAUDE_STACK_INSTRUMENT'), 0, 'printenv of a non-secret');
+  assert.equal(bash('echo "$ALFRED_CODE_DOCS_PATH"'), 0, 'PATH suffix is not a credential');
+  assert.equal(bash('printenv ALFRED_CODE_INSTRUMENT'), 0, 'printenv of a non-secret');
   assert.equal(bash('echo "token count: 3"'), 0, 'a word, not a variable');
 });
 
@@ -418,7 +419,7 @@ test('guard-secret-value: the shell\'s own variable dumps are whole-environment 
   assert.equal(bash('set -- x'), 0, 'positional parameters');
   assert.equal(bash('export FOO=1'), 0, 'an assignment');
   assert.equal(bash('declare -a arr'), 0, 'a declaration');
-  assert.equal(bash('declare -p CLAUDE_STACK_INSTRUMENT'), 0, 'a non-credential name');
+  assert.equal(bash('declare -p ALFRED_CODE_INSTRUMENT'), 0, 'a non-credential name');
 });
 
 test('guard-secret-value: a runtime handed the credential file, or building its path, is judged', () => {
@@ -689,7 +690,8 @@ test('guard-secret-value: a command that also CHANGES something is blocked, neve
   assert.equal(bash(`cat ${f.secret} && npm run build`), 2, 'a build after the dump');
   assert.equal(bash(`jq .env ${f.secret} | tee ${path.join(f.dir, 'copy.json')}`), 2, 'a tee into a file writes as it prints');
   assert.equal(bash(`echo $SENTRY_ACCESS_TOKEN && rm -rf ${path.join(f.dir, 'gone')}`), 2, 'the variable rewrite would drop steps the same way');
-  assert.equal(bash('env && curl https://example.test'), 2, '... and so would the environment dump');
+  assert.equal(rewritten('env && curl https://example.test'), `node "${HOOK}" --redacted-env && curl https://example.test`,
+    '... but an environment dump is replaced in place, so no step is dropped and nothing needs blocking');
   assert.equal(bash(`cd ${f.dir} && ls && cat settings.json | head -5; echo "exit=$?"`), REWRITE, 'cd, ls, echo and a pipe change nothing - still the rewrite');
   assert.equal(bash(`[ -f ${f.secret} ] && cat ${f.secret} 2>/dev/null`), REWRITE, 'a test and a stderr redirect change nothing');
   assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'the edit on its own passes, as before');
@@ -778,4 +780,232 @@ test('guard-secret-value: a translation bundle holds labels, not credentials', (
   const live = path.join(dir, 'settings.json');
   fs.writeFileSync(live, SECRET_JSON);
   assert.equal(bash(`cat ${live}`), REWRITE, 'an ordinary credential file is untouched by these tells');
+});
+
+// The benchmark pilot (2026-09-26): `env | grep -i msbuild; env | grep -i dotnet_cli` was BLOCKED as 'prints the
+// whole environment AND runs a step that changes something' - the second `env` read as a changing step, and the
+// rewrite would have dropped both filters anyway. An environment dump is now replaced where it stands: its
+// pipeline keeps its filter over the masked listing, and every other step runs as written.
+test('guard-secret-value: an environment dump keeps its filter and the rest of the command - the pilot command', () => {
+  const view = `node "${HOOK}" --redacted-env`;
+  assert.equal(rewritten('env | grep -i msbuild'), `${view} --note-to-stderr | grep -i msbuild`, 'the filter runs over the masked listing');
+  assert.equal(rewritten('env | grep -i msbuild; env | grep -i dotnet_cli'),
+    `${view} --note-to-stderr | grep -i msbuild; ${view} --note-to-stderr | grep -i dotnet_cli`, 'every dump in the command, never one left raw');
+  assert.equal(rewritten('cd src && printenv | sort | grep -i MSBUILD && dotnet build -v q'),
+    `cd src && ${view} --note-to-stderr | sort | grep -i MSBUILD && dotnet build -v q`, 'nothing is dropped, so a build beside it runs');
+  assert.equal(rewritten('env'), view, 'a bare dump is still the whole listing, note first');
+  assert.equal(rewritten('env FOO=bar node app.js'), null, 'env running a command is no dump');
+  assert.equal(bash('env > /tmp/env.txt'), 0, 'into a file it never reaches the context, as before');
+  // still judged: a credential variable printed in another step takes its presence form over everything
+  assert.match(rewritten('env | grep -i x; echo $SENTRY_ACCESS_TOKEN'), /SENTRY_ACCESS_TOKEN=set/);
+  // run for real: the listing is masked before the filter sees it, the note goes to stderr
+  const r = spawnSync('bash', ['-c', rewritten('env | grep -i msbuild')], { encoding: 'utf8', env: { ...process.env, MSBUILD_TOKEN: FAKE_TOKEN, MSBUILDDISABLENODEREUSE: '1' } });
+  assert.match(r.stdout, /^MSBUILDDISABLENODEREUSE=1$/m);
+  assert.match(r.stdout, /^MSBUILD_TOKEN=<set \(40 chars\)>$/m);
+  assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
+  assert.match(r.stderr, /^# credential guard: /, 'the note says what happened');
+});
+
+// Review (2026-09-26): a lone `&` backgrounds its left side and runs the right one - a step boundary the
+// segment split did not know. `env | grep A & env` came back with the trailing bare `env` left raw after the
+// in-place rewrite, and `true & env` / `env & env` were never judged at all (a gap older than this change).
+test('guard-secret-value: a step after a background & is its own step - no environment dump is left raw', () => {
+  const view = `node "${HOOK}" --redacted-env`;
+  for (const cmd of ['env | grep A & env', 'true & env', 'env & env', 'true & printenv', 'sleep 1 & set']) {
+    const out = rewritten(cmd);
+    assert.ok(out, `${cmd}: rewritten`);
+    assert.doesNotMatch(out.replace(/node "[^"]*" --redacted-env( --note-to-stderr)?/g, ''), /(^|[&|;]\s*)(env|printenv|set)\s*($|[&|;])/, `${cmd}: no raw dump left in ${out}`);
+  }
+  assert.equal(rewritten('true & env'), `true & ${view}`);
+  // `&` inside redirections and `&&` are not the background operator
+  assert.equal(bash('ls 2>&1 | head -3'), 0);
+  assert.equal(bash('ls &> /dev/null && echo ok'), 0);
+  assert.equal(rewritten('env 2>&1 | grep -i msbuild'), `${view} --note-to-stderr 2>&1 | grep -i msbuild`);
+  // run for real: nothing prints the fake credential
+  const r = spawnSync('bash', ['-c', rewritten('true & env | grep -i MSBUILD_TOKEN; wait')], { encoding: 'utf8', env: { ...process.env, MSBUILD_TOKEN: FAKE_TOKEN } });
+  assert.ok(!(r.stdout + r.stderr).includes(FAKE_TOKEN), 'the value never appears');
+});
+
+// Pilot 2 (2026-09-27): init's own source-protocol snippet was blocked twice - it printed `key=${KEY:-?}`, a
+// credential-SHAPED name. The name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain
+// or vault read, `env | grep`), so the guard stays as it was and the snippet names its variable MKT instead (review A,
+// C1: an exemption for self-assigned variables printed those in full). The printed label stays `key=`.
+function protocolSnippet() {
+  const md = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+  return [...md.matchAll(/```bash\n([\s\S]*?)```/g)][0][1];
+}
+test('guard-secret-value: the source-protocol snippet assigns no credential-shaped name, so it passes as written', () => {
+  const snippet = protocolSnippet();
+  const shaped = new RegExp(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'environment.json'), 'utf8')).secret_key_pattern);
+  const assigned = [...snippet.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=/g)].map((m) => m[1]);
+  assert.deepStrictEqual(assigned.filter((n) => shaped.test(n)), [], 'no variable the snippet assigns matches secret_key_pattern');
+  assert.match(snippet, / key=\$\{MKT:-\?\}/, 'the key= label stays, printed from MKT');
+  assert.equal(bash(snippet), 0, 'the shipped snippet');
+  // Through the dispatcher, the way the session runs every shell guard.
+  const r = spawnSync(process.execPath, [path.join(__dirname, '..', 'stack', 'hooks', 'shell-guards.js')],
+    { input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: snippet }, session_id: 'suite' }), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout + r.stderr, /credential-shaped variable/);
+});
+
+test('guard-secret-value: a credential a command substitution computes is judged by its name, whoever assigned it', () => {
+  // Review A, C1: every one of these ran as typed under the reverted exemption. Base verdicts, pinned.
+  const cases = [
+    ['TOKEN=$(gh auth token); echo "token=$TOKEN"', 2],
+    ['GITHUB_TOKEN=$(gh auth token); printf \'%s\\n\' "$GITHUB_TOKEN"', 2],
+    ['API_KEY=$(security find-generic-password -s x -w); echo $API_KEY', 2],
+    ['SECRET=$(vault kv get -field=password secret/db); echo "$SECRET"', 2],
+    ['AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key); echo $AWS_SECRET_ACCESS_KEY', 2],
+    ['KEY=$(env | grep TOKEN); echo $KEY', REWRITE],
+    ['(KEY=$(true)); echo $KEY', 2],
+    ['false && KEY=$(true); echo $KEY', REWRITE],
+    ['KEY=$(true) true; echo $KEY', REWRITE],
+    ['KEY=$(printenv API_TOKEN); echo $KEY', REWRITE],
+    ['echo $API_TOKEN', REWRITE],
+  ];
+  for (const [command, want] of cases) assert.equal(bash(command), want, command);
+});
+
+// Pilot 3, ours guard-02 r1: `node -e "...fs.writeFileSync(path, ...)..."` and `perl -0pi -e 's/.../' <file>` on a
+// credential file were REWRITTEN into its read-only redacted view, so both edits silently never ran (~66 s, 12 calls,
+// until the Edit tool made the change). A stage that WRITES while it names the file is blocked, visibly - the same
+// contract a changing step elsewhere in the command already had.
+test('guard-secret-value: a stage that WRITES the credential file is blocked, never rewritten into a read-only view', () => {
+  const f = fixtures();
+  const cases = [
+    [`perl -0pi -e 's/acme/acme2/' ${f.secret} && echo OK`, 'perl -0pi'],
+    [`perl -pi -e 's/acme/acme2/' ${f.secret}`, 'perl -pi'],
+    [`perl -i.bak -pe 's/acme/acme2/' ${f.secret}`, 'perl -i.bak'],
+    [`perl -p -i -e 's/acme/acme2/' ${f.secret}`, 'perl -p -i'],
+    [`ruby -i -pe 'gsub(/acme/, "acme2")' ${f.secret}`, 'ruby -i'],
+    [`sed -E -i '' 's/acme/acme2/' ${f.secret}`, 'sed -i after another flag'],
+    [`sed -e 's/acme/acme2/' -i ${f.secret}`, 'sed -i after the script'],
+    [`node -e "const fs=require('fs');const p='${f.secret}';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.x=2;fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('done')"`, 'node writeFileSync'],
+    [`node -e "require('fs').appendFileSync('${f.secret}', '\\n')"`, 'node appendFileSync'],
+    [`python3 -c "import json;p='${f.secret}';d=json.load(open(p));d['x']=2;json.dump(d, open(p,'w'))"`, "python open(p,'w')"],
+    [`python3 -c "p='${f.secret}';open(p, mode='a').write('x')"`, "python open(p, mode='a')"],
+    [`python3 - <<'PY'\nimport json\np='${f.secret}'\nd=json.load(open(p))\nopen(p, 'w').write(json.dumps(d))\nPY`, 'python heredoc writer'],
+    [`node -e "require('fs').writeFileSync('${path.join(f.dir, 'tok.txt')}', process.env.SENTRY_ACCESS_TOKEN)"`, 'a runtime writing a credential variable'],
+  ];
+  for (const [command, label] of cases) {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    assert.equal(r.status, 2, `${label}: ${updatedCommand(r) || r.stderr}`);
+    assert.match(r.stderr, /WRITES a file/, label);
+    assert.match(r.stderr, /Edit tool/, `${label}: names the route that works`);
+    assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN), label);
+  }
+  // Unchanged: a read through the same runtimes is still the view, and a first-flag in-place sed still passes.
+  assert.equal(bash(`perl -ne 'print' ${f.secret}`), REWRITE, 'perl reading, not writing');
+  assert.equal(bash(`python3 -c "print(open('${f.secret}').read())"`), REWRITE, 'python reading');
+  assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'sed -i as its first flag passes, as before');
+  assert.equal(bash(`node -e "require('fs').writeFileSync('${path.join(f.dir, 'out.txt')}', 'x')"`), 0, 'a writer that names no credential file is not judged');
+});
+
+// Review of pilot 4, I1: four more write shapes still came back as the view, so their edit silently never ran - a script
+// FILE run against the credential file (the guard cannot see what it does), gawk's in-place extension, pathlib's
+// `.open('w')`, and node's `openSync(p, 'w')` + `writeSync`.
+test('guard-secret-value: a script file, awk -i inplace, pathlib .open and fs.openSync on the credential file block', () => {
+  const f = fixtures();
+  const script = path.join(f.dir, 'fix.py');
+  fs.writeFileSync(script, "import sys\np=sys.argv[1]\nopen(p,'w').write(open(p).read())\n");
+  const cases = [
+    [`python3 ${script} ${f.secret}`, 'python3 <script> <file>'],
+    [`python3 -u ${script} ${f.secret}`, 'python3 -u <script> <file>'],
+    [`cd ${f.dir} && python fix.py ${f.secret}`, 'python <relative script> <file>'],
+    [`node ${path.join(f.dir, 'fix.js')} ${f.secret}`, 'node <script> <file>'],
+    [`ruby ${path.join(f.dir, 'fix.rb')} ${f.secret}`, 'ruby <script> <file>'],
+    [`perl ${path.join(f.dir, 'fix.pl')} ${f.secret}`, 'perl <script> <file>'],
+    [`awk -i inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'awk -i inplace'],
+    [`gawk -i inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'gawk -i inplace'],
+    [`gawk --include=inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'gawk --include=inplace'],
+    [`python3 -c "import pathlib;p=pathlib.Path('${f.secret}');t=p.read_text();p.open('w').write(t)"`, "pathlib .open('w')"],
+    [`python3 -c "import pathlib;pathlib.Path('${f.secret}').write_text('x')"`, 'pathlib write_text'],
+    [`node -e "const fs=require('fs');const fd=fs.openSync('${f.secret}','w');fs.writeSync(fd,'x')"`, "fs.openSync(p,'w')"],
+    [`node -e "const fs=require('fs');const fd=fs.openSync('${f.secret}', 'r+');fs.writeSync(fd,'x')"`, "fs.openSync(p,'r+')"],
+  ];
+  const verdicts = cases.map(([command, label]) => {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    return `${label}: ${r.status === 2 ? 'blocked' : updatedCommand(r) ? 'rewritten' : 'passed'}`;
+  });
+  assert.deepEqual(verdicts, cases.map(([, label]) => `${label}: blocked`));
+  for (const [command, label] of cases) {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    assert.match(r.stderr, /WRITES a file|script FILE/, label);
+    assert.match(r.stderr, /Edit tool/, `${label}: names the route that works`);
+    assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN), label);
+  }
+  // Unchanged: a module run, inline code that only reads, and awk without the extension are still the view.
+  assert.equal(bash(`python3 -m json.tool ${f.secret}`), REWRITE, 'python3 -m json.tool reads');
+  assert.equal(bash(`python3 -c "import pathlib;print(pathlib.Path('${f.secret}').open().read())"`), REWRITE, 'pathlib .open() reads');
+  assert.equal(bash(`node -e "const fs=require('fs');console.log(fs.readFileSync(fs.openSync('${f.secret}','r')).length)"`), REWRITE, "openSync 'r' reads");
+  assert.equal(bash(`awk '{print}' ${f.secret}`), REWRITE, 'awk without -i inplace reads');
+  assert.equal(bash(`python3 ${script}`), 0, 'a script that names no credential file is not judged');
+});
+
+// Review of pilot 4, M1: a first-flag `sed -i` skipped the whole segment, so `sed -i '' 's/TOKEN.*/&/w /dev/stdout'`
+// printed the credential line. The skip holds only for a script that writes to no terminal stream and runs nothing.
+test('guard-secret-value: a first-flag sed -i is exempt only when its script prints and runs nothing', () => {
+  const f = fixtures();
+  const cases = [
+    [`sed -i '' 's/acme/&/w /dev/stdout' ${f.secret}`, 'w /dev/stdout'],
+    [`sed -i 's/acme/&/w /dev/stderr' ${f.secret}`, 'w /dev/stderr'],
+    [`sed -i '' 's/acme/&/W /dev/tty' ${f.secret}`, 'W /dev/tty'],
+    [`sed -i -e '/acme/w /dev/fd/1' ${f.secret}`, 'w command to /dev/fd/1'],
+    [`sed -i 's/acme/cat \\/etc\\/hosts/e' ${f.secret}`, 'the s///e flag'],
+    [`sed -i '1e date' ${f.secret}`, 'the e command'],
+    [`sed -i -f ${path.join(f.dir, 'fix.sed')} ${f.secret}`, 'a script file the guard cannot see'],
+  ];
+  const verdicts = cases.map(([command, label]) => `${label}: ${bash(command) === 2 ? 'blocked' : bash(command) === REWRITE ? 'rewritten' : 'passed'}`);
+  assert.deepEqual(verdicts, cases.map(([, label]) => `${label}: blocked`));
+  // Unchanged: a plain in-place edit runs, `-e` included, and so does a `w` into an ordinary file.
+  assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'plain sed -i');
+  assert.equal(bash(`sed -i -e 's/acme/acme2/' -e 's/x/y/' ${f.secret}`), 0, 'sed -i -e');
+  assert.equal(bash(`sed -i 's/acme/acme2/w ${path.join(f.dir, 'changed.txt')}' ${f.secret}`), 0, 'w into an ordinary file');
+});
+
+// Pilot 3: `--presence <appsettings> ConnectionStrings.Lending Notices.Gateway.ServiceToken` answered `absent` for two
+// keys that exist - it read only top-level (or `env`) keys.
+test('guard-secret-value --presence: a dotted, colon or double-underscore path reads a nested JSON key', () => {
+  const f = fixtures();
+  const p = path.join(f.dir, 'appsettings.Development.json');
+  fs.writeFileSync(p, JSON.stringify({ ConnectionStrings: { Lending: 'Host=db;Password=' + FAKE_TOKEN }, Logging: { LogLevel: { 'Microsoft.Hosting.Lifetime': 'Information' } },
+    Notices: { DueSoonDays: 2, Gateway: { ServiceToken: FAKE_TOKEN, Enabled: true } } }, null, 2));
+  const r = presence(p, 'ConnectionStrings.Lending', 'Notices:Gateway:ServiceToken', 'Notices__DueSoonDays', 'Notices.Gateway.Missing', 'Notices.Gateway',
+    'Logging.LogLevel.Microsoft.Hosting.Lifetime');
+  assert.equal(r.stdout, [`ConnectionStrings.Lending=set (${17 + FAKE_TOKEN.length} chars)`, `Notices:Gateway:ServiceToken=set (${FAKE_TOKEN.length} chars)`,
+    'Notices__DueSoonDays=set (1 chars)', 'Notices.Gateway.Missing=absent', 'Notices.Gateway=set (object, 2 keys)',
+    'Logging.LogLevel.Microsoft.Hosting.Lifetime=set (11 chars)', ''].join('\n'));
+  assert.doesNotMatch(r.stdout + r.stderr, new RegExp(FAKE_TOKEN));
+  assert.equal(presence(p).stdout, [`ConnectionStrings.Lending=set (${17 + FAKE_TOKEN.length} chars)`, 'Logging.LogLevel.Microsoft.Hosting.Lifetime=set (11 chars)',
+    `Notices.Gateway.ServiceToken=set (${FAKE_TOKEN.length} chars)`, ''].join('\n'), 'no keys: every string leaf, as a dotted path');
+  assert.equal(presence(f.secret, 'env.SENTRY_SLUG', 'SENTRY_SLUG').stdout, 'env.SENTRY_SLUG=set (4 chars)\nSENTRY_SLUG=set (4 chars)\n', 'a settings.json: the env block first, a path from the root too');
+});
+
+// Review of pilot 4, M5: the no-KEY leaf listing printed a credential-shaped key NAME as written, and listed every
+// string leaf of a large JSON (a lockfile) into the context.
+test('guard-secret-value --presence: a credential-shaped key name is masked, and the leaf list stops at 200', () => {
+  const f = fixtures();
+  const shaped = 'gh' + 'p_' + 'A1'.repeat(15); // built at run time: the literal would trip the commit scan
+  const users = path.join(f.dir, 'users.json');
+  fs.writeFileSync(users, JSON.stringify({ users: { [shaped]: 'admin' }, [shaped]: { role: 'owner' } }));
+  const listed = presence(users).stdout;
+  assert.doesNotMatch(listed, new RegExp(shaped.slice(0, 12)), 'the shape never prints');
+  assert.equal(listed, `users.<credential-shaped, ${shaped.length} chars>=set (5 chars)\n<credential-shaped, ${shaped.length} chars>.role=set (5 chars)\n`);
+  assert.doesNotMatch(presence(users, `users.${shaped}`).stdout, new RegExp(shaped.slice(0, 12)), 'a KEY argument is masked on the way out too');
+  assert.match(presence(users, `users.${shaped}`).stdout, /=set \(5 chars\)/, 'and still looked up as written');
+  const lock = path.join(f.dir, 'package-lock.json');
+  const packages = {};
+  for (let i = 0; i < 450; i++) packages[`node_modules/p${i}`] = { version: '1.0.0' };
+  fs.writeFileSync(lock, JSON.stringify({ name: 'x', packages }));
+  const lines = presence(lock).stdout.trimEnd().split('\n');
+  assert.equal(lines.length, 201, 'at most 200 leaves plus one count line');
+  assert.equal(lines[200], '# 251 more string leaves not listed - name a KEY to read one');
+});
+
+// Pilot 3: the model's first presence call guessed `node .claude/hooks/guard-secret-value.js` (only the docs, memory and
+// history engines are copied there) - the redacted view it had just read named no path at all.
+test('guard-secret-value: the redacted view names the runnable presence command', () => {
+  const f = fixtures();
+  const view = cli('--redacted', f.secret).stdout;
+  assert.ok(view.split('\n')[0].includes(`node "${HOOK}" --presence "${f.secret}" KEY`), view.split('\n')[0]);
 });

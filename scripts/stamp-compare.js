@@ -2,7 +2,7 @@
 'use strict';
 // stamp-compare.js - the stamp-vs-snapshot delta the guided commands report.
 //
-// Reads the install's claude-stack.stamp (the commit + version the install was
+// Reads the install's alfred-code.stamp (the commit + version the install was
 // copied from) and the snapshot's RELEASE-SOURCE (or the clone's git HEAD),
 // asks the GitHub compare API what changed between them, and prints a compact
 // line contract the update/configure commands consume verbatim - so the model
@@ -21,8 +21,8 @@
 // 404s without it, and the anonymous limit is 60 requests an hour.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { versionTag } = require('./install/source.js');
+const { BRAND, stampFile: stampIn } = require('./install/brand.js');
 
 const STACK_PATHS = /^(stack|skills|agents|rules|hooks|templates)\//;
 
@@ -48,7 +48,8 @@ function snapshotHead(dir)
     const rs = readStampFile(path.join(dir, 'RELEASE-SOURCE'));
     if (rs.sha) return rs;
     // A clone fallback has no RELEASE-SOURCE - its git HEAD is the same truth.
-    try { return { sha: execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
+    // The one Windows-safe spawn (R105), required only on this fallback.
+    try { return { sha: require('./install/runtime.js').execCommand('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), version: undefined }; }
     catch
     {
         // A plugin-cache snapshot has neither: its version tag, the revision the installer stamps from it.
@@ -69,10 +70,15 @@ async function compareFiles(repo, base, head)
 
 async function main()
 {
-    const stampFile = arg('--stamp') || '.claude/claude-stack.stamp';
+    // A 1.x project's stamp keeps its old name until the next update rewrites it: a missing
+    // alfred-code.stamp - named, or the default - is read as the 1.x one beside it.
+    const named = arg('--stamp');
+    const stampFile = named && (path.basename(named) !== BRAND.stamp || fs.existsSync(named))
+        ? named
+        : stampIn(named ? path.dirname(named) : '.claude').read || named || path.join('.claude', BRAND.stamp);
     const snapshot = arg('--snapshot');
     if (!snapshot) { console.error('usage: stamp-compare.js --snapshot <extracted-repo-dir> [--stamp <stamp-file>] [--repo <owner/name>] [--fixture <compare.json>]'); process.exit(1); }
-    const repo = arg('--repo') || 'envoydev/claude-stack';
+    const repo = arg('--repo') || 'envoydev/alfred-code';
 
     const stamp = readStampFile(stampFile);
     const head = snapshotHead(snapshot);

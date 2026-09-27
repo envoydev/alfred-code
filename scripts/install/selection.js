@@ -13,7 +13,7 @@
 //
 //   - A SELECTION WITH NO `hook` LINES INSTALLS EVERY HOOK. Hooks joined the walk later, so a file
 //     written before that layer must keep its install-everything behaviour. `--installed-only`
-//     answers this by emptying the hook list itself when the disk carries none.
+//     reads back `hook none` itself when the copy route ran here and kept none (`readBack`).
 //   - A HOOK THIS RELEASE ADDED REACHES AN EXISTING INSTALL ONLY HERE, so hooks are all-or-nothing
 //     on the derived path: an install that HAS hooks gets every shipped one. The exception is a
 //     DELIBERATE DROP - a hook named in the previous stamp and absent now was removed through
@@ -24,13 +24,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
-const { hookDisabled } = require('../../stack/hooks/hook-prelude.js');
+const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
+const { BRAND, LEGACY, currentName, rowOn } = require('./brand.js');
+const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
+const { currentMcp } = require('./mcp.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
-// docs.js / memory.js / history.js / fresh-session.js are ENGINES and hook-prelude.js the shared gate module - none is a hook.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session)$/;
-const PW_ENGINE = /^playwright-(chrome|msedge|firefox|webkit)$/;
+// docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
+// module and shell-guards.js the dispatcher that runs the picked shell guards - none is a hook item.
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards)$/;
+const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
+const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
+const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];
 
 const nameOfSkill = (entry) => String(entry).split('|').pop();
 const nameOfMcp = (entry) => String(entry).split('|')[0];
@@ -96,9 +102,11 @@ const listDir = (dir, test) =>
 };
 
 // What the TARGET carries, read off disk. Generated project-owned files and the engine modules are
-// excluded; a playwright engine server collapses back to the one manifest entry it expands from.
-// `skillsDir`: a global install keeps its skills in the account dir, everything else in the project.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [] })
+// excluded; a browser engine server collapses back to the one manifest entry it expands from.
+// `skillsDir`: a 1.x global install kept its skills in the account dir, everything else in the project.
+// `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
+// of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null })
 {
     const lines = [];
     for (const name of listDir(skillsDir, (d) => d.isDirectory()))
@@ -113,12 +121,12 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     for (const f of listDir(path.join(claudeDir, 'hooks'), (d) => d.isFile() && d.name.endsWith('.js')))
     {
         const name = f.replace(/\.js$/, '');
-        if (!HOOK_EXCLUDE.test(name)) lines.push(`hook ${name}`);
+        if (!HOOK_EXCLUDE.test(name) && (!shippedHooks || shippedHooks.includes(name))) lines.push(`hook ${name}`);
     }
     const seenMcp = new Set();
     for (const server of mcpServers)
     {
-        const name = String(server).replace(PW_ENGINE, 'playwright');
+        const name = String(server).replace(PW_ENGINE, 'browser');
         if (!seenMcp.has(name)) { seenMcp.add(name); lines.push(`mcp ${name}`); }
     }
     // Plugins are machine-level, so they come from the CLI listing rather than a project directory -
@@ -143,7 +151,8 @@ const hasInstall = (lines) => lines.some((l) => /^(skill|agent|rule|hook) /.test
 // Hooks: adopt every shipped one, except a name the PREVIOUS stamp shipped and disk no longer has.
 function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
 {
-    if (!lines.some((l) => l.startsWith('hook '))) return lines;
+    // A None adopts nothing either: a hook this release added stays off with the rest.
+    if (!lines.some((l) => l.startsWith('hook ')) || lines.includes('hook none')) return lines;
     const have = new Set(lines.filter((l) => l.startsWith('hook ')).map((l) => l.slice(5)));
     const dropped = new Set(shippedBefore);
     const out = [...lines];
@@ -184,30 +193,61 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], stampPicked, always = {}, marketplace = 'claude-stack', log = () => {} })
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, log = () => {} })
 {
-    let lines = deriveFromDisk({ claudeDir, skillsDir, mcpServers, plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins });
-    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [], context7Local: false };
+    const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
+    // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
+    const renaming = { renamed: manifest.renamed, log, said };
+    // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
+    // new one: the same server the user picked (manifest `renamed.mcps`).
+    const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped }), renaming);
+    const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves
     // nothing on disk - its own enabled entries are the evidence then. Only this PROJECT's: an account
     // entry is every project's, and would read a project the stack never touched as installed.
-    const ownEntries = ours.some((r) => r.enabled && (r.scope === 'project' || r.scope === 'local'));
+    // The core counts as enabled whatever its flag (brand.js rowOn, S22).
+    const ownEntries = ours.some((r) => rowOn(r) && (r.scope === 'project' || r.scope === 'local'));
     if (!hasInstall(lines) && !ownEntries) return none;
 
     // What the user PICKED - the disk and the stamp - is what the closure runs over; an item an
     // enabled entry merely carries is not a pick.
     const closeFrom = [...lines];
-    const names = ours.filter((r) => r.enabled).map((r) => r.name);
-    const stored = settings && typeof settings === 'object' ? settings : {};
+    // A 1.x listing can still name the core by its old name: the same entry. The hooks ride the core
+    // (2.0.0), so the 1.x hooks id says nothing a core row does not.
+    // With the stamp's record of the installed engines, an engine it does not name is not kept: a drop
+    // whose uninstall failed, was refused, or sits at another scope is still listed, and read back here
+    // it was written into the stamp again. It is left as it is and named with its command.
+    const recordedEngines = routes.mcps && Array.isArray(stampEngines) ? stampEngines : null;
+    const unrecorded = (r) => recordedEngines !== null && engineOf(cur(r.name)) && !recordedEngines.includes(engineOf(cur(r.name)));
+    for (const r of ours.filter((x) => rowOn(x) && unrecorded(x)))
+        log(`installed-only: ${r.name}@${r.marketplace} is installed but not among the browsers the last install kept - left as it is, not kept; remove it: claude plugin uninstall ${r.name}@${r.marketplace} --scope ${r.scope || 'project'}, or pick it again in /alfred-code:configure`);
+    const names = ours.filter((r) => rowOn(r) && !unrecorded(r)).map((r) => currentName(cur(r.name)));
+    const stored = renameDeny(settings && typeof settings === 'object' ? settings : {}, { ...renaming, sharedOnly: sharedOnlyDeny });
     const env = stored.env && typeof stored.env === 'object' ? stored.env : {};
     const deny = stored.permissions && Array.isArray(stored.permissions.deny) ? stored.permissions.deny : [];
-    const parked = ours.filter((r) => !r.enabled).map((r) => r.name);
-    const installed = readInstalled({ plugins: names, deny, hooksOff: env.CLAUDE_STACK_HOOKS_OFF, routes, sourceDir });
+    // The browser engines the last install INSTALLED (the stamp's `browser-engines:`): a
+    // disabled row of one is the user's choice to leave it off (R67), still installed and kept, never
+    // a parked entry - and the listing's flag is no evidence either way (S22). On every route (R116):
+    // a switch onto the copy route has no registration yet, and read from .mcp.json alone it dropped
+    // the engines and wrote the stamp's two lines blank.
+    const pickedEngines = Array.isArray(stampEngines) ? stampEngines : [];
+    const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => currentName(cur(r.name)));
+    // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
+    // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
+    // reads skills and seats from the disk - where a plugin-route install holds only the extras, so the
+    // core's own items were never copied and loaded nowhere after the switch. What the core carried is
+    // what the project runs today: read back as the skills route reads it, and copied before the core
+    // goes off. The rows the stand-down disables - on at this run's scope by the settings file's word,
+    // else the listing's flag (S22, S28).
+    const leaving = !corePluginOn(routes)
+        && rowsOn({ rows: ours, names: [BRAND.core, LEGACY.core], market: marketplace, isOn }).some((r) => !scope || r.scope === scope);
+    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes: leaving ? { ...routes, skills: true } : routes, sourceDir });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
-    const noneBefore = routes.hooks && names.includes('claude-stack-hooks') && stampHooks.length > 0
-        && stampHooks.every((h) => hookDisabled(h, { CLAUDE_STACK_HOOKS_OFF: String(env.CLAUDE_STACK_HOOKS_OFF || '') }));
+    const noneBefore = routes.hooks && names.includes(BRAND.core) && stampHooks.length > 0
+        && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
     // A retired entry carries its whole stack, picked or not, and the library copies what the
     // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
     // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
@@ -244,6 +284,11 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // the enabled entries carry are the best evidence of what was picked - that release enabled them
     // for its selection. Taken as picks once, so the stamp this run writes records them, instead of an
     // empty line that would leave a moved item nothing to carry it across.
+    // What a switch onto the full copy route copies is the disk that route reads its picks from - so
+    // it is picked from this run on, or the next run's stamp would differ from this one's.
+    if (leaving)
+        for (const line of installed)
+            if (/^(skill|agent) /.test(line) && lines.includes(line) && !closeFrom.includes(line)) closeFrom.push(line);
     if (stampPicked === null && ours.length)
     {
         const adopted = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
@@ -251,19 +296,206 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         if (adopted.length) log(`installed-only: the stamp predates recorded picks - ${adopted.length} skills and seats the enabled entries carry are recorded as picked`);
     }
 
-    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes('claude-stack') };
-    const engines = routes.mcps ? names.map((n) => (/^playwright-(chrome|msedge|firefox|webkit)$/.exec(n) || [])[1]).filter(Boolean) : [];
-    const context7Local = Boolean(routes.mcps) && names.includes('context7-local');
-    // Adoption is for hooks read off DISK. Read from the hooks entry, CLAUDE_STACK_HOOKS_OFF is the
-    // whole answer already - a hook it does not name is on, a new release's included - and adopting
-    // against an older stamp would switch back on the very hooks the user named there.
-    if (!(routes.hooks && names.includes('claude-stack-hooks')))
+    // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
+    // back. Two installs leave none there, told apart ONLY by the stamp's `hooks-route:` (ruling R55 -
+    // a leftover prelude is no evidence): the copy route ran last, so the user kept NONE; otherwise the
+    // plugin route made this install, or the route is unknown (1.x, 2.0.0 before the line), and its
+    // ALFRED_CODE_HOOKS_OFF is carried across, read the way that route reads it - nothing stored is
+    // every hook, never a None. Only a STACK hook is a hook line at all (R56, deriveFromDisk above):
+    // the user's own file there is neither evidence nor a pick.
+    const stackHook = (l) => l.startsWith('hook ') && shipped.includes(l.slice(5));
+    // m8: a stamp that says 'plugin' means the last FINISHED run left no stack hook here - the plugin
+    // route prunes every copy - so one on disk now is a switch to the copy route that died part way,
+    // never a pick. Its files are set aside and the rule above reads the stored list instead.
+    // R94: with no `hooks-route:` line (1.x, 2.0.0 before the line) the last route is inferred from what
+    // the copy route leaves behind - the STORED hooks switch set to false (either spelling; the run's
+    // own switch says only where this run goes), or the folder's stack hooks wired as
+    // `.claude/hooks/<name>.js`, since a copy route wires what it copies. Either one: the copies were the
+    // picks (a pre-11b copy route left the unpicked out). Neither: the plugin route, set aside as above.
+    // A folder holding only the user's own files, or a leftover prelude, carries no hook line at all
+    // (R56), so under any route it is never read as the picks. `keptNone` below stays on the literal
+    // stamp line (R55): an inferred route never makes an empty folder a None.
+    // C5: at project and user scope the stored switch and HOOKS_OFF below are read from settings.json
+    // alone (`committedEnv`) - what they decide is the committed wiring, never the runner's own file.
+    const committed = committedEnv && typeof committedEnv === 'object' ? committedEnv : env;
+    const viaOff = String(envOf(committed, 'HOOKS_VIA_PLUGIN') || '').trim().toLowerCase() === 'false';
+    const wiring = JSON.stringify(stored.hooks && typeof stored.hooks === 'object' ? stored.hooks : {});
+    const wiredCopy = lines.some((l) => stackHook(l) && wiring.includes(`/.claude/hooks/${l.slice(5)}.js`));
+    const lastRoute = lastHooksRoute || (viaOff || wiredCopy ? 'copy' : 'plugin');
+    if (!routes.hooks && lastRoute === 'plugin' && lines.some(stackHook))
+    {
+        lines = lines.filter((l) => !stackHook(l));
+        for (let i = closeFrom.length - 1; i >= 0; i--) if (stackHook(closeFrom[i])) closeFrom.splice(i, 1);
+        log(lastHooksRoute ? 'installed-only: the hooks copied here are an unfinished switch to the copy route, not a pick - reading ALFRED_CODE_HOOKS_OFF instead'
+            : 'installed-only: the stamp names no hooks route, and nothing stored or wired says the copy route made the hooks copied here - read as the plugin route\'s leftovers, not a pick; reading ALFRED_CODE_HOOKS_OFF instead');
+    }
+    if (!routes.hooks && !lines.some(stackHook))
+    {
+        const keptNone = lastHooksRoute === 'copy';
+        const off = String(envOf(committed, 'HOOKS_OFF') || '');
+        const on = keptNone ? [] : off.trim() ? shipped.filter((h) => !hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: off })) : null;
+        if (on)
+        {
+            lines.push(...(on.length ? on.map((h) => `hook ${h}`) : ['hook none']));
+            log(keptNone ? 'installed-only: the copy route kept no hook here - none is copied back'
+                : `installed-only: no hook is copied here yet - copying the ${on.length} ALFRED_CODE_HOOKS_OFF does not name`);
+        }
+    }
+    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
+    const listedEngines = routes.mcps ? names.map(engineOf).filter(Boolean) : [];
+    const engines = PW_ORDER.filter((e) => listedEngines.includes(e) || pickedEngines.includes(e));
+    if (pickedEngines.length && !lines.includes('mcp browser'))
+    {
+        lines.push('mcp browser');
+        log(`installed-only: keeping mcp browser - the last install installed ${pickedEngines.join(',')} (on or off, still installed)`);
+    }
+    // Adoption is for hooks read off DISK. Read from the core that carries them, ALFRED_CODE_HOOKS_OFF
+    // is the whole answer already - a hook it does not name is on, a new release's included - and
+    // adopting against an older stamp would switch back on the very hooks the user named there.
+    if (!(routes.hooks && names.includes(BRAND.core)))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
     lines = adoptAlways({ lines, always, log });
     for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
     // run cannot tell a pick the user dropped from one it merely cannot see.
-    return { lines, closeFrom, parked, deny, installed: true, answered, engines, context7Local, blind: !ours.length };
+    return { lines, closeFrom, parked, deny, installed: true, answered, engines, blind: !ours.length };
+}
+
+// R109: plugins the stack once offered and no longer does, each with the release that dropped it. NOT a
+// retirement: each belongs to another marketplace, so no run installs, refreshes, disables or
+// uninstalls one - an installed copy is the user's own. A pick of one (a selection line, an --add) is
+// dropped with ONE line; the listed copy an older install picked is named on the first update past
+// that release only (the retired-MCP pattern, mcp.dueRetired), and is silent after it. `said` carries
+// the names already told across the run's calls, so one run says each once.
+const FORMER_PLUGINS = { superpowers: '2.0.0' };
+function dropFormerPicks({ lines = [], listing = [], lastVersion = '', compare, log = () => {}, said = new Set() } = {})
+{
+    const former = (l) =>
+    {
+        const m = /^plugin\s+(\S+)$/.exec(String(l).trim());
+        const name = m && nameOfPlugin(m[1]);
+        return name && Object.hasOwn(FORMER_PLUGINS, name) ? name : null;
+    };
+    const named = new Set(lines.map(former).filter(Boolean));
+    for (const r of listing)
+    {
+        const name = r && nameOfPlugin(r.name || '');
+        if (Object.hasOwn(FORMER_PLUGINS, name) && lastVersion && compare && compare(lastVersion, FORMER_PLUGINS[name]) < 0) named.add(name);
+    }
+    for (const name of named)
+    {
+        if (said.has(name)) continue;
+        said.add(name);
+        log(`plugin ${name}: no longer a stack pick (${FORMER_PLUGINS[name]}) - dropped from the picks; an installed copy stays as your own, never refreshed, disabled or uninstalled`);
+    }
+    return lines.filter((l) => !former(l));
+}
+
+// A skill or seat a release RENAMED (meta/stack-manifest.json `renamed`, old -> new). An older
+// install names it the old way in the stamp's picks, a copy on disk, a seat deny and a selection line
+// (--selection, --add, --drop); each is read under the new name here, so a pick is carried and a
+// switch-off holds, and the old copy goes with the retired list. `said` makes it one line per rename
+// per run, whichever of those places names it first.
+const RENAMED_KIND = { skill: 'skills', agent: 'agents', mcp: 'mcps' };
+function renamedTo({ renamed, kind, name, log = () => {}, said = new Set() })
+{
+    const to = ((renamed && renamed[RENAMED_KIND[kind]]) || {})[name];
+    if (!to) return name;
+    if (!said.has(`${kind} ${name}`)) { said.add(`${kind} ${name}`); log(`renamed: ${kind} ${name} -> ${to}`); }
+    return to;
+}
+
+function renameLines(lines = [], opts = {})
+{
+    return lines.map((l) =>
+    {
+        const m = /^\s*(skill|agent|mcp)\s+(\S+)\s*$/.exec(String(l));
+        return m ? `${m[1]} ${renamedTo({ ...opts, kind: m[1], name: m[2] })}` : l;
+    });
+}
+
+// The stamp's picks keep their `@home`: a later read-back decides from it whether the item moved.
+function renamePicked(picked, opts = {})
+{
+    if (!picked) return picked;
+    const each = (kind) => (entry) => { const { name, home } = splitPick(entry); const to = renamedTo({ ...opts, kind, name }); return home ? `${to}@${home}` : to; };
+    return { ...picked, skills: (picked.skills || []).map(each('skill')), agents: (picked.agents || []).map(each('agent')) };
+}
+
+// The read-back's VIEW of the settings: a stack seat deny under any stack spelling reads under the
+// new seat. The file itself is re-spelled by the writer (settings.js `renamed`). M1: `sharedOnly` -
+// at local scope, the entries only settings.json holds - is a file that run never writes, so no
+// rename happens there: each gets a note, never a `renamed:` line.
+function renameDeny(settings, opts = {})
+{
+    const deny = settings && settings.permissions && Array.isArray(settings.permissions.deny) ? settings.permissions.deny : null;
+    if (!deny) return settings;
+    const untouched = new Set(opts.sharedOnly || []);
+    const mapped = deny.map((entry) =>
+    {
+        const seat = stackSeat(entry);
+        const held = untouched.has(entry);
+        const to = seat ? renamedTo({ ...opts, kind: 'agent', name: seat, ...(held ? { log: () => {}, said: new Set() } : {}) }) : seat;
+        if (held && to !== seat) (opts.log || (() => {}))(`installed-only: settings.json still names ${entry} - read as ${to}; a local-scope run never writes that file, a project-scope update re-spells it`);
+        return to && to !== seat ? String(entry).replace(new RegExp(`:${seat}\\)$`), `:${to})`) : entry;
+    });
+    return { ...settings, permissions: { ...settings.permissions, deny: mapped } };
+}
+
+// R128 (Task 22 fix round 1): the names the stack itself wrote into a project - its seeded CLAUDE.md
+// and the generated rules (`baseline-project-*.md`, `project-code-style.md`) - follow a rename, so no
+// session reads a command that no longer exists. Every run, on disk: each old skill or seat name is
+// re-spelled as a whole token, longest first, never inside a longer name - so a file name that embeds
+// one (`baseline-project-related-context.md`) stays. A user's own token equal to an old stack name is
+// re-spelled too; the per-file line says how many, and a second run finds nothing.
+// The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
+// registration answers) and a backticked server name, each as written by the capture that saw it.
+function mcpRespellPairs(renamedMcps = {})
+{
+    const { renamedFrom, currentMcp } = require('./mcp.js');
+    const out = {};
+    for (const old of renamedFrom(renamedMcps))
+    {
+        const now = currentMcp(old, renamedMcps);
+        out[`mcp__plugin_${old}_${old}__`] = `mcp__plugin_${now}_${now}__`;
+        out[`mcp__${old}__`] = `mcp__${now}__`;
+        out[`\`${old}\``] = `\`${now}\``;
+    }
+    return out;
+}
+
+function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} })
+{
+    const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
+    const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
+    const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {});
+    const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
+    if (!olds.length && !mcpOlds.length) return 0;
+    const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
+    const mcpRe = mcpOlds.length ? new RegExp(mcpOlds.map(escape).join('|'), 'g') : null;
+    const rules = path.join(projectRoot, '.claude', 'rules');
+    let generated = [];
+    try { generated = fs.readdirSync(rules).filter((f) => /^(baseline-project-.+|project-code-style)\.md$/.test(f)).sort().map((f) => path.join(rules, f)); }
+    catch { generated = []; }
+    let total = 0;
+    for (const file of [path.join(projectRoot, 'CLAUDE.md'), path.join(projectRoot, '.claude', 'CLAUDE.md'), ...generated])
+    {
+        let text;
+        try { text = fs.readFileSync(file, 'utf8'); } catch { continue; }
+        let n = 0;
+        let m = 0;
+        let out = re ? text.replace(re, (old) => { n += 1; return pairs[old]; }) : text;
+        if (mcpRe) out = out.replace(mcpRe, (old) => { m += 1; return mcpPairs[old]; });
+        if (!n && !m) continue;
+        const rel = path.relative(projectRoot, file).split(path.sep).join('/');
+        try { fs.writeFileSync(file, out); }
+        catch (err) { note(`${rel} names ${n + m} old skill, seat or MCP name(s) and could not be re-spelled (${err.message})`); continue; }
+        total += n + m;
+        if (n) log(`  renamed: ${rel} - ${n} old skill or seat name(s) re-spelled to the new names`);
+        if (m) log(`  renamed: ${rel} - ${m} old MCP tool or server name(s) re-spelled to the new names`);
+    }
+    return total;
 }
 
 // `--add`: the items the user said yes to (update's new-item ask, configure's add), on top of the
@@ -352,16 +584,20 @@ function dropLines(lines, drop = [], log = () => {})
 // hand inventory unioned what the entries CARRY without the denied seats, so every configure run
 // switched them back on. A plugin the listing shows disabled is the third state validate keeps
 // apart - parked, neither installed nor absent.
-const foldMcp = (name) => (PW_ENGINE.test(name) ? 'playwright' : name === 'context7-local' ? 'context7' : name);
+const foldMcp = (name) => (PW_ENGINE.test(name) ? 'browser' : name);
 //
 // `pluginCatalog` is every plugin the catalog names, the core's companions included: an
-// enabled one is installed whatever the selection says (every run installs superpowers), or an
+// enabled one is installed whatever the selection says (a companion every run adds, or an optional
+// pick the user installed - kept, never removed), or an
 // unchanged walk would add it back on every run. `leftOut` is what the user switched off - the
 // seats denied, the items of a parked entry - so the walk's closure cannot quietly turn it back on.
+// A disabled claude-hud is parked but gets no DISABLED row: that row's accept action is an enable,
+// and the user's off wins for it (plugins.js USER_OFF_WINS).
 function planInventory({ lists, listing = [], answered, pluginCatalog = [], leftOut = [] })
 {
     const uniq = (xs) => [...new Set(xs)];
     const rowOf = new Map(listing.map((r) => [r.name, r]));
+    const pickedMcps = new Set((lists.mcps || []).map(nameOfMcp));
     const picked = uniq([...(lists.plugins || []).map(nameOfPlugin), ...pluginCatalog.filter((n) => rowOf.has(n) && rowOf.get(n).enabled)]);
     return {
         skills: uniq((lists.skills || []).map(nameOfSkill)),
@@ -370,7 +606,8 @@ function planInventory({ lists, listing = [], answered, pluginCatalog = [], left
         hooks: uniq((lists.hooks || []).map(nameOfFile)),
         mcps: uniq((lists.mcps || []).map((e) => foldMcp(nameOfMcp(e)))),
         plugins: picked.filter((n) => rowOf.has(n) && rowOf.get(n).enabled).map((n) => ({ name: n, scope: rowOf.get(n).scope })),
-        plugins_disabled: listing.filter((r) => !r.enabled).map((r) => r.name),
+        // A kept engine the user left off (R67) is their choice, not a parked entry to switch back on.
+        plugins_disabled: listing.filter((r) => !rowOn(r) && !USER_OFF_WINS.includes(r.name) && !(engineOf(r.name) && pickedMcps.has(r.name))).map((r) => r.name),
         parked_plugins: pluginCatalog.filter((n) => rowOf.has(n) && !rowOf.get(n).enabled),
         left_out: leftOut,
         answered,
@@ -400,14 +637,14 @@ function leftOut({ parked = [], deny = [] })
 // sets, MCP rows by catalog name), matched to the ENABLED listing rows, in the order the CLI accepts
 // a disable: an entry goes only once nothing still queued depends on it.
 //
-// The core, the hooks entry and the three locked servers are never queued: the core depends on the
-// servers, so the CLI would refuse, and a drop of them is refused before it gets here anyway.
-const NEVER_DISABLED = new Set(['claude-stack', 'claude-stack-hooks', 'serena', 'context7', 'memory']);
+// The core (the hooks ride it) and the three locked servers are never queued: a drop of them is
+// refused before it gets here anyway.
+const NEVER_DISABLED = new Set([BRAND.core, 'navigation', 'documentation', 'memory']);
 function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 {
     const gone = new Set(before.filter((n) => !after.includes(n)));
     const queue = listing
-        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(r.name) && gone.has(foldMcp(r.name)))
+        .filter((r) => r.marketplace === marketplace && r.enabled && !NEVER_DISABLED.has(currentName(r.name)) && gone.has(foldMcp(r.name)))
         .sort((a, b) => a.name.localeCompare(b.name));
     const out = [];
     while (queue.length)
@@ -419,6 +656,6 @@ function droppedEntries({ before, after, listing = [], deps = {}, marketplace })
 }
 
 module.exports = {
-    addLines, closeLines, dropLines, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
-    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE,
+    addLines, closeLines, dropLines, dropFormerPicks, renameLines, renamePicked, renameDeny, respellRenamed, parseSelection, applySelection, renderPlan, deriveFromDisk, hasInstall,
+    adoptHooks, adoptAlways, readBack, planInventory, leftOut, droppedEntries, CATEGORY, RULE_EXCLUDE, HOOK_EXCLUDE, FORMER_PLUGINS,
 };

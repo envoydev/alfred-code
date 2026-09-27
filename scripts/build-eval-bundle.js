@@ -7,7 +7,7 @@
 //
 // Library items are project copies, listed by no marketplace entry, so the eval CLI - which loads a
 // plugin into an isolated session - cannot see them any other way. The bundle is named
-// `claude-stack`, the core's own name, so a core agent's `claude-stack:<skill>` preload resolves as
+// `alfred-code`, the core's own name, so a core agent's `alfred-code:<skill>` preload resolves as
 // it does in a project; a library agent's BARE preload (a project copy resolves it by name) is
 // rewritten to that spelling here, in the copy, never in the source. `meta/evals/library/*` travel
 // as the bundle's `evals/`: one case per stack profile, each graded with `arm: both` so the
@@ -18,9 +18,9 @@ const { placement, CORE } = require('./plugin-placement.js');
 const { coreEntry } = require('./build-marketplace.js');
 
 const REPO = path.resolve(__dirname, '..');
-const BUNDLE_DESCRIPTION = 'Eval bundle: the claude-stack core plus the full library, for claude plugin eval only.';
+const BUNDLE_DESCRIPTION = 'Eval bundle: the alfred-code core plus the full library, for claude plugin eval only.';
 
-// Bare house preloads in the frontmatter `skills:` list become `claude-stack:<n>`; a name with a
+// Bare house preloads in the frontmatter `skills:` list become `alfred-code:<n>`; a name with a
 // colon belongs to another plugin and is left alone.
 function scopePreloads(text, houseSkills)
 {
@@ -56,7 +56,7 @@ function build(out, { repo = REPO } = {})
     fs.rmSync(out, { recursive: true, force: true });
     for (const d of ['skills', 'agents', 'commands', 'evals', '.claude-plugin']) fs.mkdirSync(path.join(out, d), { recursive: true });
 
-    fs.cpSync(path.join(repo, 'setup-plugin', 'skills', 'claude-stack'), path.join(out, 'skills', 'claude-stack'), { recursive: true });
+    fs.cpSync(path.join(repo, 'setup-plugin', 'skills', 'alfred-code'), path.join(out, 'skills', 'alfred-code'), { recursive: true });
     for (const s of skills) fs.cpSync(path.join(repo, 'stack', 'skills', s), path.join(out, 'skills', s), { recursive: true });
     for (const a of agents)
         fs.writeFileSync(path.join(out, 'agents', `${a}.md`), scopePreloads(fs.readFileSync(path.join(repo, 'stack', 'agents', `${a}.md`), 'utf8'), house));

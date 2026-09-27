@@ -1,7 +1,8 @@
 name: release
 
 # Republish the release on every release merge to main: one tar.gz + one zip source
-# snapshot per revision, tagged v<version> from the plugin manifest
+# snapshot per revision, each attached twice - as alfred-code.* and, the same bytes, under the
+# pre-rebrand name a 1.x install's archive fallback asks for - tagged v<version> from the plugin manifest
 # (setup-plugin/.claude-plugin/plugin.json) - the marketplace serves that same manifest
 # from main, so the marketplace, main, and the release always carry ONE version (the
 # parity lint keeps marketplace.json equal). A RELEASE-SOURCE file inside each archive
@@ -30,8 +31,13 @@ jobs:
       - name: Build the source archives
         run: |
           printf 'sha: %s\nref: main\nversion: %s\nbuilt: %s\n' "$GITHUB_SHA" "${{ steps.ver.outputs.version }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > RELEASE-SOURCE
-          git archive --format=tar.gz --add-file=RELEASE-SOURCE -o claude-stack.tar.gz HEAD
-          git archive --format=zip    --add-file=RELEASE-SOURCE -o claude-stack.zip    HEAD
+          git archive --format=tar.gz --add-file=RELEASE-SOURCE -o alfred-code.tar.gz HEAD
+          git archive --format=zip    --add-file=RELEASE-SOURCE -o alfred-code.zip    HEAD
+          # legacy-name - a 1.x install's archive fallback still asks for releases/latest/download/claude-stack.{tar.gz,zip}
+          # (the marketplace key it resolved through GitHub's own repo redirect never renames). Same bytes, second name -
+          # a copy, not a second `git archive` - so that fallback does not 404 for the whole 2.x line. Drop these two once 2.x ends.
+          cp alfred-code.tar.gz claude-stack.tar.gz # legacy-name
+          cp alfred-code.zip    claude-stack.zip    # legacy-name
 
       - name: Recreate the release for this version
         env:
@@ -40,6 +46,8 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true      # the pre-versioning rolling release; no-op once gone
           gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true # a same-version re-release refreshes the assets
-          gh release create "v$VERSION" claude-stack.tar.gz claude-stack.zip \
-            --latest --title "v$VERSION" \
-            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download."
+          # The assets go last, after `--` (gh's own release process passes them the same way), so the
+          # line naming the pre-rebrand pair can carry its marker.
+          gh release create "v$VERSION" --latest --title "v$VERSION" \
+            --notes "Source snapshot of main @ ${GITHUB_SHA} (plugin/marketplace version $VERSION) - consumed by the stack installers and the setup/update/configure plugin skills. RELEASE-SOURCE inside each archive names this commit; not meant for manual download. The two archives also ship under the pre-rebrand name, the same bytes, kept for a 1.x install's archive fallback for the 2.x line." \
+            -- alfred-code.tar.gz alfred-code.zip claude-stack.tar.gz claude-stack.zip # legacy-name - the 1.x archive fallback's names

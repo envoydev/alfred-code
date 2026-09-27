@@ -42,7 +42,7 @@ function run(root, payload, extra, hook = HOOK) {
   const input = typeof payload === 'string' ? payload : JSON.stringify(payload);
   return spawnSync(process.execPath, [hook], { input, encoding: 'utf8', env: env(root, extra), cwd: root });
 }
-const entryFile = (root, session) => path.join(root, '.claude', 'docs', 'history', `${session}.json`);
+const entryFile = (root, session) => path.join(root, '.alfred', 'docs', 'history', `${session}.json`);
 
 test('Stop writes the session entry and prints nothing', () => {
   const root = project();
@@ -82,22 +82,22 @@ test('SessionStart with no earlier entry on the branch prints nothing', () => {
   } finally { rmDir(root); }
 });
 
-test('CLAUDE_STACK_HISTORY=0 writes nothing and prints nothing', () => {
+test('ALFRED_CODE_HISTORY=0 writes nothing and prints nothing', () => {
   const root = project();
   try {
-    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { CLAUDE_STACK_HISTORY: '0' });
+    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: transcript(root, 's1', [['Q', 'A']]) }, { ALFRED_CODE_HISTORY: '0' });
     assert.strictEqual(r.status, 0);
     assert.strictEqual(r.stdout, '');
-    assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'history')));
   } finally { rmDir(root); }
 });
 
-test('CLAUDE_STACK_HOOKS_OFF naming the hook stands it down', () => {
+test('ALFRED_CODE_HOOKS_OFF naming the hook stands it down', () => {
   const root = project();
   try {
-    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: '' }, { CLAUDE_STACK_HOOKS_OFF: 'history-session' });
+    const r = run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: '' }, { ALFRED_CODE_HOOKS_OFF: 'history-session' });
     assert.strictEqual(r.status, 0);
-    assert.ok(!fs.existsSync(path.join(root, '.claude', 'docs', 'history')));
+    assert.ok(!fs.existsSync(path.join(root, '.alfred', 'docs', 'history')));
   } finally { rmDir(root); }
 });
 
@@ -132,5 +132,29 @@ test('a compact SessionStart in the same session does not duplicate its rulings'
     run(root, { hook_event_name: 'Stop', session_id: 's1', transcript_path: t });
     const e = JSON.parse(fs.readFileSync(entryFile(root, 's1'), 'utf8'));
     assert.strictEqual(e.rulings.length, 1);
+  } finally { rmDir(root); }
+});
+
+// R54 / Task 16 review M8: a user-scope core runs this hook in every repo the user opens. One that was
+// never set up gets no .alfred/docs/ - the prelude stands the hook down before it reads a byte.
+test('a never-set-up project under a plugin-launched hook: nothing written, nothing printed', () => {
+  const root = project();
+  try {
+    const pluginEnv = { CLAUDE_PLUGIN_ROOT: path.join(root, '..', 'plugin-cache', 'alfred-code', '2.0.0') };
+    for (const payload of [
+      { hook_event_name: 'SessionStart', session_id: 'u1', source: 'startup' },
+      { hook_event_name: 'Stop', session_id: 'u1', transcript_path: transcript(root, 'u1', [['Ship it?', 'Yes']]) },
+    ]) {
+      const r = run(root, payload, pluginEnv);
+      assert.strictEqual(r.status, 0);
+      assert.strictEqual(r.stdout + r.stderr, '');
+    }
+    assert.ok(!fs.existsSync(path.join(root, '.claude')), 'no .claude/ written into a repo the user merely opened');
+    // Positive control: the same run in a project the stack was set up in does record the session.
+    fs.mkdirSync(path.join(root, '.claude'));
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\n');
+    const r = run(root, { hook_event_name: 'Stop', session_id: 'u2', transcript_path: transcript(root, 'u2', [['Ship it?', 'Yes']]) }, pluginEnv);
+    assert.strictEqual(r.status, 0);
+    assert.ok(fs.existsSync(entryFile(root, 'u2')), 'the set-up project gets its history entry');
   } finally { rmDir(root); }
 });

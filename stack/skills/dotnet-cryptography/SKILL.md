@@ -1,6 +1,6 @@
 ---
 name: dotnet-cryptography
-description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET. Conventions for System.Security.Cryptography - pick the right primitive and use it the one correct way; the full roster, the dead-algorithm list and the post-quantum ML-KEM / ML-DSA opt-in are in the body. Floors at .NET 8 / C# 12. Secret STORAGE belongs to your secrets/config layer, never source. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, or for the OWASP category checklist - those are the authentication and security-hardening skills."
+description: "Use when encrypting, decrypting, hashing, signing, verifying, or deriving a key in .NET - System.Security.Cryptography, AES-GCM, RSA / ECDSA, PBKDF2 / Argon2id password hashing, constant-time compare, post-quantum ML-KEM / ML-DSA. Floors at .NET 8 / C# 12. Do NOT use for TLS/HTTPS pipeline config, for building a sign-in flow, for where secrets are stored, or for the OWASP category checklist - those are the authentication and security-hardening skills."
 ---
 
 # .NET cryptography
@@ -69,7 +69,7 @@ Reach for asymmetric crypto only when you actually need two parties or a public/
 
 ## Post-quantum (.NET 10+, optional)
 
-.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported`, keep a classical fallback, and check via context7 which of the three still carry the SYSLIB5006 experimental mark in your target release before you take the dependency. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
+.NET 10 introduces the NIST PQC primitives - `MLKem` (key encapsulation), `MLDsa`, and `SlhDsa` (signatures) - over platform crypto (Windows 11 / Windows Server 2025 with the PQC update, or OpenSSL 3.5+). They are **not on the .NET 8 floor**, so treat them as opt-in: gate every call on the type's static `IsSupported`, keep a classical fallback, and check via the documentation server which of the three still carry the SYSLIB5006 experimental mark in your target release before you take the dependency. The migration-ready move today is hybrid - pair a classical primitive with a PQC one so a future break in either still leaves you covered.
 
 ## Dead algorithms - do not use
 

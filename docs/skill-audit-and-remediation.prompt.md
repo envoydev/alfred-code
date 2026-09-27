@@ -66,7 +66,7 @@ Floor for A: >= 26/30.
 
 ### Dimension 2 - Structure and instruction quality (30 pts)
 
-- Valid frontmatter with `name` and `description` present and correct, by the open spec's constraints: `name` at most 64 chars of lowercase letters, digits and single hyphens (none leading or trailing), no XML tags, not the reserved words 'anthropic' or 'claude' - the plugin router `claude-stack` breaks that reserved-word rule by design (Claude Code loads it and the display reason is documented; a spec validator will reject it - record it, never rename it); `description` non-empty, at most 1,024 chars, no XML tags. Naming is consistent across the collection: this set uses noun phrases (`dotnet-testing`) where the spec prefers gerunds (`testing-dotnet`); either is fine, mixing is not. `allowed-tools` is a one-turn permission pre-approval, not a restriction; `disallowed-tools` removes tools while the skill is active and is the only least-privilege shape a skill has (none of the 79 use either - available, not owed). (4)
+- Valid frontmatter with `name` and `description` present and correct, by the open spec's constraints: `name` at most 64 chars of lowercase letters, digits and single hyphens (none leading or trailing), no XML tags, not the reserved words 'anthropic' or 'claude' - the plugin router `alfred-code` breaks that reserved-word rule by design (Claude Code loads it and the display reason is documented; a spec validator will reject it - record it, never rename it); `description` non-empty, at most 1,024 chars, no XML tags. Naming is consistent across the collection: this set uses noun phrases (`dotnet-testing`) where the spec prefers gerunds (`testing-dotnet`); either is fine, mixing is not. `allowed-tools` is a one-turn permission pre-approval, not a restriction; `disallowed-tools` removes tools while the skill is active and is the only least-privilege shape a skill has (none of the 79 use either - available, not owed). (4)
 - Progressive disclosure with logically structured references. The body stays lean and defers heavy or optional detail to `references/`, and the reference layer is organized so a reader can navigate it: one topic per reference file, descriptive filenames (`error-codes.md` beats `notes2.md`), a directory hierarchy that mirrors the skill's workflow where more than a few files exist, reference files over 100 lines carrying a table of contents (the official threshold - a partial read still sees the file's scope), and every reference linked from `SKILL.md` DIRECTLY: a file reachable only through another reference is a defect, since the model previews a nested reference with a partial read (`head -100`) and works from an incomplete file (measured here: 4 of 146 reference files sat behind a sibling). The body cites each reference at the exact step where it is needed, never as an undifferentiated link dump at the end. A pile of references with no discernible organization scores low even if each file is individually fine, because the reader cannot tell what loads when or why. (8)
 - Instructions are imperative and explain the why. Rigid all-caps MUST or NEVER walls are a smell; they score lower than the same rule with a reason attached, except where the rule is a genuine safety or privacy invariant. Freedom matches fragility: a fragile or sequence-critical step gets the exact command and no alternatives, a judgment step gets the heuristic; more than one route for one job is offered only as ONE default plus a named escape hatch; one term per concept throughout (never 'endpoint' / 'URL' / 'route' for the same thing); a dated condition ('before August 2025 use ...') moves to an 'old patterns' block; a bundled script is cited with its intent explicit - 'run X' to execute, 'see X' to read - and every constant in it justified. (6)
 - Output format is defined explicitly, with a template where the skill produces a fixed shape - and a skill that changes state names the check that proves it worked (a test run, a build, a lint, a diff against a fixture) as a numbered step, with the output contract carrying the evidence: the command and its result line, never the claim alone. A skill that ends on 'done' with no runnable check leaves the user as the verification loop. (6)
@@ -114,10 +114,10 @@ Produce a baseline report (see Output contract) before any editing.
 
 ---
 
-## Phase 1b - External currency check (context7)
+## Phase 1b - External currency check (the documentation server)
 
 Skill bodies and their references/ carry claims about the outside world - packages, version floors, API syntax in examples, deprecation statements. Training-data recall drifts, so these claims are verified against current
-documentation through the context7 MCP - never re-asserted from memory. This check changes no
+documentation through the documentation MCP - never re-asserted from memory. This check changes no
 dimension weights (scores stay comparable across audit runs); like the other set-level defects,
 an unresolved DRIFTED finding blocks the artifact from A.
 
@@ -130,14 +130,14 @@ an unresolved DRIFTED finding blocks the artifact from A.
    tradeoffs, forbidden patterns) has no external truth to check - skip it.
 3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
    at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
-   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   tail rolls to the next audit and is listed as unchecked. Documentation server unreachable: mark the whole
    check SKIPPED in the report and move on; never substitute recall for the lookup.
 4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
    | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
    verdict, evidence line) in the baseline report.
 5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
    version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
-   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   the durable policy plus a fetch-at-use pointer (the documentation server at usage time) over updating the
    number: judgment stays in the artifact, drifting facts are fetched live.
 
 ## Phase 2 - Remediation loop

@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const READ = path.join(HOOKS, 'guard-read-whole-file.js');
@@ -21,7 +22,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-rw-'));
 // docs root (measured once at 12,480 rows). Pin a scratch root and an absolute ledger for the whole
 // run; the cases that need a different root pass one of their own.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
-process.env.CLAUDE_STACK_DOCS_PATH = path.join(TMP, 'ledger');
+process.env.ALFRED_CODE_DOCS_PATH = path.join(TMP, 'ledger');
 const ROOT = process.env.CLAUDE_PROJECT_DIR;
 
 const run = (hook, payload, opts) => spawnSync(process.execPath, [hook], { input: JSON.stringify(payload), encoding: 'utf8', ...opts });
@@ -55,6 +56,43 @@ test('guard-read-whole-file: the convention rule is announced for the WRITE TARG
   assert.match(ng, /typescript-conventions\.md/, '... and the TypeScript baseline beside it');
 });
 
+test('guard-read-whole-file: a shell write to a skill file names the skill-authoring rule, a project skill under .claude included', () => {
+  // Twin of skill-authoring.md's `paths:` - a run authoring a skill through the shell gets no attach
+  // until it uses a file tool, so the hook names the rule on the first shell write, as it does for
+  // every other convention rule. The markdown rule still attaches beside it on a tracked skill file.
+  const both = announce("sed -i '' 's/a/b/' stack/skills/foo/SKILL.md", sid());
+  assert.match(both, /skill-authoring\.md/, 'a SKILL.md edit');
+  assert.match(both, /markdown-docs\.md/, 'the markdown rule on the same touch');
+  assert.match(announce('printf x > skills/foo/references/api.md', sid()), /skill-authoring\.md/, 'a reference under a skill');
+  // `.claude/skills/` is where a project keeps its own skills - authoring there is skill writing, even
+  // though the markdown rule leaves the install's own tree alone.
+  const own = announce('printf x > .claude/skills/mine/SKILL.md', sid());
+  assert.match(own, /skill-authoring\.md/, 'a project skill under .claude');
+  assert.doesNotMatch(own, /markdown-docs\.md/, 'the markdown rule still leaves .claude alone');
+  assert.doesNotMatch(announce('printf x > README.md', sid()), /skill-authoring/, 'a plain doc is not a skill');
+  assert.doesNotMatch(announce('printf x > docs/skills.md', sid()), /skill-authoring/, 'nor a doc that is only named for skills');
+  assert.equal(announce('printf x > .claude/docs/notes.md', sid()), '', 'the install tree outside a skill stays silent');
+  // The glob is case-SENSITIVE: a lowercase skill.md outside a skills/ folder is no skill file, and a
+  // backup copy is not SKILL.md.
+  assert.doesNotMatch(announce('printf x > docs/demo/skill.md', sid()), /skill-authoring/, 'a lowercase skill.md is not SKILL.md');
+  assert.doesNotMatch(announce('cp stack/skills/foo/SKILL.md stack/skills/foo/SKILL.md.bak', sid()), /skill-authoring/, 'nor is a .bak copy');
+});
+
+test('guard-read-whole-file: a .md under .claude or the docs root names no OTHER rule - the carve-out lifts for skill files only', () => {
+  // Review I1: the carve-out once dropped every such .md target before ANY rule was matched. Scoping
+  // it to markdown-docs alone let a docs note whose NAME carries another rule's pattern spend that
+  // rule's once-per-session announcement, so the real write later got nothing.
+  assert.equal(announce('printf x > .claude/docs/related-context/next.js-upgrade.md', sid()), '', 'a docs note named for a .js file');
+  assert.equal(announce('printf x > .claude/docs/architecture/references/Dockerfile.md', sid()), '', 'a docs page named for a Dockerfile');
+  const committedRoot = { env: { ...process.env, ALFRED_CODE_DOCS_PATH: 'docs' } };
+  assert.equal(announce('printf x > docs/architecture/Dockerfile.md', sid(), READ, committedRoot), '', 'a committed docs root too');
+  const skill = announce('printf x > .claude/skills/csharp/references/x.cs.md', sid());
+  assert.match(skill, /skill-authoring\.md/, 'a skill file under .claude still names the skill rule');
+  assert.doesNotMatch(skill, /csharp-conventions\.md/, '... and no other');
+  // ... while the same names outside those trees still announce their rules
+  assert.match(announce('printf x > .claude/hooks/local-check.js', sid()), /javascript-conventions\.md/, 'a non-.md write under .claude still announces');
+});
+
 test('guard-read-whole-file: only a rule this install actually has is announced', () => {
   // One measured bundle was told to read `.claude/rules/javascript-conventions.md` in a project
   // that holds 0 JS files and never installed that rule. The hook's own sibling directory IS the
@@ -75,6 +113,25 @@ test('guard-read-whole-file: only a rule this install actually has is announced'
   assert.equal(announce('cp x.js dist/app.js', s, hook, at), '', 'the one it does not is never named');
   // with no rules directory at all nothing can be told, and the announcement is made rather than dropped
   assert.match(announce('cp x.js dist/app.js', sid()), /javascript-conventions\.md/, "this repo's own stack/rules is the sibling dir here");
+});
+
+// The benchmark pilot (2026-09-26): a plugin-launched hook announced `winforms-conventions.md` to a project that
+// never installed it. On the plugin route the hook's sibling `../rules` is the PLUGIN's stack/rules - the whole
+// catalog - so every convention rule read as installed. Only the project's own `.claude/rules` says what it has.
+test('guard-read-whole-file: a plugin-launched hook reads the project\'s rules, never the plugin catalog beside it', () => {
+  const cache = fs.mkdtempSync(path.join(TMP, 'plugin-'));
+  fs.mkdirSync(path.join(cache, 'stack', 'hooks'), { recursive: true });
+  fs.mkdirSync(path.join(cache, 'stack', 'rules'), { recursive: true });
+  const hook = path.join(cache, 'stack', 'hooks', 'guard-read-whole-file.js');
+  fs.copyFileSync(READ, hook);
+  for (const r of ['winforms-conventions.md', 'csharp-conventions.md']) fs.writeFileSync(path.join(cache, 'stack', 'rules', r), '# rule\n');
+  const project = fs.mkdtempSync(path.join(TMP, 'project-'));
+  fs.mkdirSync(path.join(project, '.claude', 'rules'), { recursive: true });
+  fs.writeFileSync(path.join(project, '.claude', 'rules', 'csharp-conventions.md'), '# csharp\n');
+  const at = { cwd: project, env: { ...process.env, CLAUDE_PROJECT_DIR: project } };
+  const said = announce("sed -i '' 's/a/b/' src/MainForm.cs", sid(), hook, at);
+  assert.match(said, /csharp-conventions\.md/, 'the rule the project has');
+  assert.doesNotMatch(said, /winforms-conventions\.md/, 'the catalog\'s other rule is never named');
 });
 
 test('guard-read-whole-file: a shell loop ENDS at its own done - a later cat is not the loop body', () => {
@@ -114,7 +171,7 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(src, LONG_JS);
   const ok = run(READ, { tool_name: 'Read', tool_input: { file_path: src } });
   assert.equal(ok.status, 2);
-  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_serena_serena__get_symbols_overview/, 'the serena ladder is unchanged where it works');
+  assert.match(ok.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview/, 'the serena ladder is unchanged where it works');
 });
 
 test('guard-read-whole-file: an oversized binary or minified file is answered with PAGING, not a grep', () => {
@@ -148,7 +205,7 @@ test('guard-cross-project-write: a quote inside a $( ) substitution does not clo
   // `sed 's/<OutputType>//'` read as a redirection to `//`. ~112k tokens re-sent on the retry.
   const other = fs.mkdtempSync(path.join(TMP, 'projB-'));
   const xp = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command } },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, CLAUDE_STACK_ALLOW_WRITE_OUTSIDE: '' } }).status;
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
   assert.equal(xp(`echo "$(grep -o 'Sdk="[^"]*"' app.csproj)" && sed 's/<OutputType>//' app.csproj`), 0, 'the replayed command');
   assert.equal(xp(`sed 's/<OutputType>//' app.csproj`), 0, 'the sed alone always passed');
   assert.equal(xp(`V="$(jq -r '.name' pkg.json)"; echo "$V" > out.txt`), 0, 'an in-project write after a substitution is ordinary work');
@@ -158,4 +215,41 @@ test('guard-cross-project-write: a quote inside a $( ) substitution does not clo
   assert.equal(xp(`echo "$(cat a.txt > ${path.join(other, 'f.txt')})"`), 2,
     'and a write INSIDE the substitution is judged, not read as quoted prose');
   assert.equal(xp(`echo "a > ${path.join(other, 'f.txt')} is how you would do it"`), 0, 'while quoted PROSE is still prose');
+});
+
+test('guard-cross-project-write: a comment is not shell - an apostrophe in one never unbalances the quotes', () => {
+  // Pilot 3 prep (2026-09-27): the source-protocol snippet init runs carries a comment with an apostrophe;
+  // it flipped every quoted span after it, and `x=>/@(envoydev|...)` inside a single-quoted `node -e`
+  // program read as a redirection to `/@`. Bash ignores a word that starts with `#`, so nothing in one
+  // can write - but a real redirect on the next line is still judged.
+  const other = fs.mkdtempSync(path.join(TMP, 'projC-'));
+  const xp = (command) => run(XWRITE, { tool_name: 'Bash', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  const md = fs.readFileSync(path.join(__dirname, '..', 'setup-plugin', 'references', 'source-protocol.md'), 'utf8');
+  const snippet = [...md.matchAll(/```bash\n([\s\S]*?)```/g)][0][1];
+  assert.match(snippet, /#[^\n]*'/, 'the shipped snippet still has a comment carrying an apostrophe');
+  assert.equal(xp(snippet), 0, 'the shipped source-protocol snippet');
+  assert.equal(xp(`true   # it's a note\nnode -e 'a.filter(x=>/@(y)$/.test(x))'`), 0, 'the minimal shape');
+  assert.equal(xp(`true # > ${path.join(other, 'f.txt')}`), 0, 'a redirect inside a comment writes nothing');
+  assert.equal(xp(`true # it's a note\necho x > ${path.join(other, 'f.txt')}`), 2, 'a real redirect after a comment still blocks');
+  assert.equal(xp(`echo "# not a comment" > ${path.join(other, 'f.txt')}`), 2, 'a # inside quotes is text, and the redirect after it is real');
+  assert.equal(xp(`echo a#b > ${path.join(other, 'f.txt')}`), 2, 'a # inside a word is no comment');
+  assert.equal(xp(`echo \${#X} > ${path.join(other, 'f.txt')}`), 2, 'a length expansion is no comment');
+});
+
+test('guard-cross-project-write: a PowerShell <# #> block comment ends at #>, and blanking never hides more than base did', () => {
+  // Review A, M1: a `#` after `<` started a line comment, so `<# note #> echo x > <outside>` lost its redirect on the
+  // PowerShell route (denied at base). A block comment is blanked as its own span; a `#` after `<` starts no line comment.
+  const other = fs.mkdtempSync(path.join(TMP, 'projD-'));
+  const target = path.join(other, 'f.txt');
+  const ps = (command) => run(XWRITE, { tool_name: 'PowerShell', tool_input: { command } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: ROOT, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' } }).status;
+  assert.equal(ps(`<# note #> echo x > ${target}`), 2, 'the redirect after an inline block comment is judged');
+  assert.equal(ps(`<# a note\n   over two lines #>\necho x > ${target}`), 2, 'a block comment over several lines ends at #>');
+  assert.equal(ps(`<# it's a note > ${target} #>\necho ok`), 0, 'a redirect INSIDE the block comment writes nothing');
+  // Bash ANSI-C quoting: `$'it\'s # x'` is ONE quoted word, so the `#` in it starts no comment - the command
+  // reaches the quote parse exactly as it did at base, nothing blanked.
+  const { scanShell } = require('../stack/hooks/shell-writes.js');
+  const ansi = `echo $'it\\'s # x' > ${target}`;
+  assert.strictEqual(scanShell(ansi).command, ansi, 'an ANSI-C string blanks nothing');
 });

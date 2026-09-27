@@ -14,14 +14,14 @@
 // 2026-09-24 library test on 2.1.281. So a skill that rode a per-stack plugin could never be
 // switched off in the one project that did not want it; a project COPY can - deleted, or set to
 // 'off' / 'name-only' in `skillOverrides`, or hidden by a `paths:` line until a matching file is
-// touched. The per-stack entries v1.2.0 shipped are frozen in meta/retired-entries.json for their
-// one release of transition.
+// touched. The per-stack entries v1.2.0 shipped are frozen in meta/retired-entries.json and listed
+// while any install may still resolve through them.
 const fs = require('node:fs');
 const path = require('node:path');
 const { computeClosure } = require('./stack-select.js');
 
 const REPO = path.resolve(__dirname, '..');
-const CORE = 'claude-stack';
+const CORE = 'alfred-code';
 const LIBRARY = 'library';
 
 function readJson(rel)
@@ -87,8 +87,9 @@ function costToday(stacks, options = {})
     return { chars, skills: closed.skills.length, agents: closed.agents.length };
 }
 
-// The per-stack entries 1.2.0 shipped, frozen when they retired: listed in the marketplace for one
-// release so an installed one keeps working until update copies its picks into the project. The
+// The per-stack entries 1.2.0 shipped, frozen when they retired: listed in the marketplace so an
+// installed one keeps working until update copies its picks into the project - dropped only on
+// evidence that no install still resolves through them (rebrand-evidence S25). The
 // file stays while the names are retired - it is the only record of what each entry carried; an
 // unreadable one reads as nothing retiring.
 function readRetiredEntries(repo = REPO)
@@ -97,4 +98,13 @@ function readRetiredEntries(repo = REPO)
     catch { return []; }
 }
 
-module.exports = { placement, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, CORE, LIBRARY };
+// The plugins a release took out of the stack, each with the marketplace it came from when that is
+// not the stack's own and the line that adds its server back (meta/retired-plugins.json). Unreadable
+// reads as nothing retiring.
+function readRetiredPlugins(repo = REPO)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(repo, 'meta/retired-plugins.json'), 'utf8')).plugins || []; }
+    catch { return []; }
+}
+
+module.exports = { placement, costOf, costToday, descriptionChars, mergeSelections, readJson, readRetiredEntries, readRetiredPlugins, CORE, LIBRARY };

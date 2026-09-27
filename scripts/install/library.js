@@ -42,16 +42,34 @@ function hashItem(p)
     return h.digest('hex');
 }
 
-function copyLibrary({ sourceDir, skillsDir, agentsDir, skills = [], agents = [], stamped = null, log = () => {}, note = () => {} })
+// hashItem's single-file formula, over content already in memory - for a NORMALISED comparison
+// (library-check.js restores the docs-root placeholder before hashing) where writing a probe file
+// to disk just to hash it would be wasted work.
+function hashBuffer(name, buf)
 {
-    const out = { skills: {}, agents: {} };
+    const h = crypto.createHash('sha256');
+    return h.update(`${name}\0${buf.length}\0`).update(buf).digest('hex');
+}
+
+// Rules are a third kind, same shape as agents: no plugin ever carries one (there is no plugin
+// route for a rule), so every rule is always a library copy, on every route.
+// `render` maps `<kind>/<name>` of a single-file item to a function of its source text: the copy is
+// compared with, and written as, the rendered text - so a copy the installer itself substitutes into
+// (baseline-docs-root's `__DOCS_ROOT__`) is rewritten only when the substitution changes it.
+function copyLibrary({ sourceDir, skillsDir, agentsDir, rulesDir, skills = [], agents = [], rules = [], stamped = null, render = {}, log = () => {}, note = () => {} })
+{
+    const out = { skills: {}, agents: {}, rules: {} };
     const plan = [
         ...skills.map((name) => ({ kind: 'skills', label: 'skill', name, src: path.join(sourceDir, 'stack', 'skills', name), dst: path.join(skillsDir, name) })),
         ...agents.map((name) => ({ kind: 'agents', label: 'agent', name, src: path.join(sourceDir, 'stack', 'agents', `${name}.md`), dst: path.join(agentsDir, `${name}.md`) })),
+        ...rules.map((name) => ({ kind: 'rules', label: 'rule', name, src: path.join(sourceDir, 'stack', 'rules', `${name}.md`), dst: path.join(rulesDir, `${name}.md`) })),
     ];
     for (const item of plan)
     {
-        const want = hashItem(item.src);
+        const renderer = render[`${item.kind}/${item.name}`];
+        let body = null;
+        if (renderer) { try { body = Buffer.from(renderer(fs.readFileSync(item.src, 'utf8'))); } catch { body = null; } }
+        const want = body ? hashBuffer(path.basename(item.dst), body) : hashItem(item.src);
         if (!want) { note(`${item.label} '${item.name}' not found in the stack source`); continue; }
         const have = hashItem(item.dst);
         if (have === want) { out[item.kind][item.name] = want; continue; }
@@ -59,11 +77,12 @@ function copyLibrary({ sourceDir, skillsDir, agentsDir, skills = [], agents = []
         if (have && was && have !== was) log(`  overwriting a hand-edited copy: ${item.label} ${item.name}`);
         fs.rmSync(item.dst, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(item.dst), { recursive: true });
-        fs.cpSync(item.src, item.dst, { recursive: true });
+        if (body) fs.writeFileSync(item.dst, body);
+        else fs.cpSync(item.src, item.dst, { recursive: true });
         out[item.kind][item.name] = hashItem(item.dst);
         log(`${item.label} [library]: ${item.name}`);
     }
     return out;
 }
 
-module.exports = { hashItem, copyLibrary };
+module.exports = { hashItem, hashBuffer, copyLibrary };

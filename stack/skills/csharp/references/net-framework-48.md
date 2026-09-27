@@ -4,7 +4,7 @@ The authoritative house style for C# on .NET Framework: formatting, naming, and 
 
 Baseline: Microsoft/.NET Framework conventions with pragmatic senior-level overrides, aligned to legacy StyleCop + Rider default inspections.
 
-Language version reality: .NET Framework tops out at C# 7.3 by default with the classic Roslyn toolchain. Newer C# language versions can be forced with `<LangVersion>` on the modern SDK-style project + newer compiler, but many features fail at runtime because they need runtime/BCL support (`Index`/`Range`, `IAsyncEnumerable`, default interface members, ref-struct interop, records without an `IsExternalInit` shim). This guide assumes plain C# 7.3. Where a feature needs a shim to work on Framework, it is called out explicitly. Pin an explicit `<LangVersion>` (e.g. `8.0`), never `latest` or `default`, so a build is not machine-dependent - the property lives in `Directory.Build.props` (`dotnet-project-setup`).
+Language version reality: .NET Framework tops out at C# 7.3 by default with the classic Roslyn toolchain. Newer C# language versions can be forced with `<LangVersion>` on the modern SDK-style project + newer compiler, but many features fail at runtime because they need runtime/BCL support (`Index`/`Range`, `IAsyncEnumerable`, default interface members, ref-struct interop, records without an `IsExternalInit` shim). This guide assumes plain C# 7.3. Where a feature needs a shim to work on Framework, it is called out explicitly. Pin an explicit `<LangVersion>` (e.g. `8.0`), never `latest` or `default`, so a build is not machine-dependent - the property lives in `Directory.Build.props` (the .NET solution and package setup skill's file).
 
 Nullable reference types are NOT available on C# 7.3. Use `[NotNull]`/`[CanBeNull]` JetBrains annotations or `[ValidatedNotNull]` plus disciplined null checks instead.
 
@@ -241,7 +241,7 @@ switch (order.Status)
 ## 5. Modern BCL APIs are available - via NuGet, not in-box
 
 - `Span<T>` / `Memory<T>` (`System.Memory`), `System.Text.Json`, and `ValueTask` (`System.Threading.Tasks.Extensions`) all target net462+ and run on 4.8. Adopting `IAsyncEnumerable` or `ValueTask` on net48 is a package reference plus `<LangVersion>` 8+, not a runtime upgrade.
-- You get the API and the safety but not always the speed - which package supplies what, and why `Span<T>` is a 'slow span' on 4.8, is `dotnet-performance`.
+- You get the API and the safety but not always the speed - which package supplies what, and why `Span<T>` is a 'slow span' on 4.8, is the .NET performance and memory-layout skill's.
 
 ---
 
@@ -260,4 +260,4 @@ These need runtime/BCL support and will NOT work or need a shim:
 
 Recommendation for new Framework code: stay on 7.3 and keep it clean rather than shimming. If you want the modern feature set, that is the signal to target .NET 8+ instead.
 
-Route out: pooling / `Span` speed / serialization -> `dotnet-performance`; packages, `<LangVersion>`, and runtime config -> `dotnet-project-setup`; the migration path off Framework -> `dotnet-migrate`.
+Route out: pooling / `Span` speed / serialization -> the .NET performance and memory-layout skill; packages, `<LangVersion>`, and runtime config -> the .NET solution and package setup skill; the migration path off Framework -> `dotnet-migrate`.

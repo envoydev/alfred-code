@@ -1,6 +1,6 @@
 ---
 name: dotnet-openapi
-description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a Swagger / Scalar docs UI on an ASP.NET Core service. Covers how a service emits a correct, generated OpenAPI document and serves a browsable UI from it: picks the generator by framework floor (Swashbuckle or NSwag on .NET 8; the built-in Microsoft.AspNetCore.OpenApi with AddOpenApi / MapOpenApi on .NET 9 and up), shapes the spec with transformers, declares security schemes, splits versioned documents, and renders with Scalar. Floors at .NET 8 / C# 12. Skip it for non-HTTP code and internal APIs with no published contract."
+description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a Swagger / Scalar docs UI on an ASP.NET Core service - Swashbuckle, NSwag, Microsoft.AspNetCore.OpenApi (AddOpenApi / MapOpenApi), transformers, versioned documents. Floors at .NET 8 / C# 12. Do NOT use for non-HTTP code, internal APIs with no published contract, or the auth pipeline the scheme describes (the .NET authentication skill)."
 ---
 
 # ASP.NET Core OpenAPI - the document and the docs UI
@@ -15,18 +15,23 @@ The single discipline that runs through everything below: the document is genera
 - **On .NET 9 and up**, prefer the framework's own `Microsoft.AspNetCore.OpenApi`: `builder.Services.AddOpenApi()` and `app.MapOpenApi()`, which serves the document at `/openapi/v1.json`. It is maintained in lockstep with the framework, carries no third-party dependency, and generates at build or first request without Swashbuckle's reflection overhead. This is the choice for any new .NET 9+ service.
 - Do not run two generators side by side, and do not migrate an existing project's generator without a concrete reason - a project already on Swashbuckle stays on Swashbuckle until there's a payoff. Match what the repo already does.
 
-Built-in wiring on .NET 9+, the common path end to end - a document transformer adds the bearer scheme, `MapOpenApi` serves the JSON, and Scalar renders it behind a dev gate:
+Built-in wiring, the common path end to end - a document transformer adds the bearer scheme, `MapOpenApi` serves the JSON, and Scalar renders it behind a dev gate. The model types follow the `Microsoft.OpenApi` major the framework ships (1.x on .NET 9, 2.x on .NET 10, 3.x on .NET 11), so the snippet below is the .NET 10 shape; for any other target fetch the current transformer sample through the documentation server rather than adapting it by hand:
 ```csharp
+using Microsoft.OpenApi;   // 2.x on .NET 10; 1.x (.NET 9) uses Microsoft.OpenApi.Models
+
 builder.Services.AddOpenApi("v1", options =>
 {
     options.AddDocumentTransformer((document, context, ct) =>
     {
         document.Components ??= new OpenApiComponents();
-        document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+        document.Components.SecuritySchemes = new Dictionary<string, IOpenApiSecurityScheme>
         {
-            Type = SecuritySchemeType.Http,
-            Scheme = "bearer",
-            BearerFormat = "JWT",
+            ["Bearer"] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+            },
         };
         return Task.CompletedTask;
     });
@@ -44,7 +49,7 @@ A document is only as good as the type information it can see, and most thin spe
 
 - Return `TypedResults` from handlers, not the untyped `Results`. `TypedResults.Ok<T>()`, `TypedResults.Created<T>()`, `TypedResults.ValidationProblem()` each carry the payload type and the status code into the document; `Results.Ok()` returns `IResult` and infers nothing. This is also the house minimal-API default, so it usually comes for free.
 - Declare every outcome an endpoint can produce with `.Produces<T>(StatusCodes.Status200OK)`, `.ProducesValidationProblem()`, `.ProducesProblem(StatusCodes.Status404NotFound)`, and so on. The error bodies are RFC 9457 `ProblemDetails`, owned by the skill covering HTTP error handling; the metadata here just advertises which statuses appear.
-- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`, then wire the generator to read them - the property alone only writes the XML file, it does not put anything in the spec. On Swashbuckle (.NET 8) the wiring is `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. The built-in `Microsoft.AspNetCore.OpenApi` generator reads XML comments from .NET 10; on .NET 9 the file is produced and ignored, so the summaries never reach the document. Confirm the current gate through `context7` before relying on it. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
+- Write XML doc comments (`<summary>`, `<param>`, `<returns>`) and set `<GenerateDocumentationFile>true</GenerateDocumentationFile>`, then wire the generator to read them - the property alone only writes the XML file, it does not put anything in the spec. On Swashbuckle (.NET 8) the wiring is `o.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"))` inside `AddSwaggerGen`. The built-in `Microsoft.AspNetCore.OpenApi` generator reads XML comments from .NET 10; on .NET 9 the file is produced and ignored, so the summaries never reach the document. Confirm the current gate through `documentation` before relying on it. Either way the XML pipeline reads named methods, not inline lambdas - one more reason endpoints should delegate to named handler methods rather than carrying their bodies in the route registration.
 
 ## Shape the document with transformers
 
@@ -58,7 +63,7 @@ When the generated spec needs adjusting - a server URL, a global response, consi
 
 The spec has to describe how to authenticate, or the docs UI has no Authorize button and generated clients can't attach credentials. Declaring the scheme is documentation only - it changes nothing about how requests are actually authorized.
 
-- **Built-in:** add an `OpenApiSecurityScheme` (typically HTTP `bearer` with `bearerFormat: JWT`) to the document's components via a document transformer, and a matching security requirement so protected operations reference it.
+- **Built-in:** add an `OpenApiSecurityScheme` (typically HTTP `bearer` with `bearerFormat: JWT`) to the document's components via a document transformer, and a matching security requirement so protected operations reference it (on .NET 10, `new OpenApiSecuritySchemeReference("Bearer", document)` as the requirement's key).
 - **Swashbuckle:** `AddSecurityDefinition("Bearer", ...)` plus `AddSecurityRequirement(...)`.
 - The real authentication and authorization pipeline - the handlers, the token validation, the policies - belongs to the skill covering .NET authentication. Keep the two in sync by hand: the scheme in the spec must name the scheme the app actually enforces, but the spec never enforces anything itself.
 

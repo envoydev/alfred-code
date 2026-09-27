@@ -1,11 +1,11 @@
 ---
 name: devops
-description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, an env/secret template, or the Aspire AppHost. DevOps reference scoped to .NET / Angular / SQL delivery surfaces - on another runtime take the container and pipeline rules and treat the examples as illustrative - organized by the surface a change touches: container builds, Compose local topology, GitHub Actions CI/CD, and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code."
+description: "Load when authoring or reviewing a Dockerfile, a compose file, a workflow, a deploy pipeline, or an env/secret template. DevOps reference scoped to .NET / Angular / SQL delivery surfaces - on another runtime take the container and pipeline rules and treat the examples as illustrative - organized by the surface a change touches: container builds, Compose local topology, GitHub Actions CI/CD, and safe deploys (immutable artifact promotion, gated expand-contract migrations, health-gated cutover with rollback). Also on a delivery-stack review of the pipeline itself. Do NOT load for application or schema code, or for editing the Aspire AppHost itself (the .NET orchestration skill owns it)."
 ---
 
 # DevOps - containers, CI/CD, and safe deploys for the .NET/Angular house
 
-For any action, image, or tool flag not pinned down here, resolve it with the `context7` MCP rather than memory (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
+For any action, image, or tool flag not pinned down here, resolve it with the `documentation` MCP rather than memory.
 
 The pipeline is production code - a broken workflow blocks every merge and a leaked secret is an incident, not a warning. This is the delivery-surface map for the house stacks (ASP.NET Core, Angular, and their SQL/data layer). It pairs with whichever of these the project installed - the skill covering local cloud-native orchestration, the one covering the .NET migration workflow, and the ones covering application- and data-layer hardening (crypto primitives are a fourth). With none of them present, the rules here are the whole guidance and any check they would have run is reported UNVERIFIED. The rule under all of it - the build is reproducible, the secret never touches an image or a log, and every deploy is reversible.
 

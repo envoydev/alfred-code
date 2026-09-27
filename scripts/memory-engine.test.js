@@ -237,6 +237,21 @@ test('registeredDbPath falls back to the account .claude.json, user scope then p
   } finally { rmDir(root); rmDir(home); rmDir(config); }
 });
 
+test('registeredDbPath: settings.local.json ALFRED_CODE_MEMORY_DB wins over settings.json (Claude Code\'s own precedence)', () => {
+  const root = tmpDir('memory-reg-');
+  const home = tmpDir('memory-home-');
+  try {
+    fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({
+      env: { ALFRED_CODE_MEMORY_DB: path.join(root, '.memory-mcp', 'shared.db') },
+    }));
+    fs.writeFileSync(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({
+      env: { ALFRED_CODE_MEMORY_DB: path.join(root, '.memory-mcp', 'local.db') },
+    }));
+    assert.strictEqual(m.registeredDbPath(root, { home }), path.join(root, '.memory-mcp', 'local.db'), 'settings.local.json must win when both files hold the key');
+  } finally { rmDir(root); rmDir(home); }
+});
+
 test('registeredDbPath never throws: absent files, garbage JSON, no memory entry all read as not registered', () => {
   const root = tmpDir('memory-reg-');
   const home = tmpDir('memory-home-');
@@ -340,6 +355,22 @@ test('preferences and corrections (own or global) come first, newest first, then
     // even though the group-2 rows are newer - a correction is never crowded out by recency (I4).
     assert.deepStrictEqual(order, ['a global preference', 'a global correction', 'own newest', 'own oldest', 'sibling note']);
     assert.deepStrictEqual(counts, { own: 2, preference: 2, related: 1 });
+  } finally { rmDir(dir); }
+});
+
+test('a credential-shaped literal in a memory is redacted before the session start injects it', { skip: skipNoSqlite }, () => {
+  // The database is shared across accounts and projects, and a stored note can quote a token; the
+  // start block re-sends every stored line into every session, a new copy of the exposure each time.
+  const dir = tmpDir('memory-select-');
+  const fake = 'ghp_' + 'Z9'.repeat(18);
+  try {
+    const file = buildDb(dir, [
+      { content: `the CI token is ${fake} - rotate it`, tags: 'project:myapp', memory_type: 'reference', created_at: 500 },
+    ]);
+    const { text, counts } = m.selectForSession(file, { project: 'myapp', now: NOW, capBytes: 100000 });
+    assert.ok(!text.includes(fake), 'the value never reaches the injection');
+    assert.match(text, /the CI token is <redacted> - rotate it/, 'the note keeps its meaning');
+    assert.strictEqual(counts.own, 1);
   } finally { rmDir(dir); }
 });
 

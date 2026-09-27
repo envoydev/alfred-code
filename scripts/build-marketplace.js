@@ -9,21 +9,31 @@
 //
 // The live .claude-plugin/marketplace.json is NOT touched by --write, which only regenerates
 // meta/plugin-entries.json; --write-marketplace is the Phase 3 transcription that applies those
-// entries to the live file, leaving the generated hooks entry and the marketplace metadata alone.
+// entries - plus the two 1.x aliases and the retired per-stack entries - to the live file, leaving
+// the MCP entries and the marketplace metadata alone.
 //
 //   node scripts/build-marketplace.js --write-marketplace   apply the entries to the live file
+//   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
 // own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
 // outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
 // refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
 // entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
-// agents - plus the layer-table hook INLINE and the superpowers dependency that plugin.json used to
-// declare. Dropping either on the way across would be a silent behaviour change.
+// agents - plus the layer-table hook INLINE that plugin.json used to declare. Dropping it on the way
+// across would be a silent behaviour change.
+//
+// From 2.0.0 the core also carries EVERY stack hook inline (user ruling 'Fold into core in 2.0.0'):
+// there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
+const { loadManifest } = require('./install/manifest.js');
+const { LEGACY } = require('./install/brand.js');
+const { HOOK_PROFILES } = require('../stack/hooks/hook-prelude.js');
+const { wiringRows } = require('../stack/hooks/shell-guards.js');
+const { DEFAULT_EXCLUDE, DESKTOP_ENV } = require('../stack/mcp/desktop-launch.js');
 
 const REPO = path.resolve(__dirname, '..');
 const ENTRIES_FILE = path.join(REPO, 'meta/plugin-entries.json');
@@ -73,26 +83,60 @@ function coreEntry(options = {})
         strict: false,
         category: 'development',
         tags: ['setup', 'installer', 'skills', 'agents', 'mcp', 'bootstrap'],
+        // One /config row for the whole hook set, per user (pluginConfigs lives in the account settings
+        // only). hook-prelude.js reads it as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; a project's
+        // ALFRED_CODE_HOOKS_OFF still wins. A plain string, NOT an `options` picker: a plugin declaring
+        // `options` on any field does not load at all on Claude Code before v2.1.271
+        // (code.claude.com/docs/en/plugins-reference), and the core carries every guard. The prelude reads
+        // any value it does not know as standard, so the description names the three it knows.
+        userConfig: {
+            hook_profile: {
+                type: 'string',
+                title: 'Hook profile',
+                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
+                default: 'standard',
+            },
+        },
         commands,
-        skills: ['./setup-plugin/skills/claude-stack'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
+        skills: ['./setup-plugin/skills/alfred-code'].concat(plug.skills.map(s => `./stack/skills/${s}`)),
         agents: plug.agents.map(a => `./stack/agents/${a}.md`),
         // The layer-table guard used to be auto-discovered from setup-plugin/hooks/hooks.json. At
         // the shared root it is not, so it is declared inline - the shape Phase 2 proved for the
-        // thirteen stack hooks.
-        hooks: {
+        // stack hooks, which follow it in the same block.
+        hooks: mergeHooks({
             PreToolUse: [{
                 matcher: 'AskUserQuestion',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/guard-layer-table.js'), timeout: 10 }],
             }],
-            // Library copies move only on /claude-stack:update, so a session on a newer stack says
+            // Library copies move only on /alfred-code:update, so a session on a newer stack says
             // so once - at startup, never on a resume or a compaction.
             SessionStart: [{
                 matcher: 'startup',
                 hooks: [{ type: 'command', command: launch('setup-plugin/hooks/library-stamp.js'), timeout: 10 }],
             }],
-        },
+        }, hooksBlock(options.wirings || parseHookWirings(options.sourceDir))),
     };
     return entry;
+}
+
+// THE ONE MERGE of two hooks blocks: per event, `first`'s groups lead, and a matcher both carry is
+// one group with `first`'s hooks ahead - the grouping hooksBlock keeps, so the entry stays readable.
+// Neither input is mutated.
+function mergeHooks(first, second)
+{
+    const out = {};
+    for (const block of [first, second])
+        for (const [event, groups] of Object.entries(block || {}))
+        {
+            const list = out[event] || (out[event] = []);
+            for (const g of groups)
+            {
+                const same = list.find((h) => String(h.matcher) === String(g.matcher));
+                if (same) same.hooks.push(...g.hooks);
+                else list.push({ ...g, hooks: [...g.hooks] });
+            }
+        }
+    return out;
 }
 
 function buildEntries(options = {})
@@ -105,9 +149,11 @@ function buildEntries(options = {})
     return [coreEntry({ ...options, placement: place, version, author })];
 }
 
-// The retired per-stack entries, listed for their last release under a RETIRED description. The
+// The retired per-stack entries, listed under a RETIRED description until evidence shows no install
+// still resolves through them - an unlisted one still enabled silently stops loading (S25). The
 // shape is the one 1.2.0 shipped, so an installed entry resolves the same files until update
-// removes it.
+// removes it - its dependencies included, verbatim: the 1.x core they name is listed again as the
+// alias below, so an entry `plugin update`d before the seed runs still resolves them.
 function retiredMarketplaceEntries(options = {})
 {
     const version = options.version || marketplaceVersion(options);
@@ -117,16 +163,34 @@ function retiredMarketplaceEntries(options = {})
         const entry = {
             name: row.name,
             source: './',
-            description: 'RETIRED in 1.3.0 - run /claude-stack:update: it copies the skills and agents you picked into the project and removes this entry.',
+            description: 'RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.',
             version,
             author,
             strict: false,
         };
         if (row.skills.length) entry.skills = row.skills.map((s) => `./stack/skills/${s}`);
         if (row.agents.length) entry.agents = row.agents.map((a) => `./stack/agents/${a}.md`);
-        entry.dependencies = row.dependencies;
+        entry.dependencies = [...row.dependencies];
         return entry;
     });
+}
+
+// THE 1.x IDS, LISTED - never renamed. 2.0.0 ships no `renames` map: a rename strands a 1.x install
+// with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
+// that stays listed refreshes in place (S21). So both 1.x ids stay in the catalog through the 2.x
+// line, and the seed's migration installs the new core and removes them (install/plugins.js
+// migrateLegacy). The core's alias is the 2.0.0 core under its old name; the hooks id carries
+// nothing - an explicit empty `skills`, because an entry that omits the key auto-discovers the
+// shared root's skill folders (S20, which validated exactly this shape under --strict). Dropping
+// either from the catalog is a total blackout for a straggler still on it (S25).
+function aliasEntries(options = {})
+{
+    const core = coreEntry(options);
+    const description = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs ${CORE} and removes this entry.`;
+    return [
+        { ...core, name: LEGACY.core, description },
+        { name: LEGACY.hooks, source: './', description, version: core.version, author: core.author, strict: false, skills: [] },
+    ];
 }
 
 function serialize(entries)
@@ -138,54 +202,46 @@ function serialize(entries)
     }, null, 2) + '\n';
 }
 
-// Puts the hooks entry into the live marketplace, in place, leaving every other entry - the
-// hand-written core included - exactly where it was. The entry is GENERATED from the installer's
-// wiring table, so this is a transcription, never a place to hand-edit a matcher.
-function applyHooksPlugin(mkt, entry)
-{
-    const wanted = entry || hooksPlugin();
-    const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
-    const at = plugins.findIndex(p => p && p.name === wanted.name);
-    if (at >= 0) plugins[at] = wanted; else plugins.push(wanted);
-    return mkt;
-}
+// An entry this generator USED to write and no longer does: the hooks entry the 2.0.0 line
+// generated before the hooks folded into the core. Never released, so it is no retirement the seed
+// prunes - only a stale entry the live file must not keep installable.
+const FOLDED_ENTRIES = ['alfred-code-hooks'];
 
 // Applies the generated entries to the live marketplace, the CORE entry included from Phase 3 on.
-// Anything the generator does not own - the hooks entry, a hand-written extra - keeps its place,
-// except a RETIRED name the entries no longer carry: it would keep a dead entry installable.
+// Anything the generator does not own - an MCP entry, a hand-written extra - keeps its place,
+// except a RETIRED or FOLDED name the entries no longer carry: it would keep a dead entry installable.
 function applyToMarketplace(mkt, entries, { retired = [] } = {})
 {
-    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !retired.includes(p.name));
+    const gone = new Set([...retired, ...FOLDED_ENTRIES]);
+    const kept = (mkt.plugins || []).filter(p => !entries.some(e => e.name === p.name) && !gone.has(p.name));
     mkt.plugins = kept.concat(entries);
     return mkt;
 }
 
 // ---------------------------------------------------------------------------------------------
-// The hooks plugin entry. The wiring table has ONE home - the `HOOKS=(...)` array in
-// scripts/os/claude-stack.sh, where each row is `file::matcher::args` and a matcher starting with
-// `@` names its own event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Parsing that
-// array rather than retyping it is what keeps the plugin wiring and the settings.json wiring from
-// drifting while both routes exist, and the lint fails when the generated entry goes stale.
+// The stack hooks the core carries. The wiring table has ONE home - the `hooks` list in
+// meta/stack-manifest.json (hand-edited since Phase 7b deleted the twins that used to generate it),
+// where each row renders to `file::matcher::args` and a matcher starting with `@` names its own
+// event (`@Stop`, `@SessionStart:compact`) instead of PreToolUse. Reading that list rather than
+// retyping it is what keeps the plugin wiring and the settings.json wiring from drifting - both the
+// seed (scripts/install/manifest.js) and this generator read the same file - and the lint fails
+// when the generated entry goes stale.
 //
-// The hooks are declared INLINE in the marketplace entry, not through a `hooks/hooks.json` at the
-// shared root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry
-// over it, and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its
-// own hooks, fired once, for all six event types the stack uses.
-const INSTALLER_SH = path.join(REPO, 'scripts/os/claude-stack.sh');
+// The hooks are declared INLINE in the core entry, not through a `hooks/hooks.json` at the shared
+// root: spike S9 assert (c) measured that a shared root is auto-discovered by every entry over it,
+// and the Phase 1 and Phase 2 spikes measured that an inline block gives each entry its own hooks,
+// fired once, for all six event types the stack uses.
 
-function parseHookWirings(file)
+function parseHookWirings(sourceDir)
 {
-    const src = fs.readFileSync(file || INSTALLER_SH, 'utf8');
-    const start = src.indexOf('\nHOOKS=(');
-    if (start < 0) throw new Error('build-marketplace: no HOOKS=( array in the installer - the wiring table moved');
-    const end = src.indexOf('\n)', start);
-    if (end < 0) throw new Error('build-marketplace: the HOOKS=( array is not closed');
+    const { catalogs } = loadManifest(sourceDir || REPO);
+    if (!catalogs.hooks.length) throw new Error('build-marketplace: meta/stack-manifest.json hooks[] is empty - the wiring table moved');
+    // The shell guards' rows fold into ONE shell-guards.js row: one process per shell call, not eight.
+    const rows = wiringRows(catalogs.hooks);
     const out = [];
-    for (const line of src.slice(start, end).split('\n'))
+    for (const line of rows)
     {
-        const m = line.match(/^\s*"([^"]+)"/);
-        if (!m) continue;
-        const [file_, rawMatcher, rawArgs] = m[1].split('::');
+        const [file_, rawMatcher, rawArgs] = line.split('::');
         const wiring = { file: file_ };
         if (rawMatcher && rawMatcher.startsWith('@'))
         {
@@ -202,7 +258,7 @@ function parseHookWirings(file)
         if (args) wiring.args = args.split(/\s+/);
         out.push(wiring);
     }
-    if (!out.length) throw new Error('build-marketplace: the HOOKS=( array parsed to nothing');
+    if (!out.length) throw new Error('build-marketplace: the manifest hooks[] parsed to nothing');
     return out;
 }
 
@@ -218,23 +274,9 @@ function hooksBlock(wirings)
             group = w.matcher === undefined ? { hooks: [] } : { matcher: w.matcher, hooks: [] };
             list.push(group);
         }
-        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file) });
+        group.hooks.push({ type: 'command', command: launch(`stack/hooks/${w.file}`, w.args), timeout: timeoutFor(w.file, w.event) });
     }
     return block;
-}
-
-function hooksPlugin(options = {})
-{
-    return {
-        name: 'claude-stack-hooks',
-        source: './',
-        description: 'The seventeen claude-stack hooks, wired inline: the deterministic gates (force-push, catastrophic rm, whole-file reads, credential reads, ungated dispatch and commit, cross-project writes, weakened check configs, the stop contract, the answer budget, the fresh-session offer), a session monitor that never denies, plus the docs, memory and session-history hooks.',
-        version: options.version || marketplaceVersion(options),
-        author: options.author || { name: 'envoydev', url: 'https://github.com/envoydev' },
-        strict: false,
-        hooks: hooksBlock(options.wirings),
-        dependencies: [CORE],
-    };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -242,7 +284,7 @@ function hooksPlugin(options = {})
 // `mcpServers`, one plugin per server family. Two rulings shape what is written here, both in
 // docs/superpowers/plans/2026-09-20-plugin-native-migration-phase-6.md and both measured:
 //
-//   R1 - the plugin is NAMED for its server (`serena`, not `claude-stack-mcp-serena`), because the
+//   R1 - the plugin is NAMED for its server (`navigation`, not `alfred-code-mcp-navigation`), because the
 //        plugin name sits inside every tool name: `mcp__plugin_<plugin>_<server>__<tool>`, repeated
 //        837 times across the shipped surfaces. The short name costs 14,000 fewer characters.
 //   R3 - the version pins are resolved at RELEASE time from meta/mcp-pins.json, never from the
@@ -270,9 +312,9 @@ function readPins(options = {})
     return { suffix, pins };
 }
 
-// The four browsers the playwright catalog entry expands into - ONE PLUGIN EACH, not one plugin
+// The four browsers the browser catalog entry expands into - ONE PLUGIN EACH, not one plugin
 // declaring four servers. A plugin's servers all load together, so four in one entry would put four
-// copies of playwright's tool schemas in every session of a project that kept a single browser; the
+// copies of the browser server's tool schemas in every session of a project that kept a single browser; the
 // registration route never did that (it wrote one server per KEPT engine), and the selection already
 // knows which engines those are. One plugin per engine keeps that, and drops the `/mcp disable`
 // step the one-entry shape would have needed.
@@ -282,22 +324,27 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 // `mcp__plugin_<plugin>_<server>__<tool>`, so this is what makes every shipped tool name
 // `mcp__plugin_<n>_<n>__<tool>` for a single `<n>` - readable, and mechanical to generate. Lint
 // check 53 fails on any entry that breaks it.
+//
+// The names are the ROLE (2.0.0, the user's rename): navigation, documentation, memory, one
+// browser-<engine> per browser, and windows-desktop / macos-desktop. The upstream each one runs -
+// Serena, Context7, Playwright MCP, Windows-MCP, MacOS-MCP - is named once in its description, where a
+// reader needs it.
 
 function mcpServerShapes(options = {})
 {
     const { suffix } = readPins(options);
     const proj = '${CLAUDE_PROJECT_DIR}';
     const root = '${CLAUDE_PLUGIN_ROOT}';
-    const playwright = {};
+    const browsers = {};
     for (const engine of PW_ENGINES)
     {
-        const name = `playwright-${engine}`;
-        playwright[name] = {
-            description: `playwright (${engine}) as a plugin: drive a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
+        const name = `browser-${engine}`;
+        browsers[name] = {
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
             servers: {
                 [name]: {
                     command: 'npx',
-                    args: ['-y', `@playwright/mcp${suffix('playwright')}`, '--browser', engine,
+                    args: ['-y', `@playwright/mcp${suffix('browser')}`, '--browser', engine,
                         `--user-data-dir`, `${proj}/.playwright/${engine}`,
                         `--output-dir`, `${proj}/.playwright/${engine}/output`],
                 },
@@ -306,29 +353,29 @@ function mcpServerShapes(options = {})
     }
     return {
         // --- the three locked servers -----------------------------------------------------------
-        serena: {
+        navigation: {
             locked: true,
-            description: 'serena as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
+            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
-                serena: {
+                navigation: {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
                     // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another.
                     command: 'node',
                     // SERENA_HOME stays RELATIVE: it resolves against the server's cwd, which is the
                     // project. An absolute path here would pool every project into one home.
                     env: { SERENA_HOME: '.serena/home' },
-                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('serena')}`, '--', 'start-mcp-server',
+                    args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
                         // Always claude-code inside a Claude Code plugin; the ide-assistant value is
                         // cursor-stack's, and its own registration keeps it.
                         '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
                 },
             },
         },
-        context7: {
+        documentation: {
             locked: true,
-            description: 'context7 as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. This is the one the core depends on, so it can never be dropped; `--context7 local` adds the context7-local entry beside it for the npx transport.',
+            description: 'The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.',
             servers: {
-                context7: {
+                documentation: {
                     type: 'http',
                     url: 'https://mcp.context7.com/mcp',
                     // ':-' so an UNSET key sends an EMPTY header = the keyless free tier. A literal
@@ -338,23 +385,13 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // The local transport is its OWN entry, not a second server in the one above: two servers in
-        // one plugin both load, so every session would pay context7's schemas twice. `--context7
-        // local` enables this one, and the installer prints the `/mcp disable context7` line - the
-        // remote stays INSTALLED because the core depends on it, which is what keeps context7 locked.
-        'context7-local': {
-            description: 'context7 over the local npx transport, as a plugin: the same up-to-date library and framework documentation as the hosted server, run as a local process instead - for a setup that bakes CONTEXT7_API_KEY into the registration rather than reading it from the account settings. Added by `--context7 local`; disable the hosted `context7` server beside it, or both answer.',
-            servers: {
-                'context7-local': { command: 'npx', args: ['-y', `@upstash/context7-mcp${suffix('context7')}`] },
-            },
-        },
         memory: {
             locked: true,
             description: 'memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install\'s level choice (global, scoped or project), so this one server starts through a launcher that reads the project\'s own settings.json - a plugin entry cannot expand a PROJECT env key (measured).',
             servers: {
                 memory: {
                     // The launcher, not uvx directly: cwd is the project, so it can read
-                    // <cwd>/.claude/settings.json for CLAUDE_STACK_MEMORY_DB and exec uvx itself.
+                    // <cwd>/.claude/settings.json for ALFRED_CODE_MEMORY_DB and exec uvx itself.
                     command: 'node',
                     args: [`${root}/stack/mcp/memory-launch.js`, '--package',
                         `mcp-memory-service[sqlite]${suffix('memory')}`],
@@ -364,35 +401,29 @@ function mcpServerShapes(options = {})
                 },
             },
         },
-        // --- the five droppable servers ---------------------------------------------------------
-        ...playwright,
-        'angular-cli': {
-            description: 'The Angular CLI MCP server as a plugin: workspace-aware Angular tooling. Unpinned on purpose - it matches the ng the workspace itself resolves.',
-            servers: { 'angular-cli': { command: 'npx', args: ['-y', '@angular/cli', 'mcp'] } },
-        },
-        'chrome-devtools': {
-            description: 'chrome-devtools as a plugin: browser and extension debugging through a full Chrome. Heavy, and it needs a real Chrome on the machine, so no stack seeds it - it is an opt-in pick.',
-            servers: { 'chrome-devtools': { command: 'npx', args: ['-y', `chrome-devtools-mcp${suffix('chrome-devtools')}`] } },
-        },
-        'appium-mcp': {
-            description: 'The official Appium MCP server as a plugin: native mobile end-to-end driving with the embedded UiAutomator2 and XCUITest drivers. Needs Xcode and/or the Android SDK plus Java, so no stack seeds it - it arrives pre-selected on an appium or webdriverio dependency.',
-            servers: { 'appium-mcp': { command: 'npx', args: ['-y', `appium-mcp${suffix('appium-mcp')}`] } },
-        },
-        sentry: {
-            description: 'Sentry\'s hosted remote MCP as a plugin: issues, events and releases from the project\'s own Sentry org. SENTRY_SLUG and SENTRY_ACCESS_TOKEN live in the ACCOUNT settings.json env; the auth header is built by a helper so the token never reaches a command line, and oauth mode simply sends no header.',
+        // --- the droppable servers: one browser plugin per engine ---------------------------------
+        ...browsers,
+        // --- the desktop servers: each drives the machine's own apps, so each ships for ONE OS -----
+        // The launcher pins the Python, refuses on the other OS and applies the tool-gate override
+        // (stack/mcp/desktop-launch.js); the installer offers each only on its own OS.
+        'windows-desktop': {
+            description: `The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; ${DEFAULT_EXCLUDE.split(',').join(', ')} stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).`,
             servers: {
-                sentry: {
-                    type: 'http',
-                    // The slug expands from the ACCOUNT settings env, which a plugin url DOES read
-                    // (measured). Never '${SENTRY_SLUG:-}': the trailing slash 404s.
-                    url: 'https://mcp.sentry.dev/mcp/${SENTRY_SLUG}',
-                    // headersHelper is a STRING command - the object form is silently rejected and
-                    // takes the whole server down to 'MCP servers (0)' (measured, S11). Settings-env
-                    // keys do NOT expand here, so the helper reads the token itself; ${CLAUDE_PROJECT_DIR}
-                    // does expand, and the helper needs it because its own cwd is the PLUGIN root.
-                    // Both paths QUOTED: the string runs through a shell, so a space in either one
-                    // split it - the script unfound, or the project's oauth pin unread.
-                    headersHelper: `node "${root}/stack/mcp/sentry-headers.js" "${proj}"`,
+                'windows-desktop': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'windows-desktop', '--package', `windows-mcp${suffix('windows-desktop')}`,
+                        '--', 'serve', '--exclude-tools', DEFAULT_EXCLUDE],
+                    env: DESKTOP_ENV,
+                },
+            },
+        },
+        'macos-desktop': {
+            description: 'The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.',
+            servers: {
+                'macos-desktop': {
+                    command: 'node',
+                    args: [`${root}/stack/mcp/desktop-launch.js`, '--server', 'macos-desktop', '--package', `macos-mcp${suffix('macos-desktop')}`, '--', 'serve'],
+                    env: DESKTOP_ENV,
                 },
             },
         },
@@ -417,15 +448,47 @@ function mcpPlugins(options = {})
         };
         // The locked three depend on nothing: the installer puts them beside the core on every run,
         // and an entry with no dependency can never be disabled at load for a missing one. The
-        // droppable five are ordinary picks and name the core the way the hooks entry does.
+        // droppable browser engines are ordinary picks and name the core.
         if (!spec.locked) entry.dependencies = [CORE];
         return entry;
     });
 }
 
+// THE RENAMED MCP IDS, LISTED - the 1.x core's rule (aliasEntries) applied to the servers 2.0.0
+// renamed (meta/stack-manifest.json `renamed.mcps`). An id a catalog drops stops loading in every
+// project still enabled on it the moment its marketplace is refreshed, silently (S25) - and one
+// project's update refreshes it for every project on the account. So each old id stays listed,
+// RETIRED, carrying its successor's server under the OLD server name: a project not yet updated
+// keeps the tool names its copies spell, and its next update swaps the plugin for the new one
+// (install/plugins.js migrateRenamed). A browser engine is renamed by its prefix. Kept until
+// evidence shows no install still resolves through them - never on a release cadence.
+function mcpAliasEntries(options = {})
+{
+    const renamed = options.renamedMcps || loadManifest(options.repo || REPO).renamed.mcps;
+    const current = options.entries || mcpPlugins(options);
+    const out = [];
+    for (const [from, to] of Object.entries(renamed))
+    {
+        const pairs = current.some((e) => e.name === to) ? [[from, to]]
+            : PW_ENGINES.filter((e) => current.some((c) => c.name === `${to}-${e}`)).map((e) => [`${from}-${e}`, `${to}-${e}`]);
+        for (const [old, now] of pairs)
+        {
+            const entry = current.find((e) => e.name === now);
+            const alias = {
+                ...entry,
+                name: old,
+                description: `RETIRED in 2.0.0 - renamed ${now}. Run /alfred-code:update: it installs ${now} in its place and removes this entry.`,
+                mcpServers: { [old]: entry.mcpServers[now] },
+            };
+            out.push(alias);
+        }
+    }
+    return out;
+}
+
 function applyMcpPlugins(mkt, entries)
 {
-    const wanted = entries || mcpPlugins();
+    const wanted = entries || mcpPlugins().concat(mcpAliasEntries());
     const plugins = Array.isArray(mkt.plugins) ? mkt.plugins : (mkt.plugins = []);
     for (const w of wanted)
     {
@@ -434,8 +497,9 @@ function applyMcpPlugins(mkt, entries)
     }
     // PRUNE what this generator used to own. An MCP entry carries servers and nothing else, so it
     // is recognisable without a list of past names - which matters, because a regeneration that
-    // only adds leaves a renamed or split entry (playwright -> one plugin per engine) behind in the
-    // marketplace, enabled on every machine that already installed it.
+    // only adds leaves a split entry (one playwright -> one plugin per engine) behind in the
+    // marketplace, enabled on every machine that already installed it. A RENAMED one is not left
+    // behind: its alias is among the wanted entries (mcpAliasEntries), so it stays listed on purpose.
     const keep = new Set(wanted.map(w => w.name));
     const ownedByMcp = p => p && p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (let i = plugins.length - 1; i >= 0; i--)
@@ -462,7 +526,7 @@ function main(argv)
     {
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
-        const entries = mcpPlugins(options);
+        const entries = mcpPlugins(options).concat(mcpAliasEntries(options));
         const before = JSON.stringify(mkt, null, 2) + '\n';
         const after = JSON.stringify(applyMcpPlugins(mkt, entries), null, 2) + '\n';
         if (before === after) { console.log(`mcp entries current: ${entries.length} plugins`); return 0; }
@@ -472,15 +536,11 @@ function main(argv)
         return 0;
     }
 
+    // The core's whole hooks block - its own two plus every stack wiring - which is what lint check
+    // 48 compares with the live core. Printed, never written: --write-marketplace writes the core.
     if (argv.includes('--hooks-entry'))
     {
-        const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
-        const mkt = readJson(file, 'marketplace.json');
-        const before = JSON.stringify(mkt, null, 2) + '\n';
-        const after = JSON.stringify(applyHooksPlugin(mkt), null, 2) + '\n';
-        if (before === after) { console.log('hooks entry current: no change'); return 0; }
-        fs.writeFileSync(file, after);
-        console.log(`hooks entry written: ${Object.keys(hooksPlugin().hooks).length} event(s) -> ${path.relative(REPO, file)}`);
+        console.log(JSON.stringify(entries.find((e) => e.name === CORE).hooks, null, 2));
         return 0;
     }
 
@@ -498,9 +558,11 @@ function main(argv)
         const file = path.resolve(arg('--marketplace-file', MARKETPLACE));
         const mkt = readJson(file, 'marketplace.json');
         const before = JSON.stringify(mkt, null, 2) + '\n';
-        const { loadManifest } = require('./install/manifest.js');
-        const listed = entries.concat(retiredMarketplaceEntries());
-        const after = JSON.stringify(applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins }), null, 2) + '\n';
+        const listed = entries.concat(aliasEntries(options), retiredMarketplaceEntries());
+        const applied = applyToMarketplace(mkt, listed, { retired: loadManifest(REPO).retired.plugins });
+        // No renames map in 2.0.0 (S11/S16): the 1.x ids are LISTED as aliases instead.
+        delete applied.renames;
+        const after = JSON.stringify(applied, null, 2) + '\n';
         if (before === after) { console.log(`marketplace current: ${listed.length} entries`); return 0; }
         fs.writeFileSync(file, after);
         console.log(`marketplace written: ${listed.length} entries -> ${path.relative(REPO, file)}`);
@@ -522,4 +584,4 @@ if (require.main === module)
     catch (err) { console.error(String(err.message || err)); process.exit(1); }
 }
 
-module.exports = { buildEntries, coreEntry, retiredMarketplaceEntries, serialize, applyToMarketplace, applyHooksPlugin, applyMcpPlugins, mcpPlugins, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, hooksPlugin, get HOOKS_PLUGIN() { return hooksPlugin(); }, ENTRIES_FILE, PINS_FILE };
+module.exports = { buildEntries, coreEntry, aliasEntries, retiredMarketplaceEntries, serialize, applyToMarketplace, applyMcpPlugins, mcpPlugins, mcpAliasEntries, mcpServerShapes, readPins, PW_ENGINES, parseHookWirings, hooksBlock, mergeHooks, FOLDED_ENTRIES, ENTRIES_FILE, PINS_FILE };

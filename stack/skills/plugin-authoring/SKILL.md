@@ -9,7 +9,7 @@ A plugin is a directory Claude Code loads as one unit: a manifest under `.claude
 component folders beside it. Everything below is checked against the Claude Code plugins docs on
 2026-09-12 (the plugins guide, the plugins reference, the marketplaces page, the plugin evals
 page). A claim marked `community` comes from field reports, not the docs - re-verify it through
-context7 before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
+The documentation server before relying on it. Anything version-coupled here (a minimum CLI version, a flag) is
 re-checked the same way at the moment of use: the docs are the authority, this file is the map.
 
 ## When this skill applies
@@ -20,7 +20,8 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
 Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
-and not for a single house skill's body - a skill is authored the same way inside or outside a plugin.
+and not for a single skill's body - that is `alfred-habits-skill-writing`, the same inside or
+outside a plugin.
 
 ## The manifest - `.claude-plugin/plugin.json`
 
@@ -32,13 +33,15 @@ and `url`), `homepage`, `repository`, `license`, `keywords`, and the component p
 `workflows`, `userConfig`). Full schema, path semantics and the marketplace shape:
 `references/manifest-and-marketplace.md`.
 
-Three rules the schema does not shout about:
+Four rules the schema does not shout about:
 
 - **A component path is relative to the plugin root and starts with `./`.** Nothing may reach
   above the root with `../` - a plugin copied out of a marketplace clone loses whatever `../`
   pointed at, and validate rejects the shape.
 - **Path fields REPLACE the default folder for that component, except `skills`, which ADDS.**
-  Setting `commands: ["./cmd"]` means `./commands/` is no longer scanned; setting `skills` scans both.
+  Setting `commands: ["./cmd"]` means `./commands/` is no longer scanned; setting `skills` scans both,
+  unless the entry is sourced from the marketplace root, where the listed skill folders are the
+  whole set. Hooks, MCP and LSP servers merge by their own rules.
 - **The cache entry is the whole SOURCE, not the paths the entry lists.** An entry sourced from a
   repo ROOT caches that repo entire - every sibling folder, not just the subdir it serves as the
   plugin (measured on a real install). That is free tooling if you mean it: a plugin whose
@@ -106,15 +109,7 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
   so a multi-turn walk gains nothing from it. Commands and skills are both listed as slash entries;
   the difference that matters is DISPLAY: a plugin command lists namespaced-only, a plugin skill
   named exactly like the plugin lists bare (`/<plugin>`) - choose by what the user should see.
-- **Skills** (`skills/<name>/SKILL.md`): the description is the trigger - third person, what it
-  covers and when to use it, under the harness's listing budget, since every installed skill's
-  description is loaded on every message: the listing is capped at 1% of the context window by
-  default (`skillListingBudgetFraction`), each entry at 1,536 characters, and over budget the
-  descriptions of the least-used skills are dropped first while the names stay - `/doctor` shows the
-  cost and the biggest contributors. Body under 500 lines, references one level deep, each
-  reference over ~100 lines opening with a contents list. `disable-model-invocation: true` makes
-  a skill the USER's to type and keeps its description OUT of context (the model cannot see or
-  call it); `user-invocable: false` hides it from the slash list and keeps the description in.
+- **Skills** (`skills/<name>/SKILL.md`): load `alfred-habits-skill-writing` before the first write.
 - **Agents** (`agents/<name>.md`): a `tools:` allowlist of tools that exist, a model / effort pin
   with the measurement that justifies it, and no `hooks` / `mcpServers` / `permissionMode`.
 - **Hooks** (`hooks/hooks.json`): a `command` hook without `timeout` gets Claude Code's 600s
@@ -149,15 +144,15 @@ Run these in this order; each is cheap and each catches a class the previous one
    from a default `agents/` folder). So a plugin that lists its agents pays their descriptions ON
    TOP of the number. The estimate also ignores `disable-model-invocation`
    (the skills docs say such a description is NOT in context, yet a user-only skill still shows an
-   always-on number - measured on the claude-stack router: ~210 tok reported, 0 loaded). Read the
+   always-on number - measured on the alfred-code router: ~210 tok reported, 0 loaded). Read the
    number as the cost of every description the MODEL can see. The always-on number is what every session pays before
    the first message; a description that grows by a paragraph is costed here, never assumed free.
 4. `claude plugin eval <plugin-dir>` (Claude Code 2.1.269+) - behavioural cases under `evals/`,
    each run with and without the plugin. The command shapes, the case layout and how to read the
    with / without delta: `references/evals.md`. A `tool_used: Skill` grader that fails on natural
-   phrasing means the description, not the body, is wrong. A plugin with NO model-invocable
-   component is still evaluable, and 'nothing here is model-invocable' is not a reason to skip this
-   step: a case's `prompt.md` is a USER turn, which is exactly how a `disable-model-invocation`
+   phrasing sends you to the description rules in `alfred-habits-skill-writing`. A plugin with NO
+   model-invocable component is still evaluable, and 'nothing here is model-invocable' is not a
+   reason to skip this step: a case's `prompt.md` is a USER turn, which is exactly how a `disable-model-invocation`
    command is invoked, so a read-only walk makes a valid case whose without-arm cannot resolve the
    command at all - a clean delta. Reach for a named substitute only where every walk MUTATES a real
    install, and say so.

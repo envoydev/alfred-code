@@ -5,7 +5,7 @@ description: "Load before designing or modifying a schema, writing SQL raw or th
 
 # Database conventions
 
-For engine-specific syntax or feature support not pinned down here, resolve it with the `context7` MCP rather than memory (the routing lesson from a sibling leaf: the MCP sat live and unused because the routing line lived only in a router skill this leaf never loads).
+For engine-specific syntax or feature support not pinned down here, resolve it with the `documentation` MCP rather than memory.
 
 A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening; the deep, engine-specific work routes to the companions cited per section.
 
@@ -59,13 +59,13 @@ LIMIT 20;
 
 ## N+1 prevention
 
-- The N+1 query hides in code that reads perfectly - a loop over rows lazily fetching a relation per iteration; the fix (eager fetch or one set query) is the ORM read-path shape `dotnet-data-access` owns - for a document store, a single shaped read.
+- The N+1 query hides in code that reads perfectly - a loop over rows lazily fetching a relation per iteration; the fix (eager fetch or one set query) is the ORM's read-path shape, owned by the .NET data-access skill where the install has one - for a document store, a single shaped read.
 - Do the join in the database - never pull two tables into the application and join them in memory, which fetches more rows than the result needs and throws away the engine's join optimizer.
-- This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape belong to `dotnet-data-access`. Do not restate them here.
+- This skill is engine and SQL only. All .NET data access routes out: the ORM mechanics (`Include` / `ThenInclude`, `AsSplitQuery`, `AsNoTracking`, and their NHibernate equivalents) and read-path shape belong to the .NET data-access skill (EF Core / NHibernate / Dapper) where the install has one; without it, fetch the ORM's current API through `documentation`. Do not restate them here.
 
 ## Migrations
 
-The migration *workflow* - previewing the generated SQL, carrying a rollback, re-verifying after each step, and the matching .NET / SDK and NuGet update flows - is owned by `dotnet-migrate`. What stays here are the engine-level rules the workflow assumes:
+The migration *workflow* - previewing the generated SQL, carrying a rollback, re-verifying after each step, and the matching .NET / SDK and NuGet update flows - belongs to the .NET migration-workflow skill where the install has one (a non-.NET project runs its own migration tool's preview and rollback commands). What stays here are the engine-level rules the workflow assumes:
 
 - **Every migration is reversible.** No destructive change ships without an explicit down path; an irreversible step is a deliberate, reviewed exception, not a default.
 - **One logical change per migration**, with a descriptive name (`AddOrderShippingAddress`, never `Migration1` or `Update001`) so the history reads as a log.

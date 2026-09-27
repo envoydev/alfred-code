@@ -46,14 +46,13 @@ function seedAccountEnv({ configDir, key, value, log = () => {}, note = () => {}
     return true;
 }
 
-// Every key the stack knows that THIS RUN was handed - the slug from the flag or the launch
-// environment, the two credentials from the launch environment. A value never goes through a chat.
-function seedAccountKeys({ configDir, sentrySlug, env = {}, log, note })
+// Every key the stack knows that THIS RUN was handed, from the launch environment - since 2.0.0 cut
+// the sentry server, only context7's key. A value never goes through a chat. The SENTRY_* keys an
+// older run wrote are the user's credentials: never read here, never removed.
+function seedAccountKeys({ configDir, env = {}, log, note })
 {
     const written = [];
     const values = {
-        SENTRY_SLUG: sentrySlug || env.SENTRY_SLUG || '',
-        SENTRY_ACCESS_TOKEN: env.SENTRY_ACCESS_TOKEN || '',
         CONTEXT7_API_KEY: env.CONTEXT7_API_KEY || '',
     };
     for (const [key, value] of Object.entries(values))
@@ -73,6 +72,18 @@ function accountKeyState(configDir, key)
 // INSTALL only, once. The H1 placeholder is stamped with the repo folder name - the same __TOKEN__
 // convention as the docs-root rule, and because the seed runs once a hand-written title is never
 // clobbered.
+// The body the seed writes into .claude/CLAUDE.md for this project, or null with no template - also the
+// ledger fallback's test that a CLAUDE.md is still the unfilled seed (R10).
+function claudeMdBody({ projectRoot, sourceDir })
+{
+    let body;
+    try { body = fs.readFileSync(path.join(sourceDir, 'stack', 'CLAUDE.template.md'), 'utf8'); } catch { return null; }
+    body = body.split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
+    // Claude reads a root AGENTS.md on its own only while no CLAUDE.md exists, so the seed would switch it
+    // off: a live import under the H1 keeps it loading (resolved against this file, hence the '../').
+    return fs.existsSync(path.join(projectRoot, 'AGENTS.md')) ? body.replace(/^(#[^\n]*\n)/, '$1\n@../AGENTS.md\n') : body;
+}
+
 function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} })
 {
     if (fs.existsSync(path.join(projectRoot, 'CLAUDE.md')) || fs.existsSync(path.join(projectRoot, '.claude', 'CLAUDE.md')))
@@ -80,16 +91,17 @@ function seedClaudeMd({ projectRoot, sourceDir, log = () => {}, note = () => {} 
         log('  CLAUDE.md: already present - left as-is (finish its authoring outline if not done)');
         return false;
     }
-    const src = path.join(sourceDir, 'stack', 'CLAUDE.template.md');
-    if (!fs.existsSync(src)) { note('CLAUDE.template.md not found in the stack source'); return false; }
+    const body = claudeMdBody({ projectRoot, sourceDir });
+    if (body === null) { note('CLAUDE.template.md not found in the stack source'); return false; }
     const dest = path.join(projectRoot, '.claude', 'CLAUDE.md');
+    const agents = fs.existsSync(path.join(projectRoot, 'AGENTS.md'));
     try
     {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        const body = fs.readFileSync(src, 'utf8').split(PROJECT_NAME_TOKEN).join(path.basename(projectRoot));
         fs.writeFileSync(dest, body);
     }
     catch (err) { note(`CLAUDE.md could not be seeded (${err.message})`); return false; }
+    if (agents) log('  AGENTS.md: imported from the seeded .claude/CLAUDE.md (@../AGENTS.md), so it keeps loading');
     log("  CLAUDE.md: seeded to .claude/CLAUDE.md - write the project top from its authoring-outline comment, and keep the '.claude/*' + '!.claude/CLAUDE.md' gitignore lines so it stays committed");
     return true;
 }
@@ -101,11 +113,11 @@ function playwrightDownloads({ browsers = [], pin = '', run, log = () => {} })
     for (const engine of browsers)
     {
         if (!DOWNLOADED_ENGINES.includes(engine)) continue;
-        log(`playwright: downloading the ${engine} build the server launches`);
+        log(`browser: downloading the ${engine} build the server launches`);
         if (run(engine)) { done.push(engine); continue; }
         log(`  !! could not download ${engine} - run by hand: npx -y -p @playwright/mcp${pin} playwright install ${engine}`);
     }
     return done;
 }
 
-module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedClaudeMd, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };
+module.exports = { seedAccountEnv, seedAccountKeys, accountKeyState, seedClaudeMd, claudeMdBody, playwrightDownloads, SECRET_KEY, PROJECT_NAME_TOKEN };

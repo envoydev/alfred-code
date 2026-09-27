@@ -6,6 +6,9 @@
 // The two copies it replaces were identical, block for block, when they were moved here.
 'use strict';
 const fs = require('fs');
+// Ships beside hook-prelude.js on both routes (never among the three engines copied alone), so the
+// require is unconditional, the same assumption every other cross-file require here already makes.
+const { envOf } = require('./hook-prelude.js');
 
 // The hook's parsed payload - the transcript path and cwd the reads below need. A hook calls
 // use(payload) once, before its first call into this file.
@@ -19,20 +22,22 @@ function use(p) {
 // percentage knob it replaces was inert at its default on both real tiers (200k x 40% fell under
 // the floor, 1M x 40% sat over the ceiling), so the clamps decided and the setting lied about what
 // it controlled. Three numbers, no arithmetic: say when you want to be asked.
-//   CLAUDE_STACK_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
-//   CLAUDE_STACK_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
-//   CLAUDE_STACK_FRESH_SESSION_DEFAULT - the trigger on anything else (default 180,000)
+//   ALFRED_CODE_FRESH_SESSION_200K    - the trigger on a 200k window (default 150,000, measured)
+//   ALFRED_CODE_FRESH_SESSION_1M      - the trigger on a 1M window (default 400,000)
+//   ALFRED_CODE_FRESH_SESSION_DEFAULT - the trigger on anything else (default 180,000)
 // `0` on any of them turns that case's offer off. NOTE the 1M default sits ABOVE the harness's own
 // auto-compaction (measured preTokens 387,619 / 391,290 / 393,516 / 393,969 / 395,112 / 396,651 /
 // 396,954 / 397,171 across three projects), so on that tier the Stop offer is usually unreachable
 // by design and the SessionStart `compact` route is what reaches the user - lower the variable to
 // be asked before the harness decides. Which WINDOW this session runs in is resolved below.
+// Read through envOf, so a 1.x settings.json's CLAUDE_STACK_* spelling answers until its update // legacy-name
+// renames it - the key is passed with the ALFRED_CODE_ prefix and read by its suffix.
 function freshAt(key, dflt) {
-  const n = parseInt(process.env[key], 10);
+  const n = parseInt(envOf(process.env, String(key).replace(/^ALFRED_CODE_/, '')), 10);
   return Number.isNaN(n) || n < 0 ? dflt : n;   // garbage takes the default; 0 is a real answer (off)
 }
-const FRESH_AT_200K = freshAt('CLAUDE_STACK_FRESH_SESSION_200K', 150000);
-const FRESH_AT_1M = freshAt('CLAUDE_STACK_FRESH_SESSION_1M', 400000);
+const FRESH_AT_200K = freshAt('ALFRED_CODE_FRESH_SESSION_200K', 150000);
+const FRESH_AT_1M = freshAt('ALFRED_CODE_FRESH_SESSION_1M', 400000);
 // The DEFAULT covers every case that is not one of the two named windows: a window that cannot be
 // read at all, and one that is neither 200k nor 1M (a `[500k]` model id, say). It must be REACHABLE
 // on the smallest window it could be applied to, which is why it sits under 200,000. At 250,000 it
@@ -41,15 +46,15 @@ const FRESH_AT_1M = freshAt('CLAUDE_STACK_FRESH_SESSION_1M', 400000);
 // both Stop hooks running and neither holding. An unproven window is assumed SMALL on purpose: an
 // offer made a little early is one dismissible ask, re-armed only after 1.5x growth, while an offer
 // that can never fire is no gate at all.
-const FRESH_AT_DEFAULT = freshAt('CLAUDE_STACK_FRESH_SESSION_DEFAULT', 180000);
-// `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read
+const FRESH_AT_DEFAULT = freshAt('ALFRED_CODE_FRESH_SESSION_DEFAULT', 180000);
+// `0` on ALL THREE is the whole off switch. The retired CLAUDE_STACK_FRESH_SESSION_PCT is not read // legacy-name
 // at all any more - a percentage of a window is not what this gate fires on.
 const FRESH_OFF = FRESH_AT_200K === 0 && FRESH_AT_1M === 0 && FRESH_AT_DEFAULT === 0;
 
 // --- which context WINDOW is this session running in? -------------------------------------
 // ONE rule: the session's model id is looked up in `model-windows.json`, shipped beside this hook
 // and replaced on every update, so a new model arrives with the release that lists it. A model the
-// table does not list takes CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW (seeded 1000000); with that unset or
+// table does not list takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW (seeded 1000000); with that unset or
 // garbage, no window is known and the DEFAULT trigger applies. Nothing else decides - not a
 // `[1m]`/`[200k]` id suffix, not the carry, not a compaction. Those inferences each fixed one case
 // and broke another (Sonnet 5 runs 1M on a bare id, so the suffix read offered a resume at ~252k),
@@ -110,7 +115,7 @@ function tableWindow() {
   return best ? best.n : null;
 }
 function envWindow() {
-  const n = parseInt(process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW, 10);
+  const n = parseInt(envOf(process.env, 'DEFAULT_CONTEXT_WINDOW'), 10);
   return n >= 100000 ? n : null;
 }
 let _knownWindow;

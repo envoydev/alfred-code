@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 // SessionStart, core entry: plugins update themselves, LIBRARY copies move only on
-// /claude-stack:update. When the project's copies are from an older release than the stack that is
+// /alfred-code:update. When the project's copies are from an older release than the stack that is
 // running, say so once per session - to the user (who runs the update) and to the model (so it does
 // not trust a copy's content as current). Silent in every other case, and never fails a session.
 //
-// The project's own stamp first; a global install keeps its stamp in the account dir, so a project
-// with none of its own reads that one.
+// The project's own stamp first. A project with none of its own reads the ACCOUNT stamp only when it
+// is `legacy-global` - the same test stamp.js installState uses: an install record in the project plus
+// the 1.x account stamp. A 1.x GLOBAL install kept its stamp there until the project's first `update`
+// moves it (migrateLegacyGlobal), and that move never deletes the account copy, because another project
+// not yet updated still reads it - so the fallback is gated per project, never by a migration window: a
+// repo never set up, with the same account stamp beside it, gets silence (B-I1). The project stamp is
+// read under either name: a project the 1.x release installed holds the old stamp until its first
+// update (brand.js stampFile - the new name wins).
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -18,11 +24,21 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary;
-    try { ({ readLibrary } = require(path.join(root, 'scripts', 'install', 'stamp.js'))); } catch { return; }
+    let readLibrary, validItemName, installState, legacyAccountStamp, stampFile;
+    try
+    {
+        ({ readLibrary, validItemName, installState, legacyAccountStamp } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
+    }
+    catch { return; }
     const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
-    const own = path.join(project, '.claude', 'claude-stack.stamp');
-    const lib = readLibrary(fs.existsSync(own) ? own : path.join(account, 'claude-stack.stamp'));
+    // N3: which stamp actually answered matters - a project not yet migrated (no stamp of its own)
+    // falls back to the ACCOUNT one, and in that case the account copy is the only one running, not
+    // a shadow of a project copy that does not exist yet.
+    const projectStampFile = stampFile(path.join(project, '.claude')).read;
+    const legacyFile = !projectStampFile && installState(project, process.env) === 'legacy-global'
+        ? legacyAccountStamp({ claudeDir: path.join(project, '.claude'), env: process.env }) : null;
+    const lib = readLibrary(projectStampFile || legacyFile);
     if (!lib || !lib.version) return;
     let stack = '';
     try { stack = JSON.parse(fs.readFileSync(path.join(root, 'setup-plugin', '.claude-plugin', 'plugin.json'), 'utf8')).version || ''; } catch { return; }
@@ -33,8 +49,27 @@ function main()
     const n = (v) => String(v).split('.').map((x) => parseInt(x, 10) || 0);
     const [a, b] = [n(stack), n(lib.version)];
     const older = a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : (a[2] || 0) > (b[2] || 0);
-    if (!older) return;
-    const line = `claude-stack: this project's library copies are from ${lib.version}, the stack is ${stack} - run /claude-stack:update to take the newer skills and agents.`;
+    // I6 (R47, fix round 1): a personal skill in the ACCOUNT dir overrides a project library copy of
+    // the same name (Claude Code runs personal over project) - flagged here too, whether or not the
+    // stamp is stale, since library-check.js's own read only runs on demand (validate/status).
+    // N3: only when the PROJECT itself has migrated - with no project stamp, `lib` came from the
+    // account fallback above, and the account copy IS the project's only copy, not a shadow of one.
+    // N1/N2: a name is validated before it is ever joined against the account skills/ dir - this
+    // line's own comment above promises only a plain name is echoed into the session, and a name
+    // that fails the check is dropped before the isDir probe, never echoed.
+    const acctSkillsDir = path.join(account, 'skills');
+    const shadowed = projectStampFile ? Object.keys(lib.skills || {}).filter((name) =>
+    {
+        if (!validItemName(name, acctSkillsDir)) return false;
+        let isDir = false;
+        try { isDir = fs.statSync(path.join(acctSkillsDir, name)).isDirectory(); } catch { isDir = false; }
+        return isDir;
+    }) : [];
+    if (!older && !shadowed.length) return;
+    const parts = [];
+    if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
+    if (shadowed.length) parts.push(`an account skill overrides this project's own copy of the same name (Claude Code runs personal over project): ${shadowed.join(', ')} - remove the account copy once every project has updated`);
+    const line = `alfred-code: ${parts.join('; ')}.`;
     process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));
 }
 

@@ -1,7 +1,7 @@
 # Plugin evals - `claude plugin eval`
 
 Checked against the Claude Code plugin evals page on 2026-09-12. Requires Claude Code 2.1.269 or
-later, and every run is a real model call on the account. Re-verify flags through context7 before
+later, and every run is a real model call on the account. Re-verify flags through the documentation server before
 a CI change.
 
 Contents: [What a run is](#what-a-run-is) - [Layout](#layout) - [Graders](#graders) -
@@ -65,9 +65,9 @@ marked `arm: with-only` are not scored in the without-arm; `arm: both` forces it
 
 `WITH` is the case's score with the plugin, `W/OUT` without it, `Δ` the difference, `COST` a
 list-price estimate. The most common first finding: `Δ` near zero with the `tool_used: Skill`
-grader failing - Claude is not choosing the skill on natural phrasing, so the DESCRIPTION is
-wrong, not the body. A passing skill grader with a negative `Δ` points at the judge before the
-plugin. `--keep-temp` keeps each run's sandbox for inspection.
+grader failing - Claude is not choosing the skill on natural phrasing; the fix follows the
+description rules in `alfred-habits-skill-writing`. A passing skill grader with a negative `Δ`
+points at the judge before the plugin. `--keep-temp` keeps each run's sandbox for inspection.
 
 ## CI
 

@@ -21,9 +21,10 @@ branching, no domain logic, no state in the handler.
 
 ## Clipboard and drag-drop payloads
 
-- Custom types no longer ride onto the clipboard or a drag payload through `BinaryFormatter` - on
-  modern .NET, `Clipboard.SetData`, `SetDataObject`, `DoDragDrop`, and navigation-journal state throw
-  `PlatformNotSupportedException` for any non-intrinsic type (the runtime status and replacement are
+- Custom types no longer ride onto the clipboard or a drag payload through `BinaryFormatter` - from
+  .NET 9, a non-intrinsic type through `Clipboard.SetData`, `SetDataObject`, `DoDragDrop`, or
+  navigation-journal state hits the removed `BinaryFormatter` fallback: a `PlatformNotSupportedException`,
+  or on the clipboard's read side a 'BinaryFormatter removed' string in place of the object (the runtime status and replacement are
   `dotnet-security`'s A08).
 - Put a serializable shape across the boundary instead: a string, an intrinsic type, or your object
   serialized to JSON or a `byte[]` you re-hydrate yourself. The

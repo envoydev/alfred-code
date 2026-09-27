@@ -136,7 +136,7 @@ test('install-copy: __DOCS_ROOT__ is stamped with the value in settings.json', (
     const file = path.join(rulesDir, 'baseline-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/agent' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/agent' } }));
 
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     const text = fs.readFileSync(file, 'utf8');
@@ -155,7 +155,7 @@ test('install-copy: with no setting, the stamp writes the DEFAULT rather than le
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     const text = fs.readFileSync(file, 'utf8');
     assert.ok(!text.includes('__DOCS_ROOT__'), 'a project with no env keeps an unresolved placeholder');
-    assert.ok(text.includes('.claude/docs'), text);
+    assert.ok(text.includes('.alfred/docs'), text);
 });
 
 test('install-copy: COPY THEN STAMP is what makes the rule track a changed env', () =>
@@ -172,7 +172,7 @@ test('install-copy: COPY THEN STAMP is what makes the rule track a changed env',
 
     const cycle = (value) =>
     {
-        fs.writeFileSync(settings, JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: value } }));
+        fs.writeFileSync(settings, JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: value } }));
         run(src, rulesDir, ['baseline-docs-root.md']);
         stampDocsRoot(base, { log: () => {}, note: () => {} });
         return fs.readFileSync(path.join(rulesDir, 'baseline-docs-root.md'), 'utf8');
@@ -192,10 +192,10 @@ test('install-copy: the stamp alone is once-only - the placeholder is gone after
     const file = path.join(rulesDir, 'baseline-docs-root.md');
     fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__`.'));
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/one' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/one' } }));
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/two' } }));
+        JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/two' } }));
     stampDocsRoot(base, { log: () => {}, note: () => {} });
     assert.ok(fs.readFileSync(file, 'utf8').includes('docs/one'),
         'the stamp rewrote an already-stamped value - it must only ever replace the placeholder');
@@ -212,7 +212,7 @@ test('install-copy: a malformed settings.json is not a failure - the default ans
 
     const notes = [];
     stampDocsRoot(base, { log: () => {}, note: (m) => notes.push(m) });
-    assert.ok(fs.readFileSync(file, 'utf8').includes('.claude/docs'));
+    assert.ok(fs.readFileSync(file, 'utf8').includes('.alfred/docs'));
     assert.deepStrictEqual(notes, [], 'a garbage settings file was treated as a failure');
 });
 
@@ -256,4 +256,84 @@ test('removeDropped: deletes the copied skill, agent, rule and hook a --drop nam
         assert.strictEqual(logged.length, 4);
     }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// A 1.x settings file spells the root CLAUDE_STACK_DOCS_PATH until the settings layer's env pass // legacy-name
+// renames it - and the seed stamps the rule, migrates the docs domains and probes the docs
+// versioning BEFORE that pass. The 1.x spelling is the same root.
+test('install-copy: a 1.x CLAUDE_STACK_DOCS_PATH is the root the stamp writes', () => // legacy-name
+{
+    const { base } = fixture();
+    const rulesDir = path.join(base, '.claude', 'rules');
+    fs.mkdirSync(rulesDir, { recursive: true });
+    const file = path.join(rulesDir, 'baseline-docs-root.md');
+    fs.writeFileSync(file, rule('Docs live under `__DOCS_ROOT__/architecture`.'));
+    fs.writeFileSync(path.join(base, '.claude', 'settings.json'),
+        JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: 'docs/legacy' } })); // legacy-name
+    assert.strictEqual(require('./install/copy.js').resolveDocsRoot(base), 'docs/legacy');
+    stampDocsRoot(base, { log: () => {}, note: () => {} });
+    assert.ok(fs.readFileSync(file, 'utf8').includes('docs/legacy/architecture'));
+});
+
+// R98 / R99 (Task 18b fix round 2): the read-back lays the stack keys settings.local.json holds over
+// settings.json at every scope, but the docs root is not one of its readers - at project and user
+// scope the stamped rule names settings.json's root, the shared one, even where a local key shadows it.
+test('install-copy: at project and user scope the docs root is settings.json\'s alone; at local scope the local file wins (R98)', () =>
+{
+    const { base } = fixture();
+    fs.mkdirSync(path.join(base, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(base, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/shared' } }));
+    fs.writeFileSync(path.join(base, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_DOCS_PATH: 'docs/mine' } }));
+    const { resolveDocsRoot } = require('./install/copy.js');
+    assert.strictEqual(resolveDocsRoot(base, 'project'), 'docs/shared');
+    assert.strictEqual(resolveDocsRoot(base, 'user'), 'docs/shared');
+    assert.strictEqual(resolveDocsRoot(base, 'local'), 'docs/mine');
+});
+
+// A `"type": "module"` project makes Node load every `.js` beneath it as ESM, `.claude/hooks/` included,
+// so the copied CommonJS hooks crash (a guard with exit 1 lets its call through). The marker scopes
+// the folder back - and is the stack's only while it says exactly that.
+test('commonJsScope: marks a folder of stack copies, keeps the user\'s own, prunes its own when the copies leave', () =>
+{
+    const dir = path.join(TMP, `cjs-${++seq}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const stackFiles = ['docs.js', 'memory.js', 'model-windows.json'];
+    const marker = path.join(dir, 'package.json');
+
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'none', 'an empty folder gets no marker');
+    assert.ok(!fs.existsSync(marker));
+
+    fs.writeFileSync(path.join(dir, 'docs.js'), "'use strict';\n");
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'written');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(marker, 'utf8')), { type: 'commonjs' });
+    const before = fs.statSync(marker).mtimeMs;
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'current', 'a re-run leaves the marker as it is');
+    assert.strictEqual(fs.statSync(marker).mtimeMs, before);
+
+    fs.rmSync(path.join(dir, 'docs.js'));
+    fs.writeFileSync(path.join(dir, 'mine.js'), "'use strict';\n");
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'pruned', 'no stack copy left - the marker goes');
+    assert.ok(!fs.existsSync(marker));
+
+    const notes = [];
+    fs.writeFileSync(path.join(dir, 'memory.js'), "'use strict';\n");
+    fs.writeFileSync(marker, '{ "type": "module", "private": true }\n');
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: (m) => notes.push(m) }), 'user');
+    assert.strictEqual(fs.readFileSync(marker, 'utf8'), '{ "type": "module", "private": true }\n', 'the user\'s package.json is never rewritten');
+    assert.match(notes.join('\n'), /hooks\/package\.json/);
+    fs.rmSync(path.join(dir, 'memory.js'));
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles }), 'none', 'nor pruned');
+    assert.ok(fs.existsSync(marker));
+
+    fs.rmSync(marker);
+    fs.writeFileSync(path.join(dir, 'memory.js'), "'use strict';\n");
+    fs.writeFileSync(path.join(dir, 'mine.js'), "import fs from 'node:fs';\nexport const x = 1;\n");
+    const esmNotes = [];
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: (m) => esmNotes.push(m) }), 'user-esm', 'a marker would break the user\'s own ES-module hook');
+    assert.ok(!fs.existsSync(marker));
+    assert.match(esmNotes.join('\n'), /mine\.js/);
+
+    fs.writeFileSync(marker, 'not json');
+    assert.strictEqual(copy.commonJsScope({ dir, stackFiles, note: () => {} }), 'user', 'an unreadable package.json is the user\'s too');
+    assert.strictEqual(fs.readFileSync(marker, 'utf8'), 'not json');
 });

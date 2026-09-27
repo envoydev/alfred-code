@@ -24,23 +24,28 @@
 // wrapper script - is NOT caught here; this guard reads the literal command.
 'use strict';
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const { execFileSync } = require('child_process');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// R86: a repo never set up keeps this guard live but gets no block row (R54) - false fails open to logging.
+let unsetRepo = false;
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-protected-force-push')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-protected-force-push');
+    unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 
 // A heredoc body is DATA, not shell: a plan or checklist that merely DESCRIBES this command is
@@ -141,29 +146,53 @@ function pushArgs(seg)
 
     // Walk git's own options/values before the subcommand (`-C dir`, `-c k=v`, `--git-dir=...`).
     let j = i + 1;
+    const dirs = [];
     while (j < tokens.length && tokens[j].startsWith('-'))
     {
         const opt = tokens[j];
         j++;
         if ((opt === '-C' || opt === '-c') && j < tokens.length)
         {
+            if (opt === '-C') dirs.push(unquote(tokens[j]));
             j++; // skip the option's value token
         }
     }
 
-    return tokens[j] === 'push' ? tokens.slice(j + 1) : null;
+    if (tokens[j] !== 'push') return null;
+    const after = tokens.slice(j + 1);
+    after.dirs = dirs; // where git runs: each -C resolves against the one before it
+    return after;
+}
+
+// The directory a segment's `cd` moves the shell to, for the segments after it. An unexpanded
+// variable is not guessed.
+function cdTarget(seg)
+{
+    const m = seg.trim().match(/^(?:cd|pushd|chdir|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|\S+)$/i);
+    if (!m) return null;
+    const dest = unquote(m[1]);
+    return /\$/.test(dest) ? null : dest.replace(/^~(?=$|\/)/, require('os').homedir());
 }
 
 // Block a push that would force-update, delete, or mirror a protected branch.
 function isProtectedForcePush(command, cwd)
 {
+    const path = require('path');
+    let shellCwd = cwd;
     for (const seg of command.split(SEPARATORS))
     {
+        const moved = cdTarget(seg);
+        if (moved !== null) shellCwd = path.resolve(shellCwd, moved);
         const after = pushArgs(seg);
         if (after === null)
         {
             continue;
         }
+        const gitCwd = after.dirs.reduce((at, d) => (/\$/.test(d) ? at : path.resolve(at, d)), shellCwd);
+        // HEAD and @ name the branch checked out where git runs - `git push -f origin HEAD` on main is
+        // the bare force spelled out, and read literally it named no protected branch and passed.
+        let head;
+        const branchOf = (ref) => (ref === 'HEAD' || ref === '@' ? (head === undefined ? (head = currentBranch(gitCwd)) : head) : ref);
 
         // FORCE_FLAG catches -f / --force / --force-with-lease / --force-if-includes as whole tokens;
         // also catch clustered short flags (-fu, -uf, -fv): single-dash token containing f.
@@ -182,7 +211,7 @@ function isProtectedForcePush(command, cwd)
         // Explicit refspec whose destination is a protected branch, when the op is a
         // force ('+' prefix or a force flag) or a delete (--delete/-d, or ':dst').
         // Unquote first so a quoted token - `"main"` or `"+main"` - is read correctly.
-        const targets = after.filter(t => !t.startsWith('-') && PROTECTED.includes(normalizeBranch(refDestination(t))));
+        const targets = after.filter(t => !t.startsWith('-') && PROTECTED.includes(branchOf(normalizeBranch(refDestination(t)))));
         for (const t of targets)
         {
             const u = unquote(t);
@@ -193,7 +222,7 @@ function isProtectedForcePush(command, cwd)
         }
 
         // Bare push targets HEAD's branch - block a force or delete of a protected one.
-        if (isBarePush(after) && PROTECTED.includes(currentBranch(cwd)) && (hasForceFlag || hasDeleteFlag))
+        if (isBarePush(after) && PROTECTED.includes(branchOf('HEAD')) && (hasForceFlag || hasDeleteFlag))
         {
             return true;
         }
@@ -232,18 +261,18 @@ function main()
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2)
+            if (code === 2 && !unsetRepo)
             {
                 try
                 {
                     const path = require('path');
                     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-                    // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+                    // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
                     fs.mkdirSync(dir, { recursive: true });
-                    fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+                    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
                         ts: new Date().toISOString(),
                         hook: path.basename(__filename),
                         event: payload.hook_event_name || payload.tool_name || '',
@@ -269,7 +298,7 @@ function main()
     }
 
     process.stderr.write(
-        'Rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
+        'Blocked: rewriting or deleting a shared branch (main/master/develop) is forbidden - a house rule enforced here, no prose copy to consult - ' +
         'no force-push, branch deletion, or --mirror. Push to a feature branch and open a PR; ' +
         'use --force-with-lease only on your own feature branch.\n');
     process.exit(2);

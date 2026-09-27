@@ -7,7 +7,19 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This engine ships alone (copied // legacy-name
+// beside history-session.js, without hook-prelude.js), so its own copy of envOf is inline rather
+// than required - pinned with the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
+
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const historyDir = (root) => path.resolve(root, docsRootEnv(), 'history');
 
 // pinned copy of guard-secret-value.js SECRET_SHAPE, no g flag (shared-rules: credential-literal-shapes)
@@ -88,7 +100,7 @@ function blocks(root, session) {
 
 function upsert(root, payload) {
   try {
-    const session = String(payload.session_id || 'nosession');
+    const session = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
     const dir = historyDir(root);
     ensureDir(dir);
     const file = path.join(dir, `${session}.json`);

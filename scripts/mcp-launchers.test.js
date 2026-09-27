@@ -1,11 +1,11 @@
 'use strict';
-// The two small programs a plugin MCP entry cannot do without: the memory launcher, which turns the
-// install's level choice into a db path, and the sentry headers helper, which decides whether there
-// is an auth header at all. Both exist because a plugin entry expands only the SHELL and the ACCOUNT
-// settings env - a PROJECT settings key arrives literal (measured, docs/plugin-migration-evidence.md).
+// The small programs a plugin MCP entry cannot do without: the memory launcher, which turns the
+// install's level choice into a db path, and the serena and uv-python launchers. They exist because
+// a plugin entry expands only the SHELL and the ACCOUNT settings env - a PROJECT settings key arrives
+// literal (measured, docs/plugin-migration-evidence.md).
 //
-// Every case runs on a SCRUBBED environment. This machine has a real SENTRY_ACCESS_TOKEN exported,
-// and a test that inherited it would put a live credential in its own assertions.
+// Every case runs on a SCRUBBED environment. This machine has real credentials exported, and a test
+// that inherited one would put a live credential in its own assertions.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -15,7 +15,6 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const LAUNCH = path.join(ROOT, 'stack/mcp/memory-launch.js');
-const HEADERS = path.join(ROOT, 'stack/mcp/sentry-headers.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-launchers-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
@@ -45,39 +44,37 @@ function resolveDb(projectDir, env)
     return out.trim();
 }
 
-function runHeaders(projectDir, env)
-{
-    return execFileSync(process.execPath, [HEADERS, projectDir],
-        { env: { ...BARE, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-}
-
 // ------------------------------------------------------------------ memory-launch.js
 
 test('memory-launch: the project settings env is the db, because a plugin entry cannot read it', () =>
 {
-    const { dir } = project('proj-db', { settings: { CLAUDE_STACK_MEMORY_DB: '/tmp/chosen/memory.db' } });
+    const { dir } = project('proj-db', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/chosen/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/chosen/memory.db');
 });
 
-test('memory-launch: settings.local.json is the per-machine override, read after settings.json', () =>
+// I7 (R47, fix round 1): settings.local.json is read BEFORE settings.json, the same order
+// uv-python.js already uses - a local-scope install (T16) writes ALFRED_CODE_MEMORY_DB only to the
+// local file, so reading the shared file first would open the wrong project's database whenever a
+// repo also carries a committed project-scope install.
+test('memory-launch: settings.local.json is the per-machine override, and it WINS over settings.json', () =>
 {
-    const { dir } = project('local-db', { local: { CLAUDE_STACK_MEMORY_DB: '/tmp/local/memory.db' } });
+    const { dir } = project('local-db', { local: { ALFRED_CODE_MEMORY_DB: '/tmp/local/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
-    // ... and settings.json WINS when both are present: it is what the install wrote.
+    // ... and stays the winner once settings.json also registers one: local is this machine's own.
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'),
-        JSON.stringify({ env: { CLAUDE_STACK_MEMORY_DB: '/tmp/installed/memory.db' } }));
-    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/installed/memory.db');
+        JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/tmp/installed/memory.db' } }));
+    assert.strictEqual(resolveDb(dir, { HOME: dir }), '/tmp/local/memory.db');
 });
 
 test('memory-launch: the ACCOUNT settings env answers for a global install', () =>
 {
-    const { dir, acct } = project('acct-db', { account: { CLAUDE_STACK_MEMORY_DB: '/tmp/acct/memory.db' } });
+    const { dir, acct } = project('acct-db', { account: { ALFRED_CODE_MEMORY_DB: '/tmp/acct/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct }), '/tmp/acct/memory.db');
 });
 
 test('memory-launch: an explicit MCP_MEMORY_SQLITE_PATH wins over every file', () =>
 {
-    const { dir } = project('env-db', { settings: { CLAUDE_STACK_MEMORY_DB: '/tmp/chosen/memory.db' } });
+    const { dir } = project('env-db', { settings: { ALFRED_CODE_MEMORY_DB: '/tmp/chosen/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir, MCP_MEMORY_SQLITE_PATH: '/tmp/forced/memory.db' }),
         '/tmp/forced/memory.db');
 });
@@ -91,7 +88,7 @@ test('memory-launch: no key anywhere falls back to the global default, never to 
 
 test('memory-launch: a RELATIVE value resolves against the project, the way the docs engine reads it', () =>
 {
-    const { dir } = project('rel-db', { settings: { CLAUDE_STACK_MEMORY_DB: '.memory-mcp/memory.db' } });
+    const { dir } = project('rel-db', { settings: { ALFRED_CODE_MEMORY_DB: '.memory-mcp/memory.db' } });
     assert.strictEqual(resolveDb(dir, { HOME: dir }), path.join(dir, '.memory-mcp/memory.db'));
 });
 
@@ -108,111 +105,6 @@ test('memory-launch: a hand-edited entry with no --package says so instead of la
     try { execFileSync(process.execPath, [LAUNCH], { env: BARE, stdio: 'pipe' }); }
     catch (err) { code = err.status; }
     assert.strictEqual(code, 2);
-});
-
-// ------------------------------------------------------------------ sentry-headers.js
-
-test('sentry-headers: token mode prints the Sentry-Bearer header, the scheme the API takes', () =>
-{
-    const { dir, acct } = project('sentry-token', { account: { SENTRY_ACCESS_TOKEN: 'sntryu_TESTVALUE' } });
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer sntryu_TESTVALUE' });
-});
-
-test('sentry-headers: oauth mode prints NO header, and the two modes never mix', () =>
-{
-    const { dir, acct } = project('sentry-oauth', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'sntryu_TESTVALUE' },
-    });
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct })), {});
-});
-
-test('sentry-headers: no token in token mode degrades to no header, never to a broken one', () =>
-{
-    const { dir, acct } = project('sentry-none');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct })), {});
-});
-
-test('sentry-headers: stdout is ONE json object and nothing else - it becomes the request headers', () =>
-{
-    const { dir, acct } = project('sentry-quiet');
-    fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '{ not json');
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.strictEqual(out, '{}');
-    assert.doesNotThrow(() => JSON.parse(out));
-});
-
-test('sentry-headers: the SHELL env wins where it survives - the copy route and a run by hand', () =>
-{
-    const { dir, acct } = project('sentry-shell', { account: { SENTRY_ACCESS_TOKEN: 'from-file' } });
-    const out = runHeaders(dir, { HOME: dir, CLAUDE_CONFIG_DIR: acct, SENTRY_ACCESS_TOKEN: 'from-shell' });
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer from-shell' });
-});
-
-// The environment this helper ACTUALLY gets on the plugin route. Claude Code removes every variable
-// whose name carries TOKEN, SECRET, PASSWORD, KEY or AUTH from a helper a plugin or a project
-// `.mcp.json` supplies (https://code.claude.com/docs/en/mcp, 'Which variables a helper can read'),
-// and BOTH keys this file reads are such names - so a user who only exported the token gets no
-// header, and the account settings.json is the only source that answers. Scrub the env the way the
-// docs describe and the file path has to carry the whole job.
-const scrub = (env) => Object.fromEntries(Object.entries(env)
-    .filter(([k]) => !/TOKEN|SECRET|PASSWORD|KEY|AUTH/i.test(k)));
-
-test('sentry-headers: with the credential variables removed, the ACCOUNT FILE still answers', () =>
-{
-    const { dir, acct } = project('sentry-scrubbed', { account: { SENTRY_ACCESS_TOKEN: 'from-file' } });
-    const out = runHeaders(dir, scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, SENTRY_ACCESS_TOKEN: 'from-shell' }));
-    assert.deepStrictEqual(JSON.parse(out), { Authorization: 'Sentry-Bearer from-file' },
-        'the shell export reached a helper that cannot read it, or the file source stopped answering');
-});
-
-test('sentry-headers: the oauth PIN survives the scrub too - it is read from a file, not the env', () =>
-{
-    const { dir, acct } = project('sentry-scrubbed-oauth', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'from-file' },
-    });
-    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct, CLAUDE_STACK_SENTRY_AUTH: 'token' });
-    assert.ok(!('CLAUDE_STACK_SENTRY_AUTH' in env), 'the scrub must drop the mode key - it carries AUTH');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, env)), {},
-        'oauth mode pinned in the project settings lost to an env value the runtime removes');
-});
-
-// The helper STRING runs through a shell ('Use dynamic headers for custom authentication',
-// code.claude.com/docs/en/mcp), so an unquoted placeholder splits on a space: a plugin root under a
-// home like 'C:\Users\First Last' lost the script, a project path with a space lost the settings
-// that pin oauth. So the GENERATED string runs here through sh with a space in both, once with the
-// placeholders substituted as text (how ${CLAUDE_PROJECT_DIR} arrives) and once exported. The
-// oauth pin is the witness: a split project path reads no pin and sends the token instead.
-test('sentry-headers: the generated helper string survives a space in the plugin root and the project', { skip: process.platform === 'win32' && 'sh is not the Windows shell' }, () =>
-{
-    const { mcpServerShapes } = require('./build-marketplace.js');
-    const helper = mcpServerShapes().sentry.servers.sentry.headersHelper;
-    const root = path.join(TMP, 'plugin root');
-    fs.mkdirSync(path.join(root, 'stack', 'mcp'), { recursive: true });
-    fs.copyFileSync(HEADERS, path.join(root, 'stack', 'mcp', 'sentry-headers.js'));
-    const { dir, acct } = project('sentry project dir', {
-        settings: { CLAUDE_STACK_SENTRY_AUTH: 'oauth' },
-        account: { SENTRY_ACCESS_TOKEN: 'from-file' },
-    });
-    const env = { ...BARE, HOME: dir, CLAUDE_CONFIG_DIR: acct };
-    for (const [how, line, extra] of [
-        ['substituted', helper.replaceAll('${CLAUDE_PLUGIN_ROOT}', root).replaceAll('${CLAUDE_PROJECT_DIR}', dir), {}],
-        ['exported', helper, { CLAUDE_PLUGIN_ROOT: root, CLAUDE_PROJECT_DIR: dir }],
-    ])
-    {
-        const out = execFileSync('sh', ['-c', line], { env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-        assert.deepStrictEqual(JSON.parse(out), {}, `${how}: ${helper} lost a path to the space`);
-    }
-});
-
-test('sentry-headers: CLAUDE_CONFIG_DIR is NOT a credential name, so a space install still finds its account file', () =>
-{
-    const { dir, acct } = project('sentry-space', { account: { SENTRY_ACCESS_TOKEN: 'space-token' } });
-    const env = scrub({ HOME: dir, CLAUDE_CONFIG_DIR: acct });
-    assert.strictEqual(env.CLAUDE_CONFIG_DIR, acct, 'the scrub swallowed the config dir - the account file would be unreachable');
-    assert.deepStrictEqual(JSON.parse(runHeaders(dir, env)), { Authorization: 'Sentry-Bearer space-token' });
 });
 
 // ------------------------------------------------------------------ uv-python.js + the uvx launches
@@ -252,17 +144,17 @@ test('uv-python: an x64 node emulated on Windows ARM still sees the ARM machine 
     assert.strictEqual(pythonRequest({ platform: 'linux', arch: 'x64', env: { PROCESSOR_ARCHITECTURE: 'ARM64' } }), '3.13');
 });
 
-test('uv-python: CLAUDE_STACK_UV_PYTHON overrides the choice; an empty one does not', () =>
+test('uv-python: ALFRED_CODE_UV_PYTHON overrides the choice; an empty one does not', () =>
 {
-    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: { CLAUDE_STACK_UV_PYTHON: '3.12' } }), '3.12');
-    assert.strictEqual(pythonRequest({ platform: 'darwin', arch: 'arm64', env: { CLAUDE_STACK_UV_PYTHON: '  ' } }), '3.13');
+    assert.strictEqual(pythonRequest({ platform: 'win32', arch: 'arm64', env: { ALFRED_CODE_UV_PYTHON: '3.12' } }), '3.12');
+    assert.strictEqual(pythonRequest({ platform: 'darwin', arch: 'arm64', env: { ALFRED_CODE_UV_PYTHON: '  ' } }), '3.13');
 });
 
 test('uv-python: the override is read from the settings files a plugin server never gets as env - this machine first', () =>
 {
-    const { dir, acct } = project('uvpy-files', { settings: { CLAUDE_STACK_UV_PYTHON: '3.11' }, local: { CLAUDE_STACK_UV_PYTHON: '3.12' }, account: { CLAUDE_STACK_UV_PYTHON: '3.10' } });
+    const { dir, acct } = project('uvpy-files', { settings: { ALFRED_CODE_UV_PYTHON: '3.11' }, local: { ALFRED_CODE_UV_PYTHON: '3.12' }, account: { ALFRED_CODE_UV_PYTHON: '3.10' } });
     const ask = (extra = {}) => pythonRequest({ platform: 'linux', arch: 'x64', env: { CLAUDE_CONFIG_DIR: acct, ...extra }, projectDir: dir });
-    assert.strictEqual(ask({ CLAUDE_STACK_UV_PYTHON: '3.9' }), '3.9', 'the shell env beats every file');
+    assert.strictEqual(ask({ ALFRED_CODE_UV_PYTHON: '3.9' }), '3.9', 'the shell env beats every file');
     assert.strictEqual(ask(), '3.12', 'settings.local.json is this machine');
     fs.rmSync(path.join(dir, '.claude', 'settings.local.json'));
     assert.strictEqual(ask(), '3.11', 'then the project settings.json');
@@ -270,6 +162,24 @@ test('uv-python: the override is read from the settings files a plugin server ne
     assert.strictEqual(ask(), '3.10', 'a malformed file falls through to the account');
     fs.rmSync(path.join(acct, 'settings.json'));
     assert.strictEqual(ask(), '3.13', 'no override anywhere is the machine default');
+});
+
+// F4 item 2: a --space account's directory is named by CLAUDE_CONFIG_DIR, never derived from HOME.
+// overrideFrom resolves the account dir as `env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')`
+// - already CLAUDE_CONFIG_DIR-first. Proven here with an account directory that is NOT '<home>/.claude'
+// (the shape a --space account actually has, e.g. '<home>/.claude-work'): the value the module reads
+// is the one at the CLAUDE_CONFIG_DIR path, so the lookup is not hardcoded to a HOME-derived layout.
+test('uv-python: the account read is keyed by CLAUDE_CONFIG_DIR itself, not a HOME-derived .claude path (a --space account)', () =>
+{
+    const spaceDir = path.join(TMP, 'uvpy-space-acct-not-dot-claude');
+    fs.mkdirSync(spaceDir, { recursive: true });
+    fs.writeFileSync(path.join(spaceDir, 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_UV_PYTHON: '3.10-space' } }));
+    const { dir } = project('uvpy-space-project', {});
+    assert.strictEqual(
+        pythonRequest({ platform: 'linux', arch: 'x64', env: { CLAUDE_CONFIG_DIR: spaceDir }, projectDir: dir }),
+        '3.10-space',
+        'the account file at the CLAUDE_CONFIG_DIR path must answer, whatever that directory is named',
+    );
 });
 
 // A stub uvx on PATH records the argv it was started with, so the launches are read, not guessed.
@@ -318,7 +228,7 @@ for (const [label, script] of [['serena', 'serena-launch.js'], ['memory', 'memor
 {
     test(`${label} launcher: the server's exit code comes back, and stdout carries nothing of the launcher's`, POSIX, () =>
     {
-        const { dir } = project(`${label}-exit`, { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, `${label}-exit-db`, 'memory.db') } });
+        const { dir } = project(`${label}-exit`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `${label}-exit-db`, 'memory.db') } });
         const PATH = scriptedUvx(`${label}-exit`, "process.stderr.write('dying\\n'); process.exit(7);");
         let res;
         try { res = { status: 0, stdout: execFileSync(process.execPath, [path.join(ROOT, 'stack/mcp', script), '--package', 'pkg==1', '--', 'x'], { cwd: dir, env: { ...BARE, PATH, HOME: dir }, stdio: 'pipe', encoding: 'utf8' }) }; }
@@ -329,7 +239,7 @@ for (const [label, script] of [['serena', 'serena-launch.js'], ['memory', 'memor
 
     test(`${label} launcher: a stop signal reaches the server instead of orphaning it`, POSIX, async () =>
     {
-        const { dir } = project(`${label}-sig`, { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, `${label}-sig-db`, 'memory.db') } });
+        const { dir } = project(`${label}-sig`, { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, `${label}-sig-db`, 'memory.db') } });
         const ready = path.join(TMP, `${label}-sig-ready`);
         const got = path.join(TMP, `${label}-sig-got`);
         const PATH = scriptedUvx(`${label}-sig`, `const fs = require('fs'); process.on('SIGTERM', () => { fs.writeFileSync(${JSON.stringify(got)}, 'SIGTERM'); process.exit(0); }); fs.writeFileSync(${JSON.stringify(ready)}, '1'); setInterval(() => {}, 1000);`);
@@ -367,18 +277,18 @@ test('serena home spelling for the copy route: backslash on Windows, forward sla
     for (const p of ['darwin', 'linux']) assert.strictEqual(serenaHomeFor(p), '.serena/home', p);
 });
 
-test('serena-launch: CLAUDE_STACK_UV_PYTHON reaches uvx', POSIX, () =>
+test('serena-launch: ALFRED_CODE_UV_PYTHON reaches uvx', POSIX, () =>
 {
     const { dir } = project('serena-override');
     const uvx = stubUvx('serena-override');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
-        { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_STACK_UV_PYTHON: 'cpython-3.13-windows-x86_64-none' }, stdio: 'pipe' });
+        { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, ALFRED_CODE_UV_PYTHON: 'cpython-3.13-windows-x86_64-none' }, stdio: 'pipe' });
     assert.deepStrictEqual(uvx.argv().argv.slice(0, 2), ['--python', 'cpython-3.13-windows-x86_64-none']);
 });
 
 test('serena-launch: an override in the PROJECT settings reaches uvx, though the entry never passes it', POSIX, () =>
 {
-    const { dir, acct } = project('serena-proj-override', { settings: { CLAUDE_STACK_UV_PYTHON: '3.12' } });
+    const { dir, acct } = project('serena-proj-override', { settings: { ALFRED_CODE_UV_PYTHON: '3.12' } });
     const uvx = stubUvx('serena-proj-override');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct }, stdio: 'pipe' });
@@ -395,9 +305,125 @@ test('serena-launch: a hand-edited entry with no --package says so instead of la
 
 test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, () =>
 {
-    const { dir } = project('memory-run', { settings: { CLAUDE_STACK_MEMORY_DB: path.join(TMP, 'memory-run-db', 'memory.db') } });
+    const { dir } = project('memory-run', { settings: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'memory-run-db', 'memory.db') } });
     const uvx = stubUvx('memory');
     execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir }, stdio: 'pipe' });
     assert.deepStrictEqual(uvx.argv().argv, ['--python', '3.13', '--with', 'numpy', '--from', 'mcp-memory-service[sqlite]==11.13.0', 'memory', 'server']);
+});
+
+// ------------------------------------------------------------------ desktop-launch.js
+// The two desktop servers drive THIS machine's own apps: windows-desktop (Windows-MCP) on Windows,
+// macos-desktop (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
+// on any host.
+const DESKTOP = path.join(ROOT, 'stack/mcp/desktop-launch.js');
+const WIN_ARGS = ['--server', 'windows-desktop', '--package', 'windows-mcp==0.8.5', '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process'];
+const MAC_ARGS = ['--server', 'macos-desktop', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
+
+function desktopRun(name, args, { env = {}, settings } = {})
+{
+    const { dir, acct } = project(name, { settings });
+    const uvx = stubUvx(name);
+    let res;
+    try { res = { status: 0, stderr: '', stdout: execFileSync(process.execPath, [DESKTOP, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, CLAUDE_CONFIG_DIR: acct, ...env }, stdio: 'pipe', encoding: 'utf8' }) }; }
+    catch (err) { res = { status: err.status, stderr: String(err.stderr || ''), stdout: String(err.stdout || '') }; }
+    let argv = null;
+    try { argv = uvx.argv().argv; } catch { /* uvx never started */ }
+    return { ...res, argv };
+}
+
+test('desktop-launch: windows-desktop gets the Python pin, the pinned package, serve and the safe tool gate, in order', POSIX, () =>
+{
+    const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
+    assert.strictEqual(got.status, 0, got.stderr);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process']);
+    assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
+});
+
+test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and none passes no gate at all', POSIX, () =>
+{
+    const one = desktopRun('desktop-win-one', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } });
+    assert.deepStrictEqual(one.argv.slice(4), ['windows-mcp', 'serve', '--exclude-tools', 'PowerShell']);
+    const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(none.argv.slice(4), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
+    const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
+    assert.deepStrictEqual(empty.argv.slice(6), ['--exclude-tools', 'PowerShell,Registry,Process'], 'an empty override is no override');
+});
+
+test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
+{
+    const got = desktopRun('desktop-win-proj', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' }, settings: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
+    assert.deepStrictEqual(got.argv.slice(4), ['windows-mcp', 'serve']);
+});
+
+test('desktop-launch: macos-desktop runs serve on the pin, and the Windows gate never reaches it', POSIX, () =>
+{
+    const got = desktopRun('desktop-mac', MAC_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'Shell' } });
+    assert.strictEqual(got.status, 0, got.stderr);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve']);
+});
+
+test('desktop-launch: on another OS the server does not start, and one line says why', POSIX, () =>
+{
+    for (const [name, args, platform] of [['desktop-win-on-mac', WIN_ARGS, 'darwin'], ['desktop-mac-on-win', MAC_ARGS, 'win32'], ['desktop-win-on-linux', WIN_ARGS, 'linux']])
+    {
+        const got = desktopRun(name, args, { env: { ALFRED_CODE_PLATFORM: platform } });
+        assert.strictEqual(got.status, 1, name);
+        assert.strictEqual(got.argv, null, `${name}: uvx was started on the wrong OS`);
+        assert.match(got.stderr, /drives (Windows|macOS) apps and this machine runs (macOS|Windows|Linux)/, name);
+    }
+});
+
+// I4 (final review of the rename): the refusal said 'switch it off here with /plugin', which for a
+// project-scope entry writes the committed settings.json and switches it off for the teammate on the
+// right OS at their next pull. It names the local-scope disable - this machine only - and the marketplace
+// key the launcher runs from (its plugin-cache folder), the stack's own key outside a cache.
+test('desktop-launch: the wrong-OS line names the local-scope disable, for this machine only (I4)', POSIX, () =>
+{
+    const got = desktopRun('desktop-win-on-mac-line', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'darwin' } });
+    assert.strictEqual(got.status, 1);
+    assert.match(got.stderr, /not started - keep it off on this machine only: claude plugin disable windows-desktop@envoydev --scope local\n$/);
+    assert.doesNotMatch(got.stderr, /\/plugin/, 'the /plugin toggle writes the scope the entry sits at - a project one reaches every teammate');
+    const cached = path.join(TMP, 'cache-copy', 'plugins', 'cache', 'acme-key', 'windows-desktop', '2.0.0', 'stack', 'mcp');
+    fs.mkdirSync(cached, { recursive: true });
+    for (const f of ['desktop-launch.js', 'uv-python.js']) fs.copyFileSync(path.join(ROOT, 'stack/mcp', f), path.join(cached, f));
+    let stderr = '';
+    try { execFileSync(process.execPath, [path.join(cached, 'desktop-launch.js'), ...WIN_ARGS], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'linux' }, stdio: 'pipe', encoding: 'utf8' }); }
+    catch (err) { stderr = String(err.stderr || ''); }
+    assert.match(stderr, /claude plugin disable windows-desktop@acme-key --scope local/, 'the marketplace key is the cache folder the launcher runs from');
+});
+
+test('desktop-launch: a hand-edited entry with no --server or --package says so instead of launching something else', () =>
+{
+    for (const args of [['--package', 'windows-mcp==0.8.5', '--', 'serve'], ['--server', 'windows-desktop', '--', 'serve'], ['--server', 'linux-desktop', '--package', 'x==1']])
+    {
+        let code = 0;
+        try { execFileSync(process.execPath, [DESKTOP, ...args], { env: { ...BARE, ALFRED_CODE_PLATFORM: 'win32' }, stdio: 'pipe' }); }
+        catch (err) { code = err.status; }
+        assert.strictEqual(code, 2, args.join(' '));
+    }
+});
+
+test('desktop-launch: the server\'s exit code comes back', POSIX, () =>
+{
+    const { dir } = project('desktop-exit');
+    const PATH = scriptedUvx('desktop-exit', "process.stderr.write('dying\\n'); process.exit(7);");
+    let status = 0;
+    try { execFileSync(process.execPath, [DESKTOP, ...MAC_ARGS], { cwd: dir, env: { ...BARE, PATH, HOME: dir, ALFRED_CODE_PLATFORM: 'darwin' }, stdio: 'pipe' }); }
+    catch (err) { status = err.status; }
+    assert.strictEqual(status, 7);
+});
+
+test('desktop gate: each server runs on its own OS only, and an unknown platform override is ignored', () =>
+{
+    const { offeredOn, platformOf, DESKTOP_OS } = require(DESKTOP);
+    assert.deepStrictEqual(DESKTOP_OS, { 'windows-desktop': 'win32', 'macos-desktop': 'darwin' });
+    assert.strictEqual(offeredOn('windows-desktop', 'win32'), true);
+    assert.strictEqual(offeredOn('windows-desktop', 'darwin'), false);
+    assert.strictEqual(offeredOn('macos-desktop', 'darwin'), true);
+    assert.strictEqual(offeredOn('macos-desktop', 'linux'), false);
+    assert.strictEqual(offeredOn('browser', 'linux'), true, 'a server that is no desktop server runs anywhere');
+    assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'win32' }), 'win32');
+    assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'beos' }), process.platform);
+    assert.strictEqual(platformOf({}), process.platform);
 });

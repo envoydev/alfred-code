@@ -5,7 +5,7 @@ description: "JavaScript language conventions, framework-agnostic - the base lay
 
 # JavaScript conventions - the base language layer
 
-For any runtime or package API surface not pinned down here, reach for the `context7` MCP rather than memory - never by grepping `node_modules` bundles (measured: one session spent ~5.2k tokens grep/sed-ing a minified package for an answer the live MCP held; the routing line lived only in a router skill this leaf never loads).
+For any runtime or package API surface not pinned down here, reach for the `documentation` MCP rather than memory - never by grepping `node_modules` bundles.
 
 These are the language rules for every piece of JS-family code, independent of where it runs. The TypeScript type-layer skill stacks on top of this baseline and owns everything type-system: strict flags, type modeling, and checked-JS-via-JSDoc. A framework adds its own layer above that. **A project's own config and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.**
 

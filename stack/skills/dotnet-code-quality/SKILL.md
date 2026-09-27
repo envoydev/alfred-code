@@ -1,6 +1,6 @@
 ---
 name: dotnet-code-quality
-description: "Use when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate in .NET - or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Do NOT use for authoring Roslyn analyzers or source generators (dotnet-source-generators) or for test-suite quality (dotnet-testing)."
+description: "Use when setting up or fixing formatting, analyzers, .editorconfig, warnings-as-errors, or a CI quality gate in .NET - or when the user names CSharpier, dotnet format, Roslynator, editorconfig, analyzer, AnalysisLevel, or NoWarn. .NET conventions for mechanically enforcing code quality: making the house style a build gate, not a review opinion. Floors at .NET 8 / C# 12. Do NOT use for authoring Roslyn analyzers or source generators (the source-generator skill) or for test-suite quality (dotnet-testing)."
 ---
 
 # .NET code quality - enforcement, not opinion

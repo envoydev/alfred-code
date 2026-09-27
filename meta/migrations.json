@@ -12,7 +12,7 @@
    ],
    "unwire_settings_hook": "inject-code-style.js",
    "why": "style delivery moved to the generated path-scoped project-code-style rule - the hook's injected context never reached subagent tool calls",
-   "then": "re-run /project-code-style-analyzer so the replacement rule gets generated"
+   "then": "re-run /alfred-capture-code-style so the replacement rule gets generated"
   },
   {
    "id": "docs-path-env-rename",
@@ -88,6 +88,33 @@
    },
    "why": "the DEFAULT tier applies when the context window cannot be read at all, and 250000 sat ABOVE a 200k window entirely, so on that tier the fresh-session gate could never fire and silently did not exist. The seed is absent-only and ctxThreshold() clamps a too-large trigger only when the window is KNOWN - which by definition it is not on this tier - so no other mechanism reaches an install carrying it (measured 2026-09-12: 3 of 3 current-shape installs still on 250000). Reset ONLY where the value is still that seed; a trigger the user chose is theirs and stays",
    "then": "nothing - the next session on an unreadable window is offered the fresh-session resume at 180,000 tokens of carry"
+  },
+  {
+   "id": "alfred-code-settings-prefix",
+   "since": "2.0.0",
+   "detect": {
+    "settings_env_prefix": "CLAUDE_STACK_"
+   },
+   "remove": [],
+   "rename_settings_env_prefix": {
+    "from": "CLAUDE_STACK_",
+    "to": "ALFRED_CODE_"
+   },
+   "why": "the product is Alfred Code from 2.0.0; every setting it owns carries its name",
+   "then": "nothing - each value moves with its key, and the hooks read the old name until this runs"
+  },
+  {
+   "id": "sentry-auth-retired",
+   "since": "2.0.0",
+   "detect": {
+    "settings_env_key": "ALFRED_CODE_SENTRY_AUTH"
+   },
+   "remove": [],
+   "remove_settings_env": {
+    "key": "ALFRED_CODE_SENTRY_AUTH"
+   },
+   "why": "2.0.0 cut the sentry MCP server from the stack (R26), and with it the headers helper this key told which auth mode to send - nothing reads it any more, and a dead key in the env block reads as a knob that still works. The account file's SENTRY_SLUG and SENTRY_ACCESS_TOKEN are the user's credentials and are left exactly where they are",
+   "then": "nothing - to keep a Sentry server, add it yourself at the scope the install uses: claude mcp add --transport http --scope project sentry https://mcp.sentry.dev/mcp on a project install, or the same line with --scope user on a global one"
   }
  ]
 }

@@ -1,5 +1,5 @@
 'use strict';
-// THE PYTHON EVERY uvx-LAUNCHED STACK SERVER RUNS ON - one answer, read by both launchers and by the
+// THE PYTHON EVERY uvx-LAUNCHED STACK SERVER RUNS ON - one answer, read by every launcher and by the
 // installer's copy route, so the plugin entries and a .mcp.json registration can never disagree.
 //
 // uvx takes the newest interpreter it can find or download, and that is the failure: serena-agent
@@ -9,13 +9,13 @@
 // ruamel.yaml.clib ship no ARM64 wheel on ANY Python, while the x64 CPython runs there under the
 // OS's own emulation with every wheel (docs/uv-python-pin-evidence.md).
 //
-//   CLAUDE_STACK_UV_PYTHON   a uv python request that replaces the choice below (e.g. 3.12), read
+//   ALFRED_CODE_UV_PYTHON   a uv python request that replaces the choice below (e.g. 3.12), read
 //                            from the shell env, then the project's settings.local.json, its
 //                            settings.json and the account settings.json `env` - a plugin server never
 //                            sees a PROJECT settings env key (memory-launch.js says why), so the files
 //                            are read here rather than trusted to arrive
 //
-// It also RUNS uvx for both launchers (runUvx), so the pin, the exit code and the stop signal are
+// It also RUNS uvx for every launcher (runUvx), so the pin, the exit code and the stop signal are
 // handled once.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -24,6 +24,18 @@ const { spawn } = require('node:child_process');
 
 const PYTHON = '3.13';
 const WINDOWS_ARM_PYTHON = 'cpython-3.13-windows-x86_64-none';
+
+// 2.0.0 renamed every setting CLAUDE_STACK_* -> ALFRED_CODE_*. This file ships without // legacy-name
+// hook-prelude.js (a plugin server, not a hook), so its own copy of envOf is inline - pinned with
+// the hooks' copy as env-legacy-fallback (meta/shared-rules.json).
+function envOf(env, suffix)
+{
+    const fresh = env[`ALFRED_CODE_${suffix}`];
+    if (fresh !== undefined && fresh !== '') return fresh;
+    const old = env[`CLAUDE_STACK_${suffix}`]; // legacy-name
+    if (old !== undefined && old !== '') return old;
+    return suffix === 'DOCS_PATH' ? env.CLAUDE_DOCS_PATH : old; // legacy-name
+}
 
 // An x64 node emulated on ARM reports arch x64 and PROCESSOR_ARCHITECTURE AMD64, so the machine-wide
 // PROCESSOR_IDENTIFIER ('ARMv8 (64-bit) Family 8 ...') is what still tells the truth there.
@@ -34,10 +46,12 @@ function isWindowsArm({ arch, env })
     return /^arm/i.test(env.PROCESSOR_IDENTIFIER || '');
 }
 
-// This machine's file before the shared one, the way Claude Code layers them.
-function overrideFrom({ env, projectDir })
+// One ALFRED_CODE_<suffix> setting as a launcher sees it: the shell env, then this machine's file before
+// the shared one, the way Claude Code layers them - a plugin server never gets a PROJECT settings env
+// key, so the files are read here. '' when none of them names it.
+function settingFrom({ env, projectDir, suffix })
 {
-    const own = (env.CLAUDE_STACK_UV_PYTHON || '').trim();
+    const own = String(envOf(env, suffix) || '').trim();
     if (own || !projectDir) return own;
     const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
     for (const file of [
@@ -48,13 +62,15 @@ function overrideFrom({ env, projectDir })
     {
         try
         {
-            const value = String(((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}).CLAUDE_STACK_UV_PYTHON || '').trim();
+            const value = String(envOf((JSON.parse(fs.readFileSync(file, 'utf8')) || {}).env || {}, suffix) || '').trim();
             if (value) return value;
         }
         catch { /* absent, unreadable or malformed: the next file answers */ }
     }
     return '';
 }
+
+const overrideFrom = ({ env, projectDir }) => settingFrom({ env, projectDir, suffix: 'UV_PYTHON' });
 
 function pythonRequest({ platform = process.platform, arch = process.arch, env = process.env, projectDir } = {})
 {
@@ -84,4 +100,4 @@ function runUvx(args, { env = process.env, cwd, projectDir, label = 'launcher' }
 // `node uv-python.js [projectDir]` prints the request: the frozen installer twins resolve their
 // @UV_PYTHON@ with it.
 if (require.main === module) process.stdout.write(pythonRequest({ projectDir: process.argv[2] }));
-module.exports = { pythonRequest, runUvx, PYTHON, WINDOWS_ARM_PYTHON };
+module.exports = { pythonRequest, runUvx, settingFrom, PYTHON, WINDOWS_ARM_PYTHON };

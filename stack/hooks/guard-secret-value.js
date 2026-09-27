@@ -26,21 +26,27 @@ const fs = require('fs');
 const os = require('os');
 const pathMod = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// R86: a repo never set up keeps this guard live but gets no block row (R54) - false fails open to logging.
+let unsetRepo = false;
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-secret-value')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-secret-value');
+    unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // Keys whose value is a credential - the SAME string as meta/environment.json `secret_key_pattern`
 // (npm run lint fails when the two differ), matched case-insensitively so `apiKey` and `API_KEY`
@@ -73,7 +79,7 @@ const TEMPLATE_VALUE = /^(?:your[-_]|<[^>]+>$|changeme|x{3,}$|\.\.\.$|todo|repla
 // A value that IS an identifier NAME names a credential, it is not one: SCREAMING_SNAKE with at
 // least one underscore, no lower case, nothing else in it. Measured: this stack's OWN catalogs are
 // lists of variable names under a field literally called `key`, so `meta/environment.json`
-// (`env.0.key` = `CLAUDE_STACK_DOCS_PATH`) and `meta/migrations.json`
+// (`env.0.key` = `ALFRED_CODE_DOCS_PATH`) and `meta/migrations.json`
 // (`detect.settings_env_key` = `CLAUDE_DOCS_PATH`) were read as credential files - on the Read
 // route a block, and on the shell route something worse: every `key` in the file the guided walks
 // run on came back as `<set (N chars)>`. A SHAPE match still wins, so an all-caps credential like
@@ -372,19 +378,58 @@ if (process.argv[2] === '--presence') {
   let text = null;
   try { text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); } catch { out.push(`# ${fileArg}: not found`); }
   let entries = {};
+  let doc = null;
   if (text != null) {
     try {
       const j = JSON.parse(text);
+      doc = j && typeof j === 'object' ? j : null;
       entries = (j && typeof j.env === 'object' && j.env) ? j.env : (j && typeof j === 'object' && !Array.isArray(j) ? j : {});
     } catch {
       for (const line of text.split(LINES)) { const m = line.match(DOTENV_LINE); if (m) entries[m[1]] = unquote(m[2]); }
     }
   }
-  const names = keys.length ? keys : Object.keys(entries).filter((k) => typeof entries[k] === 'string');
-  for (const k of names) {
-    const v = entries[k];
-    out.push(isLive(v) ? `${k}=set (${v.length} chars)` : isPlaceholder(v) ? `${k}=absent (placeholder ${v.trim()})` : `${k}=absent`);
-  }
+  // A KEY is looked up as written first (a settings.json's env block, a dotenv line, a top-level key), then as a
+  // path from the root of a JSON file: `.`, `:` (.NET configuration) or `__` (its environment spelling) between the
+  // parts, and a part may hold a dot itself (`Logging.LogLevel.Microsoft.Hosting.Lifetime`). Pilot 3 asked for
+  // `ConnectionStrings.Lending` and `Notices.Gateway.ServiceToken` and was told both were absent.
+  const own = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
+  const walk = (node, parts) => {
+    if (!parts.length) return { found: true, v: node };
+    for (let i = parts.length; i >= 1; i--) {
+      const key = parts.slice(0, i).join('.');
+      if (own(node, key)) { const r = walk(node[key], parts.slice(i)); if (r.found) return r; }
+    }
+    return { found: false };
+  };
+  const lookup = (k) => (own(entries, k) ? { found: true, v: entries[k] } : doc ? walk(doc, k.split(/\.|:|__/)) : { found: false });
+  const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const describe = (k, r) => {
+    const v = r.found ? r.v : undefined;
+    if (v === undefined || v === null) return `${k}=absent`;
+    if (typeof v === 'string') return isLive(v) ? `${k}=set (${v.length} chars)` : isPlaceholder(v) ? `${k}=absent (placeholder ${v.trim()})` : `${k}=absent`;
+    if (Array.isArray(v)) return `${k}=set (array, ${plural(v.length, 'item')})`;
+    if (typeof v === 'object') return `${k}=set (object, ${plural(Object.keys(v).length, 'key')})`;
+    return `${k}=set (${String(v).length} chars)`;
+  };
+  // No KEY: a settings.json's env block, or a dotenv, as before; any other JSON lists every string leaf as a path.
+  const leaves = (node, prefix, acc) => {
+    for (const [k, v] of Object.entries(node)) {
+      const p = prefix ? `${prefix}.${k}` : k;
+      if (typeof v === 'string') acc.push(p);
+      else if (v !== null && typeof v === 'object') leaves(v, p, acc);
+    }
+    return acc;
+  };
+  const names = keys.length ? keys
+    : doc && entries === doc ? leaves(doc, '', [])
+      : Object.keys(entries).filter((k) => typeof entries[k] === 'string');
+  // A key NAME can hold a credential shape (`users.ghp_...`), and a lockfile has thousands of leaves (review M5):
+  // a printed name is masked, and the keyless listing stops at LEAF_CAP with a count.
+  const LEAF_CAP = 200;
+  const masked = (k) => k.replace(SECRET_SHAPE_G, (m) => `<credential-shaped, ${m.length} chars>`);
+  const shown = keys.length ? names : names.slice(0, LEAF_CAP);
+  for (const k of shown) { const line = describe(k, lookup(k)); out.push(masked(k) + line.slice(k.length)); }
+  if (shown.length < names.length) out.push(`# ${names.length - shown.length} more string leaves not listed - name a KEY to read one`);
   process.stdout.write(out.length ? out.join('\n') + '\n' : '');
   process.exit(0);
 }
@@ -430,8 +475,11 @@ if (process.argv[2] === '--redacted') {
         return line.replace(SECRET_SHAPE_G, (s) => mask(s));
       }).join('\n');
     }
+    // The runnable presence command, absolute: the guard ships inside the plugin, and pilot 3's first presence call
+    // guessed `.claude/hooks/`, where only the docs, memory and history engines are copied.
     const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
-      (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.'), receipt);
+      (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.') +
+      ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`, receipt);
     if (filtered) { process.stderr.write(note + '\n'); out = body; } else out = note + '\n' + body;
   }
   process.stdout.write(out);
@@ -441,7 +489,9 @@ if (process.argv[2] === '--redacted') {
 // variable as env prints it, a credential-shaped NAME holding a credential (or any value of a known
 // credential shape) as `<set (N chars)>`. Accepted gap, stated: a credential under a name this
 // pattern does not match and with no known shape prints as env would print it.
+// `--note-to-stderr` is the filtered form (`--redacted-env --note-to-stderr | grep KEY`), as for a file.
 if (process.argv[2] === '--redacted-env') {
+  const filtered = process.argv[3] === '--note-to-stderr';
   const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
   const lines = [];
   let masked = 0;
@@ -449,7 +499,10 @@ if (process.argv[2] === '--redacted-env') {
     const v = String(process.env[k]);
     if (maskable(k, v)) { masked++; lines.push(`${k}=<set (${v.length} chars)>`); } else lines.push(`${k}=${maskEmbedded(v, (x) => { masked++; return `<set (${x.length} chars)>`; })}`);
   }
-  process.stdout.write(noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it.`, receipt) + '\n' + lines.join('\n') + '\n');
+  const note = noteLine(`the environment with ${masked} credential value(s) shown as <set (N chars)>, everything else as env prints it`
+    + (filtered ? '; piped through the command\'s own filter.' : '.'), receipt);
+  if (filtered) process.stderr.write(note + '\n');
+  process.stdout.write((filtered ? '' : note + '\n') + lines.join('\n') + '\n');
   process.exit(0);
 }
 
@@ -473,17 +526,17 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
   process.stderr.write = (chunk, ...rest) => { last = String(chunk); return w(chunk, ...rest); };
   const exit = process.exit.bind(process);
   process.exit = (code) => {
-    if (code === 2) {
+    if (code === 2 && !unsetRepo) {
       try {
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -538,7 +591,7 @@ const presenceHint = (file) =>
 // (`Get-Content` and its `gc` / `type` aliases, `Select-String`, `Format-Hex`, `Import-Csv`) are the
 // same reads - measured 2026-09-15, `Get-Content .env` printed the value in real pwsh - and cmdlet
 // names are case-insensitive, so the whole list is.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell)\b/;
 // A heredoc body is DATA, not shell: a plan that merely DESCRIBES `cat ~/.claude/settings.json` is
 // inert text (reproduced against the sibling guards). Blank the payload spans, keeping the character
@@ -640,9 +693,12 @@ function splitOutsideQuotes(text, sepAt, blind, seps) {
 // Segments split on `&&`, `||`, `;` and newline OUTSIDE quotes: a runtime's inline code carries
 // `;` inside its quoted argument (`python3 -c "import json;print(...)"`), and a naive split
 // separated the runtime word from the segment holding the file path, so neither half matched.
+// A LONE `&` is a boundary too: it backgrounds its left side and runs the right one (`true & env` left the
+// dump unjudged). Not the `&` of a redirection (`2>&1`, `&>`, `<&`) or of `|&`.
+const loneAmp = (t, i) => t[i] === '&' && t[i + 1] !== '&' && t[i + 1] !== '>' && !/[<>|&]/.test(t[i - 1] || '');
 const splitSegments = (cmd, seps) => splitOutsideQuotes(cmd,
-  (t, i) => ((t[i] === '\n' || t[i] === ';') ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
-  (t) => t.split(/&&|\|\||;|\n/), seps);
+  (t, i) => ((t[i] === '\n' || t[i] === ';' || loneAmp(t, i)) ? 1 : ((t[i] === '&' || t[i] === '|') && t[i + 1] === t[i]) ? 2 : 0),
+  (t) => t.split(/&&|\|\||;|\n|(?<![<>|&])&(?![&>])/), seps);
 // A segment is a PIPELINE: its stages split on a single `|` (`||` never reaches here - splitSegments
 // consumed it), and a print verb's arguments end at its own stage.
 const splitPipes = (seg) => splitOutsideQuotes(seg, (t, i) => (t[i] === '|' ? 1 : 0), (t) => t.split('|'));
@@ -715,7 +771,75 @@ function printsKeysOnly(stage) {
 // and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
 // blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
 // this list does not know (a build, a network call, a runtime) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+// A stage that WRITES a file. The rewrite replaces the stage it judges too, so a writer naming the credential file
+// came back as the read-only view and its edit silently never ran - pilot 3, ours guard-02 r1:
+// `node -e "...fs.writeFileSync(path, ...)"` and `perl -0pi -e 's/.../' <file>` both returned the view, and the
+// `grep -c` after them said 0. Two shapes: an in-place flag on sed / perl / ruby, wherever it sits among the flags
+// (a cluster stops at a letter that takes an argument, so `-ne` and `-Mstrict` are not `-i`) or gawk's `-i inplace`,
+// and inline code that writes - a node / deno / bun file write or `openSync` in a write mode, python open() or
+// pathlib `.open()` in a write mode or a write helper, ruby and perl writes.
+const IN_PLACE_STOP = { sed: /[ef]/, perl: /[eEMmIxdDCFV]/, ruby: /[erICEFKWxT]/ };
+// gawk edits in place through its `inplace` extension, loaded by `-i` / `--include` (review I1).
+const AWK_INPLACE = /^(?:['"]?)(?:.*[\\/])?inplace(?:\.awk)?['"]?$/;
+function inPlaceFlag(stage) {
+  const words = shellTokens(stage.replace(PREFIX_WORDS, ''));
+  const verb = (words[0] || '').replace(/^.*[\\/]/, '').replace(/^gsed$/, 'sed').replace(/^[gmn]awk$/, 'awk');
+  if (verb === 'awk') {
+    for (let k = 1; k < words.length; k++) {
+      const m = words[k].match(/^(?:-i|--include)(?:=?(.+))?$/);
+      if (m && AWK_INPLACE.test(m[1] || words[k + 1] || '')) return 'awk -i inplace';
+    }
+    return null;
+  }
+  const stop = IN_PLACE_STOP[verb];
+  if (!stop) return null;
+  for (let k = 1; k < words.length; k++) {
+    const w = words[k];
+    if (/^--in-place(?:=|$)/.test(w)) return `${verb} --in-place`;
+    // sed reads its flags anywhere (GNU permutes them); perl and ruby stop at the script or the first file
+    if (!/^-[^-]/.test(w)) { if (verb === 'sed') continue; break; }
+    const cluster = w.slice(1);
+    const cut = cluster.search(stop);
+    if ((cut < 0 ? cluster : cluster.slice(0, cut)).includes('i')) return `${verb} -i`;
+    if (cut >= 0 && cut === cluster.length - 1) k++; // `-e <code>`: the next word is the flag's argument
+  }
+  return null;
+}
+const INLINE_WRITE = /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|renameSync|rmSync|unlinkSync|truncateSync|writeTextFile|Bun\.write|write_text|write_bytes|json\.dump|shutil\.(?:copy\w*|move)|os\.(?:replace|rename|remove|unlink)|File\.(?:write|delete|rename)|IO\.write|FileUtils\.\w+)\s*\(|\bopen\s*\([^()]*?,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bFile\.open\s*\([^()]*?,\s*['"][rb]*[wa+]|\bopen\s*\(?\s*(?:my\s+)?\$?\w+\s*,\s*['"]\+?>|\.open\s*\(\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bopenSync\s*\([^()]*?,\s*['"][rs]*(?:[wa]|\+)[xs+]*['"]/;
+// A runtime run on a script FILE: what it does sits in a file the guard never reads, so no view can stand in for it
+// (review I1: `python3 /tmp/fix.py appsettings.json` became the view, and the script never ran). Inline code (`-c`,
+// `-e`, `-p`, `eval`, `-Command`), a module (`python3 -m json.tool`) and stdin (`-`, a heredoc) are judged as before.
+const SCRIPT_RUNTIME = /^(?:node|python(?:3(?:\.\d+)?)?|perl|ruby|deno|bun|pwsh|powershell)(?:\.exe)?$/i;
+function scriptFileRun(stage) {
+  const words = shellTokens(stage.replace(PREFIX_WORDS, ''));
+  const verb = (words[0] || '').replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '');
+  if (!SCRIPT_RUNTIME.test(verb)) return null;
+  const kind = verb.toLowerCase().replace(/\.exe$/, '').replace(/^python.*/, 'python').replace(/^powershell$/, 'pwsh');
+  for (let k = 1; k < words.length; k++) {
+    const w = words[k];
+    if (w === '-') return null;
+    if (w === '--') { k++; if (k < words.length) return `${verb} ${words[k].replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '')}`; return null; }
+    if (w.startsWith('-')) {
+      const flag = w.slice(1);
+      if (kind === 'python') { if (/^[cm]/.test(flag.replace(/^[bBdEhiIOqsSuvx]+/, ''))) return null; if (/^[WX]$/.test(flag)) k++; continue; }
+      if (kind === 'node' || kind === 'bun') { if (/^(?:[ep]|pe|-eval|-print)(?:=|$)/.test(flag)) return null; if (/^(?:r|-require|-import|-loader|-experimental-loader|-input-type)$/.test(flag)) k++; continue; }
+      if (kind === 'perl' || kind === 'ruby') { const cut = flag.search(IN_PLACE_STOP[kind]); if (cut >= 0 && /[eE]/.test(flag[cut])) return null; if (cut >= 0 && cut === flag.length - 1 && /[IMmxdDCFVrKWT]/.test(flag[cut])) k++; continue; }
+      if (kind === 'pwsh' && /^(?:c|e|ec|command|encodedcommand)$/i.test(flag)) return null;
+      continue; // `pwsh -File <script>` names it next; deno's own flags take `=` values
+    }
+    if (kind === 'deno' && /^(?:eval|repl)$/.test(w)) return null;
+    if ((kind === 'deno' || kind === 'bun') && /^(?:run|x)$/.test(w)) continue;
+    return `${verb} ${w.replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '')}`;
+  }
+  return null;
+}
+function stageWrites(stage, code) {
+  const flag = inPlaceFlag(stage);
+  if (flag) return flag;
+  const m = (code != null || RUNTIME.test(stage)) && (code != null ? code : stage).match(INLINE_WRITE);
+  return m ? m[0].replace(/\s+/g, ' ').slice(0, 40) : null;
+}
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
 const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
 const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
@@ -737,7 +861,7 @@ function changingStep(text, skipSeg, skipStage) {
       step = step.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)\s*)+/, '');
       if (!/^command\s+-v\b/.test(step)) step = step.replace(PREFIX_WORDS, '');
       if (!step || CONTROL_ALONE.test(step)) continue;
-      if (!READ_ONLY_STEP.test(step)) return stages[j].trim();
+      if (!READ_ONLY_STEP.test(step) || inPlaceFlag(step)) return stages[j].trim();
     }
   }
   return null;
@@ -745,7 +869,23 @@ function changingStep(text, skipSeg, skipStage) {
 // Called before every rewrite judgeShell makes. A runtime heredoc body is exempt: the rewrite already stands
 // in for the whole script, which no step list can judge.
 function refuseDroppedSteps(what) {
-  if (!judging || judging.runtime) return;
+  if (!judging) return;
+  // The judged stage itself: a heredoc body is judged whole, since its write can sit on another line than its path.
+  const own = splitPipes(splitSegments(stripComments(judging.text))[judging.seg] || '')[judging.stage] || '';
+  const writes = stageWrites(own, judging.runtime ? judging.text : null);
+  const script = !writes && !judging.runtime && scriptFileRun(own);
+  if (writes || script) {
+    global.BLOCK_DETAIL = { branch: writes ? 'writer' : 'opaque-script', matched: (writes || script).slice(0, 40) };
+    block((writes
+      ? `Blocked: this command WRITES a file (\`${writes}\`) and names ${what} - nothing ran.\n` +
+        `The shell route would replace it with a read-only redacted view, and the write would silently never happen.\n`
+      : `Blocked: this command runs a script FILE (\`${script}\`) and names ${what} - nothing ran.\n` +
+        `The guard cannot see what the script does, and the redacted view would silently stand in for its edit and its output.\n`) +
+      `Make the edit with the Edit tool, old_string anchored on lines that hold no credential - it changes the file\n` +
+      `without printing it. Then check it with a count (\`grep -c KEY <file>\`) or the presence read:\n` +
+      `  node "${__filename}" --presence <file> [KEY ...]   (A.B.C reads a nested key)\n`);
+  }
+  if (judging.runtime) return;
   const step = changingStep(judging.text, judging.seg, judging.stage);
   if (!step) return;
   global.BLOCK_DETAIL = { branch: 'dropped-steps', matched: step.split(/\s+/)[0].slice(0, 40) };
@@ -856,6 +996,10 @@ if (isShellTool(payload.tool_name)) {
   }
   const code = [];
   const command = stripHeredocsOf(raw, code);
+  // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
+  // result is judged like any command, so a credential printed elsewhere still takes its own form.
+  const inPlace = !IS_PWSH && command === raw && !allowAll ? redactEnvStages(raw) : raw;
+  if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace); }
   // `main` says this text IS the command the tool will run - the one text a segment splice may
   // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
   judgeShell(command, false, command === raw);
@@ -880,6 +1024,34 @@ function blockVariable(name) {
   }
   rewrite(`echo "${shDouble(note)}"; [ -n "$${name}" ] && echo "${name}=set (\${#${name}} chars)" || echo "${name}=absent"`);
 }
+// Every stage of `text` that dumps the whole environment, replaced by the masked listing IN PLACE: the rest of
+// its pipeline (a filter) and every other step stay exactly as written, so nothing is dropped and a step that
+// changes something needs no block. The benchmark pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was
+// blocked - the second `env` read as a changing step - and the old whole-command rewrite dropped both filters.
+// A quote-blind split (unbalanced quotes) changes nothing here; the stage-by-stage judge below takes it.
+// The shape is blockEnvDump's own, inline: a const here would be in its dead zone when the Bash branch runs.
+function redactEnvStages(text) {
+  // The dump verb, then only fd redirections that stay on the terminal or go nowhere (`2>&1`, `2>/dev/null`).
+  const dump = /^(env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)((?:\s+\d*>&\d+|\s+\d*>\s*\/dev\/null)*)\s*$/;
+  const seps = [];
+  const segs = splitSegments(text, seps);
+  if (seps.length !== segs.length - 1) return text;
+  let changed = false;
+  const out = segs.map((seg) => {
+    const stages = splitPipes(seg);
+    if (stages.join('|') !== seg) return seg;
+    // judgeShell's own passes: output into a file never reaches the context, and a names-only reducer
+    // (`env | cut -d= -f1`) is the presence read - neither is a dump to replace.
+    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    const hits = stages.map((st) => dump.exec(st.replace(PREFIX_WORDS, '').trim()));
+    if (!hits.some(Boolean)) return seg;
+    changed = true;
+    const view = `node "${shDouble(__filename)}" --redacted-env${stages.length > 1 ? ' --note-to-stderr' : ''}`;
+    return stages.map((st, i) => (hits[i] ? st.replace(/^(\s*)[\s\S]*?(\s*)$/, `$1${view}${hits[i][2]}$2`) : st)).join('|');
+  });
+  return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
+}
+
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
 // bound here would still be in its temporal dead zone and the gate would throw instead of judging.
 // A whole-environment dump becomes the masked listing.
@@ -917,6 +1089,18 @@ function judgePwshStage(stage) {
   }
 }
 
+// A first-flag `sed -i` is an edit, not a dump - unless its script writes to a terminal stream, runs a command, or
+// sits in a file the guard cannot read (review M1: `sed -i '' 's/TOKEN.*/&/w /dev/stdout' <file>` printed the
+// credential line). Such a segment is judged like any other, so its in-place flag blocks it on a credential file.
+// Loose on purpose: a false hit costs only an Edit-tool denial on a credential file. The patterns live inside the
+// function because judgeShell runs above this line, before a module-level const would be initialised.
+function sedScriptLeaks(seg) {
+  const terminalWrite = /[wW]\s*\/(?:dev\/(?:std(?:out|err)|tty|fd\/[12])|proc\/self\/fd\/[12])\b/;
+  const exec = /(?:^|[;{}\n'"])\s*(?:\d+|\$)?(?:\s*,\s*(?:\d+|\$))?\s*!?\s*e(?=[\s;}'"]|$)|[^\w\s\\;{}'"-]\s*[gpiImM0-9]*e[gpiImM0-9]*(?=[\s;}'"]|$)/;
+  const scriptFile = /\s(?:-[a-zA-Z]*f\b|--file\b)/;
+  return terminalWrite.test(seg) || exec.test(seg) || scriptFile.test(seg);
+}
+
 function judgeShell(text, forceRuntime, main) {
   cwdAnchor = null;
   const segments = splitSegments(stripComments(text));
@@ -940,7 +1124,7 @@ function judgeShell(text, forceRuntime, main) {
       if (redirectsToFile(seg)) continue; // output into a file never reaches the context
       if (stages.some(isReducer)) continue;
     }
-    if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg)) continue; // an edit, not a dump
+    if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg) && !sedScriptLeaks(seg)) continue; // an edit, not a dump
 
     for (let sj = 0; sj < stages.length; sj++) {
       const stage = stages[sj];
@@ -975,7 +1159,7 @@ function judgeShell(text, forceRuntime, main) {
       // prefix word of its own (`sudo env`, `command printenv`, `FOO=bar env`) changes nothing. The
       // shell's OWN listings (`set`, `export`, `declare -p`) print the same values and passed every
       // probe until the review; their argument-carrying forms (`set -e`, `export FOO=x`) do not match.
-      if (/^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
+      if (/^(?:env|printenv|export\s+-p|export|declare\s+-p|typeset\s+-p|set)\s*(?:(?:\d*>&\d+|\d*>\s*\/dev\/null)\s*)*(?:\||$)/.test(stage.replace(PREFIX_WORDS, ''))) blockEnvDump();
 
       // A runtime reading the environment - `node -e "console.log(process.env.SENTRY_ACCESS_TOKEN)"`
       // is `echo $SENTRY_ACCESS_TOKEN` with more syntax. The denial names the VARIABLE, never a value.
@@ -1057,15 +1241,17 @@ if (payload.tool_name === 'Grep') {
   }
   if (String(input.output_mode || 'files_with_matches') === 'content') {
     const target = String(input.path || '');
-    // A directory target is judged by the credential-bearing files it would print from; with no
-    // path at all the search is the whole project, which is how the measured leak would have run.
-    const roots = target ? [target] : [process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd()];
+    // Only a NAMED file is judged. A directory target, and a search with no path at all, is a tree
+    // walk this guard does not judge - a known gap, not a covered case: the pattern would have to be
+    // matched against every credential-bearing file the walk reaches. The Read and shell routes still
+    // gate every named read of those files.
+    const roots = target ? [target] : [];
     for (const r of roots) {
       const file = resolveFile(r);
       if (!file) continue;
       let st = null;
       try { st = fs.statSync(file); } catch { st = null; }
-      if (st && st.isDirectory()) continue;   // a tree walk is not a named read - the file routes still gate it
+      if (st && st.isDirectory()) continue;
       const key = secretInUnlessAllowed(file);
       if (key) {
         block(`Blocked: Grep -> content of ${file}, which holds a credential under \`${key}\`.\n` +

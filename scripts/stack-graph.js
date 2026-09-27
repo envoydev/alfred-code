@@ -11,10 +11,8 @@ const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------
 // A Windows checkout has CRLF line endings (git's autocrlf converts on the way out), and JS treats
 // `\r` as a LINE TERMINATOR: `.` does not match it. So a pattern ending `(#.*)?$` fails on every
-// commented line, and the installer parity check reported the ENTIRE MCP block missing from the
-// .ps1 twin - eight false findings, on a repo where the twins were in perfect sync. Text read here
-// is never sensitive to which bytes end a line, so normalize every utf8 read and let every regex
-// below stay written for `\n`.
+// commented line. Text read here is never sensitive to which bytes end a line, so normalize every
+// utf8 read and let every regex below stay written for `\n`.
 const _readFileSync = fs.readFileSync;
 fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     ? String(_readFileSync(p, o)).replace(/\r\n/g, '\n')
@@ -24,7 +22,7 @@ const path = require('path');
 const yaml = require('js-yaml');
 const lint = require('./lint-skills.js');
 
-const { ROOT, SKILLS_DIR, AGENTS_DIR, CLAUDE_RULES_DIR, CLAUDE_SH } = lint.paths;
+const { ROOT, SKILLS_DIR, AGENTS_DIR, CLAUDE_RULES_DIR, MANIFEST_JSON } = lint.paths;
 const GRAPH_FILE = path.join(ROOT, 'meta', 'stack-graph.json');
 
 function frontmatterBlock(text)
@@ -41,8 +39,8 @@ function bodyAfterFrontmatter(text)
 
 // Every distinct backticked token in the text (content between a pair of
 // backticks, trimmed). Catalog membership - not a shape regex - decides what is
-// an edge, so single-word MCPs (`serena`, `context7`) resolve as well as
-// hyphenated ones (`angular-cli`). Tokenized LINE BY LINE - a markdown inline-code
+// an edge, so single-word MCPs (`navigation`, `documentation`) resolve as well as
+// hyphenated ones (`browser-chrome`). Tokenized LINE BY LINE - a markdown inline-code
 // span never crosses a line, so scanning each line independently prevents a stray
 // or odd backtick count (including a ```` ```bash ```` fence line) from desyncing
 // the open/close pairing into later lines.
@@ -74,11 +72,14 @@ function catalogs()
     const agents = new Set(fs.existsSync(AGENTS_DIR)
         ? fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''))
         : []);
-    const mcpBlock = lint.parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|');
-    const pluginBlock = lint.parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
+    const raw = lint.readStackManifest();
+    const mcpBlock = lint.manifestFlatSet(raw.mcps, (r) => r.name);
+    const pluginBlock = lint.manifestFlatSet(raw.plugins, (r) => r.id.split('@')[0]);
     const mcps = new Set([...mcpBlock.active, ...mcpBlock.commented]);
     const plugins = new Set([...pluginBlock.active, ...pluginBlock.commented]);
-    return { skills, agents, mcps, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog() };
+    // The names a backticked mention may make an edge to: the catalog less its COMMON WORDS.
+    const mcpEdges = new Set([...mcps].filter((n) => !MCP_COMMON_WORDS.has(n)));
+    return { skills, agents, mcps, mcpEdges, plugins, dependencyPlugins: dependencyPlugins(), hooks: hookCatalog(raw) };
 }
 
 // The plugins every install carries beside the core from another marketplace. They are in the
@@ -91,29 +92,29 @@ function dependencyPlugins()
     return CORE_DEP_PLUGINS.map((spec) => spec.split('@')[0]).sort();
 }
 
-// The hook catalog: the HOOKS=( ... ) block in the sh installer - entries are
-// "filename.js::matcher::args" - as basenames sans .js. Hooks are leaf picks in
-// the selection (nothing pulls them, they pull nothing), so they only need to
-// exist in the catalog for the guided walk's hooks layer and the unknown check.
-function hookCatalog()
+// The hook catalog: meta/stack-manifest.json's `hooks` list, as basenames sans .js. Hooks are leaf
+// picks in the selection (nothing pulls them, they pull nothing), so they only need to exist in the
+// catalog for the guided walk's hooks layer and the unknown check.
+function hookCatalog(raw)
 {
-    const m = fs.readFileSync(CLAUDE_SH, 'utf8').match(/^HOOKS=\(\n([\s\S]*?)^\)/m);
-    const hooks = [];
-    for (const line of (m ? m[1] : '').split('\n'))
-    {
-        const e = line.match(/^\s*"([^:"]+)\.js::/);
-        if (e) hooks.push(e[1]);
-    }
-
+    const hooks = lint.manifestFileList((raw || lint.readStackManifest()).hooks).map((f) => f.replace(/\.js$/, ''));
     // dedupe: one hook wired on two tools (two matcher entries) is still one catalog hook
     return [...new Set(hooks)].sort();
 }
 
+// Catalog MCP names that are also ordinary words a body backticks for its own reasons: the browser
+// server (2.0.0's role names) against the WebExtension `browser` namespace or Angular's `browser`
+// builder. A mention of one is no edge - read as one, it pulled the droppable browser server into
+// every install carrying that item. The browser is proven by a stack seed or evidence instead.
+const MCP_COMMON_WORDS = new Set(['browser']);
+
 // Skills whose backticked MCP/plugin mentions are SUBJECT MATTER, not dependencies.
-// project-agent-capabilities documents the house routing map for every server so the
+// alfred-capture-agent-capabilities documents the house routing map for every server so the
 // generated rule can be stamped from it - selecting it must never lock the whole MCP
 // baseline into an install (the skill inventories what IS installed; it calls nothing).
-const DOC_MENTION_SKILLS = new Set(['project-agent-capabilities']);
+// desktop-automation teaches BOTH desktop servers, one per OS: its mentions of them are the subject, and
+// the edge runs the other way (each server brings the skill - the graph's `mcps` block, below).
+const DOC_MENTION_SKILLS = new Set(['alfred-capture-agent-capabilities', 'desktop-automation']);
 
 // Rule body mentions that are NOT dependencies: conditional loads ('in an Ionic
 // workspace also load `ionic`') and routing-away prose ('EF logic routes through
@@ -138,7 +139,7 @@ function categorize(tokens, cat)
         if (p) plugins.add(p);
     }
 
-    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcps), plugins: [...plugins].sort() };
+    return { skills: pick(cat.skills), agents: pick(cat.agents), mcps: pick(cat.mcpEdges || cat.mcps), plugins: [...plugins].sort() };
 }
 
 function skillFiles(name)
@@ -153,6 +154,17 @@ function skillFiles(name)
     return files.filter(fs.existsSync);
 }
 
+function bringsSkills(cat)
+{
+    const out = {};
+    for (const row of lint.readStackManifest().mcps || [])
+    {
+        const skills = (Array.isArray(row.skills) ? row.skills : []).filter((s) => cat.skills.has(s)).sort();
+        if (skills.length) out[row.name] = { skills };
+    }
+    return out;
+}
+
 function buildStackGraph()
 {
     const cat = catalogs();
@@ -162,6 +174,9 @@ function buildStackGraph()
         agents: {},
         rules: {},
         catalog: { mcps: [...cat.mcps].sort(), plugins: [...cat.plugins].sort(), dependencyPlugins: cat.dependencyPlugins, hooks: cat.hooks },
+        // server -> the skill it brings (meta/stack-manifest.json mcps[].skills): the one edge that points
+        // back at a skill, so the skill arrives wherever the server does.
+        mcps: bringsSkills(cat),
     };
 
     for (const name of [...cat.skills].sort())
@@ -194,7 +209,7 @@ function buildStackGraph()
                 // is stripped back off here: the graph's nodes are bare skill names and stay that way,
                 // or the two would define each other. A foreign cite (`superpowers:...`) is a plugin
                 // token, never a skill node, and pluginFromToken below is what reads it.
-                const bare = meta.skills.map(s => (/^claude-stack(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
+                const bare = meta.skills.map(s => (/^alfred-code(-[a-z0-9-]+)?:/.test(String(s)) ? String(s).split(':').slice(1).join(':') : s));
                 declared = bare.filter(s => cat.skills.has(s));
                 source = 'frontmatter';
                 for (const s of meta.skills)
@@ -265,7 +280,7 @@ function readCommitted()
     return fs.existsSync(GRAPH_FILE) ? fs.readFileSync(GRAPH_FILE, 'utf8') : null;
 }
 
-module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted };
+module.exports = { buildStackGraph, serialize, GRAPH_FILE, readCommitted, pluginFromToken };
 
 if (require.main === module)
 {

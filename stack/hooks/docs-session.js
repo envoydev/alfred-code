@@ -12,26 +12,32 @@
 //                    what a merge just folded into mainline comes first
 //   Stop          -> once per session, the same ask for what the SESSION wrote itself (a skill's work is main-session
 //                    work) plus every change no actor claimed - a script's output, a tool this hook is not wired on
-// CLAUDE_STACK_DOCS_BLOCK=0 / CLAUDE_STACK_DOCS_GATE=0 / CLAUDE_STACK_DOCS_ASK=0 turn the three parts off.
+// ALFRED_CODE_DOCS_BLOCK=0 / ALFRED_CODE_DOCS_GATE=0 / ALFRED_CODE_DOCS_ASK=0 turn the three parts off.
 'use strict';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
+// way, so a skewed copy (this hook beside an older or missing engine/prelude) still orients instead
+// of crashing.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('docs-session')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
+    off = prelude.standDown('docs-session');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const MAX_HOLDS = 2;
 const INLINE_CHARS = 3000;
 const ASK_SECTIONS = 3;
@@ -94,7 +100,7 @@ const actorKey = (input) => (input.agent_id || input.agent_type ? agentKey(input
 // a write this hook denies never lands, and crediting it would let a neighbour's change read as this seat's work.
 const WROTE_CAP = 500;
 function recordWrite(root, input, wrote) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return; // the switch turns the part off, record included
+  if (envOf(process.env, 'DOCS_ASK') === '0') return; // the switch turns the part off, record included
   const key = actorKey(input);
   const a = loadAgent(input.session_id, key);
   const had = (a.wrote || []).length;
@@ -119,7 +125,13 @@ function otherActorWrites(session, exceptKey) {
   } catch {}
   return out;
 }
-const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
+// The untracked-at-start line rides the SessionStart block when there is one, and goes out alone when there is not.
+let startNote = '';
+const emit = (event, text) => {
+  const body = event === 'SessionStart' && startNote ? `${text}\n\n${startNote}` : text;
+  if (event === 'SessionStart') startNote = '';
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: body } }));
+};
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
 // `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`. Judging only `Bash` left the first-change
@@ -171,7 +183,7 @@ function sessionStart(input, root, docs, state) {
   // re-announced at every session start.
   const landed = promoted.filter((p) => p.changed);
   for (const p of landed) log(root, input, { event: 'promote', branch: p.branch, how: p.how, results: p.results });
-  if (process.env.CLAUDE_STACK_DOCS_BLOCK === '0') return;
+  if (envOf(process.env, 'DOCS_BLOCK') === '0') return;
   let st = null;
   try { st = docs.status(); } catch {}
   const lines = orientation(root, docs);
@@ -209,7 +221,7 @@ function sessionStart(input, root, docs, state) {
   // the gate has nothing to hand over - it stands down, so the line announcing it goes too.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
-  if (process.env.CLAUDE_STACK_DOCS_GATE !== '0' && readable) {
+  if (envOf(process.env, 'DOCS_GATE') !== '0' && readable) {
     let roots = ['src', 'tests'];
     try { roots = docs.loadWatch().sourceRoots; } catch {}
     extra.push(`Before your first change under ${roots.map((x) => `${x}/`).join(' or ')}, read the section covering the file.`);
@@ -223,7 +235,17 @@ function main() {
   if (!event) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
-  const docs = require('./docs.js');
+  if (event === 'SessionStart') startNote = recordUntracked(input, root);
+  // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
+  // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
+  // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
+  // a partial or skewed copy on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false), where
+  // docs.js failed to land beside this file - exit silently for exactly THAT missing-module case,
+  // like every other fail-open path here; a syntax error or any other load failure in a PRESENT
+  // engine is a genuine bug and must surface on stderr, not be swallowed.
+  let docs;
+  try { docs = require('./docs.js'); }
+  catch (e) { if (e.code === 'MODULE_NOT_FOUND' && /docs\.js/.test(e.message)) return; throw e; }
   // A domain is any top-level folder under the docs root holding a watch.json (architecture counts even
   // without one - see docs.js's own domains()). A project whose docs are code-style/ and related-projects/,
   // with no architecture/ at all, must still get the SessionStart block, the gate and the finish ask - so the
@@ -238,17 +260,59 @@ function main() {
   if (event === 'Stop') return stop(input, root, docs, state);
 }
 
+// What was untracked before the session began is not the session's change (pilot 3: ~150 files the harness left
+// untracked drove 19 commit-gate denials, and one close committed them). The list is keyed by HEAD and written ONCE
+// per HEAD: a resume, a compact start, a fresh-session hand-off and a /clear all find it and keep it, so the files an
+// earlier session of the same change created stay that change's own; a commit moves HEAD and the next session takes a
+// fresh snapshot. guard-ungated-commit.js reads the same key: out of the receipt's count, and a git add that would
+// sweep one in is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false,
+// at most UNTRACKED_CAP paths (past it a path reads as the change's own), and a record past SWEEP_MS goes when the
+// next one is written.
+const UNTRACKED_CAP = 20000;
+function recordUntracked(input, root) {
+  let file;
+  let list;
+  try {
+    let head = '';
+    try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+    file = path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+    if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    else {
+      const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
+        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+      const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
+      const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
+      list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
+      sweepRecords(path.dirname(file));
+    }
+  } catch { return ''; }
+  if (!list.length) return '';
+  const rel = toPosix(path.relative(root, file));
+  return `${list.length} path${list.length === 1 ? ' was' : 's were'} untracked when this change started (at this HEAD) - not its change: a commit stages ${list.length === 1 ? 'it' : 'them'} only when the user names ${list.length === 1 ? 'it' : 'them'} (${rel}).`;
+}
+function sweepRecords(dir, now = Date.now()) {
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('untracked-at-start-')) continue;
+      const full = path.join(dir, f);
+      if (now - fs.statSync(full).mtimeMs > SWEEP_MS) fs.rmSync(full, { force: true });
+    }
+  } catch { /* a sweep never fails the start */ }
+}
+
 function subagentStart(input, root, docs) {
   // The snapshot is what makes the finish ask possible, and it is NOT the orientation block: the block's switch
   // must not blind the ask, and the ask's switch must not cost a snapshot nobody will read.
-  if (process.env.CLAUDE_STACK_DOCS_ASK !== '0') {
+  if (envOf(process.env, 'DOCS_ASK') !== '0') {
     const key = agentKey(input);
     const a = loadAgent(input.session_id, key);
     // Only the first start writes it: where two seats fold onto one key, the earlier snapshot keeps both their
     // changes in view instead of hiding the first agent's work behind the second's start.
     if (!a.snapshot) { try { a.snapshot = docs.snapshot(); } catch {} saveState(input.session_id, a, key); }
   }
-  if (process.env.CLAUDE_STACK_DOCS_BLOCK !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
+  if (envOf(process.env, 'DOCS_BLOCK') !== '0') emit('SubagentStart', orientation(root, docs).join('\n'));
 }
 
 // A section ref is spelled three ways on the CLI ('patterns#orders', 'references/patterns#orders',
@@ -382,7 +446,7 @@ function sectionRefs(docs, hits, limit, exclude = () => false) {
 // The agent that made a change is the only context that knows why it was made - the main session usually does not -
 // so the ask lands here, once, for the files THAT agent changed (its start snapshot against the tree now).
 function subagentStop(input, root, docs) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0') return;
+  if (envOf(process.env, 'DOCS_ASK') === '0') return;
   const key = agentKey(input);
   const a = loadAgent(input.session_id, key);
   // The stop our own block caused. The row it writes states what HAPPENED to the sections we asked about - which of
@@ -544,7 +608,7 @@ function blockRow(root, input, reason) {
   try {
     const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `${input.session_id || 'nosession'}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
+    fs.appendFileSync(path.join(dir, `${String(input.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), `${JSON.stringify({ ts: new Date().toISOString(), hook: 'docs-session.js', event: input.hook_event_name || '', tool: input.tool_name || '', reason: String(reason).split('\n')[0].slice(0, 200) })}\n`);
   } catch {}
 }
 
@@ -588,12 +652,14 @@ function preToolUse(input, root, docs, state) {
     saveState(input.session_id, state);
     if (state.edits === 1) log(root, input, { event: 'first-edit', target: targets[0], consulted: state.consults.length > 0 });
   };
-  if (process.env.CLAUDE_STACK_DOCS_GATE === '0' || state.consults.length) { allow(); return; }
+  if (envOf(process.env, 'DOCS_GATE') === '0' || state.consults.length) { allow(); return; }
   // Nothing under the docs root can be read by section, so a hold would only point at an empty list.
   let readable = true;
   try { readable = docs.docFiles().length > 0; } catch {}
   if (!readable) { allow(); return; }
   if (state.holds >= MAX_HOLDS) { log(root, input, { event: 'bypass', target: targets[0], holds: state.holds }); allow(); return; }
+  // Nobody at the terminal (hook-prelude.js unattended): the hold is still logged as a bypass, never made.
+  if (unattended(input)) { log(root, input, { event: 'bypass', target: targets[0], why: 'unattended' }); allow(); return; }
   state.holds++;
   saveState(input.session_id, state);
   let hits = [];
@@ -680,18 +746,26 @@ function warnLines(files, refs) {
 // askLines. An ask can be discharged with one reply ('docs ok') and ends the turn as far as a reader can
 // tell; a warning can never be discharged at all. Printing it after that affordance would let a reader who
 // answers the ask stop reading before ever reaching it, so the undischargeable half comes first.
-function finishAsk(docs, files, asks, warnings = []) {
+// At Stop the reply to this block IS the session's last message - the one a print or SDK host reads, and the one a
+// person scrolls back to - so it asks for the summary after the docs line (pilot 4: all 8 flow cells ended on
+// 'docs ok'). A seat's reply at SubagentStop is its report to the caller and keeps the shape it has.
+const SUMMARY_LAST = [
+  'This reply is your last message, so it carries the task summary: the docs line first (docs ok, or',
+  'the section you rewrote), then what you did in at most three lines.',
+];
+function finishAsk(docs, files, asks, warnings = [], closing = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
   if (warnings.length) parts.push('', ...warnLines(files, warnings));
   if (asks.length) parts.push('', ...askLines(docs, files, asks));
+  if (closing.length) parts.push('', ...closing);
   return parts.join('\n');
 }
 
 // The same check for work done outside any subagent - and the only cover skills have, since a skill has no end
 // event of its own and its work lands here.
 function stop(input, root, docs, state) {
-  if (process.env.CLAUDE_STACK_DOCS_ASK === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
+  if (envOf(process.env, 'DOCS_ASK') === '0' || input.stop_hook_active || state.asked || !state.snapshot) return;
   if (typeof docs.askRef !== 'function') return;
   let changed;
   let hits = [];
@@ -702,7 +776,7 @@ function stop(input, root, docs, state) {
     // carry no agent id - plus every change no actor claimed at all, which is how a script's output and a write
     // through a tool this hook is not wired on still get asked about. What a SEAT wrote is that seat's to answer
     // for and it was already asked there; repeating it here is the same block twice in a row, which is how a gate
-    // earns itself a CLAUDE_STACK_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
+    // earns itself a ALFRED_CODE_DOCS_ASK=0. Attribution, not a subtraction: the session is asked about its own
     // later change to a section a seat answered for earlier.
     const mine = new Set(loadAgent(input.session_id, MAIN_ACTOR).wrote || []);
     const seats = otherActorWrites(input.session_id, MAIN_ACTOR);
@@ -715,9 +789,12 @@ function stop(input, root, docs, state) {
   const { asks, warnings } = sectionRefs(docs, hits, ASK_SECTIONS);
   if (!asks.length && !warnings.length) return;
   const files = [...new Set(hits.flatMap((h) => h.files))];
+  // Nobody at the terminal (hook-prelude.js unattended): the ask would only turn the final answer into
+  // 'docs ok' (8 of 12 print-mode cells, pilot 2). Logged, never made.
+  if (unattended(input)) { log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) }); return; }
   state.asked = true;
   saveState(input.session_id, state);
-  const reason = finishAsk(docs, files, asks, warnings);
+  const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
   log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
@@ -725,5 +802,5 @@ function stop(input, root, docs, state) {
 
 module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState };
 if (require.main === module) {
-  try { main(); } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
+  try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

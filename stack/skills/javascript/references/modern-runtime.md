@@ -26,7 +26,7 @@ Standard TC39 decorators (TS 5.0+, no flag): value + context object, no paramete
 ## Modules - the current mechanics
 
 - ESM-only for new code (`"type": "module"`, `import.meta.url` over `__dirname`). Node 22+ `require(esm)` removed the last CJS blocker - CJS consumers can require ESM synchronously.
-- **Dual-package hazard** (when a library ships both formats): a module loaded via both paths yields two instances - broken `instanceof`, doubled singletons, phantom-empty module state. Debug by logging the resolved path from both sides. Publishing mechanics (exports maps, when dual is still justified) are the `npm` skill's publishing reference.
+- **Dual-package hazard** (when a library ships both formats): a module loaded via both paths yields two instances - broken `instanceof`, doubled singletons, phantom-empty module state. Debug by logging the resolved path from both sides. Publishing mechanics (exports maps, when dual is still justified) belong to the npm packaging and publishing skill where the install has one.
 - Import attributes (ES2025): `import data from './x.json' with { type: 'json' }` - Node 22+ requires this form for JSON modules (`assert` is gone); dynamic: `await import('./x.json', { with: { type: 'json' } })`.
 - Import maps are stable in browsers - bare-specifier resolution and pinning for small no-build apps.
 
