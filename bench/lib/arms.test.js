@@ -56,6 +56,12 @@ test('the four shipped arm files load against the shared session', () =>
     // sandbox runtime: both switches on, 18 unit and 26 integration tests pass inside it.
     assert.strictEqual(session.env.DOTNET_SYSTEM_NET_DISABLEIPV6, '1', 'vstest reaches its testhost over IPv4 loopback');
     assert.strictEqual(session.env.DOTNET_USE_POLLING_FILE_WATCHER, '1', 'a test host starts without a FileSystemWatcher');
+    // `dotnet ef` builds its startup project through the muxer next to the running dotnet, never the PATH shim, so
+    // MSBuild started a worker node for the Api's parallel project references: the node binds its pipe at
+    // /tmp/MSBuild<pid>, the sandbox refuses the bind ('SocketException (13): Permission denied', exit 134), and
+    // the parent waits 30 s per launch (pilot 3: every data-02 cell hung 120-302 s). MSBuild reads the env as
+    // properties, so every build of every route references its projects one after another, in the one node.
+    assert.strictEqual(session.env.BuildInParallel, 'false', 'no build route starts an MSBuild worker node');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });

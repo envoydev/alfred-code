@@ -125,7 +125,12 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   without widening the sandbox - measured 2026-09-26 with the CLI's own sandbox runtime
   (`@anthropic-ai/sandbox-runtime` 0.0.77, this file's settings, `cd tests && dotnet test ...`): 18 unit
   tests in 1 s and 26 integration tests (Postgres through Testcontainers) in 8 s, against a 90 s abort
-  and a hang without them.
+  and a hang without them. `dotnet ef` builds through the muxer beside the running dotnet, never the shim,
+  and MSBuild's worker node binds its pipe at `/tmp/MSBuild<pid>`, which the sandbox refuses: pilot 3's
+  data cells hung 120-302 s there. `BuildInParallel=false` in `common.json` reaches every build as an MSBuild
+  property, so no route starts a worker node - measured 2026-09-27 with the same runtime: `dotnet ef
+  migrations add X --project src/LendingDesk.Data | tail` done in 3 s, the Api as startup project answers
+  its real error in 6 s, and with the property set back to `true` the same command hangs.
 - **D8, workspace trust.** Measured 2026-09-26 (`b4-probe-d8`, `ours`, `--include-hook-events`): a
   forced `general-purpose` dispatch fired `SubagentStart` and `SubagentStop` (both exit 0), and stderr
   carried no untrusted-workspace warning - no trust entry is written. Print mode never applies a
