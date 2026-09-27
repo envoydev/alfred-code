@@ -81,9 +81,9 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   `CLAUDE_CODE_MCP_STARTUP_WAIT_MS`). The prompts go one after another in one session, each once the turn before it
   has a result; `{file:<path>}` in a prompt is the one file that path names in the clone when it is
   sent (ours' diagnoser names its findings file as the build's input). `approvals.jsonl` beside each
-  cell's `stdout.jsonl` holds every answer and refusal. It needs the SDK installed (`npm install` at
-  the repo root - an exact dev dependency, the release built for the CLI the run drives; another is
-  refused), and a resume keeps the run's mode and refuses a changed flow entry or SDK. Grading is the
+  cell's `stdout.jsonl` holds every answer and refusal. It needs the SDK installed (`npm install --prefix
+  bench` - an exact pin in `bench/package.json`, never the repo root's, so CI never downloads it; the
+  release built for the CLI the run drives, another is refused), and a resume keeps the run's mode and refuses a changed flow entry or SDK. Grading is the
   plain block's; `aggregate.js <plain-id> --flow <flow-id>` reports it beside the plain block, never
   merged.
 

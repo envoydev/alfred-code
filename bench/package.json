@@ -1,0 +1,9 @@
+{
+  "name": "alfred-bench",
+  "private": true,
+  "description": "The head-to-head benchmark harness's own dependencies - installed here, never at the repo root, so CI never downloads them.",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.283"
+  }
+}

@@ -13,6 +13,7 @@
 node_modules/
 # the repo's own lock stays local (single dev dep); the examples' locks stay TRACKED (they pin the worked reference projects)
 /package-lock.json
+/bench/package-lock.json
 
 # Windows
 Thumbs.db

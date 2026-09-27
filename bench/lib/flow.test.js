@@ -270,13 +270,16 @@ test('the CLI a flow drives is the one on the PATH the plain cells use, resolved
 
 test('the Agent SDK the repo pins is the one built for the pinned Claude Code', async (t) =>
 {
-    const pinned = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')).devDependencies[flow.SDK_PACKAGE];
+    // The SDK is the harness's own dependency: at the repo root every CI install pulled its ~225 MB platform binary.
+    const pinned = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).dependencies[flow.SDK_PACKAGE];
     assert.strictEqual(pinned, '0.3.283', 'an exact pin: the SDK speaks one CLI\'s control protocol');
+    const root = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+    assert.strictEqual({ ...root.dependencies, ...root.devDependencies }[flow.SDK_PACKAGE], undefined, 'the repo root never installs the SDK');
     let sdk;
     try { sdk = await flow.loadSdk(); }
     catch (err)
     {
-        if (/not installed/.test(err.message)) { t.skip('the Agent SDK is not installed here - npm install'); return; }
+        if (/not installed/.test(err.message)) { t.skip('the Agent SDK is not installed here - npm install --prefix bench'); return; }
         throw err;
     }
     assert.deepStrictEqual([sdk.version, sdk.claudeCodeVersion, typeof sdk.query], ['0.3.283', '2.1.283', 'function']);

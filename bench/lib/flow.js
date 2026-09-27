@@ -43,7 +43,7 @@ async function loadSdk()
 {
     let entry;
     try { entry = require.resolve(SDK_PACKAGE); }
-    catch { throw new Error(`the Agent SDK (${SDK_PACKAGE}) is not installed - run npm install at the repo root`); }
+    catch { throw new Error(`the Agent SDK (${SDK_PACKAGE}) is not installed - run npm install --prefix bench`); }
     const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(entry), 'package.json'), 'utf8'));
     const mod = await import(SDK_PACKAGE);
     return { query: mod.query, version: pkg.version, claudeCodeVersion: pkg.claudeCodeVersion };
