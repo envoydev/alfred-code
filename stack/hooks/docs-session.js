@@ -125,7 +125,13 @@ function otherActorWrites(session, exceptKey) {
   } catch {}
   return out;
 }
-const emit = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
+// The untracked-at-start line rides the SessionStart block when there is one, and goes out alone when there is not.
+let startNote = '';
+const emit = (event, text) => {
+  const body = event === 'SessionStart' && startNote ? `${text}\n\n${startNote}` : text;
+  if (event === 'SessionStart') startNote = '';
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: body } }));
+};
 // SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
 // `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
 // `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`. Judging only `Bash` left the first-change
@@ -229,6 +235,7 @@ function main() {
   if (!event) return;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   process.env.CLAUDE_PROJECT_DIR = root;
+  if (event === 'SessionStart') startNote = recordUntracked(input, root);
   // On the PLUGIN route this hook runs from the marketplace clone, where docs.js/memory.js/
   // history.js are all tracked - so a never-set-up project under a user-scope core never reaches
   // this line (M1, R47 fix round 1: the require always resolves there). The case that CAN happen is
@@ -251,6 +258,44 @@ function main() {
   if (event === 'SubagentStop') return subagentStop(input, root, docs);
   if (event === 'PreToolUse') return preToolUse(input, root, docs, state);
   if (event === 'Stop') return stop(input, root, docs, state);
+}
+
+// What was untracked before the session began is not the session's change (pilot 3: ~150 files the harness left
+// untracked drove 19 commit-gate denials, and one close committed them). The list is written ONCE per session - a
+// resume or compact start finds it and keeps it, or the session's own new files would read as pre-existing - and
+// guard-ungated-commit.js reads it by the same name: out of the receipt's count, and a git add that would sweep one in
+// is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false.
+const UNTRACKED_CAP = 20000;
+const untrackedAtStart = (root, sid) => path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${String(sid).replace(/[^\w-]/g, '')}`);
+function recordUntracked(input, root) {
+  if (!input.session_id) return '';
+  const file = untrackedAtStart(root, input.session_id);
+  let list;
+  try {
+    if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    else {
+      const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
+        { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
+      const docsRel = toPosix(path.relative(root, path.resolve(root, docsRootEnv())));
+      const inDocs = (f) => !docsRel.startsWith('..') && docsRel && (f === docsRel || f.startsWith(`${docsRel}/`));
+      list = out.split('\0').filter((f) => f && !f.includes('\n') && !inDocs(f)).slice(0, UNTRACKED_CAP);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, list.map((f) => `${f}\n`).join(''));
+      sweepRecords(path.dirname(file));
+    }
+  } catch { return ''; }
+  if (!list.length) return '';
+  const rel = toPosix(path.relative(root, file));
+  return `${list.length} path${list.length === 1 ? ' was' : 's were'} untracked when this session started - not its change: a commit stages ${list.length === 1 ? 'it' : 'them'} only when the user names ${list.length === 1 ? 'it' : 'them'} (${rel}).`;
+}
+function sweepRecords(dir, now = Date.now()) {
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('untracked-at-start-')) continue;
+      const full = path.join(dir, f);
+      if (now - fs.statSync(full).mtimeMs > SWEEP_MS) fs.rmSync(full, { force: true });
+    }
+  } catch { /* a sweep never fails the start */ }
 }
 
 function subagentStart(input, root, docs) {
@@ -753,5 +798,5 @@ function stop(input, root, docs, state) {
 
 module.exports = { writeTargets, consultedBy, toolPaths, toPosix, sweepOldState };
 if (require.main === module) {
-  try { main(); } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
+  try { main(); if (startNote) { const note = startNote; startNote = ''; emit('SessionStart', note); } } catch (error) { process.stderr.write(`docs-session: ${error.message}\n`); }
 }

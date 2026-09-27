@@ -168,7 +168,10 @@ if (addNMatch && !/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+reset\b/
   process.exit(2);
 }
 
-if (!commitMatch && !publishMatch) process.exit(0);
+// Every `git add` in the command, by the offset of its `git` - judged below against what was untracked before the
+// session started, so a bare `git add -A` in its own call is read too.
+const addCalls = [...scannedQuoted.matchAll(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g)].map((m) => m.index + m[0].search(/git/));
+if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
 // `git -C <sibling> push` executes in a DIFFERENT repo than this hook's default root,
@@ -192,11 +195,16 @@ const unq = (s) => s.replace(/^["']|["']$/g, '');
 const actIndex = Math.min(
   commitMatch ? commitMatch.index : Number.MAX_SAFE_INTEGER,
   publishMatch ? publishMatch.index : Number.MAX_SAFE_INTEGER,
+  addCalls.length ? addCalls[0] : Number.MAX_SAFE_INTEGER,
 );
 // PowerShell moves the cwd with Set-Location (sl, chdir) or Push-Location (pushd), a -Path or
 // -LiteralPath name optional - the matcher claims that tool, so its spelling anchors the same way.
-const cdMatches = [...command.slice(0, actIndex).matchAll(/(?:^|&&|;|\n|\|)\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|[^\s;&|]+)/gi)];
-if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatches.length - 1][1])));
+// The directory the LAST cd before `index` moved to, resolved from `base` (unchanged when there is none).
+const cdBefore = (base, index) => {
+  const cds = [...command.slice(0, index).matchAll(/(?:^|&&|;|\n|\|)\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|[^\s;&|]+)/gi)];
+  return cds.length ? path.resolve(base, nativePath(unq(cds[cds.length - 1][1]))) : base;
+};
+root = cdBefore(root, actIndex);
 // the match came off the quote-masked copy, so read the -C ARGUMENT back out of the real
 // command - the mask keeps the offsets, not the path (a masked `-C "<sibling>"` resolved to a
 // directory of x's, judged this repo instead, and let the sibling commit through ungated).
@@ -233,11 +241,20 @@ const docsPrefix = () => {
   }
   return `${d}/`;
 };
+// What was untracked when this session started (docs-session.js writes it once per session, root-relative, spelled
+// with core.quotePath=false) is not the session's change: out of the count and the trivial bar, and a git add that
+// would sweep it in is blocked below. No record - an older install, no SessionStart, no session id - is an empty set.
+function preExisting() {
+  const sid = String(payload.session_id || '').replace(/[^\w-]/g, '');
+  if (!sid) return new Set();
+  try { return new Set(fs.readFileSync(path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${sid}`), 'utf8').split('\n').filter(Boolean)); } catch { return new Set(); }
+}
 function changedFiles() {
   const pre = docsPrefix();
+  const before = preExisting();
   const keep = (f) => f && !(pre && f.replace(/\\/g, '/').startsWith(pre));
   const tracked = git('diff HEAD --name-only').split('\n').filter(keep);
-  const untracked = git('ls-files --others --exclude-standard').split('\n').filter(keep);
+  const untracked = git('-c core.quotePath=false ls-files --others --exclude-standard').split('\n').filter((f) => keep(f) && !before.has(f));
   return { tracked, untracked, count: tracked.length + untracked.length };
 }
 // The project a changed file belongs to, for the push-scope check: the name under a common
@@ -573,7 +590,7 @@ if (publishMatch) {
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------
-if (!commitMatch) process.exit(0);
+if (!commitMatch && !addCalls.length) process.exit(0);
 
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
 // Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character
@@ -621,6 +638,85 @@ const afterVerb = (words) => {
   while (i < words.length && words[i].startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
   return words.slice(i + 1);
 };
+// A `<docs-path>/flow/<name>` ALLOW receipt's lines - the USER's answer to a block, this session's own, under 8h.
+function allowLines(name) {
+  const file = path.resolve(root, docsRootEnv(), 'flow', name);
+  try {
+    const st = fs.statSync(file);
+    let sessionStartMs = 0;
+    try {
+      const tr = fs.statSync(String(payload.transcript_path || ''));
+      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
+    } catch { sessionStartMs = 0; }
+    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
+      return { file, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
+    }
+  } catch { /* absent or unreadable - nothing allowed */ }
+  return { file, lines: [] };
+}
+
+// --- a git add that sweeps in what the session did not make --------------------------------------
+// Pilot 3: ~150 files the harness left untracked before the session began were committed by a close's `git add`, and
+// drove 13 'spec claims N file(s)' denials. git's own dry run says what each add would stage (top-relative, whatever
+// the pathspec - `.`, `-A`, `:/`, a directory, a glob); a pre-existing path in it is SWEPT unless the call names that
+// exact path, and a swept one passes only through UNTRACKED-ALLOW (a path, a directory ending in `/`, or `*`). A survey
+// (`-N`), a dry run, a patch or edit session and a tracked-only `-u` stage no untracked path and are not judged.
+function sweptPaths() {
+  const before = preExisting();
+  if (!before.size) return [];
+  let realRoot = root;
+  try { realRoot = fs.realpathSync(root); } catch { /* keep the spelling */ }
+  const swept = new Set();
+  for (const at of addCalls) {
+    const words = callWords(at);
+    let cwd = cdBefore(payload.cwd || projectDir || process.cwd(), at);
+    for (let i = 1; i < words.length && words[i].startsWith('-'); i += words[i] === '-C' || words[i] === '-c' ? 2 : 1) {
+      if (words[i] === '-C' && words[i + 1]) cwd = path.resolve(cwd, nativePath(words[i + 1]));
+    }
+    try { cwd = fs.realpathSync(cwd); } catch { /* git reports the missing directory itself */ }
+    const args = afterVerb(words);
+    const flags = args.slice(0, args.includes('--') ? args.indexOf('--') : args.length).filter((a) => a.startsWith('-'));
+    const quiet = flags.some((a) => /^--(intent-to-add|dry-run|patch|interactive|edit|update|refresh)$/.test(a) || (/^-[^-]/.test(a) && /[nNpieu]/.test(a.slice(1))));
+    if (quiet) continue;
+    const top = topOf(cwd);
+    if (!top) continue;
+    const r = spawnSync('git', ['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
+    let rest = false;
+    const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
+      .map((a) => path.relative(top, path.resolve(cwd, a)).split(path.sep).join('/')));
+    for (const line of String(r.stdout).split('\n')) {
+      const m = /^add '(.*)'$/.exec(line);
+      if (!m || named.has(m[1])) continue;
+      const rel = path.relative(realRoot, path.join(top, m[1])).split(path.sep).join('/');
+      if (before.has(rel)) swept.add(rel);
+    }
+  }
+  const { lines } = allowLines('UNTRACKED-ALLOW');
+  return [...swept].filter((f) => !(lines.includes('*') || lines.includes(f) || lines.some((l) => l.endsWith('/') && f.startsWith(l))));
+}
+if (addCalls.length) {
+  const swept = sweptPaths();
+  if (swept.length) {
+    global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
+    const rel = (name) => path.relative(root, path.resolve(root, docsRootEnv(), 'flow', name)).split(path.sep).join('/');
+    const sid = String(payload.session_id || '').replace(/[^\w-]/g, '');
+    process.stderr.write(
+      `Blocked: this git add stages ${swept.length} path(s) that were untracked before this session started -\n` +
+      `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
+      (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
+      `They are not this session's change (the list: ${rel(`untracked-at-start-${sid}`)}). Stage the session's own\n` +
+      `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
+      `${rel('UNTRACKED-ALLOW')} with one path (a directory ending in /, or *) per line and retry the SAME command;\n` +
+      `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+      `  'Stage only this session's paths (Recommended)'\n` +
+      `  'Stage them too' - the user adds these files to the change\n` +
+      `It is honoured for this session only, under 8h.\n`,
+    );
+    process.exit(2);
+  }
+}
+if (!commitMatch) process.exit(0);
 // `git commit`'s own argv: the options whose value is the next word (short letters, long names -
 // a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
 // the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
@@ -809,19 +905,7 @@ function stagedFindings() {
   const found = stagedFindings();
   // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
   // or `*` per line; this session's own, under 8h.
-  const allowFile = path.resolve(root, docsRootEnv(), 'flow', 'STAGED-SCAN-ALLOW');
-  let allow = [];
-  try {
-    const st = fs.statSync(allowFile);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      allow = fs.readFileSync(allowFile, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    }
-  } catch { allow = []; }
+  const { file: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
   const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };

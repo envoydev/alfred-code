@@ -30,6 +30,14 @@ On any non-trivial diff, before committing or presenting, in order:
 Findings caught here land in the same commit; found later they become fixup noise or shipped
 defects.
 
+**Scope - the session's own change.** What was untracked before this session began is not its
+change: the docs hook lists it at session start (`<docs-path>/flow/untracked-at-start-<session>`,
+named in the start block). Stage the session's own paths by name, review and count only those in
+`spec:`, and name the pre-existing ones in one line as outside the change. One goes in only when the
+user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
+until `<docs-path>/flow/UNTRACKED-ALLOW` lists it (pilot 3: ~150 such files drove 19 gate denials,
+and one close committed them).
+
 **Exemptions.** Skip the checkpoint for typos / one-line / formatting-only diffs - and for a diff an
 equivalent-or-stronger check just cleared: the active quality-loop's own dispatched re-verify plus
 final gate, or the cross-task flow's domain-verifier sign-offs plus the integration-reviewer final
