@@ -115,6 +115,34 @@ lowered.
 Floor: auth, secrets, input parsing, permissions, a public contract or a migration is never below
 standard, whatever the file count.
 
+## Full spec - design and audit as one step
+
+On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path keeps every gate below - a vague one above all. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`:
+
+```bash
+SPEC=.claude/skills/alfred-task-solve/scripts/spec-check.js
+[ -f "$SPEC" ] || SPEC=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+  f="$d/stack/skills/alfred-task-solve/scripts/spec-check.js"
+  [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
+node "$SPEC" <<'REQUEST'
+<the user's request, verbatim>
+REQUEST
+```
+
+Its `path: gated` is final. Its `path: merged` you may raise to gated (a second stack or a security path it cannot read in the words), never lower. An empty `$SPEC` means neither home has it: keep every gate.
+
+On `path: merged`, steps 1 and 2 are ONE step: the design and the plan audit both in this session (neither twin asks its mode), no stop between them. A gap the audit finds that the spec settles is fixed in the plan in the same step and named in the ask; a gap only the user can settle stamps the gaps and takes step 2's stop. Step 3's read comes first (`mechanics: read` in `Result:`), then ONE approval ask in place of step 3's:
+
+```ask
+Full spec - designed and audited in one step (<the Gated: verdict>). Build it as planned <in this session | through the seats>: <the mode-fit reason>.
+- 'Build as planned - in this session (Recommended)' - <why the tasks fit one chat>
+- 'Build as planned - dispatch the agent seats' - <independent tasks that build in parallel>
+- 'Not yet - changes needed' - edit the plan, or say what changes in Other
+```
+
+The stamps are step 2's and step 3's (`Gated: passed`, `Approved: <date> - mode <session|agents>`), and the mark moves to the seats option on step 3's mode-fit rule.
+
 ## The steps
 
 Each step that names a skill INVOKES it via the Skill tool - and re-invokes it for every new
@@ -128,7 +156,8 @@ run makes.
    the plans folder above; the file, not the chat, is the artifact - and that skill's design rules are settled
    IN it (every seam passes the decision-level rules, every task card carries its `log_points`, the
    `## Decisions` ledger holds every judgment call with its precedent or an explicit none), so step 5
-   reviews the built code against a plan that already decided all three. *Stop.*
+   reviews the built code against a plan that already decided all three. *Stop* - none on a full
+   spec, where step 2 follows in the same step (above).
 2. **GATE** - run `alfred-task-verify-plan` over the plan file. It stamps `Gated: passed` or the gaps
    found. Gaps route back to step 1 on the user's word. A user who declines the audit gets the
    same honest ledger as step 5: stamp `Gated: skipped by user - <their words>` and continue -

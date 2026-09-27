@@ -117,3 +117,23 @@ test('A5: the build bar - a model change never leaves its task without its migra
     assert.match(core, /design-time/i, 'the generator runs against the design-time factory\'s project');
     assert.match(core, /hand-written/i, 'and falls back to a hand-written migration');
 });
+
+// ---- Task 1 (flow-cost): on a full spec, design and plan audit are one step with one approval ask ---------------
+// Pilot 3: the gate changed the plan in 1 of 4 feature cells, and the steps before the build cost $0.95-1.65 a cell.
+test('full spec: the solve flow states the checklist, runs the check script and pins the merged ask', () => {
+    const { ASK_FLOW_TEMPLATES } = require('./lint-skills.js');
+    assert.deepStrictEqual(ASK_FLOW_TEMPLATES, { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 });
+    for (const name of ['alfred-task-solve', 'alfred-task-solve-cross']) {
+        const core = fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8');
+        assert.match(core, /scripts\/spec-check\.js/, `${name}: the check is a script, not a judgment`);
+        assert.match(flat(core), /the surface/i, `${name}: surface`);
+        assert.match(flat(core), /observable behaviour/i, `${name}: behaviour`);
+        assert.match(flat(core), /tests or acceptance criteria/i, `${name}: verification`);
+        assert.match(flat(core), /more than one stack/i, `${name}: a multi-stack request keeps every gate`);
+        assert.match(flat(core), /auth, secret or payment path/i, `${name}: a security path keeps every gate`);
+        const merged = asks(core).find((a) => /^Full spec/.test(a.question));
+        assert.ok(merged, `${name}: the merged step's one approval ask is a template`);
+        assert.match(merged.options[0], /^Build as planned.*\(Recommended\)$/, `${name}: build as planned is recommended, first`);
+    }
+    assert.match(flat(read('stack/skills/alfred-task-solve/SKILL.md')), /`path: merged` you may raise to gated[^.]*never lower\./, 'the model may raise the script\'s verdict to gated, never lower it');
+});

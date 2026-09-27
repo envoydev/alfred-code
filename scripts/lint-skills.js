@@ -1126,7 +1126,7 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // after') ended a build half-done. The recommended option is listed FIRST, where the approver's pick lands. The three
 // flow skills below carry their stops as templates in SKILL.md itself - the file every run reads - and the count is
 // pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin).
-const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 5, 'alfred-task-solve-cross': 4, 'alfred-issue-diagnoser': 4 };
+const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
 // stays in the label; an option with no why ends at its closing quote.
@@ -3177,6 +3177,7 @@ module.exports = {
     lintAskTemplates,
     lintFlowAskPresence,
     ASK_FLOW_SKILLS,
+    ASK_FLOW_TEMPLATES,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

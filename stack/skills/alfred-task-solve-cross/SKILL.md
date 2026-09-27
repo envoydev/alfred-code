@@ -96,6 +96,27 @@ The plan passed the audit<; the contract is recorded at v1>. Approve it to build
 ```
  This is the user's window to read, edit, or redirect before implementers spend anything; build only on the approving answer. The stop is about the work, not the dispatch: an inline-mode run with a substantial change (a new feature, 3+ files) stops here identically - no hook guards inline edits, this ask IS the approval. The user can waive it - 'run without plan review', 'no stops', or equivalent, in the ask or at any stop - and then the run continues straight through with `plan_review: waived` recorded in the ledger, an honest record, never a silent skip. Opting into dispatch or naming an execution mode is NOT a waiver - and neither is an instruction to run the whole flow end-to-end, finish in one pass, or end with a completion token (a CI-style ask still stops here). Only words about the review are.
 
+**Full spec on the single-chat path.** When the mode answer builds in this session, check the request the way the single-chat solve flow does before designing: a FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). One that misses any item, spans more than one stack, or touches an auth, secret or payment path keeps every gate. The same script decides - `path: gated` is final, `path: merged` you may raise to gated, never lower:
+
+```bash
+SPEC=.claude/skills/alfred-task-solve/scripts/spec-check.js
+[ -f "$SPEC" ] || SPEC=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
+  f="$d/stack/skills/alfred-task-solve/scripts/spec-check.js"
+  [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
+done 2>/dev/null | sort -V | tail -1 | cut -f2)
+node "$SPEC" <<'REQUEST'
+<the user's request, verbatim>
+REQUEST
+```
+
+On `path: merged` the design and the plan audit run as one step in this session, no stop between them, and end in ONE approval ask in place of the plan review stop (ledger: `plan_review: approved - "<their words>"`, as there):
+
+```ask
+Full spec - designed and audited in one step (<the five audit verdicts>). Build it as planned in this session: <the one reason>.
+- 'Build as planned (Recommended)' - the build starts on the audited plan
+- 'Changes needed' - edit the plan, or say what changes in Other
+```
+
 When you build each dispatch brief, keep it lean and capability-wired: each seat runs the lean-work / terseness discipline for its role (`references/token-reduction.md`) and is pointed at the installed capability - house skill, the documentation server, the navigation server, the memory handoff note - that removes a guess or a re-read (`references/capability-reuse.md`).
 
 ## Close-out - any mode

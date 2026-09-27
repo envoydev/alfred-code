@@ -382,8 +382,9 @@ test('the README trust surface counts what the core entry carries', () =>
     const scripted = core.skills.filter((s) => fs.existsSync(path.join(__dirname, '..', s, 'scripts'))).map((s) => path.basename(s));
     const references = fs.readdirSync(path.join(__dirname, '..', 'setup-plugin', 'references')).length;
     const row = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8').split('\n').find((l) => l.startsWith('| **Starts** |'));
-    const m = /which is (\S+) command bodies, (\S+) skills \(only `([^`]+)` ships a script\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
+    const m = /which is (\S+) command bodies, (\S+) skills \(only ((?:`[^`]+`(?:, | and )?)+) ships? a script\), (\S+) agents, (\S+) references and (\S+) hooks - the core's own (\S+) .*?and the (\S+) stack hooks/.exec(row || '');
     assert.ok(m, `the Starts row names what the core carries: ${row}`);
+    m[3] = [...m[3].matchAll(/`([^`]+)`/g)].map((x) => x[1]).join(); // the skills that ship a script, as a list
     assert.deepStrictEqual(m.slice(1), [word(core.commands.length), word(core.skills.length), scripted.join(), word(core.agents.length),
         word(references), word(files.size), word(own), word(files.size - own)]);
     assert.doesNotMatch(row, /entries carrying this project's skills|needs no call of its own/, 'no clause stale since 1.3.0');

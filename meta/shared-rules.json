@@ -5795,6 +5795,32 @@
         }
       ]
     },
+    "full-spec-checklist": {
+      "_note": "What a FULL spec is - the three items and the three disqualifiers the merged design-and-audit step turns on. Owned by the single-chat solve flow; vendored into the cross-task orchestrator for its single-chat path because both are user-invoked only and neither can load the other.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria)"
+        }
+      ]
+    },
+    "full-spec-script": {
+      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, so a path change is one pin.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "marker": "f=\"$d/stack/skills/alfred-task-solve/scripts/spec-check.js\""
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "f=\"$d/stack/skills/alfred-task-solve/scripts/spec-check.js\""
+        }
+      ]
+    },
     "producer-first-rule": {
       "_note": "A multi-stack build runs producer-first: the producer designer runs first and the interface section of its plan is the contract. Owned by the cross-task orchestrator; restated in the greenfield build, which vendors the trio protocol and cannot load the orchestrator (both are user-invoked only).",
       "owner": {
