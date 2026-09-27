@@ -126,7 +126,8 @@ change (see the invariants below).
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
-    one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key); the guard ships only
+    one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key; with no KEY it lists at
+    most 200 string leaves plus a count, a credential-shaped key name masked); the guard ships only
     in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key

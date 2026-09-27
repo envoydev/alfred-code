@@ -981,6 +981,27 @@ test('guard-secret-value --presence: a dotted, colon or double-underscore path r
   assert.equal(presence(f.secret, 'env.SENTRY_SLUG', 'SENTRY_SLUG').stdout, 'env.SENTRY_SLUG=set (4 chars)\nSENTRY_SLUG=set (4 chars)\n', 'a settings.json: the env block first, a path from the root too');
 });
 
+// Review of pilot 4, M5: the no-KEY leaf listing printed a credential-shaped key NAME as written, and listed every
+// string leaf of a large JSON (a lockfile) into the context.
+test('guard-secret-value --presence: a credential-shaped key name is masked, and the leaf list stops at 200', () => {
+  const f = fixtures();
+  const shaped = 'gh' + 'p_' + 'A1'.repeat(15); // built at run time: the literal would trip the commit scan
+  const users = path.join(f.dir, 'users.json');
+  fs.writeFileSync(users, JSON.stringify({ users: { [shaped]: 'admin' }, [shaped]: { role: 'owner' } }));
+  const listed = presence(users).stdout;
+  assert.doesNotMatch(listed, new RegExp(shaped.slice(0, 12)), 'the shape never prints');
+  assert.equal(listed, `users.<credential-shaped, ${shaped.length} chars>=set (5 chars)\n<credential-shaped, ${shaped.length} chars>.role=set (5 chars)\n`);
+  assert.doesNotMatch(presence(users, `users.${shaped}`).stdout, new RegExp(shaped.slice(0, 12)), 'a KEY argument is masked on the way out too');
+  assert.match(presence(users, `users.${shaped}`).stdout, /=set \(5 chars\)/, 'and still looked up as written');
+  const lock = path.join(f.dir, 'package-lock.json');
+  const packages = {};
+  for (let i = 0; i < 450; i++) packages[`node_modules/p${i}`] = { version: '1.0.0' };
+  fs.writeFileSync(lock, JSON.stringify({ name: 'x', packages }));
+  const lines = presence(lock).stdout.trimEnd().split('\n');
+  assert.equal(lines.length, 201, 'at most 200 leaves plus one count line');
+  assert.equal(lines[200], '# 251 more string leaves not listed - name a KEY to read one');
+});
+
 // Pilot 3: the model's first presence call guessed `node .claude/hooks/guard-secret-value.js` (only the docs, memory and
 // history engines are copied there) - the redacted view it had just read named no path at all.
 test('guard-secret-value: the redacted view names the runnable presence command', () => {

@@ -423,7 +423,13 @@ if (process.argv[2] === '--presence') {
   const names = keys.length ? keys
     : doc && entries === doc ? leaves(doc, '', [])
       : Object.keys(entries).filter((k) => typeof entries[k] === 'string');
-  for (const k of names) out.push(describe(k, lookup(k)));
+  // A key NAME can hold a credential shape (`users.ghp_...`), and a lockfile has thousands of leaves (review M5):
+  // a printed name is masked, and the keyless listing stops at LEAF_CAP with a count.
+  const LEAF_CAP = 200;
+  const masked = (k) => k.replace(SECRET_SHAPE_G, (m) => `<credential-shaped, ${m.length} chars>`);
+  const shown = keys.length ? names : names.slice(0, LEAF_CAP);
+  for (const k of shown) { const line = describe(k, lookup(k)); out.push(masked(k) + line.slice(k.length)); }
+  if (shown.length < names.length) out.push(`# ${names.length - shown.length} more string leaves not listed - name a KEY to read one`);
   process.stdout.write(out.length ? out.join('\n') + '\n' : '');
   process.exit(0);
 }
