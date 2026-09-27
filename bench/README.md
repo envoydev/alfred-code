@@ -65,7 +65,8 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   (`lib/flow.js`) against the same installed CLI, with a scripted approver: every `AskUserQuestion`
   gets the option labelled '(Recommended)', else the first, and every other permission request print
   mode's refusal (its words where the CLI hands them over; `approvals.jsonl` keeps the CLI's reason
-  beside each one). The first turn waits for the MCP servers as print mode's does (2 s,
+  beside each one); `ExitPlanMode` is a stop answered with its first option (the plan approved, one
+  row each) and `EnterPlanMode` is let through. The first turn waits for the MCP servers as print mode's does (2 s,
   `CLAUDE_CODE_MCP_STARTUP_WAIT_MS`). The prompts go one after another in one session, each once the turn before it
   has a result; `{file:<path>}` in a prompt is the one file that path names in the clone when it is
   sent (ours' diagnoser names its findings file as the build's input). `approvals.jsonl` beside each

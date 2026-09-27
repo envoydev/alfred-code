@@ -152,6 +152,20 @@ test('the first turn waits for the plugin MCP servers as print mode does: 2 seco
     assert.strictEqual(seen.options.env.CLAUDE_CODE_MCP_STARTUP_WAIT_MS, '2000', 'a streaming-input session otherwise waits for no deferred server');
 });
 
+test('a session that enters plan mode gets its plan approved: ExitPlanMode is a stop answered with its first option, and the flow goes on', async (t) =>
+{
+    const plan = { plan: '1. Add the endpoint\n2. Test it' };
+    const tools = [{ name: 'EnterPlanMode', input: {} }, { name: 'ExitPlanMode', input: plan }];
+    const { seen, approvals, out, record } = await go(t, { prompts: ['{prompt}', 'next'], turns: [{ tools }] });
+    assert.deepStrictEqual(seen.permissions.map((p) => [p.tool, p.answer]), [
+        ['EnterPlanMode', { behavior: 'allow', updatedInput: {} }],
+        ['ExitPlanMode', { behavior: 'allow', updatedInput: plan }],
+    ], 'never refused: a refused ExitPlanMode leaves the session in plan mode until the time limit');
+    assert.deepStrictEqual(approvals.map((a) => [a.kind, a.tool, a.answer, a.by, a.turn]), [['answer', 'ExitPlanMode', 'approve', 'first', 1]], 'one row per plan approved; entering plan mode needs no answer');
+    assert.deepStrictEqual(seen.inputs.map((i) => i.content), ['Add the $& thing.', 'next'], 'the flow continues past the plan');
+    assert.deepStrictEqual([out.outcome, record.answered, record.denied], ['ok', 1, 0]);
+});
+
 test('an ask with no option to pick is refused like any other request', async (t) =>
 {
     const { seen, approvals } = await go(t, { prompts: ['{prompt}'], turns: [{ asks: [[{ question: 'Anything?', header: 'X', multiSelect: false, options: [] }]] }] });

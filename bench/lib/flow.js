@@ -12,7 +12,10 @@
 //     clone that path names when the prompt is sent (the findings or plan the step before it wrote);
 //   - canUseTool answers AskUserQuestion with, per question, the option whose label carries
 //     '(Recommended)', else the first, and refuses every other permission request with print mode's
-//     own words - so a flow cell gets no permission a plain cell lacks;
+//     own words - so a flow cell gets no permission a plain cell lacks. Plan mode is the exception
+//     print mode never meets (it has no plan tools): ExitPlanMode is a stop, answered with its first
+//     option - the plan is approved - because a refused one leaves the session in plan mode until the
+//     time limit; EnterPlanMode needs no answer and is let through;
 //   - the first turn waits for the plugin MCP servers the way print mode's does. Print mode waits up
 //     to 2 s for every pending server; a streaming-input session waits for none of the deferred ones
 //     (CLI 2.1.283, qf(): waitForDeferrable is false there) and starts with them all pending (b4-probe-
@@ -188,6 +191,13 @@ function driver({ sdk, cli, prompts })
         const canUseTool = async (toolName, toolInput, opts = {}) =>
         {
             const ids = { turn, toolUseId: opts.toolUseID || null, agentId: opts.agentID || null };
+            if (toolName === 'EnterPlanMode') return { behavior: 'allow', updatedInput: toolInput };
+            if (toolName === 'ExitPlanMode')
+            {
+                counts.answered += 1;
+                note({ kind: 'answer', ...ids, tool: 'ExitPlanMode', answer: 'approve', by: 'first' });
+                return { behavior: 'allow', updatedInput: toolInput };
+            }
             const questions = toolName === 'AskUserQuestion' && Array.isArray(toolInput.questions) ? toolInput.questions : null;
             if (questions && questions.length && questions.every((q) => Array.isArray(q.options) && q.options.length))
             {
