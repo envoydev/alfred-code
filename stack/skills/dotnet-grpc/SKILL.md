@@ -39,7 +39,7 @@ app.MapGrpcService<OrdersService>();
 - Keep the service class thin. It implements the generated base, translates the request message, and delegates to an application service; business logic does not live in the gRPC layer. Map the result back to a response message or throw an `RpcException` (see status mapping below).
 - gRPC needs HTTP/2 end to end. In `Development` over Kestrel that works on plain HTTP; in production terminate with a proxy that speaks HTTP/2 to the backend (and keep ALPN intact). A request that arrives as HTTP/1.1 will fail the protocol check, not fall back.
 - Reflection (`Grpc.AspNetCore.Server.Reflection`) lets tools like `grpcurl` discover services - enable it in non-production only; it exposes your full schema.
-- Tune the message-size limits deliberately, and never compress a response that mixes a secret with attacker-influenced data - `references/optional-surfaces.md` has the options and the reason.
+- Tune limits deliberately: `MaxReceiveMessageSize` / `MaxSendMessageSize` guard against oversized payloads (gRPC is for messages, not file transfer), and response compression (`ResponseCompressionAlgorithm = "gzip"`) pays off on larger bodies - but do not compress a response that mixes a secret with attacker-influenced data, since compressing them together is a CRIME/BREACH-style oracle that leaks the secret by size.
 
 ## Client
 Register typed clients through DI so they ride `IHttpClientFactory` and a shared, correctly managed channel:
@@ -55,7 +55,11 @@ builder.Services
 - A unary call returns an awaitable plus access to response headers, trailers, and status via the call object when you need them.
 
 ## Pick the call shape on purpose
-Unary is the default; a server, client or bidirectional stream only where it earns its keep - `references/call-shapes.md` says which fits what. Decide per method.
+Four shapes, one decision per method:
+- **Unary** - one request, one response. The default; use it unless a stream earns its keep.
+- **Server streaming** - one request, a stream of responses. Feeds, progress, paged or live result sets the client reads to completion.
+- **Client streaming** - a stream of requests, one response. Uploads and batch ingestion where the server aggregates.
+- **Bidirectional streaming** - independent request and response streams over one call. Live, conversational exchange; the two directions are not lock-step.
 
 Non-negotiable on every call, streaming or not:
 - Set a **deadline** (`CallOptions.Deadline` / the `deadline:` argument). A call without one can hang indefinitely; the deadline is absolute (a point in time), it propagates to the server, and exceeding it surfaces as `DeadlineExceeded`.
@@ -68,16 +72,22 @@ gRPC has its own status space; do not invent your own error envelope inside a su
 - Attach machine-readable detail with trailers / the rich error model when a status code alone is too coarse for the client to act on.
 
 ## Cross-cutting concerns live in interceptors
-Logging, auth checks, exception-to-status mapping, validation and metrics live in `Interceptor` subclasses, server and client side, never copied into every method - `references/interceptors.md` has the split and the registration.
+Put logging, authentication checks, exception-to-status mapping, validation, and metrics in `Interceptor` subclasses (server and client side), not copied into every method.
+- A **server interceptor** is the single place to log calls with their method and status, translate an unhandled exception into a clean `Internal`/mapped status, and enforce request-level concerns - the gRPC analogue of middleware.
+- A **client interceptor** is where you stamp outgoing metadata (auth tokens, correlation IDs) and observe call outcomes uniformly.
+- Register server interceptors in `AddGrpc(o => o.Interceptors.Add<T>())`; add client interceptors via `.AddInterceptor<T>()` on the client registration.
 
 ## Auth
-- Authenticate with a **JWT bearer** token carried in call metadata, or with **mTLS** (client certificates) for service-to-service trust - both are configured by the skill covering .NET authentication. A JWT rides a client interceptor.
+- Authenticate with a **JWT bearer** token carried in call metadata, or with **mTLS** (client certificates) for service-to-service trust - both are configured by the skill covering .NET authentication. For JWT, attach the token from a client interceptor so no method has to remember it.
 - Enforce on the server with `.RequireAuthorization()` on the mapped service (or `[Authorize]` on the service class / methods), exactly as for HTTP endpoints. Authorization policies are the same machinery; gRPC just feeds them from metadata.
 
-## Health, observability, browsers
-- Orchestrator probes speak the standard gRPC health-checking protocol, and a browser client needs gRPC-Web (its server and CORS wiring, its streaming limits) - both opt-in, wired per `references/optional-surfaces.md`.
+## Health and observability
+- Orchestrator probes speak the standard gRPC health-checking protocol - the opt-in wiring is in `references/optional-surfaces.md`.
 - gRPC integrates with the standard .NET observability stack; emit traces and metrics through it rather than bolting on a parallel logging path. Correlation and the broader telemetry setup belong to the ASP.NET Core cross-cutting hub.
 
 ## Prove the contract
 
 Codegen makes a build green without proving a call works. Three lines before any done word: build to regenerate the stubs from the `.proto` and quote the result; call one method with `grpcurl` and quote the status; call it again with an already-expired deadline and quote the `DeadlineExceeded`. A method that never returns `DeadlineExceeded` is a method with no deadline wired.
+
+## Browsers can't speak raw gRPC
+A browser client needs **gRPC-Web** - the server and CORS wiring, and its streaming limits, are in `references/optional-surfaces.md`.

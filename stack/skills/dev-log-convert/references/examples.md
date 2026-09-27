@@ -1,24 +1,6 @@
-# dev-log-convert - worked examples
+# dev-log-convert - worked multi-prefix examples
 
-Read the example matching the input's shape before the first log of a session.
-
-## Example 1 - single prefix, Ukrainian input
-
-Input:
-> Понеділок: ABC-1319 - 2г досліджував проблему з ротацією культур по ID поля, виправив обробку відсутніх записів, протестував. ABC-1320 - 30хв створив merge request. Нарада з командою - 1г.
-
-Output:
-```
-Log of work 13.04.2026.
-
-Monday:
-1 ABC-1319 (2h) - Investigated a crop rotation issue by field ID. Fixed missing record handling. Testing.
-2 ABC-1320 (30m) - Created a merge request.
-3 Other (1h) - Attended team meeting.
-Total time: 3h 30m.
-```
-
-More worked examples - a multi-prefix day grouped by ticket prefix, and a multi-project day with explicit labels: `references/examples.md`.
+Example 1 (single-prefix day, Ukrainian input) lives in SKILL.md; these cover the grouping formats.
 
 ## Example 2 - multi-prefix day, mixed-language input, no explicit project labels
 

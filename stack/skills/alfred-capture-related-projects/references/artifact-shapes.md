@@ -4,8 +4,6 @@ Read at steps 3 and 4, before either file is written. The doc's section order li
 `SKILL.md`; this file carries the two literal shapes, the write mechanics, and the provenance
 rule behind them.
 
-**Contents:** [The doc's section shape](#the-docs-section-shape), [watch.json](#watchjson), [The generated rule - copy target](#the-generated-rule---copy-target), [Write mechanics](#write-mechanics), [MERGE in full](#merge-in-full)
-
 ## The doc's section shape
 
 Every sibling gets its own `##` heading in `RELATED-PROJECTS.md`, with its metadata as comment
@@ -96,28 +94,3 @@ follows.
 
 **Verify the shape before it ships.** `docs.js lint` is the arbiter of whether `watch.json` and the
 section metadata are valid - run it against a temp fixture holding this shape before trusting it.
-
-## MERGE in full
-
-`<docs-path>/related-projects/` is a docs domain like every other - it carries its own `watch.json`, so
-`domains()` in `.claude/hooks/docs.js` picks it up and the engine sections and lints it exactly like
-`architecture/` or `code-style/`. Create the folder when absent, with a `watch.json` holding `{}` -
-deliberately EMPTY: a sibling repo's characterization is not falsified by a change in THIS repo, so no
-glob exists whose match should ask whether an entry still holds; the empty file states that intent in
-the repo rather than leaving it to memory. Nothing here is `notOwned` either - this capture is the sole
-author of `RELATED-PROJECTS.md`, so an ordinary write (or an ordinary `docs.js set` on a branch) is
-always allowed, unlike `decisions/`.
-
-Legacy layout: a `PROJECT-RELATED-CONTEXT.md` sitting loose at the docs root itself (the pre-folder
-home) is MOVED into `related-projects/` as `RELATED-PROJECTS.md` and reconciled there - never left
-behind as a stale twin. Consolidate into one doc - apply the `markdown-style` skill so it reads as a
-quick reference. Shape:
-
-1. The `Captured: <branch>@<short-sha>, <date>` lifecycle stamp, then one opening line - what the doc is: the durable orientation detail for cross-repo work; the always-loaded awareness minimum lives in the generated rule; dynamic findings go to the shared `memory` MCP instead, tagged with the sibling's own name, never here. Stamp nuance for THIS doc: the entries describe the SIBLING repos as read on that date - the date is the staleness signal (siblings drift on their own), while this repo's branch matters little; re-running the capture for a sibling upserts its entry, which is this doc's whole update path.
-2. **One `##` heading per sibling**, `<!-- id: <slug> -->` and deliberately NO `covers:` - nothing
-   in this repo's code should trigger a re-read of a sibling's own characterization (`docs.js lint`
-   notes a section that declares no `covers:`, but never fails on one). Each heading carries the
-   house schema entry as a fenced YAML block (location, relation, first_read, seam, its own
-   `captured:` stamp) followed by a short evidence note: what grounds the relation and seam (the
-   located files, both sides), plus any uncertainty or UNVERIFIED marker carried over verbatim. Keep
-   each note lean - orientation, not an audit.

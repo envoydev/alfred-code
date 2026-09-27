@@ -44,8 +44,3 @@ Common rules regardless of library:
 | **xUnit/NUnit/MSTest built-in `Assert`** | When the project has no FA/Shouldly dependency and stays minimal. |
 
 Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
-
-## FluentAssertions 8 and the licence
-
-FluentAssertions v8+ needs a paid commercial licence, so an upgrade is a licensing decision, not a routine bump;
-the Apache-2.0 fork AwesomeAssertions is the permissive way forward.

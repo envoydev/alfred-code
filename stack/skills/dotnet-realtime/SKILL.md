@@ -88,7 +88,7 @@ The client interface is a published contract - clients on old versions stay conn
 - **SignalR carries notifications, not bulk data.** Push the fact that something changed plus an id; let the client pull the heavy payload over REST/gRPC. Large frames create memory pressure and head-of-line stalls.
 - **Throttle high-frequency events** (typing indicators, cursor positions, telemetry) on the client - debounce or sample before sending.
 - When message size and serialization cost matter, the **MessagePack** protocol setup is in `references/scale-out-and-hardening.md`.
-- Set the server's size and timeout limits deliberately, and detailed errors in development only - `references/scale-out-and-hardening.md` names the options.
+- Set `MaximumReceiveMessageSize`, `KeepAliveInterval`, and `ClientTimeoutInterval` deliberately rather than leaving defaults under load, and use `EnableDetailedErrors` only in development - it leaks exception text to clients.
 
 ## Scale-out
 

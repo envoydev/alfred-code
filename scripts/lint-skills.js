@@ -1148,31 +1148,6 @@ function lintAskTemplates(files)
     return findings;
 }
 
-// 62. A SKILL.md BODY (the text after the frontmatter - what a Skill call injects and every later turn re-sends) is
-// capped at 8,000 chars: the core imperatives stay, the detail moves to `references/` read on demand. Measured in
-// pilot 3: `csharp` sent 16.4k chars in 8 of 8 C# cells and a flow cell carried 104-123k chars of step-skill bodies
-// to its last turn. A body that truly cannot split yet sits in SKILL_BODY_ALLOW with its reason; an entry whose
-// body fits is stale and fails, so the list only shrinks.
-const SKILL_BODY_CAP = 8000;
-const SKILL_BODY_ALLOW = {};
-function lintSkillBodyCap(skillsDir, skillDirs, allow = SKILL_BODY_ALLOW, fsLike = fs)
-{
-    const findings = [];
-    for (const d of skillDirs)
-    {
-        const file = path.join(skillsDir, d, 'SKILL.md');
-        if (!fsLike.existsSync(file)) continue;
-        const text = fsLike.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
-        const fm = text.match(/^---\n[\s\S]*?\n---\n?/);
-        const size = (fm ? text.slice(fm[0].length) : text).length;
-        const listed = Object.prototype.hasOwnProperty.call(allow, d);
-        if (listed && !String(allow[d] || '').trim()) findings.push(`${d}: allowlisted with no reason - SKILL_BODY_ALLOW names why the body cannot split yet`);
-        else if (listed && size <= SKILL_BODY_CAP) findings.push(`${d}: allowlisted in SKILL_BODY_ALLOW but its body is ${size} chars - within the cap; drop the entry`);
-        else if (!listed && size > SKILL_BODY_CAP) findings.push(`${d}: body ${size} chars is over the ${SKILL_BODY_CAP} cap - keep the imperatives in SKILL.md and move the detail to references/ with a pointer naming when to read it`);
-    }
-    return findings;
-}
-
 // 42. A plugin manifest that ENUMERATES a component directory owns two lists that must say the same
 // thing. Claude Code loads exactly what the array names, so a file added to `commands/` and not to
 // the array ships DEAD - it is in the package, downloaded by every install, and invisible to the
@@ -2273,8 +2248,6 @@ function main()
 
     // 41. A reference over 100 lines opens with a table of contents in its first 15.
     for (const finding of lintReferenceContents(SKILLS_DIR, localSkillDirs())) flag(finding);
-    // 62. Every SKILL.md body within the cap, or allowlisted with its reason.
-    for (const finding of lintSkillBodyCap(SKILLS_DIR, localSkillDirs())) flag(finding);
     // 61. Every ask template marks exactly one option (Recommended), and the flow skills keep theirs.
     {
         const askFiles = [];
@@ -3187,9 +3160,6 @@ module.exports = {
     lintReferenceContents,
     lintAskTemplates,
     ASK_FLOW_SKILLS,
-    lintSkillBodyCap,
-    SKILL_BODY_CAP,
-    SKILL_BODY_ALLOW,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

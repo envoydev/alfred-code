@@ -39,9 +39,3 @@ builder.Services.AddSignalR()
 ```
 
 Crucially, a backplane is a **fan-out layer, not a store** - it does not persist messages or deliver to absent clients; the durability rule from the top of SKILL.md stands here too. Connection strings come from configuration via the options pattern, never a literal - same rule as every other transport.
-
-## Server limits and detailed errors
-
-Set `MaximumReceiveMessageSize`, `KeepAliveInterval`, and `ClientTimeoutInterval` deliberately rather than
-leaving defaults under load, and use `EnableDetailedErrors` only in development - it leaks exception text
-to clients.

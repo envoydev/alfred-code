@@ -11,7 +11,7 @@ This skill captures the **approach**, not a single library. The principles below
 
 ## Test strategy by responsibility (architecture-neutral)
 
-The strategy keys off the *role* a unit plays, not a layer name: in a layered project the roles are the layers, in a vertical-slice or modular one the parts of a feature folder - test each part the same way wherever it lives.
+The strategy keys off the *role* a unit plays, not a layer name - so it maps onto whatever architecture the project picked (the pick-one rule lives with the architecture decision, not here). In a layered (Clean / Onion) project the roles below are the layers; in a vertical-slice / modular project they are the parts of a feature folder (the domain types, the handler / endpoint logic, the infrastructure wiring) - test each part the same way regardless of where it physically lives.
 
 - **Domain / business rules** - pure unit tests, no substitutes. Cover entities, value objects, domain services, domain events, invariants, guard clauses, factory methods, and every branch of a business rule including exception paths - this is the code where an uncovered branch is never acceptable.
 - **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches.
@@ -24,9 +24,15 @@ The strategy keys off the *role* a unit plays, not a layer name: in a layered pr
 - The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture
   (asked at capture time, kept in its COVERAGE.md) - this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
-  reflects real logic coverage, not padding. The .NET exclusion catalog, the coverlet collector,
-  the report formats and the CRAP ranking are `references/coverage-collection.md` - read it before
-  measuring or adding an exclusion.
+  reflects real logic coverage, not padding - the exclusion catalog below is that list for .NET.
+
+## Standard exclusions (via `[ExcludeFromCodeCoverage]` or coverlet filters)
+
+- `Program.cs`, `Main`, generic host bootstrap
+- DI registration extensions
+- Pure DTOs / records / POCOs with no behavior; plain auto-properties
+- EF Core migrations and `DbContext.OnModelCreating`
+- Generated code and framework configuration
 
 ## Test quality rules (framework-agnostic)
 
@@ -43,11 +49,20 @@ The strategy keys off the *role* a unit plays, not a layer name: in a layered pr
 
 ## Library choices
 
-Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ is a paid licence - `references/library-routing.md`). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
+Defaults for a new project: **xUnit** runner, **NSubstitute** substitutes, **FluentAssertions 7.x** assertions (v8+ needs a paid commercial licence, so an upgrade is a licensing decision, not a routine bump; the Apache-2.0 fork AwesomeAssertions is the permissive way forward). One runner, one substitute library and one assertion library per project - migrate, never blend. When the project has already picked, or is picking now, the alternatives and the reason for each are `references/library-routing.md`. Substitute only what you cannot construct, stay loose rather than strict, and verify the boundary that matters instead of every interaction. Snapshot / Verify assertions - approving serialized output instead of hand-written asserts - are `references/snapshot-testing.md`.
+
+### Coverage collection
+
+- **coverlet** is the default collector (msbuild or runsettings). Combined with `dotnet test --collect:"XPlat Code Coverage"`.
+- Reports via `ReportGenerator` for HTML / Cobertura / OpenCover formats.
+- For CRAP-score risk hotspots, pair the coverage report with a complexity pass: CRAP = cyclomatic complexity weighed against that method's coverage, so a long, branchy, thinly-covered method ranks above a simple uncovered one. ReportGenerator emits complexity per method beside coverage, which is enough to rank; where the repo has a dedicated analysis for it, use that instead, and with neither, rank by uncovered branches alone.
 
 ## Test project conventions
 
-One test project per production project, mirroring its namespaces and folders, and the suite run at minimal verbosity with a failure read by its first error - `references/test-project.md` has the layout, the shared-fixture project rule and the verbosity flags.
+- One test project per production project, mirroring namespace and folder structure.
+- Folder layout inside test project mirrors the SUT's folder layout.
+- Shared fixtures live in `*.TestSupport` / `*.Testing` projects when reused across multiple test projects; otherwise inline.
+- Run the suite at minimal verbosity so the captured output stays lean: `dotnet test -v minimal` (or `--logger "console;verbosity=minimal"`), and read a failure by windowing to the first error / failed assertion, not the whole log - test output is context every seat that runs the gate pays for.
 
 ## Cancellation and async
 
@@ -59,11 +74,15 @@ One test project per production project, mirroring its namespaces and folders, a
 - Tests must pass regardless of order. No reliance on side effects from earlier tests, no mutable static state.
 - Per-test fresh fixture by default (xUnit constructor, NUnit `[SetUp]`, MSTest `[TestInitialize]`). Reuse only for expensive resources (Testcontainers, web factory) via `IClassFixture` / `ICollectionFixture` and only when the resource is read-only or reset between tests.
 - Database integration tests: each test gets its own transaction or schema, rolled back at teardown. Never assume row IDs.
-- Test data via one canonical builder per aggregate, never literal-soup constructors - the builder shapes (a `record` with `init` defaults, `with` variations, a fluent builder only when a setter computes) are `references/test-project.md`.
+- Test data via one canonical builder per aggregate, not literal-soup constructors. Prefer a `record` builder with `init` defaults; when the type under test is itself a `record`, derive case variations with a `with` expression from a canonical instance (`var large = baseOrder with { Total = new(1500m, "USD") };`) instead of re-running setup. Use a fluent `OrderBuilder().WithCustomer(...).Build()` only when a setter needs computation or validation.
 
 ## What NOT to test
 
-Auto-properties, generated code and migrations, framework types, pure DTOs, DI registration extensions (an integration test covers the wiring), and other people's libraries - test your wiring of them, never them.
+- Auto-properties with no logic.
+- Generated code, EF migrations, framework-provided types.
+- DI registration extension methods (cover via integration test, not unit test).
+- Pure DTOs / records used only as data carriers.
+- Other people's libraries - assume `FluentValidation`, `Polly`, `EF Core` work. Test your wiring of them, not them.
 
 ## Auditing an existing suite
 
@@ -71,8 +90,8 @@ The rules above are for *writing* tests; reviewing an existing suite is its own 
 
 ## Routing (cross-skill)
 
-These areas sit outside this skill; where your skill list has nothing covering one, the fallback beside it holds.
+These areas sit outside this skill. Where your skill list has nothing covering one, the note beside it is what to do instead.
 
-- Microbenchmarks and dump capture: the skill covering live-process measurement - without it, keep timing assertions out of the suite entirely.
-- The coverage-gaming check before any 'done': the skill covering .NET analyzers and build gates - without it, refuse the obvious shortcuts (a skipped test, a weakened assertion, a lowered threshold).
-- Testability refactors, the clock seam and `Task`-not-`void` are `csharp`'s; the exception and Result shapes under assertion are the HTTP error-handling skill's - without it, assert the shape production already returns.
+- Performance microbenchmarks and crash / hang dump capture belong to the skill covering live-process measurement (BenchmarkDotNet, dotnet-dump, dotnet-gcdump). A test is not a benchmark: without that skill, keep timing assertions out of the suite entirely rather than approximating one.
+- The reward-hacking / coverage-gaming check before any 'done' belongs to the skill covering .NET analyzers and build-gate enforcement; the CRAP ranking is paired at §Coverage above. Without it, the shortcuts to refuse are still the obvious ones: a skipped test, a weakened assertion, a lowered threshold.
+- Testability refactors, the clock seam, and async-returns-`Task`-not-`void` are baseline rules owned by `csharp`. Exception and Result shapes under assertion belong to the skill covering HTTP error handling; without it, assert the shape the production code already returns rather than inventing an envelope.

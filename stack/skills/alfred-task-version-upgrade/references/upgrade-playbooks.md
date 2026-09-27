@@ -25,9 +25,3 @@ Runtime-not-compile-time is the whole game: the break that fails the build is th
 - Package lag on .NET - a `Microsoft.Extensions.*` or EF Core provider below the runtime's major line is a load-time failure the compiler never sees.
 
 An upgrade enumerated only from compile errors ships these to production - the plan names the runtime checks per stage, and VERIFY runs them.
-
-## Auto mode and the session model
-
-An auto run never pauses, so the model the session is on at run start carries the whole run; a gated
-run can switch at the approval pause and drop to a cheaper model for execution. Say so when the user
-weighs auto mode against the gate.

@@ -9,10 +9,3 @@ SKILL.md owns the core service and client conventions; these surfaces are opt-in
 ## Browsers can't speak raw gRPC - use gRPC-Web
 
 A browser cannot make a raw gRPC/HTTP-2 call (no access to the required frames), so a browser client needs **gRPC-Web**: enable `UseGrpcWeb()` on the server (and `.EnableGrpcWeb()` per service or globally), give the JS/TS client the gRPC-Web transport, and configure CORS to expose the gRPC-specific headers. Note gRPC-Web does not support client or bidirectional streaming - live bidirectional browser push is SignalR, owned by the skill covering real-time server push. Service-to-service traffic stays on plain gRPC where HTTP/2 is end to end.
-
-## Message limits and compression
-
-Tune limits deliberately: `MaxReceiveMessageSize` / `MaxSendMessageSize` guard against oversized payloads (gRPC is
-for messages, not file transfer), and response compression (`ResponseCompressionAlgorithm = "gzip"`) pays off on
-larger bodies - but do not compress a response that mixes a secret with attacker-influenced data, since compressing
-them together is a CRIME/BREACH-style oracle that leaks the secret by size.

@@ -91,7 +91,10 @@ public static class OrderPlacedHandler
 
 ## Transport and local development
 
-The broker's host and connection string come from configuration, never a literal; auto-provisioning and auto-purge stay in local development. Read `references/transport-and-local-dev.md` before choosing or configuring the broker or running it locally.
+- RabbitMQ or Azure Service Bus is the broker. RabbitMQ is the default for self-hosted and local; Azure Service Bus when the platform is already on Azure and you want a managed queue with sessions and dead-lettering built in.
+- The host and connection string come from configuration via the options pattern - never a literal in code. Different environments point at different brokers with no recompile.
+- `.AutoProvision()` is fine for declaring queues and exchanges on startup in dev. Auto-purge is dev-only; never wipe a queue outside local. Do not auto-provision blindly into a shared environment where topology is owned by infrastructure.
+- Run the broker as an Aspire resource for local orchestration when the project uses Aspire, per the skill covering Aspire orchestration - it gives you the container, the connection wiring, and the dashboard without a hand-managed `docker run`.
 
 ## Prove the consumer is idempotent
 

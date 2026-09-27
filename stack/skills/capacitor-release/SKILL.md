@@ -5,7 +5,7 @@ description: "Load when cutting a release, wiring signing, or building the relea
 
 # Capacitor release pipeline
 
-This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation server / the plugin README); this file picks up where the build is done. Floored at Capacitor 6, current on 8 - prefer the 8 path and treat anything newer as optional. It configures the native projects (signing, versions, symbols) and never writes Swift or Kotlin source.
+This skill owns the last mile: turning a feature-complete Ionic/Capacitor app into a signed artifact in TestFlight or a Play testing track, and deciding what ships over-the-air versus through a fresh store binary. The app itself - UI, lifecycle, permissions, plugin wrapping - is `ionic`; per-plugin install/config is fetched live (the documentation server / the plugin README); this file picks up where the build is done. Floored at Capacitor 6, current on 8 - prefer the 8 path and treat anything newer as optional. Native Swift / Kotlin source edits are out of scope: this skill configures the native projects (signing, versions, symbols), it does not write platform code - that boundary stays with the platform tooling, not the agent.
 
 ## Step 0 - ask before the first irreversible byte
 
@@ -20,7 +20,8 @@ Carry the answer into the output contract below. One approval covers one target:
 ## The artifact - sync then build
 - The web build comes first, then the bridge copy, then the native build. Never build native off a stale `www/`: run `npm run build` -> `npx cap sync` (copies web assets and updates native deps) -> the native build. `cap sync` is the step that makes the native shell match the code you just shipped.
 - Prefer `npx cap build ios` / `npx cap build android` (stable, not experimental in 6+) for a one-shot signed artifact: iOS produces an `.ipa`, Android an `.aab` (default) or `.apk`. It wraps the platform tools so local and CI agree on flags.
-- Archive control in CI (`xcodebuild` archive and export, `./gradlew bundleRelease`) and the iOS archive target per dependency manager (Swift Package Manager or CocoaPods) are `references/platform-builds.md` - read it before driving the platform tools directly. Ship the `.aab` to Play, never the `.apk`.
+- In CI, or when you need archive control, drive the platform tools directly: `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release archive` then `-exportArchive` for the `.ipa`; `./gradlew bundleRelease` for the `.aab` (`assembleRelease` only when a raw `.apk` is genuinely needed). Ship the `.aab` to Play, not the `.apk` - Play requires the bundle and serves device-optimized splits from it.
+- Match the iOS archive target to the dependency manager: Capacitor 8 defaults new iOS projects to Swift Package Manager, which has no CocoaPods `.xcworkspace` - archive it with `-project ios/App/App.xcodeproj`, not the `-workspace ...App.xcworkspace` above. A CocoaPods project (older, or `cap add ios --packagemanager CocoaPods`) keeps the workspace; `npx cap build ios` resolves the right target either way, and `npx cap migrate` applies the mechanical changes on a version bump.
 
 ## Signing and store submission - the invariants
 The mechanics - certificate + provisioning-profile setup, App Store Connect API keys and Fastlane match, keystore flags and apksigner, the TestFlight / Play track ladder - live in `references/signing.md`; load it when actually wiring signing or a submission. What holds regardless:
@@ -30,24 +31,48 @@ The mechanics - certificate + provisioning-profile setup, App Store Connect API 
 
 ## OTA / live updates - the native-binary boundary
 This is the load-bearing rule of the whole pipeline: **a live update ships the web layer only**. HTML, CSS, JavaScript, and bundled web assets can go over-the-air with no store review. Anything that touches the native binary - adding or upgrading a Capacitor plugin, changing a native dependency, editing native config or native code - requires a fresh store submission. Push web-layer fixes over-the-air for speed; cut a native release when, and only when, the binary actually changed.
-- Use the capawesome live-update plugin (`@capawesome/capacitor-live-update`); Ionic Appflow's live updates are sunsetting (end of 2027), so start no new work on them.
+- Use the capawesome live-update plugin (`@capawesome/capacitor-live-update`). Ionic Appflow's live updates are sunsetting (end of 2027), so do not start new work on it - capawesome is the recommended path, with the official live-update mechanism as the alternative.
 - Gate OTA bundles to the native versions they are compatible with. An OTA bundle built against a newer plugin set must not land on an older binary that lacks it - a web bundle expecting a native capability the installed binary does not have is a white-screen in production. Bind each live-update channel to a native version range.
 - Serve the live-update channel over HTTPS with a signed or checksum-verified bundle, so a substituted bundle cannot land - this is the control `ionic-security` audits on the OTA seam.
-- Pair the live-update channel with an app-update check that nudges users to the store when a native release is required.
+- Run both layers together: a live-update channel for rapid web iteration, plus an app-update check that nudges users to the store when a native release is required.
 - Publishing an OTA bundle IS a release: it reaches installed devices with no review in between, so it runs only under a step-0 answer that authorized an upload, and a first publish to a channel is asked again.
 
 ## Versioning - one source, four sinks, kept in sync
 Two numbers, and they mean different things on every platform - keep them straight and keep them synced:
-- The marketing version (iOS `MARKETING_VERSION`, Android `versionName`, `package.json`) agrees across all three, and the build number (`CFBundleVersion`, `versionCode`) rises every upload - bumped from one source in the release script, never hand-edited per platform. The sinks and the tools that write them: `references/platform-builds.md`.
+- **Marketing version** (the human-facing `1.4.0`): iOS `MARKETING_VERSION` / `CFBundleShortVersionString`, Android `versionName`, web `package.json` `version`.
+- **Build number** (the monotonic integer the stores order by, must increase every upload): iOS `CFBundleVersion`, Android `versionCode`.
+- The failure this section prevents is drift: a marketing version that disagrees across iOS, Android, and web, or a build number a store rejects as already-used. Bump from one source of truth in the release script - hand-editing the pbxproj and `build.gradle` separately is how they desync. A small CLI (capver, capacitor-set-version) or a Fastlane lane that writes all sinks from the `package.json` version keeps them in lockstep; the build number is the thing CI auto-increments per upload.
 
 ## CI/CD shape
-- Recommend **Fastlane** as the release engine even when GitHub Actions is the trigger: its `match` (signing), `gym`/`build_app` (archive), `pilot`/`deliver` (App Store), and `supply` (Play) lanes encode the steps once and run identically on a laptop and a runner. A bare Actions workflow ends up re-implementing the same steps in YAML - let Fastlane own the release logic and let Actions own the trigger and the secrets. The lane shape to start from is `references/fastlane-lanes.md` - read it before writing a Fastfile.
+- Recommend **Fastlane** as the release engine even when GitHub Actions is the trigger: its `match` (signing), `gym`/`build_app` (archive), `pilot`/`deliver` (App Store), and `supply` (Play) lanes encode the steps once and run identically on a laptop and a runner. A bare Actions workflow ends up re-implementing the same steps in YAML - let Fastlane own the release logic and let Actions own the trigger and the secrets. The lane shape:
+
+```ruby
+# fastlane/Fastfile - secrets arrive via ENV from the CI runner, never from the repo
+platform :ios do
+  lane :release do
+    app_store_connect_api_key(key_id: ENV['ASC_KEY_ID'],
+      issuer_id: ENV['ASC_ISSUER_ID'], key_content: ENV['ASC_KEY_P8'])
+    match(type: 'appstore', readonly: true)
+    build_app(workspace: 'ios/App/App.xcworkspace', scheme: 'App')
+    pilot   # -> TestFlight, not production
+  end
+end
+
+platform :android do
+  lane :release do
+    gradle(task: 'bundle', build_type: 'Release')
+    supply(track: 'internal')   # -> Play internal track first
+  end
+end
+```
 - Running a lane is an upload, laptop or runner alike: `pilot` publishes to TestFlight and `supply` to a Play track. Run either only under the step-0 answer that authorized it, and never a production track from here.
 - Secrets are injected, never committed: the App Store Connect API `.p8` (base64 in a secret), the Android upload keystore (base64) plus its passwords, the match passphrase / repo token. Decode into the runner at job start, use, and let the ephemeral runner discard them. A keystore, a `.p8`, or a signing password in the repo is a release-blocking leak.
 - Build the matrix off the boundary above: a web-only change runs a lint/test/OTA-publish lane; a native change runs the full archive-sign-upload lane. Don't cut a store binary for a CSS fix.
 
 ## Crash + symbol upload is a release step
-Upload the iOS dSYM and the web sourcemaps for every store or TestFlight build, automated in the CI lane and gated on the same build number - `references/platform-builds.md` has the tools; the maps never ship in the bundle.
+- iOS: upload the **dSYM** for every store/TestFlight build so crash reports symbolicate - automate it in the CI lane (Sentry's sentry-cli, Crashlytics upload-symbols, or Fastlane) rather than pulling it from App Store Connect by hand after a crash arrives. An unsymbolicated production crash is a wasted release.
+- Web layer: upload the **sourcemaps** for the same build to your error tracker so an OTA-shipped JS error maps back to real source - then keep the maps out of the shipped bundle.
+- Treat both as part of the release, gated on the same build number, not an afterthought - a symbol file that does not match the uploaded build is useless.
 
 ## Output contract - what a release run reports
 

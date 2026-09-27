@@ -82,12 +82,38 @@ Full overlay with rationales: `references/style-overlay.md`.
 
 ## What this skill does NOT cover
 
-Markdown **form** only. Whether a doc should exist, prose terminology and voice (Vale), spelling and grammar, and other markups are out of scope - `references/out-of-scope.md` names the tool for each.
+Markdown **form** only - heading style, list indentation, code-fence language tags, link syntax, line length, and the rest of the two rule sets above. It does not cover:
+
+- **Whether a doc should exist, or where it belongs** - that is a content / architecture decision, not a form review. Style review assumes the doc earned its place.
+- **Prose-level enforcement** - terminology consistency, inclusive-language substitutions, banned phrases, voice / tense / mood. Reach for [Vale](https://vale.sh) (a prose linter that runs configurable style packs over Markdown). It composes with this skill: this skill fixes the Markdown form, Vale enforces prose terminology.
+- **Spelling and grammar** - use `codespell` / `hunspell` / `LanguageTool` in addition, not instead.
+- **AsciiDoc / reStructuredText / org-mode / MDX** - Markdown only; other markup has its own canonical rules (e.g. `asciidoctor --safe-mode`).
 
 ## Hard limits
 
 - Never invent rules. Every finding cites a rule from `references/syntax-canon.md` or `references/style-overlay.md`.
 
-## Examples and attribution
+## Examples
 
-Two worked answers and the sources the two layers are distilled from (the Markdown Guide, CC BY-SA 4.0; Google's Markdown style guide, Apache 2.0) are in `references/examples-and-attribution.md` - link out to the originals, never paste long excerpts.
+<example>
+<user_query>Is `===` under a heading line valid Markdown?</user_query>
+<response>
+Yes - that is setext-style H1, valid Markdown. But the style overlay (and Google's guide) prefer ATX (`# Heading`): setext is annoying to maintain, cannot express H3 or below, and obscures the level when scanning. Recommendation: replace `===` with a single `#` - a syntax-equivalent rewrite. Point me at the file and I will apply it.
+</response>
+</example>
+
+<example>
+<user_query>Lint this README - the formatting is messy.</user_query>
+<response>
+Running the two-pass review. Pass 1 fixes syntax bugs (fences, blank lines, ATX headings, list markers) directly. Pass 2 applies the clear style wins and flags any judgment calls (TOC, table-vs-list) as a short list. Send the path.
+</response>
+</example>
+
+## Attribution
+
+The two layers are distilled from publicly available style references - load-bearing rules only, not verbatim reproduction:
+
+- **Syntax canon** - the Markdown Guide basic-syntax reference (<https://www.markdownguide.org/basic-syntax/>), CC BY-SA 4.0.
+- **Style overlay** - Google's developer-documentation Markdown style guide (<https://google.github.io/styleguide/docguide/style.html>), from `google/styleguide`, Apache License 2.0.
+
+When the user needs the original text, link out - do not paste long excerpts.

@@ -5,33 +5,97 @@ description: "Use when hardening, threat-modeling or reviewing a .NET service fo
 
 # .NET application security - the OWASP Top 10, applied
 
-The hardening checklist: how each 2021 OWASP Top 10 category shows up in an ASP.NET Core service and what to do about it (the 2025 revision maps onto the same mitigations). It pairs with the live diff review (`/security-review`, run by the pre-commit checkpoint on an auth, crypto or data-access change). Out of scope next door: wiring sign-in and policies is the skill covering .NET authentication, and choosing a crypto primitive the skill covering .NET crypto primitives - where your skill list has neither, apply the obligations below and report the wiring UNVERIFIED rather than inventing it. Floor .NET 8 / C# 12; the .NET Framework 4.8 deltas are `references/net-framework-48.md`.
+This is the hardening reference: how the 2021 OWASP Top 10 categories show up in an ASP.NET Core service and what to do about each. OWASP's 2025 revision reshuffles the ranks, folds SSRF into A01, and adds software-supply-chain and exceptional-conditions categories; the mitigations map either way (supply chain under A06 / A08, exceptional conditions under A04 / A05 and the .NET web error-handling skill), so the sections keep the stable 2021 numbering. It is a static checklist you read while writing or reviewing code, and it pairs with the security review of a live diff (`/security-review`, which the pre-commit checkpoint runs on an auth, crypto or data-access change) - that review is the moving part, this is the durable map. Two whole areas are deliberately out of scope and live next door: how you actually wire up sign-in and policies belongs to the skill covering .NET authentication - the handlers, token validation, cookie and policy configuration - and which crypto primitive to reach for belongs to the skill covering .NET crypto primitives; both exist only where the project does that work, so where nothing in your skill list covers one, apply the obligations below and report the wiring itself as UNVERIFIED rather than inventing it. This skill says where those controls belong in the threat model, not how they are built. Floor is .NET 8 / C# 12.
 
-The principle: every byte that crossed a trust boundary is hostile until validated, and the secure path is the default.
+On a .NET Framework 4.8 codebase the TLS defaults, `BinaryFormatter` (still shipping there), classic-ASP.NET security headers, and the dependency-audit prerequisites differ - those deltas are in `references/net-framework-48.md`.
 
-**Each obligation below is one line; `references/owasp-in-full.md` carries it with its reason and worked code - read the category you are writing or reviewing.**
+The principle under all of it: treat every byte that crossed a trust boundary as hostile until you have validated it, and make the secure path the default one - a control you have to remember to add is a control you will eventually forget.
 
-## A01-A05
-- **A01 access control:** a fallback policy that requires an authenticated user (default-deny, `AllowAnonymous` opts out loudly); resource-based authorization on every id from the request - an id is input, never proof of ownership (IDOR); the check on the server, every request; CORS names exact origins, never `AllowAnyOrigin` with credentials; tokens scoped to what they may do; antiforgery tokens for every cookie-authenticated state change.
-- **A02 cryptographic failures:** HTTPS everywhere with `UseHttpsRedirection()` and `UseHsts()` (forwarded headers first behind a proxy - HSTS guards browsers, not machine callers); classify fields as secret or sensitive and protect each; no key or connection string in the repo or `appsettings.json`.
-- **A03 injection and XSS:** every query parameterized (the mechanics are the database-security skill's); OS commands take an argument array; Razor's encoding is the protection - `Html.Raw` / `MarkupString` only over content you generated or sanitized; a content-security-policy as backstop; allowlist validation at the boundary, never instead of the above.
-- **A04 insecure design:** rate-limit login, token issuance, password reset and anything expensive (`AddRateLimiter`); fail closed when a security dependency is down; business limits enforced server-side. Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted. Bind a DTO in and out, map explicitly.
-- **A05 misconfiguration:** no internals in an error response outside Development; the security headers (nosniff, a CSP, a referrer-policy, no Server header) as middleware; Swagger and detailed health checks off or behind auth in production; `ASPNETCORE_ENVIRONMENT` is `Production` in production.
+## A01 - Broken access control
 
-## A06-A10
+The most common real-world failure: the user is authenticated, but the app never checks whether *this* user may touch *this* thing.
 
-The mechanics are `references/owasp-a06-a10.md`; the obligations hold whatever is installed:
+- **Default-deny.** Set a fallback authorization policy so that an endpoint with no explicit policy is still protected, not open. Forgetting an `[Authorize]` then fails closed instead of leaking the route. Anonymous endpoints opt out loudly with `AllowAnonymous`.
 
-- **A06** - `dotnet list package --vulnerable --include-transitive` fails the CI build; supported versions; a lock file plus `packageSourceMapping`.
-- **A07** - signature, issuer, audience and expiry all validated with tight skew; session cookies `HttpOnly` + `Secure` + `SameSite`; lockout or throttling with no user enumeration.
-- **A08** - never a type-permissive deserializer over untrusted input (`BinaryFormatter` is unsafe by design); verify a signature or hash on anything loaded; the build chain is in scope.
-- **A09** - log authentication and authorization outcomes and high-value actions with a correlation id, never a secret or PII, and alert on the attack patterns.
-- **A10** - a user-supplied URL checked against an allowlist, private and metadata ranges rejected resolve-then-check, fetched on a dedicated `HttpClient` with redirects off and a tight timeout.
+```csharp
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
+```
+
+- **Kill IDOR.** An id from the route, query string, or body is an *input*, never proof of ownership. `GET /orders/{id}` must confirm the caller owns that order before returning it - otherwise incrementing the id walks the whole table. Enforce this with resource-based authorization: a `AuthorizationHandler<TRequirement, TResource>` that loads the resource and checks the relationship, invoked via an injected `IAuthorizationService`. Role checks alone do not catch this; two users with the same role still must not read each other's rows.
+
+```csharp
+var order = await db.Orders.FindAsync(id);          // id is input, not proof of ownership
+var allowed = await authz.AuthorizeAsync(user, order, "OwnsOrder");
+if (!allowed.Succeeded)
+{
+    return Results.Forbid();                        // same role != same rows
+}
+```
+- **Check on the server, every time.** A hidden field, a disabled button, or a missing menu item is UX, not a control. The authorization decision lives on the server and runs on every request, including the ones a browser would never send.
+- **Lock down CORS.** Name the exact allowed origins; never pair `AllowAnyOrigin` with `AllowCredentials` - the framework will reject the combination at runtime precisely because it defeats the same-origin protection.
+- **Scope what a token can do.** Least privilege applies to tokens too: an API key or JWT scoped to read should not be accepted on a write. The policy plumbing belongs to the skill covering .NET authentication; the obligation to actually scope the token is here, and holds whether or not that skill is installed.
+- **Antiforgery tokens are the CSRF control for cookie auth, not `SameSite`.** A `SameSite` cookie is a blunt backstop; the real defense for a cookie-authenticated `POST`/`PUT`/`PATCH`/`DELETE` is an antiforgery token - Razor's form tag helper injects it as a hidden field automatically, and AJAX callers read it and send it in the configured request header. Disabling it (`DisableAntiforgery()`) is safe only for endpoints that authenticate by a non-ambient credential - a bearer token, not a cookie - and never for a cookie-auth state change.
+
+## A02 - Cryptographic failures
+
+The category formerly called sensitive-data exposure - the failure is usually that data which should have been protected was not, or was protected with the wrong tool.
+
+- **Algorithm and key choices belong to the skill covering .NET crypto primitives** - SHA-2 versus the broken hashes, AES-GCM for authenticated encryption, the right password KDF, and how keys are generated and rotated. Do not re-derive any of that here; where nothing in your skill list covers it, report the primitive choices as UNVERIFIED rather than guessing at them.
+- **Encrypt in transit, no exceptions.** HTTPS everywhere, HSTS on in production via `app.UseHsts()`, and `UseHttpsRedirection()` so a plaintext request is bounced rather than served.
+- **Classify before you store.** Know which fields are secret (passwords, tokens, keys) and which are merely sensitive (PII), and protect each accordingly - hashed-and-salted for credentials, encrypted-at-rest for the rest. Do not log either (see A09).
+- **Keys and connection strings are not source.** Nothing secret ships in the repo or in `appsettings.json`. Use user-secrets in development and a managed vault or platform-injected environment variables in production.
+- **HSTS protects browsers, not machine callers.** `UseHsts()` emits a directive a browser caches and enforces; it does nothing for an API-to-API or other non-browser consumer, so treat it as a defense-in-depth layer for browser clients, never as the transport control itself - TLS on the connection is that. Behind a reverse proxy or load balancer, order the forwarded-headers middleware before `UseHttpsRedirection()` so the app sees the client's original scheme; without it, HTTPS detection reads the proxy's plaintext hop and the redirect and secure-cookie logic misfire.
+
+## A03 - Injection (SQL, command, LDAP) and XSS
+
+Injection happens whenever untrusted input is concatenated into something an interpreter then parses as code. The fix is always the same shape: keep data as data.
+
+- **Parameterize every query.** The security non-negotiable is that no user value ever lands inside the SQL text; the mechanics - EF Core `FromSqlInterpolated` vs raw `FromSqlRaw`, Dapper and ADO.NET command parameters, dynamic-SQL nuance - belong to the skills covering database security and database conventions. With neither installed, the rule still executes: every user value is a parameter, and any string-concatenated SQL you find is a finding.
+- **The same rule covers OS commands and LDAP.** If you must shell out, pass arguments as an argument array rather than a single string the shell re-parses, and prefer a typed API over spawning a process at all.
+- **Encode on output to stop XSS.** Razor HTML-encodes interpolated values by default; that default is the protection, so do not defeat it. `Html.Raw`, `MarkupString`, and `[AllowHtml]` over untrusted input reopen the hole - reserve them for content you generated or sanitized server-side. JSON written through System.Text.Json is encoded correctly; hand-built script or HTML strings are not.
+- **Defense in depth at the browser.** A content-security-policy header limits what injected markup can do even if something slips through; it is a backstop, not a substitute for encoding.
+- **Validate at the boundary anyway.** Strong typing and allowlist validation - FluentValidation in an endpoint or action filter, per the skill covering HTTP error handling and request validation - shrink the attack surface before any of the above runs. Validation is not a replacement for parameterization or encoding - it is the layer in front of them.
+
+## A04 - Insecure design
+
+Some weaknesses are not bugs in the code but gaps in the plan, and no amount of careful implementation fixes a missing control.
+
+- **Rate-limit the abusable surfaces.** Login, token issuance, password reset, and anything expensive need throttling so they cannot be brute-forced or used to exhaust resources; the built-in rate-limiting middleware (`AddRateLimiter`) covers this.
+- **Fail closed by design.** When a dependency the security decision depends on is unavailable - the authorization store, the token validator - deny rather than wave the request through.
+- **Enforce business limits server-side.** Quantity caps, ownership rules, and workflow state transitions are part of the threat model; a client that can post any quantity or skip a step is a design hole, not a UI bug.
+- **Bind the request to a DTO, never onto an entity.** Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted. Returning that same entity across the boundary leaks columns and invites a serialization cycle. Bind to a dedicated command/query DTO in and out and map explicitly, so no entity crosses the HTTP boundary. The binding and mapping mechanics belong to whichever skill covers your endpoint surface (minimal APIs or controller-based Web API); this is where the control sits in the threat model, and it applies with neither of them installed.
+
+## A05 - Security misconfiguration
+
+The framework's defaults are mostly safe; the failures come from turning them off, leaving development settings in production, or never setting the production ones.
+
+- **Send no detail to the client on error.** Errors surface as `ProblemDetails` with developer messages and stack traces suppressed outside Development - the shape itself belongs to the skill covering HTTP error handling - the global handler, the error-to-status map, the ProblemDetails envelope; the security stake is that an unhandled exception must not leak internals, paths, or SQL, whichever way the envelope is built.
+- **Set the response security headers.** An X-Content-Type-Options of nosniff, a restrictive content-security-policy, a referrer-policy, and dropping the Server header all close small but real gaps; apply them as middleware so every response carries them.
+- **Trim what you expose.** Disable Swagger/OpenAPI and detailed health-check payloads in production unless they sit behind auth, and remove sample or debug endpoints before ship.
+- **Keep environments honest.** `ASPNETCORE_ENVIRONMENT` must be `Production` in production - the developer exception page, verbose logging, and relaxed settings are all gated on it, and a misset environment is itself the vulnerability.
+
+## A06-A10 - the second half, in one bullet each
+
+The mechanics for these five categories are `references/owasp-a06-a10.md` - open the category you are reviewing. The obligation that must hold whatever the install looks like is here:
+
+- **A06, vulnerable and outdated components.** `dotnet list package --vulnerable --include-transitive` runs in CI and fails the build; packages and the runtime stay on supported versions; a lock file plus `packageSourceMapping` closes the dependency-confusion swap.
+- **A07, identification and authentication failures.** Signature, issuer, audience and expiry are all validated with tight clock skew and none of them switched off; session cookies are `HttpOnly` + `Secure` + `SameSite`; credential flows carry lockout or throttling and leak no user enumeration.
+- **A08, software and data integrity failures.** Never deserialize untrusted input with a type-permissive formatter - `BinaryFormatter` is unsafe by design and any working call on the .NET 8 floor is a deliberate opt-in to delete; verify a signature or hash on anything you load, and treat the build chain as in-scope.
+- **A09, security logging and monitoring failures.** Log authentication success and failure, authorization denials and high-value actions with a correlation id; never log a secret or PII; alert on the attack patterns, because a log nobody watches is not monitoring.
+- **A10, server-side request forgery.** Any URL built from user input is checked against an allowlist of hosts or schemes, loopback / link-local / private / cloud-metadata ranges are rejected resolve-then-check, and the fetch runs on a dedicated `HttpClient` with redirects disabled and a tight timeout.
 
 ## Review output
 
-A review delivers a findings table - `category | surface | risk | fix`, one row per finding ordered by risk. Name the route a fix belongs to by what it covers; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that wiring. A category you never looked at is UNVERIFIED, never a pass.
+When this skill is used to review rather than to write, the deliverable is a findings table, not prose:
 
-## Do not use
+`category | surface | risk | fix` - one row per finding, ordered by risk, the category naming the A0x above. Name the route a fix belongs to by what it covers, do not restate its content here; when no installed skill matches, keep the finding in this report tagged with its surface and mark it UNVERIFIED for that wiring. State what you did NOT check as plainly as what you did - a category you never looked at is UNVERIFIED, never a pass.
 
-`BinaryFormatter`; Code Access Security and APTCA (no boundary on .NET); .NET Remoting and DCOM; a suppression over a security analyzer to ship - fix the finding.
+## Do not use - dead but still tempting
+
+- **`BinaryFormatter`** - the unsafe deserializer; see A08 above.
+- **Code Access Security and APTCA** - not a security boundary on .NET (Core) and unsupported; never rely on them to sandbox anything.
+- **.NET Remoting and DCOM** - legacy, unsafe transports; use a modern, authenticated transport instead.
+- **Suppressing a security analyzer to ship** - a `#pragma warning disable` or suppression over a security rule is a decision to ship the vulnerability; fix the finding rather than silence it.

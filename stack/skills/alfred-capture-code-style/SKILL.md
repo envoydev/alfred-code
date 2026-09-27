@@ -9,7 +9,7 @@ disable-model-invocation: true
 You drive the deliberate capture of a project's ACTUAL code style and make it self-serving at write time. Two artifacts come out of a run; a re-run repeats the same analysis, then reconciles the doc in place and regenerates the rule from the fresh reports:
 
 1. `<docs-path>/code-style/CODE-STYLE.md` - the merged style doc, a docs domain like every other: one file, a `##` section per language (not one file per language - a section's own `covers:` glob already routes a language's change to it), `references/` for anything too long for a section, and a `watch.json` naming which globs ask whether a language's section still holds. It captures how this codebase really writes each of its languages (config-enforced rules + the idioms a linter cannot encode), divergence from the house convention skills flagged. It opens with the `Captured: <branch>@<short-sha>, <date>` lifecycle stamp (`+dirty` on an uncommitted tree) - the docs-root rule (`.claude/rules/baseline-docs-root.md`) owns what readers make of it. `references/doc-shape.md` is the section format and write mechanics, including how a change lands on a branch - read it before MERGE.
-2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike. The full doc stays the deep reference; the rule is the always-delivered essence.
+2. `.claude/rules/project-code-style.md` - a generated path-scoped rule carrying the condensed style core, its `paths:` globs built from the exact extensions the analysis observed. The rules channel delivers it mechanically wherever a matching file is touched - main session and dispatched subagents alike (a PreToolUse hook's injected context never reaches subagent tool calls, which is why this is a rule and not a hook). The full doc stays the deep reference; the rule is the always-delivered essence.
 
 The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL linter rules) stay the enforced source of truth; the doc records what they encode and what they cannot. Code style is NOT architecture - structure, boundaries, and patterns live in `<docs-path>/architecture/`, owned by the alfred-capture-architecture skill. Never fold one into the other.
 
@@ -22,7 +22,7 @@ DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files
 ## The run
 
 ### 1. DETECT - what languages does this repo hold?
-A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.css`, `*.sql`, plus the config markers (`package.json`, `angular.json`, `*.csproj`, `tsconfig.json`, `.editorconfig`, eslint/prettier config, SQL linter config). The result is the fan-out list - one language family per seat (a WPF repo: C# + XAML). Do not dispatch for a language the scan did not find.
+A cheap Glob scan, in-session: `*.cs`, `*.xaml`, `*.ts`, `*.html`, `*.scss`/`*.css`, `*.sql`, plus the config markers (`package.json`, `angular.json`, `*.csproj`, `tsconfig.json`, `.editorconfig`, eslint/prettier config, SQL linter config). The result is the fan-out list - one language family per seat (e.g. WPF repo: C# + XAML; Angular repo: TypeScript/Angular + SCSS/CSS; ASP.NET repo: C# alone). Do not dispatch for a language the scan did not find.
 
 ### 2. FAN OUT - one code-style-analyzer per language, in parallel
 Dispatch all seats in a single message. Each dispatch prompt names its language-family scope, tells the seat to locate with the navigation server and read only the ranges that matter - never a whole file - and nothing else. The agent reads its config + representative code and returns the structured report (project type, observed extensions, enforcement map, enforced rules, idioms, uncertain/inconsistent). The agents write no files; their final messages are your merge input.
@@ -33,14 +33,16 @@ Consolidate the reports into one doc - apply the `markdown-style` skill so it re
 ### 4. RULE - regenerate .claude/rules/project-code-style.md
 Build the extension union from the agents' **Language + extensions** sections ONLY - never pad it from assumption (a WPF repo gets `cs|xaml`, an Angular repo `ts|html|scss`, an ASP.NET repo `cs` - plus whatever else was genuinely observed, e.g. `sql`). Then generate from `references/code-style-rule.template.md`:
 
-Fill its three placeholders - the observed-extension globs, the condensed style core, the resolved doc path - per `references/rule-generation.md`, each derived, never designed.
+1. `__PATH_GLOBS__` -> one `  - "**/*.<ext>"` line per observed extension. Derived, not designed.
+2. `__STYLE_CORE__` -> the condensed essence of the merge: each language's Enforced + Idioms as tight bullets (keep 'uncertain'/'inconsistent' markers), plus the cross-cutting idioms. Aim small - this text is injected into every session that touches matching code; detail beyond what a writer needs on the spot belongs in the doc, not the rule.
+3. `__DOC_PATH__` -> the SAME resolved docs root the doc was just written under, baked as a literal (a rule is static text - it cannot resolve env at load; the next capture re-bakes it if the root moved).
 
 Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Wholesale is mechanical, and it is a REPLACE, never a delete: READ the existing rule first (it is short), then Write the fresh one over it. The read is what makes the Write legal; an `rm` first is denied by the auto-mode classifier, which costs exactly the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
 
 This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it.
 
 ### 5. RETIRE - remove the legacy hook, if present
-An earlier capture's `.claude/hooks/inject-code-style.js` and its settings entry go - `references/rule-generation.md` says how. Nothing to retire on a clean project: skip silently.
+Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). If the hook file exists: delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently.
 
 ### 6. REPORT
 A literal line template, not prose to remember - the close is filled in, field by field, one line each (a table where a field lists several items, since the answer-length hook blocks a wall of prose and tables are exempt):

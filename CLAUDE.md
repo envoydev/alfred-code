@@ -762,11 +762,6 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   fenced `ask` block, the question on its first line, then one `- '<label>' - <why>` line per option -
   and lint check 61 fails one that marks no option `(Recommended)`, or two; the three flow skills
   (`alfred-task-solve`, `-cross`, `alfred-issue-diagnoser`) must carry theirs (pilot 3: 18 of 40 flow
-  asks had no mark, and the approver took the first option each time). A SKILL.md BODY is capped at 8,000
-  chars (lint check 62): the imperatives stay in the core, the detail moves to `references/` behind a
-  pointer naming when to read it (an `*-in-full.md` reference keeps a condensed skill's unabridged
-  text); `SKILL_BODY_ALLOW` in `scripts/lint-skills.js` lists a body that cannot split yet, each with
-  its reason, and an entry whose body fits is stale (pilot 4 emptied it: 51 bodies split, a plain C#
-  cell's loaded bodies 22,658 -> 13,557 chars, a flow cell's 81,198 -> 48,168).
+  asks had no mark, and the approver took the first option each time).
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.

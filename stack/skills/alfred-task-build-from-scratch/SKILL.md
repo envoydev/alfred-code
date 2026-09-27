@@ -49,11 +49,24 @@ Every count comes from the command that produced it, never a hand tally. A captu
 
 ## Per-stack scaffolding
 
-Read `references/per-stack-scaffolding.md` at step 3, before the new-project command - the command per stack and the architecture and convention skills to match from your skill list by what each covers.
+**Availability** - each row's skills exist only where that stack was installed; match them from your skill list by what each covers, and a skill absent because the project is greenfield (an evidence-gated specialist arrives only once code shows the need) is designed around from the stack's hub skill and the vendor docs, never guessed by name.
+
+| Stack | new-project command | Architecture + convention skills to match from your skill list |
+|---|---|---|
+| Angular web | ng new | the Angular framework-conventions skill + the Angular CSS/SCSS styling skill |
+| Ionic/Capacitor mobile | ionic start + cap add | the Ionic/Capacitor conventions skill + the mobile router that indexes it |
+| ASP.NET Core backend | dotnet new webapi/web | the .NET architecture skill + the ASP.NET web/API skill, or its minimal-API specialist where the design picked that shape |
+| WPF desktop | dotnet new wpf | the WPF conventions skill (strict MVVM) |
+| SQL / data | first schema | the cross-engine database-conventions skill + the .NET migrations skill |
 
 ## Example
 
-`references/worked-example.md` walks one brief (a new Angular admin dashboard) through the five steps - read it when the shape of a whole run is unclear.
+Brief: 'Start a new Angular admin dashboard.'
+1. **DESIGN** in-session: three options - standalone + signals with feature folders; NgRx-backed modular; minimal-shell MVP - each with routing, state tier, folder shape, and the tradeoff that decides it.
+2. **THE PICK**: the user chooses option one.
+3. **SCAFFOLD**: `ng new admin`, structure per the Angular framework-conventions skill, wire lint/format config, a test setup, the core routing shell.
+4. **BUILD**: first slice (the auth shell) - dispatch the web-Angular stack's own trio in order, its solution-designer, then its implementer(s), then its verifier; loop the punch-list. Repeat per slice to the first milestone.
+5. **HANDOFF**: suggest the captures so the repo gets its map and style artifacts.
 
 ## Rules
 - Greenfield architecture and tech choices are the user's - present options, get the pick, never scaffold before it.
