@@ -39,7 +39,7 @@ test('drive, grade and aggregate, end to end on the real fixture', { skip: POSIX
     const d = await drive(w.opts);
     assert.deepStrictEqual([d.ran, d.failed], [4, 0]);
     const tpl = fs.readdirSync(path.join(w.workRoot, 'templates')).find((x) => x.startsWith('ours-') && !x.endsWith('.log'));
-    assert.strictEqual(execFileSync('git', ['-C', path.join(w.workRoot, 'templates', tpl, 'repo'), 'rev-parse', 'HEAD'], { stdio: 'pipe' }).toString().trim(), lock.commit, 'the template is the locked fixture commit');
+    assert.strictEqual(execFileSync('git', ['-C', path.join(w.workRoot, 'templates', tpl, 'repo'), 'rev-parse', 'HEAD^'], { stdio: 'pipe' }).toString().trim(), lock.commit, 'the template\'s setup commit sits on the locked fixture commit');
 
     const g = gradeRun({ benchDir: w.bench, run: 'r-test', armsDir: w.opts.armsDir, tasksDir: w.opts.tasksDir, base: w.opts.base, log: () => {} });
     assert.deepStrictEqual([g.graded, g.infra], [4, 0]);

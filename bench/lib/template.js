@@ -22,6 +22,7 @@ const fixture = require('../fixture/verify.js');
 const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
 const { installShims } = require('./dotnet-shim.js');
+const { commitSetup, git } = require('./session.js');
 
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
@@ -31,9 +32,15 @@ const WARM_TIMEOUT_MS = String(10 * 60 * 1000);
 // What a failed build keeps to read, under `<template>.failed`: everything else is wiped.
 const KEPT_ON_FAILURE = ['onboarding', 'plugins.json', 'grants.json', 'mcp-warm.txt'];
 
+// A READY from before the setup commit existed names no setupCommit: its clone would start every cell among the
+// arm's untracked install files, so it is rebuilt rather than served.
 function isReady(paths, hash)
 {
-    try { return JSON.parse(fs.readFileSync(path.join(paths.dir, READY), 'utf8')).hash === hash; }
+    try
+    {
+        const ready = JSON.parse(fs.readFileSync(path.join(paths.dir, READY), 'utf8'));
+        return ready.hash === hash && typeof ready.setupCommit === 'string';
+    }
     catch { return false; }
 }
 
@@ -208,8 +215,14 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
             if (!fs.existsSync(file) || !fs.statSync(file).isFile() || fs.statSync(file).size === 0) throw new Error(`${arm.name} onboarding left ${rel} missing or empty - the arm is not set up, so no cell may run on it`);
         }
 
-        fs.writeFileSync(path.join(paths.dir, READY), `${JSON.stringify({ arm: arm.name, hash: arm.hash, pin: arm.pin, fixtureCommit: commit, builtAt: new Date().toISOString() }, null, 2)}\n`);
-        return { paths, built: true, fixtureCommit: commit };
+        // What setup and onboarding left, committed once like a user commits a fresh install (session.js
+        // commitSetup); the lock then checks the commit it sits on, so no setup step can move the start state.
+        const setupCommit = commitSetup(paths.repo, { home: paths.home });
+        const parent = git(paths.repo, ['rev-parse', 'HEAD^'], { home: paths.home }).trim();
+        if (parent !== theLock.commit) throw new Error(`${arm.name}: the setup commit sits on ${parent}, the fixture lock records ${theLock.commit} - a setup step moved the clone`);
+
+        fs.writeFileSync(path.join(paths.dir, READY), `${JSON.stringify({ arm: arm.name, hash: arm.hash, pin: arm.pin, fixtureCommit: commit, setupCommit, builtAt: new Date().toISOString() }, null, 2)}\n`);
+        return { paths, built: true, fixtureCommit: commit, setupCommit };
     }
     catch (err)
     {

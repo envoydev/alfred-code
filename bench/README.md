@@ -158,7 +158,13 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   session's server connects inside the 30 s default. `plugins.json` (the list after onboarding),
   `grants.json` and `mcp-warm.txt` sit beside READY and are copied to `results/<run>/onboarding/<arm>/`
   - the third-party plugins a template pulls (`claude-hud`, the two LSP plugins) are not covered by
-  the arm's pin, so that list is the record.
+  the arm's pin, so that list is the record. Last, what setup and onboarding left in the clone is
+  committed once, as a user commits a fresh install: `chore: project setup`, the same rule for every arm, by
+  a fixed identity set for that command alone, with `.claude/settings.local.json` kept out through the
+  clone's own `info/exclude` (Claude Code keeps that file out of git when it writes it, and a tracked one
+  needs workspace trust). The lock then checks the commit it sits on, a cell starts on it (pilot 3's ~150
+  untracked install files drove 19 commit-gate denials), and the graded diff still starts at the cell's own
+  base tree.
 - A copied account dir resolves: each arm's plugins load from the cell's own config.
 - Package restore time per cell, with a HOME of its own.
 - The flow block's approver: one flow cell per arm, each transcript read end to end - every ask

@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { sessionArgv, run, prepare, onboardSync } = require('./session.js');
+const { sessionArgv, run, prepare, onboardSync, commitSetup } = require('./session.js');
 const { cellPaths } = require('./cells.js');
 const { composeProject } = require('./compose.js');
 
@@ -305,6 +305,26 @@ const ADD_WIP = 'diff --git a/wip.txt b/wip.txt\nnew file mode 100644\n--- /dev/
 const EDIT_APP = 'diff --git a/app.txt b/app.txt\n--- a/app.txt\n+++ b/app.txt\n@@ -1 +1 @@\n-one\n+decided\n';
 const status = (cell) => execFileSync('git', ['-C', cell.repo, 'status', '--porcelain'], { stdio: 'pipe' }).toString();
 const headOf = (cell, ref = 'HEAD') => execFileSync('git', ['-C', cell.repo, 'rev-parse', ref], { stdio: 'pipe' }).toString().trim();
+
+test('a clone on its template\'s setup commit starts there: the start ref is the commit it sits on', (t) =>
+{
+    const { cell } = cellFor(t);
+    const base = headOf(cell);
+    fs.mkdirSync(path.join(cell.repo, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(cell.repo, '.claude', 'installed.md'), 'the arm\'s install\n');
+    const setup = commitSetup(cell.repo, { home: cell.home });
+    prepare({ cell, startRef: base, taskDir: os.tmpdir(), task: 't1' });
+    assert.strictEqual(headOf(cell), setup, 'a checkout of the start ref would drop the arm\'s setup');
+    assert.ok(fs.existsSync(path.join(cell.repo, '.claude', 'installed.md')));
+    assert.strictEqual(status(cell), '');
+});
+
+test('a start ref the setup commit does not sit on is refused, never checked out below it', (t) =>
+{
+    const { cell, first } = cellFor(t);
+    commitSetup(cell.repo, { home: cell.home });
+    assert.throws(() => prepare({ cell, startRef: first, taskDir: os.tmpdir(), task: 't1' }), /the template's setup commit sits on [0-9a-f]{12}, not on the start ref [0-9a-f]{40} \([0-9a-f]{12}\)/);
+});
 
 test('an uncommitted setup patch leaves the clone dirty with exactly that change', (t) =>
 {

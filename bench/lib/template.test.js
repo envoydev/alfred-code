@@ -315,6 +315,54 @@ test('an onboarding that left an expected output missing or empty fails the temp
     }
 });
 
+// The harness's own git view of a clone: no host config, the template's own home.
+const gitIn = (paths, ...a) => execFileSync('git', ['-C', paths.repo, ...a], { stdio: 'pipe', env: { PATH: process.env.PATH, HOME: paths.home, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull } }).toString().trim();
+
+test('the setup and onboarding output is committed once, on the locked fixture commit, as a user commits a fresh install', (t) =>
+{
+    const f = fixture(t);
+    const a = arm([writeJson('{repo}', '.claude/rules/house.md', 'a rule')], { onboarding: ['/init'], expects: ['CLAUDE.md'], env: { FAKE_PLUGINS: JSON.stringify(PLUGINS) } });
+    const { paths } = build({ claude: FAKE, arm: a, session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock,
+        onboard: (prompt, where) => fs.writeFileSync(path.join(where.cwd, 'CLAUDE.md'), '# made\n') });
+    assert.strictEqual(gitIn(paths, 'log', '-1', '--format=%s'), 'chore: project setup');
+    assert.strictEqual(gitIn(paths, 'log', '-1', '--format=%an <%ae>|%cn <%ce>'), 'Lending Desk <setup@lendingdesk.invalid>|Lending Desk <setup@lendingdesk.invalid>', 'a fixed harness identity, never the host\'s');
+    assert.strictEqual(gitIn(paths, 'rev-parse', 'HEAD^'), f.lock.commit, 'the lock checks the commit it sits on');
+    assert.strictEqual(gitIn(paths, 'status', '--porcelain'), '', 'nothing the arm installed is left untracked');
+    const tracked = gitIn(paths, 'ls-files').split('\n');
+    for (const rel of ['CLAUDE.md', '.claude/rules/house.md', 'app.txt']) assert.ok(tracked.includes(rel), `${rel} is committed`);
+    // Claude Code keeps the file out of git when it writes it, and a TRACKED local settings file needs workspace
+    // trust before its allow rules apply: the grants stay untracked, exactly as a user's would.
+    assert.ok(!tracked.includes('.claude/settings.local.json'), 'the local settings stay out of the commit');
+    assert.ok(fs.existsSync(path.join(paths.repo, '.claude', 'settings.local.json')));
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(paths.dir, 'READY.json'), 'utf8')).setupCommit, gitIn(paths, 'rev-parse', 'HEAD'));
+});
+
+test('an arm with nothing to commit still gets its setup commit: every template has the one shape', (t) =>
+{
+    const f = fixture(t);
+    const { paths } = build({ claude: FAKE, arm: arm([]), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock });
+    assert.strictEqual(gitIn(paths, 'log', '-1', '--format=%s'), 'chore: project setup');
+    assert.strictEqual(gitIn(paths, 'rev-parse', 'HEAD^'), f.lock.commit);
+});
+
+test('a setup commit that does not sit on the locked fixture commit is refused', (t) =>
+{
+    const f = fixture(t);
+    const moved = arm([['git', '-c', 'user.name=x', '-c', 'user.email=x@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'moved']]);
+    assert.throws(() => build({ claude: FAKE, arm: moved, session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock }), new RegExp(`solo: the setup commit sits on [0-9a-f]{40}, the fixture lock records ${f.lock.commit}`));
+    assert.ok(!fs.existsSync(path.join(f.bench, 'work', 'templates', 'solo-abcdef01')), 'no template is served');
+});
+
+test('a template ready from before the setup commit existed is rebuilt, never served', (t) =>
+{
+    const f = fixture(t);
+    const runs = path.join(path.dirname(f.bench), 'runs.txt');
+    const dir = path.join(f.bench, 'work', 'templates', 'solo-abcdef01');
+    fs.mkdirSync(path.join(dir, 'repo'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'READY.json'), JSON.stringify({ arm: 'solo', hash: 'abcdef0123456789' }));
+    assert.strictEqual(build({ claude: FAKE, arm: arm([counter(runs)]), session: SESSION, benchDir: f.bench, fixtureSource: f.source, lock: f.lock }).built, true);
+});
+
 test('a template left half-built by a killed driver is rebuilt, never served', (t) =>
 {
     const f = fixture(t);

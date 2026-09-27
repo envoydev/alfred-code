@@ -73,6 +73,39 @@ const SETUP_IDENTITY = {
     GIT_COMMITTER_NAME: 'Lending Desk', GIT_COMMITTER_EMAIL: 'dev@lendingdesk.invalid', GIT_COMMITTER_DATE: '2026-09-01T09:00:00Z',
 };
 
+// The arm's setup and onboarding output, committed once in its template (lib/template.js) the way a user commits a
+// fresh install: one local commit, the same rule for every arm, by a fixed identity set for that command alone. A
+// cell starts on it, so a stack's commit gate never meets the ~150 untracked install files pilot 3 left in every
+// flow cell. Claude Code keeps .claude/settings.local.json out of git when it writes the file; the harness writes
+// the grants by hand, so it adds the same pattern itself - in the clone's own exclude file, which travels with the
+// clone to every cell and to the grader (a tracked local settings file would also need workspace trust).
+const SETUP_COMMIT = {
+    message: 'chore: project setup',
+    env: { GIT_AUTHOR_NAME: 'Lending Desk', GIT_AUTHOR_EMAIL: 'setup@lendingdesk.invalid', GIT_COMMITTER_NAME: 'Lending Desk', GIT_COMMITTER_EMAIL: 'setup@lendingdesk.invalid' },
+};
+const LOCAL_SETTINGS = '**/.claude/settings.local.json';
+
+function commitSetup(repo, { home })
+{
+    const exclude = path.resolve(repo, git(repo, ['rev-parse', '--git-path', 'info/exclude'], { home }).trim());
+    const text = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '';
+    if (!text.split('\n').includes(LOCAL_SETTINGS))
+    {
+        fs.mkdirSync(path.dirname(exclude), { recursive: true });
+        fs.appendFileSync(exclude, `${text && !text.endsWith('\n') ? '\n' : ''}${LOCAL_SETTINGS}\n`);
+    }
+    git(repo, ['add', '-A'], { home });
+    git(repo, ['commit', '--quiet', '--no-verify', '--allow-empty', '-m', SETUP_COMMIT.message], { home, extraEnv: SETUP_COMMIT.env });
+    return git(repo, ['rev-parse', 'HEAD'], { home }).trim();
+}
+
+// HEAD when it is a template's setup commit, else null (a fresh fixture clone, a template from before it existed).
+function setupCommitAt(repo, { home })
+{
+    const [email, subject] = git(repo, ['log', '-1', '--format=%ae%n%s'], { home }).split('\n');
+    return email === SETUP_COMMIT.env.GIT_AUTHOR_EMAIL && subject === SETUP_COMMIT.message ? git(repo, ['rev-parse', 'HEAD'], { home }).trim() : null;
+}
+
 // A task whose start state must hold a credential (does the session keep it out of its diff?) writes
 // `@BENCH_PLANTED_JWT@` in its setup patch, and the value is made here: a JWT shape the credential
 // count sees, derived from the task id so the session and the grader rebuild the same commit. Never a
@@ -106,7 +139,16 @@ function applySetupPatch(cell, file, task)
 // a new branch (`commitOn`). The session and the grader both build it here and nowhere else.
 function prepare({ cell, startRef, setup = [], taskDir, task })
 {
-    if (startRef) git(cell.repo, ['checkout', '--quiet', startRef], { home: cell.home });
+    // A template's setup commit sits on the fixture commit the tasks start from: the cell starts ON it, because a
+    // checkout of the start ref would drop the arm's setup, and a start ref anywhere else is refused.
+    const onSetup = startRef ? setupCommitAt(cell.repo, { home: cell.home }) : null;
+    if (onSetup)
+    {
+        const parent = git(cell.repo, ['rev-parse', 'HEAD^'], { home: cell.home }).trim();
+        const start = git(cell.repo, ['rev-parse', `${startRef}^{commit}`], { home: cell.home }).trim();
+        if (parent !== start) throw new Error(`the template's setup commit sits on ${parent.slice(0, 12)}, not on the start ref ${startRef} (${start.slice(0, 12)}) - a checkout there would drop the arm's setup`);
+    }
+    else if (startRef) git(cell.repo, ['checkout', '--quiet', startRef], { home: cell.home });
     for (const step of setup)
     {
         if (step.commitOn) git(cell.repo, ['checkout', '--quiet', '-b', step.commitOn], { home: cell.home });
@@ -333,4 +375,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, plainDriver, kill, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, DIFF_EXCLUDES };
+module.exports = { sessionArgv, run, plainDriver, kill, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, commitSetup, DIFF_EXCLUDES, SETUP_COMMIT };
