@@ -16,7 +16,8 @@ action, on top of this baseline, and that rule's list is the authority on what t
 action, not two competing ones (a WinForms `*Form.cs` edit is the case that collides here).
 
 Skip the load only when it is already in context this session (some seats preload it) - a compaction
-empties that context, so the exemption ends at the next compaction and the load is owed again
+carries a loaded skill forward only within a shared budget (the oldest dropped, a long one cut
+short), so the exemption ends at the next compaction and the load is owed again
 (measured: 23 `.cs` edits across two post-compaction tails with zero loads, the plan claiming the
 skill was 'loaded earlier this session'); conventions are the source of truth, not recall. Writing or
 changing a TEST file loads `dotnet-testing` in the same action (measured: new test methods shipped

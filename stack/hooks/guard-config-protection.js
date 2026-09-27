@@ -8,29 +8,33 @@
 // warning and nullable properties) - there a change that leaves those lines as they were passes.
 // 'Allow' is honoured through <docs-path>/flow/CONFIG-EDIT-ALLOW (one path per line as the project
 // spells it, a bare file name, or `*`; this session's own, under 8h).
-// CLAUDE_STACK_CONFIG_PROTECT=0 switches the gate off. The shell route is a segment parser, not a
+// ALFRED_CODE_CONFIG_PROTECT=0 switches the gate off. The shell route is a segment parser, not a
 // full parse: a write it cannot see passes, and the block rate is read before it is widened.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
+// way.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-config-protection')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-config-protection');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
-if (process.env.CLAUDE_STACK_CONFIG_PROTECT === '0') process.exit(0);
+if (envOf(process.env, 'CONFIG_PROTECT') === '0') process.exit(0);
 
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving.
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 
 // Git Bash / MSYS spell a Windows path in POSIX mount form; translate before any resolution.
 const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
@@ -82,12 +86,12 @@ if (!payload || typeof payload !== 'object') process.exit(0);
                 {
                     // `path` is required at module scope above.
                     const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-                    // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+                    // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
                     fs.mkdirSync(dir, { recursive: true });
-                    fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+                    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
                         ts: new Date().toISOString(),
                         hook: path.basename(__filename),
                         event: payload.hook_event_name || payload.tool_name || '',
@@ -129,9 +133,27 @@ function judgeFileTool() {
 
 const WRITE_VERB = new Set(['tee', 'rm', 'mv', 'truncate', 'set-content', 'add-content', 'out-file', 'clear-content', 'remove-item', 'move-item']);
 const COPY_VERB = new Set(['cp', 'copy-item']);
+// A heredoc body and a quoted span are text the command CARRIES (a runbook describing the rm, a commit
+// message naming the file), never a step of its own - the siblings mask both for the same reason. The
+// segments are cut at separators OUTSIDE quotes, over a copy with heredoc bodies blanked, using the
+// shared parser beside this hook; a copy that runs before it lands cuts the raw text as before.
+let shell = null;
+try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { shell = null; }
+function segments(command) {
+  if (!shell) return command.split(/&&|\|\||[;\n|]/);
+  const text = shell.blankHeredocs(command);
+  const chars = text.split('');
+  for (const [a, b] of shell.quotedSpans(text)) for (let i = a; i < b; i += 1) chars[i] = 'x';
+  const masked = chars.join('');
+  const out = [];
+  let from = 0;
+  for (const m of masked.matchAll(/&&|\|\||[;\n|]/g)) { out.push(text.slice(from, m.index)); from = m.index + m[0].length; }
+  out.push(text.slice(from));
+  return out;
+}
 function judgeShell() {
   const command = String((payload.tool_input || {}).command || '');
-  for (const seg of command.split(/&&|\|\||[;\n|]/)) {
+  for (const seg of segments(command)) {
     const toks = (seg.trim().match(/"[^"]*"|'[^']*'|\S+/g) || []);
     const verb = unq(toks[0] || '').toLowerCase();
     const inPlace = (verb === 'sed' && toks.some((t) => /^-i/.test(t))) || (verb === 'perl' && toks.some((t) => /^-\w*i/.test(t)));
@@ -179,7 +201,8 @@ global.BLOCK_DETAIL = { file: rel, why: hit.why };
 const receiptRel = path.relative(ROOT, receipt).split(path.sep).join('/');
 process.stderr.write(
   `Blocked: ${rel} already exists and ${hit.why}. Weakening a check to get a green result is not a fix -\n` +
-  `go back to the code the check flagged.\n\n` +
+  `go back to the code the check flagged (alfred-habits-done-gate, step 4: 'Fix the cause - never suppress\n` +
+  `a warning, weaken a test, or stub code to go green').\n\n` +
   `If the TASK is this config (the user asked for the rule change), do not decide for them: end this turn\n` +
   `with ONE AskUserQuestion carrying, in this order -\n` +
   `  'Fix the code instead (Recommended)' - leave the check as it is\n` +

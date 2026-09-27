@@ -40,7 +40,7 @@ function buildFixture()
     put('src/Gen/Gen.csproj', `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><IsRoslynComponent>true</IsRoslynComponent></PropertyGroup>
 </Project>`);
-    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@sentry/angular': '^7.0.0' } }));
+    put('web/package.json', JSON.stringify({ dependencies: { '@angular/material': '^17.0.0', '@angular/core': '^16.2.0' }, devDependencies: { '@playwright/test': '^1.40.0' } }));
     put('nx.json', '{}');
     // content signal: a regex over a catalog-named code file (not a manifest)
     put('src/Api/Program.cs', 'app.MapGet("/health", () => "ok");\n');
@@ -71,7 +71,7 @@ test('scanner finds package, central-package, csproj-property, npm, and file sig
         assert.match(found.skills['dotnet-data-access'], /Npgsql in src\/Worker\/Worker\.csproj/, 'a CPM version-less PackageReference is the usage signal');
         assert.match(found.skills['dotnet-source-generators'], /IsRoslynComponent/, 'csproj property signal');
         assert.match(found.skills['angular-material'], /@angular\/material in web\/package\.json/, 'npm dependency');
-        assert.match(found.mcps['sentry'], /@sentry\/angular in web\/package\.json/, 'scoped npm prefix');
+        assert.match(found.mcps['browser'], /@playwright\/test in web\/package\.json/, 'scoped npm prefix');
         assert.match(found.skills['nx'], /nx\.json/, 'file-existence signal');
         assert.match(found.skills['dotnet-minimal-api'], /minimal-API Map\* wiring in Program\.cs in src\/Api\/Program\.cs/, 'content signal over a named code file, labeled');
         assert.match(found.skills['dotnet-mvc-controllers'], /ApiController\/Controller classes in src\/Web\/HomeController\.cs/, 'a base-class-only view controller fires the signal');
@@ -96,14 +96,21 @@ test('scanner honors the skip-list, the depth cap, and reports nothing for absen
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+// The shipped catalog holds no conflict row since 2.0.0 cut the one it had (angular-cli), so the
+// mechanism is proven on a fixture catalog of the same shape.
 test('scanner with --judgment computes version conflicts from found package majors', () => {
-    const JUDGMENT = path.join(__dirname, '..', 'meta', 'judgment.json');
     const root = buildFixture();
+    const JUDGMENT = path.join(root, 'judgment.json');
+    fs.writeFileSync(JUDGMENT, JSON.stringify({ versionConflicts: [
+        { item: 'skill:angular-material', package: '@angular/core', below: '17', conflict: 'newer idioms', survives: 'component docs' },
+        { item: 'skill:typescript', package: 'typescript', below: '5', conflict: 'unfound package', survives: 'n/a' },
+    ] }));
     try
     {
         const out = execFileSync('node', [SCRIPT, '--root', root, '--catalog', CATALOG, '--judgment', JUDGMENT], { encoding: 'utf8' });
         const conflicts = JSON.parse(out).judgment.versionConflicts;
-        const row = conflicts.find(c => c.item === 'mcp:angular-cli');
+        assert.deepStrictEqual(conflicts.map(c => c.item), ['skill:angular-material'], 'no version found = no claim');
+        const row = conflicts[0];
         assert.ok(row, '@angular/core ^16 is below the catalog threshold 17');
         assert.strictEqual(row.package, '@angular/core');
         assert.strictEqual(row.version, '^16.2.0');
@@ -120,6 +127,44 @@ test('scanner on an empty project yields an empty found map', () => {
         const found = scan(root);
         assert.deepStrictEqual(found, { skills: {}, mcps: {}, plugins: {} });
     }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+// R27: the optional plugins - the LSP pair since 2.0.0 retired the other two - are picks the scan
+// SUGGESTS, each on its own evidence, off the shipped catalog.
+function pluginTree(files)
+{
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'evscan-plugins-'));
+    for (const [rel, text] of Object.entries(files))
+    {
+        fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+        fs.writeFileSync(path.join(root, rel), text);
+    }
+    return root;
+}
+
+test('the plugins layer suggests each optional plugin on its own evidence, naming the manifest matched', () => {
+    const cases = [
+        ['csharp-lsp', { 'src/Api/Api.csproj': '<Project Sdk="Microsoft.NET.Sdk"></Project>' }, /src\/Api\/Api\.csproj present/],
+        ['csharp-lsp', { 'Shop.sln': 'Microsoft Visual Studio Solution File\n' }, /Shop\.sln present/],
+        ['typescript-lsp', { 'web/tsconfig.json': '{}' }, /web\/tsconfig\.json present/],
+        ['typescript-lsp', { 'web/package.json': JSON.stringify({ devDependencies: { typescript: '^5.4.0' } }) }, /typescript in web\/package\.json/],
+    ];
+    for (const [plugin, files, want] of cases)
+    {
+        const root = pluginTree(files);
+        try
+        {
+            const found = scan(root).plugins;
+            assert.match(found[plugin] || '', want, `${plugin} on ${Object.keys(files)[0]}: ${JSON.stringify(found)}`);
+        }
+        finally { fs.rmSync(root, { recursive: true, force: true }); }
+    }
+});
+
+test('a project with none of the signals gets no optional plugin suggested', () => {
+    const root = pluginTree({ 'README.md': '# x\n', 'web/package.json': JSON.stringify({ dependencies: { lodash: '^4.0.0' } }) });
+    try { assert.deepStrictEqual(scan(root).plugins, {}); }
     finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

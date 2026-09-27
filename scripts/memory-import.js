@@ -12,7 +12,7 @@
 // I1: the DEFAULT account's file is `$HOME/.claude.json` - a sibling of the `.claude` dir, never
 // inside it; only an explicit `--config-dir` or a live `CLAUDE_CONFIG_DIR` moves it to
 // `<dir>/.claude.json`), else - the plugin route, where no registration exists - the server the
-// installed memory@claude-stack plugin declares, with the database path pinned.
+// installed memory@envoydev plugin declares, with the database path pinned.
 //
 // `--memory-dir` pins a single explicit notes folder (tests, or a caller that already knows the
 // answer) and skips everything below. Left out, the importer AUTODETECTS every notes folder that
@@ -67,7 +67,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 // The server route - finding the server, the precheck, the store loop, the post-exit verify - lives in
 // the memory engine, shared with its `import` verb, so both imports store the same way.
 const engine = require('../stack/hooks/memory.js');
@@ -112,7 +112,7 @@ function gitTopLevel(projectRoot)
 {
     try
     {
-        const commonDir = execFileSync(
+        const commonDir = rt.execCommand(
             'git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
             { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();
@@ -121,7 +121,7 @@ function gitTopLevel(projectRoot)
     catch (e) { /* not a git repo, or git missing - fall through to --show-toplevel */ }
     try
     {
-        const top = execFileSync(
+        const top = rt.execCommand(
             'git', ['rev-parse', '--show-toplevel'],
             { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
         ).trim();
@@ -397,7 +397,9 @@ function buildContent(description, body)
     return description || body;
 }
 
-async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
+// Every note this project's folders hold, and the folders looked in - the lookup the import runs, shared
+// with the installer, which switches Claude's own memory off at install time when it finds none.
+function findNotes(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
 {
     let memoryDirs;
     let scannedConfigDirs;
@@ -436,6 +438,12 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
             noteEntries.push({ dir, file: f });
         }
     }
+    return { noteEntries, memoryDirs, existedDirs };
+}
+
+async function runImport(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir)
+{
+    const { noteEntries, memoryDirs, existedDirs } = findNotes(projectRoot, configDir, explicitConfigDir, home, explicitMemoryDir);
     const fromLabel = (existedDirs.length ? existedDirs : memoryDirs).join(', ');
 
     // Re-review, I7 (binding ruling): no notes anywhere - including nothing found through a
@@ -443,7 +451,7 @@ async function runImport(projectRoot, configDir, explicitConfigDir, home, explic
     // with sessions but no notes is the normal case, not a sign the folder computation is wrong.
     if (noteEntries.length === 0) return { ok: true, message: `nothing to import, from ${fromLabel}` };
 
-    // A registration (the copy route, any pre-1.0.0 install), else the installed memory@claude-stack
+    // A registration (the copy route, any pre-1.0.0 install), else the installed memory@envoydev
     // plugin: from 1.0.0 the server rides that plugin and no registration exists, which is why the
     // notes import found nothing to store into on every plugin-route install until 1.1.0.
     const entry = engine.serviceEntry(projectRoot, { home, configDir: explicitConfigDir || undefined });
@@ -499,6 +507,6 @@ if (require.main === module)
 }
 
 module.exports = {
-    mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir,
+    mapKind, parseNote, buildContent, slugify, gitTopLevel, defaultMemoryDir, findNotes,
     INIT_TIMEOUT_MS: engine.INIT_TIMEOUT_MS, OVERALL_TIMEOUT_MS: engine.OVERALL_TIMEOUT_MS,
 };

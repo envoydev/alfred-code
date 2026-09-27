@@ -5,16 +5,15 @@ description: "Load before writing, changing or reviewing Angular tests: TestBed 
 
 # Angular Testing
 
-Practices and tooling for Angular tests. This skill sets NO coverage percentage - the % bar is
-the user's, owned and recorded by the `project-test-coverage-analyzer` capture; what lives here
-is how to write tests worth counting and which code coverage cannot meaningfully claim.
+Practices and tooling for Angular tests: how to write tests worth counting, and which code
+coverage cannot meaningfully claim (the % bar itself is not this skill's - see Coverage).
 
 Ionic/Capacitor apps share everything here; their extra layer - testing the native seams (the
 plugin's typed wrapper mocked, the web-fallback and permission-denied paths asserted, the honest
 jsdom boundary) - lives in the skill covering the Ionic / Capacitor layer; with none installed, mock the plugin
 wrapper here and mark the native paths UNVERIFIED. Real-device
-E2E belongs to the MCP that drives the native mobile shell, not a unit suite - with no such server
-registered, report those flows as UNVERIFIED rather than faking them in jsdom.
+E2E belongs to a device E2E suite (Appium or WebdriverIO against a device or simulator), not a unit
+suite - with none in the project, report those flows as UNVERIFIED rather than faking them in jsdom.
 
 ## Runner routing
 
@@ -78,7 +77,7 @@ it('boots from the real appConfig', () => {
 
 ## Coverage
 
-- The % bar is the USER's, owned and recorded by the `project-test-coverage-analyzer` capture -
+- The % bar is the USER's, owned and recorded by the `alfred-capture-test-coverage` capture -
   this skill sets no number.
 - What this skill owns is the mechanics: coverage is computed after exclusions so the number
   reflects real logic coverage, not padding - the catalog below is that list for Angular.

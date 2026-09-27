@@ -14,41 +14,80 @@
 // reads as 'ship unpinned' - the same fallback the installer had.
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
+const { PYTHON } = require('../stack/mcp/uv-python.js');
 
 const REPO = path.join(__dirname, '..');
 const PINS = path.join(REPO, 'meta', 'mcp-pins.json');
 
 // registry: how to ask, and the spelling the pin takes inside the server's own command line.
 const PACKAGES = {
-    'context7':   { registry: 'npm',  package: '@upstash/context7-mcp', spelling: '@<v>' },
-    'playwright': { registry: 'npm',  package: '@playwright/mcp',       spelling: '@<v>' },
-    'serena':     { registry: 'pypi', package: 'serena-agent',          spelling: '@<v>' },
+    'browser':    { registry: 'npm',  package: '@playwright/mcp',       spelling: '@<v>' },
+    'navigation': { registry: 'pypi', package: 'serena-agent',          spelling: '@<v>' },
     // The memory pin is spelled '==<v>' INSIDE the extras brackets ('mcp-memory-service[sqlite]==<v>'),
     // not '@<v>' like the others, which have no extras suffix to sit next to.
     'memory':     { registry: 'pypi', package: 'mcp-memory-service',    spelling: '==<v>' },
-    'chrome-devtools': { registry: 'npm', package: 'chrome-devtools-mcp', spelling: '@<v>' },
-    'appium-mcp':      { registry: 'npm', package: 'appium-mcp',          spelling: '@<v>' },
+    'windows-desktop': { registry: 'pypi', package: 'windows-mcp',      spelling: '==<v>' },
+    'macos-desktop':   { registry: 'pypi', package: 'macos-mcp',        spelling: '==<v>' },
 };
 
 function npmLatest(pkg)
 {
     try
     {
-        const out = execFileSync('npm', ['view', pkg, 'version'],
+        const out = rt.execCommand('npm', ['view', pkg, 'version'],
             { encoding: 'utf8', timeout: 30000, env: { ...process.env, npm_config_fetch_timeout: '15000' } });
         return out.trim() || null;
     }
     catch { return null; }
 }
 
+// Does a `requires_python` specifier admit this Python? `x.y` against the clauses PyPI carries (>=, >,
+// <, <=, ==, !=, ~=, a trailing .* on == / !=). A clause it cannot read admits - the launch says so.
+const vparts = (v) => String(v).split('.').map((n) => Number.parseInt(n, 10) || 0);
+function vcmp(a, b)
+{
+    const x = vparts(a);
+    const y = vparts(b);
+    for (let i = 0; i < Math.max(x.length, y.length); i += 1) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0);
+    return 0;
+}
+function admits(spec, python)
+{
+    for (const clause of String(spec || '').split(',').map((c) => c.trim()).filter(Boolean))
+    {
+        const m = /^(~=|==|!=|>=|<=|>|<)\s*([0-9][0-9.]*)(\.\*)?$/.exec(clause);
+        if (!m) continue;
+        const [, op, want, star] = m;
+        const head = star ? vparts(python).slice(0, vparts(want).length).join('.') : python;
+        const c = vcmp(head, want);
+        const ok = { '>=': c >= 0, '>': c > 0, '<=': c <= 0, '<': c < 0, '==': c === 0, '!=': c !== 0,
+            '~=': c >= 0 && vcmp(vparts(python).slice(0, vparts(want).length - 1).join('.'), vparts(want).slice(0, -1).join('.')) === 0 }[op];
+        if (!ok) return false;
+    }
+    return true;
+}
+
+// The newest FINAL release, not yanked, that the stack's pinned Python can install - every uvx server
+// starts on that one interpreter (stack/mcp/uv-python.js), so a pin past its floor fails at launch
+// (windows-mcp 0.8.6 needs 3.14). null when no release qualifies: the row keeps its committed pin.
+function newestFor(json, python)
+{
+    const releases = (json && json.releases) || {};
+    const ok = Object.keys(releases)
+        .filter((v) => /^[0-9]+(\.[0-9]+)*$/.test(v))
+        .filter((v) => releases[v].length && releases[v].every((f) => !f.yanked) && admits(releases[v][0].requires_python, python))
+        .sort(vcmp);
+    return ok.length ? ok[ok.length - 1] : null;
+}
+
 function pypiLatest(pkg)
 {
     try
     {
-        const out = execFileSync('curl', ['-fsSL', '--max-time', '20', `https://pypi.org/pypi/${pkg}/json`],
+        const out = rt.execCommand('curl', ['-fsSL', '--max-time', '20', `https://pypi.org/pypi/${pkg}/json`],
             { encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024 });
-        return JSON.parse(out).info.version || null;
+        return newestFor(JSON.parse(out), PYTHON);
     }
     catch { return null; }
 }
@@ -90,4 +129,4 @@ function main(argv)
 }
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
-module.exports = { PACKAGES, readPins, main };
+module.exports = { PACKAGES, readPins, main, newestFor, admits };

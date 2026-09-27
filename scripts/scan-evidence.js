@@ -7,12 +7,14 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', '.serena', '.claude']);
 const MAX_DEPTH = 6;
 const MAX_CONTENT_BYTES = 512 * 1024;
 const LAYERS = ['skills', 'mcps', 'plugins'];
+// Every signal kind an entry may carry, in the order the scan tries them - the lint rejects any other.
+const SIGNAL_KINDS = ['packages', 'files', 'csprojContent', 'content'];
 
 function walk(root)
 {
@@ -302,7 +304,7 @@ function extensions(root, files)
 // The capture stamp every doc under the docs root opens with, from git itself; a tree outside git says so.
 function captureLine(root)
 {
-    const git = (...args) => { try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
+    const git = (...args) => { try { return rt.execCommand('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
     const d = new Date();
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (git('rev-parse', '--git-dir') === null) return `Captured: no git, ${date}`;
@@ -425,6 +427,6 @@ function main(argv)
     else process.stdout.write(result + '\n');
 }
 
-module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL };
+module.exports = { scan, matchesPackage, basenameMatches, majorOf, findVersionConflicts, orientation, PROVISIONAL, SIGNAL_KINDS };
 
 if (require.main === module) main(process.argv.slice(2));

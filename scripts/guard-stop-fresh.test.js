@@ -5,11 +5,13 @@
 // than the one it replaces, because a false block teaches the model a bypass it then uses on the
 // turn that mattered.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
@@ -20,8 +22,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'guard-stop-fresh-'));
 // fixture of their own.
 process.env.CLAUDE_CONFIG_DIR = fs.mkdtempSync(path.join(TMP, 'acct-'));
 // ... and a Claude Code session's own settings env reaches this process: the seeded
-// CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
-delete process.env.CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW;
+// ALFRED_CODE_DEFAULT_CONTEXT_WINDOW=1000000 would resolve every unproven window below as 1M.
+delete process.env.ALFRED_CODE_DEFAULT_CONTEXT_WINDOW;
 // Every guard appends a block row under CLAUDE_PROJECT_DIR, falling back to the process cwd - so an
 // unpinned run forges field ledger rows into this repo's own docs root. Pin a scratch root.
 process.env.CLAUDE_PROJECT_DIR = fs.mkdtempSync(path.join(TMP, 'root-'));
@@ -46,7 +48,7 @@ const ctxRows = (name, ctx, text) => [
   assistantRow(`${name}-floor`, 'the first turn of this session', { cache_creation_input_tokens: 20000 }),
   assistantRow(name, text || 'ok', { cache_read_input_tokens: ctx }),
 ];
-const logEnv = (extra) => ({ ...process.env, CLAUDE_STACK_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(extra || {}) });
+const logEnv = (extra) => ({ ...process.env, ALFRED_CODE_HOOK_LOG_DIR: fs.mkdtempSync(path.join(TMP, 'log-')), ...(extra || {}) });
 function accountDir(name, model) {
   const d = fs.mkdtempSync(path.join(TMP, `${name}-`));
   fs.writeFileSync(path.join(d, 'settings.json'), JSON.stringify(model === null ? {} : { model }));
@@ -181,7 +183,7 @@ test('guard-stop-contract: a long or idle run offers the fresh session before th
   assert.match(long, /resume in a fresh session/i, 'a five-hour cycle at 120k - under every trigger - is offered the resume');
   assert.match(long, /5\.0h/, '... and the note names the span it fired on');
   assert.equal(ctxOf(askIn(rows('ask-short', 1, 120000), oneQ)), '', 'a one-hour session is left alone');
-  assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ CLAUDE_STACK_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
+  assert.equal(ctxOf(askIn(rows('ask-off', 5, 120000), oneQ, logEnv({ ALFRED_CODE_FRESH_SESSION_AFTER_HOURS: '0' }))), '',
     '0 on the hours knob switches the route off');
   // The recoverable-share rule owns this route too: a carry that is mostly the install's own floor
   // buys nothing by resuming, however long the session has been open.
@@ -219,7 +221,7 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   // Measured across the collection: 13 sessions loaded the Result / Progress / Leftovers stop
   // contract, 5 used the fields even once, across 109 asks - one session missed all 12 of its stops.
   const cycle = (name, text) => transcript(name, [
-    { type: 'user', message: { role: 'user', content: '<command-name>/project-solve-task</command-name>' } },
+    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-task-solve</command-name>' } },
     assistantRow(name, text, { cache_read_input_tokens: 900 }),
   ]);
   assert.match(ctxOf(askIn(cycle('sf-bare', 'Task 2 landed, tests green.'), oneQ)), /Result:.*Progress:.*Leftovers:/s,
@@ -230,6 +232,13 @@ test('guard-stop-contract: a solve-task stop is reminded of its three named fiel
   assert.equal(ctxOf(askIn(cycle('sf-bold',
     '**Result:** task 2 landed\n**Progress:** 4 of 6 steps\n**Leftovers:** none'), oneQ)), '',
     'the markdown-bold variant 5 of 13 sessions actually wrote satisfies the format');
+  // M7 (Task 22 fix round 1): on the plugin route the slash command is recorded with its plugin prefix.
+  const prefixed = transcript('sf-plugin', [
+    { type: 'user', message: { role: 'user', content: '<command-name>/alfred-code:alfred-task-solve</command-name>' } },
+    assistantRow('sf-plugin', 'Task 2 landed, tests green.', { cache_read_input_tokens: 900 }),
+  ]);
+  assert.match(ctxOf(askIn(prefixed, oneQ)), /Result:.*Progress:.*Leftovers:/s,
+    'a plugin-prefixed solve-task slash command is a solve-task cycle too');
   const notACycle = transcript('sf-none', [
     { type: 'user', message: { role: 'user', content: 'fix the failing test' } },
     assistantRow('n1', 'Fixed it; the suite is green.', { cache_read_input_tokens: 900 }),
@@ -250,33 +259,33 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
   const slash = (tp, skill) => {
     const r = runIn('guard-fresh-session-start.js',
-      { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'project-solve-task'}</command-name>`, transcript_path: tp },
+      { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'alfred-task-solve'}</command-name>`, transcript_path: tp },
       { env: logEnv() });
     assert.equal(r.status, 0, 'the slash route never denies');
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
   };
 
   assert.equal(slash(transcript('ab-dup', [
-    cmd('claude-stack:setup'), cmd('claude-stack:update'),
-  ]), 'claude-stack:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
+    cmd('alfred-code:setup'), cmd('alfred-code:update'),
+  ]), 'alfred-code:update'), '', 'two commands 4s apart with NO assistant turn between them is one abandoned run');
   assert.equal(slash(transcript('ab-resume', [
-    cmd('project-solve-task'), userRow('resume the build cycle, steps 1-3 are stamped'),
+    cmd('alfred-task-solve'), userRow('resume the build cycle, steps 1-3 are stamped'),
   ])), '', "a re-typed run the model never answered is not a run this session already made");
 
   // ... and the measured chain the trigger exists for still fires: a run, an ANSWER, then a second run.
   assert.match(slash(transcript('ab-real', [
-    cmd('project-architecture-analyzer'),
+    cmd('alfred-capture-architecture'),
     assistantRow('r1', 'Captured the architecture doc.', FLOOR),
     userRow('now run the task cycle'),
     assistantRow('r2', 'ok', COLD),
-    cmd('project-solve-task'),
+    cmd('alfred-task-solve'),
   ])), /ALREADY run one/i, 'a finished prior run, with the model\'s own turn in between, is still the measured chain');
 
-  // `init` is the guided install's name from Phase 8 (`setup` stays as its alias for a release):
-  // both are the same multi-phase walk, so both take the offer.
-  for (const walk of ['claude-stack:init', 'claude-stack:setup'])
+  // `setup` is the guided install and `init` the bootstrap after it (Task 18a): both are
+  // multi-phase runs, so both take the offer.
+  for (const walk of ['alfred-code:init', 'alfred-code:setup'])
     assert.match(slash(transcript(`ab-${walk.split(':')[1]}`, [
-      cmd('project-architecture-analyzer'),
+      cmd('alfred-capture-architecture'),
       assistantRow('i1', 'Captured the architecture doc.', FLOOR),
       userRow('now install the stack'),
       assistantRow('i2', 'ok', COLD),
@@ -334,7 +343,7 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   ]);
   const stopAnswer = () => runIn('guard-answer-length.js',
     { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: tp },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
 
   const alone = stopAnswer();
   assert.equal(alone.status, 2, 'an em-dash still blocks');
@@ -354,6 +363,20 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   fs.writeFileSync(path.join(ledger, 'conf.jsonl'), stale);
   assert.match(stopAnswer().stderr, /Re-send the SAME answer/, "an earlier turn's block is not this turn's");
 
+  // Only a BLOCK yields. The contract also logs rows that block nothing - the two method probes and
+  // the skip at a tool-ended turn - and the A/B's after arm lost its verification line when a fresh
+  // log row read as a block: the model was told to obey a block it never received. The done-gate
+  // probe is a Stop row written in this very turn, the closest shape to a real block.
+  const now = new Date().toISOString();
+  for (const row of [
+    { ts: now, hook: 'guard-stop-contract.js', event: 'PostToolUseFailure', tool: 'Bash', mode: 'probe', kind: 'root-cause', reason: 'probe: a red npm test run' },
+    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'probe', kind: 'done-gate', reason: 'probe: a done claim, unrun - logged, not held' },
+    { ts: now, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', mode: 'skip-tool-end', kind: 'tool-ended-turn', reason: 'skip: the turn ended on a tool call' },
+  ]) {
+    fs.writeFileSync(path.join(ledger, 'conf.jsonl'), JSON.stringify(row) + '\n');
+    assert.match(stopAnswer().stderr, /Re-send the SAME answer/, `a '${row.mode}' row blocked nothing, so the dash order stands`);
+  }
+
   // the LENGTH branch carries the same yield - 'Re-answer at budget' contradicts 'add nothing else'
   // exactly as the dash order did.
   const wall = transcript('conf-long', [
@@ -362,7 +385,7 @@ test('guard-answer-length: the em-dash fix yields to a stop-contract block on th
   ]);
   const longAnswer = () => runIn('guard-answer-length.js',
     { hook_event_name: 'Stop', session_id: 'conf', cwd: root, transcript_path: wall },
-    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: '.claude/docs' } });
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.claude/docs' } });
   assert.doesNotMatch(longAnswer().stderr, /blocked this same turn too/, 'a stale ledger leaves the length text alone');
   fs.writeFileSync(path.join(ledger, 'conf.jsonl'),
     JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', reason: 'fresh-session offer' }) + '\n');

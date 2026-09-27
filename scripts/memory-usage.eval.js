@@ -15,7 +15,7 @@
 // project's OWN throwaway .memory-mcp/memory.db - never ~/.memory-mcp) and .claude/settings.json (the
 // SessionStart wiring) by hand, and copies only the agent(s) a scenario needs into .claude/agents/.
 // That is behind ONE function so a later run can swap it for a real
-// `scripts/os/claude-stack.sh --source <worktree>` install without touching anything else.
+// `scripts/install/alfred-code.js --source <worktree>` install without touching anything else.
 //
 // --setup self|install|update (default self): 'install' is a FRESH real install from this worktree
 // (buildProjectInstall - no notes to import, never exercises an update). 'update' (buildProjectUpdate)
@@ -24,7 +24,8 @@
 // memory-feature commits begin (a pinned SHA, `git archive`'d - a clean release-shaped snapshot, no
 // node_modules, no .git), a Claude-own-memory note seeded for it under a sandboxed CLAUDE_CONFIG_DIR
 // (never the real account), then updated in place by THIS working tree's HEAD (also `git archive`'d,
-// same release shape). Asserts baseline-memory.md landed, memory is registered, the seeded note
+// same release shape), then `memory.js init` from that snapshot - since 2.0.0 the notes import and the
+// switch-off belong to /alfred-code:init, not to update. Asserts baseline-memory.md landed, memory is registered, the seeded note
 // became a db row, and autoMemoryEnabled is false - each a thrown Error on failure, which the
 // existing per-run try/catch already turns into a reported FAIL record rather than a crash.
 //
@@ -61,8 +62,8 @@
 // agent-{agentId}.jsonl" (code.claude.com/docs/en/sub-agents, via context7) - confirmed live in this
 // harness's own manual dry run (see task-8-report.md).
 //
-// Isolation: every run's temp project lives under CLAUDE_STACK_EVAL_SCRATCH (default
-// <os.tmpdir()>/claude-stack-memory-usage-eval/), matching this repo's own "session scratchpad (or
+// Isolation: every run's temp project lives under ALFRED_CODE_EVAL_SCRATCH (default
+// <os.tmpdir()>/alfred-code-memory-usage-eval/), matching this repo's own "session scratchpad (or
 // os.tmpdir())" convention - the harness has to be runnable outside any one agent session's own
 // scratchpad. CLAUDE_CONFIG_DIR is NEVER set (auth lives in the default account). After a run, the temp
 // project AND the exact ~/.claude/projects/<slug>/ folder it created are deleted - found by searching
@@ -83,6 +84,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn, spawnSync, execFileSync } = require('child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const ROOT = path.join(__dirname, '..');
 const RULE_SRC = path.join(ROOT, 'stack', 'rules', 'baseline-memory.md');
@@ -97,8 +99,8 @@ const FIXTURES_DIR = path.join(ROOT, 'scripts', 'fixtures', 'memory-usage');
 // FACT-EMBED (spike-facts.md): the [sqlite] extra is what gives real 384-dim embeddings; without it
 // the server hard-refuses on a db that already holds memories. Pinned to the version the spike proved
 // live; override for a later pin via env, never hardcode a second place.
-const MEMORY_VERSION = process.env.CLAUDE_STACK_EVAL_MEMORY_VERSION || '11.13.0';
-const TMP_BASE = process.env.CLAUDE_STACK_EVAL_SCRATCH || path.join(os.tmpdir(), 'claude-stack-memory-usage-eval');
+const MEMORY_VERSION = process.env.ALFRED_CODE_EVAL_MEMORY_VERSION || '11.13.0';
+const TMP_BASE = process.env.ALFRED_CODE_EVAL_SCRATCH || path.join(os.tmpdir(), 'alfred-code-memory-usage-eval');
 // A SIBLING of every per-run project/acct dir, never touched by cleanupRun() (which only ever removes
 // the three paths it is handed) - so a forensics dump written here survives cleanup on purpose.
 const FORENSICS_DIR = path.join(TMP_BASE, 'forensics');
@@ -127,8 +129,8 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   fs.mkdirSync(projectDir, { recursive: true });
   // A git repo of its own: memory.js's projectName() (and the model's own `basename "$(pwd)"` check)
   // both resolve the project tag from `git rev-parse --show-toplevel`, which must be THIS dir, not the
-  // claude-stack worktree the harness itself runs from.
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  // Alfred Code worktree the harness itself runs from.
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   const claudeDir = path.join(projectDir, '.claude');
   fs.mkdirSync(path.join(claudeDir, 'rules'), { recursive: true });
@@ -150,7 +152,7 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   const mcpConfigPath = path.join(projectDir, '.mcp.json');
   fs.writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers: { memory: memoryRegistration(dbPath) } }, null, 2));
 
-  // Exact shape claude-stack.sh writes (scripts/os/claude-stack.sh ~line 1986): the quoted
+  // Exact shape the Node seed writes (scripts/install/settings.js): the quoted
   // $CLAUDE_PROJECT_DIR placeholder, no matcher (fires on every SessionStart source), timeout 10.
   const settings = {
     hooks: {
@@ -164,27 +166,27 @@ function buildProjectSelf(projectDir, { agents = [] } = {}) {
   return { projectDir, dbPath, mcpConfigPath };
 }
 
-const INSTALLER_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
+const INSTALLER_SEED = path.join(ROOT, 'scripts', 'install', 'alfred-code.js');
 
 // Builds a temp project with the REAL installer from this worktree (--source), confirming
 // buildProjectSelf's hand-built approximation once Task 6 has landed. Selection is deliberately
 // narrow - just what the five scenarios need - not a full 79-skill install: `hook docs-session` is
 // selected (not just `hook memory-session`) because memory-session.js's related-projects lookup
-// requires docs.js, which ONLY ships alongside a SELECTED docs-session.js (claude-stack.sh ~line
-// 1784: memory-session.js's own companion copy is memory.js, not docs.js) - this also means the real
+// requires docs.js, which ONLY ships alongside a SELECTED docs-session.js (scripts/install/copy.js:
+// memory-session.js's own companion copy is memory.js, not docs.js) - this also means the real
 // install additionally WIRES docs-session.js as a live hook, which buildProjectSelf deliberately does
 // not (see diffSetups() for the full comparison). `--scope project` + `--memory-level project` keep
 // everything inside this one throwaway directory; no CLAUDE_CONFIG_DIR override, so `claude mcp add`
 // and the auth the installer's own `claude` calls need both resolve through the real default account.
 function buildProjectInstall(projectDir, { agents = [] } = {}) {
   fs.mkdirSync(projectDir, { recursive: true });
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   const selectionPath = path.join(projectDir, '.eval-selection.txt');
   const selectionLines = ['rule baseline-memory', 'hook memory-session', 'hook docs-session', 'mcp memory', ...agents.map((a) => `agent ${a}`)];
   fs.writeFileSync(selectionPath, `${selectionLines.join('\n')}\n`);
 
-  execFileSync('bash', [INSTALLER_SH, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
+  execFileSync(process.execPath, [INSTALLER_SEED, 'install', '--scope', 'project', '--selection', selectionPath, '--source', ROOT, '--memory-level', 'project'], {
     cwd: projectDir, stdio: 'pipe', timeout: 180000,
   });
 
@@ -263,7 +265,7 @@ async function diffSetups(agents) {
     lines.push(`settings.json hook EVENTS only the real install wires (docs-session.js, from selecting it to get docs.js): ${installExtraEventKeys.join(', ') || '(none)'}`);
 
     // Other install-only artifacts
-    for (const extra of ['CLAUDE.md', 'claude-stack.stamp']) {
+    for (const extra of ['CLAUDE.md', 'alfred-code.stamp']) {
       lines.push(`.claude/${extra}: self=${fs.existsSync(path.join(selfDir, '.claude', extra))} install=${fs.existsSync(path.join(installDir, '.claude', extra))}`);
     }
     lines.push(`settings.json autoMemoryEnabled: self=${settingsSelf.autoMemoryEnabled} install=${settingsInstall.autoMemoryEnabled} (install switches Claude's own auto-memory off; self-built leaves it untouched)`);
@@ -298,28 +300,28 @@ const PRE_FEATURE_COMMIT = 'bb5c684';
 // gitignored files), the same shape a real release archive or shallow-clone snapshot has. Piped
 // through node buffers rather than a shell pipeline so destDir never needs shell-quoting.
 //
-// ALSO writes RELEASE-SOURCE (sha/ref/version/source lines, the exact shape
-// _stack_marketplace_promote() synthesizes) - without it, claude-stack.sh's stack_src() has no git
-// checkout (no .git, deliberately) and no RELEASE-SOURCE to read STACK_SHA from, so write_stamp()
-// takes its 'no source revision resolved' fail-soft branch and writes NO claude-stack.stamp at all
+// ALSO writes RELEASE-SOURCE (sha/ref/version/source lines, the exact shape a real release archive
+// carries) - without it, the Node seed's source.js has no git checkout (no .git, deliberately) and no
+// RELEASE-SOURCE to read the source revision from, so its stamp writer takes its 'no source revision
+// resolved' fail-soft branch and writes NO stamp file at all
 // (confirmed live: a first attempt at this without the file produced no stamp). A `git archive`
 // snapshot with no RELEASE-SOURCE is not actually release-shaped - a real release archive always
 // carries one (.github/workflows/release.yml) - so this was a gap in what 'release-shaped' claimed.
 function extractGitArchive(committish, destDir) {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
-  const archive = spawnSync('git', ['archive', committish], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+  const archive = rt.spawnCommand('git', ['archive', committish], { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
   if (archive.error || archive.status !== 0) {
     throw new Error(`git archive ${committish} failed: ${archive.error ? archive.error.message : String(archive.stderr || '').slice(-2000)}`);
   }
-  const tar = spawnSync('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 });
+  const tar = rt.spawnCommand('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: 256 * 1024 * 1024 });
   if (tar.error || tar.status !== 0) {
     throw new Error(`tar extract of ${committish} into ${destDir} failed: ${tar.error ? tar.error.message : String(tar.stderr || '').slice(-2000)}`);
   }
-  const shaRes = spawnSync('git', ['rev-parse', committish], { cwd: ROOT, encoding: 'utf8' });
+  const shaRes = rt.spawnCommand('git', ['rev-parse', committish], { cwd: ROOT, encoding: 'utf8' });
   const sha = (shaRes.stdout || '').trim();
   if (shaRes.status !== 0 || !sha) throw new Error(`git rev-parse ${committish} failed: ${shaRes.stderr || ''}`);
-  const pluginJsonRes = spawnSync('git', ['show', `${committish}:setup-plugin/.claude-plugin/plugin.json`], { cwd: ROOT, encoding: 'utf8' });
+  const pluginJsonRes = rt.spawnCommand('git', ['show', `${committish}:setup-plugin/.claude-plugin/plugin.json`], { cwd: ROOT, encoding: 'utf8' });
   const versionMatch = /"version"\s*:\s*"([^"]+)"/.exec(pluginJsonRes.stdout || '');
   const version = versionMatch ? versionMatch[1] : '0.0.0';
   fs.writeFileSync(path.join(destDir, 'RELEASE-SOURCE'), `sha: ${sha}\nref: ${committish}\nversion: ${version}\nsource: memory-usage-eval-archive\n`);
@@ -416,6 +418,22 @@ function writeUpdateForensics(projectDir, { preInstallLog, updateLog, dbPath }) 
 // Every failure - a spawn error, a non-zero installer exit, a failed assertion - is a thrown Error,
 // which runOne()'s existing try/catch already turns into a reported record (pass:false, error
 // message) rather than crashing the batch; nothing extra is needed here for that requirement.
+// R90 N3: since 2.0.0 an `update` imports no notes and leaves Claude's own memory on - that is
+// `/alfred-code:init`'s job (`memory.js init`, which also stamps `initialised:`). So `--setup update`
+// runs it next, from the SAME release-shaped snapshot, at the level the update was given, over the
+// sandbox account the pre-feature note was seeded into. `spawn` is injectable so the step is pinned
+// offline (scripts/memory-usage-eval.test.js); a real run is billed and never part of `npm test`.
+function runInitAfterUpdate({ relSrc, projectDir, acctDir, env, spawn = spawnSync }) {
+  const res = spawn(process.execPath, [path.join(relSrc, 'scripts', 'install', 'memory.js'), 'init', '--project-root', projectDir, '--level', 'project', '--config-dir', acctDir], {
+    cwd: projectDir, encoding: 'utf8', timeout: 180000, env, maxBuffer: 64 * 1024 * 1024,
+  });
+  const log = `$ memory.js init --level project\nexit=${res.status}\n--- stdout ---\n${res.stdout || ''}\n--- stderr ---\n${res.stderr || ''}\n`;
+  if (res.error || res.status !== 0) {
+    throw new Error(`memory.js init after the update failed: ${res.error ? res.error.message : `exit ${res.status}`} - ${String(res.stderr || '').slice(-2000)}`);
+  }
+  return { log };
+}
+
 async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const preSrc = preFeatureSrc();
   const relSrc = releaseSrcSnapshot();
@@ -426,7 +444,7 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   const sandboxEnv = { ...process.env, CLAUDE_CONFIG_DIR: acctDir };
 
   fs.mkdirSync(projectDir, { recursive: true });
-  execFileSync('git', ['init', '-q'], { cwd: projectDir });
+  rt.execCommand('git', ['init', '-q'], { cwd: projectDir });
 
   // Step 1: pre-feature install. A minimal, deliberately narrow selection (one always-on rule, no
   // plugin/skill/agent lines) - the old installer has no memory categories to name, and this is
@@ -442,7 +460,9 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   fs.writeFileSync(preSelectionPath, `${preSelectionLines.join('\n')}\n`);
   // spawnSync (not execFileSync): the log is captured regardless of exit code, not only on a throw -
   // needed so a LATER assert failure (the install itself having exited 0) can still dump what it saw.
-  const preInstallRes = spawnSync('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {
+  // PRE_FEATURE_COMMIT predates Phase 7b (R33): that archive genuinely still carries the frozen shell
+  // twin, so this call targets it on purpose - it is not a live reference to a file this repo ships.
+  const preInstallRes = rt.spawnCommand('bash', [path.join(preSrc, 'scripts', 'os', 'claude-stack.sh'), 'install', '--scope', 'project', '--selection', preSelectionPath, '--source', preSrc], {   // legacy-name
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
   const preInstallLog = `$ install --selection ${preSelectionPath} --source ${preSrc}\nexit=${preInstallRes.status}\n--- stdout ---\n${preInstallRes.stdout || ''}\n--- stderr ---\n${preInstallRes.stderr || ''}\n`;
@@ -458,8 +478,8 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // its own write_stamp() heredoc never had those lines at all - not merely empty-valued). This is
   // what proves the update path is exercising the real 'a locked item this project never had before'
   // case a4c0828 fixed, not an already-always-aware fixture.
-  const preStampPath = path.join(projectDir, '.claude', 'claude-stack.stamp');
-  if (!fs.existsSync(preStampPath)) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) wrote no claude-stack.stamp - not a valid pre-feature baseline`);
+  const preStampPath = path.join(projectDir, '.claude', 'claude-stack.stamp'); // legacy-name - the pre-feature commit is a 1.x install
+  if (!fs.existsSync(preStampPath)) throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) wrote no claude-stack.stamp - not a valid pre-feature baseline`); // legacy-name
   const preStamp = fs.readFileSync(preStampPath, 'utf8');
   if (/^installed-always-(rules|mcps):/m.test(preStamp)) {
     throw new Error(`pre-feature install (${PRE_FEATURE_COMMIT}) stamp already carries installed-always- keys - not a pre-a4c0828 baseline`);
@@ -477,13 +497,15 @@ async function buildProjectUpdate(projectDir, { agents = [], acctDir } = {}) {
   // docs-session / the memory MCP are all NEW categories this pre-feature project never had, so this
   // depends on the installer treating them as locked/always-add rather than 'not currently installed,
   // so not wanted' - the fix the controller flagged as landing separately. Do not run this until told to.
-  const updateRes = spawnSync('bash', [path.join(relSrc, 'scripts', 'os', 'claude-stack.sh'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
+  const updateRes = spawnSync(process.execPath, [path.join(relSrc, 'scripts', 'install', 'alfred-code.js'), 'update', '--scope', 'project', '--installed-only', '--source', relSrc, '--memory-level', 'project'], {
     cwd: projectDir, encoding: 'utf8', timeout: 180000, env: sandboxEnv, maxBuffer: 64 * 1024 * 1024,
   });
-  const updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;
+  let updateLog = `$ update --installed-only --source ${relSrc} --memory-level project\nexit=${updateRes.status}\n--- stdout ---\n${updateRes.stdout || ''}\n--- stderr ---\n${updateRes.stderr || ''}\n`;
   if (updateRes.error || updateRes.status !== 0) {
     throw new Error(`update --installed-only (HEAD, over the ${PRE_FEATURE_COMMIT} baseline) failed: ${updateRes.error ? updateRes.error.message : `exit ${updateRes.status}`} - ${String(updateRes.stderr || '').slice(-2000)}`);
   }
+  // Step 3: the init the update now defers to (N3) - the notes import and the switch-off live there.
+  updateLog += runInitAfterUpdate({ relSrc, projectDir, acctDir, env: sandboxEnv }).log;
 
   const dbPath = path.join(projectDir, '.memory-mcp', 'memory.db');
   const mcpConfigPath = path.join(projectDir, '.mcp.json');
@@ -592,7 +614,7 @@ function withSeedLock(fn) {
 
 async function seedMemoryNow(mcpConfigPath, cwd, notes) {
   const entry = readRegistration(mcpConfigPath);
-  const child = spawn(entry.command, entry.args || [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = rt.spawnCommandAsync(entry.command, entry.args || [], { cwd, env: { ...process.env, ...(entry.env || {}) }, stdio: ['pipe', 'pipe', 'pipe'] });
   const rpc = createRpcClient(child);
   try {
     // Generous even solo-warm (~2s): covers a cold ONNX/model download (~41s per FACT-EMBED) plus
@@ -632,7 +654,7 @@ function runClaude(projectDir, prompt, { mcpConfigPath, allowedTools, model, ses
     '--max-budget-usd', String(maxBudgetUsd),
     '--forward-subagent-text',
   ];
-  const res = spawnSync('claude', args, { cwd: projectDir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: timeoutMs });
+  const res = rt.spawnCommand('claude', args, { cwd: projectDir, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: timeoutMs });
   const lines = String(res.stdout || '').split('\n').filter(Boolean)
     .map((l) => { try { return JSON.parse(l); } catch { return null; } })
     .filter(Boolean);
@@ -1075,7 +1097,7 @@ async function main() {
 
 module.exports = {
   SCENARIOS, buildProjectSelf, memoryRegistration, findProjectSlugDir,
-  passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate,
+  passMarkFor, summarize, PRE_FEATURE_COMMIT, extractGitArchive, buildProjectUpdate, runInitAfterUpdate,
   readDbRowsForAssert, writeUpdateForensics, FORENSICS_DIR,
 };
 

@@ -2,7 +2,7 @@
 type: tool_used
 weight: 2
 tool: Skill
-input_match: project-solution-design
+input_match: alfred-task-design
 min: 1
 ---
 

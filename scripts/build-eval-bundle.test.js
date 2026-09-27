@@ -1,5 +1,5 @@
 'use strict';
-// build-eval-bundle.js: the core plus the whole library as ONE plugin named claude-stack, so
+// build-eval-bundle.js: the core plus the whole library as ONE plugin named alfred-code, so
 // `claude plugin eval` can measure a library item the way a project that copied it would load it.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,17 +22,17 @@ test('the bundle carries every shipped skill and agent, and every preload resolv
     const graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta/stack-graph.json'), 'utf8'));
     assert.equal(fs.readdirSync(path.join(out, 'skills')).length, Object.keys(graph.skills).length + 1, 'every skill plus the router skill');
     assert.equal(fs.readdirSync(path.join(out, 'agents')).length, Object.keys(graph.agents).length);
-    assert.ok(fs.existsSync(path.join(out, 'skills', 'claude-stack', 'SKILL.md')), 'the router skill');
+    assert.ok(fs.existsSync(path.join(out, 'skills', 'alfred-code', 'SKILL.md')), 'the router skill');
     assert.ok(fs.readdirSync(path.join(out, 'commands')).length > 0, 'the guided-walk commands');
     const skills = new Set(fs.readdirSync(path.join(out, 'skills')));
     for (const f of fs.readdirSync(path.join(out, 'agents')))
     {
         const fm = /^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(out, 'agents', f), 'utf8'))[1];
-        for (const m of fm.matchAll(/^\s*-\s*claude-stack:(\S+)\s*$/mg)) assert.ok(skills.has(m[1]), `${f} preloads ${m[1]}`);
+        for (const m of fm.matchAll(/^\s*-\s*alfred-code:(\S+)\s*$/mg)) assert.ok(skills.has(m[1]), `${f} preloads ${m[1]}`);
         assert.doesNotMatch(fm, /^\s*-\s*[a-z0-9-]+\s*$/m, `${f} keeps a bare house preload`);
     }
     const manifest = JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin/plugin.json'), 'utf8'));
-    assert.equal(manifest.name, 'claude-stack');
+    assert.equal(manifest.name, 'alfred-code');
     assert.ok(manifest.author && manifest.version, 'the strict validate needs both');
     assert.ok(fs.readdirSync(path.join(out, 'evals')).length >= 14);
     assert.deepEqual(Object.keys(printed).sort(), ['agents', 'cases', 'commands', 'skills']);

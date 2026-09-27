@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running - envOf falls back to the bare ALFRED_CODE_ read (pre-2.0.0 behaviour) the same
+// way.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('instrument-tool-usage')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('instrument-tool-usage')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 
@@ -24,20 +24,26 @@ if (require.main === module) {
 // plus `Skill` and `mcp__*` - as one JSONL line so a run can be tallied exactly. It NEVER blocks
 // a call - it observes and exits 0.
 //
-// The installer wires this on matcher '.*' behind a shell gate - `[ "$CLAUDE_STACK_INSTRUMENT" != "1" ] ||` -
-// so when the switch is off the per-call cost is a shell test, never a node spawn. The switch is
-// `CLAUDE_STACK_INSTRUMENT` in .claude/settings.json env, seeded "0": flip it to "1" for a measured
-// benchmark / audit run (optionally CLAUDE_STACK_INSTRUMENT_LOG=<path>), back to "0" after. The env check
-// below is the belt for a gate-less manual wiring: only the literal value 1 (or true) records.
+// This hook rides the core plugin (2.0.0 - no shell gate wrapper): the generated entry launches it
+// on matcher '.*' as a plain `node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"`, so
+// when the switch is off the per-call cost is a node spawn that exits at the check below, not a
+// shell test. The switch is `ALFRED_CODE_INSTRUMENT` in .claude/settings.json env, seeded "0": flip
+// it to "1" for a measured benchmark / audit run (optionally ALFRED_CODE_INSTRUMENT_LOG=<path>),
+// back to "0" after. The env check below is what actually gates every call.
 //
 // Output: one JSONL row per matched call at
-//   $CLAUDE_STACK_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
-//   the docs root resolved from CLAUDE_STACK_DOCS_PATH like every generated artifact)
+//   $ALFRED_CODE_INSTRUMENT_LOG  (default: <docs-path>/tools-usage/<session-or-agent-id>.jsonl,
+//   the docs root resolved from ALFRED_CODE_DOCS_PATH like every generated artifact)
 // Coverage note: PreToolUse fires for the session's tool calls; where the running Claude
 // Code build propagates PreToolUse into dispatched subagents, their internal Skill / MCP
 // calls are captured too - verify coverage against a known run before trusting a tally.
 
-const sw = String(process.env.CLAUDE_STACK_INSTRUMENT || '').toLowerCase();
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
+
+const sw = String(envOf(process.env, 'INSTRUMENT') || '').toLowerCase();
 if (sw !== '1' && sw !== 'true') process.exit(0); // off unless explicitly switched on ("0"/"false"/unset = no-op)
 
 let raw = '';
@@ -50,10 +56,6 @@ process.stdin.on('end', () => {
     const input = ev.tool_input || {};
     const path = require('path');
     const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
     // Every tool call is logged (built-ins like Read/Edit/Grep/Bash/Task + Skill + mcp__*).
     // `detail` is a lightweight, non-sensitive hint per tool family - NEVER a command body,
     // file contents, or a full payload: the skill slug, the mcp server, a file's basename,
@@ -99,7 +101,7 @@ const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAU
     const sid = String(ev.session_id || 'session').replace(/[^A-Za-z0-9._-]/g, '');
     const docsRoot = docsRootEnv();
     const out =
-      process.env.CLAUDE_STACK_INSTRUMENT_LOG ||
+      envOf(process.env, 'INSTRUMENT_LOG') ||
       path.resolve(dir, docsRoot, 'tools-usage', `${sid}.jsonl`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.appendFileSync(out, JSON.stringify(rec) + '\n');

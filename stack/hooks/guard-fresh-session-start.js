@@ -28,22 +28,23 @@
 const fs = require('fs');
 const nodePath = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unattended = () => false;
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-fresh-session-start')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    unattended = prelude.unattended || unattended;
+    if (prelude.standDown('guard-fresh-session-start')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 let payload;
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -70,12 +71,12 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -91,6 +92,19 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
     exit(code);
   };
 })();
+// One MEASUREMENT row in the hook-blocks ledger: it carries a `mode`, which the analyzer reads as a probe, never a
+// block. Best-effort - a lost row is a lost measurement, never a changed turn.
+function ledgerRow(row) {
+  try {
+    const dir = nodePath.resolve(process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd(), docsRootEnv(), 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(nodePath.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: nodePath.basename(__filename), event: payload.hook_event_name || '', tool: payload.tool_name || '', ...row,
+    }) + '\n');
+  } catch { /* never throws */ }
+}
+const UNATTENDED_SKIP = 'skip: nobody is at the terminal - logged, not offered';
+
 const EVENT = payload.hook_event_name || '';
 const IS_SKILL_CALL = payload.tool_name === 'Skill';
 if (!IS_SKILL_CALL && EVENT !== 'UserPromptSubmit' && EVENT !== 'SessionStart' && EVENT !== 'PreCompact') process.exit(0);
@@ -206,12 +220,12 @@ function compactPointer() {
 // The deliberate entry points: each one opens a multi-phase run with its own state file, so a
 // fresh session resuming from that file is always cheaper than continuing on carried context.
 // The review and per-phase seats are here because they are the same population, measured: one
-// session started `project-verify-code` at 364.6k and `security-review` at 383.1k, together 13.7M
+// session started `alfred-task-verify-code` at 364.6k and `security-review` at 383.1k, together 13.7M
 // cache-read - 27% of the whole session - for 20.5k of output, and the offer arrived nine minutes
-// after that spend. `project-agent-capabilities` is here because the stack's own next-steps card
+// after that spend. `alfred-capture-agent-capabilities` is here because the stack's own next-steps card
 // tells the user to run it after every update. The guided plugin commands are here because
 // they are multi-phase walks too, and the UserPromptSubmit route is what finally reaches them.
-const ORCHESTRATION = /^(project-(quality-loop|architecture-quality-loop|test-coverage-loop|architecture-analyzer|code-style-analyzer|test-coverage-analyzer|solve-task|solve-cross-task|build-from-scratch|stack-usage-analyzer|related-context|version-upgrade|diagnose-failure|solution-design|verify-plan|implementer|verify-code|agent-capabilities)|security-review|claude-stack:(init|setup|update|configure|validate))$/;
+const ORCHESTRATION = /^(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|alfred-code:(init|setup|update|configure|validate))$/;
 // a plugin-namespaced Skill call arrives as `<plugin>:<skill>`; the guided commands are
 // matched on their FULL name, so a bare `/setup` from some other plugin is not read as one of them
 const isOrchestration = (n) => ORCHESTRATION.test(n) || ORCHESTRATION.test(n.replace(/^.*:/, ''));
@@ -300,7 +314,11 @@ if (EVENT !== 'SessionStart' && !isOrchestration(skill)) process.exit(0);
 if (EVENT === 'SessionStart') {
   if (String(payload.source || '') !== 'compact') process.exit(0);
   const pointer = compactPointer();
-  if (FRESH_OFF) {
+  // Nobody at the terminal (hook-prelude.js unattended) has nobody to ask: the pointer, never the offer - and the
+  // skipped offer leaves its row (review A, M3).
+  const quiet = !FRESH_OFF && unattended(payload);
+  if (quiet) ledgerRow({ mode: 'unattended', kind: 'compact-offer', reason: UNATTENDED_SKIP });
+  if (FRESH_OFF || quiet) {
     if (pointer) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: pointer } }));
     process.exit(0);
   }
@@ -436,7 +454,7 @@ function priorOrchestrationRun() {
 function chainedOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-fresh-chained-${key}.offered`;
 }
 // The SIZE offer's re-arm. The denial mandates an AskUserQuestion whose second answer is 'run it
 // here anyway with the cost stated' - and until 0.2.74 nothing honoured that answer: no receipt, no
@@ -452,7 +470,7 @@ const REOFFER_GROWTH = 1.5;
 function sizeOfferFile() {
   const os = require('os');
   const key = String(payload.transcript_path || payload.session_id || '').replace(/[^a-zA-Z0-9]/g, '_').slice(-80);
-  return `${process.env.CLAUDE_STACK_HOOK_LOG_DIR || os.tmpdir()}/guard-fresh-size-${key}.offered`;
+  return `${envOf(process.env, 'HOOK_LOG_DIR') || os.tmpdir()}/guard-fresh-size-${key}.offered`;
 }
 function sizeOfferedAt() {
   try { return parseInt(fs.readFileSync(sizeOfferFile(), 'utf8'), 10) || 0; } catch { return 0; }
@@ -461,6 +479,10 @@ function recordSizeOffer(ctx) {
   try { fs.writeFileSync(sizeOfferFile(), String(ctx)); } catch { /* never let state break the gate */ }
 }
 
+// A SUBAGENT's Skill call (the payload carries agent_id) is a phase of work its parent dispatched:
+// the carry read here is the parent session's, and a seat has no user to answer the offer - so
+// neither trigger judges it.
+if (payload.agent_id) process.exit(0);
 const usage = lastUsage();
 // A session with no readable usage has ctx 0: the size trigger cannot fire, the chained one still can.
 const ctx = usage
@@ -477,6 +499,12 @@ const overSize = !FRESH_OFF && FRESH_AT !== null && ctx > FRESH_AT && worthResum
 const chained = EVENT === 'UserPromptSubmit' && !FRESH_OFF && !overSize && worthResuming(ctx)
   && !fs.existsSync(chainedOfferFile()) && priorOrchestrationRun();
 if (!overSize && !chained) process.exit(0);
+// Nobody at the terminal (hook-prelude.js unattended) has nobody to offer it to: one row, and no offer state is
+// spent, so a person resuming the session later is still offered it (review A, M3).
+if (unattended(payload)) {
+  ledgerRow({ mode: 'unattended', kind: chained ? 'chained-offer' : 'size-offer', reason: UNATTENDED_SKIP, detail: { skill, ctx } });
+  process.exit(0);
+}
 if (chained) {
   try { fs.writeFileSync(chainedOfferFile(), new Date().toISOString()); } catch { /* never let state break the gate */ }
 }

@@ -13,7 +13,7 @@ const path = require('node:path');
 const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
 
 const SELECTION = 'skill markdown-style\nrule markdown-docs\n';
-const COPY_ROUTE = { CLAUDE_STACK_SKILLS_VIA_PLUGIN: 'false', CLAUDE_STACK_HOOKS_VIA_PLUGIN: 'false', CLAUDE_STACK_MCPS_VIA_PLUGIN: 'false' };
+const COPY_ROUTE = { ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' };
 
 function write(repo, rel, text = 'x\n')
 {
@@ -90,11 +90,17 @@ test('seed update on the copy route: a shipped copy is the delivery, so it is ne
     assert.ok(r.has('.claude/hooks/guard-secret-value.js'), 'the copy route pruned a shipped hook');
 });
 
-test('seed update: a retired plugin still installed is uninstalled at its own scope', POSIX_ONLY, () =>
+// By its full spec, and only at the run's own scope: a user-scope row serves every project on the
+// machine, so a project run keeps it and names the command that removes it.
+test('seed update: a retired plugin is uninstalled by its full spec at the run\'s scope; one at another scope is kept and named', POSIX_ONLY, () =>
 {
-    const listing = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'user', enabled: true }]);
-    const { calls } = seedRun('update', SELECTION, { plugins: listing });
-    assert.ok(calls.includes('plugin uninstall ponytail --scope user -y'), calls.filter((c) => /uninstall|ponytail/.test(c)).join('\n') || 'no uninstall call');
+    const here = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'project', enabled: true }]);
+    const { calls } = seedRun('update', SELECTION, { plugins: here });
+    assert.ok(calls.includes('plugin uninstall ponytail@ponytail --scope project -y'), calls.filter((c) => /uninstall|ponytail/.test(c)).join('\n') || 'no uninstall call');
+    const elsewhere = JSON.stringify([{ id: 'ponytail@ponytail', version: '4.9.0', scope: 'user', enabled: true }]);
+    const other = seedRun('update', SELECTION, { plugins: elsewhere });
+    assert.ok(!other.calls.some((c) => /plugin uninstall ponytail/.test(c)), other.calls.filter((c) => /uninstall/.test(c)).join('\n'));
+    assert.match(other.out, /ponytail@ponytail is installed at user scope, not this run's - kept .*claude plugin uninstall ponytail@ponytail --scope user/);
 });
 
 // The per-stack entries retired in 1.3.0 are read from meta/retired-entries.json by the seed alone -
@@ -102,14 +108,14 @@ test('seed update: a retired plugin still installed is uninstalled at its own sc
 test('seed update: an enabled retired per-stack entry is uninstalled; a parked one and one at another scope stay', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify([
-        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: false },
-        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+        { id: 'claude-stack-web-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@envoydev', version: '1.2.0', scope: 'project', enabled: false },
+        { id: 'claude-stack-aspnet@envoydev', version: '1.2.0', scope: 'user', enabled: true },
     ]);
     const { calls } = seedRun('update', SELECTION, { plugins: listing });
     const uninstalls = calls.filter((c) => /plugin uninstall/.test(c));
-    assert.ok(uninstalls.includes('plugin uninstall claude-stack-web-angular --scope project -y'), uninstalls.join('\n') || 'no uninstall call');
-    assert.ok(!uninstalls.some((c) => /claude-stack-angular |claude-stack-aspnet /.test(c)), uninstalls.join('\n'));
+    assert.ok(uninstalls.includes('plugin uninstall claude-stack-web-angular@envoydev --scope project -y'), uninstalls.join('\n') || 'no uninstall call');
+    assert.ok(!uninstalls.some((c) => /claude-stack-angular@|claude-stack-aspnet@/.test(c)), uninstalls.join('\n'));
 });
 
 // One update whose plugin listing could not be read (the CLI failed, or is missing) cannot tell what
@@ -118,14 +124,15 @@ test('seed update: an enabled retired per-stack entry is uninstalled; a parked o
 test('seed update: a blind listing read keeps the stamp picks, so the next update still copies them', POSIX_ONLY, () =>
 {
     const healthy = JSON.stringify([
-        { id: 'claude-stack@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'alfred-code@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
     ]);
     const prepare = (repo) =>
     {
         fs.mkdirSync(path.join(repo, '.claude', 'rules'), { recursive: true });
         fs.writeFileSync(path.join(repo, '.claude', 'rules', 'baseline-interaction.md'), 'x\n');
-        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'),
+        // A 1.2.0 project: the stamp carries the name that release wrote.
+        fs.writeFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), // legacy-name
             'version: 1.2.0\nsha: 0000000\npicked-skills: angular-conventions@claude-stack-angular,angular-testing@claude-stack-angular\npicked-agents: \n');
     };
     const { steps } = seedRun(['update', 'update'], SELECTION, {
@@ -133,11 +140,16 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
         each: (repo, i) =>
         {
             if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), healthy);
-            const stamp = fs.readFileSync(path.join(repo, '.claude', 'claude-stack.stamp'), 'utf8');
-            return { picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '', copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')) };
+            const stamp = fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+            return {
+                picks: (/^picked-skills: (.*)$/m.exec(stamp) || [])[1] || '',
+                copied: fs.existsSync(path.join(repo, '.claude', 'skills', 'angular-conventions', 'SKILL.md')),
+                oldStamp: fs.existsSync(path.join(repo, '.claude', 'claude-stack.stamp')), // legacy-name
+            };
         },
     });
     assert.match(steps[0].picks, /angular-conventions/, 'the blind run forgot the pick');
+    assert.equal(steps[0].oldStamp, false, 'the 1.x stamp is left beside the new one');
     assert.ok(steps[1].copied, `the healthy run did not copy the pick (stamp picks: ${steps[1].picks})`);
 });
 
@@ -146,15 +158,15 @@ test('seed update: a blind listing read keeps the stamp picks, so the next updat
 test('seed update: a denied seat of a retired entry that stays installed keeps its own deny spelling', POSIX_ONLY, () =>
 {
     const listing = JSON.stringify([
-        { id: 'claude-stack-web-angular@claude-stack', version: '1.2.0', scope: 'project', enabled: true },
-        { id: 'claude-stack-aspnet@claude-stack', version: '1.2.0', scope: 'user', enabled: true },
+        { id: 'claude-stack-web-angular@envoydev', version: '1.2.0', scope: 'project', enabled: true },
+        { id: 'claude-stack-aspnet@envoydev', version: '1.2.0', scope: 'user', enabled: true },
     ]);
     const prepare = (repo) => write(repo, '.claude/settings.json', `${JSON.stringify({ permissions: { deny: [
         'Agent(claude-stack-aspnet:aspnet-verifier)', 'Agent(claude-stack-web-angular:web-angular-verifier)'] } }, null, 2)}\n`);
     const { result } = seedRun('update', SELECTION, { plugins: listing, prepare,
         inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')).permissions.deny });
     assert.ok(result.includes('Agent(claude-stack-aspnet:aspnet-verifier)'), `kept at user scope, so its spelling stays: ${result.join(',')}`);
-    assert.ok(result.includes('Agent(claude-stack:aspnet-verifier)'), result.join(','));
+    assert.ok(result.includes('Agent(alfred-code:aspnet-verifier)'), result.join(','));
     assert.ok(!result.includes('Agent(claude-stack-web-angular:web-angular-verifier)'), `uninstalled here, so only the core spelling: ${result.join(',')}`);
-    assert.ok(result.includes('Agent(claude-stack:web-angular-verifier)'), result.join(','));
+    assert.ok(result.includes('Agent(alfred-code:web-angular-verifier)'), result.join(','));
 });

@@ -18,9 +18,12 @@
 //   node scripts/analyze-usage.js <session.jsonl> --json           # machine-readable dump
 //   node scripts/analyze-usage.js <session.jsonl> --report-md      # markdown report skeleton (machine tables + FILL IN sections)
 //   node scripts/analyze-usage.js <s.jsonl> --from <ISO> --to <ISO> # window one run inside a long session
-//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when CLAUDE_STACK_DOCS_PATH is non-default
+//   node scripts/analyze-usage.js <s.jsonl> --docs-root <path>     # extra docs prefix when ALFRED_CODE_DOCS_PATH is non-default
 //   node scripts/analyze-usage.js <s.jsonl> --inventory <.claude>  # the installed set the INVENTORY vs USE block scores
 //   node scripts/analyze-usage.js <s.jsonl> --plugins <installed_plugins.json>  # the plugin inventory, when not this machine's
+//   node scripts/analyze-usage.js <projects-dir> --exclude-session <id>  # leave a session out (the live one is left out already)
+//   node scripts/analyze-usage.js <projects-dir> --turn-check-advice <root>  # ONE row when unchecked done claims pass 3 per 10 sessions
+//   node scripts/analyze-usage.js --turn-check-advice .           # no folder: this project's own, derived from the cwd
 //   node scripts/analyze-usage.js <s.jsonl> --report-md --out <file>  # write it, no shell redirect (the classifier denies those)
 //   node scripts/analyze-usage.js --check-report <report-usage.md>  # every judgment number against this report's own machine tables
 //   node scripts/analyze-usage.js <s.jsonl> --prices <file>        # price the cost row from another table than meta/model-prices.json
@@ -50,6 +53,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { loadManifest } = require('./install/manifest.js');
 
 // ---------- small helpers ----------
 
@@ -110,6 +114,19 @@ function proseOf(text) {
 }
 const LONG_ANSWER = 1800;   // guard-answer-length's HARD_CAP
 const STREAK_TURNS = 3, STREAK_SHORT = 200, STREAK_LONG = 1500;   // its correction-streak detector
+// Its single-turn correction test, copied verbatim (shared-rules.json `correction-turn-test`): a
+// short typed turn that follows an answer of any length and carries a correction marker - the
+// turns the corrections-saved row counts.
+// --- correction-turn test
+const CORRECTION_STRONG_RE = /^\W*(?:no|nope|nah|wrong|incorrect|not (?:that|this|what|quite|like that|right|correct)|undo|revert|roll ?back)\b|(?:^|[.,;:!?]\s*|\b(?:but|and|please|pls|so|then|also|just)\s+)(?:do not|don'?t|dont|never|stop \w+ing)\b|\byou (?:did not|didn'?t|didnt|have not|haven'?t|havent|should not|shouldn'?t|forgot|missed|ignored|broke|skipped|removed|deleted|dropped|lost|said|told)\b|\bwhy (?:did |do |are |have |haven'?t |didn'?t |would |were )?you\b(?! (?:cannot|can'?t|can not|couldn'?t)\b)|\bi (?:said|asked|told you|meant|wanted|did not ask|didn'?t ask|never asked|already (?:said|told|asked))\b|\b(?:still|again) (?:there|broken|fail\w*|wrong|the same|red|happen\w*|error\w*|doesn'?t|does not|isn'?t|is not|not)\b|\bsame (?:error|issue|problem|bug)\b|\b(?:that'?s|that is|this is|it'?s|it is) (?:wrong|incorrect|not (?:right|correct|what|how|it))\b|\bnot what i\b|\bi (?:do not|don'?t|dont|did not|didn'?t) (?:want|need|like)\b|\b(?:does not|doesn'?t|did not|didn'?t) (?:fit|work|help|make sense)\b|\bnot working\b|\b(?:too (?:long|much text|verbose|many words|complicated|complex)|a lot of text|less text|shorter|simpler|more concise)\b/i;
+const CORRECTION_WEAK_RE = /^\W*but\b|^\W*(?:ok(?:ay)?|yes|yeah|fine|sure|good|right)\b\W*but\b|^\W*stop\b|\binstead\b|\b(?:it|this|that|they|these|those|there) should(?:n'?t| not| have| be| stay| use| go)\b/i;
+const CORRECTION_CYR_RE = /(?<![\p{L}])(?:ні(?=[\s,.!]|$)|нет(?=[\s,.!]|$)|не (?:так|те|то)(?![\p{L}])|не ?правильн|не (?:треба|потрібно|надо|нужно|роби|делай)(?![\p{L}])|я (?:ж )?(?:казав|просив|говорив|сказав|говорил|просил|сказал)|(?:чому ти|почему ты)(?! не мож)|навіщо ти|зачем ты|коротше|покороче|простіше|проще|забагато|слишком|(?:та сама|та ж|та же|та самая) (?:помилк|ошибк|проблем)|не (?:працює|работает)|(?:досі|все ще|всё ещё|все еще) не(?![\p{L}]))/iu;
+function correctionMarker(text) {
+  const t = String(text || '').replace(/[‘’]/g, "'").trim();
+  const m = t.match(CORRECTION_STRONG_RE) || t.match(CORRECTION_CYR_RE) || (!t.includes('?') && t.match(CORRECTION_WEAK_RE));
+  return m ? m[0].trim().slice(0, 40) : null;
+}
+// --- end correction-turn test
 // A correction counts as saved when a memory store follows within this many replies - the plugin
 // route's name or a registration's (history plan, Gate G2).
 const SAVE_WINDOW = 3;
@@ -164,7 +181,7 @@ function rmVerifyTail(cmd) {
   return targets.some((t) => tail.includes(t));
 }
 
-// NAVIGATION, as baseline-navigation words it: locate with serena or the LSP, then read the range. A
+// NAVIGATION, as baseline-navigation words it: locate with the navigation server or the LSP, then read the range. A
 // read of a SOURCE file is LOCATED when a locate step sits in the NAV_WINDOW tool calls before it, or
 // in the same call (`rg -n x src && sed -n '10,40p' src/a.ts`). A symbol step in the window wins
 // over a grep, so 'grep-then-read' is a read that only a name-match located. Glob and find locate a
@@ -175,11 +192,13 @@ const NAV_WINDOW = 3;
 const WHOLE_FILE_HOOK = 'guard-read-whole-file.js';
 const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$/i;
 const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview']);
+// The navigation server's name, and the one it went by before 2.0.0 - an older transcript still says serena.
+const NAVIGATION_SERVERS = new Set(['navigation', 'serena']);
 const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;
 function locateClass(name, input) {
   if (name === 'LSP') return 'symbol';
   if (name === 'Grep') return 'grep';
-  if (String(name).startsWith('mcp__') && mcpServerOf(name) === 'serena') {
+  if (String(name).startsWith('mcp__') && NAVIGATION_SERVERS.has(mcpServerOf(name))) {
     const tool = String(name).split('__').slice(2).join('__');
     if (SERENA_SYMBOL_TOOLS.has(tool)) return 'symbol';
     return tool === 'search_for_pattern' ? 'grep' : null;
@@ -281,9 +300,15 @@ function readJsonl(file, onObj) {
 // rule's heading (current mechanism - see the skill's code-style-rule template) and the
 // retired inject-code-style hook's injected preamble (legacy sessions).
 
-const STYLE_RULE_MARKER = 'the project-code-style-analyzer skill owns this rule';
-const STYLE_INJECT_MARKER = 'maintained by the project-code-style-analyzer';
-const docsPrefixes = ['/.claude/docs/'];
+// A rule or preamble written before the capture was renamed carries its old name, read from the
+// manifest's `renamed` map rather than spelled here.
+const STYLE_SKILL = 'alfred-capture-code-style';
+const STYLE_SKILL_NAMES = [STYLE_SKILL, ...Object.entries(loadManifest(path.join(__dirname, '..')).renamed.skills)
+  .filter(([, now]) => now === STYLE_SKILL).map(([old]) => old)];
+const STYLE_RULE_MARKERS = STYLE_SKILL_NAMES.map((n) => `the ${n} skill owns this rule`);
+const STYLE_INJECT_MARKERS = STYLE_SKILL_NAMES.map((n) => `maintained by the ${n}`);
+// The default root, then the one it replaced (2.0.0): a session recorded before the move wrote there.
+const docsPrefixes = ['/.alfred/docs/', '/.claude/docs/'];
 // The same roots, spelled for the BASH route: no leading separator, because a command names the
 // path relative or absolute and the match anchors on a shell boundary instead. `--docs-root` used
 // to reach only the Read/Write route, so a project with a remapped docs root had its heredocs,
@@ -463,11 +488,13 @@ const CATALOG_DIR = path.join(__dirname, '..', 'stack');
 // 22 agents / 15 rules installed, because a later install on the same path was read back as if it
 // had been there. Two more bundles carried a rule and an MCP name the session's own listing did
 // not have.
+// A 1.x install's stamp keeps its old name until an update rewrites it; the new one wins when both exist.
 function readInstallStamp(claudeDir) {
+  const file = require('./install/brand.js').stampFile(claudeDir).read;
   let txt;
-  try { txt = fs.readFileSync(path.join(claudeDir, 'claude-stack.stamp'), 'utf8'); } catch { return null; }
+  try { txt = fs.readFileSync(file, 'utf8'); } catch { return null; }
   const val = (k) => { const m = new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(txt); return m ? m[1].trim() : null; };
-  return { version: val('version'), sha: val('sha'), installed: val('installed'), file: path.join(claudeDir, 'claude-stack.stamp') };
+  return { version: val('version'), sha: val('sha'), installed: val('installed'), file };
 }
 
 // The install's skills and agents have TWO homes: copied under `.claude/`, or served by the
@@ -569,7 +596,7 @@ function resolveInventory(explicitDir, cwd, sessionLastTs) {
         inv.drifted = true;
         inv.why = `project ${d} - INSTALLED ${stamp.installed} (v${stamp.version || '?'}), AFTER this session's last row ${sessionLastTs}: read at analysis time, not the set the session had`;
       } else if (!stamp) {
-        inv.why = `project ${d} (the transcript's own cwd; no claude-stack.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
+        inv.why = `project ${d} (the transcript's own cwd; no alfred-code.stamp - install vintage unknown, the directory is read at ANALYSIS time)`;
       } else {
         inv.why = `project ${d} (the transcript's own cwd; installed ${stamp.installed || '?'} v${stamp.version || '?'}, before this session ran)`;
       }
@@ -604,8 +631,63 @@ function applySessionRoster(inv, main) {
   return out;
 }
 
+const readJsonOr = (f, dflt) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return dflt; } };
+
+// A plugin hook's transcript row names it by its `command` - or by its `statusMessage`, which the
+// harness writes into the same field when the hook has one (measured: `command: "Loading ponytail
+// mode..."`). The spelling drifts between a release and the transcript (`node "${CLAUDE_PLUGIN_ROOT}
+// /x.js"` declared, `${CLAUDE_PLUGIN_ROOT}/x.js` recorded by an older one), so both sides are
+// compared without quotes, without a leading interpreter, and with `${VAR}` read as `$VAR`.
+const HOOK_INTERPRETER_RE = /^(?:node|bash|sh|zsh|python3?|pwsh|powershell)(?:\.exe)?\s+/i;
+function hookCommandKey(cmd) {
+  return String(cmd || '').replace(/["']/g, '').replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, '$$$1')
+    .replace(/\s+/g, ' ').trim().replace(HOOK_INTERPRETER_RE, '');
+}
+
+// What one install of a plugin declares, read the three ways Claude Code reads it: the plugin's own
+// `plugin.json`, its entry in a marketplace manifest (the one its root ships - every stack entry
+// shares the repo root - and the one its marketplace was cloned to, where the official `*-lsp`
+// entries keep their `lspServers`), and the default files in its root. `hooks` and `lspServers`
+// are each an inline object, a path, or a list of either
+// (https://code.claude.com/docs/en/plugins-reference, 'Component path fields'). MCP servers are not
+// read here at all: a plugin server's tools carry the plugin's name (`mcp__plugin_<p>_<s>__*`), which
+// is the whole attribution - matching DECLARED server names instead read only `<root>/.mcp.json`,
+// so every inline server (navigation, documentation, memory, the browser engines) scored never used, and
+// it credited a bare registration of the same server name to the plugin.
+function pluginDeclarations(root, name, marketDir) {
+  const out = { hookKeys: new Set(), exts: new Set() };
+  const entryIn = (mkFile) => ((readJsonOr(mkFile, {}) || {}).plugins || []).find((x) => x && x.name === name) || null;
+  const manifests = [readJsonOr(path.join(root, '.claude-plugin', 'plugin.json'), null), entryIn(path.join(root, '.claude-plugin', 'marketplace.json'))];
+  if (marketDir) manifests.push(entryIn(path.join(marketDir, '.claude-plugin', 'marketplace.json')));
+  // A file config may wrap its map (`{ "hooks": {...} }`, `{ "mcpServers": {...} }`); inline, it is the map.
+  const configs = (v, key) => {
+    if (Array.isArray(v)) return v.flatMap((x) => configs(x, key));
+    const o = typeof v === 'string' ? readJsonOr(path.join(root, v), null) : v;
+    if (!o || typeof o !== 'object') return [];
+    return [o[key] && typeof o[key] === 'object' ? o[key] : o];
+  };
+  const of = (key, dflt) => [...manifests.filter(Boolean).flatMap((m) => configs(m[key], key)), ...configs(dflt, key)];
+  for (const map of of('hooks', 'hooks/hooks.json')) {
+    for (const groups of Object.values(map)) for (const g of Array.isArray(groups) ? groups : []) {
+      for (const h of g && Array.isArray(g.hooks) ? g.hooks : []) {
+        if (h && h.command) out.hookKeys.add(hookCommandKey(h.command));
+        if (h && h.statusMessage) out.hookKeys.add(hookCommandKey(h.statusMessage));
+      }
+    }
+  }
+  for (const map of of('lspServers', '.lsp.json')) {
+    for (const srv of Object.values(map)) for (const ext of Object.keys((srv && srv.extensionToLanguage) || {})) out.exts.add(ext);
+  }
+  return out;
+}
+
 // installed_plugins.json keys are `<plugin>@<marketplace>`; each value is the per-scope install
-// records, and `installPath` is where that plugin's own agents and MCP servers can be read.
+// records - `scope`, a `projectPath` for a project- or local-scope one, `installedAt`, and the
+// `installPath` its agents, hooks and language servers are read from. The records are
+// KEPT, because a plugin is installed in a session only where one of them reaches it: counting
+// every registry plugin in every session reported `installed in 532/532` for a plugin one project
+// had. The config dir (the registry's grandparent, when it sits in `plugins/`) gives the user
+// settings and the marketplace list beside it.
 function loadPlugins(explicit) {
   const cands = [];
   if (explicit) cands.push(explicit);
@@ -614,26 +696,69 @@ function loadPlugins(explicit) {
     cands.push(path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json'));
   }
   for (const f of cands) {
-    let j;
-    try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
+    const j = readJsonOr(f, null);
+    if (!j) continue;
+    const markets = readJsonOr(path.join(path.dirname(f), 'known_marketplaces.json'), {}) || {};
     const byPlugin = new Map();
     for (const [key, recs] of Object.entries(j.plugins || {})) {
-      const name = key.split('@')[0];
-      const e = byPlugin.get(name) || { name, agents: [], servers: [] };
+      const [name, market] = key.split('@');
+      const e = byPlugin.get(name) || { name, agents: [], hookKeys: [], exts: [], records: [] };
+      const marketDir = market && markets[market] && markets[market].installLocation;
       for (const r of Array.isArray(recs) ? recs : []) {
-        const root = r && r.installPath;
+        if (!r || typeof r !== 'object') continue;
+        e.records.push({ key, scope: r.scope || null, projectPath: r.projectPath || null, installedAt: r.installedAt || null });
+        const root = r.installPath;
         if (!root) continue;
         for (const a of loadAgentsDir(path.join(root, 'agents'))) if (!e.agents.includes(a.name)) e.agents.push(a.name);
-        try {
-          const mc = JSON.parse(fs.readFileSync(path.join(root, '.mcp.json'), 'utf8'));
-          for (const s of Object.keys(mc.mcpServers || {})) if (!e.servers.includes(s)) e.servers.push(s);
-        } catch { /* a plugin without its own servers */ }
+        const d = pluginDeclarations(root, name, marketDir);
+        for (const [list, set] of [[e.hookKeys, d.hookKeys], [e.exts, d.exts]]) for (const x of set) if (!list.includes(x)) list.push(x);
       }
       byPlugin.set(name, e);
     }
-    return { list: [...byPlugin.values()].sort(byName), source: f };
+    const configDir = path.basename(path.dirname(f)) === 'plugins' ? path.dirname(path.dirname(f)) : null;
+    return { list: [...byPlugin.values()].sort(byName), source: f, configDir, settings: new Map() };
   }
-  return { list: null, source: 'unknown' };
+  return { list: null, source: 'unknown', configDir: null, settings: new Map() };
+}
+
+// One spelling per path, so a registry and a transcript written on the same machine compare equal.
+function samePath(a, b) {
+  const norm = (p) => {
+    const s = String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+    return /^[A-Za-z]:\//.test(s) ? s.toLowerCase() : s;
+  };
+  return !!a && !!b && norm(a) === norm(b);
+}
+
+// The enable a session saw: `enabledPlugins` in the project's `settings.local.json`, then its
+// `settings.json`, then the user settings - the first file that names the plugin decides. Read NOW,
+// not as it stood when the session ran; a plugin no reachable file names counts as enabled, because
+// a registry copied off another machine travels without the settings that would say otherwise.
+function pluginEnabled(reg, key, cwd) {
+  const files = cwd ? [path.join(cwd, '.claude', 'settings.local.json'), path.join(cwd, '.claude', 'settings.json')] : [];
+  if (reg.configDir) files.push(path.join(reg.configDir, 'settings.json'));
+  for (const f of files) {
+    if (!reg.settings.has(f)) {
+      const s = readJsonOr(f, null);
+      reg.settings.set(f, s && s.enabledPlugins && typeof s.enabledPlugins === 'object' ? s.enabledPlugins : null);
+    }
+    const on = reg.settings.get(f);
+    if (on && Object.prototype.hasOwnProperty.call(on, key)) return on[key] !== false;
+  }
+  return true;
+}
+
+// A record reaches a session when its scope covers the session's cwd (user scope covers every one,
+// a project or local one only its own `projectPath` - exact, since that is the directory the
+// install ran in and the one whose settings file enables it), it existed before the session ended,
+// and the settings chain does not switch it off.
+function pluginReaches(reg, p, session) {
+  return (p.records || []).some((r) => {
+    if (r.installedAt && session.lastTs && session.lastTs < r.installedAt) return false;
+    const projectScoped = !!r.projectPath || r.scope === 'project' || r.scope === 'local';
+    if (projectScoped && !samePath(r.projectPath, session.cwd)) return false;
+    return pluginEnabled(reg, r.key, session.cwd);
+  });
 }
 
 // `.mcp.json` sits beside `.claude` at the project root. Only a PROJECT inventory has one that
@@ -746,7 +871,6 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     if (row.used === 'no' && row.alwaysOn) row.used = 'not observable';
     if (row.used === 'not observable' && row.alwaysOn === false) row.used = 'no';
   }
-  for (const p of acc.plugins.list || []) install(acc.plugins_, p.name, 'installed');
   for (const m of mcp.names || []) install(acc.mcps, m, 'installed');
 
   const srcs = [main, ...agents.map((a) => a.stats)];
@@ -765,11 +889,14 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   };
 
   // The stack's own skills and agents ship as plugins, so a call or a dispatch arrives under the
-  // plugin-scoped name (`claude-stack:project-solve-cross-task`, `claude-stack-wpf:wpf-implementer`)
+  // plugin-scoped name (`alfred-code:alfred-task-solve-cross`, `claude-stack-wpf:wpf-implementer`)
   // while the INVENTORY keys everything bare. Joining the two without this strips nothing and the
   // row silently splits in two - one 'installed, never used' and one 'used, not installed'. A
-  // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item.
-  const houseBare = (name) => String(name || '').replace(/^claude-stack(?:-[a-z0-9-]+)?:/, '');
+  // FOREIGN namespace (`superpowers:...`) is left whole: it is not this stack's item. A session
+  // recorded before 2.0.0 names the same items under the 1.x plugin names.
+  const { BRAND, LEGACY } = require('./install/brand.js');
+  const houseScope = new RegExp(`^(?:${BRAND.core}|${LEGACY.core})(?:-[a-z0-9-]+)?:`);
+  const houseBare = (name) => String(name || '').replace(houseScope, '');
 
   // --- skills: the Skill tool, the slash route, and the seats' frontmatter preload
   const namespaced = new Map();   // `<plugin>:<x>` called or typed - the plugin layer's evidence
@@ -845,19 +972,35 @@ function addSessionUse(acc, main, agents, inventoryDir) {
   }
 
   // --- MCP servers
-  const serverCalls = new Map();
-  for (const src of srcs) for (const [server, m] of Object.entries(src.mcp || {})) {
-    mark(ensure(acc.mcps, server), 'calls', m.calls, m.firstTs);
-    const e = serverCalls.get(server) || { n: 0, firstTs: null };
-    e.n += m.calls;
-    if (m.firstTs && (!e.firstTs || m.firstTs < e.firstTs)) e.firstTs = m.firstTs;
-    serverCalls.set(server, e);
-  }
+  for (const src of srcs) for (const [server, m] of Object.entries(src.mcp || {})) mark(ensure(acc.mcps, server), 'calls', m.calls, m.firstTs);
 
-  // --- plugins: a hook is not visible in a transcript, so a plugin that ships only hooks can
-  // never be scored used here. Everything else leaves a mark - a namespaced skill or command, one
-  // of the plugin's agents dispatched, one of its MCP servers called, or, for the two `*-lsp`
-  // plugins that ship none of those, an `LSP` tool call.
+  // --- plugins: which ones this session HAD, then what it did with them. Had = a registry record
+  // reaches the session (`pluginReaches`), or the session's own roster lists a skill or agent under
+  // the plugin's namespace. Used = a namespaced skill or command, one of its agents dispatched, a
+  // `mcp__plugin_<p>_...` call, one of its hooks on record, or, for a language server, a
+  // diagnostics attachment for an extension it maps (else an `LSP` call, which names no file).
+  // A use the registry never placed there still proves the plugin was loaded, so it counts as
+  // installed in that session too - `used` can never outrun `installed`.
+  const plugins = acc.plugins.list || [];
+  const rosterNs = new Set([...(main.availableSkills || []), ...(main.availableAgents || [])]
+    .filter((n) => String(n).includes(':')).map((n) => String(n).split(':')[0]));
+  const loadedHere = new Set(plugins.filter((p) => rosterNs.has(p.name) || pluginReaches(acc.plugins, p, main)).map((p) => p.name));
+  // One hook command or file extension several plugins declare goes to the ones this session had,
+  // and to every claimant only when it had none of them.
+  const owners = (cands) => {
+    const here = cands.filter((p) => loadedHere.has(p.name));
+    return here.length ? here : cands;
+  };
+  const tally = (key) => {
+    const m = new Map();
+    for (const src of srcs) for (const [k, e] of Object.entries(src[key] || {})) {
+      const t = m.get(k) || { n: 0, firstTs: null };
+      t.n += e.n;
+      if (e.firstTs && (!t.firstTs || e.firstTs < t.firstTs)) t.firstTs = e.firstTs;
+      m.set(k, t);
+    }
+    return m;
+  };
   const lsp = { n: 0, firstTs: null };
   for (const src of srcs) {
     const t = (src.toolCalls || {}).LSP;
@@ -865,19 +1008,37 @@ function addSessionUse(acc, main, agents, inventoryDir) {
     lsp.n += t.calls;
     if (t.firstTs && (!lsp.firstTs || t.firstTs < lsp.firstTs)) lsp.firstTs = t.firstTs;
   }
-  for (const p of acc.plugins.list || []) {
-    const row = acc.plugins_.get(p.name);
-    if (!row) continue;
+  const pluginRow = (p) => ensure(acc.plugins_, p.name);
+  for (const p of plugins) {
     const ns = namespaced.get(p.name);
-    if (ns) mark(row, 'namespaced skill/command', ns.n, ns.firstTs);
+    if (ns) mark(pluginRow(p), 'namespaced skill/command', ns.n, ns.firstTs);
     const pre = nsPreload.get(p.name);
-    if (pre) mark(row, 'preloaded skill', pre.n, pre.firstTs);
-    for (const ag of p.agents) if (dispatched.has(ag)) mark(row, `agent ${ag}`, dispatched.get(ag).n, dispatched.get(ag).firstTs);
-    for (const sv of p.servers) if (serverCalls.has(sv)) mark(row, `mcp ${sv}`, serverCalls.get(sv).n, serverCalls.get(sv).firstTs);
-    if (/-lsp$/.test(p.name)) mark(row, 'LSP call', lsp.n, lsp.firstTs);
+    if (pre) mark(pluginRow(p), 'preloaded skill', pre.n, pre.firstTs);
+    for (const ag of p.agents) if (dispatched.has(ag)) mark(pluginRow(p), `agent ${ag}`, dispatched.get(ag).n, dispatched.get(ag).firstTs);
+    for (const src of srcs) {
+      const pm = (src.pluginMcp || {})[p.name];
+      if (pm) for (const [sv, n] of Object.entries(pm.servers)) mark(pluginRow(p), `mcp ${sv}`, n, pm.firstTs);
+    }
+    if (/-lsp$/.test(p.name) && lsp.n) mark(pluginRow(p), 'LSP call', lsp.n, lsp.firstTs);
   }
-  for (const [ns, e] of namespaced) if (!acc.plugins_.has(ns)) mark(ensure(acc.plugins_, ns), 'namespaced skill/command', e.n, e.firstTs);
-  for (const [ns, e] of nsPreload) if (!acc.plugins_.has(ns)) mark(ensure(acc.plugins_, ns), 'preloaded skill', e.n, e.firstTs);
+  for (const [k, e] of tally('hookCommands')) {
+    for (const p of owners(plugins.filter((x) => (x.hookKeys || []).includes(k)))) mark(pluginRow(p), 'hook', e.n, e.firstTs);
+  }
+  for (const [ext, e] of tally('diagnostics')) {
+    // A language server whose extension map could not be read claims only what no known map does.
+    let cands = plugins.filter((x) => (x.exts || []).includes(ext));
+    if (!cands.length) cands = plugins.filter((x) => /-lsp$/.test(x.name) && !(x.exts || []).length);
+    for (const p of owners(cands)) mark(pluginRow(p), `diagnostics ${ext}`, e.n, e.firstTs);
+  }
+  for (const p of plugins) {
+    const row = acc.plugins_.get(p.name);
+    if (loadedHere.has(p.name) || (row && seen.has(row))) install(acc.plugins_, p.name, 'installed');
+  }
+  // A namespace no registry lists is scored here - in EVERY session that used it. Skipping a name
+  // whose row already existed scored it only in the first session, so it never read above 1.
+  const registered = new Set(plugins.map((p) => p.name));
+  for (const [ns, e] of namespaced) if (!registered.has(ns)) mark(ensure(acc.plugins_, ns), 'namespaced skill/command', e.n, e.firstTs);
+  for (const [ns, e] of nsPreload) if (!registered.has(ns)) mark(ensure(acc.plugins_, ns), 'preloaded skill', e.n, e.firstTs);
 
   for (const row of seen) row.sessionsUsed += 1;
 }
@@ -1071,7 +1232,10 @@ async function analyzeTranscript(file, window) {
     skillInvocations: {},        // skill slug -> { calls, injectedChars }
     skillAttribution: {},        // skill slug -> { msgs, output }
     mcp: {},                     // server -> { calls, resultChars, errors, tools: {tool: n} }
-    agentDispatches: [],         // Agent/Task tool_use in THIS transcript: {id, desc, subagentType}
+    pluginMcp: {},               // plugin -> { calls, servers: {server: n}, firstTs } - `mcp__plugin_<p>_<s>__*` only
+    hookCommands: {},            // hookCommandKey of a hook row's command -> { n, firstTs }
+    diagnostics: {},             // file extension -> { n, firstTs } - one per diagnostics attachment naming it
+    agentDispatches: [],      // Agent/Task tool_use in THIS transcript: {id, desc, subagentType}
     docTouches: {},              // <docs-root>-relative path -> { reads, writes }
     styleRuleAttaches: 0,        // generated project-code-style rule attachments seen in this transcript
     styleInjections: 0,          // legacy inject-code-style hook firings seen in this transcript
@@ -1110,7 +1274,7 @@ async function analyzeTranscript(file, window) {
       greenClaims: 0, unverifiedGreenClaims: [],
       correctionStreaks: [],     // the hook's strict detector: timestamps where it would fire
       correctionTurns: 0,        // short user turns right after a 1,500+ char answer (assistant rows merged)
-      correctionsSaved: 0,       // of those, followed by a memory store within SAVE_WINDOW replies
+      correctionsSaved: 0,       // correction turns (the hook's marker test) followed by a memory store within SAVE_WINDOW replies
       correctionsUnsaved: [],    // timestamps of the ones that were not
       longAnswered: 0,           // 1,500+ char answers a user turn followed
       finalAnswers: 0, longAnswers: 0,
@@ -1196,18 +1360,23 @@ async function analyzeTranscript(file, window) {
       if (lastSkill) s.skillTimeline.push({ ts: ts || null, skill: null });
       lastSkill = null;
     }
-    turns.push({ role: 'user', len: t.length });
+    const interrupt = /^\[Request interrupted by user/.test(t);
+    turns.push({ role: 'user', len: t.length, interrupt });
     // the loose pair first: the answer before this turn, consecutive assistant rows merged
     {
       let j = turns.length - 2, alen = 0;
       while (j >= 0 && turns[j].role === 'assistant') { alen += turns[j].len; j -= 1; }
       if (alen >= STREAK_LONG) {
         s.efficiency.longAnswered += 1;
-        if (t.length <= STREAK_SHORT) {
-          s.efficiency.correctionTurns += 1;
-          pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
-        }
+        if (t.length <= STREAK_SHORT) s.efficiency.correctionTurns += 1;
       }
+    }
+    // A correction waiting on a save: the hook's single-turn test - an answer before it (an
+    // interruption row between them does not count), at most STREAK_SHORT chars, a marker.
+    if (!interrupt && t.length <= STREAK_SHORT && correctionMarker(t)) {
+      let k = turns.length - 2;
+      while (k >= 0 && turns[k].role === 'user' && turns[k].interrupt) k -= 1;
+      if (k >= 0 && turns[k].role === 'assistant') pendingSaves.push({ ts: ts || null, left: SAVE_WINDOW });
     }
     let streak = 0;
     for (let i = turns.length - 1; i >= 1; i -= 2) {
@@ -1299,6 +1468,29 @@ async function analyzeTranscript(file, window) {
             s.loadedSkillBodies[sk.name] = { chars: body.length, headings: headingFingerprint(body), path: sk.path || null, ts: o.timestamp || null };
           }
         }
+        // A hook's run is on record when the row names its command: `hook_success`, the error and
+        // cancel rows, and a blocking error's inner object. A `hook_additional_context` row names
+        // none (measured: 3,470 UserPromptSubmit rows, no command on any), so it proves no owner.
+        if (typeof at.type === 'string' && at.type.startsWith('hook_')) {
+          const cmd = at.command || (at.blockingError && typeof at.blockingError === 'object' ? at.blockingError.command : null);
+          if (cmd) {
+            const k = hookCommandKey(cmd);
+            const e = s.hookCommands[k] || (s.hookCommands[k] = { n: 0, firstTs: o.timestamp || null });
+            e.n += 1;
+          }
+        } else if (at.type === 'diagnostics' && Array.isArray(at.files)) {
+          // A language server's findings for the files it watched - the `*-lsp` plugins' use, which
+          // no tool call shows. One count per attachment per extension it names.
+          const exts = new Set();
+          for (const fl of at.files) {
+            const m = /(\.[A-Za-z0-9]+)$/.exec(String((fl && fl.uri) || ''));
+            if (m) exts.add(m[1]);
+          }
+          for (const x of exts) {
+            const e = s.diagnostics[x] || (s.diagnostics[x] = { n: 0, firstTs: o.timestamp || null });
+            e.n += 1;
+          }
+        }
         if (at.type === 'nested_memory') {
           const p = String(at.displayPath || at.path || '').replace(/\\/g, '/');
           const m = /(?:^|\/)\.claude\/rules\/([^/]+\.md)$/.exec(p);
@@ -1311,8 +1503,8 @@ async function analyzeTranscript(file, window) {
         }
       }
     }
-    if (raw.includes(STYLE_RULE_MARKER)) s.styleRuleAttaches++;
-    if (raw.includes(STYLE_INJECT_MARKER)) s.styleInjections++;
+    if (STYLE_RULE_MARKERS.some((m) => raw.includes(m))) s.styleRuleAttaches++;
+    if (STYLE_INJECT_MARKERS.some((m) => raw.includes(m))) s.styleInjections++;
     if (o.timestamp) { if (!s.firstTs) s.firstTs = o.timestamp; s.lastTs = o.timestamp; }
     if (!s.ccVersion && o.version) s.ccVersion = o.version;
     // TWO records name the model, and they can DISAGREE: `cost-state.modelUsage` keys off the id
@@ -1570,6 +1762,15 @@ async function analyzeTranscript(file, window) {
           mc.calls += 1;
           const tool = c.name.split('__').slice(2).join('__') || '?';
           mc.tools[tool] = (mc.tools[tool] || 0) + 1;
+          // The plugin a server came from is in the name itself; a bare registration of the same
+          // server name is a different server, never the plugin's use.
+          const seg = c.name.split('__')[1] || '';
+          if (seg.startsWith('plugin_')) {
+            const plugin = seg.slice(7).split('_')[0];
+            const pm = s.pluginMcp[plugin] || (s.pluginMcp[plugin] = { calls: 0, servers: {}, firstTs: o.timestamp || null });
+            pm.calls += 1;
+            pm.servers[server] = (pm.servers[server] || 0) + 1;
+          }
         } else if ((c.name === 'Agent' || c.name === 'Task') && c.input) {
           s.agentDispatches.push({ id: c.id, desc: c.input.description ? maskSecrets(c.input.description) : null, subagentType: c.input.subagent_type || null, ts: o.timestamp || null });
         }
@@ -1961,7 +2162,7 @@ function summarizeCauses(pending) {
 
 async function analyzeSubagents(sessionFile, window) {
   // Native layout: <sid>.jsonl + <sid>/subagents/. Audit bundles (what the
-  // project-stack-usage-analyzer skill archives) put subagents/ as a SIBLING of the
+  // alfred-capture-stack-usage skill archives) put subagents/ as a SIBLING of the
   // transcript - without the fallback a bundle re-analysis silently drops every seat.
   // Workflow-tool fan-outs nest under subagents/workflows/<wf-id>/agent-*.jsonl - a flat
   // scan silently dropped 703 transcripts (~35% of output) across two audited bundles,
@@ -2215,7 +2416,14 @@ function readBlockLedger(target, sessionId) {
       if (!o || !o.hook) continue;
       // A row carrying a `mode` is a MEASUREMENT, not a block: the fork-liveness probe and the stop
       // hook's tool-ended skip both log and deny nothing.
-      if (o.mode) { out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1; continue; }
+      if (o.mode) {
+        out.probes = (out.probes || 0) + 1; out.probeKinds = out.probeKinds || {}; out.probeKinds[o.kind || o.mode] = (out.probeKinds[o.kind || o.mode] || 0) + 1;
+        if (o.mode === 'probe' && o.kind === 'done-gate' && o.detail) (out.doneGateRows || (out.doneGateRows = [])).push({ ...o.detail, ts: o.ts || null });
+        if (o.mode === 'probe' && o.kind === 'root-cause' && o.detail) (out.rootCauseRows || (out.rootCauseRows = [])).push(o.detail);
+        if (o.mode === 'probe' && o.kind === 'correction') { const c = out.correction || (out.correction = newCorrection()); c.turns += 1; if (o.injected === true) c.injected += 1; }
+        if (o.mode === 'probe' && o.kind === 'rationalization') tallyRationalization(out.rationalization || (out.rationalization = newRationalization()), o.detail || {});
+        continue;
+      }
       out.rows += 1;
       if (o.ts) out.rowTs.push({ ts: Date.parse(o.ts), hook: o.hook });
       const e = out.byHook[o.hook] || (out.byHook[o.hook] = { blocks: 0, reasons: new Map(), events: new Set(), tools: new Set() });
@@ -2239,6 +2447,231 @@ function readBlockLedger(target, sessionId) {
   }
 
   return out;
+}
+
+// ---------- the two method-skill probes (log-only since 2026-09-25) ----------
+// guard-stop-contract.js writes where `alfred-habits-done-gate` and `alfred-habits-root-cause` were
+// NEEDED, and never holds or injects: the misses are counted here instead. A done-gate row is a claim
+// over a turn's source edit; its unrun rows split EXCLUSIVELY by the user's two named exceptions
+// first - a rule against running tests, a project with no tests found - then by whether the skill was
+// loaded that turn, then by whether the session loaded it in an EARLIER turn (the main transcript's
+// successful Skill calls, before the row). The rest are the misses.
+const newDoneGate = () => ({ claims: 0, ran: 0, unrun: 0, byRule: 0, noTests: 0, skillLoaded: 0, inContext: 0, missed: 0 });
+function tallyDoneGate(t, d, loadedBefore) {
+  t.claims += 1;
+  if (d.outcome === 'ran') { t.ran += 1; return; }
+  t.unrun += 1;
+  if (d.rule) t.byRule += 1;
+  else if (d.tests === 'none-found') t.noTests += 1;
+  else if (d.skill) t.skillLoaded += 1;
+  else if (loadedBefore(d.ts)) t.inContext += 1;
+  else t.missed += 1;
+}
+const DONE_GATE_SKILL_RE = /(?:^|:)alfred-habits-done-gate$/;
+const doneGateLine = (t) => `DONE GATE (probe): ${t.claims} done claim(s) over an edit - ${t.ran} ran after the edit, ${t.unrun} unrun: `
+  + `${t.byRule} excused by a rule, ${t.noTests} with no tests found, ${t.skillLoaded} with the skill loaded, ${t.inContext} with it loaded earlier, ${t.missed} MISSED`;
+
+// The Stop build check (check-turn-build.js) ships off and turns on per project 'after a measured
+// week'; the done-gate probe above is that measurement. An UNCHECKED claim is an unrun one the user's
+// two named exceptions do not excuse (a rule against running tests, no tests found) - the split's
+// skill-loaded, loaded-earlier and missed buckets. At TURN_CHECK_THRESHOLD of them in the newest
+// TURN_CHECK_WINDOW sessions - one session in three - validate and status paste ONE advisory row. The
+// switch is the user's: nothing here writes it, and a project that already set it, or runs the strict
+// hook profile (which runs the check anyway) or the minimal one (which switches it off), gets no row.
+const TURN_CHECK_WINDOW = 10;
+const TURN_CHECK_THRESHOLD = 3;
+function turnCheckAdvice(sessionsDir, projectRoot, exclude = new Map()) {
+  const { envOf, hookProfile, CORE_PLUGIN } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hook-prelude.js'));
+  const root = path.resolve(projectRoot);
+  const account = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const readSettings = (f) => { try { const d = JSON.parse(fs.readFileSync(f, 'utf8')); return d && typeof d === 'object' ? d : {}; } catch { return {}; } };
+  // The hooks see local over project over account, so the same order answers here; junk is no setting.
+  const envs = [path.join(root, '.claude', 'settings.local.json'), path.join(root, '.claude', 'settings.json'), path.join(account, 'settings.json')]
+    .map((f) => { const env = readSettings(f).env; return env && typeof env === 'object' ? env : {}; });
+  const setting = (suffix) => [...envs, process.env].map((env) => envOf(env, suffix)).find((v) => v !== undefined && v !== '');
+  // Review finding 9: the strict hook profile runs the Stop build check whatever TURN_CHECK says, so it
+  // is advised nothing. A hook reads the profile as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the shell a command
+  // body runs this from has no such variable, so the account settings' pluginConfigs - the one file
+  // Claude Code reads it from (code.claude.com/docs/en/plugins-reference) - answers after it.
+  const configs = readSettings(path.join(account, 'settings.json')).pluginConfigs;
+  const stored = Object.entries(configs && typeof configs === 'object' ? configs : {})
+    .filter(([id]) => id.split('@')[0] === CORE_PLUGIN).map(([, c]) => c && c.options && c.options.hook_profile).find((v) => typeof v === 'string' && v);
+  const profile = hookProfile({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: process.env.CLAUDE_PLUGIN_OPTION_HOOK_PROFILE || stored || '' });
+  const on = String(setting('TURN_CHECK') || '').trim() === '1' || profile === 'strict';
+  const blockDir = path.resolve(root, String(setting('DOCS_PATH') || '.alfred/docs'), 'hook-blocks');
+  const newest = findSessionFiles(sessionsDir).filter((f) => !exclude.has(path.basename(f, '.jsonl')))
+    .map((f) => ({ f, at: fs.statSync(f).mtimeMs })).sort((a, b) => b.at - a.at).slice(0, TURN_CHECK_WINDOW).map((x) => x.f);
+  const doneGate = newDoneGate();
+  for (const f of newest) for (const d of readBlockLedger(blockDir, path.basename(f, '.jsonl')).doneGateRows || []) tallyDoneGate(doneGate, d, () => false);
+  const unchecked = doneGate.skillLoaded + doneGate.inContext + doneGate.missed;
+  // minimal switches the build check off whatever TURN_CHECK says, so the key it would advise does nothing
+  const advise = !on && profile !== 'minimal' && unchecked >= TURN_CHECK_THRESHOLD;
+  const row = advise ? `turn-check: advise - ${unchecked} done claims over an edit had nothing run after it in the newest ${newest.length} sessions `
+    + `(threshold ${TURN_CHECK_THRESHOLD} per ${TURN_CHECK_WINDOW}): set ALFRED_CODE_TURN_CHECK=1 to run the scoped build check at Stop` : null;
+  return { sessions: newest.length, window: TURN_CHECK_WINDOW, threshold: TURN_CHECK_THRESHOLD, blockDir, doneGate, unchecked, on, profile, advise, row };
+}
+
+// A root-cause row is the first red build or test run of a streak. The ledger cannot know what came
+// next, so the transcript answers it: the run's tool_use_id is found in the session's own transcripts
+// (the main one and every subagent's), and what follows it in that actor's file decides - the skill
+// loaded before the next fix, or already in context (loaded earlier in the same file, or preloaded by
+// the seat's own definition), or loaded only after a fix, or a fix with no load at all (MISSED), or
+// no fix after the red run. A fix is a file-tool edit or a shell write to a non-prose file inside the
+// session's own cwd (the row's `cwd`; a relative path is inside it, resolved through the command's own
+// `cd`s) - a write anywhere else is scratch, and a target behind a variable is not judged. A row with no
+// cwd falls back to reading a temp-dir path as scratch. A call whose result is an error - a denied edit,
+// a failed Skill load - changed nothing and loaded nothing.
+const newRootCause = () => ({ streaks: 0, beforeFix: 0, inContext: 0, preloaded: 0, afterFix: 0, missed: 0, noFix: 0, unmatched: 0 });
+const ROOT_CAUSE_SKILL_RE = /(?:^|:)alfred-habits-root-cause$/;
+const FIX_EDIT_TOOL_RE = /^(?:Edit|Write|MultiEdit|NotebookEdit)$/;
+const FIX_SKIP_RE = /\.(?:md|mdx|markdown|txt|rst|adoc|log|out|err|tmp|bak)$|(?:^|[\\/])\.claude[\\/]/i;
+const TEMP_PATH_RE = /^\/(?:tmp|dev|private\/tmp)\//;
+function fixPath(f, cwd) {
+  if (typeof f !== 'string' || !f || FIX_SKIP_RE.test(f) || f.startsWith('/dev/')) return false;
+  if (!path.isAbsolute(f)) return true;
+  if (!cwd) return !TEMP_PATH_RE.test(f);
+  const rel = path.relative(cwd, f);
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+const FIX_SHELL_WHAT_RE = /^(?:an in-place edit|an interpreter write|a shell redirection|a `tee` write|a copy\/move destination)$/;
+let shellWritesLib;
+function shellWrites() {
+  if (shellWritesLib === undefined) {
+    try { shellWritesLib = require(path.join(__dirname, '..', 'stack', 'hooks', 'shell-writes.js')); } catch { shellWritesLib = null; }
+  }
+  return shellWritesLib;
+}
+function isFix(name, input, cwd) {
+  if (FIX_EDIT_TOOL_RE.test(name)) return fixPath(input.file_path || input.notebook_path, cwd);
+  const sw = shellWrites();
+  if (!/^(?:Bash|PowerShell)$/.test(name) || !sw) return false;
+  try {
+    const scan = sw.scanShell(String(input.command || ''));
+    return scan.targets.some((t) => {
+      if (!FIX_SHELL_WHAT_RE.test(t.what)) return false;
+      const raw = scan.expandVars ? scan.expandVars(String(t.raw || '')) : String(t.raw || '');
+      if (sw.isVar(raw) || /[$`]/.test(raw) || raw.startsWith('~')) return false;
+      if (path.isAbsolute(raw)) return fixPath(raw, cwd);
+      // With a known cwd, no anchor means a cd it cannot follow - never guess; with none, no cd at all.
+      const base = sw.anchorAt(scan.cds, t.index, cwd || null);
+      if (base) return fixPath(path.resolve(base, raw), cwd);
+      return cwd ? false : fixPath(raw, cwd);
+    });
+  } catch { return false; }
+}
+// The main transcript and its subagents' - the layout analyzeSubagents reads.
+function sessionTranscriptFiles(sessionFile) {
+  const files = [sessionFile];
+  let dir = path.join(sessionFile.replace(/\.jsonl$/, ''), 'subagents');
+  if (!fs.existsSync(dir)) dir = path.join(path.dirname(sessionFile), 'subagents');
+  const walk = (d, depth) => {
+    let names = [];
+    try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of names) {
+      if (e.isDirectory()) { if (depth < 2) walk(path.join(d, e.name), depth + 1); } else if (e.name.endsWith('.jsonl')) files.push(path.join(d, e.name));
+    }
+  };
+  walk(dir, 0);
+  return files;
+}
+function toolSequence(file) {
+  const seq = [];
+  const failed = new Set();
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return seq; }
+  for (const l of text.split('\n')) {
+    if (!l.includes('"tool_use"') && !l.includes('"tool_result"')) continue;
+    let o;
+    try { o = JSON.parse(l); } catch { continue; }
+    const c = o && o.message && Array.isArray(o.message.content) ? o.message.content : [];
+    for (const b of c) {
+      if (b && b.type === 'tool_use' && o.type === 'assistant')
+        seq.push({ id: b.id, name: String(b.name || ''), input: b.input || {}, cwd: typeof o.cwd === 'string' ? o.cwd : null, ts: o.timestamp || null });
+      else if (b && b.type === 'tool_result' && b.is_error === true) failed.add(b.tool_use_id);
+    }
+  }
+  for (const st of seq) st.error = failed.has(st.id);
+  return seq;
+}
+const preloadCache = new Map();
+function seatPreloads(agentType) {
+  const name = String(agentType || '').replace(/^.*:/, '');
+  if (!name) return false;
+  if (!preloadCache.has(name)) {
+    let hit = false;
+    for (const f of [path.join(__dirname, '..', 'stack', 'agents', `${name}.md`), path.join(process.cwd(), '.claude', 'agents', `${name}.md`)]) {
+      try {
+        const fm = (fs.readFileSync(f, 'utf8').match(/^---\n([\s\S]*?)\n---/) || [])[1] || '';
+        const skills = (fm.match(/^skills:\s*\n((?:\s+-\s+.*\n?)+)/m) || [])[1] || '';
+        if (skills.split('\n').some((l) => ROOT_CAUSE_SKILL_RE.test(l.replace(/^\s*-\s*/, '').trim()))) { hit = true; break; }
+      } catch { /* not this home */ }
+    }
+    preloadCache.set(name, hit);
+  }
+  return preloadCache.get(name);
+}
+function resolveRootCause(details, files) {
+  const t = newRootCause();
+  if (!details || !details.length) return t;
+  const seqs = files.map(toolSequence);
+  const isLoad = (st) => !st.error && st.name === 'Skill' && ROOT_CAUSE_SKILL_RE.test(String(st.input.skill || ''));
+  for (const d of details) {
+    t.streaks += 1;
+    let seq = null;
+    let at = -1;
+    for (const sq of seqs) { at = d.tool_use_id ? sq.findIndex((st) => st.id === d.tool_use_id) : -1; if (at >= 0) { seq = sq; break; } }
+    if (!seq) { t.unmatched += 1; continue; }
+    if (seq.slice(0, at).some(isLoad)) { t.inContext += 1; continue; }
+    if (seatPreloads(d.agent_type)) { t.preloaded += 1; continue; }
+    const rest = seq.slice(at + 1);
+    const load = rest.findIndex(isLoad);
+    const fix = rest.findIndex((st) => !st.error && isFix(st.name, st.input, st.cwd));
+    if (load >= 0 && (fix < 0 || load < fix)) t.beforeFix += 1;
+    else if (fix >= 0) { if (load >= 0) t.afterFix += 1; else t.missed += 1; }
+    else t.noFix += 1;
+  }
+  return t;
+}
+const rootCauseLine = (t) => `ROOT CAUSE (probe): ${t.streaks} red streak(s) - ${t.beforeFix} loaded before the fix, ${t.inContext} already in context, `
+  + `${t.preloaded} preloaded by the seat, ${t.afterFix} loaded after the fix, ${t.missed} MISSED, ${t.noFix} with no fix after, ${t.unmatched} unmatched`;
+// The correction probe (guard-answer-length.js, log-only unless ALFRED_CODE_CORRECTION_NUDGE=inject):
+// one row per correction turn. Whether it was then SAVED is the scorecard's corrections-saved row,
+// read from the transcript with the same test.
+const newCorrection = () => ({ turns: 0, injected: 0 });
+const correctionLine = (t) => `CORRECTION NUDGE (probe): ${t.turns} correction turn(s) - ${t.injected} with the save line injected, ${t.turns - t.injected} logged only`;
+
+// The rationalization probe (guard-stop-contract.js, log-only): a close dismissing a failure in a turn
+// that had one to dismiss. Split two ways - by the evidence (a red run first, then a skipped test, then
+// an added skip marker) and by what the phrase claims - so the rate of each is its own number.
+const newRationalization = () => ({ closes: 0, red: 0, skipped: 0, skipEdit: 0, preExisting: 0, unrelated: 0, flaky: 0, deferred: 0 });
+function tallyRationalization(t, d) {
+  t.closes += 1;
+  if (d.evidence === 'red') t.red += 1; else if (d.evidence === 'skipped') t.skipped += 1; else t.skipEdit += 1;
+  const p = String(d.phrase || '');
+  if (/pre[- ]?existing/i.test(p)) t.preExisting += 1;
+  else if (/unrelated|caused by|related to|introduced by|\bfrom (?:my|this|the|our)\b/i.test(p)) t.unrelated += 1;
+  else if (/flak|transient|intermittent/i.test(p)) t.flaky += 1;
+  else t.deferred += 1;
+}
+const rationalizationLine = (t) => `RATIONALIZATION (probe): ${t.closes} close(s) dismissing a failure - ${t.red} after a red run, ${t.skipped} after a skipped test, ${t.skipEdit} after an added skip marker; `
+  + `${t.preExisting} pre-existing, ${t.unrelated} unrelated to the change, ${t.flaky} flaky or transient, ${t.deferred} deferred`;
+
+// Resolves a session's probe rows in place; the raw rows never reach a report.
+function finishProbes(ledger, sessionFile) {
+  if (ledger && ledger.doneGateRows) {
+    // The done-gate probe is a main-session Stop row, so the main transcript holds any earlier load.
+    const loads = toolSequence(sessionFile).filter((st) => !st.error && st.name === 'Skill' && DONE_GATE_SKILL_RE.test(String(st.input.skill || '')))
+      .map((st) => Date.parse(st.ts)).filter((n) => !Number.isNaN(n));
+    const loadedBefore = (ts) => { const at = Date.parse(ts); return !Number.isNaN(at) && loads.some((n) => n < at); };
+    ledger.doneGate = newDoneGate();
+    for (const d of ledger.doneGateRows) tallyDoneGate(ledger.doneGate, d, loadedBefore);
+    delete ledger.doneGateRows;
+  }
+  if (ledger && ledger.rootCauseRows) {
+    ledger.rootCause = resolveRootCause(ledger.rootCauseRows, sessionTranscriptFiles(sessionFile));
+    delete ledger.rootCauseRows;
+  }
+  return ledger;
 }
 
 // The transcript names the TOOL a denial hit and, when the harness prints the bracket, the hook
@@ -2404,7 +2837,7 @@ function efficiencyRows(main, agg, blockLedger) {
   }
   if (main.floorCtx) {
     const share = main.total.cacheRead ? Math.round((100 * main.floorCtx * main.total.msgs) / main.total.cacheRead) : null;
-    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /claude-stack:status reports it per install' });
+    rows.push({ practice: 'standing floor', measured: `~${fmt(main.floorCtx)} tok/msg${share != null ? `, ~${share}% of cache-read` : ''}`, tests: 'the always-on set is the one lever on this number - lint check 33 caps it, /alfred-code:status reports it per install' });
   }
   rows.push({
     practice: 'cache continuity',
@@ -2438,7 +2871,7 @@ function efficiencyRows(main, agg, blockLedger) {
   {
     const total = (e.correctionsSaved || 0) + (e.correctionsUnsaved || []).length;
     const unsaved = (e.correctionsUnsaved || []).length;
-    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make is a preference or a lesson; one never stored is made again next session' });
+    rows.push({ practice: 'corrections saved to memory', measured: `${e.correctionsSaved || 0} of ${total} correction(s) saved within ${SAVE_WINDOW} replies; ${unsaved} unsaved${total ? ` (${Math.round((100 * unsaved) / total)}%)` : ''}${unsaved ? ` at: ${tsList(e.correctionsUnsaved)}` : ''}`, tests: 'a correction the user had to make (a short turn carrying a correction marker, as guard-answer-length reads it) is a preference or a lesson; one never stored is made again next session' });
   }
   rows.push({ practice: 'long answers', measured: `${e.longAnswers || 0} of ${e.finalAnswers || 0} final answer(s) over ${fmt(LONG_ANSWER)} chars of prose`, tests: "the answer budget - the user's own ask may have lifted it, check the prompt before scoring" });
   {
@@ -2480,7 +2913,7 @@ function printInventoryBlock(invUse) {
     if (L.notObservable.length) console.log(`    always-on - in every prompt, use not observable (${L.notObservable.length}): ${L.notObservable.join(', ')}`);
     if (L.unused.length) console.log(`    ${many ? 'never used' : 'unused'} (${L.unused.length}): ${L.unused.join(', ')}`);
   }
-  console.log('  a plugin that ships only HOOKS can never score used here - a hook leaves no transcript record; and a catalog-sourced row proves the stack ships the artifact, never that this project installed it');
+  console.log('  a plugin counts as installed only in the sessions a registry record reaches (its scope, project, install date and enable) or that loaded or used it; a hook scores from the rows naming its command, so one that only adds context is not observable; and a catalog-sourced row proves the stack ships the artifact, never that this project installed it');
 }
 
 function printReport(main, agents, hookLog, window, blockLedger, invUse) {
@@ -2656,6 +3089,10 @@ function printReport(main, agents, hookLog, window, blockLedger, invUse) {
     }
     console.log(`  ${blockLedger.rows} block(s) total - review each distinct reason on its own; two reasons naming two files are two causes.`);
   }
+  if (blockLedger && blockLedger.doneGate) console.log('\n' + doneGateLine(blockLedger.doneGate));
+  if (blockLedger && blockLedger.rootCause) console.log((blockLedger.doneGate ? '' : '\n') + rootCauseLine(blockLedger.rootCause));
+  if (blockLedger && blockLedger.correction) console.log((blockLedger.doneGate || blockLedger.rootCause ? '' : '\n') + correctionLine(blockLedger.correction));
+  if (blockLedger && blockLedger.rationalization) console.log((blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction ? '' : '\n') + rationalizationLine(blockLedger.rationalization));
   if (blockLedger && blockLedger.probes) console.log('\nPROBES ' + blockLedger.probes + ' row(s), log-only - denied nothing: ' + Object.entries(blockLedger.probeKinds).map(([k, n]) => k + ' x' + n).join(', ') + ' (a probe row is a measurement of how often the gate WOULD fire; judge its rate before it becomes a denial)');
 
   if (main.spikes.length) {
@@ -2704,7 +3141,7 @@ function vintageMarkdown(invUse, main, out) {
     const rel = st.installed && main.lastTs ? (st.installed > main.lastTs ? 'INSTALLED AFTER this session - what is on disk was never what this session loaded' : 'installed before this session ran') : 'install date unknown';
     out.push(`| Stack install | v${st.version || '?'} (${st.sha ? st.sha.slice(0, 12) : 'sha unknown'}), stamped ${when} - ${rel} |`);
   } else {
-    out.push('| Stack install | no `claude-stack.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
+    out.push('| Stack install | no `alfred-code.stamp` reachable - the install version this session loaded is UNKNOWN, do not assume today\'s |');
   }
   out.push(`| Inventory source | ${(v && v.inventoryWhy) || (invUse && invUse.source.skills_agents_rules) || '-'} |`, '');
   const rows = (v && v.rows) || [];
@@ -2725,7 +3162,7 @@ function inventoryMarkdown(invUse, out) {
   out.push('## Inventory vs use', '');
   out.push(`_Inventory source: skills/agents/rules from ${invUse.source.skills_agents_rules}; plugins from ${invUse.source.plugins}; MCP from ${invUse.source.mcps}._`, '');
   out.push(`_The installed set is resolved PER SESSION from that session's own \`cwd\`, so \`installed\` reads K of the ${invUse.source.sessions} session(s) this run covered and a name nothing installed is never reported as unused._`, '');
-  out.push('_Every row is an artifact an install HAS. A path-scoped rule is scored from the transcript records that name it (a `nested_memory` attach, guard-read-whole-file\'s shell-route notice) and by a glob proxy over the files the session touched; an always-on rule is in every prompt, so its use is not observable at all. A plugin that ships only HOOKS can never score used here, and a catalog-sourced row proves the stack ships the artifact, never that this project installed it._', '');
+  out.push('_Every row is an artifact an install HAS. A path-scoped rule is scored from the transcript records that name it (a `nested_memory` attach, guard-read-whole-file\'s shell-route notice) and by a glob proxy over the files the session touched; an always-on rule is in every prompt, so its use is not observable at all. A plugin counts as installed only in the sessions a registry record reaches (its scope, project, install date and enable) or that loaded or used it; a hook scores from the rows naming its command, so one that only adds context is not observable; and a catalog-sourced row proves the stack ships the artifact, never that this project installed it._', '');
   for (const L of inventoryLayers(invUse)) {
     if (!L.rows) continue;
     out.push(`### ${L.label.charAt(0).toUpperCase()}${L.label.slice(1)} (used ${L.usedInstalled} of ${L.total} installed${L.observedOnly ? `, +${L.observedOnly} used but in no inventory the run could read` : ''})`, '');
@@ -2966,6 +3403,21 @@ function printMarkdown(main, agents, hookLog, window, blockLedger, invUse) {
     out.push('_No ledger rows. That means EITHER no guard fired OR the ledger was never written - say which, do not infer. The transcript alone records which TOOL was denied, never which hook._', '');
     out.push('_This is a QUESTION to answer here, in one line, from the ledger test you ran: `no guard fired` (the ledger path was absent AND the Tools table shows no `hook-blk`), or `ledger absent` (there ARE hook-blk denials and the hook that fired is unavailable). Shipped unanswered, verbatim, in audited bundles._', '');
   }
+  if (blockLedger && (blockLedger.doneGate || blockLedger.rootCause || blockLedger.correction || blockLedger.rationalization)) {
+    out.push('## Probes - log-only (where a method skill or a habit was needed, and what the session did)', '');
+    const dg = blockLedger.doneGate;
+    if (dg) out.push('| probe | claims over an edit | ran after it | excused by a rule | no tests found | skill loaded, unrun | loaded earlier, unrun | MISSED |', '|---|---|---|---|---|---|---|---|',
+      `| done gate | ${dg.claims} | ${dg.ran} | ${dg.byRule} | ${dg.noTests} | ${dg.skillLoaded} | ${dg.inContext} | ${dg.missed} |`, '');
+    const rc = blockLedger.rootCause;
+    if (rc) out.push('| probe | red streaks | loaded before the fix | in context | preloaded | loaded after the fix | MISSED | no fix after | unmatched |', '|---|---|---|---|---|---|---|---|---|',
+      `| root cause | ${rc.streaks} | ${rc.beforeFix} | ${rc.inContext} | ${rc.preloaded} | ${rc.afterFix} | ${rc.missed} | ${rc.noFix} | ${rc.unmatched} |`, '');
+    const co = blockLedger.correction;
+    if (co) out.push('| probe | correction turns | save line injected | logged only |', '|---|---|---|---|',
+      `| correction nudge | ${co.turns} | ${co.injected} | ${co.turns - co.injected} |`, '');
+    const ra = blockLedger.rationalization;
+    if (ra) out.push('| probe | dismissing closes | after a red run | after a skipped test | after a skip marker | pre-existing | unrelated | flaky or transient | deferred |', '|---|---|---|---|---|---|---|---|---|',
+      `| rationalization | ${ra.closes} | ${ra.red} | ${ra.skipped} | ${ra.skipEdit} | ${ra.preExisting} | ${ra.unrelated} | ${ra.flaky} | ${ra.deferred} |`, '');
+  }
   out.push('## Waste analysis - FILL IN', '', '_Ranked by tokens wasted. Every claim cites a table row above, or a transcript measurement labeled as such._', '');
   out.push('## Protocol check - FILL IN', '', "_One verdict per skill run, judged against that skill's own SKILL.md steps, citing the transcript turn that proves it. Mark unavailable rather than inferring._", '');
   out.push('## Efficiency verdict - FILL IN', '');
@@ -3091,7 +3543,15 @@ function printCheckReport(res) {
 // Exported for the tests: the join's arithmetic shipped broken (ISO string minus a number = NaN,
 // so every ledger-joined session printed '0% of tool calls are inside the ledger window') and
 // stayed broken because nothing could reach the function to pin it.
-module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets };
+// Review finding 10: the project's own transcripts folder, `<config>/projects/<name>`. Claude Code names it
+// from the NATIVE path, every non-alphanumeric character a '-' (memory-import.js slugify, the documented
+// rule), so on Windows 'C:\\Users\\me\\repo' is 'C--Users-me-repo'. Derived here from the analyzer's own
+// cwd, never in a command body: a shell's `pwd | sed` gets '-c-Users-me-repo' under Git Bash.
+function sessionsDirOf(cwd, configDir) {
+  return path.join(configDir, 'projects', require('./memory-import.js').slugify(cwd));
+}
+
+module.exports = { hookJoinStats, readBlockLedger, docRelPath, joinUnattributedDenials, windowSource, interruptLine, globToRe, parseFrontmatter, checkReport, forkParents, rmVerifyTail, maskSecrets, hookCommandKey, samePath, sessionsDirOf };
 
 // ---------- entry ----------
 
@@ -3121,8 +3581,12 @@ async function main() {
 async function runAnalysis() {
   const args = process.argv.slice(2);
   const flagVal = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : null; };
-  const flagValIdx = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices'].map((f) => args.indexOf(f) + 1).filter((i) => i > 0));
-  const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i));
+  // Every occurrence of a value flag, so a repeated `--exclude-session <id>` is never read as the target.
+  const VALUE_FLAGS = new Set(['--hook-log', '--hook-blocks', '--from', '--to', '--docs-root', '--inventory', '--plugins', '--out', '--check-report', '--prices', '--exclude-session', '--turn-check-advice']);
+  const flagValIdx = new Set(args.map((a, i) => (VALUE_FLAGS.has(a) ? i + 1 : -1)).filter((i) => i > 0));
+  // No folder or transcript named: the transcripts of the project this runs in (sessionsDirOf).
+  const target = args.find((a, i) => !a.startsWith('--') && !flagValIdx.has(i))
+    || sessionsDirOf(process.cwd(), process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'));
   // The report CHECK is its own pass: it reads a filled report, not a transcript.
   const checkFile = flagVal('--check-report');
   if (checkFile) {
@@ -3148,15 +3612,44 @@ async function runAnalysis() {
     ? { from: fromStr ? Date.parse(fromStr) : null, to: toStr ? Date.parse(toStr) : null, fromStr, toStr }
     : null;
   if (!target || (window && (Number.isNaN(window.from) || Number.isNaN(window.to)))) {
-    console.error('usage: analyze-usage.js <session.jsonl | sessions-dir> [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
+    console.error('usage: analyze-usage.js [<session.jsonl | sessions-dir>] [--from <ISO ts>] [--to <ISO ts>] [--hook-log <tool-usage.jsonl>] [--hook-blocks <dir|file>] [--docs-root <path>] [--inventory <.claude dir>] [--plugins <installed_plugins.json>] [--prices <model-prices.json>] [--exclude-session <id>] [--turn-check-advice <project-root>] [--json] [--report-md] [--out <file>]\n       analyze-usage.js --check-report <report-usage.md>');
     process.exit(1);
+  }
+
+  // The session RUNNING this analyzer is left out of a directory read: its transcript is half-written,
+  // and a rollup over `~/.claude/projects` scored it beside the finished ones. Claude Code names it in
+  // every tool shell (`CLAUDE_CODE_SESSION_ID` - exact, where a 'modified in the last N seconds' rule
+  // would also drop a session that just closed and keep one idle past N); `--exclude-session`
+  // (repeatable, comma-separated) names more, such as a second live session in another terminal.
+  const excludeWhy = new Map();
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] !== '--exclude-session') continue;
+    for (const id of String(args[i + 1]).split(',').map((x) => x.trim()).filter(Boolean)) excludeWhy.set(id, '--exclude-session');
+  }
+  const liveId = process.env.CLAUDE_CODE_SESSION_ID;
+  if (liveId && !excludeWhy.has(liveId)) excludeWhy.set(liveId, 'CLAUDE_CODE_SESSION_ID');
+
+  // The Stop build check advisory: ONE row or nothing, over the newest sessions' own ledgers - no
+  // transcript is analysed, so it stays cheap on a long history, and a missing directory is no row.
+  const adviceRoot = flagVal('--turn-check-advice');
+  if (adviceRoot) {
+    const advice = turnCheckAdvice(target, adviceRoot, excludeWhy);
+    if (asJson) console.log(JSON.stringify(advice, null, 2));
+    else if (advice.row) console.log(advice.row);
+    return;
   }
 
   if (fs.statSync(target).isDirectory()) {
     // rollup mode: one line per session under the directory, newest first. RECURSIVE - a
     // collected corpus nests one folder per project and one per session, and the flat one-level
     // history folder is just the depth-0 case of the same walk.
+    const excludedSessions = [];
     const files = findSessionFiles(target)
+      .filter((f) => {
+        const why = excludeWhy.get(path.basename(f, '.jsonl'));
+        if (why) excludedSessions.push({ session: path.basename(f, '.jsonl'), why });
+        return !why;
+      })
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
     if (!asJson) console.log(`  ${pad('session', 38)} ${pad('start', 12)} ${rpad('output', 8)} ${rpad('cache-read', 11)} ${rpad('msgs', 6)} ${rpad('ctx/msg', 8)} ${rpad('agents', 6)} ${rpad('agent-out', 9)} ${rpad('cost', 9)} ${rpad('mcp-err', 8)} ${rpad('corr-saved', 10)}`);
     const grand = newTally();
@@ -3169,7 +3662,13 @@ async function runAnalysis() {
     // different things and one project's inventory would report the rest's names as unused.
     const acc = newInventoryUse(loadPlugins(pluginsFile));
     const rollupJson = { sessions: [] };
+    // The probe tallies of the corpus's OWN sessions, each read from its own ledger file.
+    const probeSum = blockDir ? { doneGate: newDoneGate(), rootCause: newRootCause(), correction: newCorrection(), rationalization: newRationalization() } : null;
     for (const f of files) {
+      if (probeSum) {
+        const led = finishProbes(readBlockLedger(blockDir, path.basename(f, '.jsonl')), f);
+        for (const [k, sum] of Object.entries(probeSum)) if (led[k]) for (const n of Object.keys(sum)) sum[n] += led[k][n];
+      }
       const s = await analyzeTranscript(f, window);
       const agents = await analyzeSubagents(f, window);
       addSessionUse(acc, s, agents, inventoryDir);
@@ -3192,10 +3691,18 @@ async function runAnalysis() {
       else console.log(row);
     }
     const invUse = acc.sessions ? finishInventoryUse(acc) : null;
-    if (asJson) { console.log(JSON.stringify({ ...rollupJson, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse }, null, 2)); return; }
+    if (asJson) { console.log(JSON.stringify({ ...rollupJson, excludedSessions, total: grand, cost: priceTable().error ? null : grandUsd, corrections: grandCorr, inventory: invUse, ...(probeSum ? { probes: probeSum } : {}) }, null, 2)); return; }
     console.log(`  ${pad('TOTAL', 38)} ${pad('', 12)} ${rpad(fmt(grand.output), 8)} ${rpad(fmt(grand.cacheRead), 11)} ${rpad(grand.msgs, 6)} ${rpad('', 8)} ${rpad('', 6)} ${rpad('', 9)} ${rpad(priceTable().error ? '-' : fmtUsd(grandUsd), 9)} ${rpad('', 8)} ${rpad(grandCorr.total ? `${grandCorr.saved}/${grandCorr.total}` : '-', 10)}`);
+    if (excludedSessions.length) {
+      const label = (x) => `${x.session} (${x.why === 'CLAUDE_CODE_SESSION_ID' ? 'CLAUDE_CODE_SESSION_ID - the session running this analyzer' : x.why})`;
+      console.log(`\nexcluded ${excludedSessions.length} session${excludedSessions.length === 1 ? '' : 's'}: ${excludedSessions.map(label).join(', ')}`);
+    }
     const unsaved = grandCorr.total - grandCorr.saved;
     console.log(`\ncorrections saved to memory over ${files.length} session${files.length === 1 ? '' : 's'}: ${grandCorr.total ? `${grandCorr.saved} of ${grandCorr.total}; ${unsaved} unsaved (${Math.round((100 * unsaved) / grandCorr.total)}%)` : 'no correction turn'}`);
+    if (probeSum && probeSum.doneGate.claims) console.log('\n' + doneGateLine(probeSum.doneGate));
+    if (probeSum && probeSum.rootCause.streaks) console.log((probeSum.doneGate.claims ? '' : '\n') + rootCauseLine(probeSum.rootCause));
+    if (probeSum && probeSum.correction.turns) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks ? '' : '\n') + correctionLine(probeSum.correction));
+    if (probeSum && probeSum.rationalization.closes) console.log((probeSum.doneGate.claims || probeSum.rootCause.streaks || probeSum.correction.turns ? '' : '\n') + rationalizationLine(probeSum.rationalization));
     printInventoryBlock(invUse);
     console.log('\nRun again with one session file for the full skills/MCP/tools/spikes report.');
     return;
@@ -3207,7 +3714,7 @@ async function runAnalysis() {
   // ONE ledger read, handed to every emitter. --report-md and --json used to drop it entirely,
   // so the bundle reports that quote the markdown - the ones the sweeps actually read - carried no
   // guard-block section at all (7 confirmations), while the terminal report had it.
-  const blockLedger = readBlockLedger(blockDir, path.basename(target, '.jsonl'));
+  const blockLedger = finishProbes(readBlockLedger(blockDir, path.basename(target, '.jsonl')), target);
   const invAcc = newInventoryUse(loadPlugins(pluginsFile));
   addSessionUse(invAcc, mainStats, agents, inventoryDir);
   const invUse = finishInventoryUse(invAcc);

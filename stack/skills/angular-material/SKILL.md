@@ -1,6 +1,6 @@
 ---
 name: angular-material
-description: "Load when building UI with @angular/material or @angular/cdk - importing component modules, theming, reaching for a CDK primitive, or writing harness tests. Angular Material and CDK conventions - import only the component modules a standalone component uses (no shared barrel), theme through the M3 mat.theme API and its CSS custom properties rather than hand-edited .mat-* rules, reach for CDK primitives before rolling your own, and test through the official harnesses, not DOM queries on internals. Targets @angular/material 17+. This is the @angular/material library specifically, not generic Material Design 3 or @material/web. Skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
+description: "Load when building UI with @angular/material or @angular/cdk - importing component modules, theming with mat.theme or the --mat-sys-* tokens, dark mode or density, restyling one Material component, reaching for a CDK primitive (virtual scroll, overlay, drag and drop, focus trap), or writing harness tests. Angular Material and CDK conventions for @angular/material 17+ - the library specifically, not generic Material Design 3 or @material/web. Not for general Angular CSS such as :host or ::ng-deep (the Angular styling skill), and skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
 ---
 
 # Angular Material and CDK
@@ -36,6 +36,7 @@ Define the theme once in Sass with `mat.theme`, driving color, typography, and d
 @use '@angular/material' as mat;
 
 html {
+  color-scheme: light dark; // mat.theme emits light-dark() values; this follows the OS setting
   @include mat.theme((
     color: (
       primary: mat.$azure-palette,
@@ -52,7 +53,7 @@ html {
 Two rules hold the theming together:
 
 - Never reach into a component's internal DOM with a `.mat-*` selector to repaint it (`.mat-mdc-button { background: #1976d2; }`). Those class names are private implementation detail. The override breaks the moment dark mode, a density change, or a Material version bump moves the markup, and it silently ignores the theme system. Style through the system tokens or the component's documented theming mixins instead.
-- Keep exactly one theme definition and let it respond to the OS preference. Wrap the dark overrides in a media query or a `.dark` class that re-runs `mat.theme` with a dark color scheme - do not fork the whole stylesheet per mode.
+- Keep exactly one theme definition and switch modes with the CSS color-scheme property, never a second theme. `mat.theme` emits its color tokens as `light-dark()` pairs, so `color-scheme: light dark` on `html` follows the OS preference and `color-scheme: dark` under a `.dark` class serves a user toggle - with no color-scheme set, the light values always win. Do not re-emit the theme or fork the stylesheet per mode.
 
 Density and typography are part of the same call, not separate hacks - set `density: -2` for a compact table view rather than overriding heights component by component.
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-backend
-description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - this is the .NET web hub, loaded ahead of the focused companion that covers the how. Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis). It owns the 'pick exactly one architecture' rule but mandates no specific one. Floors at .NET 8 / C# 12. Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers."
+description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - this is the .NET web hub, loaded ahead of the focused companion that covers the how. Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis). Floors at .NET 8 / C# 12. Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers."
 ---
 
 # .NET Web / HTTP Service Conventions

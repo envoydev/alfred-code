@@ -3,7 +3,7 @@
 // selection into a dependency-complete install set (computeClosure), and check
 // a curated prerequisite map against a detected environment (evaluatePrereqs).
 // Reads the committed meta/stack-graph.json (Component A); emits an installer
-// selection file for claude-stack.sh --selection (Component B).
+// selection file for the Node seed's --selection (Component B).
 'use strict';
 const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------
@@ -19,11 +19,13 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     : _readFileSync(p, o));
 
 const path = require('path');
+const { USER_OFF_WINS } = require('./install/plugins.js');
+const { offeredOn, platformOf, osLabel, DESKTOP_OS } = require('../stack/mcp/desktop-launch.js');
 
 // Expand raw = { skills?, agents?, rules?, mcps?, plugins?, hooks? } into the
 // dependency-complete set. Edges (skills never pull skills): rule -> skill/agent,
 // agent -> skill/agent (to fixpoint), then every kept skill/agent/rule -> its
-// mcps/plugins. raw.mcps/raw.plugins are direct picks kept as-is - that is how a
+// mcps/plugins, then every kept server -> the skill it brings. raw.mcps/raw.plugins are direct picks kept as-is - that is how a
 // user-added MCP or plugin beyond the closure survives a re-run. raw.hooks are
 // pure leaf picks: nothing pulls a hook and a hook pulls nothing.
 function computeClosure(graph, raw)
@@ -64,44 +66,72 @@ function computeClosure(graph, raw)
     for (const s of skills) pull(graph.skills[s], `required by skill ${s}`);
     for (const a of agents) pull(graph.agents[a], `required by agent ${a}`);
     for (const r of rules) pull(graph.rules[r], `required by rule ${r}`);
+    // A server brings the skill that teaches it (the graph's `mcps` block): the desktop servers bring
+    // desktop-automation, so the skill arrives wherever either one does. What it brings pulls its own
+    // servers and plugins in turn, to a fixpoint.
+    for (let grew = true; grew;)
+    {
+        grew = false;
+        for (const m of [...mcps])
+            for (const s of ((graph.mcps || {})[m] || {}).skills || [])
+            {
+                if (skills.has(s)) continue;
+                skills.add(s);
+                note(s, `required by mcp ${m}`);
+                pull(graph.skills[s], `required by skill ${s}`);
+                grew = true;
+            }
+    }
 
     const sort = set => [...set].sort();
     return { skills: sort(skills), agents: sort(agents), rules: sort(rules), mcps: sort(mcps), plugins: sort(plugins), hooks: sort(hooks), reasons };
 }
+
+// THE DESKTOP SERVERS BY OS (stack/mcp/desktop-launch.js owns which OS each drives). A walk never offers
+// windows-desktop off Windows, macos-desktop off macOS, or either on Linux: the servers are taken out of
+// a selection before its closure, and out of every recommendation a table, --missing or --redundant is
+// computed from - so a wpf seed read on a Mac is named once and never pre-selected or reported missing.
+function gateMcps(names, platform)
+{
+    const list = Array.isArray(names) ? names : [];
+    return { kept: list.filter((n) => offeredOn(n, platform)), skipped: list.filter((n) => !offeredOn(n, platform)) };
+}
+
+function gateRecs(recs, platform)
+{
+    if (!recs || typeof recs !== 'object') return recs;
+    const gate = (sel) => (sel && Array.isArray(sel.mcps) ? { ...sel, mcps: gateMcps(sel.mcps, platform).kept } : sel);
+    const stacks = {};
+    for (const [st, sel] of Object.entries(recs.stacks || {})) stacks[st] = gate(sel);
+    return { ...recs, always: gate(recs.always), stacks };
+}
+
+// The one line a server this OS cannot run gets - `why` names the seed that picked it, or the server.
+const skipLine = (name, platform, why) => `skipped: mcp ${name} - ${why || `it drives ${osLabel(DESKTOP_OS[name])} apps`}; this machine runs ${osLabel(platform)}`;
 
 // Phase 1 - always required, a miss is a hard blocker.
 const HARD_PREREQS = [
     { bin: 'node', need: 'Node.js', how: 'install Node.js (https://nodejs.org)' },
     { bin: 'git', need: 'git', how: 'install git' },
     { bin: 'claude', need: 'Claude Code CLI', how: 'npm install -g @anthropic-ai/claude-code' },
-    { bin: 'uvx', need: 'uv (uvx)', how: 'install uv (https://docs.astral.sh/uv/)' },
+    { bin: 'uvx', need: 'uv (uvx)', how: 'install uv (https://docs.astral.sh/uv/)', init: true },
 ];
 
 // Phase 2 - only checked when 'when' matches the closed selection / options.
 // severity: 'blocker' (a kept item will not work) or 'warning' (soft/optional).
 const SCOPED_PREREQS = [
-    // The sentry registration reads both values from the ACCOUNT settings.json env at launch (or the launch
-    // shell; a project-level settings.json never reaches .mcp.json expansion - measured), so
-    // detectEnvironment() probes that file too. Warnings, not blockers: the registration is secret-free (the
-    // placeholders stay literal in .mcp.json) - only runtime needs the values. As a blocker the token cost
-    // ~90min/7 aborted runs in one session and invited ad hoc bypasses in three more.
-    { when: { mcp: 'sentry' }, env: 'SENTRY_SLUG', severity: 'warning', need: 'Sentry slug', how: 'add SENTRY_SLUG=<org> (or <org>/<project>) to the account settings.json env - the sentry MCP URL reads it (--sentry-slug seeds it, or export SENTRY_SLUG and the installer writes it there)' },
-    // token mode only (the default; --sentry-oauth registers no header and needs no token)
-    { when: { mcp: 'sentry', unlessOption: 'sentryOauth' }, env: 'SENTRY_ACCESS_TOKEN', severity: 'warning', need: 'Sentry token', how: 'add SENTRY_ACCESS_TOKEN (a personal/org API token) to the account settings.json env - export it in the shell the installer runs in and the run writes it there - or install with --sentry-auth oauth' },
-    { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls' },
+    { when: { plugin: 'csharp-lsp' }, bin: 'csharp-ls', severity: 'blocker', need: 'csharp-ls tool', how: 'dotnet tool install -g csharp-ls', init: true },
     { when: { skillPrefix: 'dotnet' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
     { when: { skillPrefix: 'csharp' }, bin: 'dotnet', severity: 'blocker', need: '.NET SDK', how: 'install the .NET SDK (https://dotnet.microsoft.com)' },
-    { when: { mcp: 'chrome-devtools' }, bin: 'chrome', severity: 'warning', need: 'Chrome / Chromium', how: 'install Google Chrome or Chromium' },
-    // The one kept playwright engine that needs a browser the machine must already carry and no platform
+    // The one kept browser engine that needs a browser the machine must already carry and no platform
     // ships everywhere (chrome, the default, is the server's own long-standing assumption; firefox and
     // webkit are downloaded by the installer). Probed at its install locations, not only PATH.
-    { when: { mcp: 'playwright', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the playwright browsers (--playwright-browsers)' },
-    { when: { mcp: 'appium-mcp' }, bin: 'appium', severity: 'warning', need: 'Appium + native SDKs', how: 'install Appium and the Xcode / Android SDK / Java toolchain' },
-    // Advisory for BOTH transports: the remote registration sends `${CONTEXT7_API_KEY:-}` (unset = an
-    // empty header = the keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on
-    // every call), and `claude mcp list` no longer warns for the `:-` form - so this line is the one
-    // place a missing key shows up at install time.
-    { when: { mcp: 'context7' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'context7 API key', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (remote: optional, higher rate limits; local: export it or bake it) - unset = the keyless free tier' },
+    { when: { mcp: 'browser', optionIncludes: ['playwrightBrowsers', 'msedge'] }, bin: 'msedge', severity: 'warning', need: 'Microsoft Edge', how: 'install Microsoft Edge, or drop msedge from the browsers (--browsers)' },
+    // Advisory: the hosted registration sends `${CONTEXT7_API_KEY:-}` (unset = an empty header = the
+    // keyless free tier, measured; a LITERAL `${CONTEXT7_API_KEY}` was rejected on every call), and
+    // `claude mcp list` no longer warns for the `:-` form - so this line is the one place a missing
+    // key shows up at install time.
+    { when: { mcp: 'documentation' }, env: 'CONTEXT7_API_KEY', severity: 'warning', need: 'documentation server API key (Context7)', how: 'add CONTEXT7_API_KEY to the account settings.json env - export it in the shell the installer runs in and the run writes it there (optional, higher rate limits) - unset = the keyless free tier' },
     { when: { option: 'githubCli' }, bin: 'brew', severity: 'warning', need: 'Homebrew', how: 'install Homebrew to auto-install the GitHub CLI (macOS)' },
 ];
 
@@ -116,7 +146,6 @@ function evaluatePrereqs(selection, env, options)
 
     const matches = when =>
     {
-        if (when.unlessOption && options[when.unlessOption]) return false;
         if (when.optionIncludes && !(options[when.optionIncludes[0]] || []).includes(when.optionIncludes[1])) return false;
         if (when.mcp) return mcps.has(when.mcp);
         if (when.plugin) return plugins.has(when.plugin);
@@ -127,6 +156,9 @@ function evaluatePrereqs(selection, env, options)
 
     const blockers = [];
     const warnings = [];
+    // `init: true` rows are what /alfred-code:init installs in the session after setup: with
+    // options.deferInit (setup's own check) they are named as init's, never a blocker to fix first.
+    const deferred = [];
     const seen = new Set();
     const add = (bucket, p) =>
     {
@@ -138,7 +170,7 @@ function evaluatePrereqs(selection, env, options)
 
     for (const p of HARD_PREREQS)
     {
-        if (!bins[p.bin]) add(blockers, p);
+        if (!bins[p.bin]) add(p.init && options.deferInit ? deferred : blockers, p);
     }
 
     for (const p of SCOPED_PREREQS)
@@ -146,10 +178,10 @@ function evaluatePrereqs(selection, env, options)
         if (!matches(p.when)) continue;
         const present = p.env ? envs[p.env] : bins[p.bin];
         if (present) continue;
-        add(p.severity === 'blocker' ? blockers : warnings, p);
+        add(p.init && options.deferInit ? deferred : p.severity === 'blocker' ? blockers : warnings, p);
     }
 
-    return { blockers, warnings, ok: blockers.length === 0 };
+    return { blockers, warnings, deferred, ok: blockers.length === 0 };
 }
 
 // Cross-platform "is this command on PATH": walk PATH with fs directly instead of
@@ -201,26 +233,33 @@ function accountSettingsEnv(configDir)
     catch { return {}; }
 }
 
-// Chrome and Edge are rarely on PATH (Windows and macOS install them as apps), so their fixed install
-// locations count. Chrome was PATH-only until 2026-09-15: a Mac WITH Chrome was told to install it.
+// Edge and Chrome are rarely on PATH (Windows and macOS install them as apps), so their fixed install
+// locations count - a browser probed on PATH alone told a Mac WITH it to install it (measured
+// 2026-09-15). Chrome's Linux location is the one Playwright's `chrome` channel launches.
 function browserCandidates(name, platform, env)
 {
     const p = require('path');
-    const win = { chrome: ['Google', 'Chrome', 'Application', 'chrome.exe'], msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'] }[name];
-    const mac = { chrome: ['/Applications/Google Chrome.app', '/Applications/Chromium.app'], msedge: ['/Applications/Microsoft Edge.app'] }[name];
+    const win = { msedge: ['Microsoft', 'Edge', 'Application', 'msedge.exe'], chrome: ['Google', 'Chrome', 'Application', 'chrome.exe'] }[name];
+    const mac = { msedge: ['/Applications/Microsoft Edge.app'], chrome: ['/Applications/Google Chrome.app'] }[name];
+    const linux = { msedge: [], chrome: ['/opt/google/chrome/chrome'] }[name];
+    if (!win) return [];
     if (platform === 'win32') return [env['ProgramFiles(x86)'], env.ProgramFiles, env.LOCALAPPDATA].filter(Boolean).map(d => p.win32.join(d, ...win));
-    return platform === 'darwin' ? mac : [];
+    return platform === 'darwin' ? mac : linux;
 }
 const browserInstalled = name => browserCandidates(name, process.platform, process.env).some(c => fs.existsSync(c));
+
+// The kept browser engines the walks pass (`--browsers <csv>`); a command body from before the 2.0.0
+// rename passes `--playwright-browsers`, read as the same option for one release. `get(flag)` is the
+// CLI's own lookup.
+const browsersOption = (get) => String(get('--browsers') || get('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
 
 function detectEnvironment(opts)
 {
     opts = opts || {};
-    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'chrome', 'appium', 'brew'];
-    const ENVS = ['SENTRY_SLUG', 'SENTRY_ACCESS_TOKEN', 'CONTEXT7_API_KEY'];
+    const BINS = ['node', 'npx', 'git', 'claude', 'uvx', 'dotnet', 'csharp-ls', 'brew'];
+    const ENVS = ['CONTEXT7_API_KEY'];
     const bins = {};
     for (const b of BINS) bins[b] = onPath(b);
-    bins.chrome = bins.chrome || ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser'].some(onPath) || browserInstalled('chrome');
     bins.msedge = onPath('msedge') || onPath('microsoft-edge') || browserInstalled('msedge');
     const acct = accountSettingsEnv(opts.configDir);
     const set = v => typeof v === 'string' && v.trim() !== '';
@@ -273,8 +312,8 @@ function categoryOf(closure, name)
 }
 
 // The inverse cascade: everything in the remaining selection that (transitively)
-// requires <name> - the rules/agents (and, for mcps/plugins, skills) whose own
-// closure reaches it. Dropping a locked item honestly means dropping these too;
+// requires <name> - the rules/agents (and, for mcps/plugins, skills; for a skill, the
+// servers that bring it) whose own closure reaches it. Dropping a locked item honestly means dropping these too;
 // the configure flow presents them for a consent-drop instead of a flat refusal.
 function findDependents(graph, remaining, category, name)
 {
@@ -285,6 +324,10 @@ function findDependents(graph, remaining, category, name)
     if (category === 'mcps' || category === 'plugins')
     {
         for (const s of remaining.skills || []) if (reaches({ skills: [s] })) deps.push({ category: 'skill', name: s });
+    }
+    if (category === 'skills')
+    {
+        for (const m of remaining.mcps || []) if (reaches({ mcps: [m] })) deps.push({ category: 'mcp', name: m });
     }
 
     return deps;
@@ -339,7 +382,7 @@ function emitTable(graph, layer, opts)
         agents: Object.keys(graph.agents),
         skills: Object.keys(graph.skills),
         hooks: graph.catalog.hooks || [],
-        mcps: graph.catalog.mcps,
+        mcps: graph.catalog.mcps.filter((n) => !opts.platform || offeredOn(n, opts.platform)),
         plugins: graph.catalog.plugins,
     }[layer];
     if (!catalog) return null;
@@ -366,6 +409,11 @@ function emitTable(graph, layer, opts)
     // but it is neither droppable nor a pick: the installer puts it back on every run. Calling that
     // row 'required by skill x' reads like a pick the user still has to make, so it gets its own status.
     const dependencyPlugins = new Set(layer === 'plugins' ? (graph.catalog.dependencyPlugins || []) : []);
+    const dependencyWhy = (name) => `installed beside alfred-code@envoydev on every run - cannot be dropped${USER_OFF_WINS.includes(name) ? '; one you disable stays off' : ''}`;
+
+    // An opt-in item nothing selects shows '-', so its row says what a pick buys and costs - the
+    // general list's own note (meta/recommendations.json general.notes), the moment it is offered.
+    const noteOf = (name) => ((((opts.recs || {}).general || {}).notes || {})[layer] || {})[name];
 
     const installed = opts.installed ? new Set(opts.installed[layer] || []) : null;
     const orphanSet = new Set((opts.orphans || []).filter(o => o.category === layer.slice(0, -1)).map(o => o.name));
@@ -385,10 +433,10 @@ function emitTable(graph, layer, opts)
             // src/Api.csproj' tells the user the project uses what the install lacks.
             const evidence = opts.evidence && (opts.evidence[layer] || {})[name];
             why = orphanSet.has(name) ? `was: ${orphanWhy[name]}`
-                : dependencyPlugins.has(name) ? 'carried by claude-stack@claude-stack - cannot be dropped'
-                : reasons[name] || evidence || '-';
+                : dependencyPlugins.has(name) ? dependencyWhy(name)
+                : reasons[name] || evidence || noteOf(name) || '-';
         }
-        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = 'carried by claude-stack@claude-stack - cannot be dropped'; }
+        else if (dependencyPlugins.has(name)) { status = 'dependency'; why = dependencyWhy(name); }
         else if (reasons[name]) { status = 'required'; why = reasons[name]; }
         else
         {
@@ -399,8 +447,8 @@ function emitTable(graph, layer, opts)
             const seed = seedOf(name);
             if (evidence) { status = 'evidence'; why = evidence; }
             else if (seed) { status = seed; why = '-'; }
-            else if (direct.has(name)) { status = 'added'; why = '-'; }
-            else { status = '-'; why = '-'; }
+            else if (direct.has(name)) { status = 'added'; why = noteOf(name) || '-'; }
+            else { status = '-'; why = noteOf(name) || '-'; }
         }
 
         rows.push([String(i + 1), name, status, why.replace(/^required by /, '')]);
@@ -468,8 +516,11 @@ function emitSelectionFile(closure, { hooksAnswered = false } = {})
 // stack is absent from the detected project. Ownership is derived - run each stack's
 // recommended set through the closure and record what it pulls; exclude the always-baseline
 // closure up front (never redundant). Shared items (an owner is detected) and non-stack
-// deliberate extras (owned by nothing) survive. Returns [{category, name, ownedBy}].
-function findStackRedundant(graph, recs, installed, detected)
+// deliberate extras (owned by nothing) survive, and so does anything the evidence scan matched
+// (`found`, scan-evidence's per-layer map): evidence proves use the way a detected owner does, or
+// the --evidence-gaps pass would flag the removal back as evidence-missing on the next run.
+// Returns [{category, name, ownedBy}].
+function findStackRedundant(graph, recs, installed, detected, found = null)
 {
     const detectedSet = new Set(detected || []);
     const LAYERS = ['rules', 'agents', 'skills', 'hooks', 'mcps', 'plugins'];
@@ -497,6 +548,7 @@ function findStackRedundant(graph, recs, installed, detected)
             const own = owners[l][name];
             if (!own || own.size === 0) continue;                       // deliberate extra: kept
             if ([...own].some(st => detectedSet.has(st))) continue;     // an owner is present: kept
+            if (((found && found[l]) || {})[name]) continue;           // the scan matched it: kept
             out.push({ category: singular[l], name, ownedBy: [...own].sort().join(',') });
         }
     }
@@ -513,7 +565,7 @@ const parkedPlugins = inv => ((inv && Array.isArray(inv.plugins_disabled)) ? inv
 // off (a denied seat, an item of a parked entry) as `left_out` lines - on disk, never MISSING.
 const leftOutOf = (inv, layer) => ((inv && Array.isArray(inv.left_out)) ? inv.left_out : [])
     .map(String).filter(l => l.startsWith(`${layer.replace(/s$/, '')} `)).map(l => l.slice(l.indexOf(' ') + 1));
-// A parked MCP entry (`playwright-chrome`, `context7-local`) is that server switched off here.
+// A parked MCP entry (`browser-chrome`) is that server switched off here.
 const offHere = (inv, layer) => [
     ...(layer === 'plugins' ? parkedPlugins(inv) : []),
     ...(layer === 'mcps' ? manifestMcps(parkedPlugins(inv)) : []),
@@ -571,13 +623,12 @@ function findEvidenceGaps(catalog, found, installed)
 // An --installed inventory to the bare-name arrays every consumer compares against. validate
 // writes `plugins` as {name,scope} (an uninstall is scope-addressed), and a bare-name compare
 // matched none of those objects - every installed plugin read as missing (measured).
-// The installer expands the ONE manifest entry `playwright` into a server per browser engine
-// (playwright-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
+// The installer expands the ONE manifest entry `browser` into a server per browser engine
+// (browser-chrome, -msedge, -firefox, -webkit); every name read from an install maps back to it.
 // From 1.0.0 those names are also PLUGIN names, one per engine, so the same fold serves the plugin
-// route - and `context7-local`, the second context7 transport, folds onto its catalog entry too.
+// route.
 const manifestMcpName = n => String(n)
-    .replace(/^playwright-(chrome|msedge|firefox|webkit)$/, 'playwright')
-    .replace(/^context7-local$/, 'context7');
+    .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
 const manifestMcps = list => [...new Set(list.map(manifestMcpName))];
 
 function normalizeInventory(inv)
@@ -625,20 +676,24 @@ function main(argv)
         }
         return stacks;
     };
+    // The OS the desktop servers are judged for: --platform, else this machine (ALFRED_CODE_PLATFORM stands in).
+    const platform = platformOf({ ALFRED_CODE_PLATFORM: arg('--platform') || process.env.ALFRED_CODE_PLATFORM });
     const graphPath = arg('--graph') || path.join(__dirname, '..', 'meta', 'stack-graph.json');
     let graph;
     try { graph = JSON.parse(fs.readFileSync(graphPath, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read graph ${graphPath}: ${e.code || e.message}`); process.exit(1); }
 
     // --redundant: project-relative audit for the validate command. Uses --installed (the
-    // inventory from disk) + --recs + the detected --stacks; needs no --selection.
+    // inventory from disk) + --recs + the detected --stacks; needs no --selection. An optional
+    // --found (the evidence scan's output) keeps every matched name; unreadable, it is no evidence.
     if (has('--redundant'))
     {
         const installed = readJson('--installed', arg('--installed'));
-        const recs = readJson('--recs', arg('--recs'));
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
         if (!installed || !recs) { console.error('stack-select: --redundant needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
         const detected = parseStacks(recs);
-        for (const r of findStackRedundant(graph, recs, installed, detected))
+        const foundFile = readJsonSoft('--found', arg('--found'));
+        for (const r of findStackRedundant(graph, recs, installed, detected, foundFile ? (foundFile.found || foundFile) : null))
             console.log(`redundant: ${r.category} ${r.name} - owned by ${r.ownedBy}, not detected`);
         return;
     }
@@ -655,6 +710,11 @@ function main(argv)
         return;
     }
 
+    // --missing and --evidence-gaps without --installed are the FRESH-INSTALL mode setup's
+    // suggestions use: nothing is installed yet, so every seed and every matched signal is a line.
+    // A given --installed that cannot be read still fails - an empty inventory is never a fallback.
+    const installedOrFresh = () => (has('--installed') ? readJson('--installed', arg('--installed')) : {});
+
     // --evidence-gaps: both evidence directions for the guided commands. With --recs +
     // --stacks, evidence-missing lines that stack/baseline-missing already lists are dropped
     // (the closure reason wins - one line per artifact, not two).
@@ -662,11 +722,12 @@ function main(argv)
     {
         const foundFile = readJson('--found', arg('--found'));
         const catalog = readJson('--catalog', arg('--catalog'));
-        const installed = readJson('--installed', arg('--installed'));
-        if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json>, --catalog <evidence.json> and --installed <inventory.json>'); process.exit(2); }
+        const installed = installedOrFresh();
+        if (!foundFile || !catalog || !installed) { console.error('stack-select: --evidence-gaps needs --found <found.json> and --catalog <evidence.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const gaps = findEvidenceGaps(catalog, foundFile.found || foundFile, installed);
+        gaps.missing = gaps.missing.filter((m) => m.category !== 'mcp' || offeredOn(m.name, platform));
         const covered = new Set();
-        const recs = readJson('--recs', arg('--recs'));
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
         if (recs)
         {
             const detected = parseStacks(recs);
@@ -691,17 +752,25 @@ function main(argv)
     // --missing: the ADD side of validate - detected-stack + baseline items not installed here.
     if (has('--missing'))
     {
-        const installed = readJson('--installed', arg('--installed'));
-        const recs = readJson('--recs', arg('--recs'));
-        if (!installed || !recs) { console.error('stack-select: --missing needs --installed <inventory.json> and --recs <recommendations.json>'); process.exit(2); }
+        const installed = installedOrFresh();
+        const recs = gateRecs(readJson('--recs', arg('--recs')), platform);
+        if (!installed || !recs) { console.error('stack-select: --missing needs --recs <recommendations.json> (plus --installed <inventory.json> over an install)'); process.exit(2); }
         const detected = parseStacks(recs);
+        // Fresh mode (setup): the baseline is every install's and the walk locks or pre-selects each
+        // item, so its rows collapse to ONE count and the stack seeds stay readable (Task 18a M1).
+        const fresh = !has('--installed');
+        let baseline = 0;
         for (const m of findStackMissing(graph, recs, installed, detected))
+        {
+            if (fresh && m.neededBy === 'baseline') { baseline += 1; continue; }
             console.log(`missing: ${m.category} ${m.name} - needed by ${m.neededBy}, not installed`);
+        }
+        if (baseline) console.log(`baseline: ${baseline} item(s) every install carries - the walk locks or pre-selects each one`);
         return;
     }
 
     const rawFile = arg('--selection');
-    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check] [--context7-local] [--sentry-oauth] [--playwright-browsers <csv>] [--github-cli] [--config-dir <account dir>] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
+    if (!rawFile) { console.error('usage: stack-select.js --selection <raw.json> [--graph <path>] [--emit <file>] [--hooks-answered] [--dropped <dropped.json>] [--check [--defer-init]] [--browsers <csv>] [--github-cli] [--config-dir <account dir>] [--platform win32|darwin|linux] | --redundant --installed <inv.json> --recs <recs.json> --stacks <detected>'); process.exit(2); }
     let raw;
     try { raw = JSON.parse(fs.readFileSync(rawFile, 'utf8')); }
     catch (e) { console.error(`stack-select: cannot read selection ${rawFile}: ${e.code || e.message}`); process.exit(1); }
@@ -709,8 +778,11 @@ function main(argv)
     // a {name,scope} plugin read as `[object Object]` and was dropped from the emit (measured
     // 2026-09-15), and a `.claude/hooks/*.js` filename misclassified every hook as unknown.
     raw = normalizeInventory(raw);
-    const unknown = findUnknownNames(graph, raw);
     const unknownOut = argv.includes('--table') ? console.error : console.log;   // keep the table paste-clean
+    const desktop = gateMcps(raw.mcps, platform);
+    if (Array.isArray(raw.mcps)) raw = { ...raw, mcps: desktop.kept };
+    for (const name of desktop.skipped) unknownOut(skipLine(name, platform));
+    const unknown = findUnknownNames(graph, raw);
     for (const u of unknown) unknownOut(`unknown: ${u.category} '${u.name}' - not in this release (your own item, retired upstream, renamed, or a typo); excluded from the selection`);
     const closure = computeClosure(graph, unknown.length ? dropUnknownNames(raw, unknown) : raw);
 
@@ -733,14 +805,20 @@ function main(argv)
     const tableLayer = arg('--table');   // rules|agents|skills|hooks|mcps|plugins - print the layer's presentation table
     if (tableLayer)
     {
-        const recs = readJson('--recs', arg('--recs'));
+        const rawRecs = readJson('--recs', arg('--recs'));
         const installed = readJson('--installed', arg('--installed'));
         const droppedForTable = readJsonSoft('--dropped', arg('--dropped'));
         const orphans = droppedForTable ? findOrphans(graph, raw, droppedForTable) : [];
-        const stacks = parseStacks(recs);
+        const stacks = parseStacks(rawRecs);
+        // A confirmed stack's seed this OS cannot run is said once, on stderr, and never pre-selected.
+        if (tableLayer === 'mcps')
+            for (const st of stacks)
+                for (const name of gateMcps((((rawRecs || {}).stacks || {})[st] || {}).mcps, platform).skipped)
+                    console.error(skipLine(name, platform, `stack:${st} seeds it on ${osLabel(DESKTOP_OS[name])}`));
+        const recs = gateRecs(rawRecs, platform);
         const foundFile = readJsonSoft('--found', arg('--found'));
         const evidence = foundFile ? (foundFile.found || foundFile) : null;
-        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence });
+        const table = emitTable(graph, tableLayer, { raw, recs, stacks, installed, orphans, evidence, platform });
         if (table === null) { console.error(`stack-select: unknown table layer '${tableLayer}'`); process.exit(2); }
         process.stdout.write(table);
     }
@@ -757,20 +835,22 @@ function main(argv)
 
     if (has('--check'))
     {
-        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { context7Local: has('--context7-local'), sentryOauth: has('--sentry-oauth'), playwrightBrowsers: (arg('--playwright-browsers') || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), githubCli: has('--github-cli') });
+        const report = evaluatePrereqs(closure, detectEnvironment({ configDir: arg('--config-dir') }), { playwrightBrowsers: browsersOption(arg), githubCli: has('--github-cli'), deferInit: has('--defer-init') });
         for (const b of report.blockers) console.log(`BLOCKER: ${b.need} -> ${b.how}`);
         for (const w of report.warnings) console.log(`warning: ${w.need} -> ${w.how}`);
+        for (const d of report.deferred) console.log(`init: ${d.need} -> /alfred-code:init installs it in the next session`);
+        const later = report.deferred.length ? `, ${report.deferred.length} left to /alfred-code:init` : '';
         // A clean check printed NOTHING, and silence is the one result a caller cannot tell from a
         // call that never ran - the guided walks report the prerequisite verdict to the user, and
         // an empty tool result made them narrate 'no blockers' from the exit code alone. Always
         // name the verdict; the exit code stays the machine-readable half.
         console.log(report.ok
-            ? `prereqs: ok - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`
-            : `prereqs: BLOCKED - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)`);
+            ? `prereqs: ok - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)${later}`
+            : `prereqs: BLOCKED - ${report.blockers.length} blocker(s), ${report.warnings.length} warning(s)${later}`);
         if (!report.ok) process.exit(1);
     }
 }
 
-module.exports = { computeClosure, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
+module.exports = { computeClosure, gateMcps, gateRecs, normalizeInventory, evaluatePrereqs, detectEnvironment, onPath, browserCandidates, browsersOption, emitSelectionFile, emitTable, findUnknownNames, dropUnknownNames, findOrphans, findDependents, findStackRedundant, findStackMissing, findEvidenceGaps, findJudgment, categoryOf, HARD_PREREQS, SCOPED_PREREQS };
 
 if (require.main === module) main(process.argv.slice(2));

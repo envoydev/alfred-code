@@ -3,11 +3,13 @@
 // to treat blocks as noise), so both directions are pinned: the wall-of-text block AND every
 // exemption that must stay silent.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 
 const HOOK = path.join(__dirname, '..', 'stack', 'hooks', 'guard-answer-length.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'answer-length-'));
@@ -218,4 +220,122 @@ test('UserPromptSubmit names the format ask after three short turns that each fo
     assert.doesNotMatch(ctxOf('and in Ukrainian', write('streak2', rows.slice(0, 4))), /FORMAT ASK/, 'two short turns are a conversation, not a streak');
     assert.doesNotMatch(ctxOf(WALL, write('streak3', rows)), /FORMAT ASK/, 'a long turn is a brief, not a correction');
     assert.doesNotMatch(ctxOf('<command-name>/help</command-name>', write('streak4', rows)), /FORMAT ASK/, 'a slash turn is not a correction');
+});
+
+// R3: the em-dash check reads last_assistant_message, which the harness sends whether or not the
+// transcript is readable - an unreadable transcript skipped it along with the length check.
+test('an unreadable transcript still gets the em-dash check - only the length half needs the user row', () => {
+    const r = run({ hook_event_name: 'Stop', session_id: 'r3', transcript_path: path.join(TMP, 'absent.jsonl'),
+        last_assistant_message: 'Done — the build is green.' });
+    assert.strictEqual(r.status, 2, 'the dash is judged from the payload text');
+    assert.match(r.stderr, /em-dash/);
+    const long = run({ hook_event_name: 'Stop', session_id: 'r3b', transcript_path: path.join(TMP, 'absent.jsonl'), last_assistant_message: WALL });
+    assert.strictEqual(long.status, 0, 'length stays fail-open: with no user row, depth cannot be ruled out');
+});
+
+// R5: a stop-contract block from the PREVIOUS turn, still inside two minutes, was read as this
+// turn's, and the em-dash denial told the model to obey a block it never saw this turn.
+test('a stop-contract row older than this turn does not make the em-dash denial yield', () => {
+    const sid = 'r5';
+    const ledger = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks');
+    fs.mkdirSync(ledger, { recursive: true });
+    const prior = new Date(Date.now() - 60 * 1000).toISOString();
+    fs.writeFileSync(path.join(ledger, `${sid}.jsonl`), JSON.stringify({ ts: prior, hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: x' }) + '\n');
+    const p = path.join(TMP, 'r5.jsonl');
+    fs.writeFileSync(p, [
+        { type: 'user', timestamp: new Date(Date.now() - 20 * 1000).toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'status?' }] } },
+        { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done — green.' }] } },
+    ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = run({ hook_event_name: 'Stop', session_id: sid, transcript_path: p, last_assistant_message: 'Done — green.' });
+    assert.strictEqual(r.status, 2);
+    assert.doesNotMatch(r.stderr, /has already blocked this same turn/, 'the row predates the typed prompt, so it is another turn');
+    fs.appendFileSync(path.join(ledger, `${sid}.jsonl`), JSON.stringify({ ts: new Date().toISOString(), hook: 'guard-stop-contract.js', event: 'Stop', tool: '', reason: 'Blocked: y' }) + '\n');
+    assert.match(run({ hook_event_name: 'Stop', session_id: sid, transcript_path: p, last_assistant_message: 'Done — green.' }).stderr,
+        /has already blocked this same turn/, 'a row from this turn still yields');
+});
+
+// The correction nudge (ECC comparison R3, log-only first). The single-turn test used to be a SHAPE -
+// a short turn right after a 1,500+ char answer - and the replay over the local transcripts put its
+// precision near one in eight: status checks ('how much time is left?') and requests counted as
+// corrections. It is now a short turn that follows an answer AND carries a correction marker. Each hit
+// writes one `mode: probe` / `kind: correction` row; ALFRED_CODE_CORRECTION_NUDGE=inject also hands the
+// save line back, `0` switches it off.
+const ledgerRows = (sid) => {
+    const f = path.join(process.env.CLAUDE_PROJECT_DIR, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`);
+    return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+};
+const correctionRows = (sid) => ledgerRows(sid).filter((r) => r.mode === 'probe' && r.kind === 'correction');
+let nudgeSeq = 0;
+function prompted(prompt, { rows, env } = {}) {
+    const sid = `nudge-${++nudgeSeq}`;
+    const p = path.join(TMP, `${sid}.jsonl`);
+    const rs = rows || [
+        { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'set up the pipeline' }] } },
+        { type: 'assistant', message: { id: 'a1', role: 'assistant', content: [{ type: 'text', text: 'Done - the workflow runs lint and tests.' }] } },
+    ];
+    fs.writeFileSync(p, rs.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: sid, prompt, transcript_path: p }),
+        encoding: 'utf8', env: { ...process.env, ...(env || {}) } });
+    assert.strictEqual(r.status, 0, 'the nudge never blocks a prompt');
+    return { sid, rows: correctionRows(sid), ctx: JSON.parse(r.stdout).hookSpecificOutput.additionalContext };
+}
+
+test('the correction test counts a short turn carrying a correction marker, after any answer', () => {
+    for (const prompt of ['I meant the CI pipeline', 'no, shorter', 'shorter', 'But there is no resume block', 'Why did you stop?',
+        'I told you to use the org token', 'Do not commit when you finish the whole work', 'Elementor updated, but the error is still there',
+        'It’s wrong approach of CI', 'you forgot the tests', 'I do not want the host in that url', 'that name does not fit',
+        'Okay but do not forget to verify changes', 'you said 30 minutes, but they have passed', 'ні, не так', 'нет, я просил другое']) {
+        const { rows } = prompted(prompt);
+        assert.strictEqual(rows.length, 1, `a correction: ${prompt}`);
+        assert.strictEqual(rows[0].hook, 'guard-answer-length.js');
+        assert.strictEqual(rows[0].event, 'UserPromptSubmit');
+        assert.ok(rows[0].detail && rows[0].detail.marker, 'the row names the marker that matched');
+        assert.ok(!JSON.stringify(rows[0]).includes(prompt.slice(12)) || prompt.length < 24, 'the row carries the marker, never the prompt');
+    }
+});
+
+test('the correction test leaves questions, status checks and requests alone', () => {
+    for (const prompt of ['how much time is left?', 'Are you still running?', 'But is it effective?', 'what about an MCP instead of skills?',
+        'Why you cannot connect to the staging backend?', 'continue', 'yes, do it', 'push', 'Stop or run?', 'have you finished?',
+        'Commit current changes!', 'Set the docs versioning to local', 'what is left?']) {
+        assert.deepStrictEqual(prompted(prompt).rows, [], `not a correction: ${prompt}`);
+    }
+});
+
+test('the correction test needs an answer before it, a typed turn and at most 200 characters', () => {
+    const userOnly = [{ type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'hi' }] } }];
+    assert.deepStrictEqual(prompted('no, use the org token', { rows: userOnly }).rows, [], 'a first turn corrects nothing');
+    assert.deepStrictEqual(prompted('/review no, shorter').rows, [], 'a slash command is not a correction');
+    const at = 'no, ' + 'x'.repeat(196);
+    assert.strictEqual(at.length, 200);
+    assert.strictEqual(prompted(at).rows.length, 1, '200 characters is still a short turn');
+    assert.deepStrictEqual(prompted(at + 'x').rows, [], '201 is a brief, not a correction');
+    const interrupted = [
+        { type: 'user', message: { role: 'user', content: [{ type: 'text', text: 'set up the pipeline' }] } },
+        { type: 'assistant', message: { id: 'a1', role: 'assistant', content: [{ type: 'text', text: 'Working on it.' }] } },
+        { type: 'user', message: { role: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } },
+    ];
+    assert.strictEqual(prompted('no, the other workflow', { rows: interrupted }).rows.length, 1, 'an interruption row sits between the answer and its correction');
+    const noTranscript = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'nudge-none', prompt: 'no, shorter' }), encoding: 'utf8' });
+    assert.strictEqual(noTranscript.status, 0);
+    assert.deepStrictEqual(correctionRows('nudge-none'), [], 'no transcript, no answer to correct - fail-open');
+});
+
+test('ALFRED_CODE_CORRECTION_NUDGE: log writes the row only, inject adds the save line, 0 is off', () => {
+    const LINE = /this reads as a correction - store it with memory_store \(user_correction, project tag\) before continuing/;
+    const log = prompted('no, shorter');
+    assert.strictEqual(log.rows.length, 1);
+    assert.strictEqual(log.rows[0].injected, false);
+    assert.doesNotMatch(log.ctx, LINE, 'log (the seed, and the value when absent) injects nothing');
+    assert.match(log.ctx, /3 sentences/, 'the budget still goes out');
+    const inject = prompted('no, shorter', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } });
+    assert.strictEqual(inject.rows.length, 1);
+    assert.strictEqual(inject.rows[0].injected, true);
+    assert.match(inject.ctx, LINE);
+    assert.doesNotMatch(prompted('how much time is left?', { env: { ALFRED_CODE_CORRECTION_NUDGE: 'inject' } }).ctx, LINE, 'no correction, no line');
+    for (const off of ['0', 'off']) {
+        const o = prompted('no, shorter', { env: { ALFRED_CODE_CORRECTION_NUDGE: off } });
+        assert.deepStrictEqual(o.rows, [], `${off} writes no row`);
+        assert.doesNotMatch(o.ctx, LINE);
+    }
 });

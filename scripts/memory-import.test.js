@@ -10,6 +10,7 @@ const { spawnSync, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const ROOT = path.join(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'memory-import.js');
@@ -313,12 +314,12 @@ test('db precheck: forcing node:sqlite unavailable falls back to the server mess
     writeNote(sb.memoryDir, 'a.md', { name: 'a', description: 'desc', type: 'user', body: 'body' });
 
     const first = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir],
-        { env: { ...process.env, CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
+        { env: { ...process.env, ALFRED_CODE_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
     assert.strictEqual(first.status, 0, first.stderr);
     assert.match(first.stdout, /memory import: 1 imported, 0 already present, from .*\(node:sqlite unavailable - idempotence checked via the server response text only\)/);
 
     const second = runScript(['--project-root', sb.projectRoot, '--config-dir', sb.acctDir, '--memory-dir', sb.memoryDir],
-        { env: { ...process.env, CLAUDE_STACK_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
+        { env: { ...process.env, ALFRED_CODE_MEMORY_IMPORT_FORCE_NO_SQLITE: '1' } });
     assert.strictEqual(second.status, 0, second.stderr);
     assert.match(second.stdout, /memory import: 0 imported, 1 already present, from .*\(node:sqlite unavailable/);
     // Still resolved via the server's own duplicate-message fallback - one call each run.

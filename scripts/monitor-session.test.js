@@ -16,9 +16,12 @@ test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 // A pinned environment: an empty account dir (no model from a real settings file), no seeded window,
 // no trigger overrides, no docs root from the session running this suite.
 const BASE_ENV = { ...process.env, CLAUDE_CONFIG_DIR: fs.mkdtempSync(path.join(TMP, 'acct-')) };
-for (const k of ['CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'CLAUDE_STACK_MONITOR', 'CLAUDE_STACK_HOOKS_OFF', 'CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW',
-    'CLAUDE_STACK_FRESH_SESSION_200K', 'CLAUDE_STACK_FRESH_SESSION_1M', 'CLAUDE_STACK_FRESH_SESSION_DEFAULT'])
+for (const k of ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_DOCS_PATH', 'ALFRED_CODE_MONITOR', 'ALFRED_CODE_HOOKS_OFF', 'ALFRED_CODE_DEFAULT_CONTEXT_WINDOW',
+    'ALFRED_CODE_FRESH_SESSION_200K', 'ALFRED_CODE_FRESH_SESSION_1M', 'ALFRED_CODE_FRESH_SESSION_DEFAULT'])
     delete BASE_ENV[k];
+// envOf (hook-prelude.js, 2.0.0) now answers a bare CLAUDE_STACK_* the same way it answers // legacy-name
+// ALFRED_CODE_* - so the same session-env leakage above reaches every 1.x-spelled setting too.
+for (const k of Object.keys(BASE_ENV)) if (k.startsWith('CLAUDE_STACK_')) delete BASE_ENV[k]; // legacy-name
 
 let seq = 0;
 function session(env = {})
@@ -36,10 +39,10 @@ function session(env = {})
     };
     const rows = () =>
     {
-        try { return fs.readFileSync(path.join(root, '.claude', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
+        try { return fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
         catch { return []; }
     };
-    const stateFile = path.join(root, '.claude', 'docs', 'flow', `monitor-${sid}.json`);
+    const stateFile = path.join(root, '.alfred', 'docs', 'flow', `monitor-${sid}.json`);
     const call = (tool, input, extra = {}) => hook({ hook_event_name: 'PostToolUse', tool_name: tool, tool_input: input, ...extra });
     const prompt = () => hook({ hook_event_name: 'UserPromptSubmit', prompt: 'next' });
     return { root, sid, hook, rows, stateFile, call, prompt };
@@ -152,7 +155,7 @@ test('monitor: a subagent never takes the context note, and a switched-off trigg
     const sub = session();
     sub.call('Read', { file_path: 'a' }, { agent_id: 'agent-a', transcript_path: transcriptAt(sub, 170000) });
     assert.strictEqual(sub.rows().length, 0);
-    const off = session({ CLAUDE_STACK_FRESH_SESSION_DEFAULT: '0' });
+    const off = session({ ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' });
     off.call('Read', { file_path: 'a' }, { transcript_path: transcriptAt(off, 170000) });
     assert.strictEqual(off.rows().length, 0);
 });
@@ -165,14 +168,14 @@ test('monitor: log mode (the default) writes rows and injects nothing; inject mo
     assert.strictEqual(out, '', 'log mode injected');
     assert.strictEqual(log.rows()[0].injected, false);
 
-    const inject = session({ CLAUDE_STACK_MONITOR: 'inject' });
+    const inject = session({ ALFRED_CODE_MONITOR: 'inject' });
     for (let i = 0; i < 4; i++) assert.strictEqual(inject.call('Bash', { command: 'ls' }), '');
     const o = JSON.parse(inject.call('Bash', { command: 'ls' }));
     assert.strictEqual(o.hookSpecificOutput.hookEventName, 'PostToolUse');
     assert.match(o.hookSpecificOutput.additionalContext, /you repeated Bash 5 times with identical input - stop and change approach/);
     assert.strictEqual(inject.rows()[0].injected, true);
 
-    const off = session({ CLAUDE_STACK_MONITOR: '0' });
+    const off = session({ ALFRED_CODE_MONITOR: '0' });
     for (let i = 0; i < 6; i++) assert.strictEqual(off.call('Bash', { command: 'ls' }), '');
     assert.strictEqual(off.rows().length, 0);
     assert.ok(!fs.existsSync(off.stateFile), 'the switched-off monitor still kept state');
@@ -190,9 +193,9 @@ test('monitor: garbage state, garbage stdin and an unwired event are silent and 
     assert.strictEqual(s.hook({ hook_event_name: 'Stop' }), '');
 });
 
-test('monitor: CLAUDE_STACK_HOOKS_OFF naming it switches it off', () =>
+test('monitor: ALFRED_CODE_HOOKS_OFF naming it switches it off', () =>
 {
-    const s = session({ CLAUDE_STACK_HOOKS_OFF: 'guard-answer-length,monitor-session' });
+    const s = session({ ALFRED_CODE_HOOKS_OFF: 'guard-answer-length,monitor-session' });
     for (let i = 0; i < 5; i++) s.call('Bash', { command: 'ls' });
     assert.strictEqual(s.rows().length, 0);
 });

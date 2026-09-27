@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const ROOT = path.join(__dirname, '..');
 const ENGINE = path.join(ROOT, 'stack', 'hooks', 'memory.js');
@@ -44,8 +45,8 @@ const liveRows = (file) =>
 };
 
 // A consuming project named `proj`: a git repo, the engine COPIED to .claude/hooks/, the plugin
-// route's CLAUDE_STACK_MEMORY_DB in its settings.json, and an account dir whose
-// installed_plugins.json points memory@claude-stack at a fake plugin root carrying the fake server.
+// route's ALFRED_CODE_MEMORY_DB in its settings.json, and an account dir whose
+// installed_plugins.json points memory@envoydev at a fake plugin root carrying the fake server.
 function sandbox({ plugin = true, dbRows = [] } = {})
 {
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'memxfer-'));
@@ -56,7 +57,7 @@ function sandbox({ plugin = true, dbRows = [] } = {})
     fs.copyFileSync(ENGINE, engine);
     const dbFile = path.join(work, 'target.db');
     buildDb(dbFile, dbRows);
-    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_MEMORY_DB: dbFile } }, null, 2));
+    fs.writeFileSync(path.join(root, '.claude', 'settings.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: dbFile } }, null, 2));
     const acct = path.join(work, 'acct');
     fs.mkdirSync(path.join(acct, 'plugins'), { recursive: true });
     const pluginRoot = path.join(work, 'plugin-cache', 'memory', '1.0.0');
@@ -65,7 +66,7 @@ function sandbox({ plugin = true, dbRows = [] } = {})
         fs.mkdirSync(path.join(pluginRoot, '.claude-plugin'), { recursive: true });
         fs.copyFileSync(FAKE_SERVER, path.join(pluginRoot, 'fake-memory-server.js'));
         fs.writeFileSync(path.join(pluginRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({
-            name: 'claude-stack',
+            name: 'envoydev',
             plugins: [{ name: 'memory', mcpServers: { memory: {
                 command: process.execPath,
                 args: ['${CLAUDE_PLUGIN_ROOT}/fake-memory-server.js'],
@@ -74,7 +75,7 @@ function sandbox({ plugin = true, dbRows = [] } = {})
         }, null, 2));
         fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
-            plugins: { 'memory@claude-stack': [{ scope: 'project', projectPath: root, installPath: pluginRoot, version: '1.0.0' }] },
+            plugins: { 'memory@envoydev': [{ scope: 'project', projectPath: root, installPath: pluginRoot, version: '1.0.0' }] },
         }, null, 2));
     }
     const calls = path.join(work, 'calls.jsonl');
@@ -261,12 +262,47 @@ test('serviceEntry: another project\'s plugin row, a foreign marketplace and a g
     const sb = sandbox();
     const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
     const row = { scope: 'project', projectPath: path.join(sb.work, 'elsewhere'), installPath: sb.pluginRoot, version: '1.0.0' };
-    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [row], 'memory@claude-plugins-official': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@envoydev': [row], 'memory@claude-plugins-official': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
     assert.strictEqual(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), null);
-    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@envoydev': [{ ...row, projectPath: undefined, scope: 'user' }] } }));
     assert.ok(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), 'a user-scope row serves every project');
     fs.writeFileSync(file, '{garbage');
     assert.strictEqual(memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct }), null);
+    sb.done();
+});
+
+// Requirement 5 (task-5c): a 1.x install's marketplace KEY never migrates on rename
+// (docs/rebrand-evidence.md S4/S9), so its installed_plugins.json row still keys the server
+// `memory@claude-stack` for the whole 2.x line. The lookup reads the current key first, then falls // legacy-name
+// back to the legacy one, and the current key's row wins when both exist.
+test('serviceEntry: a 1.x install\'s memory@claude-stack row resolves too, and memory@envoydev wins when both exist', { skip: skipNoSqlite }, () => // legacy-name
+{
+    const sb = sandbox();
+    const file = path.join(sb.acct, 'plugins', 'installed_plugins.json');
+    const row = { scope: 'project', projectPath: sb.root, installPath: sb.pluginRoot, version: '1.0.0' };
+    // legacy-name - a 1.x install's plugin id still ends @claude-stack; the marketplace key never moves.
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: { 'memory@claude-stack': [row] } })); // legacy-name
+    const viaLegacy = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
+    assert.ok(viaLegacy, 'the memory@claude-stack row alone still resolves an installPath'); // legacy-name
+    assert.strictEqual(viaLegacy.command, process.execPath);
+
+    const newRoot = path.join(sb.work, 'plugin-cache', 'memory-new', '2.0.0');
+    fs.mkdirSync(path.join(newRoot, '.claude-plugin'), { recursive: true });
+    fs.copyFileSync(FAKE_SERVER, path.join(newRoot, 'fake-memory-server.js'));
+    fs.writeFileSync(path.join(newRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({
+        name: 'envoydev',
+        plugins: [{ name: 'memory', mcpServers: { memory: {
+            command: process.execPath,
+            args: ['${CLAUDE_PLUGIN_ROOT}/fake-memory-server.js', '--new-key'],
+            env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec' },
+        } } }],
+    }, null, 2));
+    fs.writeFileSync(file, JSON.stringify({ version: 2, plugins: {
+        'memory@claude-stack': [row], // legacy-name
+        'memory@envoydev': [{ ...row, installPath: newRoot }],
+    } }));
+    const viaBoth = memory.serviceEntry(sb.root, { home: sb.work, configDir: sb.acct });
+    assert.ok(viaBoth.args.includes('--new-key'), 'memory@envoydev wins when both rows exist');
     sb.done();
 });
 

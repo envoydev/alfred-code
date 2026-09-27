@@ -225,3 +225,315 @@ test('level: a registration already at one of the three shapes keeps that NAME, 
     assert.strictEqual(got.level, 'project');
     assert.strictEqual(got.from, 'registration');
 });
+
+// --- /alfred-code:init's memory step: `memory.js init` -------------------------
+//
+// setup installs with no level; init asks it in a LATER session and sets it through this entry point
+// alone - the settings key the plugin's launcher reads, the notes import, the switch-off - with no
+// reinstall. Driven against the fake stdio server behind a fake memory@envoydev plugin row, the
+// route every plugin install has (no .mcp.json registration).
+const { spawnSync, execFileSync } = require('node:child_process');
+const { seedRun, POSIX_ONLY } = require('./seed-sandbox.js');
+
+const CLI = path.join(__dirname, 'install', 'memory.js');
+const FAKE_SERVER = path.join(__dirname, 'fixtures', 'fake-memory-server.js');
+let DatabaseSync = null;
+try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
+const NO_SQLITE = DatabaseSync ? false : 'node:sqlite unavailable on this Node';
+
+function initSandbox({ settings = { env: { ALFRED_CODE_MEMORY_DB: '/elsewhere/memory.db' }, keep: 'me' }, uvx = true } = {})
+{
+    const work = fs.mkdtempSync(path.join(TMP, 'init-'));
+    const root = path.join(work, 'proj');
+    fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
+    execFileSync('git', ['init', '-q', root]);
+    fs.writeFileSync(path.join(root, '.claude', 'rules', 'baseline-memory.md'), '# rule\n');
+    fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');   // setup's install
+    if (settings !== null) fs.writeFileSync(path.join(root, '.claude', 'settings.json'), typeof settings === 'string' ? settings : JSON.stringify(settings, null, 2));
+    const acct = path.join(work, 'acct');
+    const pluginRoot = path.join(work, 'plugin-cache', 'memory', '1.0.0');
+    fs.mkdirSync(path.join(pluginRoot, '.claude-plugin'), { recursive: true });
+    fs.mkdirSync(path.join(acct, 'plugins'), { recursive: true });
+    fs.copyFileSync(FAKE_SERVER, path.join(pluginRoot, 'fake-memory-server.js'));
+    fs.writeFileSync(path.join(pluginRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev',
+        plugins: [{ name: 'memory', mcpServers: { memory: { command: process.execPath, args: ['${CLAUDE_PLUGIN_ROOT}/fake-memory-server.js'], env: {} } } }] }));
+    fs.writeFileSync(path.join(acct, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2,
+        plugins: { 'memory@envoydev': [{ scope: 'user', installPath: pluginRoot, version: '1.0.0' }] } }));
+    const bin = path.join(work, 'bin');
+    fs.mkdirSync(bin);
+    if (uvx) { fs.writeFileSync(path.join(bin, 'uvx'), '#!/bin/sh\nexit 0\n'); fs.chmodSync(path.join(bin, 'uvx'), 0o755); }
+    const notes = path.join(work, 'notes');
+    fs.mkdirSync(notes);
+    fs.writeFileSync(path.join(notes, 'a.md'), '---\nname: a\ndescription: A note\nmetadata:\n  type: project\n---\nBuilds need the offline cache.\n');
+    const calls = path.join(work, 'calls.jsonl');
+    const env = { ...process.env, HOME: work, USERPROFILE: work, CLAUDE_CONFIG_DIR: acct, PATH: `${bin}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}/usr/bin:/bin`,
+        FAKE_MEMORY_DB: path.join(work, 'fake-db.json'), FAKE_MEMORY_CALLS_LOG: calls };
+    for (const k of Object.keys(env)) if (/^(ALFRED_CODE_|CLAUDE_STACK_|MCP_MEMORY_|CLAUDE_PROJECT_DIR$)/.test(k)) delete env[k]; // legacy-name
+    const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project-root', root, '--config-dir', acct, '--memory-dir', notes, ...args],
+        { cwd: root, env, encoding: 'utf8', timeout: 60000 });
+    const callCount = () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).length : 0);
+    const settingsNow = () => JSON.parse(fs.readFileSync(settingsOf(root), 'utf8'));
+    const localNow = () => JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.local.json'), 'utf8'));
+    return { work, root, acct, run, callCount, settingsNow, localNow };
+}
+
+test('init: the level lands in the key the launcher reads, the notes are imported into THAT database, Claude\'s own memory goes off - no reinstall', { skip: NO_SQLITE || POSIX_ONLY.skip }, () =>
+{
+    const sb = initSandbox();
+    const db = path.join(sb.root, '.memory-mcp', 'memory.db');
+    fs.mkdirSync(path.dirname(db), { recursive: true });
+    new DatabaseSync(db).exec(fs.readFileSync(path.join(__dirname, 'fixtures', 'memory-schema.sql'), 'utf8'));
+    const before = [...fs.readdirSync(path.join(sb.root, '.claude')), 'settings.local.json'].sort();
+    const r = sb.run('--level', 'project');
+    assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    const s = sb.settingsNow();
+    // C8: the database path is this machine's - settings.local.json holds it, the shared copy leaves.
+    assert.strictEqual(sb.localNow().env.ALFRED_CODE_MEMORY_DB, db);
+    assert.ok(!('ALFRED_CODE_MEMORY_DB' in s.env), `a machine path stayed in the committed settings.json: ${s.env.ALFRED_CODE_MEMORY_DB}`);
+    assert.match(r.stdout, /settings\.json env: ALFRED_CODE_MEMORY_DB removed - this machine's database path, kept in settings\.local\.json from here on/);
+    assert.strictEqual(s.keep, 'me', 'every other key survives');
+    assert.strictEqual(s.autoMemoryEnabled, false);
+    assert.strictEqual(fs.readFileSync(path.join(sb.root, '.memory-mcp', '.gitignore'), 'utf8'), '*\n', 'a project database is never committed');
+    const rows = new DatabaseSync(db, { readOnly: true }).prepare('SELECT content FROM memories WHERE deleted_at IS NULL').all();
+    assert.strictEqual(rows.length, 1, 'imported into the level just chosen');
+    assert.match(rows[0].content, /Builds need the offline cache\./);
+    assert.match(r.stdout, /memory: level project -> .*\.memory-mcp[/\\]memory\.db \(settings\.local\.json env ALFRED_CODE_MEMORY_DB\)/);
+    assert.deepStrictEqual(fs.readdirSync(path.join(sb.root, '.claude')).sort(), before, 'nothing else under .claude/ - no install ran');
+    // I1: the one signal only init writes - the router reads it, every later run carries it.
+    assert.match(fs.readFileSync(path.join(sb.root, '.claude', 'alfred-code.stamp'), 'utf8'), /^initialised: \d{4}-\d{2}-\d{2}T[\d:]+Z$/m);
+    assert.strictEqual(require('./install/stamp.js').installState(sb.root), 'initialised');
+    // Idempotent: a second run stores nothing and exits clean.
+    const calls = sb.callCount();
+    const again = sb.run('--level', 'project');
+    assert.strictEqual(again.status, 0, again.stdout + again.stderr);
+    assert.strictEqual(sb.callCount(), calls, 'a re-run stored the notes again');
+});
+
+test('init: scoped names the space\'s file, global the machine\'s; the key goes where settings.local.json already keeps it', { skip: POSIX_ONLY.skip }, () =>
+{
+    const sb = initSandbox({ uvx: false });
+    fs.writeFileSync(path.join(sb.root, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: '/old.db', X: '1' } }));
+    const r = sb.run('--level', 'scoped', '--space', 'work');
+    const local = JSON.parse(fs.readFileSync(path.join(sb.root, '.claude', 'settings.local.json'), 'utf8'));
+    assert.strictEqual(local.env.ALFRED_CODE_MEMORY_DB, path.join(sb.work, '.memory-mcp', 'memory_work.db'));
+    assert.strictEqual(local.env.X, '1');
+    assert.strictEqual(sb.settingsNow().env.ALFRED_CODE_MEMORY_DB, '/elsewhere/memory.db', 'the shared file is not written when the local one holds the key');
+    // No uvx: the level is set, the import is not run, and Claude's own memory stays on - a failure exit.
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /uvx not found/);
+    assert.ok(!('autoMemoryEnabled' in sb.settingsNow()));
+    assert.strictEqual(sb.callCount(), 0);
+    assert.match(fs.readFileSync(path.join(sb.root, '.claude', 'alfred-code.stamp'), 'utf8'), /^initialised: pending$/m, 'a failed import leaves init owed');
+    // A local-scope stamp sends the key to the local file even when neither file holds it yet.
+    const l = initSandbox({ uvx: false });
+    fs.writeFileSync(path.join(l.root, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\nscope: local\n');
+    l.run('--level', 'global');
+    assert.strictEqual(JSON.parse(fs.readFileSync(path.join(l.root, '.claude', 'settings.local.json'), 'utf8')).env.ALFRED_CODE_MEMORY_DB, path.join(l.work, '.memory-mcp', 'memory.db'));
+    assert.strictEqual(l.settingsNow().env.ALFRED_CODE_MEMORY_DB, '/elsewhere/memory.db', 'the shared file every teammate reads is left alone');
+    const g = initSandbox({ settings: null, uvx: false });
+    g.run('--level', 'global');
+    assert.strictEqual(g.localNow().env.ALFRED_CODE_MEMORY_DB, path.join(g.work, '.memory-mcp', 'memory.db'), 'an absent settings.local.json is created with the key (C8)');
+    assert.ok(!fs.existsSync(settingsOf(g.root)), 'no settings.json is created for a machine path');
+    assert.ok(!fs.existsSync(path.join(g.root, '.memory-mcp')), 'no project folder for a machine-level database');
+});
+
+test('init: refuses a registration it cannot re-point, a malformed settings file and an unknown level - nothing written', { skip: POSIX_ONLY.skip }, () =>
+{
+    const sb = initSandbox();
+    fs.writeFileSync(path.join(sb.root, '.mcp.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/reg/memory.db' } } } }));
+    const before = fs.readFileSync(settingsOf(sb.root), 'utf8');
+    const r = sb.run('--level', 'project');
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout + r.stderr, /\.mcp\.json registers memory at \/reg\/memory\.db - .*update --memory-level project/);
+    assert.strictEqual(fs.readFileSync(settingsOf(sb.root), 'utf8'), before);
+    assert.strictEqual(sb.callCount(), 0);
+
+    // M4: the importer falls back to the ACCOUNT registration, so init checks that file too - a user-
+    // scope copy-route registration, then the account file's entry for this project.
+    for (const account of [
+        (root) => ({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/acct/memory.db' } } } }),
+        (root) => ({ projects: { [root]: { mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: '/acct/memory.db' } } } } } }),
+    ])
+    {
+        const a = initSandbox();
+        fs.mkdirSync(a.acct, { recursive: true });
+        fs.writeFileSync(path.join(a.acct, '.claude.json'), JSON.stringify(account(a.root)));
+        const settingsBefore = fs.readFileSync(settingsOf(a.root), 'utf8');
+        const ra = a.run('--level', 'project');
+        assert.strictEqual(ra.status, 1, ra.stdout + ra.stderr);
+        assert.match(ra.stdout, /\.claude\.json registers memory at \/acct\/memory\.db - .*update --memory-level project/);
+        assert.strictEqual(fs.readFileSync(settingsOf(a.root), 'utf8'), settingsBefore, 'nothing written');
+        assert.strictEqual(a.callCount(), 0);
+    }
+    // The same path registered is no mismatch.
+    const same = initSandbox({ uvx: false });
+    fs.mkdirSync(same.acct, { recursive: true });
+    fs.writeFileSync(path.join(same.acct, '.claude.json'), JSON.stringify({ mcpServers: { memory: { command: 'uvx', env: { MCP_MEMORY_SQLITE_PATH: path.join(same.work, '.memory-mcp', 'memory.db') } } } }));
+    assert.doesNotMatch(same.run('--level', 'global').stdout, /registers memory at/);
+
+    const bad = initSandbox({ settings: '{ not json' });
+    const b = bad.run('--level', 'global');
+    assert.strictEqual(b.status, 1);
+    assert.match(b.stdout + b.stderr, /not valid JSON/);
+    assert.strictEqual(fs.readFileSync(settingsOf(bad.root), 'utf8'), '{ not json');
+    assert.ok(!fs.existsSync(path.join(bad.root, '.claude', 'settings.local.json')), 'nothing written before the refusal');
+
+    const u = sb.run('--level', 'account');
+    assert.strictEqual(u.status, 2);
+    assert.match(u.stderr, /--level must be global, scoped or project/);
+});
+
+// I1 (Task 18a review): 'initialised' is the stamp line only init writes. Before it, no run IMPORTS
+// the notes - not setup's install, not a /alfred-code:update, not configure's or validate's apply with a
+// level named - so the router keeps offering init. Pilot 2 (2026-09-27): init's own switch-off hit EPERM
+// inside the sandbox and auto-memory stayed ON in every cell. With NO notes there is nothing to import and
+// nothing a level choice could change, so the INSTALLER (run outside the session) switches Claude's own
+// memory off at install time; init only reports it. With notes, the switch-off still waits for init.
+const stampText = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
+test('seed: with no notes, install switches Claude\'s own memory off, imports nothing and leaves the router on init', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { installState } = require('./install/stamp.js');
+    const { outs, steps } = seedRun(['install', 'update', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },   // the import would run: uvx answers, and no notes is a clean 'nothing to import'
+        args: [[], [], ['--memory-level', 'project']],
+        each: (repo) => ({ s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), l: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')), stamp: stampText(repo), state: installState(repo) }),
+    });
+    for (const [i, step] of steps.entries())
+    {
+        assert.strictEqual(step.s.autoMemoryEnabled, false, `run ${i}: no notes - Claude's own memory is off from the install on`);
+        assert.match(step.stamp, /^initialised: pending$/m, `run ${i}`);
+        assert.strictEqual(step.state, 'installed', `run ${i}: the router still routes to init`);
+        assert.doesNotMatch(outs[i], /importing Claude's existing notes/, `run ${i}: nothing is imported before init`);
+    }
+    assert.match(outs[0], /memory: no Claude memory notes for this project - nothing to import, so Claude's own memory is off from this install/);
+    assert.match(outs[0], /autoMemoryEnabled set to false/);
+    for (const i of [1, 2]) assert.match(outs[i], /memory: Claude's own memory is already off/, `run ${i}: reported, never rewritten`);
+    assert.match(steps[2].l.env.ALFRED_CODE_MEMORY_DB, /\.memory-mcp[/\\]memory\.db$/, 'the named level still applies - only the import waits');
+});
+
+// Review A, I1: the memory server launches through uvx, which INIT installs after setup - so the install-time
+// switch-off checks it like the other two switch-off paths do. No uvx on PATH: Claude's own memory stays on.
+test('seed: with no notes but no uvx on PATH, install leaves Claude\'s own memory on and says why', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { out, result } = seedRun('install', SEL, {
+        tools: { uvx: null },
+        inspect: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    assert.ok(!('autoMemoryEnabled' in result), 'no uvx - the replacement cannot start, so Claude\'s own memory stays on');
+    assert.match(out, /uvx not found - the memory notes import was skipped; Claude's own memory stays on/);
+    assert.doesNotMatch(out, /autoMemoryEnabled set to false/);
+});
+
+// With notes, nothing changes before init: the notes must land in the database the user picks, so the
+// switch-off waits for init's import.
+test('seed: with notes, install and update leave Claude\'s own memory on until init imports them', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { defaultMemoryDir } = require('./memory-import.js');
+    const { outs, steps } = seedRun(['install', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },
+        prepare: (repo, work) =>
+        {
+            const dir = defaultMemoryDir(repo, path.join(work, 'acct'), work);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'build.md'), '---\nname: build\ndescription: A note\n---\nBuilds need the offline cache.\n');
+        },
+        each: (repo) => JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')),
+    });
+    for (const [i, s] of steps.entries())
+    {
+        assert.ok(!('autoMemoryEnabled' in s), `run ${i}: a note is waiting - Claude's own memory stays on until init`);
+        assert.match(outs[i], /memory: the notes import waits for \/alfred-code:init/, `run ${i}`);
+    }
+});
+
+test('countNotes: none, some, and an unreadable folder are three answers', () =>
+{
+    const home = fs.mkdtempSync(path.join(TMP, 'notes-'));
+    const root = path.join(home, 'proj');
+    fs.mkdirSync(root);
+    const configDir = path.join(home, 'acct');
+    // The importer's scan also reads CLAUDE_CONFIG_DIR - pinned, so this case never reads the real account.
+    const saved = process.env.CLAUDE_CONFIG_DIR;
+    process.env.CLAUDE_CONFIG_DIR = configDir;
+    try
+    {
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 0, 'no folder at all');
+        const { defaultMemoryDir } = require('./memory-import.js');
+        const dir = defaultMemoryDir(root, configDir, home);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'MEMORY.md'), '- index\n');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 0, 'the index alone is no note');
+        fs.writeFileSync(path.join(dir, 'a.md'), 'note\n');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), 1);
+        fs.rmSync(dir, { recursive: true });
+        fs.writeFileSync(dir, 'a file where the folder should be');
+        assert.strictEqual(memory.countNotes({ projectRoot: root, configDir, home }), null, 'unreadable is unknown - the caller waits for init');
+    }
+    finally { if (saved === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = saved; }
+});
+
+// After init the line is carried, and a later run imports as it always did (a no-op once memory is off).
+test('seed: once init marked the stamp, an update carries the line and the import gate opens again (I1)', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const { markInitialised, installState } = require('./install/stamp.js');
+    const { out, result } = seedRun(['install', 'update'], SEL, {
+        tools: { uvx: 'exit 0' },
+        each: (repo, i) => { if (i === 0) markInitialised(path.join(repo, '.claude'), new Date('2026-09-25T10:00:00Z')); return null; },
+        inspect: (repo) => ({ stamp: stampText(repo), s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), state: installState(repo) }),
+    });
+    assert.match(result.stamp, /^initialised: 2026-09-25T10:00:00Z$/m, 'carried across the rewrite');
+    assert.strictEqual(result.state, 'initialised');
+    assert.doesNotMatch(out, /waits for \/alfred-code:init/);
+    assert.strictEqual(result.s.autoMemoryEnabled, false, 'the gate opened: nothing to import, so the switch-off landed');
+});
+
+// M5 (Task 18a review): every run that lands the project level writes the database's own .gitignore -
+// update and configure with --memory-level project too, not only init - so post-install's 'the
+// installer already wrote it' holds whichever command set the level.
+test('seed: a project-level run writes .memory-mcp/.gitignore, and a machine level writes no project folder (M5)', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    const ignore = (repo) => path.join(repo, '.memory-mcp', '.gitignore');
+    const { steps } = seedRun(['install', 'update'], SEL, {
+        args: [['--memory-level', 'global'], ['--memory-level', 'project']],
+        each: (repo) => (fs.existsSync(ignore(repo)) ? fs.readFileSync(ignore(repo), 'utf8') : null),
+    });
+    assert.strictEqual(steps[0], null, 'global: no project folder at all');
+    assert.strictEqual(steps[1], '*\n', 'the update that moved the level to project ignores the database');
+    const { result } = seedRun('install', SEL, {
+        args: ['--memory-level', 'project'],
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.memory-mcp')); fs.writeFileSync(ignore(repo), '# mine\n*\n'); },
+        inspect: (repo) => fs.readFileSync(ignore(repo), 'utf8'),
+    });
+    assert.strictEqual(result, '# mine\n*\n', 'an existing .gitignore is left as the user wrote it');
+});
+
+// The plugin route has no registration to read back: its record of the level is the settings key.
+// An update that ignored it reset a project level init had set to the global default.
+test('seed: an update with no --memory-level keeps the level the settings key records', POSIX_ONLY, () =>
+{
+    const SEL = 'skill markdown-style\nrule baseline-memory\nmcp serena\nmcp context7\nmcp memory\n';
+    // `home`: where the key sits - settings.local.json, where init writes it now (C8), or settings.json
+    // alone, an older install's shape, which the update moves into settings.local.json.
+    for (const home of ['settings.local.json', 'settings.json'])
+    {
+        const { out, result } = seedRun(['install', 'update'], SEL, {
+            each: (repo, i) =>
+            {
+                if (i !== 0) return null;
+                const edit = (name, fn) => { const file = path.join(repo, '.claude', name); const s = JSON.parse(fs.readFileSync(file, 'utf8')); fn(s.env); fs.writeFileSync(file, JSON.stringify(s, null, 2)); };
+                edit('settings.local.json', (env) => { delete env.ALFRED_CODE_MEMORY_DB; });
+                edit(home, (env) => { env.ALFRED_CODE_MEMORY_DB = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db'); });
+                return null;
+            },
+            inspect: (repo) => ({ repo: fs.realpathSync(repo), s: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.json'), 'utf8')), l: JSON.parse(fs.readFileSync(path.join(repo, '.claude', 'settings.local.json'), 'utf8')) }),
+        });
+        assert.strictEqual(result.l.env.ALFRED_CODE_MEMORY_DB, path.join(result.repo, '.memory-mcp', 'memory.db'), `${home}: the update re-pointed the level init set`);
+        assert.ok(!('ALFRED_CODE_MEMORY_DB' in result.s.env), `${home}: the machine path is in the committed settings.json (C8)`);
+        assert.match(out, /memory=project/);
+    }
+});

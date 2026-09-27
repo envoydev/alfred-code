@@ -1,6 +1,6 @@
 # Clean architecture
 
-Layered internal structure. Load when the chosen internal style is clean. The shared dependency rule and the pick-one meta-rule are in `SKILL.md`; domain mechanics (records, Result, naming) are in `csharp`; endpoint/validation wiring in `dotnet-web-backend`; boundary enforcement in `dotnet-architecture-tests`.
+Layered internal structure. Load when the chosen internal style is clean. The shared dependency rule and the pick-one meta-rule are in `SKILL.md`; domain mechanics (records, Result, naming) are in `csharp`; endpoint/validation wiring in the ASP.NET Core web hub; boundary enforcement in the architecture fitness-test skill.
 
 ## Four projects, dependencies inward
 

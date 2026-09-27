@@ -3,7 +3,7 @@
 // PreToolUse gate (matcher: Bash): the PUBLISH ceremony, mechanized - one hook because commit
 // and push are one gate family and share the receipt machinery, the heredoc blanking and the
 // quote masking below. A non-trivial
-// `git commit` runs only after the house review gate (project-verify-code, plus
+// `git commit` runs only after the house review gate (alfred-task-verify-code, plus
 // /security-review on auth/crypto/data-access paths) or the user's explicit waiver -
 // recorded as a receipt file the gate step writes. Prose measured unreliable: 8 ungated
 // commit events across 6 audited sessions, including one where baseline-git.md was
@@ -15,7 +15,7 @@
 // it, and NOTHING gated them - replayed across four bundles, every push and merge passed every
 // guard. In one session the FIRST state-changing act of the run published unpushed commits 18
 // minutes before any receipt existed, and 40 files reached a shared `develop` ungated. Same
-// receipt shape, its own file (<docs-root>/flow/PUSH-GATE), and CLAUDE_STACK_PUSH_GATE=0 turns
+// receipt shape, its own file (<docs-root>/flow/PUSH-GATE), and ALFRED_CODE_PUSH_GATE=0 turns
 // it off for a repo whose remote is already gated by branch protection or a required review.
 // Receipt lifecycle: the gate step writes <docs-root>/flow/COMMIT-GATE when its checks
 // pass (VERIFIED <scope>) or the user explicitly waives (WAIVED - "<their words>");
@@ -23,24 +23,26 @@
 // MAX_RECEIPT_AGE_MS are treated as absent - the stale-stamp lesson from the approval
 // gate (a leftover stamp silently authorized later, unrelated runs).
 const fs = require('fs');
-// The docs root env value. CLAUDE_STACK_DOCS_PATH is the name; CLAUDE_DOCS_PATH is the pre-0.2.43
-// spelling, still read so a project whose settings.json has not been migrated yet keeps resolving
-// (the installers rename the key in place on the next install/update).
-const docsRootEnv = () => process.env.CLAUDE_STACK_DOCS_PATH || process.env.CLAUDE_DOCS_PATH || '.claude/docs';
+// The docs root env value. ALFRED_CODE_DOCS_PATH is the name; envOf (hook-prelude.js) also answers
+// CLAUDE_STACK_DOCS_PATH (the pre-2.0.0 spelling) and, last, CLAUDE_DOCS_PATH (pre-0.2.43) - so a // legacy-name
+// project whose settings.json has not been migrated yet keeps resolving.
+const docsRootEnv = () => envOf(process.env, 'DOCS_PATH') || '.alfred/docs';
 const path = require('path');
-const { execSync, execFileSync } = require('child_process');
+const { execSync, execFileSync, spawnSync } = require('child_process');
 
-// STACK HOOK GATES - both live in hook-prelude.js, never inlined in every hook. One is
-// CLAUDE_STACK_HOOKS_OFF, the csv a project uses to switch a hook off now that the whole set ships
-// together through the plugin and there is no file to leave out. The other is the migration window:
-// while a project still wires its COPIED twin in .claude/settings.json, the PLUGIN copy stands down,
-// so one command never gets two denials, two block rows and two asks. Fail-open on purpose - no
-// prelude, no project dir or a malformed settings file all leave this hook running.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
+// this hook running.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
+  let off = false;
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('guard-ungated-commit')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-ungated-commit');
   } catch { /* an install without the prelude runs the hook unchanged */ }
+  // Outside the try: the shell-guard dispatcher runs this file in-process, where that catch would swallow the exit.
+  if (off) process.exit(0);
 }
 let payload;
 try {
@@ -68,12 +70,12 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
         const fs = require('fs');
         const path = require('path');
         const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
-        // resolve, NOT join: an ABSOLUTE CLAUDE_STACK_DOCS_PATH makes path.join('/a/b','/x/y')
+        // resolve, NOT join: an ABSOLUTE ALFRED_CODE_DOCS_PATH makes path.join('/a/b','/x/y')
         // '/a/b/x/y', so every ledger row landed in a doubled path that nothing reads (measured
         // across all ten guards). resolve honours an absolute value and still joins a relative one.
         const dir = path.resolve(root, docsRootEnv(), 'hook-blocks');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, `${payload.session_id || 'nosession'}.jsonl`), JSON.stringify({
+        fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
           ts: new Date().toISOString(),
           hook: path.basename(__filename),
           event: payload.hook_event_name || payload.tool_name || '',
@@ -92,7 +94,7 @@ if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/n
 const command = String((payload.tool_input || {}).command || '');
 // The publish half is on by default and switched off per install for a repo whose remote already
 // gates the branch (protection rules, a required review). Any value but "0" leaves it on.
-const PUSH_GATE_ON = process.env.CLAUDE_STACK_PUSH_GATE !== '0';
+const PUSH_GATE_ON = envOf(process.env, 'PUSH_GATE') !== '0';
 // A heredoc body is DATA, not shell: a plan document, a commit-message draft or a receipt that
 // merely describes `git commit` is inert text. Matching it blocked a 47KB plan write and cost a
 // full re-author of the same document (~19.8k output + 24.4k cache-write, ~3 minutes), and a
@@ -104,7 +106,7 @@ const scanned = command.replace(
 );
 // A QUOTED span is data for exactly the same reason a heredoc body is: a grep pattern, an echo
 // label or a search term that merely CONTAINS `git commit` invokes nothing. Blanking it matters
-// twice over. It blocked the stack's OWN mandated sweep (project-stack-usage-analyzer greps every
+// twice over. It blocked the stack's OWN mandated sweep (alfred-capture-stack-usage greps every
 // `git commit` event in a transcript) - and the session then completed that sweep by obfuscating
 // the token, which is the dangerous half: the evasion the false positive TAUGHT defeats this gate
 // on a genuine commit. Replayed on the pre-fix hook: `grep -o 'git commit' f` exit 2,
@@ -166,7 +168,10 @@ if (addNMatch && !/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+reset\b/
   process.exit(2);
 }
 
-if (!commitMatch && !publishMatch) process.exit(0);
+// Every `git add` in the command, by the offset of its `git` - judged below against what was untracked before the
+// session started, so a bare `git add -A` in its own call is read too.
+const addCalls = [...scannedQuoted.matchAll(/(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g)].map((m) => m.index + m[0].search(/git/));
+if (!commitMatch && !publishMatch && !addCalls.length) process.exit(0);
 
 // Resolve the repo the act actually runs in: a `cd <sibling> && git commit` or a
 // `git -C <sibling> push` executes in a DIFFERENT repo than this hook's default root,
@@ -176,7 +181,11 @@ if (!commitMatch && !publishMatch) process.exit(0);
 // which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
 // the cross-project guard block a session's own temp cleanup. Translate before resolving; off
 // Windows the spelling is a real POSIX path and is never touched.
-let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+// The shell's own cwd is where git starts: a session working in a git worktree of its project keeps
+// CLAUDE_PROJECT_DIR on the main checkout, so anchoring there judged the main tree's diff and let a
+// worktree commit through ungated whenever main was clean (measured on 2.1.283).
+const projectDir = process.env.CLAUDE_PROJECT_DIR || '';
+let root = payload.cwd || projectDir || process.cwd();
 const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p) => (process.platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
@@ -186,16 +195,34 @@ const unq = (s) => s.replace(/^["']|["']$/g, '');
 const actIndex = Math.min(
   commitMatch ? commitMatch.index : Number.MAX_SAFE_INTEGER,
   publishMatch ? publishMatch.index : Number.MAX_SAFE_INTEGER,
+  addCalls.length ? addCalls[0] : Number.MAX_SAFE_INTEGER,
 );
-const cdMatches = [...command.slice(0, actIndex).matchAll(/(?:^|&&|;|\n|\|)\s*cd\s+("[^"]+"|'[^']+'|[^\s;&|]+)/g)];
-if (cdMatches.length) root = path.resolve(root, nativePath(unq(cdMatches[cdMatches.length - 1][1])));
+// PowerShell moves the cwd with Set-Location (sl, chdir) or Push-Location (pushd), a -Path or
+// -LiteralPath name optional - the matcher claims that tool, so its spelling anchors the same way.
+// The directory the LAST cd before `index` moved to, resolved from `base` (unchanged when there is none).
+const cdBefore = (base, index) => {
+  const cds = [...command.slice(0, index).matchAll(/(?:^|&&|;|\n|\|)\s*(?:cd|chdir|pushd|set-location|sl|push-location)\s+(?:-(?:literal)?path\s+)?("[^"]+"|'[^']+'|[^\s;&|]+)/gi)];
+  return cds.length ? path.resolve(base, nativePath(unq(cds[cds.length - 1][1]))) : base;
+};
+root = cdBefore(root, actIndex);
 // the match came off the quote-masked copy, so read the -C ARGUMENT back out of the real
 // command - the mask keeps the offsets, not the path (a masked `-C "<sibling>"` resolved to a
 // directory of x's, judged this repo instead, and let the sibling commit through ungated).
 const rawOf = (m) => (m && !m.opaque ? command.substr(m.index, m[0].length) : (m ? m[0] : ''));
 const dashC = rawOf(publishMatch || commitMatch).match(/\s-C\s*("[^"]+"|'[^']+'|\S+)/);
 if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
-const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000 }).toString().trim();
+// The diff and the receipt belong to the repo git runs in. When that is the project's own repo, the
+// project dir stays the anchor: a subfolder cwd, or a project that is a subfolder of its repo, reads
+// the receipt where the session writes it.
+const topOf = (dir) => {
+  try { return fs.realpathSync.native(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()); } catch { return null; }
+};
+const gitTop = topOf(root);
+if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
+else if (gitTop) root = gitTop;
+// git's own stderr stays out of the hook's: the @{u} probes print `fatal: no upstream` on every
+// first push, and the harness shows the model the hook's stderr as the denial reason.
+const git = (args) => execSync(`git ${args}`, { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
 // The files this act would commit. The stack's own docs root is excluded: the receipt is written
 // INTO it moments before the act, so counting it inflated both the trivial-diff bar and the spec
 // check - a conformant `spec: 3 files` read as covering 3 of 4 because the fourth was the receipt.
@@ -214,11 +241,41 @@ const docsPrefix = () => {
   }
   return `${d}/`;
 };
+// What was untracked when this change started (docs-session.js writes it once per HEAD at session start,
+// root-relative, spelled with core.quotePath=false) is not the change: out of the count and the trivial bar, and a
+// git add that would sweep it in is blocked below. The record for this HEAD first; a commit made since the session
+// started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
+// and one it lists that got committed no longer matters. No record at all - an older install, no SessionStart - is an
+// empty set.
+let preExistingCache;
+function preExistingRecord() {
+  const dir = path.resolve(root, docsRootEnv(), 'flow');
+  let head = '';
+  try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
+  const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+  if (fs.existsSync(own)) return own;
+  let newest = null;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('untracked-at-start-')) continue;
+      const m = fs.statSync(path.join(dir, f)).mtimeMs;
+      if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
+    }
+  } catch { /* no flow folder - no record */ }
+  return newest ? newest.f : null;
+}
+function preExisting() {
+  if (preExistingCache) return preExistingCache;
+  const file = preExistingRecord();
+  try { preExistingCache = new Set(file ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []); } catch { preExistingCache = new Set(); }
+  return preExistingCache;
+}
 function changedFiles() {
   const pre = docsPrefix();
+  const before = preExisting();
   const keep = (f) => f && !(pre && f.replace(/\\/g, '/').startsWith(pre));
   const tracked = git('diff HEAD --name-only').split('\n').filter(keep);
-  const untracked = git('ls-files --others --exclude-standard').split('\n').filter(keep);
+  const untracked = git('-c core.quotePath=false ls-files --others --exclude-standard').split('\n').filter((f) => keep(f) && !before.has(f));
   return { tracked, untracked, count: tracked.length + untracked.length };
 }
 // The project a changed file belongs to, for the push-scope check: the name under a common
@@ -326,7 +383,9 @@ function isOwnOptionLabel(span) {
   }
   return false;
 }
-const skillCallRan = () => /"name"\s*:\s*"Skill"/.test(tail());
+// A skill the user TYPED writes no Skill call, only the harness's `<command-name>` row, and it is
+// as much a run of that skill as the model's own call (measured: slash-run loops, zero Skill events).
+const skillCallRan = () => /"name"\s*:\s*"Skill"|<command-name>\/(?:[\w-]+:)?(?:alfred|project)-[\w-]+<\/command-name>/.test(tail());
 
 // One judge, two routes. The receipt written as its own file and the receipt written inside the
 // same command as the act are the SAME document, so they answer to the same contract - otherwise
@@ -414,7 +473,7 @@ function judgeReceipt(body, opts) {
       return r;
     }
   }
-  if (!/live[-\s]?probe/i.test(bodyText)) {
+  if (!/live[-\s_]?probe/i.test(bodyText)) {
     r.problem = 'no live-probe line - a VERIFIED review states what it actually ran, either the quoted output or `NOT RUN - <reason>` (spelled live-probe, live probe or live_probe)';
     return r;
   }
@@ -452,7 +511,9 @@ function judgeReceipt(body, opts) {
   }
   // A stamp minted from a CARRIED resume block must say so, or a 9h30m-old answer mints fresh
   // consent in 45 seconds and defeats the freshness check.
-  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b/i.test(first) && !skillCallRan() && !field('carried')) {
+  // The loop arm names both spellings: the 1.x `quality-loop` and the 2.0.0 `alfred-loop-<name>`
+  // family - the rename left this arm matching nothing, so a receipt naming the loop minted consent.
+  if (/\b(project-)?verify-(code|plan)\b|\bquality-loop\b|\balfred-loop-[a-z-]+/i.test(first) && !skillCallRan() && !field('carried')) {
     r.problem = `the VERIFIED line names a verify skill but no Skill call ran in this session - if this review is carried from an earlier cycle say so: \`carried: <cycle id>, reviewed <date>\``;
     return r;
   }
@@ -542,7 +603,7 @@ if (publishMatch) {
           `verbatim>" instead; never fabricate either quote. Then retry, and clear the file once\n` +
           `it lands.\n` +
           `A repo whose remote is already gated (branch protection, a required review) can turn\n` +
-          `this half off for good: CLAUDE_STACK_PUSH_GATE=0 in the settings.json env block.`,
+          `this half off for good: ALFRED_CODE_PUSH_GATE=0 in the settings.json env block.`,
       );
       process.exit(2);
     }
@@ -550,39 +611,187 @@ if (publishMatch) {
 }
 
 // --- the COMMIT gate ----------------------------------------------------------------------
-if (!commitMatch) process.exit(0);
+if (!commitMatch && !addCalls.length) process.exit(0);
 
 // --- staged-diff scan: facts a verifier misses and a formatter never sees ------------------------
-// Conflict markers, a debugger, a focused test and a credential-shaped literal on an ADDED line of
-// what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
+// Conflict markers, a debugger, a focused test, a credential-shaped literal and a hidden character
+// (hidden-chars.js beside this hook, the lint's own class) on an ADDED line of what THIS act commits. It runs before the trivial-diff exemption and before every commit-gate
 // receipt - the review receipt is a different claim - and a hit the user means to keep is opened
 // only by its own STAGED-SCAN-ALLOW receipt. What the act commits: the index; plus the unstaged
 // tracked changes under `commit -a` or a chained `git add` (nothing is staged yet when this hook
-// runs); plus the untracked files that add takes in. At most 2MB of diff is read - past it, and on
-// any failure of our own, the scan passes.
+// runs); plus the untracked files that add takes in. A commit NAMING paths commits their working
+// tree against HEAD - alone under `--only` (the default), on top of the index under `--include`.
+// At most 2MB of text is read: a binary file and a single file past the cap are skipped (their
+// text is never read), and past the total the scan stops adding text but keeps every hit it found.
 // The two shapes are COPIES of guard-secret-value.js, pinned by meta/shared-rules.json
 // (credential-literal-shapes, credential-literal-pem). No g flag.
 const SECRET_SHAPE = /\b(sntryu_[0-9a-f]{16,}|ctx7sk-[0-9a-f-]{16,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})/;
 const PEM_PRIVATE = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 const SCAN_LIMIT = 2 * 1024 * 1024;
 const TEST_FILE = /(^|\/)(__tests__|e2e|cypress)\/|\.(spec|test|cy|e2e)\.[cm]?[jt]sx?$/;
-function lineFinding(file, text) {
+// Any file may open with a byte-order mark (Visual Studio writes one on a new .cs); past byte 0 it is hidden text.
+let hiddenChars = null;
+try { hiddenChars = require(path.join(__dirname, 'hidden-chars.js')); } catch { /* a copy that runs before it lands scans without the class */ }
+// Shell words, quote-aware (`git add "cfg file.js"` is one path) - shell-writes.js beside this hook.
+let shellWords = (text) => text.trim().split(/\s+/).filter(Boolean).map(unq);
+try { ({ shellWords } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* a copy that runs before it lands splits on whitespace */ }
+function lineFinding(file, text, lineNo) {
   if (/^(<{7}|>{7}) /.test(text)) return 'a conflict marker';
   if (SECRET_SHAPE.test(text) || PEM_PRIVATE.test(text)) return 'a credential-shaped literal';
+  const hidden = hiddenChars ? hiddenChars.hiddenInLine(text, lineNo, file, () => true) : [];
+  if (hidden.length) return `a hidden character U+${hidden[0]} - write it as an escape`;
   if (/\.(md|mdx|txt|rst)$/i.test(file)) return '';
   if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file) && /(^|[^\w.'"`])debugger\s*;?\s*$/.test(text)) return 'a debugger statement';
   if (/\.cs$/.test(file) && /\bDebugger\.(Break|Launch)\s*\(/.test(text)) return 'Debugger.Break / Launch';
   if (TEST_FILE.test(file) && /\b(fdescribe|fit)\s*\(|\b(describe|it|test)\.only\s*\(/.test(text)) return 'a focused test';
   return '';
 }
+// The words of the git call starting at `index`: the segment ends on the QUOTE-MASKED copy (a `;` in a
+// commit message is text), then the real text is split quote-aware. `afterVerb` drops `git`, its
+// global options and the verb itself.
+const callWords = (index) => {
+  const rest = scannedQuoted.slice(index);
+  const end = rest.search(/[;&|\n]/);
+  return shellWords(command.slice(index, index + (end < 0 ? rest.length : end)));
+};
+const afterVerb = (words) => {
+  let i = 1;
+  while (i < words.length && words[i].startsWith('-')) i += words[i] === '-C' || words[i] === '-c' ? 2 : 1;
+  return words.slice(i + 1);
+};
+// A `<docs-path>/flow/<name>` ALLOW receipt's lines - the USER's answer to a block, this session's own, under 8h.
+function allowLines(name) {
+  const file = path.resolve(root, docsRootEnv(), 'flow', name);
+  try {
+    const st = fs.statSync(file);
+    let sessionStartMs = 0;
+    try {
+      const tr = fs.statSync(String(payload.transcript_path || ''));
+      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
+    } catch { sessionStartMs = 0; }
+    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
+      return { file, lines: fs.readFileSync(file, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')) };
+    }
+  } catch { /* absent or unreadable - nothing allowed */ }
+  return { file, lines: [] };
+}
+
+// --- a git add that sweeps in what the session did not make --------------------------------------
+// Pilot 3: ~150 files the harness left untracked before the session began were committed by a close's `git add`, and
+// drove 13 'spec claims N file(s)' denials. git's own dry run says what each add would stage (top-relative, whatever
+// the pathspec - `.`, `-A`, `:/`, a directory, a glob); a pre-existing path in it is SWEPT unless the call names that
+// exact path, and a swept one passes only through UNTRACKED-ALLOW (a path, a directory ending in `/`, or `*`). A survey
+// (`-N`), a dry run, a patch or edit session and a tracked-only `-u` stage no untracked path and are not judged.
+function sweptPaths() {
+  const before = preExisting();
+  if (!before.size) return [];
+  // `.native`, here and in topOf: a Windows temp dir is an 8.3 short name (`RUNNER~1`) the JS resolver keeps, while
+  // git names the long one - the two never matched, so no sweep was ever blocked there (windows-2025 CI, 2026-09-27).
+  let realRoot = root;
+  try { realRoot = fs.realpathSync.native(root); } catch { /* keep the spelling */ }
+  const swept = new Set();
+  for (const at of addCalls) {
+    const words = callWords(at);
+    let cwd = cdBefore(payload.cwd || projectDir || process.cwd(), at);
+    for (let i = 1; i < words.length && words[i].startsWith('-'); i += words[i] === '-C' || words[i] === '-c' ? 2 : 1) {
+      if (words[i] === '-C' && words[i + 1]) cwd = path.resolve(cwd, nativePath(words[i + 1]));
+    }
+    try { cwd = fs.realpathSync.native(cwd); } catch { /* git reports the missing directory itself */ }
+    const args = afterVerb(words);
+    const flags = args.slice(0, args.includes('--') ? args.indexOf('--') : args.length).filter((a) => a.startsWith('-'));
+    const quiet = flags.some((a) => /^--(intent-to-add|dry-run|patch|interactive|edit|update|refresh)$/.test(a) || (/^-[^-]/.test(a) && /[nNpieu]/.test(a.slice(1))));
+    if (quiet) continue;
+    const top = topOf(cwd);
+    if (!top) continue;
+    const r = spawnSync('git', ['-c', 'core.quotePath=false', 'add', '--dry-run', ...args], { cwd, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    if (r.error || r.status !== 0) continue; // the add itself will fail the same way - never block on it
+    let rest = false;
+    const named = new Set(args.filter((a) => { if (a === '--') { rest = true; return false; } return rest || !a.startsWith('-'); })
+      .map((a) => path.relative(top, path.resolve(cwd, a)).split(path.sep).join('/')));
+    for (const line of String(r.stdout).split('\n')) {
+      const m = /^add '(.*)'$/.exec(line);
+      if (!m || named.has(m[1])) continue;
+      const rel = path.relative(realRoot, path.join(top, m[1])).split(path.sep).join('/');
+      if (before.has(rel)) swept.add(rel);
+    }
+  }
+  const { lines } = allowLines('UNTRACKED-ALLOW');
+  return [...swept].filter((f) => !(lines.includes('*') || lines.includes(f) || lines.some((l) => l.endsWith('/') && f.startsWith(l))));
+}
+if (addCalls.length) {
+  const swept = sweptPaths();
+  if (swept.length) {
+    global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
+    const rel = (name) => path.relative(root, path.resolve(root, docsRootEnv(), 'flow', name)).split(path.sep).join('/');
+    const record = preExistingRecord();
+    process.stderr.write(
+      `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
+      `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
+      (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
+      `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
+      `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
+      `${rel('UNTRACKED-ALLOW')} with one path (a directory ending in /, or *) per line and retry the SAME command;\n` +
+      `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +
+      `  'Stage only this session's paths (Recommended)'\n` +
+      `  'Stage them too' - the user adds these files to the change\n` +
+      `It is honoured for this session only, under 8h.\n`,
+    );
+    process.exit(2);
+  }
+}
+if (!commitMatch) process.exit(0);
+// `git commit`'s own argv: the options whose value is the next word (short letters, long names -
+// a long one may be cut to a unique prefix, as git's parser allows), the flags this scan reads, and
+// the paths it names, with or without `--`. `-u` and `-S` take an attached value only.
+const COMMIT_VALUE_SHORT = 'mFCct';
+const COMMIT_VALUE_LONG = ['message', 'file', 'author', 'date', 'cleanup', 'fixup', 'squash', 'template', 'reuse-message', 'reedit-message', 'trailer', 'pathspec-from-file'];
+const COMMIT_FLAGS = ['all', 'only', 'include', 'dry-run', 'interactive', 'amend'];
+function commitArgs(args) {
+  const known = [...COMMIT_VALUE_LONG, ...COMMIT_FLAGS];
+  const flags = new Set();
+  const paths = [];
+  let rest = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (rest) { paths.push(a); continue; }
+    if (a === '--') { rest = true; continue; }
+    if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const typed = eq < 0 ? a.slice(2) : a.slice(2, eq);
+      const hits = known.filter((n) => n.startsWith(typed));
+      const name = known.includes(typed) ? typed : (typed && hits.length === 1 ? hits[0] : typed);
+      flags.add(`--${name}`);
+      if (eq < 0 && COMMIT_VALUE_LONG.includes(name)) i++;
+      continue;
+    }
+    if (a.length > 1 && a.startsWith('-')) {
+      for (let k = 1; k < a.length; k++) {
+        flags.add(`-${a[k]}`);
+        if (COMMIT_VALUE_SHORT.includes(a[k])) { if (k === a.length - 1) i++; break; }
+        if ('uS'.includes(a[k])) break;
+      }
+      continue;
+    }
+    paths.push(a);
+  }
+  return { flags, paths };
+}
 function commitScope() {
+  const scope = { dryRun: false, tracked: false, untracked: false, paths: [], commitPaths: [], mode: '' };
+  if (!commitMatch.opaque) {
+    const { flags, paths } = commitArgs(afterVerb(callWords(commitMatch.index)));
+    scope.dryRun = flags.has('--dry-run');
+    scope.tracked = flags.has('-a') || flags.has('--all') || flags.has('--pathspec-from-file');
+    if (paths.length) {
+      scope.commitPaths = paths;
+      scope.mode = flags.has('-i') || flags.has('--include') ? 'include' : 'only';
+    }
+  }
   const before = scannedQuoted.slice(0, commitMatch.index);
-  const commitSeg = commitMatch.opaque ? '' : (scannedQuoted.slice(commitMatch.index).split(/[;&|\n]/)[0] || '');
-  const scope = { dryRun: /\s--dry-run\b/.test(commitSeg), tracked: /\s-[b-zA-Z]*a[a-zA-Z]*(?=\s|$)|\s--all\b/.test(commitSeg), untracked: false, paths: [] };
   const addRe = /(?:^|[;&|(]\s*|\s)git(?:\s+-[cC]?\s*\S+|\s+--\S+)*\s+add\b/g;
   let m;
   while ((m = addRe.exec(before))) {
-    const args = command.slice(m.index + m[0].length).split(/[;&|\n]/)[0].trim().split(/\s+/).filter(Boolean).map(unq);
+    const args = afterVerb(callWords(m.index + m[0].search(/git/)));
     if (args.some((a) => /^(-N|--intent-to-add)$/.test(a))) continue; // a scope survey stages nothing
     if (args.some((a) => /^(-u|--update)$/.test(a))) scope.tracked = true;
     if (args.some((a) => /^(-A|--all)$/.test(a) || a === '.' || a === ':/')) { scope.tracked = true; scope.untracked = true; continue; }
@@ -590,61 +799,136 @@ function commitScope() {
   }
   return scope;
 }
+// A name from a `+++ ` header: git ends a name holding a space with a TAB, and C-quotes one holding a
+// quote, a backslash or a control character (core.quotePath=false keeps every other byte as written).
+function headerName(raw) {
+  let s = raw.replace(/\t$/, '');
+  if (s.length > 1 && s.startsWith('"') && s.endsWith('"')) {
+    const ESC = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
+    const bytes = [];
+    const body = s.slice(1, -1);
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] !== '\\') {
+        const ch = String.fromCodePoint(body.codePointAt(i));
+        i += ch.length - 1;
+        bytes.push(...Buffer.from(ch));
+        continue;
+      }
+      const octal = /^[0-7]{3}/.exec(body.slice(i + 1));
+      if (octal) { bytes.push(parseInt(octal[0], 8)); i += 3; continue; }
+      const c = body[++i] ?? '';
+      bytes.push(ESC[c] ?? c.charCodeAt(0));
+    }
+    s = Buffer.from(bytes).toString('utf8');
+  }
+  return s.replace(/^b\//, '');
+}
 function stagedFindings() {
   const scope = commitScope();
   if (scope.dryRun) return [];
   const out = [];
   let budget = SCAN_LIMIT;
-  const read = (args) => {
-    const text = execFileSync('git', args, { cwd: root, timeout: 5000, maxBuffer: budget }).toString();
+  const top = gitTop || root;
+  const q = ['-c', 'core.quotePath=false'];
+  // git's text, cut at what the budget has left: an overflow keeps what was read, never throws it away.
+  const readText = (args) => {
+    if (budget <= 0) return '';
+    const r = spawnSync('git', [...q, ...args], { cwd: root, timeout: 5000, maxBuffer: budget, stdio: ['ignore', 'pipe', 'ignore'] });
+    if (r.error && r.error.code !== 'ENOBUFS') throw r.error;
+    if (!r.error && r.status !== 0) throw new Error(`git ${args[0]} exited ${r.status}`);
+    const text = (r.stdout || Buffer.alloc(0)).subarray(0, budget).toString('utf8');
     budget -= Buffer.byteLength(text);
-    if (budget < 0) throw new Error('over the scan cap');
     return text;
   };
-  const scanDiff = (diff) => {
-    let file = '', line = 0;
-    for (const row of diff.split('\n')) {
-      if (row.startsWith('+++ ')) { file = row.slice(4).replace(/^b\//, ''); continue; }
-      const hunk = row.match(/^@@ -\S+ \+(\d+)/);
-      if (hunk) { line = Number(hunk[1]); continue; }
-      if (!row.startsWith('+')) continue;
-      const hit = lineFinding(file, row.slice(1));
-      if (hit) out.push({ file, line, hit });
-      line += 1;
+  const list = (args) => execFileSync('git', [...q, args[0], '-z', ...args.slice(1)], { cwd: root, timeout: 5000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] })
+    .toString('utf8').split('\0').filter(Boolean);
+  // The files a diff would carry that are binary (numstat `-`) or past the cap on their own, sized from
+  // the index for a staged diff and from the disk otherwise - left out, so none eats the budget.
+  const bulky = (base, paths, fromIndex) => {
+    const rows = [];
+    const f = list([...base, '--numstat', ...(paths.length ? ['--', ...paths] : [])]);
+    for (let i = 0; i < f.length; i++) {
+      const m = /^(-|\d+)\t(-|\d+)\t([\s\S]*)$/.exec(f[i]);
+      if (!m) continue;
+      rows.push({ binary: m[1] === '-', path: m[3] || f[i += 2] });   // a rename: its old path, then the new one
+    }
+    let sizes = new Map();
+    if (fromIndex && rows.length) {
+      const r = spawnSync('git', ['cat-file', '--batch-check=%(objectsize)'], { cwd: top, input: rows.map((x) => `:${x.path}`).join('\n') + '\n', timeout: 5000, stdio: ['pipe', 'pipe', 'ignore'] });
+      const n = String(r.stdout || '').split('\n');
+      sizes = new Map(rows.map((x, k) => [x.path, Number(n[k]) || 0]));
+    }
+    const sizeOf = (p) => { if (fromIndex) return sizes.get(p) || 0; try { return fs.statSync(path.join(top, p)).size; } catch { return 0; } };
+    return rows.filter((x) => x.binary || sizeOf(x.path) > SCAN_LIMIT).map((x) => x.path);
+  };
+  // One pass over a -U0 diff. A hunk header says how many rows follow it, so a content row that
+  // happens to start with `+++ ` is never read as the next file's header.
+  const scanDiff = (base, paths, fromIndex) => {
+    const skip = bulky(base, paths, fromIndex);
+    const spec = skip.length ? [...(paths.length ? paths : [':/']), ...skip.map((p) => `:(top,literal,exclude)${p}`)] : paths;
+    const found = [];
+    let file = '', line = 0, left = 0;
+    for (const row of readText([...base, '-U0', '--no-color', ...(spec.length ? ['--', ...spec] : [])]).split('\n')) {
+      if (left > 0) {
+        if (row.startsWith('\\')) continue; // "\ No newline at end of file"
+        left -= 1;
+        if (!row.startsWith('+')) continue;
+        const hit = lineFinding(file, row.slice(1), line);
+        if (hit) found.push({ file, line, hit });
+        line += 1;
+        continue;
+      }
+      if (row.startsWith('+++ ')) { file = headerName(row.slice(4)); continue; }
+      const hunk = row.match(/^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (hunk) { line = Number(hunk[2]); left = (hunk[1] === undefined ? 1 : Number(hunk[1])) + (hunk[3] === undefined ? 1 : Number(hunk[3])); }
+    }
+    return found;
+  };
+  // An untracked file the act takes in, read from the disk: a file past the cap is skipped, a NUL in
+  // its first 8KB marks it binary (git would not diff it as text either), and past the total budget
+  // the read stops adding text.
+  const scanLoose = (files) => {
+    for (const f of files) {
+      if (budget <= 0) return;
+      let fd;
+      try {
+        const full = path.join(root, f);
+        const st = fs.statSync(full);
+        if (!st.isFile() || st.size > SCAN_LIMIT) continue;
+        const buf = Buffer.alloc(Math.min(st.size, budget));
+        fd = fs.openSync(full, 'r');
+        fs.readSync(fd, buf, 0, buf.length, 0);
+        if (buf.subarray(0, 8192).includes(0)) continue;
+        budget -= buf.length;
+        buf.toString('utf8').split('\n').forEach((row, i) => { const hit = lineFinding(f, row, i + 1); if (hit) out.push({ file: f, line: i + 1, hit }); });
+      } catch { /* unreadable - skipped */ } finally { if (fd !== undefined) fs.closeSync(fd); }
     }
   };
+  const others = (paths) => list(['ls-files', '--others', '--exclude-standard', ...(paths.length ? ['--', ...paths] : [])]);
   try {
-    scanDiff(read(['diff', '--cached', '-U0', '--no-color']));
-    if (scope.tracked) scanDiff(read(['diff', '-U0', '--no-color']));
-    else if (scope.paths.length) scanDiff(read(['diff', '-U0', '--no-color', '--', ...scope.paths]));
-    const others = scope.untracked ? read(['ls-files', '--others', '--exclude-standard'])
-      : scope.paths.length ? read(['ls-files', '--others', '--exclude-standard', '--', ...scope.paths]) : '';
-    for (const f of others.split('\n').filter(Boolean)) {
-      const text = fs.readFileSync(path.join(root, f), 'utf8');
-      budget -= Buffer.byteLength(text);
-      if (budget < 0) return [];
-      text.split('\n').forEach((row, i) => { const hit = lineFinding(f, row); if (hit) out.push({ file: f, line: i + 1, hit }); });
+    if (scope.mode === 'only') {
+      out.push(...scanDiff(['diff', 'HEAD'], scope.commitPaths, false));
+      // a chained add stages an untracked path first, and the commit then takes it in
+      if (scope.untracked || scope.paths.length) scanLoose(others(scope.commitPaths));
+      return out;
     }
-  } catch { return []; } // no repo, git unavailable, or past the 2MB cap - never block on our own failure
+    const staged = scanDiff(['diff', '--cached'], [], true);
+    if (scope.mode === 'include') {
+      const named = new Set(list(['diff', 'HEAD', '--name-only', '--', ...scope.commitPaths]));
+      out.push(...staged.filter((f) => !named.has(f.file)), ...scanDiff(['diff', 'HEAD'], scope.commitPaths, false));
+    } else out.push(...staged);
+    if (scope.tracked) out.push(...scanDiff(['diff'], [], false));
+    else if (scope.paths.length) out.push(...scanDiff(['diff'], scope.paths, false));
+    if (scope.untracked) scanLoose(others([]));
+    else if (scope.paths.length) scanLoose(others(scope.paths));
+  } catch { /* no repo or git unavailable - the hits already found still stand */ }
   return out;
 }
 {
   const found = stagedFindings();
   // 'Commit it as is' is the USER's answer, honoured through its own receipt: one `file`, `file:line`
   // or `*` per line; this session's own, under 8h.
-  const allowFile = path.resolve(root, docsRootEnv(), 'flow', 'STAGED-SCAN-ALLOW');
-  let allow = [];
-  try {
-    const st = fs.statSync(allowFile);
-    let sessionStartMs = 0;
-    try {
-      const tr = fs.statSync(String(payload.transcript_path || ''));
-      sessionStartMs = tr.birthtimeMs && tr.birthtimeMs !== tr.ctimeMs ? tr.birthtimeMs : 0;
-    } catch { sessionStartMs = 0; }
-    if (Date.now() - st.mtimeMs <= 8 * 60 * 60 * 1000 && !(sessionStartMs && st.mtimeMs < sessionStartMs)) {
-      allow = fs.readFileSync(allowFile, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
-    }
-  } catch { allow = []; }
+  const { file: allowFile, lines: allow } = allowLines('STAGED-SCAN-ALLOW');
   const open = found.filter((f) => !(allow.includes('*') || allow.includes(f.file) || allow.includes(`${f.file}:${f.line}`)));
   if (open.length) {
     global.BLOCK_DETAIL = { branch: 'staged-scan', count: open.length };
@@ -698,8 +982,8 @@ process.stderr.write(
     : c.problem
       ? `Blocked: git commit - the gate receipt at ${c.gate} does not hold: ${c.problem}.\n`
       : `Blocked: git commit on a non-trivial diff without the pre-commit gate receipt.\n`) +
-    `The checkpoint (the project-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
-    `the house review project-verify-code - plus /security-review when the diff touches\n` +
+    `The checkpoint (the alfred-habits-commit-checkpoint skill - load it) runs BEFORE a non-trivial commit: the formatter, then\n` +
+    `the house review alfred-task-verify-code - plus /security-review when the diff touches\n` +
     `auth/crypto/secrets/payment/data-access paths (baseline-security.md). When those pass, write\n` +
     `${c.gate}\n` +
     `with these lines:\n` +

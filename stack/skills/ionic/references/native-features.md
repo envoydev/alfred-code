@@ -1,6 +1,6 @@
 # Native-feature architecture: push, deep links, offline sync
 
-Each of these is one typed wrapping service per SKILL.md's Wrapping contract - it owns its permission check, its web fallback, its listener lifecycle, and its error-to-`Result` mapping. Per-plugin install and API mechanics are fetched live (context7 or the plugin README); this file is the house shape that sits on top, for the three cross-cutting features nearly every production app hits.
+Each of these is one typed wrapping service per SKILL.md's Wrapping contract - it owns its permission check, its web fallback, its listener lifecycle, and its error-to-`Result` mapping. Per-plugin install and API mechanics are fetched live (the documentation server or the plugin README); this file is the house shape that sits on top, for the three cross-cutting features nearly every production app hits.
 
 ## Push notifications
 - Permission then register, never the reverse: run the `checkPermissions()` -> `requestPermissions()` cycle (SKILL.md's permission order), and only call `PushNotifications.register()` once the status is `'granted'`. `register()` itself does not prompt - it triggers the `'registration'` event with the token, or `'registrationError'`. On Android 12 and below the permission is always granted; on iOS the first check prompts, so still gate it behind a UI affordance that explains why.

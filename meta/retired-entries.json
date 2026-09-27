@@ -1,6 +1,6 @@
 {
   "retiredIn": "1.3.0",
-  "note": "The per-stack entries v1.2.0 shipped, frozen. Listed in the marketplace for ONE release so an installed entry keeps working until /claude-stack:update copies its picks into the project and removes it. Drop the LISTING in the release after; keep THIS FILE while the names are retired - it is the only record of what each entry carried, and an install that skipped 1.3.x migrates from it.",
+  "note": "The per-stack entries v1.2.0 shipped, frozen. Listed in the marketplace so an installed entry keeps working until /claude-stack:update copies its picks into the project and removes it. Drop the LISTING only on evidence that no install still resolves through these names, never on a release cadence: an unlisted entry still enabled silently stops loading (docs/rebrand-evidence.md S25). Keep THIS FILE while the names are retired - it is the only record of what each entry carried, and an install that skipped 1.3.x migrates from it.",
   "entries": [
     {
       "name": "claude-stack-aspnet",

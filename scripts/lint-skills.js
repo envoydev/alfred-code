@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Repo lint: keep the registration surfaces and all cross-skill references in
-// sync. The installer is split into two manifests: claude-stack.{sh,ps1}.
-// SKILLS and MCPS must be identical across both twins - and they are ALSO shared
-// with the Cursor stack (the separate cursor-stack repo, whose installers clone
-// this repo for skills); that cross-repo parity is held by discipline (a baseline
-// change is a two-repo commit), each repo linting its own twins.
+// sync. The installer's six lists - skills, agents, rules, hooks, plugins, MCPs - live in ONE
+// hand-edited file, meta/stack-manifest.json (Phase 7b, R33, deleted the frozen shell and
+// PowerShell installers that used to carry them). SKILLS and MCPS are ALSO shared with the Cursor
+// stack (the separate cursor-stack repo, whose installers clone this repo for skills); that
+// cross-repo parity is held by discipline (a baseline change is a two-repo commit).
 // Catches the failure modes that actually happen:
 //   1. a skill directory exists but is missing from a manifest or the HTML
 //      inventory (it would silently never install);
@@ -55,10 +55,10 @@ const fs = require('fs');
 // --- CRLF normalization, once, at the boundary --------------------------------------------------
 // A Windows checkout has CRLF line endings (git's autocrlf converts on the way out), and JS treats
 // `\r` as a LINE TERMINATOR: `.` does not match it. So a pattern ending `(#.*)?$` fails on every
-// commented line, and the installer parity check reported the ENTIRE MCP block missing from the
-// .ps1 twin - eight false findings, on a repo where the twins were in perfect sync. Text read here
-// is never sensitive to which bytes end a line, so normalize every utf8 read and let every regex
-// below stay written for `\n`.
+// commented line - measured, when the installers were still text (the frozen `.ps1` twin, deleted
+// Phase 7b): eight false findings on a repo where the source was in perfect sync. Text read here is
+// never sensitive to which bytes end a line, so normalize every utf8 read and let every regex below
+// stay written for `\n`.
 const _readFileSync = fs.readFileSync;
 fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
     ? String(_readFileSync(p, o)).replace(/\r\n/g, '\n')
@@ -66,16 +66,17 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { spawnSync } = require('child_process');   // `node --check` only - node is process.execPath, never a batch file (R105)
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
+const { SIGNAL_KINDS } = require('./scan-evidence.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
-const CLAUDE_SH = path.join(ROOT, 'scripts', 'os', 'claude-stack.sh');
-const CLAUDE_PS1 = path.join(ROOT, 'scripts', 'os', 'claude-stack.ps1');
+const MANIFEST_JSON = path.join(ROOT, 'meta', 'stack-manifest.json');
 const README = path.join(ROOT, 'README.md');
 const CLAUDE_README = README;   // merged into the root README at the repo flatten
-const STACK_HTML = path.join(ROOT, 'docs', 'claude-stack.html');
+const STACK_HTML = path.join(ROOT, 'docs', 'alfred-code.html');
 const AGENTS_DIR = path.join(ROOT, 'stack', 'agents');
 const CLAUDE_TEMPLATE = path.join(ROOT, 'stack', 'CLAUDE.template.md');
 const CLAUDE_RULES_DIR = path.join(ROOT, 'stack', 'rules');
@@ -92,7 +93,7 @@ const PLUGIN_MARKETPLACE_URLS = new Set([
 const NON_SKILL_TOKENS = new Set([
     // the CLAUDE.template.md rules table's slash-only-capture notation - a marker, not a skill.
     'user-run',
-    // the commit-gate hook, referenced by name from baseline-git.md and project-verify-code - a hook, not a skill.
+    // the commit-gate hook, referenced by name from baseline-git.md and alfred-task-verify-code - a hook, not a skill.
     'guard-ungated-commit',
     // the env-gated usage instrument, named by the usage analyzer as the thing to switch on - a hook, not a skill.
     'instrument-tool-usage',
@@ -134,17 +135,13 @@ const NON_SKILL_TOKENS = new Set([
     'mat-flat-button',
     'mat-stroked-button',
     // Claude Code SKILL.md frontmatter field (manual-only skills), backticked in
-    // prose in project-solve-cross-task + the base template - a field name, not a skill.
+    // prose in alfred-task-solve-cross + the base template - a field name, not a skill.
     'disable-model-invocation',
     // the two GENERATED per-project awareness rules (written by the capture skills,
     // never in the installer manifest) - rule file names, not skills; referenced by
-    // project-solve-cross-task's in-session scoping step.
+    // alfred-task-solve-cross's in-session scoping step.
     'baseline-project-architecture',
     'baseline-project-related-context',
-    // MCP server names stamped by project-agent-capabilities' routing map - servers, not skills.
-    'angular-cli',
-    'chrome-devtools',
-    'appium-mcp',
     // built-in Claude Code agent type named in the base template's navigation
     // guidance (don't delegate single-symbol lookups to it) - not a house skill.
     'general-purpose',
@@ -160,6 +157,10 @@ const NON_SKILL_TOKENS = new Set([
     // file-naming style term backticked in the typescript style reference - a
     // convention name, not a house skill.
     'kebab-case',
+    // the two desktop MCP server names, keyed in the capability capture's routing map (a row is found by
+    // its backticked name) - servers, not skills.
+    'windows-desktop',
+    'macos-desktop',
 ]);
 
 const findings = [];
@@ -175,68 +176,31 @@ function warn(message)
     warnings.push(message);
 }
 
-// Parse "repo|skill" entries from the SKILLS block of an installer manifest
-// (MCP entries share the same "a|b" line format, so scope to the block).
-// Commented entries are still inventory (resolvable references), not installs.
-function parseManifest(file, quote, blockStart)
+// The manifest reader. Until Phase 7b these four shapes (skill map, file list, flat set, hooks list)
+// were parsed out of the sh/ps1 text blocks - now they read meta/stack-manifest.json directly, the
+// one hand-edited home for the six lists. Each reader keeps the exact OUTPUT shape its old
+// text-parsing twin gave the checks below (Map/Set of active vs commented), so a row's `active:
+// false` still means 'shipped but not seeded' - a real state, not an absence.
+function readStackManifest(file)
 {
-    const active = new Map();    // skill -> repo
+    return JSON.parse(fs.readFileSync(file || MANIFEST_JSON, 'utf8'));
+}
+
+// SKILLS rows -> {active: Map(name -> repo), commented: Map(name -> repo)}.
+function manifestSkillMap(rows)
+{
+    const active = new Map();
     const commented = new Map();
-    const entry = new RegExp(`^\\s*(#?)\\s*${quote}([^|${quote}]+)\\|([^${quote}]+)${quote}`);
-    let inBlock = false;
-    for (const line of fs.readFileSync(file, 'utf8').split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const m = line.match(entry);
-        if (m)
-        {
-            (m[1] === '#' ? commented : active).set(m[3], m[2]);
-        }
-    }
-
+    for (const row of rows || [])
+        (row.active === false ? commented : active).set(row.name, row.repo);
     return { active, commented };
 }
 
-// Count/collect the active (uncommented) quoted entries of a simple string-array
-// block (AGENTS / HOOKS / RULES) - one quoted token per line, block ends at ')'.
-// For HOOK/RULE entries that carry a '::'/'|' tail, the leading token is taken.
-// Returns the ordered list of active entry names; commented lines are skipped.
-function parseStringArray(file, quote, blockStart)
+// AGENTS / RULES / HOOKS rows -> the ordered list of active `file` names (a hook wired on two
+// matchers is two rows, one file - callers that want unique files de-dupe with a Set).
+function manifestFileList(rows)
 {
-    const names = [];
-    const quoted = new RegExp(`^\\s*(#?)\\s*${quote}([^${quote}]+)${quote}`);
-    let inBlock = false;
-    for (const line of fs.readFileSync(file, 'utf8').split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const m = line.match(quoted);
-        if (m && m[1] !== '#')
-        {
-            names.push(m[2].split(/::|\|/)[0]);
-        }
-    }
-
-    return names;
+    return (rows || []).filter((r) => r.active !== false).map((r) => r.file);
 }
 
 function localSkillDirs()
@@ -246,56 +210,14 @@ function localSkillDirs()
         .map(e => e.name);
 }
 
-// Parse a flat installer block (PLUGINS / MCPS) of quoted entries. The entry's
-// name is the part before `sep` ('@' for plugins, '|' for MCPs). Bare variable
-// lines (e.g. "$MEMORY_ENTRY" / $MemoryEntry) are resolved by locating the
-// variable's assignment elsewhere in the file. Returns empty sets if the block
-// is absent.
-function parseFlatBlock(file, quote, blockStart, sep)
+// PLUGINS / MCPS rows -> {active: Set(name), commented: Set(name)}. `idOf` picks the row's own name
+// field: a plugin's `id` is `name@marketplace` (split on `@`), an MCP row's `name` is already bare.
+function manifestFlatSet(rows, idOf)
 {
-    const text = fs.readFileSync(file, 'utf8');
     const active = new Set();
     const commented = new Set();
-    const quoted = new RegExp(`^\\s*(#?)\\s*${quote}([^${quote}]+)${quote}`);
-    const variable = /^\s*(#?)\s*"?\$([A-Za-z_][A-Za-z0-9_]*)"?\s*(#.*)?$/;
-    let inBlock = false;
-    for (const line of text.split('\n'))
-    {
-        if (!inBlock)
-        {
-            inBlock = line.trimEnd().endsWith(blockStart);
-            continue;
-        }
-
-        if (line.trim() === ')')
-        {
-            break;
-        }
-
-        const resolveVar = varName =>
-            text.match(new RegExp(`^\\$?${varName}\\s*=\\s*${quote}([a-z0-9-]+)\\${sep}`, 'm'))?.[1] ?? null;
-
-        let name = null;
-        let isCommented = false;
-        const q = line.match(quoted);
-        const v = line.match(variable);
-        if (q)
-        {
-            name = q[2].startsWith('$') ? resolveVar(q[2].slice(1)) : q[2].split(sep)[0];
-            isCommented = q[1] === '#';
-        }
-        else if (v)
-        {
-            name = resolveVar(v[2]);
-            isCommented = v[1] === '#';
-        }
-
-        if (name)
-        {
-            (isCommented ? commented : active).add(name);
-        }
-    }
-
+    for (const row of rows || [])
+        (row.active === false ? commented : active).add(idOf(row));
     return { active, commented };
 }
 
@@ -323,6 +245,14 @@ function lintEvidenceCatalog(catalog, rosters)
             if (!rosters[layer].has(name))
             {
                 out.push(`evidence.json names ${singular} '${name}' which is not in the ${layer} roster - the signal would silently never match`);
+            }
+
+            for (const kind of Object.keys(entry))
+            {
+                if (!kind.startsWith('_') && !SIGNAL_KINDS.includes(kind))
+                {
+                    out.push(`evidence.json ${singular} '${name}' has unknown signal kind '${kind}' - the scan reads only ${SIGNAL_KINDS.join('/')}, so it would silently never match`);
+                }
             }
 
             for (const kind of ['csprojContent', 'content'])
@@ -623,7 +553,7 @@ function absentSkillsFor(closures, kind, name, skillDirs)
 }
 
 // 36. The same rule, for SEAT names. An agent name is cited exactly like a skill name and breaks the
-// same way: project-architecture-quality-loop (ALWAYS) routes a red to four per-stack resolvers, so
+// same way: alfred-loop-architecture-quality (ALWAYS) routes a red to four per-stack resolvers, so
 // every install is missing at least two of them, and the optional-cite machinery scanned skill names
 // only. A name inside the citer's own stack closure passes; anything else is described, not named.
 function absentAgentsFor(closures, kind, name, agentNames)
@@ -638,25 +568,9 @@ function absentAgentsFor(closures, kind, name, agentNames)
 // actually uses comes from meta/evidence.json matched against ITS OWN manifests; what a stack
 // always needs is a meta/recommendations.json seed. What a seat loads at RUNTIME stays a body
 // matter, by description (checks 25 and 26), and reaches no install decision.
-// Characters a reader cannot see: zero-width and joiner marks, bidi overrides and isolates (the
-// Trojan Source class, CVE-2021-42574), word joiners, a byte-order mark past byte 0, and the Unicode
-// tag block (U+E0000-E007F), which carries invisible text a model reads and a reviewer does not.
-// Written as escapes here so this file passes its own sweep. A BOM at byte 0 of a .ps1 is kept:
-// Windows PowerShell 5.1 reads a BOM-less script as the ANSI code page.
-const HIDDEN_CHAR_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]|\uDB40[\uDC00-\uDC7F]/g;
-function hiddenChars(text, file)
-{
-    const out = [];
-    String(text).split('\n').forEach((l, i) =>
-    {
-        for (const m of l.matchAll(HIDDEN_CHAR_RE))
-        {
-            if (i === 0 && m.index === 0 && m[0] === '\uFEFF' && /\.ps1$/i.test(file)) continue;
-            out.push({ line: i + 1, hex: m[0].codePointAt(0).toString(16).toUpperCase() });
-        }
-    });
-    return out;
-}
+// Characters a reader cannot see - the class lives in stack/hooks/hidden-chars.js, where the commit
+// gate scans a commit's added lines with it too. A BOM at byte 0 of a .ps1 is kept (the default).
+const { hiddenChars } = require(path.join(__dirname, '..', 'stack', 'hooks', 'hidden-chars.js'));
 
 // 55. Our own workflows are checked the way a PR reviewer would not bother to: an event field
 // spliced into a `run` script is shell the PR author writes (a title of `"; curl ... | sh #` runs);
@@ -725,7 +639,7 @@ function lintSuggestionEdges(label, text)
 // A backticked cite of an OPTIONAL skill inside a load directive must carry an
 // availability guard, or the model calls Skill(<name>) in a project that never
 // installed it and gets 'Unknown skill: <name>' (measured 2026-09-04 in a
-// consuming project: project-architecture-analyzer told the session to load
+// consuming project: alfred-capture-architecture told the session to load
 // `dotnet-architecture-tests`, which meta/evidence.json installs only when
 // NetArchTest/ArchUnitNET is in the manifests). A cite that merely POINTS at a
 // skill ('boundary enforcement lives in `x`') is not a directive and is not
@@ -758,7 +672,7 @@ const LOAD_VERB = /\b(?:load|loads|invoke|invokes|reach for|pull in|add|consult|
 // no verb at all, and the 2026-09-12 audits measured them walking straight past this scan: a
 // `Companions:` list in a description (dotnet-architecture-tests:3, postgres:3), a `Points at ...`
 // routing line (devops:3, ionic-security:3), a `routes to` / `routes through` sentence
-// (project-architecture-quality-loop:34, four resolver seats named in an ALWAYS skill), a
+// (alfred-loop-architecture-quality:34, four resolver seats named in an ALWAYS skill), a
 // `hands off to` / `dispatches` hand-over, and a `that mechanism is x` pointer. Each one tells the
 // reader which artifact owns the next step, which is a directive whatever the verb - and each one
 // names something most installs do not have. `routes to` is included beside the brief's
@@ -776,14 +690,14 @@ const AVAILABILITY_GUARD = /\b(?:in (?:your|the) skill list|not installed|never 
 // A blanket guard covers every cite in its file, and it must be DELIBERATE: an explicit
 // '**Availability**' callout carrying a guard phrase. The earlier form also accepted any
 // line pairing a guard phrase with a common word ('every', 'rows', 'below'), which silenced
-// 13 of 263 files by accident - project-architecture-analyzer/SKILL.md among them, the very
+// 13 of 263 files by accident - alfred-capture-architecture/SKILL.md among them, the very
 // file whose unguarded cite produced the measured 'Unknown skill' error. Proven by mutation:
 // a fresh unguarded load directive added to a blanketed file was not flagged.
 const AVAILABILITY_BLANKET = /\*\*Availability\b/;
 
 // 38. The blanket covers the callout's OWN SECTION, never the whole file. The router hubs put the
 // callout at the top of the routing table it speaks for, and a whole-file blanket then silenced
-// every other cite in the file - project-build-from-scratch's line-22 setup-skill names sit ten
+// every other cite in the file - alfred-task-build-from-scratch's line-22 setup-skill names sit ten
 // lines above a callout that speaks only for the per-stack scaffolding table, and
 // dotnet-web-backend's runs from `## Deep specialists` at the bottom yet covered all 147 lines
 // above it. Coverage runs from the callout to the next heading of the SAME or a HIGHER level than
@@ -875,7 +789,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
 // A cite is matched backticked OR bare: every measured miss in the descriptions is bare
 // (`Companions: dotnet-testing (the test-suite host)`), and a description is where a name costs the
 // most - it is read by a model choosing between installed skills. A path or a longer identifier is
-// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_serena_serena__find_symbol`).
+// excluded by the boundaries (`stack/skills/dotnet-migrate/SKILL.md`, `mcp__plugin_navigation_navigation__find_symbol`).
 // A BARE match is taken only for a HYPHENATED name, though: single-word rosters entries (`mobile`,
 // `dotnet`, `npm`, `frontend`) are ordinary English, and the trial flagged 14 sentences that merely
 // used the word - 'the mobile stack', 'npm audit'. Those still count backticked, which is how the
@@ -947,20 +861,31 @@ function lintOptionalCites(file, text, optional, opts = {})
     return findings;
 }
 
+// 15b. An AGENT description is capped far below check 15: the dispatcher's listing carries every enabled
+// seat's description in the first call of every session (pilot 2, 2026-09-27: 13.5k chars for 30 seats).
+// The description is the 'Use when...' sentence plus its 'Do NOT use' clause; the rest lives in the
+// agent's body, which only a dispatched seat pays for.
+const AGENT_DESC_LIMIT = 300;
+function lintAgentDescription(label, description)
+{
+    if (typeof description !== 'string' || description.length <= AGENT_DESC_LIMIT) return [];
+    return [`${label} description is ${description.length} chars (> ${AGENT_DESC_LIMIT}) - keep the 'Use when...' sentence and its 'Do NOT use' clause, and move the rest into the agent body`];
+}
+
 // 37. A plugin-qualified name (`superpowers:verification-before-completion`) is a cite of a skill
 // the stack does not own and cannot guarantee: the plugin is per-install on Claude Code and
 // documented OPTIONAL on the cursor-stack twin. Naming it BARE teaches a seat without the plugin
 // nothing at all - the 2026-09-12 agent audits found 10 verifiers plus security-auditor resting the
 // whole done gate on a bare `superpowers:verification-before-completion`, and 4 resolvers resting
 // their whole method on a bare `superpowers:systematic-debugging`. The house form pairs the name
-// with what it CONTAINS in the same sentence, as baseline-quality-gates.md already does: 'satisfy
+// with what it CONTAINS in the same sentence, as baseline-quality-gates.md did until R72: 'satisfy
 // `superpowers:verification-before-completion` - build + relevant tests run, output quoted'. A
 // content clause is a dash, colon or parenthetical clause opening straight after the token, or a
 // dash clause closing straight before it. The namespaces come from the installers' own PLUGINS
 // block, so a plugin added there is covered without touching this check.
 //
 // The BARE plugin name is the same class one level up, and the 2026-09-12 plugins audit found four
-// of them uncovered: a body naming `csharp-lsp` or `claude-md-management` on its own is naming a
+// of them uncovered: a body naming `csharp-lsp` or `typescript-lsp` on its own is naming a
 // per-install, droppable plugin, so a seat on an install that dropped it reads a name and nothing
 // else. Only the BACKTICKED spelling is judged - that is the token stack-graph.js reads to emit the
 // dependency edge, so backticking a cite is what puts it in the graph, while the unbackticked word
@@ -1195,6 +1120,52 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
     return findings;
 }
 
+// 61. An ASK TEMPLATE - a fenced ```ask block: its first line the question, then one `- '<label>' - <why>` line per
+// option - marks exactly one option `(Recommended)`, and offers at least two. Pilot 3's flow block measured 18 of
+// ours' 40 asks with no mark: the approver took the first option, and one of those ('You run it, I'll continue
+// after') ended a build half-done. The recommended option is listed FIRST, where the approver's pick lands. The three
+// flow skills below carry their stops as templates in SKILL.md itself - the file every run reads - and the count is
+// pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin).
+const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 };
+const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
+// A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
+// stays in the label; an option with no why ends at its closing quote.
+const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
+function lintAskTemplates(files)
+{
+    const findings = [];
+    for (const { file, text } of files)
+    {
+        // A template may sit indented inside a numbered step; its lines are read without that indent.
+        for (const m of String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm))
+        {
+            const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+            const question = lines[0] || '';
+            const options = lines.filter((l) => /^- '/.test(l));
+            const where = `${file}: the ask '${question.slice(0, 60)}'`;
+            if (!question || /^- '/.test(question)) findings.push(`${where} opens with no question line - the first line is the question`);
+            if (options.length < 2) findings.push(`${where} has fewer than two options - an ask with one option is a statement`);
+            const marks = options.map((l, i) => (/\(Recommended\)$/.test(askLabel(l)) ? i : -1)).filter((i) => i >= 0);
+            if (marks.length === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
+            else if (marks.length > 1) findings.push(`${where} has ${marks.length} options marked '(Recommended)' - exactly one carries the mark`);
+            else if (marks[0] !== 0) findings.push(`${where}: the '(Recommended)' option is listed ${marks[0] + 1}${['st', 'nd', 'rd'][marks[0]] || 'th'} - list it first, where the approver's pick lands`);
+        }
+    }
+    return findings;
+}
+// `texts` maps each flow skill to its SKILL.md text (undefined when the file is missing).
+function lintFlowAskPresence(texts)
+{
+    const findings = [];
+    for (const [d, pinned] of Object.entries(ASK_FLOW_TEMPLATES))
+    {
+        const n = [...String(texts[d] || '').matchAll(/^[ \t]*```ask[ \t]*$/gm)].length;
+        if (n !== pinned) findings.push(`stack/skills/${d}/SKILL.md: carries ${n} \`ask\` template(s), pinned at ${pinned} - `
+            + (n < pinned ? 'a stop went back to prose (check 61)' : 'a new stop raises the pin in ASK_FLOW_TEMPLATES (check 61)'));
+    }
+    return findings;
+}
+
 // 42. A plugin manifest that ENUMERATES a component directory owns two lists that must say the same
 // thing. Claude Code loads exactly what the array names, so a file added to `commands/` and not to
 // the array ships DEAD - it is in the package, downloaded by every install, and invisible to the
@@ -1301,14 +1272,12 @@ function main()
 {
     const dirs = localSkillDirs();
 
-    // SKILLS are shared across both manifests (and, cross-repo, with the
-    // cursor-stack twins). Parse each; claude-stack.sh is the reference for the
-    // dir/README/HTML checks, and a parity check proves the ps1 matches it.
-    const skills = {
-        'claude-stack.sh':  parseManifest(CLAUDE_SH, '"', 'SKILLS=('),
-        'claude-stack.ps1': parseManifest(CLAUDE_PS1, "'", '$Skills = @('),
-    };
-    const primary = skills['claude-stack.sh'];   // canonical SKILLS view (both are identical)
+    // SKILLS are cross-repo shared with the cursor-stack twins too (a separate repo, its own
+    // parity held by discipline). The one Node-side source is meta/stack-manifest.json.
+    const raw = readStackManifest();
+    const primary = manifestSkillMap(raw.skills);   // canonical SKILLS view
+    // The manifest's SKILLS rows name this repo's own skills by its GitHub slug.
+    const HOUSE_REPO = require('./install/brand.js').BRAND.slug;
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
@@ -1377,54 +1346,16 @@ function main()
     // 3. Every active envoydev manifest entry has a local directory.
     for (const [skill, repo] of primary.active)
     {
-        if (repo === 'envoydev/claude-stack' && !dirs.includes(skill))
+        if (repo === HOUSE_REPO && !dirs.includes(skill))
         {
-            flag(`SKILLS registers envoydev/claude-stack|${skill} but skills/${skill}/ does not exist`);
+            flag(`SKILLS registers ${HOUSE_REPO}|${skill} but skills/${skill}/ does not exist`);
         }
     }
 
-    // 4. Both manifests agree on the active SKILLS set.
-    assertSameSet('skill', Object.fromEntries(
-        Object.entries(skills).map(([label, m]) => [label, new Set(m.active.keys())])));
-
-    // 4b. The manifests must list the active SKILLS in the SAME ORDER, not
-    //     just the same set - the installers were aligned so a diff/review of one
-    //     against another stays line-for-line. parseManifest's Map preserves
-    //     insertion order, so the active keys ARE the install order. Compare each
-    //     against claude-stack.sh and report the first divergence per manifest.
-    const refOrder = [...primary.active.keys()];
-    for (const [label, m] of Object.entries(skills))
-    {
-        if (label === 'claude-stack.sh')
-        {
-            continue;
-        }
-
-        const order = [...m.active.keys()];
-        const n = Math.min(refOrder.length, order.length);
-        for (let i = 0; i < n; i++)
-        {
-            if (order[i] !== refOrder[i])
-            {
-                flag(`${label} SKILLS order diverges from claude-stack.sh at position ${i + 1}: '${order[i]}' vs '${refOrder[i]}'`);
-                break;
-            }
-        }
-    }
-
-    // 5. The ps1 'every skill (N)' inventory count matches active + commented entries.
-    for (const [label, file, parsed] of [['claude-stack.ps1', CLAUDE_PS1, skills['claude-stack.ps1']]])
-    {
-        const counted = fs.readFileSync(file, 'utf8').match(/every skill \((\d+)\)/);
-        if (counted)
-        {
-            const inventory = parsed.active.size + parsed.commented.size;
-            if (Number(counted[1]) !== inventory)
-            {
-                flag(`${label} says 'every skill (${counted[1]})' but lists ${inventory} entries`);
-            }
-        }
-    }
+    // 4/4b/5 retired: those checked the two frozen twins agreed with each other (same active set,
+    // same order) and that the ps1 twin's own inventory comment matched its count. Phase 7b (R33)
+    // deleted both twins - meta/stack-manifest.json is the only copy of the SKILLS list left, so
+    // there is nothing left to diverge from.
 
     // 6. Every backticked hyphenated token in skill files resolves to a known
     //    skill (any manifest entry, active or commented, or a local dir) or the
@@ -1436,11 +1367,8 @@ function main()
     //    capitalized token is only flagged when it case-insensitively COLLIDES
     //    with a known skill but the exact casing is wrong (a real reference typo).
     const known = new Set(dirs);
-    for (const m of Object.values(skills))
-    {
-        for (const k of m.active.keys()) known.add(k);
-        for (const k of m.commented.keys()) known.add(k);
-    }
+    for (const k of primary.active.keys()) known.add(k);
+    for (const k of primary.commented.keys()) known.add(k);
     const knownLower = new Map([...known].map(k => [k.toLowerCase(), k]));
     const matchedNonSkill = new Set();   // for check 11 (dead-allowlist reverse check)
     for (const dir of dirs)
@@ -1492,31 +1420,25 @@ function main()
     }
 
 
-    // 8-10. The agent scripts are the source of truth for EVERYTHING in use:
-    // skills, plugins, and MCPs (claude-stack.sh == claude-stack.ps1 for all
-    // three blocks). The stack HTML must agree with claude-stack.sh.
+    // 8-10. The agent scripts are the source of truth for EVERYTHING in use: skills, plugins, and
+    // MCPs. The stack HTML must agree with meta/stack-manifest.json.
     const html = parseStackHtml();
-    const pluginsClaudeSh = parseFlatBlock(CLAUDE_SH, '"', 'PLUGINS=(', '@');
-    const pluginsClaudePs1 = parseFlatBlock(CLAUDE_PS1, "'", '$Plugins = @(', '@');
-    const mcps = {
-        'claude-stack.sh':  parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|'),
-        'claude-stack.ps1': parseFlatBlock(CLAUDE_PS1, "'", '$Mcps = @(', '|'),
-    };
+    const pluginsManifest = manifestFlatSet(raw.plugins, (r) => r.id.split('@')[0]);
+    const mcpsManifest = manifestFlatSet(raw.mcps, (r) => r.name);
 
     // 18. Backticked skill names in the base template + claude rules must
     //     resolve too, or a renamed skill rots silently there (the gap check 6
     //     left open). Unlike a skill file, a template/rule legitimately names
-    //     plugins (`csharp-lsp`, `claude-hud`), MCPs (`angular-cli`,
-    //     `chrome-devtools`), subagents (`ng-build-error-resolver`), and the
+    //     plugins (`csharp-lsp`, `claude-hud`), MCPs (`playwright`,
+    //     `serena`), subagents (`ng-build-error-resolver`), and the
     //     superpowers workflow skills - so resolve against the full registration
     //     surface (skills + plugins + MCPs + agent names) plus NON_SKILL_TOKENS,
     //     and only flag a token that matches NONE of them. The same case-collision
     //     rule as check 6: a capitalized token is a finding only when it
     //     case-insensitively collides with a known skill (a casing typo).
-    const mcpsRef = mcps['claude-stack.sh'];   // shared set; canonical view
     const resolvable = new Set(known);   // all skills (dirs + every manifest selector)
-    for (const s of [...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]) resolvable.add(s);
-    for (const s of [...mcpsRef.active, ...mcpsRef.commented]) resolvable.add(s);
+    for (const s of [...pluginsManifest.active, ...pluginsManifest.commented]) resolvable.add(s);
+    for (const s of [...mcpsManifest.active, ...mcpsManifest.commented]) resolvable.add(s);
     if (fs.existsSync(AGENTS_DIR))
     {
         for (const f of fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md'))) resolvable.add(f.replace(/\.md$/, ''));
@@ -1575,7 +1497,7 @@ function main()
         }
     }
 
-    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== 'envoydev/claude-stack'));
+    const thirdPartyActive = new Set([...primary.active.keys()].filter(s => primary.active.get(s) !== HOUSE_REPO));
     const inventory = new Set([...thirdPartyActive, ...primary.commented.keys()]);
     for (const name of thirdPartyActive)
     {
@@ -1593,10 +1515,9 @@ function main()
         }
     }
 
-    // 9. Plugins: claude-stack.sh == claude-stack.ps1; every active plugin
-    //    appears in the HTML (and vice versa).
-    assertSameSet('plugin', { 'claude-stack.sh': pluginsClaudeSh.active, 'claude-stack.ps1': pluginsClaudePs1.active });
-    for (const name of pluginsClaudeSh.active)
+    // 9. Plugins: every active plugin appears in the HTML (and vice versa). Twin-vs-twin parity
+    //    retired with the twins (Phase 7b, R33) - one manifest, nothing left to compare it against.
+    for (const name of pluginsManifest.active)
     {
         if (!html.plugins.has(name))
         {
@@ -1606,17 +1527,14 @@ function main()
 
     for (const name of html.plugins)
     {
-        if (!pluginsClaudeSh.active.has(name) && !pluginsClaudeSh.commented.has(name))
+        if (!pluginsManifest.active.has(name) && !pluginsManifest.commented.has(name))
         {
             flag(`HTML references plugin '${name}' which is not in the installer PLUGINS block (active or commented)`);
         }
     }
 
-    // 10. MCPs: both twins agree, and the HTML MCP rows equal the manifest set exactly.
-    assertSameSet('MCP', Object.fromEntries(
-        Object.entries(mcps).map(([label, m]) => [label, m.active])));
-    const mcpsPrimary = mcps['claude-stack.sh'];
-    for (const name of mcpsPrimary.active)
+    // 10. MCPs: the HTML MCP rows equal the manifest set exactly.
+    for (const name of mcpsManifest.active)
     {
         if (!html.mcps.has(name))
         {
@@ -1626,7 +1544,7 @@ function main()
 
     for (const name of html.mcps)
     {
-        if (!mcpsPrimary.active.has(name) && !mcpsPrimary.commented.has(name))
+        if (!mcpsManifest.active.has(name) && !mcpsManifest.commented.has(name))
         {
             flag(`HTML lists MCP '${name}' which is not in the installer MCPS block (active or commented)`);
         }
@@ -1652,24 +1570,24 @@ function main()
     //     inline '(67)'. Hook / agent / rule counts come from the installer
     //     array sizes; the Rules count is validated against CLAUDE_RULES.
     const skillCount = primary.active.size;
-    const pluginCount = pluginsClaudeSh.active.size;
-    const mcpCount = mcpsPrimary.active.size;
+    const pluginCount = pluginsManifest.active.size;
+    const mcpCount = mcpsManifest.active.size;
     // Count unique hook FILES, not matcher entries - one hook wired on two tools
     // (guard-read-whole-file on Read + Bash) is still one hook.
-    const claudeHookCount = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0])).size;
-    const claudeAgentCount = parseStringArray(CLAUDE_SH, '"', 'AGENTS=(').length;
-    const claudeRuleCount = parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=(').length;
+    const claudeHookCount = new Set(manifestFileList(raw.hooks)).size;
+    const claudeAgentCount = manifestFileList(raw.agents).length;
+    const claudeRuleCount = manifestFileList(raw.rules).length;
 
-    // 12b. Stack hooks in claude-stack.html: the 'Stack hooks' section rows and the
-    //      c-hooks count must match the installer HOOKS=() array (names stripped of
+    // 12b. Stack hooks in alfred-code.html: the 'Stack hooks' section rows and the
+    //      c-hooks count must match the manifest's `hooks` list (names stripped of
     //      their .js, both directions; count tied to the array size - same rigor as
     //      the README hook count above).
-    const installerHooks = new Set(parseStringArray(CLAUDE_SH, '"', 'HOOKS=(').map(n => n.split('::')[0].replace(/\.js$/, '')));
+    const installerHooks = new Set(manifestFileList(raw.hooks).map((f) => f.replace(/\.js$/, '')));
     for (const name of installerHooks)
     {
         if (!html.hooks.has(name))
         {
-            flag(`active hook '${name}' is missing from the claude-stack.html Stack hooks section`);
+            flag(`active hook '${name}' is missing from the alfred-code.html Stack hooks section`);
         }
     }
 
@@ -1677,18 +1595,18 @@ function main()
     {
         if (!installerHooks.has(name))
         {
-            flag(`claude-stack.html Stack hooks row '${name}' is not in the installer HOOKS block`);
+            flag(`alfred-code.html Stack hooks row '${name}' is not in the installer HOOKS block`);
         }
     }
 
     const htmlHookCount = (fs.readFileSync(STACK_HTML, 'utf8').match(/id="c-hooks">(\d+)</) || [])[1];
     if (htmlHookCount == null)
     {
-        flag('claude-stack.html: no c-hooks count element found to verify against the HOOKS array');
+        flag('alfred-code.html: no c-hooks count element found to verify against the HOOKS array');
     }
     else if (Number(htmlHookCount) !== claudeHookCount)
     {
-        flag(`claude-stack.html: c-hooks count is ${htmlHookCount} but the installer holds ${claudeHookCount} hooks`);
+        flag(`alfred-code.html: c-hooks count is ${htmlHookCount} but the installer holds ${claudeHookCount} hooks`);
     }
 
     const readmeCount = (file, label, rowLabel) =>
@@ -1721,28 +1639,21 @@ function main()
         }
     }
 
-    // 12b. The on-disk agents/*.md set must equal the agents the installers
-    //      fetch (the AGENTS manifest array - both claude shells agree). A drift
-    //      means a committed subagent never installs, or the installer fetches an
-    //      agent that no longer exists in-repo.
-    const agentManifestSh = new Set(parseStringArray(CLAUDE_SH, '"', 'AGENTS=('));
-    const agentManifestPs1 = new Set(parseStringArray(CLAUDE_PS1, "'", '$Agents = @('));
-    assertSameSet('agent', { 'claude-stack.sh': agentManifestSh, 'claude-stack.ps1': agentManifestPs1 });
+    // 12b. The on-disk agents/*.md set must equal the agents the manifest carries. A drift means a
+    //      committed subagent never installs, or the seed fetches an agent that no longer exists.
+    const agentManifest = new Set(manifestFileList(raw.agents));
     const agentDiskSet = fs.existsSync(AGENTS_DIR)
         ? new Set(fs.readdirSync(AGENTS_DIR).filter(f => f.endsWith('.md')))
         : new Set();
-    assertSameSet('agent file', { 'agents/': agentDiskSet, 'claude-stack.sh AGENTS': agentManifestSh });
+    assertSameSet('agent file', { 'agents/': agentDiskSet, 'stack-manifest.json agents': agentManifest });
 
-    // 12d. Same parity for the CLAUDE rules: the on-disk rules/*.md set must equal the
-    //      CLAUDE_RULES manifest array in BOTH claude shells (both shells agree first, then the
-    //      on-disk set equals them). A drift means a committed rule never installs, or the
-    //      installer fetches a rule that no longer exists in-repo.
-    const ruleManifestSh = new Set(parseStringArray(CLAUDE_SH, '"', 'CLAUDE_RULES=('));
-    const ruleManifestPs1 = new Set(parseStringArray(CLAUDE_PS1, "'", '$ClaudeRules = @('));
-    assertSameSet('rule', { 'claude-stack.sh': ruleManifestSh, 'claude-stack.ps1': ruleManifestPs1 });
+    // 12d. Same parity for the CLAUDE rules: the on-disk rules/*.md set must equal the manifest's
+    //      `rules` list. A drift means a committed rule never installs, or the seed fetches a rule
+    //      that no longer exists.
+    const ruleManifest = new Set(manifestFileList(raw.rules));
     assertSameSet('rule file', {
         'rules/': new Set(fs.existsSync(CLAUDE_RULES_DIR) ? fs.readdirSync(CLAUDE_RULES_DIR).filter(f => f.endsWith('.md')) : []),
-        'claude-stack.sh CLAUDE_RULES': ruleManifestSh,
+        'stack-manifest.json rules': ruleManifest,
     });
 
     // 13. The Claude subagents reference house skills by backticked name (e.g.
@@ -1812,7 +1723,7 @@ function main()
     {
         if (/dotnet-/.test(line) && provenance.test(line))
         {
-            flag(`claude-stack.html has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
+            flag(`alfred-code.html has a dotnet-* line with a 'Vendored from' label - house dotnet-* skills are original work`);
         }
     }
 
@@ -1854,6 +1765,7 @@ function main()
         {
             flag(`${label} description is ${meta.description.length} chars (> ${DESC_LIMIT}) - trim it; every description is always-on context in every install`);
         }
+        if (label.startsWith('agents/')) for (const finding of lintAgentDescription(label, meta && meta.description)) flag(finding);
     }
 
     // 16. An agent told to invoke the Skill tool must carry 'Skill' in its tools:
@@ -1955,7 +1867,7 @@ function main()
     {
         if (!html.houseManual.has(name))
         {
-            flag(`claude-stack.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
+            flag(`alfred-code.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
         }
     }
 
@@ -1963,7 +1875,7 @@ function main()
     {
         if (!manualSkills.has(name))
         {
-            flag(`claude-stack.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
+            flag(`alfred-code.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
         }
     }
 
@@ -2020,8 +1932,8 @@ function main()
     {
         const rosters = {
             skills: new Set(dirs),
-            mcps: new Set([...mcpsPrimary.active, ...mcpsPrimary.commented]),
-            plugins: new Set([...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]),
+            mcps: new Set([...mcpsManifest.active, ...mcpsManifest.commented]),
+            plugins: new Set([...pluginsManifest.active, ...pluginsManifest.commented]),
         };
         for (const finding of lintEvidenceCatalog(evidenceCatalog, rosters))
         {
@@ -2055,7 +1967,7 @@ function main()
                     else if (/\.(md|js|sh|ps1)$/.test(e.name)) capFiles.push({ path: r, text: fs.readFileSync(full, 'utf8') });
                 }
             };
-            for (const d of ['stack/rules', 'stack/hooks', 'scripts/os', 'setup-plugin']) walk(path.join(ROOT, d), d);
+            for (const d of ['stack/rules', 'stack/hooks', 'scripts/install', 'setup-plugin']) walk(path.join(ROOT, d), d);
             for (const finding of lintCapabilityClaims(capFiles)) flag(finding);
         }
         catch (err)
@@ -2170,13 +2082,13 @@ function main()
     //     That block ships VERBATIM into every project's generated baseline-project-agent-capabilities.md,
     //     and nothing could tell a project carrying a two-release-old copy from a current one - the
     //     generated rule is never re-fetched, only re-generated by a user re-run. The stamp is what
-    //     `/claude-stack:validate` compares a project's copy against, so it has to be true here first.
+    //     `/alfred-code:validate` compares a project's copy against, so it has to be true here first.
     try
     {
-        const capPath = path.join(SKILLS_DIR, 'project-agent-capabilities', 'SKILL.md');
+        const capPath = path.join(SKILLS_DIR, 'alfred-capture-agent-capabilities', 'SKILL.md');
         const capLines = fs.readFileSync(capPath, 'utf8').split('\n');
         const start = capLines.findIndex((l) => l.startsWith('## Usage policy (fixed'));
-        if (start < 0) { flag('project-agent-capabilities/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
+        if (start < 0) { flag('alfred-capture-agent-capabilities/SKILL.md has no `## Usage policy (fixed ...)` heading - the stamped block moved or was renamed'); }
         else
         {
             const revLine = capLines[start + 1] || '';
@@ -2185,13 +2097,13 @@ function main()
             while (end < capLines.length && !capLines[end].startsWith('## ')) end += 1;
             const block = capLines.slice(start + 2, end).join('\n').trim();
             const actual = crypto.createHash('sha1').update(block).digest('hex').slice(0, 8);
-            if (!declared) flag('project-agent-capabilities/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
-            else if (declared !== actual) flag(`project-agent-capabilities/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
+            if (!declared) flag('alfred-capture-agent-capabilities/SKILL.md: the usage-policy block carries no `<!-- policy-rev: ... -->` line directly under its heading');
+            else if (declared !== actual) flag(`alfred-capture-agent-capabilities/SKILL.md: policy-rev is ${declared} but the block hashes to ${actual} - the stamped policy changed, so bump the rev (projects compare their generated copy against it)`);
         }
     }
     catch (err)
     {
-        flag(`project-agent-capabilities/SKILL.md is unreadable: ${err.message}`);
+        flag(`alfred-capture-agent-capabilities/SKILL.md is unreadable: ${err.message}`);
     }
 
     // 24. The shared-rules registry (meta/shared-rules.json) - the sanctioned multi-home
@@ -2208,23 +2120,24 @@ function main()
         flag(`meta/shared-rules.json is unreadable: ${err.message}`);
     }
 
-    // 27. The environment catalog (meta/environment.json) against what the installers actually
-    //     seed - both directions, both twins - plus the rename targets migrations.json names.
-    //     (25 and 26 are the optional-cite checks CLAUDE.md names by number - do not renumber those.)
+    // 58. The environment catalog (meta/environment.json) against what the Node seed actually
+    //     seeds - scripts/install/settings.js, the one place that writes an ALFRED_CODE_ key into
+    //     settings.json - plus the rename targets migrations.json names. (25 and 26 are the
+    //     optional-cite checks CLAUDE.md names by number - do not renumber those; this was itself
+    //     mislabeled 27, the suggests-edge check's own number, until F4.)
     try
     {
         const envCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'environment.json'), 'utf8'));
-        const shSrc = fs.readFileSync(CLAUDE_SH, 'utf8');
-        const ps1Src = fs.readFileSync(CLAUDE_PS1, 'utf8');
+        const seedSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'install', 'settings.js'), 'utf8');
         let migrationsCatalog = null;
         try { migrationsCatalog = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'migrations.json'), 'utf8')); }
         catch { /* its own lint reports an unreadable migrations.json */ }
         const commandSrc = {};
-        for (const cmd of ['init.md', 'configure.md', 'validate.md'])
+        for (const cmd of ['setup.md', 'configure.md', 'validate.md'])
         {
             commandSrc[`commands/${cmd}`] = fs.readFileSync(path.join(ROOT, 'setup-plugin', 'commands', cmd), 'utf8');
         }
-        for (const finding of lintEnvironmentCatalog(envCatalog, shSrc, ps1Src, migrationsCatalog, commandSrc))
+        for (const finding of lintEnvironmentCatalog(envCatalog, seedSrc, migrationsCatalog, commandSrc))
         {
             flag(finding);
         }
@@ -2261,7 +2174,7 @@ function main()
         const optional = optionalSkills(recs, graph, skillDirs);
         const optionalSeats = optionalAgents(recs, graph, agentNames);
         const closures = seedClosures(recs, graph);
-        const pluginNames = new Set([...pluginsClaudeSh.active, ...pluginsClaudeSh.commented]);
+        const pluginNames = new Set([...pluginsManifest.active, ...pluginsManifest.commented]);
         // each scanned file with the artifact that OWNS it, so check 26 can ask which stacks
         // ship it: a skill's references belong to the skill, an agent/rule to itself.
         const scanned = [];
@@ -2353,6 +2266,21 @@ function main()
 
     // 41. A reference over 100 lines opens with a table of contents in its first 15.
     for (const finding of lintReferenceContents(SKILLS_DIR, localSkillDirs())) flag(finding);
+    // 61. Every ask template marks exactly one option (Recommended), and the flow skills keep theirs.
+    {
+        const askFiles = [];
+        for (const d of localSkillDirs())
+        {
+            const files = [path.join(SKILLS_DIR, d, 'SKILL.md')];
+            const refDir = path.join(SKILLS_DIR, d, 'references');
+            if (fs.existsSync(refDir)) for (const r of fs.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
+            for (const f of files) if (fs.existsSync(f)) askFiles.push({ skill: d, file: path.relative(ROOT, f), text: fs.readFileSync(f, 'utf8') });
+        }
+        for (const finding of lintAskTemplates(askFiles)) flag(finding);
+        const flowTexts = {};
+        for (const d of ASK_FLOW_SKILLS) { const f = path.join(SKILLS_DIR, d, 'SKILL.md'); flowTexts[d] = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : undefined; }
+        for (const finding of lintFlowAskPresence(flowTexts)) flag(finding);
+    }
 
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
     //     is re-sent on EVERY message of every session and every subagent of an install that takes
@@ -2402,14 +2330,15 @@ function main()
     // 47. The marketplace manifest passes `claude plugin validate --strict`.
     for (const finding of lintPluginPlacement()) flag(finding);
     for (const finding of lintRepoRootReserved()) flag(finding);
-    // 48. The hooks plugin entry matches the installer's own wiring table.
+    // 48. The core's hooks block matches the manifest's own wiring table.
     for (const finding of lintHooksEntry()) flag(finding);
     // 49. The LIVE marketplace matches the generated entries - from Phase 3 the core is generated
-    // too, so a hand edit to any entry is drift, not a change.
+    // too, so a hand edit to any entry is drift, not a change; the two 1.x aliases are generated
+    // like the retired entries, and a `renames` key or a hooks entry is a finding.
     for (const finding of lintMarketplaceEntries()) flag(finding);
     // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
     for (const finding of lintAgentPreloads()) flag(finding);
-    // 51. Both twins' CORE_DEP_PLUGINS mirror the core entry's cross-marketplace dependencies.
+    // 51. The seed's CORE_DEP_PLUGINS mirrors the manifest's parked cross-marketplace dependencies.
     for (const finding of lintCoreDependencies()) flag(finding);
     // 52. Nothing the marketplace ships depends on a plugin `bin/` entry (spike S4: Windows NOT RUN).
     for (const finding of lintNoPluginBin()) flag(finding);
@@ -2417,11 +2346,17 @@ function main()
     for (const finding of lintMcpEntries()) flag(finding);
     // 54. No shipped file names an MCP tool by its BARE server spelling - it would never resolve.
     for (const finding of lintMcpToolNames()) flag(finding);
+    // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
+    for (const finding of lintStaleMcpToolNames()) flag(finding);
+    // 60. The inventory page's inline script parses - a broken string there renders an empty page.
+    for (const finding of lintPageScripts()) flag(finding);
     // 55. Our own workflows: no event field spliced into run, no floating third-party action, no
     //     pull_request_target checkout of the PR head.
     for (const finding of lintWorkflows(workflowFiles())) flag(finding);
     // 56. No retired plugin's name is left in shipped stack text.
     for (const finding of lintRetiredNames(stackTextFiles())) flag(finding);
+    // 57. The 1.x name stays in the legacy readers - every other tracked line spells alfred-code.
+    for (const finding of lintLegacyNames(repoTextFiles())) flag(finding);
     for (const finding of lintMarketplaceSchema()) flag(finding);
 
     if (findings.length > 0)
@@ -2436,7 +2371,7 @@ function main()
     }
 
     console.log(`lint-skills: clean (${dirs.length} skills, ${primary.active.size} active manifest entries, `
-        + `${pluginsClaudeSh.active.size} plugins, ${mcpsPrimary.active.size} MCPs; both manifests + HTML in sync; `
+        + `${pluginsManifest.active.size} plugins, ${mcpsManifest.active.size} MCPs; manifest + HTML in sync; `
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
         + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
@@ -2530,7 +2465,7 @@ function isTracked(base, rel)
 {
     try
     {
-        execFileSync('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
+        rt.execCommand('git', ['-C', base, 'ls-files', '--error-unmatch', rel], { stdio: 'ignore' });
         return true;
     }
     catch { return false; }
@@ -2538,30 +2473,31 @@ function isTracked(base, rel)
 
 // 51. The core declares no dependencies (a missing one disables it at load), so the installer puts
 // its cross-marketplace companion beside it on every run - the seed from CORE_DEP_PLUGINS in
-// install/plugins.js, each twin from its own copy. The three lists have to agree: a name added to the
-// seed and not the twins is a shell-route install without superpowers, and a name left in a twin
-// installs a plugin nothing needs.
-function lintCoreDependencies(shFile, ps1File, seedList)
+// install/plugins.js. Until Phase 7b this also had to agree with each twin's own copy of that list;
+// the twins are gone, so the remaining agreement is with the manifest: a core dependency is a plugin
+// row PARKED (`active: false`) rather than picked - the seed's list and the manifest's parked rows
+// have to name the same plugins, or a companion the seed installs is invisible to the catalog (a
+// stamp / `--installed-only` derivation would not know it shipped), or the manifest parks a plugin
+// the seed never installs (a row parked for no reason a fresh install can act on).
+function lintCoreDependencies(manifestFile, seedList)
 {
     const out = [];
-    const sh = fs.readFileSync(shFile || CLAUDE_SH, 'utf8');
-    const ps1 = fs.readFileSync(ps1File || CLAUDE_PS1, 'utf8');
-    const listOf = (text, re) =>
-    {
-        const m = text.match(re);
-        if (!m) return null;
-        return [...m[1].matchAll(/['"]([^'"]+)['"]/g)].map(x => x[1].split('@')[0]).sort();
-    };
-    const shNames = listOf(sh, /^CORE_DEP_PLUGINS=\(([^)]*)\)/m);
-    const psNames = listOf(ps1, /^\$CoreDepPlugins = @\(([^)]*)\)/m);
-    if (!shNames) out.push('claude-stack.sh has no CORE_DEP_PLUGINS=( ... ) block - the shell route would silently lose the core plugin\'s companions.');
-    if (!psNames) out.push('claude-stack.ps1 has no $CoreDepPlugins = @( ... ) block - the shell route would silently lose the core plugin\'s companions.');
-    if (!shNames || !psNames) return out;
-    if (shNames.join(',') !== psNames.join(','))
-        out.push(`CORE_DEP_PLUGINS differs across the twins: sh has [${shNames.join(', ')}], ps1 has [${psNames.join(', ')}].`);
-    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map(n => n.split('@')[0]).sort();
-    if (want.join(',') !== shNames.join(','))
-        out.push(`CORE_DEP_PLUGINS is [${shNames.join(', ')}] in the twins but [${want.join(', ')}] in the seed - update both twins.`);
+    let rows;
+    try { rows = readStackManifest(manifestFile).plugins; }
+    catch (err) { return [`meta/stack-manifest.json plugins[] could not be read: ${err.message}`]; }
+    if (!Array.isArray(rows) || !rows.length) return ['meta/stack-manifest.json has no plugins[] - the core would silently lose its cross-marketplace companion.'];
+
+    const want = (seedList || require('./install/plugins.js').CORE_DEP_PLUGINS).map((n) => n.split('@')[0]).sort();
+    if (!want.length) out.push('install/plugins.js CORE_DEP_PLUGINS is empty - the core plugin would lose its cross-marketplace companion.');
+
+    const parked = rows.filter((r) => r.active === false).map((r) => r.id.split('@')[0]).sort();
+    if (want.join(',') !== parked.join(','))
+        out.push(`CORE_DEP_PLUGINS is [${want.join(', ')}] in the seed but the manifest parks [${parked.join(', ') || 'nothing'}] as active:false - keep them in sync.`);
+
+    for (const name of want)
+        if (!rows.some((r) => r.id.split('@')[0] === name))
+            out.push(`CORE_DEP_PLUGINS names '${name}', which has no row in meta/stack-manifest.json plugins - the seed depends on a plugin the manifest never lists.`);
+
     return out;
 }
 
@@ -2605,14 +2541,17 @@ function lintMcpEntries()
     catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
 
     let wanted;
-    try { wanted = build.mcpPlugins(); }
+    let aliases;
+    try { wanted = build.mcpPlugins(); aliases = build.mcpAliasEntries(); }
     catch (err) { return [`the MCP entries could not be generated: ${err.message}`]; }
 
     let mkt;
     try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
     catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
 
-    for (const entry of wanted)
+    // The RETIRED ids of the renamed servers are generated too (build-marketplace.js mcpAliasEntries):
+    // one missing strands every project still enabled on it (S25), so they are held like the rest.
+    for (const entry of wanted.concat(aliases))
     {
         const live = (mkt.plugins || []).find(p => p && p.name === entry.name);
         if (!live)
@@ -2637,14 +2576,14 @@ function lintMcpEntries()
     }
 
     // Every catalog server has a plugin, and every plugin serves a catalog server. The catalog is
-    // the installer's MCPS block, which stays the one home for the NAMES even after the
+    // meta/stack-manifest.json's `mcps` list, which stays the one home for the NAMES even after the
     // registrations move - 28 call sites read a name out of it.
-    const catalog = parseFlatBlock(CLAUDE_SH, '"', 'MCPS=(', '|');
+    const catalog = manifestFlatSet(readStackManifest().mcps, (r) => r.name);
     const carried = new Set();
     for (const entry of wanted) for (const server of Object.keys(entry.mcpServers)) carried.add(server);
-    // playwright expands into one plugin per engine and context7 into remote + local; both map back
-    // to their catalog name, the way every installed-name reader already maps `playwright-*`.
-    const family = name => name.replace(/^playwright-.*/, 'playwright').replace(/^context7-.*/, 'context7');
+    // browser expands into one plugin per engine; each maps back to its catalog name, the way
+    // every installed-name reader already maps `browser-*`.
+    const family = name => name.replace(/^browser-.*/, 'browser');
     const families = new Set([...carried].map(family));
     for (const name of catalog.active)
         if (!families.has(name))
@@ -2655,10 +2594,9 @@ function lintMcpEntries()
 
     // S14: an unset `${VAR}` with no default stays LITERAL in a plugin entry - it does not become
     // empty. So a placeholder without a `:-` default only ships where the literal is the lesser
-    // evil, and each such case is named here rather than left to read as an oversight.
-    // SENTRY_SLUG is the one: `${SENTRY_SLUG:-}` would leave a trailing slash, which 404s every
-    // call, while the literal at least connects and names the missing variable in the CLI warning.
-    const LITERAL_OK = new Set(['SENTRY_SLUG', 'CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
+    // evil, and each such case is named here rather than left to read as an oversight. The two
+    // left are Claude Code's own variables, which the harness supplies to a plugin server itself.
+    const LITERAL_OK = new Set(['CLAUDE_PLUGIN_ROOT', 'CLAUDE_PROJECT_DIR']);
     for (const entry of wanted)
         for (const [server, spec] of Object.entries(entry.mcpServers))
         {
@@ -2727,11 +2665,97 @@ function lintMcpToolNames()
     return out;
 }
 
+// 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form;
+// this one catches the plugin form outliving its plugin - a renamed server (serena -> navigation)
+// leaves `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to
+// nothing, silently. The shipped names are read from the generator, never typed here. A line that
+// spells a plugin the stack does not ship ON PURPOSE (a test fixture, a third-party plugin in a usage
+// sample) carries the whole word `mcp-fixture` in a comment.
+const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
+const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
+function lintStaleMcpToolNames({ files, entries } = {})
+{
+    let shipped = entries;
+    if (!shipped)
+    {
+        try { shipped = require('./build-marketplace.js').mcpPlugins(); }
+        catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
+    }
+    const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
+    const out = [];
+    for (const { file, text } of files || shippedTextFiles(['stack', 'setup-plugin', 'meta', 'scripts']))
+        text.split('\n').forEach((line, i) =>
+        {
+            if (MCP_FIXTURE_MARKER.test(line)) return;
+            for (const [full, plugin, server] of line.matchAll(PLUGIN_TOOL_SPELLING))
+            {
+                if (!servers.has(plugin))
+                    out.push(`${file}:${i + 1} names \`${full}\`, but no marketplace entry named '${plugin}' carries a server - the tool resolves to nothing. Re-spell it to the shipped server; a deliberate fixture line carries \`mcp-fixture\` in a comment.`);
+                else if (!servers.get(plugin).has(server))
+                    out.push(`${file}:${i + 1} names \`${full}\`, but the plugin '${plugin}' carries no server '${server}' - one plugin, one server, same name (check 53).`);
+            }
+        });
+    return out;
+}
+
+// 60. The inventory page builds every table from ONE inline script, so a row string that does not
+// parse (an unescaped double quote) leaves the page blank in the browser - and every other check reads
+// that script as text. Each inline script goes through `node --check` on stdin; the finding maps the
+// parser's line back onto the page. A `src=` script has no body here and is not ours to check.
+function lintPageScripts({ file = 'docs/alfred-code.html', html } = {})
+{
+    let text = html;
+    if (text === undefined)
+    {
+        try { text = fs.readFileSync(path.join(ROOT, file), 'utf8'); }
+        catch (err) { return [`${file}: unreadable, so its script was not checked (${err.message})`]; }
+    }
+    const out = [];
+    for (const m of text.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g))
+    {
+        const r = spawnSync(process.execPath, ['--check', '-'], { input: m[1], encoding: 'utf8' });
+        if (r.status === 0) continue;
+        const bodyStart = text.slice(0, m.index + m[0].indexOf('>') + 1).split('\n').length;
+        const at = /^\[stdin\]:(\d+)/m.exec(r.stderr || '');
+        const line = at ? bodyStart + Number(at[1]) - 1 : bodyStart;
+        const why = ((r.stderr || '').split('\n').find((l) => /Error/.test(l)) || `exit ${r.status}`).trim();
+        out.push(`${file}:${line} - its inline script fails node --check (${why}), so the page renders no table`);
+    }
+    return out;
+}
+
+// The text files under the given roots, the way checks 54 and 59 read them.
+function shippedTextFiles(roots, root = ROOT)
+{
+    const files = [];
+    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
+    const walk = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+        catch { return; }
+        for (const d of entries)
+        {
+            const full = path.join(dir, d.name);
+            const rel = path.relative(root, full).split(path.sep).join('/');
+            if (skip.test(rel)) continue;
+            if (d.isDirectory()) { walk(full); continue; }
+            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
+            try { files.push({ file: rel, text: fs.readFileSync(full, 'utf8') }); } catch { /* unreadable: nothing to sweep */ }
+        }
+    };
+    for (const r of roots) walk(path.join(root, r));
+    return files;
+}
+
 // 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
 // disciplines inline under house terms; a leftover name points a seat at a plugin no install
 // carries, and the interaction rule already bans its code markers.
 const RETIRED_TERMS = [
-    { name: 'ponytail', re: /\bponytail/i, use: "'build lean' / 'question the need' / 'over-build review'" },
+    { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
+    // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
+    { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-capture-claude-md)' },
 ];
 function lintRetiredNames(files)
 {
@@ -2740,7 +2764,7 @@ function lintRetiredNames(files)
         text.split('\n').forEach((line, i) =>
         {
             for (const t of RETIRED_TERMS)
-                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - the house terms are ${t.use}`);
+                if (t.re.test(line)) out.push(`${file}:${i + 1} names the retired '${t.name}' plugin - ${t.use}`);
         });
     return out;
 }
@@ -2761,11 +2785,120 @@ function stackTextFiles(root = ROOT)
     return files;
 }
 
-// 48. The hooks plugin entry is GENERATED from the installer's own `HOOKS=(...)` wiring table, so
-// the plugin route and the settings.json route cannot drift while both exist. A matcher edited in
-// one place and not the other is exactly the bug this catches: the copied hook would still gate a
-// tool the plugin hook no longer sees, or the reverse.
-function lintHooksEntry()
+// 57. The 1.x name stays in the legacy readers. 2.0.0 renamed the stack to alfred-code, and the
+// old spellings are READ for the whole 2.x line - so a 1.x spelling left anywhere else is either a
+// reader nobody marked or a new thing named after a retired product. A line that must keep one
+// carries the marker - the whole word `legacy-name` in a comment (`// legacy-name`, `# legacy-name`,
+// `<!-- legacy-name -->`, or `legacy-name:` inside one), never the letters alone. What passes without
+// a marker, each for its reason:
+const LEGACY_NAME = /claude-stack|CLAUDE_STACK_/g; // legacy-name
+const LEGACY_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])legacy-name(?![\w-])/;
+const LEGACY_FILES = [
+    { re: /^docs\/[^/]+-evidence\.md$/, why: 'measured evidence keeps its words' },
+    { re: /^meta\/migrations\.json$/, why: 'a migration names the spelling it migrates from' },
+    { re: /^meta\/retired-entries\.json$/, why: 'the only record of what each 1.x per-stack entry carried' },
+];
+// JSON carries no comment. Only the marketplace's plugins[] passes: check 49 holds every entry there
+// to its generator (the core, the 1.x aliases from brand.js LEGACY, the retired entries) and check 53
+// the MCP plugins. Its name, owner and metadata are hand-edited at every release, so they are checked.
+const LEGACY_SPANS = [
+    { file: '.claude-plugin/marketplace.json', start: /^\s*"plugins"\s*:\s*\[/, why: 'generated entries, held to their generator by checks 49 and 53' },
+];
+// The per-stack entries 1.2.0 shipped keep their 1.x names while they are retired (plan decision
+// D2): a name listed in meta/retired-entries.json passes wherever it appears.
+function retiredEntryNames(root = ROOT)
+{
+    try { return JSON.parse(fs.readFileSync(path.join(root, 'meta', 'retired-entries.json'), 'utf8')).entries.map((e) => e.name); }
+    catch { return []; }
+}
+// The line range of the `{...}` or `[...]` block opening on the first line `start` matches, strings
+// skipped.
+function blockSpan(lines, start)
+{
+    const first = lines.findIndex((l) => start.test(l));
+    if (first < 0) return null;
+    let depth = 0;
+    let quote = '';
+    for (let i = first; i < lines.length; i++)
+    {
+        const line = lines[i];
+        for (let c = 0; c < line.length; c++)
+        {
+            const ch = line[c];
+            if (quote) { if (ch === '\\') c++; else if (ch === quote) quote = ''; continue; }
+            if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+            else if (ch === '{' || ch === '[') depth++;
+            else if ((ch === '}' || ch === ']') && --depth === 0) return [first, i];
+        }
+    }
+    return [first, lines.length - 1];
+}
+function lintLegacyNames(files, { retiredEntries = retiredEntryNames() } = {})
+{
+    const escaped = [...retiredEntries].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'));
+    const retiredRe = escaped.length ? new RegExp(`(?:${escaped.join('|')})(?![\\w-])`, 'g') : null;
+    const out = [];
+    for (const { file, text } of files)
+    {
+        if (LEGACY_FILES.some((a) => a.re.test(file))) continue;
+        const lines = text.split('\n');
+        const spans = LEGACY_SPANS.filter((s) => s.file === file).map((s) => blockSpan(lines, s.start)).filter(Boolean);
+        lines.forEach((line, i) =>
+        {
+            if (LEGACY_MARKER.test(line) || spans.some(([a, b]) => i >= a && i <= b)) return;
+            const rest = retiredRe ? line.replace(retiredRe, '') : line;
+            const hits = [...new Set(rest.match(LEGACY_NAME) || [])];
+            if (hits.length)
+                out.push(`${file}:${i + 1} spells the 1.x name (${hits.join(', ')}) - use alfred-code / ALFRED_CODE_, or mark a legacy reader's line \`legacy-name\` (\`// legacy-name\` in code, \`<!-- legacy-name -->\` in markdown).`);
+        });
+    }
+    return out;
+}
+// Every tracked text file: `git ls-files` when `root` is a repo's top level, else a walk of the
+// tree (the clean export the gate runs in has no .git), node_modules and .git skipped. A file
+// holding a NUL byte is binary and skipped.
+function repoTextFiles(root = ROOT)
+{
+    let names = null;
+    try
+    {
+        const top = rt.execCommand('git', ['-C', root, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (fs.realpathSync(top) === fs.realpathSync(root))
+            names = rt.execCommand('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean);
+    }
+    catch { names = null; }
+    if (!names)
+    {
+        names = [];
+        const walk = (dir, rel) =>
+        {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true }))
+            {
+                if (e.name === 'node_modules' || e.name === '.git') continue;
+                const r = rel ? `${rel}/${e.name}` : e.name;
+                if (e.isDirectory()) walk(path.join(dir, e.name), r);
+                else if (e.isFile()) names.push(r);
+            }
+        };
+        walk(root, '');
+    }
+    const files = [];
+    for (const name of names.sort())
+    {
+        let buf;
+        try { buf = fs.readFileSync(path.join(root, name)); } catch { continue; }   // tracked but deleted in the tree
+        if (buf.includes(0)) continue;
+        files.push({ file: name, text: buf.toString('utf8') });
+    }
+    return files;
+}
+
+// 48. The stack hooks ride the CORE entry (2.0.0, 'Fold into core'), GENERATED from the manifest's
+// own hooks[] wiring table, so the plugin route and the settings.json route cannot drift while both
+// exist. A matcher edited in one place and not the other is exactly the bug this catches: the copied
+// hook would still gate a tool the plugin hook no longer sees, or the reverse. `liveIn` is a parsed
+// marketplace for a test; the lint reads the committed file.
+function lintHooksEntry(liveIn)
 {
     const out = [];
     let build;
@@ -2773,22 +2906,26 @@ function lintHooksEntry()
     catch (err) { return [`the marketplace generator could not be loaded: ${err.message}`]; }
 
     let wanted;
-    try { wanted = build.hooksPlugin(); }
-    catch (err) { return [`the hooks entry could not be generated: ${err.message}`]; }
+    let stack;
+    try { wanted = build.coreEntry(); stack = build.hooksBlock(build.parseHookWirings()); }
+    catch (err) { return [`the core's hooks could not be generated: ${err.message}`]; }
 
-    let mkt;
-    try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
-    catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+    let mkt = liveIn;
+    if (!mkt)
+    {
+        try { mkt = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8')); }
+        catch (err) { return [`.claude-plugin/marketplace.json could not be read: ${err.message}`]; }
+    }
 
     const live = (mkt.plugins || []).find(p => p && p.name === wanted.name);
-    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`node scripts/build-marketplace.js --hooks-entry\`.`];
-    if (JSON.stringify(live) !== JSON.stringify(wanted))
-        out.push(`the \`${wanted.name}\` entry is STALE against the installer's HOOKS table - run \`node scripts/build-marketplace.js --hooks-entry\`.`);
+    if (!live) return [`.claude-plugin/marketplace.json has no \`${wanted.name}\` entry - run \`npm run marketplace\`.`];
+    if (JSON.stringify(live.hooks) !== JSON.stringify(wanted.hooks))
+        out.push(`the \`${wanted.name}\` core entry's hooks are STALE against the manifest's hooks table - run \`npm run marketplace\` (\`node scripts/build-marketplace.js --hooks-entry\` prints the wanted block).`);
 
     // Every wired hook file exists, and every hook file that exists is either wired or an engine.
-    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js']);
+    const ENGINES = new Set(['docs.js', 'memory.js', 'history.js', 'hook-prelude.js', 'fresh-session.js', 'shell-writes.js', 'hidden-chars.js']);
     const wired = new Set();
-    for (const blocks of Object.values(wanted.hooks))
+    for (const blocks of Object.values(stack))
         for (const block of blocks)
             for (const entry of block.hooks)
             {
@@ -2797,14 +2934,18 @@ function lintHooksEntry()
                 const m = String(entry.command).match(/^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/([a-z-]+\.js)"/);
                 if (!m)
                 {
-                    out.push(`the hooks entry runs \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
+                    out.push(`the core's stack hooks run \`${entry.command}\` - every hook launches as node "\${CLAUDE_PLUGIN_ROOT}/stack/hooks/<file>".`);
                     continue;
                 }
                 const file = m[1];
                 wired.add(file);
                 if (!fs.existsSync(path.join(ROOT, 'stack/hooks', file)))
-                    out.push(`the hooks entry wires ${file}, which is not in stack/hooks/.`);
+                    out.push(`the core wires ${file}, which is not in stack/hooks/.`);
             }
+    // The shell-guard dispatcher runs its guards in-process: a guard it lists is wired through it.
+    const dispatcher = require(path.join(ROOT, 'stack/hooks/shell-guards.js'));
+    if (wired.has(`${dispatcher.SELF}.js`))
+        for (const guard of dispatcher.GUARDS) wired.add(`${guard}.js`);
     for (const file of fs.readdirSync(path.join(ROOT, 'stack/hooks')))
     {
         if (!file.endsWith('.js') || ENGINES.has(file) || wired.has(file)) continue;
@@ -2817,6 +2958,12 @@ function lintHooksEntry()
         const text = fs.readFileSync(path.join(ROOT, 'stack/hooks', file), 'utf8');
         if (!text.includes('STACK HOOK GATES'))
             out.push(`stack/hooks/${file} carries no stand-down gate - a plugin copy would fire beside a still-wired project copy.`);
+        else if (file === `${dispatcher.SELF}.js`)
+        {
+            // Its guards gate themselves; its own gate is the copied-twin stand-down alone.
+            if (!text.includes(`yieldToCopiedTwin('${dispatcher.SELF}')`))
+                out.push(`stack/hooks/${file} does not step aside for its copied twin - yieldToCopiedTwin('${dispatcher.SELF}').`);
+        }
         else if (!text.includes(`standDown('${file.replace(/\.js$/, '')}')`))
             out.push(`stack/hooks/${file} names another hook in standDown() - the gate must name itself.`);
     }
@@ -2842,19 +2989,22 @@ function lintAgentPreloads()
 }
 
 // 49. Every plugin entry in the live marketplace is GENERATED - the placement decides what the core
-// ships and meta/retired-entries.json what each retiring entry still lists, so a hand-edited path
-// list, description or dependency is drift. The hooks entry has its own check (48) and is left to it.
-function lintMarketplaceEntries()
+// ships, meta/retired-entries.json what each retiring entry still lists, and brand.js LEGACY the two
+// 1.x ids listed as retired aliases - so a hand-edited path list, description or dependency is
+// drift. The core is the one PLUGIN; the aliases are the only other stack entries it accepts, each
+// exactly as generated. A `renames` key or a hooks entry is a finding: 2.0.0 ships neither (S11/S16,
+// and the fold). `liveIn` is a parsed marketplace for a test; the lint reads the committed file.
+function lintMarketplaceEntries(liveIn)
 {
     const findings = [];
-    let live;
+    let live = liveIn;
     let wanted;
     let build;
     try
     {
         build = require('./build-marketplace.js');
-        live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
-        wanted = build.buildEntries().concat(build.retiredMarketplaceEntries());
+        if (!live) live = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin/marketplace.json'), 'utf8'));
+        wanted = build.buildEntries().concat(build.aliasEntries(), build.retiredMarketplaceEntries());
     }
     catch (err)
     {
@@ -2869,14 +3019,20 @@ function lintMarketplaceEntries()
             findings.push(`marketplace.json entry ${entry.name} does not match the generated one - run \`npm run marketplace\`; it is generated, never hand-edited`);
     }
     const generated = new Set(wanted.map(e => e.name));
-    // Two entry families are generated by OTHER tables and have their own checks: the hooks entry
-    // (48, from the installer's HOOKS array) and the eight MCP plugins (53, from meta/mcp-pins.json
-    // plus the shapes in build-marketplace.js). Placement never produces either, so neither is drift.
-    const elsewhere = new Set(['claude-stack-hooks']);
-    try { for (const e of build.mcpPlugins()) elsewhere.add(e.name); } catch { /* 53 reports it */ }
+    if (live && Object.prototype.hasOwnProperty.call(live, 'renames'))
+        findings.push('marketplace.json carries a `renames` key - 2.0.0 ships none: a rename strands a 1.x install with no hooks and no skills (docs/rebrand-evidence.md S11, S16); the 1.x ids are listed as aliases instead - run `npm run marketplace`');
+    // The MCP plugins are generated by ANOTHER table and have their own check (53, from
+    // meta/mcp-pins.json plus the shapes in build-marketplace.js). Placement never produces them, so
+    // they are not drift.
+    const elsewhere = new Set();
+    try { for (const e of build.mcpPlugins().concat(build.mcpAliasEntries())) elsewhere.add(e.name); } catch { /* 53 reports it */ }
     for (const p of live.plugins || [])
-        if (p && !elsewhere.has(p.name) && !generated.has(p.name))
-            findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    {
+        if (!p || elsewhere.has(p.name) || generated.has(p.name)) continue;
+        if ((build.FOLDED_ENTRIES || []).includes(p.name))
+            findings.push(`marketplace.json carries ${p.name}, whose hooks folded into the core in 2.0.0 - run \`npm run marketplace\`, which drops it`);
+        else findings.push(`marketplace.json carries ${p.name}, which the placement does not produce - remove it or give it a home in plugin-placement.js`);
+    }
     return findings;
 }
 
@@ -2886,13 +3042,13 @@ function lintMarketplaceEntries()
 function lintMarketplaceSchema()
 {
     const out = [];
-    try { execFileSync('claude', ['--version'], { stdio: 'ignore' }); }
+    try { rt.execCommand('claude', ['--version'], { stdio: 'ignore' }); }
     catch
     {
         console.log('lint-skills: the claude CLI is absent - `claude plugin validate --strict` NOT RUN.');
         return out;
     }
-    try { execFileSync('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+    try { rt.execCommand('claude', ['plugin', 'validate', ROOT, '--strict'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch (err)
     {
         const said = (String(err.stdout || '') + String(err.stderr || '')).trim().split('\n').filter(Boolean).slice(-4).join(' | ');
@@ -2902,11 +3058,13 @@ function lintMarketplaceSchema()
 }
 
 // The environment catalog (meta/environment.json) is the ONE list the three guided commands read
-// for the settings.json `env` block - and the installers are what actually seed it. A key in the
-// catalog that no installer seeds is a promise the walk cannot keep; a key an installer seeds that
-// the catalog omits is invisible to setup, configure and validate. Both directions fail here, per
-// twin, so the drift cannot ship.
-function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
+// for the settings.json `env` block - and the Node seed (scripts/install/settings.js) is what
+// actually seeds it. Unlike the frozen twins, settings.js seeds most rows GENERICALLY, looping over
+// this very catalog (applyEnv's absent-only pass) - so there is nothing to compare there, that
+// direction is true by construction. The four rows it names LITERALLY - the two `written: true` keys
+// it sets outside that loop, and the two DECISIONS (docs versioning, hooks-off) it special-cases by
+// name - are the ones a rename can desync, so those are checked against the seed's own source text.
+function lintEnvironmentCatalog(catalog, seedSrc, migrations, commandSrc)
 {
     const out = [];
     // The three guided commands must READ the catalog, not a list typed into their prose - that is
@@ -2925,8 +3083,17 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         return ['environment.json has no `env` array - the guided commands would read an empty environment layer'];
     }
 
-    const seededSh = new Set([...shSrc.matchAll(/env\["(CLAUDE_[A-Z0-9_]+)"\]\s*=/g)].map(m => m[1]));
-    const seededPs1 = new Set([...ps1Src.matchAll(/Add-Member -NotePropertyName (CLAUDE_[A-Z0-9_]+)/g)].map(m => m[1]));
+    // migrations.json keeps its history's words under the 1.x prefix; read here under the catalog's
+    // own name, via the SAME prefix mapping applyEnv runs at install time (meta/migrations.json is
+    // the one source, not a hard-coded regex).
+    const { prefixRenames } = require('./install/env-migrations.js').envMigrations(migrations);
+    const current = (key) =>
+    {
+        for (const [from, to] of prefixRenames)
+            if (key.startsWith(from)) return to + key.slice(from.length);
+        return key;
+    };
+    const namedInSeed = new Set([...seedSrc.matchAll(/ALFRED_CODE_[A-Z0-9_]+/g)].map((m) => current(m[0])));
     const keys = new Set();
     for (const row of rows)
     {
@@ -2935,16 +3102,15 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
         keys.add(row.key);
         if (typeof row.default !== 'string') { out.push(`environment.json ${row.key} has no string \`default\` - the seed value and the walk's shown default come from it`); }
         if (!row.what) { out.push(`environment.json ${row.key} has no \`what\` - the walks print it, so a row without one cannot be asked about`); }
-        if (!seededSh.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.sh - the catalog promises a key no install writes`); }
-        if (!seededPs1.has(row.key)) { out.push(`environment.json ${row.key} is not seeded by claude-stack.ps1 - the twins must seed the same set`); }
+        if (row.written && !namedInSeed.has(row.key)) { out.push(`environment.json ${row.key} is marked written, but scripts/install/settings.js never names it literally - the Node seed would never set it`); }
     }
-    for (const key of seededSh)
+    // The two DECISIONS are special-cased by literal key name, never fed through the generic loop -
+    // both a catalog row and a mention in the seed's own source are required, or the special case
+    // silently stops applying on one side.
+    for (const key of ['ALFRED_CODE_DOCS_VERSIONING', 'ALFRED_CODE_HOOKS_OFF'])
     {
-        if (!keys.has(key)) { out.push(`claude-stack.sh seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
-    }
-    for (const key of seededPs1)
-    {
-        if (!keys.has(key)) { out.push(`claude-stack.ps1 seeds ${key}, which environment.json does not list - setup/configure/validate would never show it`); }
+        if (!keys.has(key)) { out.push(`scripts/install/settings.js special-cases ${key}, which environment.json does not list`); }
+        if (!namedInSeed.has(key)) { out.push(`${key} is a catalog row, but scripts/install/settings.js does not name it - the special case moved or was removed`); }
     }
     // setup asks the `ask: true` rows on ONE AskUserQuestion screen, and the tool caps a call at four
     // questions; a row with `asked_with` rides along with another row's question. Past four, the
@@ -2957,8 +3123,8 @@ function lintEnvironmentCatalog(catalog, shSrc, ps1Src, migrations, commandSrc)
     {
         const r = m.rename_settings_env;
         if (!r) { continue; }
-        if (!keys.has(r.to)) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
-        const row = rows.find(x => x.key === r.to);
+        if (!keys.has(current(r.to))) { out.push(`migrations.json '${m.id}' renames ${r.from} to ${r.to}, which environment.json does not list`); }
+        const row = rows.find(x => x.key === current(r.to));
         if (row && row.renamed_from !== r.from) { out.push(`environment.json ${r.to} does not record renamed_from '${r.from}' - validate reads it to spot the old spelling on disk`); }
     }
 
@@ -2972,8 +3138,12 @@ module.exports = {
     lintHooksEntry,
     lintMcpEntries,
     lintMcpToolNames,
+    lintStaleMcpToolNames,
+    lintPageScripts,
     lintRetiredNames,
     stackTextFiles,
+    lintLegacyNames,
+    repoTextFiles,
     lintCoreDependencies,
     lintNoPluginBin,
     lintMarketplaceEntries,
@@ -2981,10 +3151,11 @@ module.exports = {
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,
-    paths: { ROOT, SKILLS_DIR, CLAUDE_SH, CLAUDE_PS1, AGENTS_DIR, CLAUDE_RULES_DIR },
-    parseManifest,
-    parseStringArray,
-    parseFlatBlock,
+    paths: { ROOT, SKILLS_DIR, MANIFEST_JSON, AGENTS_DIR, CLAUDE_RULES_DIR },
+    readStackManifest,
+    manifestSkillMap,
+    manifestFileList,
+    manifestFlatSet,
     localSkillDirs,
     lintEvidenceCatalog,
     lintPluginSettings,
@@ -2997,11 +3168,16 @@ module.exports = {
     lintPreloadClaims,
     lintOptionalCites,
     lintPluginCites,
+    lintAgentDescription,
     lintAgentTools,
     lintAgentMemoryTools,
     MEMORY_TOOLS,
     lintReferencePointers,
     lintReferenceContents,
+    lintAskTemplates,
+    lintFlowAskPresence,
+    ASK_FLOW_SKILLS,
+    ASK_FLOW_TEMPLATES,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

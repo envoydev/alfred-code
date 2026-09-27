@@ -5,15 +5,13 @@ description: "Load before creating or editing any `.cs` file - writing, reviewin
 
 # C# Conventions
 
-For any BCL or NuGet API surface not pinned down here, resolve signatures with the `context7` MCP rather than memory - never by grepping the NuGet cache or decompiled sources (measured in a sibling leaf: ~5.2k tokens grep-ing minified bundles for an answer the live MCP held; the routing line lived only in a router skill this leaf never loads).
+For any BCL or NuGet API surface not pinned down here, resolve signatures with the `documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
-C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces, 120-char line limit, file-scoped namespaces) and `EnforceCodeStyleInBuild=true`.
+C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces, file-scoped namespaces) and `EnforceCodeStyleInBuild=true`.
 
-**Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework / C# 7.3 delta is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
+**Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta - the C# 7.3 ceiling, the polyfill packages, the SynchronizationContext async caveat - is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
 **Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
-
-On a .NET Framework 4.8 (net48) codebase the C# 7.3 language ceiling, the polyfill packages, and the SynchronizationContext async caveat differ from this floor - those deltas are in `references/net-framework-48.md`.
 
 Specialized concerns route through the .NET router skill - the one whose description maps each work area (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) to its focused skill - where the install has it: load the skill it names, and with no router match work from the skills already loaded. This file stays the style and runtime baseline only.
 
@@ -140,7 +138,7 @@ Behavior, I/O, and composition rules.
 - Never call `DateTime.Now` for measurements - use `Stopwatch`.
 
 ## Async, disposal, and JSON
-Read `references/runtime-behavior.md` before writing async or cancellation code, a type that owns a resource, or `System.Text.Json` configuration: it carries the house additions to the async baseline, the dispose rules and the JSON defaults. When the change is genuinely concurrent rather than merely async - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>`, bounded parallelism - open `references/concurrency.md` instead. Placement decision: those three fire on a specific kind of edit, not on every `.cs` touch this skill is attached to, so they sit one hop out while every rule a routine edit needs stays inline here.
+Read `references/runtime-behavior.md` before writing async or cancellation code, a type that owns a resource, or `System.Text.Json` configuration: it carries the house additions to the async baseline, the dispose rules and the JSON defaults. When the change is genuinely concurrent rather than merely async - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>`, bounded parallelism - open `references/concurrency.md` instead.
 
 ## Exception handling and Result pattern
 - Distinguish expected outcomes from exceptional failures. Validation, not-found, and business-rule failures are expected - return a result type rather than throwing. Prefer a domain-specific result (a sealed record with `Success` / `Failed` factory methods and an error-code enum, e.g. `CreateOrderResult`) over a generic `Result<T>` / `OneOf<,>` when the operation's failure modes are known.
@@ -175,3 +173,7 @@ Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and termina
 - No circular dependencies between namespaces.
 - Never inject a shorter-lifetime service into a longer-lifetime one (captive dependency). Use `IServiceScopeFactory` or a `Func<T>` factory for cross-lifetime access.
 - Composition mechanics - grouping a feature's registrations behind an `Add*` extension, keyed services, factory registration, and `TryAdd` - are `references/dependency-injection.md`; this section owns only the lifetime rules.
+
+## Prove it
+
+Before any done word on a `.cs` change, run `dotnet build` and quote its summary line - no new warning or error is what shows the rules above held (style included, with `EnforceCodeStyleInBuild` on); re-reading the diff is not a check.

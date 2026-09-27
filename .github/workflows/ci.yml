@@ -21,11 +21,6 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
-    # The suite drives the installers hundreds of times on runners that carry no uvx, csharp-ls or
-    # typescript-language-server on purpose: skip their prerequisite warnings and the Windows serena
-    # uv-cache steps (a real uv cache never exists here). Every test inherits it through process.env.
-    env:
-      CLAUDE_STACK_SKIP_PREREQS: '1'
     strategy:
       fail-fast: false
       matrix:

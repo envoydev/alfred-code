@@ -1,16 +1,19 @@
 ---
-description: "FAST refresh of an existing claude-stack install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (pinned MCPs re-resolved and re-registered, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is init."
+description: "FAST refresh of an existing Alfred Code install - no selection questions (one ask only when the release adds an item this install would not otherwise carry): bring everything currently installed to the newest release, MCP runtimes and plugins included (MCPs re-registered at the release's own pins, then VERIFIED against the manifest shape and repaired where a registration drifted - `claude mcp add` over an existing name exits 0 without writing, so a stale entry used to survive every update; `claude plugin update` per installed stack plugin, at the scope the plugin is actually installed at) AND prune what the stack itself deleted or renamed upstream since the stamped install. The common case (upstream removed nothing) is one script-driven pass: the installer's --installed-only reads the install back and refreshes it, nothing else loads. The prune list is computed from the GitHub compare between the stamp and the new snapshot, never guessed - plus the snapshot's meta/migrations.json entries for retired GENERATED artifacts (existence-detected, e.g. the legacy inject-code-style hook) that a file compare can never name. User-authored artifacts and the generated baseline-project-*.md / project-code-style.md rules can never be touched. One confirmation before anything is deleted. Works with no newer plugin: the snapshot's own pins move the library copies, hooks and MCPs. NOT for choosing items to add or drop beyond what the release itself added - that is the sibling configure command; not a first install - that is setup."
 disable-model-invocation: true
 ---
 
-# Update the Claude stack - refresh everything, prune what upstream removed
+# Update Alfred Code - refresh everything, prune what upstream removed
 
 You are refreshing an existing install to the newest release, unchanged in shape: the same
-items, new content - including the MOVING parts: the installer re-resolves every pinned MCP
-runtime to its newest published version and re-registers it, and runs `claude plugin update` on
+items, new content - including the MOVING parts: the installer takes every MCP runtime at the
+release's own pin (`meta/mcp-pins.json`, never a registry lookup) and re-registers it, and runs `claude plugin update` on
 each installed stack plugin after refreshing the marketplaces, so an update leaves no MCP or
 plugin behind on an old version - plus removing the artifacts the STACK removed upstream, which a plain
-refresh leaves orphaned forever. The deterministic work lives in scripts, not in this chat:
+refresh leaves orphaned forever. **No newer plugin is needed:** the snapshot is the release this
+run installs, so the library copies (skills, agents, rules), the hook engines and every MCP move to
+THAT release's content and pins whether or not `claude plugin update` finds anything newer - an
+`already newest` plugin line is a normal run, never a reason to stop. The deterministic work lives in scripts, not in this chat:
 the installer's `--installed-only` reads the install back (disk, plugin entries, the off-state it
 wrote) and closes its dependencies itself, and `stamp-compare.js` computes the upstream delta - you orchestrate and report.
 Measured before this split, a model-driven walk grew the session ~40k tokens; keep the fast
@@ -19,6 +22,69 @@ not the characters.** The fast path is 5-6 Bash calls and nothing else. Content 
 small half of the bill: one audited run read 11.1k of file content and cost 886.8k, because every
 message re-sends the whole carried session. An extra grep is not 200 tokens, it is another full
 context re-send - so fold reads together rather than trimming what each one returns.
+
+## Upgrading a 1.x install to 2.0.0
+
+A 1.x install upgrades through its OWN update command - `/claude-stack:update`, or <!-- legacy-name -->
+`/alfred-code:update` where the session lists that one. Nothing is run by hand:
+
+1. The refresh lands 2.0.0 under the old names: 2.0.0 lists `claude-stack` and `claude-stack-hooks` <!-- legacy-name -->
+   as retired aliases, so `plugin update` of each old id takes the new release into the cache.
+2. The 2.0.0 installer installs `alfred-code` at the old core's scope and marketplace key - a 1.x
+   GLOBAL install (its stamp lives in the account dir, not the project yet) keeps USER scope on this
+   first run whatever `--scope` the 1.3.0 update body itself passed, logging
+   `scope: this project is a 1.x global install - migrated at user scope (the passed --scope <x> is
+   ignored on this first run)` when a different one was passed (`node
+   "$TMP/repo/scripts/install/stamp.js" scope .` reads `user` for it from then on) - and only
+   once that took, removes the old entries - the retired per-stack ones first, then both aliases. It
+   also renames every `CLAUDE_STACK_*` setting to `ALFRED_CODE_*` (one log line per key) and replaces <!-- legacy-name -->
+   `claude-stack.stamp` with `alfred-code.stamp`. <!-- legacy-name -->
+3. Restart Claude Code once: the commands are `/alfred-code:*` from then on.
+
+A failed install of the new core removes nothing - the old core keeps running - and the run prints
+the exact `claude plugin install` command to run before updating again. A 1.x core at another scope
+is kept for the projects that use it, with its uninstall command printed. The install keeps its
+marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
+`alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
+
+**Renamed in 2.0.0.** The `project-*` skills and the two failure diagnosers take grouped `alfred-*`
+names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
+prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
+docs they write keep their paths (`<docs-path>/architecture/`, `code-style/`, `test-coverage/`,
+`related-projects/`, `quality/`, `loops/`), and so do the generated rules whose FILE names embed an
+old name (`baseline-project-related-context.md`, `baseline-project-agent-capabilities.md`).
+A 1.x global install leaves its account skill copies behind: the `were moved from` line names them
+with their `rm -rf`, the renamed ones apart because they load BESIDE the new names - report it whole.
+`/alfred-loop-quality` now works a code-quality assessment by tier, with the `loops/`
+prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a project may rely on.
+
+| was | now |
+|---|---|
+| `/project-solve-task` | `/alfred-task-solve` |
+| `/project-solve-cross-task` | `/alfred-task-solve-cross` |
+| `/project-build-from-scratch` | `/alfred-task-build-from-scratch` |
+| `/project-solution-design` | `/alfred-task-design` |
+| `/project-implementer` | `/alfred-task-implement` |
+| `/project-verify-plan` | `/alfred-task-verify-plan` |
+| `/project-verify-code` | `/alfred-task-verify-code` |
+| `/project-version-upgrade` | `/alfred-task-version-upgrade` |
+| `/project-diagnose-failure` | `/alfred-issue-diagnoser` |
+| `/project-ci-failure-signatures` | `/alfred-issue-signatures-ci` |
+| `/project-runtime-failure-signatures` | `/alfred-issue-signatures-runtime` |
+| `/project-architecture-analyzer` | `/alfred-capture-architecture` |
+| `/project-architecture-quality-analyzer` | `/alfred-capture-architecture-quality` |
+| `/project-code-style-analyzer` | `/alfred-capture-code-style` |
+| `/project-test-coverage-analyzer` | `/alfred-capture-test-coverage` |
+| `/project-related-context` | `/alfred-capture-related-projects` |
+| `/project-agent-capabilities` | `/alfred-capture-agent-capabilities` |
+| `/project-stack-usage-analyzer` | `/alfred-capture-stack-usage` |
+| `/project-first-look` | `/alfred-capture-first-look` |
+| `/project-quality-loop` | `/alfred-loop-quality` |
+| `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
+| `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
+| `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
+| seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
+| seat `runtime-failure-diagnoser` | seat `alfred-issue-diagnoser-runtime` |
 
 ## 0. Where to run it
 
@@ -42,11 +108,11 @@ surface where the rule forbidding it cannot yet exist).
 but only out of a session that is actually loaded. Measure before you ask: this session's own
 per-message context is `input + cache_read + cache_creation` off the last assistant message in the
 transcript. Ask ONLY when that figure is past the same trigger `guard-fresh-session-start.js` uses
-- the tier's own absolute trigger, `CLAUDE_STACK_FRESH_SESSION_200K` (default 150,000) or
-`CLAUDE_STACK_FRESH_SESSION_1M` (default 400,000), or `CLAUDE_STACK_FRESH_SESSION_DEFAULT`
+- the tier's own absolute trigger, `ALFRED_CODE_FRESH_SESSION_200K` (default 150,000) or
+`ALFRED_CODE_FRESH_SESSION_1M` (default 400,000), or `ALFRED_CODE_FRESH_SESSION_DEFAULT`
 (default 180,000) when the window is neither of those two sizes or cannot be read at all - which
 one applies comes from the session model's row in `.claude/hooks/model-windows.json`, else
-`CLAUDE_STACK_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
+`ALFRED_CODE_DEFAULT_CONTEXT_WINDOW` - or when that hook has already injected
 the ask into this turn. Below the trigger, or when the figure cannot be read at all, SKIP the ask
 silently and go to step 1: an ask with no measurement behind it is the failure this replaced
 (measured: it fired on the FIRST message of a brand-new session, twice in one run, and could quote
@@ -84,12 +150,16 @@ or a user 'no'). The protocol's 'Narrate, don't trace' section governs every too
 machinery, no pasted output, one narration line between steps.
 
 ## 1. Preconditions
-Project mode: cwd has a populated `.claude/` (skills/agents/rules/hooks present). Global mode:
-the account dir holds the skills (the installer lays agents/rules/hooks only into a git repo's
-`.claude/`, whatever the scope - a global refresh is skills-only). Nothing installed in either place -> stop and route to the
-sibling `/claude-stack:init` command. The user names items to add or drop -> that is the
-sibling `/claude-stack:configure` command, not this one. OS: `darwin`/`linux` -> the sh
-installer; Windows -> the ps1 (via `pwsh`).
+`node "$TMP/repo/scripts/install/stamp.js" state .` prints one word (two for a worktree), read from the install records
+the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp`, a copied `hooks/docs.js`) in this <!-- legacy-name -->
+repo, its git top level or a worktree's main checkout - never from `.claude/skills` or
+`.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
+the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-global` is a 1.x GLOBAL install whose stamp still
+sits in the account dir: this command is its route - step 2's preflight reads that stamp and the
+installer moves it into the project. `installed` / `initialised` -> go on. Every scope - project,
+user or local - keeps the stamp, the library copies and the settings in the project's `.claude/`,
+so there is one mode. The user names items to add or drop -> that is the sibling
+`/alfred-code:configure` command, not this one. One installer on every OS (step 3).
 
 ## 2. Compute the delta since the stamp - ONE call
 Everything this step needs comes back from one script in the snapshot:
@@ -98,7 +168,9 @@ Everything this step needs comes back from one script in the snapshot:
 node "$TMP/repo/scripts/update-preflight.js" --snapshot "$TMP/repo" --root .
 ```
 
-(Global mode: `--root <account dir> --settings .claude/settings.json` - a global install keeps its stamp in the account dir but writes `settings.json` into the project, as every seed does. A fork install passes `--repo <owner/name>`; a
+(It reads the scope's settings as the installer does - `settings.local.json` laid over
+`settings.json` at local scope, and at every other scope the stack keys `settings.local.json` holds. A `--space` install passes `--config-dir ~/.claude-<space>`, so a
+1.x global stamp is looked for in that account. A fork install passes `--repo <owner/name>`; a
 non-default stamp or settings path passes `--stamp` / `--settings`.) This is the WHOLE
 pre-install read - never hand-write a second probe for anything it already prints, and never
 open `meta/migrations.json` yourself: the catalog is a maintainer file with a 2,000-character
@@ -109,17 +181,18 @@ three-line existence check.
 It prints, in order:
 
 - `version: <old> -> <new>` then `base: <sha> head: <sha>` - lead your narration with the
-  version delta.
+  version delta. A `legacy-stamp: <file> - a 1.x global install; ...` line means the baseline is
+  the account's 1.x stamp: say once that this update moves it into the project.
 - `status<TAB>path` lines (`modified`/`added`/`removed`, `renamed` with `<- old-path`) filtered
   to stack-owned paths; the diff is what has been RELEASED since the stamp - work still on
   `develop` is invisible by design, never diff against it.
 - `changed: skills=<n> agents=<n> rules=<n> hooks=<n> template=<yes|no>` - the delta bucketed by
   install class. This is what step 7 names as refreshed, and what gates the
-  `/project-agent-capabilities` suggestion; the installer's log tail counts every file it
+  `/alfred-capture-agent-capabilities` suggestion; the installer's log tail counts every file it
   COPIED, which is all of them on every run, so it can never answer 'what changed'.
 - `migration: <id><TAB><detect kind>` per DETECTED entry, or `migrations: none detected`, each
-  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` / `env-reset:` /
-  `env-remove:` lines - everything you act on. A detected entry joins the prune list labeled
+  followed by its own indented `why:` / `then:` / `remove:` / `unwire:` / `env-rename:` /
+  `env-rename-prefix:` / `env-remove:` / `env-reset:` lines - everything you act on. A detected entry joins the prune list labeled
   `(migration: <why>)`. Do not open the catalog for any of it: an entry that did not fire prints
   nothing, and reading 'just that one entry by id' still pulls the whole file in (measured: 2,182
   of a 5,180-char read is the maintainer `_comment`, 42%, paid on every update of every project).
@@ -131,11 +204,19 @@ It prints, in order:
   the new one would come on). Verdicts: `arrives` (this refresh brings
   it, on), `renamed` (a copied item whose old copy is on disk - the update carries it), `offer`
   (only a yes brings it), `off` (the user's own off-state names it - a denied seat, a hook in
-  `CLAUDE_STACK_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
-  not be read).
-- `env-keys: <names>` - the scope's settings.json `env` KEY NAMES before the run, and the
+  `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
+  not be read). A rename whose old name the stamp's picks never named and the disk never held
+  prints no row - it was declined under that name.
+- `docs-move: offer <from> -> <to><TAB>tracked=<n> untracked=<n>[<TAB>ignored=yes][<TAB>conflicts=<n>]` - this install
+  still writes its docs under the OLD default `.claude/docs` (the stack's own seed, never a root the
+  user chose); `docs-move: repoint ...` (the old root holds nothing - the installer takes the new
+  default itself, report its log line) or `docs-move: none (<why>)` otherwise. Only `offer` is asked,
+  below.
+- `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
-  and neither do you. **Never dump that file** - a plain `cat` of it put a live 71-character
+  and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
+  ask below is answered by `/alfred-code:init`'s Unattended rule (init.md) instead of AskUserQuestion.
+  **Never dump that file** - a plain `cat` of it put a live 71-character
   `SENTRY_ACCESS_TOKEN` into a transcript twice in this collection. When you need to look again,
   the safe reads are `node "$TMP/repo/stack/hooks/guard-secret-value.js" --redacted <settings.json>`
   (every credential value shown as `<set (N chars)>`, the rest as written - the one form that
@@ -144,14 +225,17 @@ It prints, in order:
 
 **Environment migrations are the exception: they never join the prune list.** They act on the
 scope's settings.json `env`, and none of them can lose anything the user chose: `rename_settings_env`
-changes a KEY and carries the value across, and `remove_settings_env` drops a key this stack
+changes a KEY and carries the value across, `rename_settings_env_prefix` does the same for every key
+sharing an old PREFIX in one entry (the 2.0.0 rebrand's `CLAUDE_STACK_* -> ALFRED_CODE_*` is the only <!-- legacy-name -->
+one shipped so far), and `remove_settings_env` drops a key this stack
 RETIRED - one nothing reads any more, and where the key still means something outside this stack it
 carries the exact seeded value it is dropped at, so a hand-set value stays. The installer's env pass
 applies them during the refresh in both step 3 and step 4
 (renames, then removals, then the absent-only seeds, so a value set under the old name is never
 overwritten by the new key's default).
 Your job is to detect them before the run and NAME them in the report: `env: <old> renamed to <new>
-(value kept)`, `env: <key> removed (retired)`. New variables the release introduces need no
+(value kept)` for a single key, `env: <old-prefix>* renamed to <new-prefix>* (values kept)` for a
+prefix entry, `env: <key> removed (retired)`. New variables the release introduces need no
 catalog entry at all - the same pass seeds them absent-only - but report those too, as
 `env: <key> seeded (<value>)`, reading the file after the run rather than assuming.
 
@@ -178,8 +262,26 @@ take. Each taken offer becomes one `--add "<category> <name>"` on the installer 
 path runs, and so does every `renamed` row, unasked; every `was-off` row becomes one
 `--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh.
-Under `CLAUDE_STACK_SEED=shell` there is no `--add` to take an answer, so there is no ask either:
-the offers go in the report, routed to `configure`.
+
+**The docs root - ONE ask, and only on `docs-move: offer`.** 2.0.0 moved the default docs root from
+`.claude/docs` to `.alfred/docs`: Claude Code prompts for every write under `.claude/` - every plan,
+capture and commit receipt - denies it in `dontAsk`, and no allow rule lifts it
+(code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves without this answer. One
+AskUserQuestion, before the installer runs: **Move to .alfred/docs (Recommended)** - the `tracked`
+files move through `git mv` (history kept, staged as renames for the user to commit), the rest by
+rename, in one step, and the docs-root rule is re-stamped; nothing else is written - or **Keep at
+.claude/docs** - `ALFRED_CODE_DOCS_PATH=.claude/docs` becomes the user's own value and no later update
+asks again. `ignored=yes` means git never saw the old root: the move keeps it that way (the new root
+gets a `.gitignore` of `*` and `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say so in the Move
+option. The answer is `--docs-move move` or `--docs-move keep` on the installer call of whichever
+path runs. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one question
+each. A `conflicts=<n>` field means files already sit at the new root: do not ask - name the count,
+run without the flag (the old root stays in effect), and the next update offers again once they are
+moved. After a move the log carries `docs root: moved ...`, the `--log` call prints `restart: yes`,
+and until that restart this session writes under the NEW root - its loaded rule text still names
+the old one. Unattended, both asks take their Recommended option - the move overwrites nothing (a
+conflict already stops it) and adding the recommended items only adds - each logged as one
+`unattended: <question> -> <choice>` line.
 
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through
@@ -189,28 +291,34 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 post-install read below has a file that was actually written (the shared contract is in
 `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/claude-stack.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
-- **`CLAUDE_STACK_SEED=shell`** - the resolve line reported `seed=shell`, so the frozen OS twin runs instead. Unix: the same flags, with `bash "$TMP/repo/scripts/os/claude-stack.sh"` in place of the `node` call. Windows: `pwsh -File "$TMP/repo/scripts/os/claude-stack.ps1" update -Source "$TMP/repo" -Scope <scope> -InstalledOnly [-Space <name>] -KeepPins [-DocsVersioning git|local] [-MemoryLevel global|scoped|project] 2>&1 | tee "$TMP/install.log"` The twin does NOT migrate the per-stack entries retired in 1.3.0: it cannot copy their picks, so it leaves them installed and working until a Node-seed update copies the picks and removes them - say so when one is enabled.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--docs-move move|keep] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
-`--docs-versioning` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
+`--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
 --docs-versioning local`, or 'switch docs versioning to git') - never asked for, never inferred. The
-installer writes it over the current value and prints one `settings.json env: CLAUDE_STACK_DOCS_VERSIONING
+installer writes it over the current value and prints one `settings.json env: ALFRED_CODE_DOCS_VERSIONING
 <old> -> '<new>'` line; any other value is refused before anything is written. Without it, the key is
 only seeded when missing.
 
-`--memory-level` is passed ONLY when the user's own invocation names a value (`/claude-stack:update
+`--memory-level` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
 --memory-level project`, or 'move memory to the project level') - never asked for, never inferred: this
 is the no-questions fast path, and an existing registration is otherwise left exactly where it is. The
 installer re-points the registration to that level's database (nothing is copied or deleted) and
-prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; any other value is
-refused before anything is written (`--memory-level project` is refused outright at `--scope global`).
+prints `memory: level <old> -> <new>: <newPath> (old memories stay in <oldPath>)`; any value outside
+`global` / `scoped` / `project` is refused before anything is written. `--memory-level project` rides
+every scope, `--scope user` included: the plugin launcher resolves the db path per PROJECT at launch
+(never baked into the registration), and the full copy route - the one route that registers memory
+itself - registers it in this project's own `.mcp.json` at every scope.
 
 An install carrying no memory registration yet needs no flag at all - the `--installed-only`
 derivation now ADOPTS `baseline-memory` and the `memory` MCP the same way it adopts a new hook,
 whenever they are absent: the registration lands at `global` unless `--memory-level` named another
-level, the installer then imports this project's existing notes through the service once, and - only
-once that import succeeds - switches Claude's own memory off in THIS repo's own `.claude/settings.json`,
-even at global scope (never the account file, which would silence every other project's memory too).
+level. The notes import waits for `/alfred-code:init` - no run imports until the stamp's
+`initialised:` line holds a date (the log says `the notes import waits for /alfred-code:init`, and the
+close names init). Once it does, the installer imports this project's existing notes through the
+service once, and - only once that import succeeds - switches Claude's own memory off in THIS repo's
+own settings file (`.claude/settings.local.json` at local scope, else `.claude/settings.json`), at
+every scope (never the account file, which would silence every other project's memory too).
 A failed import leaves Claude's own memory ON and is logged as such, never retried into a false
 success; the old `MEMORY.md` / `memory/*.md` files are never deleted either way. Read the installer's
 log for what actually happened - the grep below carries both the `memory:` registration line and the
@@ -227,28 +335,31 @@ fix they name, and never continue to the prune, the close, or ad-hoc repair work
 breach spent 14 messages and 1.69M tokens on improvised forensics after exit 1 and then changed 226
 files under the user's `.claude` with no ask.
 
-Scope/space mirror how the install was laid down; `--keep-pins` is the default here - a fast
+`<scope>` comes from `node "$TMP/repo/scripts/install/stamp.js" scope .` - the same script
+validate.md uses, reading the stamp under either name, a 1.x `global` as `user`, anything else as
+`project` (`project`, `user` or `local`) - and `--space` the profile
+that owns the install; `--keep-pins` is the default here - a fast
 refresh must not flatten deliberate local model/effort pin edits. The refresh re-registers every MCP
 and then READS BACK what landed: at project scope the installer compares every stack-owned entry in
 `.mcp.json` against the manifest shape and rewrites the ones that drifted (`mcp repaired: <name>` in
 the log), because `claude mcp add` over a name the preceding `remove` did not clear prints 'already
-exists' and exits 0 - which is how consuming projects kept the pre-0.2.34 stdio sentry registration
-through update after update. Servers the project added by hand are never touched. Plugins are updated
+exists' and exits 0 - which is how consuming projects kept a stale stdio registration through update after
+update. Servers the project added by hand are never touched. Plugins are updated
 at the scope the listing says they are installed at and their versions are read back, so the log names
-each one as `x -> y` or `already newest` instead of asserting a refresh. The refresh re-registers every MCP;
-for sentry that means the constant `https://mcp.sentry.dev/mcp/${SENTRY_SLUG}` registration with
-the `Sentry-Bearer` header (an old plain-`Bearer` header, the broken v0.2.33-and-earlier default,
-migrates by itself; a deliberately headerless oauth registration is read back and kept). Playwright keeps its browsers the same
-way: every `playwright-<browser>` server is read back and re-registered (a legacy single `playwright` server
-migrates to `playwright-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
-for the refreshed server version, and the user's `/mcp` enable / disable toggles are left alone. Sentry
-environment plan, no question on this path: when sentry is installed, read the ACCOUNT
-`settings.json` env (`~/.claude/settings.json`, or the space's) and report - as ONE line in the
-close-out, with the file path - any of `SENTRY_SLUG` and (token mode) `SENTRY_ACCESS_TOKEN` still
-missing: the user adds them there by hand (`{ "env": { "SENTRY_SLUG": "<org>[/<project>]",
-"SENTRY_ACCESS_TOKEN": "<token>" } }`; never a project-level `.claude/settings.json`, its env does
-not reach `.mcp.json` - measured), exports them in the shell the installer runs in (the run writes
-every key it is handed into that file), or runs `/claude-stack:configure`, whose sentry plan asks the slug.
+each one as `x -> y`, `installed this run` (claude-hud on an install that lacked it) or `already newest` instead of asserting a refresh. On EVERY run where claude-hud is installed - this run or already - and the account has no `statusLine` yet, the run logs `claude-hud has no status line yet - run /alfred-code:init to set it up` - paste that line verbatim and name `/alfred-code:init` in the close. A server the 2.0.0 cut removed (`angular-cli`, `chrome-devtools`, `appium-mcp`, `sentry`, `context7-local`)
+is uninstalled by its stack spec only - a same-named plugin from another marketplace and a row at another
+scope are kept and logged with the uninstall command that removes them - and each removal prints its `add it back:`
+line; pass the removals, their add-back lines and every kept row's line through verbatim in the close-out. A pruned
+`context7-local` also logs `context7-local removed - if you ran /mcp disable context7 for it, run /mcp enable context7`
+- paste that line too, since the hosted server stays disabled by the user's own earlier command
+otherwise. A user-scope core move (this run's own, not a prior one) logs
+`core moved to alfred-code at user scope - other projects on this account keep their 1.x seat denies
+until each runs /alfred-code:update` - paste it and name that as a follow-up for the user's other
+projects. The browser server keeps its browsers the same
+way: every browser the stamp's `browser-engines:` names is updated in place, never installed over (a legacy single `playwright` server
+migrates to `browser-<its --browser>`, none = `chrome`), a `firefox` / `webkit` build is downloaded again
+at the release's pin, and no browser is switched on or off - the user's `/plugin` toggle stands. One the user uninstalled by hand
+comes back as the stamp's `browser-enabled:` last left it; a disabled browser the stamp does not name stays parked.
 
 **ONE post-install read.** When the installer returns, everything the report needs is in its log,
 so take it in a single call - never a tail, never a second grep. A tail is ~75% static boilerplate,
@@ -256,18 +367,21 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings\.json env:|docs (migration|domain)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
-registrations, each plugin's `x -> y` or `already newest`, the dependencies the new release
+registrations, each retired server's removal and its `add it back:` line, each retired row kept at another scope
+or parked, with its uninstall command, each plugin's `x -> y`, `installed this run` or `already newest`, the dependencies the new release
 pulled in, every env key the run renamed / removed / seeded / set (the installer prints one line each -
 so the ENVIRONMENT line is READ, never asserted), each capture doc moved onto its domain folder and each
 moved folder switched on as a domain (`docs migration` / `docs domain:` - report them as they read), the
 memory registration line and the importer's own `memory import:` line or error text (present whenever
 `--memory-level` was passed, the level changed, or an install gained the memory MCP for the first
 time this run - now the fast path's own default outcome whenever it was absent, not a special case),
-the credential presence lines, and the serena re-index hint. Add a marker to the pattern when the report needs another
+the credential presence lines, the navigation-server re-index hint, the 1.x-global-install scope line, the
+user-scope core-move line, the pruned `context7-local`'s `/mcp enable context7` line, and the
+claude-hud 'no status line yet' line. Add a marker to the pattern when the report needs another
 fact; do not add a call. Never tail the log instead - a tail is ~75% static boilerplate and misses
 the lines above it.
 
@@ -284,12 +398,11 @@ the raw grep.
 Presence, never the value - the line above already carries the installer's own `KEY=` presence
 output on most runs. Run this ONLY when that grep returned no `KEY=` line, and paste its lines
 as-is:
-`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" SENTRY_SLUG SENTRY_ACCESS_TOKEN CONTEXT7_API_KEY`
+`node "$TMP/repo/stack/hooks/guard-secret-value.js" --presence "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" CONTEXT7_API_KEY`
 (the same line runs on Windows - Claude Code's Bash tool is Git Bash, where `$env:USERPROFILE` is not a variable; a `--space <name>` install reads `~/.claude-<name>/settings.json`). Output is `KEY=set (N chars)` or `KEY=absent` - nothing else is ever printed; a shell dump of that file is rewritten by the same hook into its redacted view (every credential value shown as `<set (N chars)>`), and the Read tool on it is blocked.
 
-The slug is not a secret and can be typed anywhere; SENTRY_ACCESS_TOKEN and CONTEXT7_API_KEY
-(context7 `local` mode) never travel through the chat, either one - offer this copy-ready command
-for whichever key is missing, so the value goes from the user's clipboard into the file without
+CONTEXT7_API_KEY never travels through the chat - when it is missing and the user wants one, offer
+this copy-ready command, so the value goes from the user's clipboard into the file without
 passing through a transcript (it is not echoed, and it is not a shell argument either). **PASTE it
 into your reply. Never run it through Bash and never ask whether to run it** - it prompts for input
 this session cannot supply, it trips the credential guard, and the ask it generates has one
@@ -300,18 +413,15 @@ python3 -c "import getpass,json,pathlib;f=pathlib.Path('~/.claude/settings.json'
 ```
 
 On Windows: `$t = Read-Host 'value' -AsSecureString`, then write the same key with
-`ConvertFrom-SecureString -AsPlainText`. If the user pastes either value into the chat anyway, use
+`ConvertFrom-SecureString -AsPlainText`. If the user pastes the value into the chat anyway, use
 it for what they asked and END THE TURN on the rotation ask - it is in the transcript on disk now,
 and that is their decision to make, not one to leave unsaid. Then:
 
-- Reconcile the project's CLAUDE.md (step 6, project mode only - the step states when and why it
-  runs).
+- Reconcile the project's CLAUDE.md (step 6 - the step states when and why it runs).
 - Report per step 7 - version delta, refreshed counts from the installer's log tail, the
   `required:` additions it named, and the step-2 `new:` lines: one line naming what `arrives`,
   one naming what stays `off` (the user's own switch - say where it lives), the offers taken and
-  left, and any `unknown` (the listing could not be read - `configure` can take them). Under
-  `CLAUDE_STACK_SEED=shell` there is no `--add`: name the taken offers and route them to
-  `configure`.
+  left, and any `unknown` (the listing could not be read - `configure` can take them).
 - Hooks on the COPY route - and the installer does most of it for you. Hooks are an
   all-or-nothing layer on the `--installed-only` path: an install that HAS hooks receives every
   hook the release ships, and the run logs `installed-only: adopting hook <name>` for each one.
@@ -333,14 +443,7 @@ and that is their decision to make, not one to leave unsaid. Then:
 
 ## 4. Pruning path - confirm once, then refresh + prune
 The installer reads the install back itself (`--installed-only`), so the ask below needs only the
-compare. Under `CLAUDE_STACK_SEED=shell` - and only there - inventory the CURRENT selection from
-disk exactly as the sibling `configure` command's step 1
-(`${CLAUDE_PLUGIN_ROOT}/setup-plugin/commands/configure.md` - read it only on THIS path; command bodies do
-not co-load): skills dirs, `agents/*.md`, `rules/*.md` (excluding the GENERATED
-`baseline-project-*.md` and `project-code-style.md`), hooks (bare basenames, excluding the
-GENERATED legacy `inject-code-style.js`), mcps = the ROUTE decides: with a `<server>@claude-stack` MCP entry in the plugins listing the installed set is those entry NAMES folded back onto the catalog (`playwright-<browser>` -> `playwright`, `context7-local` -> `context7`, everything else is already its catalog name); without any such entry, the server names in `<repo>/.mcp.json`, plugins fail-soft and
-filtered to entries enabled for THIS project (the listing is machine-global; an unfiltered read
-re-submits a sibling repo's plugin to this project's refresh - measured) - never from memory.
+compare.
 
 Show the version delta, the refresh counts by category, and the NAMED prune list (migrations
 included, with their why). Ask ONE question through AskUserQuestion: proceed with refresh +
@@ -348,7 +451,7 @@ prune (recommended), or refresh only. Nothing is ever deleted silently; 'refresh
 step 3's installer run instead, then the report. For example:
 
 ```
-claude-stack 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
+alfred-code 0.1.0 -> 0.2.0 - refresh: 12 skills, 9 agents, 6 rules, 3 hooks
 prune: .claude/rules/web-conventions.md (renamed upstream; typescript-conventions.md carried over)
 ```
 
@@ -358,18 +461,13 @@ it) and every offer the step-2 ask took. A removed name needs no flag - this rel
 does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
-read-back exists for exactly that). Under `CLAUDE_STACK_SEED=shell` the frozen twin takes no
-`--add` and writes no seat deny, so it keeps the old route: selection = installed, minus the
-confirmed prune list, plus the new names of renames; write `raw.json`, run `stack-select.js
---selection "$TMP/raw.json" --emit "$TMP/selection.txt" --check`. A `required:` line (a dependency the new release introduced) is auto-kept and
+read-back exists for exactly that). A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
 and an MCP server added by hand, print exactly that way, and the installer leaves every one of
 them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never
 touched). It is excluded from the emitted selection and nothing more - list it in the report as
 `kept - not a stack item`. Only the compare list and the migrations prune. Blockers stop the run with their fixes -
-never update past one; warnings are listed and passed. Then run the twin as in step 3 but
-with `--selection "$TMP/selection.txt"` / `-Selection "$TMP/selection.txt"` in place of the installed-only
-flag.
+never update past one; warnings are listed and passed.
 
 ## 5. Prune
 Delete each item on the confirmed list, showing every command before running it. A deleted hook
@@ -381,13 +479,18 @@ parse-edit-rewrite,
 never regex, never touching other wiring). A migration's `then` line goes in the step-7 report
 as a next step - run nothing on the user's behalf.
 
-## 6. Reconcile the project's CLAUDE.md (project mode)
-Against the snapshot's `stack/CLAUDE.template.md`, ADDITIVELY, exactly as the sibling
-`configure` command's step 13: add sections the template gained, update the rules table for
-what this run pruned, never overwrite the project's own prose, show changes before writing.
-Skip in global mode.
+## 6. Reconcile the project's CLAUDE.md
+Read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline with
+`STACK=$TMP/repo`, exactly as the sibling `configure` command's step 13: its improve mode adds the
+sections the template gained and OFFERS a fix for what its check reports (never in the recommended
+option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
+table for what it pruned, the project's own prose is never overwritten, and every change is shown
+before writing.
+The installer has already re-spelled every renamed skill or seat name the stack wrote into
+`CLAUDE.md`, `.claude/CLAUDE.md` and the generated rules (one `renamed: <file> - <n> ...` line per
+file) - report those lines, and leave the names to it.
 
-**Run the compare in project mode whatever the delta says** - the template being unchanged
+**Run the compare whatever the delta says** - the template being unchanged
 UPSTREAM says nothing about whether THIS project's CLAUDE.md still matches it, and the
 template-unchanged skip left that question with no command that answers it: not update, which
 skipped, and not validate, which touches only the rules table. Measured: a user asked it twice,
@@ -410,13 +513,21 @@ plugin version moves - these are the drift the run corrected, and a user who has
 stale registration needs to see it named), the ENVIRONMENT line, the NEW-ITEMS line (what arrived,
 what was taken, what stays off or was left, each by name), and the restart line.
 
-- **ENVIRONMENT** - the installer prints one line per env change (`settings.json env: <old> renamed
-  to <new>`, `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
+- **ENVIRONMENT** - the installer prints one line per env change, named by the file the scope
+  writes (`settings.json env: <old> renamed to <new>`, or `settings.local.json env: ...` for a key
+  that file holds - every key at local scope, and at project or user scope each stack key it already
+  held, since it applies over settings.json there; `<key> removed (retired ...)`, `<key> seeded (<value>)`, `<key> <old> -> '<new>'` for a passed
   `--docs-versioning`), and the grep already caught
   them. Report those lines; when there are none, say 'env: nothing renamed, removed or seeded this
   run' - a claim you can make because the log is silent AND step 2's `env-keys:` set is the
   before-state you are comparing against. Never assert it from memory: three audited runs did, and
-  one named keys it had never probed.
+  one named keys it had never probed. The `settings.local.json: created ... add
+  .claude/settings.local.json to .gitignore` line carries the `!!` marker (a machine path would
+  otherwise be committed), so it also arrives as a `warn:` line - report it once, here, not again
+  under RESTART / WARN.
+- **DOCS ROOT** - every `docs root:` / `docs move:` line the grep caught, verbatim: the move (with its
+  `git mv` count, which the user commits), the kept root, the re-point, the refused move with its files,
+  or the offer still open when no answer was passed.
 - **MEMORY** - when the grep caught a memory line, report it verbatim: the `memory:` level/database
   line (present whenever `--memory-level` was passed, the level changed, or this run adopted the
   registration for the first time - the fast path's own default now, whenever it was absent, not
@@ -430,15 +541,25 @@ what was taken, what stays off or was left, each by name), and the restart line.
   closed with no restart step, having re-registered all seven servers) and every `warn: <line>` (a
   fail-soft that fell back and continued - not a re-run trigger, see Do not below; an audited run
   surfaced its only `!!` in 1 of 4 runs that had one, buried in a raw grep dump). Report both verbatim.
+- **1.x MIGRATION** - when the grep caught them, report each verbatim: the `scope: this project is a
+  1.x global install - migrated at user scope ...` line (this project's own first run, not a status to
+  infer from the stamp), the `core moved to alfred-code at user scope - other projects on this account
+  keep their 1.x seat denies until each runs /alfred-code:update` line (name that as a follow-up for
+  the user's OTHER projects, not this one), the `context7-local removed - if you ran /mcp disable
+  context7 for it, run /mcp enable context7` line, and the `claude-hud has no status line yet - run
+  /alfred-code:init to set it up` line (add `/alfred-code:init` to the suggestion card when this one
+  printed). None caught: say nothing about any of the four. The last three carry the `!!` marker (the
+  1.x update body a first run executes surfaces only its grep and the `!!` lines), so each also
+  arrives as a `warn:` line - report it once, here, not again under RESTART / WARN.
 - **VALIDATE** - step 2's `validate: yes` (the version delta spans more than one release) or
   `policy-rev: stale ...` (the installed usage-policy rule's stamped revision is behind the shipped
-  skill's, or carries none) each add a `/claude-stack:validate` suggestion-card row with that reason
+  skill's, or carries none) each add a `/alfred-code:validate` suggestion-card row with that reason
   - 'the install is behind by more than one release' / 'the stamped policy is from an older
   release'. Both absent adds nothing. Update prunes only what upstream deleted; a server or skill
   this project stopped needing is validate's whole-stack-absent pass, unmentioned by this command.
 
-The run rewrote `claude-stack.stamp` - the next update or configure diffs from here. Name
-`/project-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
+The run rewrote `alfred-code.stamp` - the next update or configure diffs from here. Name
+`/alfred-capture-agent-capabilities` (when installed) as the USER's next step when step 2's `changed:`
 line shows `skills=` or `agents=` above 0 - the generated rule stamps each skill's first sentence,
 which drifts with content-only updates (measured: a 'roster unchanged, rule still accurate' skip
 left 7 of 10 stamped sentences stale and the user caught it manually). Gate it on THAT number and
@@ -450,18 +571,18 @@ two-release-old policy with nothing to notice it (measured: one project's rule s
 fresh-session gate as '40% of the context window, 150k floor', a spelling retired at 0.2.70) - that
 is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-confirmed grep pair
 (measured: re-confirmed 3 extra times, ~275k tokens, against an already-conclusive first read).
-When serena is installed, also name the one-off re-index as a next step whenever this run
+When the navigation server is installed, also name the one-off re-index as a next step whenever this run
 re-seeded `.serena/project.yml` - an install predating the seeding has no `ignored_paths`, so its
-cache was built over serena's own language-server directory: `SERENA_HOME=.serena/home uvx --python
-3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - serena hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+cache was built over the navigation server's own language-server directory: `SERENA_HOME=.serena/home uvx --python
+3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`, which reads that flag from the skill's own
 frontmatter. Do not lean on the harness for it: measured both ways, one update run's call was
 refused and another slipped through. The report line is the mechanism.
 
 **The run closes on a suggestion card, never on a question.** After the report, list the
-follow-ups that are the USER's to run - restart for an MCP change, `/project-agent-capabilities`
+follow-ups that are the USER's to run - restart for an MCP change, `/alfred-capture-agent-capabilities`
 (when installed and the step-2 gate above fires), a manual-only capture whose output is stale, the
-serena re-index, a credential to rotate or set by
+Navigation-server re-index, a credential to rotate or set by
 hand - as `Suggested next steps`, the recommended one first and each with the one reason it
 matters. **When this run re-registered an MCP or replaced a hook file, the RESTART is row one** - with
 `claude mcp list` named beside it as the one command that confirms the servers actually connected
@@ -470,7 +591,7 @@ ran without them with nothing reporting it) - -
 every other follow-up runs against the session that is still holding the OLD ones, and a card that
 ranks a capture above it tells the user to re-capture an inventory that is not loaded yet (measured:
 a run that replaced two guard hooks and re-registered all four servers listed the re-capture first,
-and the user ran that first) ('`/project-agent-capabilities` - the update refreshed 12 skill files, so the generated
+and the user ran that first) ('`/alfred-capture-agent-capabilities` - the update refreshed 12 skill files, so the generated
 rule's stamped sentences are stale'). A follow-up that is itself a deliberate run - any of the
 captures, a loop - carries a fresh-session note beside it: 'run it in a fresh session; started
 here it re-sends this walk's history on every one of its turns'. The guard cannot help with this
@@ -495,7 +616,7 @@ user 'no'. Then confirm the project tree holds only installed artifacts by LOOKI
 `git status`: the stack's own gitignore advice ignores `.claude/` wholesale, so a porcelain status
 over it is empty whatever is sitting there (measured: a run reported '`.claude` tree clean' from an
 empty status, on the same listing where its own earlier `ls` had shown a stray
-`claude-stack.stamp.testwrite`). `ls -a .claude` plus a check that no archive, extracted repo,
+`alfred-code.stamp.testwrite`). `ls -a .claude` plus a check that no archive, extracted repo,
 `raw.json`, `selection.txt` or `install.log` was left in the project - anything stray is named in
 the close-out, not silently ignored.
 

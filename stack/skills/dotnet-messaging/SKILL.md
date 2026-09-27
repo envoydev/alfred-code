@@ -1,6 +1,6 @@
 ---
 name: dotnet-messaging
-description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Conventions for broker-backed, event-driven communication between modules and services using Wolverine (recommended) over MassTransit, the transactional outbox for exactly-publish-on-commit, idempotent consumers under at-least-once delivery, choreography versus sagas, immutable versioned message contracts, and RabbitMQ or Azure Service Bus transports configured (never hardcoded). Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP; the consumer's host process itself is the hosted-worker skill's."
+description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Covers broker-backed, event-driven communication between modules and services: the transactional outbox, idempotent consumers under at-least-once delivery, choreography versus sagas, versioned message contracts, and RabbitMQ or Azure Service Bus transports. Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP; the consumer's host process itself is the hosted-worker skill's."
 ---
 
 # .NET messaging - event-driven communication
@@ -18,7 +18,7 @@ MassTransit is mature and well-documented but is no longer OSS-first, so reach f
 ```csharp
 builder.Host.UseWolverine(opts =>
 {
-    opts.UseRabbitMq(builder.Configuration.GetConnectionString("rabbit"))
+    opts.UseRabbitMqUsingNamedConnection("rabbit")   // the "rabbit" connection string
         .AutoProvision();                       // dev convenience; see Transport
 
     opts.Policies.UseDurableInboxOnAllListeners();

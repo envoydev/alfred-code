@@ -2,11 +2,13 @@
 // live gate as dead, or worse, a dead gate as live. These run it over a SYNTHETIC corpus with a
 // known answer, so they need no session data and run in CI.
 const test = require('node:test');
+delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 
 const SCRIPT = path.join(__dirname, 'corpus-replay.js');
 
@@ -88,15 +90,17 @@ test('corpus-replay: nothing is written outside the scratch dir', () => {
 test('corpus-replay: the ROUTES table matches what the installer actually wires', () => {
   // The harness only replays routes it knows about. If a release wires a new matcher and this table
   // is not updated, the new gate is simply never measured - and 'not measured' would read as silence,
-  // not as a gap. Pin the two together against the installer, which is the wiring's source of truth.
-  const sh = fs.readFileSync(path.join(__dirname, 'os', 'claude-stack.sh'), 'utf8');
+  // not as a gap. Pin the two together against meta/stack-manifest.json's `hooks` list, the wiring's
+  // one Node home (Phase 7b, R33, deleted the frozen shell/PowerShell twins that used to carry it).
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
   const wired = new Set();
-  for (const m of sh.matchAll(/^\s*"(guard-[a-z-]+\.js)::([^:]*)::/gm)) {
-    const [, hook, spec] = m;
+  for (const row of manifest.hooks) {
+    if (row.active === false || !/^guard-[a-z-]+\.js$/.test(row.file)) continue;
+    const spec = row.matcher || '';
     // `@Event` / `@Event:matcher` is a lifecycle wiring; a bare matcher list is PreToolUse.
     const event = spec.startsWith('@') ? spec.slice(1).split(':')[0] : 'PreToolUse';
     if (event === 'SessionStart') continue; // replayed by 1c's config matrix, not by liveness
-    for (const tool of (event === 'PreToolUse' ? spec.split('|') : [null])) wired.add(`${hook}::${event}${tool ? ':' + tool : ''}`);
+    for (const tool of (event === 'PreToolUse' ? spec.split('|') : [null])) wired.add(`${row.file}::${event}${tool ? ':' + tool : ''}`);
   }
   const known = new Set();
   for (const r of require('./corpus-replay.js').ROUTES) {
@@ -122,11 +126,41 @@ test('corpus-replay: a transcript-reading guard is actually given its transcript
   fs.writeFileSync(path.join(dir, 'session.jsonl'), [
     { type: 'assistant', cwd: dir, message: { id: 'm0', content: [{ type: 'text', text: 'first turn' }], usage: floor } },
     { type: 'assistant', cwd: dir, message: { id: 'm1', content: [{ type: 'text', text: 'x'.repeat(300) }], usage: big } },
-    toolRow('Skill', { skill: 'project-solve-task' }, dir),
+    toolRow('Skill', { skill: 'alfred-task-solve' }, dir),
   ].map((r) => JSON.stringify(r)).join('\n') + '\n');
   const { out } = run(dir, '--hook', 'guard-fresh-session-start.js::PreToolUse');
   const row = rowFor(out, 'guard-fresh-session-start.js::PreToolUse:Skill');
   assert.doesNotMatch(row, /DEAD/, 'an orchestration run started at 190k must trip the gate');
+});
+
+test('corpus-replay: a shell call\'s RESULT is replayed on the PostToolUse routes, red ones on the failure route', () => {
+  // The root-cause probe is judged on the result, not the call: without the result the harness would
+  // hand the hook nothing to read, and the route would read silent for the harness's reason. The route
+  // is log-only, so it fires when its probe row lands in the job's own session ledger.
+  const use = (id, command) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } });
+  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
+  const dir = corpus([use('a', 'npm test'), res('a', 'Exit code 1\nnot ok 1 - cart', true), use('b', 'ls'), res('b', 'README.md'), use('c', 'npm test | tail -3'), res('c', 'ℹ pass 3\nℹ fail 0')]);
+  const { out } = run(dir, '--hook', 'guard-stop-contract.js::PostToolUse');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUseFailure'), /\| 1 \| 1 \|/, 'the red npm test writes its probe row');
+  assert.match(rowFor(out, 'guard-stop-contract.js::PostToolUse'), /\| 2 \| 0 \|/, 'a green run and a plain ls log nothing');
+});
+
+test('corpus-replay: the result rides where the hook reads it, and only a shell call gets a PostToolUse payload', () => {
+  // The route counts above cannot tell a dropped field from a silent hook; the extracted payload can.
+  const { extract } = require('./corpus-replay.js');
+  const use = (id, name, input) => ({ type: 'assistant', cwd: '/tmp/p', message: { content: [{ type: 'tool_use', id, name, input }] } });
+  const res = (id, content, isError) => ({ type: 'user', cwd: '/tmp/p', message: { content: [{ type: 'tool_result', tool_use_id: id, content, ...(isError ? { is_error: true } : {}) }] } });
+  const dir = corpus([use('a', 'Bash', { command: 'npm test' }), res('a', 'Exit code 1\nnot ok 1 - cart', true),
+    use('b', 'PowerShell', { command: 'npm test | Select-Object -Last 3' }), res('b', 'ℹ pass 2\nℹ fail 1'),
+    use('c', 'Read', { file_path: '/tmp/p/a.js' }), res('c', 'Exit code 1', true), use('d', 'Grep', { pattern: 'x' }), res('d', 'ℹ fail 1')]);
+  const post = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /::PostToolUse/.test(j.route));
+  assert.deepStrictEqual(post.map((j) => j.payload.tool_name).sort(), ['Bash', 'PowerShell'], 'a Read or Grep result is no shell run');
+  const red = post.find((j) => j.payload.hook_event_name === 'PostToolUseFailure');
+  assert.strictEqual(red.payload.error, 'Exit code 1\nnot ok 1 - cart');
+  assert.strictEqual(red.payload.tool_response, undefined);
+  const green = post.find((j) => j.payload.hook_event_name === 'PostToolUse');
+  assert.deepStrictEqual(green.payload.tool_response, { stdout: 'ℹ pass 2\nℹ fail 1', stderr: '', interrupted: false });
+  assert.strictEqual(green.payload.error, undefined);
 });
 
 test('corpus-replay: a mid-turn answer is not a stop point', () => {

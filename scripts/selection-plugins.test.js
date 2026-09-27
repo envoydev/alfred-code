@@ -18,7 +18,7 @@ function sel(lines)
 }
 
 test('a selection file enables the core and copies its library picks', () => {
-    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill project-solve-cross-task', '# a comment', '']));
+    const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill alfred-task-solve-cross', '# a comment', '']));
     const { plugins, copy } = pluginsFor(picked);
     assert.deepStrictEqual(plugins, [CORE], 'the core carries the commands and the baseline; no stack plugin exists');
     assert.deepStrictEqual(copy.skills, ['dotnet-wpf'], 'a stack skill is a library copy');
@@ -59,9 +59,9 @@ test('itemsOf round-trips: the core items re-select the core and copy nothing', 
 });
 
 test('itemsOf ignores a name no placement knows, and accepts the @marketplace spelling', () => {
-    const a = itemsOf(['claude-stack-wpf@claude-stack', 'claude-stack-hooks', 'not-a-plugin']);
+    const a = itemsOf(['claude-stack-wpf@envoydev', 'claude-stack-hooks', 'not-a-plugin']); // legacy-name
     const b = itemsOf(['claude-stack-wpf']);
-    assert.deepStrictEqual(a, b, 'the hooks entry and an unknown name carry no skills or agents');
+    assert.deepStrictEqual(a, b, 'the 1.x hooks alias and an unknown name carry no skills or agents');
 });
 
 // status reads what a not-yet-removed per-stack entry carries through --items, while the user is
@@ -69,7 +69,7 @@ test('itemsOf ignores a name no placement knows, and accepts the @marketplace sp
 test('itemsOf reads a retired per-stack entry from its frozen 1.2.0 contents', () => {
     const { readRetiredEntries } = require('./plugin-placement.js');
     const angular = readRetiredEntries().find((e) => e.name === 'claude-stack-angular');
-    const got = itemsOf(['claude-stack-angular@claude-stack']);
+    const got = itemsOf(['claude-stack-angular@envoydev']);
     assert.deepStrictEqual(got.skills, [...angular.skills].sort());
     assert.deepStrictEqual(got.agents, [...angular.agents].sort());
     assert.ok(got.skills.length > 0);

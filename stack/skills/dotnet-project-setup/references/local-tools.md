@@ -42,7 +42,7 @@ Two fields carry the reproducibility guarantee:
 
 - **dotnet-ef** - EF Core migrations (`dotnet ef migrations add`, `dotnet ef database update`). The migration workflow around it - preview, rollback, re-verify - is `dotnet-migrate`.
 - **csharpier** - the formatter (`dotnet csharpier format .`, `dotnet csharpier check .` in CI). Its config and how formatting is enforced as a build gate live in `dotnet-code-quality`.
-- **reportgenerator** - turns coverage output into a report (`dotnet reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage`). Coverage collection mechanics and the exclusion catalog live in `dotnet-testing`; the % bar itself is user-set via the `project-test-coverage-analyzer` capture.
+- **reportgenerator** - turns coverage output into a report (`dotnet reportgenerator -reports:**/coverage.cobertura.xml -targetdir:coverage`). Coverage collection mechanics and the exclusion catalog live in `dotnet-testing`; the % bar itself is user-set via the `alfred-capture-test-coverage` capture.
 
 ## Restore before use - locally and in CI
 

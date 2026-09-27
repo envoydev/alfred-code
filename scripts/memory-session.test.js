@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, spawn } = require('node:child_process');
+for (const k of Object.keys(process.env)) if (/^(?:ALFRED_CODE|CLAUDE_STACK)_/.test(k) || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: the session's own stack env, in either spelling, never decides a case - legacy-name
 
 let DatabaseSync = null;
 try { process.removeAllListeners('warning'); ({ DatabaseSync } = require('node:sqlite')); } catch {}
@@ -44,7 +45,7 @@ function fixtureProject({ rows = null, relatedNames = null, registered = true } 
     mcpServers: registered ? { memory: { type: 'stdio', command: 'uvx', args: ['--from', 'mcp-memory-service', 'memory', 'server'], env: { MCP_MEMORY_STORAGE_BACKEND: 'sqlite_vec', MCP_MEMORY_SQLITE_PATH: dbPath } } } : {},
   }));
   if (relatedNames) {
-    const docDir = path.join(root, '.claude', 'docs', 'related-projects');
+    const docDir = path.join(root, '.alfred', 'docs', 'related-projects');
     fs.mkdirSync(docDir, { recursive: true });
     fs.writeFileSync(path.join(docDir, 'RELATED-PROJECTS.md'), relatedNames.map((n) => `## ${n}\n<!-- id: ${n} -->\n`).join('\n'));
   }
@@ -178,6 +179,29 @@ test('no memory server registered for the project is silent', () => {
   } finally { p.rm(); }
 });
 
+// M1 (R47, fix round 1): on the plugin route memory.js is tracked beside this hook in the
+// marketplace clone, so a never-set-up project under a user-scope core never reaches this case -
+// it is reachable only on the HOOKS COPY ROUTE (ALFRED_CODE_HOOKS_VIA_PLUGIN=false) when memory.js
+// failed to land beside the hook. Unlike docs-session.js, this hook's own contract is broad
+// fail-open by design (a missing database, a locked file, node:sqlite unavailable - none of it is
+// logged), so a missing engine stays part of that same silent contract; no catch-narrowing here.
+test('the engine missing from beside the hook: exit 0, no output, no stderr', () => {
+  const p = fixtureProject();
+  const lone = tmpDir('memory-lone-');
+  try {
+    fs.copyFileSync(HOOK, path.join(lone, 'memory-session.js'));
+    const r = spawnSync(process.execPath, [path.join(lone, 'memory-session.js')], {
+      cwd: p.root,
+      input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 's-lone', cwd: p.root }),
+      encoding: 'utf8',
+      env: { ...process.env, CLAUDE_PROJECT_DIR: p.root, CLAUDE_CONFIG_DIR: tmpDir('memory-lone-config-') },
+    });
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout, '');
+    assert.strictEqual(r.stderr, '');
+  } finally { p.rm(); rmDir(lone); }
+});
+
 test('garbage stdin is silent, exit 0', () => {
   const p = fixtureProject();
   try {
@@ -235,11 +259,16 @@ test('a 500-row database resolves in well under 1s', { skip: skipNoSqlite }, () 
     const rows = [];
     for (let i = 0; i < 500; i++) rows.push({ content: `row ${i} ${'x'.repeat(60)}`, tags: i % 4 === 0 ? `project:${projectName}` : '', memory_type: i % 4 === 0 ? 'reference' : 'preference_signal', created_at: i });
     buildDb(p.dbPath, rows);
+    // the budget is the hook's own work: a bare node start is timed first and taken off, so a slow or
+    // emulated host (measured: 1003ms on an x64 node under ARM64 emulation) is not read as a slow query
+    const t0 = Date.now();
+    require('node:child_process').spawnSync(process.execPath, ['-e', '']);
+    const floor = Date.now() - t0;
     const started = Date.now();
     const r = p.hook({ hook_event_name: 'SessionStart', session_id: 's5', cwd: p.root });
     const elapsed = Date.now() - started;
     assert.strictEqual(r.status, 0);
-    assert.ok(elapsed < 1000, `took ${elapsed}ms`);
+    assert.ok(elapsed - floor < 1000, `took ${elapsed}ms (a bare node start ${floor}ms)`);
     assert.match(r.stdout, /^\{"hookSpecificOutput"/);
   } finally { p.rm(); }
 });

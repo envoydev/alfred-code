@@ -21,7 +21,7 @@ These are load-bearing. Several of them invalidate fixes that would be correct f
 - Deterministic must-run instructions ('always run X before commit', 'after each file edit do Y') belong in a hook, which executes at a fixed lifecycle event regardless of what Claude decides. Hard blocks on tools, commands, or paths belong in settings `permissions.deny`. Both are enforcement; prose is not.
 - Conflicting instructions across files are a real defect, not a style issue: if two files give different guidance for the same behavior, Claude may pick one arbitrarily. Conflicts can only be found by reading the set together, never one file at a time.
 - Scope tiers, broadest to most specific: managed policy, user (`~/.claude/CLAUDE.md`, `~/.claude/rules/`), project (`./CLAUDE.md`, `./.claude/CLAUDE.md`, `./.claude/rules/`), local (`./CLAUDE.local.md`, gitignored). Managed policy cannot be excluded by individual settings. Content in the wrong tier is a defect even when the content itself is good.
-- Keep each CLAUDE.md short, and measure 'short' in tokens as well as lines - two official tests apply together. The memory page sets the line target: 'target under 200 lines per CLAUDE.md file', because longer files consume more context and reduce adherence (a file over 4 MiB is skipped outright). The best-practices page holds every line to the question 'would removing it cause Claude to make a mistake? If not, cut it', and warns that a bloated file makes Claude ignore the instructions that matter. The cost is paid per message on every session, so this stack also measures the always-on set in characters (~tokens): lint check 33 caps the shipped baseline at 160,000 chars and `/claude-stack:status` reports each install's floor - 120 lines of dense paragraphs can cost more than 250 lines of terse bullets, so a file under 200 lines can still fail the token measure, and both numbers are reported.
+- Keep each CLAUDE.md short, and measure 'short' in tokens as well as lines - two official tests apply together. The memory page sets the line target: 'target under 200 lines per CLAUDE.md file', because longer files consume more context and reduce adherence (a file over 4 MiB is skipped outright). The best-practices page holds every line to the question 'would removing it cause Claude to make a mistake? If not, cut it', and warns that a bloated file makes Claude ignore the instructions that matter. The cost is paid per message on every session, so this stack also measures the always-on set in characters (~tokens): lint check 33 caps the shipped baseline at 160,000 chars and `/alfred-code:status` reports each install's floor - 120 lines of dense paragraphs can cost more than 250 lines of terse bullets, so a file under 200 lines can still fail the token measure, and both numbers are reported.
 - Block-level HTML comments are stripped before injection, so maintainer notes in comments cost nothing.
 - CLAUDE.md and the rules reach the model as a user message after the system prompt, wrapped in a note that the content 'may or may not be relevant'. A rule that is relevant only sometimes is therefore ignored by design part of the time - the cure is a `paths` glob, never louder wording.
 - `paths` globs support brace expansion (`src/**/*.{ts,tsx}`) within a budget of 1,000 expanded patterns and 4 MiB per rule; a file over 4 MiB is skipped entirely. `claudeMdExcludes` (a glob, any settings layer, arrays merge) skips ancestor CLAUDE.md and rules files - the monorepo lever. `permissions.deny` `Read()` rules keep generated and vendored trees (`**/obj/**`, `**/bin/**`, `**/*.g.cs`, `dist/`) out of context mechanically; this stack measured build-dir reads at ~8.6k tokens across 115 sessions, so that lever is recorded as available, not owed.
@@ -44,7 +44,7 @@ If any of these mechanics appear to have changed in the repo you are auditing or
 - `MAX_ITERATIONS`: max remediation passes per file (default: `4`).
 - `WRITE`: `true` edits files in place, `false` produces the report only (default: `true`).
 
-Source vs deployed layout: this repository stores the stack under `stack/` and installs it into target projects via the `scripts/os/claude-stack.sh` and `scripts/os/claude-stack.ps1` scripts, where rules live at `.claude/rules/` and load by the mechanics above. Audit the source files under `stack/` (`stack/rules/`, `stack/hooks/`), but reason about loading, `paths` globs, and cross-file references in terms of the deployed layout, and read the installer scripts to confirm the source-to-deployed mapping instead of assuming it. The enforcement-layer inventory in discovery reads hooks from their source at `./stack/hooks`.
+Source vs deployed layout: this repository stores the stack under `stack/` and installs it into target projects via `node scripts/install/alfred-code.js` (one installer, every OS), where rules live at `.claude/rules/` and load by the mechanics above. Audit the source files under `stack/` (`stack/rules/`, `stack/hooks/`), but reason about loading, `paths` globs, and cross-file references in terms of the deployed layout, and read `meta/stack-manifest.json` (the six lists the installer reads) plus the installer's own `scripts/install/` modules to confirm the source-to-deployed mapping instead of assuming it. The enforcement-layer inventory in discovery reads hooks from their source at `./stack/hooks`.
 
 Scope boundary: when this prompt runs alongside the dedicated CLAUDE.md audit prompt, this prompt still reads the CLAUDE.md template to build the conflict and duplication maps (both maps are meaningless without it), but edits only rule files; template edits belong to that prompt. When run alone, this prompt owns both.
 
@@ -139,10 +139,10 @@ Produce a baseline report (see Output contract) before any editing.
 
 ---
 
-## Phase 1b - External currency check (context7)
+## Phase 1b - External currency check (the documentation server)
 
 Rules are thin, but their glob lists and the few framework claims they carry (file shapes, tool names) are still claims about the outside world. Training-data recall drifts, so these claims are verified against current
-documentation through the context7 MCP - never re-asserted from memory. This check changes no
+documentation through the documentation MCP - never re-asserted from memory. This check changes no
 dimension weights (scores stay comparable across audit runs); like the other set-level defects,
 an unresolved DRIFTED finding blocks the artifact from A.
 
@@ -155,14 +155,14 @@ an unresolved DRIFTED finding blocks the artifact from A.
    tradeoffs, forbidden patterns) has no external truth to check - skip it.
 3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
    at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
-   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   tail rolls to the next audit and is listed as unchecked. Documentation server unreachable: mark the whole
    check SKIPPED in the report and move on; never substitute recall for the lookup.
 4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
    | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
    verdict, evidence line) in the baseline report.
 5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
    version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
-   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   the durable policy plus a fetch-at-use pointer (the documentation server at usage time) over updating the
    number: judgment stays in the artifact, drifting facts are fetched live.
 
 ## Phase 2 - Remediation loop

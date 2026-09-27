@@ -47,8 +47,10 @@ test('an agent pulls its declared skills and plugins; body mentions pull nothing
     // the house no-marker rule, 0 invocations in 115 sessions, and its ladder already inline in 34
     // agent bodies), so the seat's discipline paragraph is now its only home and pulls no plugin.
     assert.deepStrictEqual(impl.plugins, [], 'the implementer carries its discipline inline and pulls no plugin');
+    // The resolver PRELOADS the core's root-cause and done-gate methods (R106) and NAMES the C# skills
+    // in its body: the preloads are its edges, the body mentions pull nothing.
     const resolver = computeClosure(graph, { agents: ['dotnet-build-error-resolver'] });
-    assert.deepStrictEqual(resolver.skills, [], 'a body-sourced agent locks no skills');
+    assert.deepStrictEqual([...resolver.skills].sort(), ['alfred-habits-done-gate', 'alfred-habits-root-cause'], 'a resolver locks only its preloaded method skills');
 });
 
 test('a rule pulls its skills', () => {
@@ -59,10 +61,10 @@ test('a rule pulls its skills', () => {
 
 test('a kept rule makes its mcp required; the capabilities skill locks none', () => {
     const c = computeClosure(graph, { rules: ['baseline-navigation'] });
-    assert.ok(c.mcps.includes('serena'), 'baseline-navigation genuinely depends on serena');
-    // The routing-map mentions in project-agent-capabilities are subject matter, not needs -
+    assert.ok(c.mcps.includes('navigation'), 'baseline-navigation genuinely depends on serena');
+    // The routing-map mentions in alfred-capture-agent-capabilities are subject matter, not needs -
     // picking it must never lock the whole MCP baseline into an install.
-    const cap = computeClosure(graph, { skills: ['project-agent-capabilities'] });
+    const cap = computeClosure(graph, { skills: ['alfred-capture-agent-capabilities'] });
     assert.deepStrictEqual(cap.mcps, [], 'the capabilities skill pulls no MCPs');
 });
 
@@ -117,11 +119,11 @@ test('--hooks-answered reaches the emitted file through the CLI', () => {
 });
 
 test('raw.mcps are direct picks the closure keeps and emits', () => {
-    const c = computeClosure(graph, { mcps: ['sentry'] });
-    assert.ok(c.mcps.includes('sentry'), 'a directly chosen mcp survives the closure');
-    assert.strictEqual(c.reasons['sentry'], undefined, 'a direct mcp pick is not a closure add');
+    const c = computeClosure(graph, { mcps: ['browser'] });
+    assert.ok(c.mcps.includes('browser'), 'a directly chosen mcp survives the closure');
+    assert.strictEqual(c.reasons['browser'], undefined, 'a direct mcp pick is not a closure add');
     const { emitSelectionFile } = require('./stack-select.js');
-    assert.ok(emitSelectionFile(c).includes('mcp sentry'), 'the direct mcp reaches the emitted selection');
+    assert.ok(emitSelectionFile(c).includes('mcp browser'), 'the direct mcp reaches the emitted selection');
 });
 
 test('user-chosen items carry no reason; only closure-added ones do', () => {
@@ -147,7 +149,7 @@ test('a non-array raw field does not char-split into bogus items', () => {
 const { findUnknownNames, dropUnknownNames } = require('./stack-select.js');
 
 test('unknown selection names are detected per category and dropped', () => {
-    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['serena', 'no-such-mcp'], plugins: [] };
+    const raw = { skills: ['csharp', 'totally-retired-skill'], agents: ['no-such-agent'], rules: [], mcps: ['navigation', 'no-such-mcp'], plugins: [] };
     const unknown = findUnknownNames(graph, raw);
     assert.deepStrictEqual(unknown, [
         { category: 'skill', name: 'totally-retired-skill' },
@@ -157,7 +159,7 @@ test('unknown selection names are detected per category and dropped', () => {
     const filtered = dropUnknownNames(raw, unknown);
     assert.deepStrictEqual(filtered.skills, ['csharp']);
     assert.deepStrictEqual(filtered.agents, []);
-    assert.deepStrictEqual(filtered.mcps, ['serena']);
+    assert.deepStrictEqual(filtered.mcps, ['navigation']);
     assert.ok(!computeClosure(graph, filtered).skills.includes('totally-retired-skill'));
 });
 
@@ -185,7 +187,7 @@ test('CLI: an unknown name prints an unknown: line and never reaches the emitted
 
 const { evaluatePrereqs } = require('./stack-select.js');
 
-const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true, CONTEXT7_API_KEY: true } };
+const fullEnv = { bins: { node: true, npx: true, git: true, claude: true, uvx: true, dotnet: true, 'csharp-ls': true }, envs: { CONTEXT7_API_KEY: true } };
 const emptyEnv = { bins: {}, envs: {} };
 
 test('phase-1 hard prereqs are blockers when the binary is absent', () => {
@@ -198,27 +200,10 @@ test('phase-1 hard prereqs are blockers when the binary is absent', () => {
     assert.strictEqual(r.ok, false);
 });
 
-test('a selected sentry mcp warns for its slug and (token mode) its token, never blocks; with both, clean', () => {
-    // warnings by design: the registration is secret-free, only runtime needs the values -
-    // as a blocker the token cost ~90min/7 aborted runs and invited ad hoc bypasses (audit 2026-07-31)
-    const sel = { skills: [], mcps: ['sentry'], plugins: [] };
-    const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const missing = evaluatePrereqs(sel, { bins, envs: {} }, {});
-    assert.ok(!missing.blockers.some(b => /Sentry/i.test(b.need)), 'sentry values must not block');
-    assert.ok(missing.warnings.some(b => /Sentry slug/.test(b.need)), 'sentry slug warns');
-    assert.ok(missing.warnings.some(b => /Sentry token/.test(b.need)), 'sentry token warns in the default token mode');
-    // --sentry-oauth registers no header: the token warning goes, the slug warning stays
-    const oauth = evaluatePrereqs(sel, { bins, envs: {} }, { sentryOauth: true });
-    assert.ok(!oauth.warnings.some(b => /Sentry token/.test(b.need)), 'no token warning under oauth');
-    assert.ok(oauth.warnings.some(b => /Sentry slug/.test(b.need)), 'slug still warns under oauth');
-    const present = evaluatePrereqs(sel, { bins, envs: { SENTRY_SLUG: true, SENTRY_ACCESS_TOKEN: true } }, {});
-    assert.ok(!present.warnings.some(b => /Sentry/i.test(b.need)), 'both sentry values satisfied');
-});
-
-test('playwright keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
+test('the browser server keeping msedge warns when Edge is not installed; the other engines never ask for it', () => {
     // msedge is the one kept engine that uses a browser the machine must already carry and that
     // no default install has everywhere; firefox/webkit are downloaded by the installer itself.
-    const sel = { skills: [], mcps: ['playwright'], plugins: [] };
+    const sel = { skills: [], mcps: ['browser'], plugins: [] };
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
     const edge = r => r.warnings.some(w => /Microsoft Edge/.test(w.need));
     assert.ok(edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: ['chrome', 'msedge'] })), 'msedge kept without Edge warns');
@@ -226,13 +211,13 @@ test('playwright keeping msedge warns when Edge is not installed; the other engi
     assert.ok(!edge(evaluatePrereqs(sel, { bins: { ...bins, msedge: true }, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'Edge present is clean');
     for (const other of [undefined, [], ['chrome'], ['firefox', 'webkit']])
         assert.ok(!edge(evaluatePrereqs(sel, { bins, envs: {} }, { playwrightBrowsers: other })), `${JSON.stringify(other)} never asks for Edge`);
-    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no playwright selected, no Edge warning');
+    assert.ok(!edge(evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { playwrightBrowsers: ['msedge'] })), 'no browser selected, no Edge warning');
 });
 
-test('installed playwright-<engine> servers read back as the one manifest entry', () => {
+test('installed browser-<engine> servers read back as the one manifest entry', () => {
     const { normalizeInventory } = require('./stack-select.js');
-    const inv = normalizeInventory({ mcps: ['serena', 'playwright-chrome', { name: 'playwright-firefox' }, 'playwright', 'playwright-extra'] });
-    assert.deepStrictEqual(inv.mcps, ['serena', 'playwright', 'playwright-extra'], 'engine servers collapse to playwright; a non-engine name is left alone');
+    const inv = normalizeInventory({ mcps: ['navigation', 'browser-chrome', { name: 'browser-firefox' }, 'playwright', 'playwright-extra'] });
+    assert.deepStrictEqual(inv.mcps, ['navigation', 'browser', 'playwright', 'playwright-extra'], 'engine servers collapse to browser; a non-engine name is left alone');
 });
 
 test('a .NET skill without the dotnet SDK is a blocker', () => {
@@ -244,13 +229,6 @@ test('full env with no risky selection is clean', () => {
     const r = evaluatePrereqs({ skills: ['csharp'], mcps: [], plugins: [] }, fullEnv, {});
     assert.strictEqual(r.ok, true);
     assert.deepStrictEqual(r.blockers, []);
-});
-
-test('chrome-devtools mcp missing Chrome is a warning, not a blocker', () => {
-    const r = evaluatePrereqs({ skills: [], mcps: ['chrome-devtools'], plugins: [] }, { bins: { node: true, npx: true, git: true, claude: true, uvx: true }, envs: {} }, {});
-    assert.ok(r.warnings.some(w => /Chrome/i.test(w.need)));
-    assert.ok(!r.blockers.some(b => /Chrome/i.test(b.need)));
-    assert.strictEqual(r.ok, true, 'a warning alone keeps ok true');
 });
 
 test('computeClosure follows an agent->agent chain and terminates on a cycle', () => {
@@ -274,11 +252,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 
 test('emitSelectionFile produces Component B selection lines', () => {
-    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['serena'], plugins: ['csharp-lsp'] });
+    const text = emitSelectionFile({ skills: ['csharp'], agents: ['aspnet-implementer'], rules: ['csharp-conventions'], mcps: ['navigation'], plugins: ['csharp-lsp'] });
     const lines = text.trim().split('\n');
     assert.ok(lines.includes('skill csharp'));
     assert.ok(lines.includes('agent aspnet-implementer'));
-    assert.ok(lines.includes('mcp serena'));
+    assert.ok(lines.includes('mcp navigation'));
     assert.ok(lines.includes('plugin csharp-lsp'));
     assert.ok(lines.includes('rule csharp-conventions'));
 });
@@ -379,32 +357,32 @@ test('findEvidenceGaps: missing vs unevidenced vs uncatalogued', () => {
     const unev = gaps.unevidenced.map(u => `${u.category} ${u.name}`);
     assert.deepStrictEqual(unev, ['skill dotnet-messaging'], 'installed + catalog-listed + no signal = advisory');
     assert.ok(!unev.includes('skill csharp'), 'no catalog entry -> never unevidenced');
-    assert.ok(!gaps.missing.some(m => m.name === 'sentry') && !unev.includes('mcp sentry'), 'not installed + not found = nothing');
+    assert.ok(!gaps.missing.some(m => m.name === 'browser') && !unev.includes('mcp browser'), 'not installed + not found = nothing');
 });
 
 test('findJudgment: overlap only when both installed, dormant only when installed', () => {
     const { findJudgment } = require('./stack-select.js');
     const judgment = {
-        overlaps: [{ items: ['mcp:playwright', 'mcp:chrome-devtools'], shared: 'drive a browser', gaps: { 'mcp:playwright': 'automation + screenshots', 'mcp:chrome-devtools': 'live debug of an open tab' } }],
+        overlaps: [{ items: ['mcp:browser', 'skill:browser-extension'], shared: 'drive a browser', gaps: { 'mcp:browser': 'automation + screenshots', 'skill:browser-extension': 'live debug of an open tab' } }],
         occasionBound: { 'skill:capacitor-release': 'release-time - store submission' },
     };
-    const both = findJudgment(judgment, { mcps: ['playwright', 'chrome-devtools'], skills: ['capacitor-release'] });
-    assert.ok(both.some(l => l.startsWith('overlap: mcp playwright + mcp chrome-devtools - shared: drive a browser')), 'overlap line for an installed pair');
-    assert.ok(both.some(l => /gap mcp chrome-devtools: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
+    const both = findJudgment(judgment, { mcps: ['browser'], skills: ['capacitor-release', 'browser-extension'] });
+    assert.ok(both.some(l => l.startsWith('overlap: mcp browser + skill browser-extension - shared: drive a browser')), 'overlap line for an installed pair');
+    assert.ok(both.some(l => /gap skill browser-extension: live debug of an open tab/.test(l)), 'each side\'s unique gap rides the line');
     assert.ok(both.some(l => l === 'dormant: skill capacitor-release - release-time - store submission'), 'dormant line for an installed occasion-bound item');
-    const one = findJudgment(judgment, { mcps: ['playwright'], skills: [] });
+    const one = findJudgment(judgment, { mcps: ['browser'], skills: [] });
     assert.deepStrictEqual(one, [], 'no overlap with one side absent, no dormant when not installed');
 });
 
 test('emitTable: evidence label is pre-selected, below required, above recommended', () => {
-    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'project-solve-cross-task': 'FAKE-SIGNAL-2' } };
+    const evidence = { skills: { 'dotnet-web-backend': 'FAKE-SIGNAL', 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'alfred-task-solve-cross': 'FAKE-SIGNAL-2' } };
     const recs = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'recommendations.json'), 'utf8'));
     const table = emitTable(graph, 'skills', { raw: { agents: ['aspnet-solution-designer'] }, recs, stacks: ['aspnet'], evidence });
     const rowOf = name => table.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
     assert.match(rowOf('dotnet-web-backend'), /required/, 'a closure lock beats evidence');
     assert.doesNotMatch(rowOf('dotnet-web-backend'), /FAKE-SIGNAL/, 'the lock reason wins the why column');
     assert.match(rowOf('dotnet-grpc'), /evidence +\| Grpc\.AspNetCore in src\/Api\.csproj/, 'evidence row carries its signal');
-    assert.match(rowOf('project-solve-cross-task'), /evidence/, 'evidence beats the recommended seed label');
+    assert.match(rowOf('alfred-task-solve-cross'), /evidence/, 'evidence beats the recommended seed label');
     // configure's installed mode keeps yes/- states; the signal informs the why column
     const cfg = emitTable(graph, 'skills', { raw: {}, installed: { skills: ['csharp'] }, evidence });
     const cfgRow = name => cfg.split('\n').find(l => new RegExp(`\\| ${name} `).test(l)) || '';
@@ -538,8 +516,9 @@ test('CLI closure -> emitted file -> installer --print-plan agrees', () => {
         // aspnet-solution-designer's frontmatter pulls dotnet-web-backend - the emitted file must list it
         assert.ok(emitted.split('\n').includes('skill dotnet-web-backend'));
 
-        const sh = path.join(__dirname, 'os', 'claude-stack.sh');
-        const plan = execFileSync('bash', [sh, 'install', '--scope', 'project', '--selection', selFile, '--print-plan'], { encoding: 'utf8' });
+        const seed = path.join(__dirname, 'install', 'alfred-code.js');
+        const root = path.join(__dirname, '..');
+        const plan = execFileSync('node', [seed, 'install', '--scope', 'project', '--selection', selFile, '--source', root, '--print-plan'], { encoding: 'utf8' });
         const planSkills = (plan.match(/^plan skills:(.*)$/m) || [,''])[1].trim().split(/\s+/);
         assert.ok(planSkills.includes('dotnet-web-backend'), 'installer plan reflects the closed selection');
     }
@@ -559,7 +538,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
         rules: ['baseline-navigation', 'csharp-conventions', 'wpf-conventions'],
         agents: ['architecture-analyzer', 'aspnet-implementer', 'dotnet-build-error-resolver', 'wpf-implementer', 'wpf-solution-designer'],
         skills: ['csharp', 'dotnet-web-backend', 'dotnet-wpf'],
-        mcps: ['serena', 'sentry'],
+        mcps: ['navigation', 'my-own-server'],
         plugins: ['csharp-lsp'],
         hooks: ['guard-catastrophic-rm'],
     };
@@ -574,7 +553,7 @@ test('findStackRedundant flags whole-stack-absent installs, keeps shared/extra/b
     const names = new Set(redundant.map(r => r.name));
     assert.ok(!names.has('dotnet-build-error-resolver'), 'a shared aspnet+wpf item survives - aspnet is present');
     assert.ok(!names.has('csharp-conventions'), 'a rule owned by aspnet too survives');
-    assert.ok(!names.has('sentry'), 'a non-stack-owned deliberate extra is never redundant');
+    assert.ok(!names.has('my-own-server'), 'a non-stack-owned deliberate extra is never redundant');
     assert.ok(!names.has('baseline-navigation'), 'an always-baseline item is never redundant');
     assert.strictEqual(redundant.find(r => r.name === 'wpf-conventions').ownedBy, 'wpf', 'the reason names the owning stack');
 });
@@ -587,12 +566,12 @@ test('a general-listed skill is never redundant even when its only owner is abse
     const installed = {
         rules: [],
         agents: [],
-        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context', 'dotnet-wpf'],
+        skills: ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects', 'dotnet-wpf'],
         mcps: [], plugins: [], hooks: [],
     };
     const redundant = findStackRedundant(graph, recommendations, installed, ['aspnet']);
     const names = new Set(redundant.map(r => r.name));
-    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'project-related-context'])
+    for (const s of ['csharp-design-patterns', 'dotnet-migrate', 'dotnet-hosted-services', 'dotnet-data-access', 'alfred-capture-related-projects'])
     {
         assert.ok(!names.has(s), `${s} is general - never redundant`);
     }
@@ -614,7 +593,7 @@ test('findStackMissing flags the detected stacks + baseline closure that is not 
         rules: ['csharp-conventions'],
         agents: ['aspnet-implementer'],
         skills: ['csharp'],
-        mcps: ['serena'],
+        mcps: ['navigation'],
         plugins: [],
         hooks: [],
     };
@@ -669,7 +648,8 @@ test('CLI: plugins written as {name,scope} - the shape validate step 1 mandates 
         const missing = run('--missing');
         assert.ok(!/missing: plugin csharp-lsp/.test(missing), 'a disabled stack plugin is not missing');
         assert.ok(!/missing: plugin superpowers/.test(missing), 'a disabled baseline plugin is not missing');
-        assert.match(missing, /missing: plugin security-guidance/, 'an absent plugin still is');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [], plugins_disabled: ['superpowers'] }));
+        assert.match(run('--missing'), /missing: plugin csharp-lsp/, 'an absent plugin still is');
     }
     finally
     {
@@ -687,16 +667,42 @@ test('CLI: a --selection built from that inventory keeps its {name,scope} plugin
         const sel = path.join(dir, 'final.json');
         const emit = path.join(dir, 'selection.txt');
         const dropped = path.join(dir, 'dropped.json');
-        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'serena' }, 'context7'], hooks: [],
-            plugins: [{ name: 'superpowers', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
-        fs.writeFileSync(dropped, JSON.stringify({ plugins: [{ name: 'typescript-lsp', scope: 'project' }] }));
+        fs.writeFileSync(sel, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [{ name: 'navigation' }, 'documentation'], hooks: [],
+            plugins: [{ name: 'typescript-lsp', scope: 'project' }, { name: 'csharp-lsp', scope: 'user' }] }));
+        fs.writeFileSync(dropped, JSON.stringify({}));
         const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--emit', emit, '--dropped', dropped,
             '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
         assert.ok(!/\[object Object\]/.test(out), `no object reads as a name:\n${out}`);
         const txt = fs.readFileSync(emit, 'utf8');
-        assert.match(txt, /^plugin superpowers$/m, 'a scoped plugin stays selected');
+        assert.match(txt, /^plugin typescript-lsp$/m, 'a scoped plugin stays selected');
         assert.match(txt, /^plugin csharp-lsp$/m, 'every scoped plugin stays selected');
-        assert.match(txt, /^mcp serena$/m, 'an object mcp entry stays selected');
+        assert.match(txt, /^mcp navigation$/m, 'an object mcp entry stays selected');
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('CLI --redundant --found: a plugin the scan matched is never redundant, so validate does not flip it back and forth', () => {
+    // A .NET library repo confirmed as data only: csharp-lsp is stack-owned (aspnet, console, ...) but
+    // no owner is detected, while --evidence-gaps would flag it evidence-missing the moment it is gone.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-redundant-found-'));
+    try
+    {
+        const invFile = path.join(dir, 'installed.json');
+        const foundFile = path.join(dir, 'found.json');
+        fs.writeFileSync(invFile, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [{ name: 'csharp-lsp', scope: 'project' }, { name: 'typescript-lsp', scope: 'project' }] }));
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: {}, mcps: {}, plugins: { 'csharp-lsp': 'src/Lib/Lib.csproj present' } } }));
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const base = [path.join(__dirname, 'stack-select.js'), '--redundant', '--installed', invFile, '--recs', recsPath, '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'), '--stacks', 'data'];
+        const withFound = execFileSync('node', [...base, '--found', foundFile], { encoding: 'utf8' });
+        assert.ok(!/redundant: plugin csharp-lsp/.test(withFound), `evidence proves use, like a detected owner:\n${withFound}`);
+        assert.match(withFound, /^redundant: plugin typescript-lsp - owned by /m, 'no signal and no owner detected: still redundant');
+        const without = execFileSync('node', base, { encoding: 'utf8' });
+        assert.match(without, /^redundant: plugin csharp-lsp - owned by /m, 'no --found: the owner rule alone, as before');
+        const unreadable = execFileSync('node', [...base, '--found', path.join(dir, 'absent.json')], { encoding: 'utf8' });
+        assert.match(unreadable, /^redundant: plugin csharp-lsp - owned by /m, 'an unreadable --found is no evidence, never an error');
     }
     finally
     {
@@ -725,7 +731,7 @@ test('CLI --redundant prints per-category redundant lines from an installed inve
 test('onPath resolves a real binary without a shell and rejects a nonexistent one', () => {
     const { onPath } = require('./stack-select.js');
     assert.strictEqual(onPath('node'), true, 'node runs this test suite, so it must be on PATH');
-    assert.strictEqual(onPath('no-such-binary-claude-stack-test'), false);
+    assert.strictEqual(onPath('no-such-binary-alfred-code-test'), false);
 });
 
 test('detectEnvironment probes bins via the PATH walk (no /bin/bash dependency)', () => {
@@ -808,40 +814,33 @@ test('a table still renders when --found and --dropped name missing files (advis
 
 // The remote context7 registration sends `${CONTEXT7_API_KEY:-}` - an unset key is the keyless
 // free tier, not an error, and `claude mcp list` stops warning for the `:-` form - so the
-// prerequisite check is the one place a missing key still shows, for either transport.
-test('context7 selected without a key warns for either transport, never blocks; with the key, clean', () => {
+// prerequisite check is the one place a missing key still shows.
+test('the documentation server selected without a key warns, never blocks; with the key, clean', () => {
     const bins = { node: true, npx: true, git: true, claude: true, uvx: true };
-    const sel = { skills: [], mcps: ['context7'], plugins: [] };
-    for (const opts of [{}, { context7Local: true }])
-    {
-        const r = evaluatePrereqs(sel, { bins, envs: {} }, opts);
-        assert.ok(r.warnings.some(w => /context7 API key/.test(w.need)), `warns without a key (${JSON.stringify(opts)})`);
-        assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
-    }
+    const sel = { skills: [], mcps: ['documentation'], plugins: [] };
+    const r = evaluatePrereqs(sel, { bins, envs: {} }, {});
+    assert.ok(r.warnings.some(w => /documentation server API key \(Context7\)/.test(w.need)), 'warns without a key');
+    assert.ok(!r.blockers.some(b => /context7/i.test(b.need)), 'never a blocker - unset is the keyless free tier');
     const keyed = evaluatePrereqs(sel, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
     assert.ok(!keyed.warnings.some(w => /context7/i.test(w.need)), 'a set key satisfies it');
-    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, { context7Local: true });
+    const none = evaluatePrereqs({ skills: [], mcps: [], plugins: [] }, { bins, envs: {} }, {});
     assert.ok(!none.warnings.some(w => /context7/i.test(w.need)), 'context7 not selected - no warning');
 });
 
 // A --space install keeps its account under ~/.claude-<space>; the model's shell rarely carries
 // CLAUDE_CONFIG_DIR, so the check must be told which account file to read.
-// Measured 2026-09-15: macOS installs Chrome as an app, never on PATH as `chrome`, so a machine
-// WITH Chrome was told to 'install Google Chrome or Chromium' whenever chrome-devtools was kept.
-test('browserCandidates: Chrome and Edge are probed at their app install locations on every platform', () => {
+// Measured 2026-09-15: macOS installs a browser as an app, never on PATH, so a machine WITH one was
+// told to install it. Edge and Chrome are the browsers a kept playwright engine needs from the machine.
+test('browserCandidates: Edge is probed at its app install locations on every platform', () => {
     const { browserCandidates } = require('./stack-select.js');
     const env = { ProgramFiles: 'C:\\PF', 'ProgramFiles(x86)': 'C:\\PF86', LOCALAPPDATA: 'C:\\LA' };
+    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app');
+    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe');
+    assert.deepStrictEqual(browserCandidates('msedge', 'linux', env), [], 'Linux relies on PATH');
+    // Task 18a M2: init-plan reads chrome the same way, since a picked chrome runs the machine's own.
     assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Google Chrome.app'), 'macOS Chrome app');
-    assert.ok(browserCandidates('chrome', 'darwin', env).includes('/Applications/Chromium.app'), 'macOS Chromium app');
-    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google[\\/]Chrome[\\/]Application[\\/]chrome\.exe$/.test(c)), 'Windows Chrome exe');
-    assert.ok(browserCandidates('msedge', 'darwin', env).includes('/Applications/Microsoft Edge.app'), 'macOS Edge app, unchanged');
-    assert.ok(browserCandidates('msedge', 'win32', env).some((c) => /msedge\.exe$/.test(c)), 'Windows Edge exe, unchanged');
-    assert.deepStrictEqual(browserCandidates('chrome', 'linux', env), [], 'Linux relies on PATH');
-    if (process.platform === 'darwin' && fs.existsSync('/Applications/Google Chrome.app'))
-    {
-        const { detectEnvironment } = require('./stack-select.js');
-        assert.strictEqual(detectEnvironment().bins.chrome, true, 'this Mac has Chrome installed as an app');
-    }
+    assert.ok(browserCandidates('chrome', 'win32', env).some((c) => /Google\\Chrome\\Application\\chrome\.exe$/.test(c)), 'Windows Chrome exe');
+    assert.deepStrictEqual(browserCandidates('firefox', 'darwin', env), [], 'a Playwright-built engine is never probed as a machine app');
 });
 
 test('detectEnvironment reads the account settings.json env from --config-dir (a --space account)', () => {
@@ -849,17 +848,17 @@ test('detectEnvironment reads the account settings.json env from --config-dir (a
     const os = require('node:os');
     const { detectEnvironment } = require('./stack-select.js');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stacksel-acct-'));
-    const saved = process.env.SENTRY_SLUG;
-    delete process.env.SENTRY_SLUG;
+    const saved = process.env.CONTEXT7_API_KEY;
+    delete process.env.CONTEXT7_API_KEY;
     try
     {
-        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { SENTRY_SLUG: 'acme' } }));
-        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.SENTRY_SLUG, true, 'read from the given account dir');
-        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.SENTRY_SLUG, false, 'a missing account file reads as unset');
+        fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ env: { CONTEXT7_API_KEY: 'ctx7-test' } }));
+        assert.strictEqual(detectEnvironment({ configDir: dir }).envs.CONTEXT7_API_KEY, true, 'read from the given account dir');
+        assert.strictEqual(detectEnvironment({ configDir: path.join(dir, 'no-such-account') }).envs.CONTEXT7_API_KEY, false, 'a missing account file reads as unset');
     }
     finally
     {
-        if (saved !== undefined) process.env.SENTRY_SLUG = saved;
+        if (saved !== undefined) process.env.CONTEXT7_API_KEY = saved;
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
@@ -887,54 +886,121 @@ test('CLI: an unknown --stacks name is named on stderr and the table still rende
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// superpowers is installed beside the core on every run, so the walk must not present it as
-// something to pick or drop.
-test('a plugin the core entry depends on gets its own row status, in both table modes', () => {
+// A plugin the installer adds beside the core on every run (CORE_DEP_PLUGINS, read into the graph as
+// catalog.dependencyPlugins) is never something to pick or drop. Which plugin that is changes with the
+// release (R72 took superpowers out), so the graph here names one itself: this pins the row status.
+test('a plugin the core carries beside it gets its own row status, in both table modes', () => {
     const fs = require('node:fs');
     const os = require('node:os');
     const { execFileSync } = require('node:child_process');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-'));
     const sel = path.join(dir, 'raw.json');
     const inv = path.join(dir, 'inv.json');
+    const graphPath = path.join(dir, 'graph.json');
+    const companion = graph.catalog.plugins.find((p) => p !== 'superpowers');
+    fs.writeFileSync(graphPath, JSON.stringify({ ...graph, catalog: { ...graph.catalog, dependencyPlugins: [companion] } }));
     fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: ['baseline-navigation'], agents: [], mcps: [], plugins: [], hooks: [] }));
-    fs.writeFileSync(inv, JSON.stringify({ plugins: ['superpowers'], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
+    fs.writeFileSync(inv, JSON.stringify({ plugins: [companion], skills: [], agents: [], rules: [], mcps: [], hooks: [] }));
     const script = path.join(__dirname, 'stack-select.js');
-    const graphPath = path.join(__dirname, '..', 'meta', 'stack-graph.json');
+    const rowOf = (out) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === companion);
 
-    const selected = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' });
-    const row = selected.split('\n').find(l => l.includes('superpowers'));
+    const row = rowOf(execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins'], { encoding: 'utf8' }));
     assert.ok(/\bdependency\b/.test(row), `the row must say dependency, got: ${row}`);
     assert.ok(/cannot be dropped/.test(row), `the row must say it cannot be dropped, got: ${row}`);
     assert.ok(!/required by/.test(row), 'it must not read like a pick the closure happens to force');
 
-    const installedOut = execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' });
-    const irow = installedOut.split('\n').find(l => l.includes('superpowers'));
+    const irow = rowOf(execFileSync('node', [script, '--selection', sel, '--graph', graphPath, '--table', 'plugins', '--installed', inv], { encoding: 'utf8' }));
     assert.ok(/\byes\b/.test(irow), `installed mode keeps its own state column, got: ${irow}`);
-    assert.ok(/carried by claude-stack@claude-stack/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    assert.ok(/installed beside alfred-code@envoydev on every run/.test(irow), `installed mode still says where it came from, got: ${irow}`);
+    assert.ok(!/carried by/.test(row + irow), 'the core carries no plugin - the installer adds it beside the core');
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('superpowers is no longer a SEED, and the baseline closure still reaches it', () => {
+// R27: claude-hud is required - a `dependency` row, never a pick - and no plugin is an always-baseline
+// SEED any more: the optional LSP pair is suggested on evidence, and superpowers (R109) is no pick at all.
+test('claude-hud gets the dependency row, and no plugin is seeded into every install', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deprow-hud-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: [], plugins: [], hooks: [] }));
+    const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const out = execFileSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins', '--recs', recsPath,
+        '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
+    fs.rmSync(dir, { recursive: true, force: true });
+    const rowOf = (name) => out.split('\n').find((l) => l.split('|')[1] && l.split('|')[1].trim() === name) || '';
+    assert.match(rowOf('claude-hud'), /\|\s*dependency\s*\|.*cannot be dropped.*one you disable stays off/, `claude-hud row: ${rowOf('claude-hud')}`);
+    for (const name of ['csharp-lsp', 'typescript-lsp'])
+        assert.match(rowOf(name), /\|\s*-\s*\|/, `${name} is optional - no evidence, no stack, not selected: ${rowOf(name)}`);
     const recs = require('../meta/recommendations.json');
-    assert.ok(!(recs.always.plugins || []).includes('superpowers'),
-        'the installer does not seed it any more - the core plugin\'s dependency installs it');
-    const closure = computeClosure(graph, recs.always);
-    assert.ok((closure.plugins || []).includes('superpowers'),
-        'it must still be reachable, or validate would stop reporting it absent on a broken install');
+    assert.deepStrictEqual(recs.always.plugins || [], [], 'no plugin is an always-baseline seed');
+});
+
+// R109: superpowers left every selection surface in 2.0.0 - no seed, no suggestion, no closure, no
+// catalog row. It is no retirement either: an installed copy is the user's own and never touched, and
+// a selection that still names it drops it with the one 'unknown' line every stale item gets.
+test('superpowers is in no selection surface: no seed, no suggestion, no closure, no catalog row', () => {
+    const { spawnSync } = require('node:child_process');
+    const recs = require('../meta/recommendations.json');
+    assert.ok(!((recs.general || {}).plugins || []).includes('superpowers'), 'not suggested');
+    assert.ok(!(recs.always.plugins || []).includes('superpowers'), 'never an always seed');
+    for (const [st, sel] of Object.entries(recs.stacks)) assert.ok(!(sel.plugins || []).includes('superpowers'), `never a ${st} seed`);
+    assert.ok(!(computeClosure(graph, recs.always).plugins || []).includes('superpowers'), 'no baseline rule, skill or seat cites it');
+    for (const sel of Object.values(recs.stacks)) assert.ok(!(computeClosure(graph, sel).plugins || []).includes('superpowers'), 'no stack closure reaches it');
+    assert.ok(!(graph.catalog.dependencyPlugins || []).includes('superpowers'), 'not a companion the installer adds on every run');
+    assert.ok(!graph.catalog.plugins.includes('superpowers'), 'not in the catalog');
+
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-row-'));
+    const sel = path.join(dir, 'raw.json');
+    fs.writeFileSync(sel, JSON.stringify({ ...recs.always, plugins: ['superpowers', 'csharp-lsp'] }));
+    const r = spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--table', 'plugins',
+        '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')], { encoding: 'utf8' });
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const out = `${r.stdout}\n${r.stderr}`;
+    assert.ok(!out.split('\n').some((l) => l.split('|')[1] && l.split('|')[1].trim() === 'superpowers'), `no table row: ${out}`);
+    assert.strictEqual(out.split('\n').filter((l) => /^unknown: plugin 'superpowers'/.test(l)).length, 1, `an old pick is dropped with one line: ${out}`);
+});
+
+// R72, validate's side: an install that has superpowers keeps it. The redundant pass never proposes
+// removing it (no stack owns it, and it is on the general list) and the missing pass never proposes
+// adding it (nothing the baseline or a detected stack carries needs it).
+test('validate proposes neither removing nor adding superpowers, whatever stacks are detected', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { execFileSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-validate-'));
+    try
+    {
+        const inv = path.join(dir, 'installed.json');
+        const run = (mode, stacks) => execFileSync('node', [path.join(__dirname, 'stack-select.js'), mode, '--installed', inv,
+            '--recs', path.join(__dirname, '..', 'meta', 'recommendations.json'), '--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json'),
+            ...(stacks ? ['--stacks', stacks] : [])], { encoding: 'utf8' });
+        fs.writeFileSync(inv, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [{ name: 'superpowers', scope: 'user' }] }));
+        for (const stacks of [null, 'aspnet', 'web-angular,devops'])
+            assert.doesNotMatch(run('--redundant', stacks), /superpowers/, `an installed superpowers is never redundant (stacks: ${stacks || 'none'})`);
+        fs.writeFileSync(inv, JSON.stringify({ rules: [], agents: [], skills: [], mcps: [], hooks: [], plugins: [] }));
+        for (const stacks of [null, 'aspnet'])
+            assert.doesNotMatch(run('--missing', stacks), /missing: plugin superpowers/, `an absent superpowers is never missing (stacks: ${stacks || 'none'})`);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('the recommended hook set is the whole catalog - a walk that takes it switches nothing off', () => {
     const recs = require('../meta/recommendations.json');
     const missing = (graph.catalog.hooks || []).filter(h => !(recs.always.hooks || []).includes(h));
     assert.deepEqual(missing, [],
-        'a catalog hook the recommendation leaves out lands in CLAUDE_STACK_HOOKS_OFF on every default setup');
+        'a catalog hook the recommendation leaves out lands in ALFRED_CODE_HOOKS_OFF on every default setup');
 });
 
 // Phase 8 T4: the installer's read-back lists what the user switched off as `left_out` - a seat
 // denied, an item of a parked entry. That is on disk, never MISSING: validate proposing it every run
 // would re-enable what the user turned off.
 test('findStackMissing: a left_out item is switched off here, never missing', () => {
-    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['serena'], plugins: [], hooks: [],
+    const installed = { rules: ['csharp-conventions'], agents: ['aspnet-implementer'], skills: ['csharp'], mcps: ['navigation'], plugins: [], hooks: [],
         left_out: ['agent aspnet-verifier', 'skill dotnet-web-backend'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['aspnet']).map(m => `${m.category} ${m.name}`));
     assert.ok(!names.has('agent aspnet-verifier'), 'a denied seat is not proposed back');
@@ -943,7 +1009,200 @@ test('findStackMissing: a left_out item is switched off here, never missing', ()
 });
 
 test('findStackMissing: a parked MCP entry is that server switched off here, never missing', () => {
-    const installed = { rules: [], agents: [], skills: [], mcps: ['serena'], plugins: [], hooks: [], plugins_disabled: ['playwright-chrome'] };
+    const installed = { rules: [], agents: [], skills: [], mcps: ['navigation'], plugins: [], hooks: [], plugins_disabled: ['browser-chrome'] };
     const names = new Set(findStackMissing(graph, recommendations, installed, ['web-angular']).map(m => `${m.category} ${m.name}`));
-    assert.ok(!names.has('mcp playwright'), 'the parked engine entry folds onto its catalog row');
+    assert.ok(!names.has('mcp browser'), 'the parked engine entry folds onto its catalog row');
+});
+
+// Task 18a: setup suggests what to install BEFORE anything is installed, with validate's own two
+// passes - so there is no --installed inventory yet. Left out, both passes read an empty install:
+// every seed and every matched signal is a suggestion, each line carrying its reason.
+test('CLI --missing and --evidence-gaps run in a fresh-install mode when --installed is left out', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-fresh-'));
+    try
+    {
+        const foundFile = path.join(dir, 'found.json');
+        fs.writeFileSync(foundFile, JSON.stringify({ found: { skills: { 'dotnet-grpc': 'Grpc.AspNetCore in src/Api.csproj', 'dotnet-data-access': 'Npgsql in src/Api.csproj' }, mcps: {}, plugins: {} } }));
+        const recsPath = path.join(__dirname, '..', 'meta', 'recommendations.json');
+        const graphArgs = ['--graph', path.join(__dirname, '..', 'meta', 'stack-graph.json')];
+        const cli = (args) => spawnSyncNode([path.join(__dirname, 'stack-select.js'), ...args, ...graphArgs]);
+
+        const missing = cli(['--missing', '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.strictEqual(missing.status, 0, missing.stderr);
+        // M1: the baseline is every install's - the walk tables lock or pre-select each item - so a fresh
+        // install gets ONE count line for it, and the stack seeds and evidence rows stay readable.
+        assert.ok(!/needed by baseline/.test(missing.stdout), `no per-item baseline line in fresh mode:\n${missing.stdout}`);
+        const count = /^baseline: (\d+) item\(s\) every install carries - the walk locks or pre-selects each one$/m.exec(missing.stdout);
+        assert.ok(count && Number(count[1]) > 10, `one count line: ${missing.stdout}`);
+        assert.ok(!/superpowers/.test(missing.stdout), 'R72: superpowers is suggested in the plugins table, never pre-selected here');
+        // Over an install (validate) every missing baseline item is still its own line - it is a real gap there.
+        const inv = path.join(dir, 'installed.json');
+        fs.writeFileSync(inv, JSON.stringify({ skills: [], agents: [], rules: [], mcps: [], plugins: [] }));
+        const over = cli(['--missing', '--installed', inv, '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.match(over.stdout, /^missing: rule baseline-security - needed by baseline, not installed$/m);
+        assert.ok(!/^baseline: /m.test(over.stdout));
+        assert.match(missing.stdout, /^missing: plugin csharp-lsp - needed by aspnet, not installed$/m, 'a detected stack seed is suggested, with its reason');
+
+        const gaps = cli(['--evidence-gaps', '--found', foundFile, '--catalog', path.join(__dirname, '..', 'meta', 'evidence.json'), '--recs', recsPath, '--stacks', 'aspnet']);
+        assert.strictEqual(gaps.status, 0, gaps.stderr);
+        assert.match(gaps.stdout, /^evidence-missing: skill dotnet-grpc - Grpc\.AspNetCore in src\/Api\.csproj, not installed$/m, 'a matched signal is suggested with the manifest that proved it');
+        assert.ok(!/no-evidence:/.test(gaps.stdout), 'nothing is installed, so nothing is unevidenced');
+        assert.ok(!/evidence-missing: skill dotnet-data-access/.test(gaps.stdout), 'what --missing already suggests (the aspnet seed) is not suggested twice');
+        assert.match(missing.stdout, /^missing: skill dotnet-data-access - needed by aspnet, not installed$/m, '... because --missing carries it');
+
+        const noRecs = cli(['--missing']);
+        assert.strictEqual(noRecs.status, 2, 'the recommendations are still required');
+        assert.match(noRecs.stderr, /--missing needs --recs/);
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+function spawnSyncNode(args)
+{
+    return require('node:child_process').spawnSync(process.execPath, args, { encoding: 'utf8' });
+}
+
+// Task 18a: /alfred-code:init installs uv and csharp-ls in the session after setup, so setup's
+// prerequisite check must not refuse the install over them - it names them as init's instead.
+// Every other caller (configure, validate) keeps them as blockers.
+test('--defer-init moves what init installs out of the blockers, and names it', () => {
+    const selection = { skills: [], mcps: ['navigation'], plugins: ['csharp-lsp'] };
+    const bins = { node: true, git: true, claude: true, uvx: false, 'csharp-ls': false };
+    const plain = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, {});
+    assert.deepStrictEqual(plain.blockers.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)'], 'without the flag both still block');
+    const deferred = evaluatePrereqs(selection, { bins, envs: { CONTEXT7_API_KEY: true } }, { deferInit: true });
+    assert.deepStrictEqual(deferred.blockers, [], 'with it neither blocks');
+    assert.deepStrictEqual(deferred.deferred.map(b => b.need).sort(), ['csharp-ls tool', 'uv (uvx)']);
+    assert.strictEqual(deferred.ok, true);
+    const hard = evaluatePrereqs(selection, { bins: { ...bins, git: false }, envs: {} }, { deferInit: true });
+    assert.deepStrictEqual(hard.blockers.map(b => b.need), ['git'], 'what init does NOT install still blocks');
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-defer-'));
+    try
+    {
+        const sel = path.join(dir, 'raw.json');
+        fs.writeFileSync(sel, JSON.stringify({ skills: [], rules: [], agents: [], mcps: ['navigation'], plugins: [], hooks: [] }));
+        // An empty PATH: every binary reads as absent, so uvx is deferred and node/git/claude block.
+        const r = require('node:child_process').spawnSync(process.execPath, [path.join(__dirname, 'stack-select.js'), '--selection', sel, '--check', '--defer-init'],
+            { encoding: 'utf8', env: { PATH: dir, HOME: dir } });
+        assert.match(r.stdout, /^init: uv \(uvx\) -> \/alfred-code:init installs it in the next session$/m);
+        assert.ok(!/BLOCKER: uv/.test(r.stdout), 'uv is not a blocker here');
+        assert.match(r.stdout, /^prereqs: BLOCKED - \d+ blocker\(s\), \d+ warning\(s\), 1 left to \/alfred-code:init$/m);
+    }
+    finally
+    {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// The 2.0.0 rename: the walks pass --browsers; a command body from before it passes --playwright-browsers,
+// read as the same option for one release - the new spelling wins where both are given.
+test('the --browsers option, with --playwright-browsers read as its alias', () => {
+    const { browsersOption } = require('./stack-select.js');
+    const from = (flags) => browsersOption((name) => flags[name]);
+    assert.deepStrictEqual(from({ '--browsers': 'Chrome, msedge' }), ['chrome', 'msedge']);
+    assert.deepStrictEqual(from({ '--playwright-browsers': 'webkit' }), ['webkit']);
+    assert.deepStrictEqual(from({ '--browsers': 'firefox', '--playwright-browsers': 'webkit' }), ['firefox'], 'the new spelling wins');
+    assert.deepStrictEqual(from({}), []);
+});
+
+// THE DESKTOP SERVERS BY OS. windows-desktop drives Windows apps and macos-desktop macOS ones, so the walk
+// offers each on its own OS only and neither on Linux; the wpf and winforms stacks seed windows-desktop,
+// which on another OS is named once on stderr instead of pre-selected. --platform forces the OS.
+test('the MCP table offers each desktop server on its own OS only, seeded for wpf / winforms on Windows', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-'));
+    const rawFile = path.join(dir, 'raw.json');
+    fs.writeFileSync(rawFile, '{}');
+    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const table = (platform, stacks) => spawnSync('node', [path.join(__dirname, 'stack-select.js'), '--selection', rawFile, '--table', 'mcps', '--recs', recs, '--stacks', stacks, '--platform', platform], { encoding: 'utf8' });
+    const row = (out, name) => (out.split('\n').find((l) => new RegExp(`\\| ${name}\\s+\\|`).test(l)) || '').replace(/\s+/g, ' ');
+    try
+    {
+        for (const stack of ['wpf', 'winforms'])
+        {
+            const win = table('win32', stack);
+            assert.match(row(win.stdout, 'windows-desktop'), new RegExp(`\\| stack:${stack} \\|`), `${stack} seeds windows-desktop on Windows`);
+            assert.strictEqual(row(win.stdout, 'macos-desktop'), '', 'macos-desktop is never offered on Windows');
+            assert.ok(!/skipped/.test(win.stderr), win.stderr);
+            const mac = table('darwin', stack);
+            assert.strictEqual(row(mac.stdout, 'windows-desktop'), '', 'windows-desktop is never offered on macOS');
+            assert.match(row(mac.stdout, 'macos-desktop'), /\| - \|/, 'macos-desktop is addable on macOS, pre-selected by nothing');
+            assert.match(mac.stderr, new RegExp(`skipped: mcp windows-desktop - stack:${stack} seeds it on Windows; this machine runs macOS`));
+            const footer = Number((mac.stdout.match(/^total: (\d+) mcps/m) || [])[1]);
+            assert.strictEqual(mac.stdout.split('\n').filter((l) => /^\s*\d+ \|/.test(l)).length, footer, 'the footer counts the rows offered here');
+        }
+        const linux = table('linux', 'wpf');
+        assert.strictEqual(row(linux.stdout, 'windows-desktop') + row(linux.stdout, 'macos-desktop'), '', 'no desktop server is offered on Linux');
+        assert.match(linux.stderr, /skipped: mcp windows-desktop - stack:wpf seeds it on Windows; this machine runs Linux/);
+        const web = table('win32', 'web-angular');
+        assert.match(row(web.stdout, 'windows-desktop'), /\| - \|/, 'only wpf and winforms seed it');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the desktop gate reaches --missing and a selection: a wrong-OS server is never missing, never emitted', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ss-desktop-sel-'));
+    const recs = path.join(__dirname, '..', 'meta', 'recommendations.json');
+    const script = path.join(__dirname, 'stack-select.js');
+    try
+    {
+        const missing = (platform) => spawnSync('node', [script, '--missing', '--recs', recs, '--stacks', 'wpf', '--platform', platform], { encoding: 'utf8' }).stdout;
+        assert.match(missing('win32'), /^missing: mcp windows-desktop - needed by wpf, not installed$/m);
+        assert.ok(!/windows-desktop/.test(missing('darwin')), missing('darwin'));
+        assert.ok(!/windows-desktop/.test(missing('linux')), missing('linux'));
+
+        const rawFile = path.join(dir, 'raw.json');
+        fs.writeFileSync(rawFile, JSON.stringify({ skills: [], mcps: ['windows-desktop', 'macos-desktop'] }));
+        const emit = (platform) =>
+        {
+            const out = path.join(dir, `${platform}.sel`);
+            const r = spawnSync('node', [script, '--selection', rawFile, '--emit', out, '--platform', platform], { encoding: 'utf8' });
+            return { lines: fs.readFileSync(out, 'utf8').split('\n').filter((l) => l.startsWith('mcp ')), out: r.stdout };
+        };
+        const mac = emit('darwin');
+        assert.deepStrictEqual(mac.lines, ['mcp macos-desktop']);
+        assert.match(mac.out, /^skipped: mcp windows-desktop - it drives Windows apps; this machine runs macOS$/m);
+        assert.deepStrictEqual(emit('win32').lines, ['mcp windows-desktop']);
+        assert.deepStrictEqual(emit('linux').lines, []);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A SERVER CAN BRING THE SKILL THAT TEACHES IT (meta/stack-manifest.json mcps[].skills, read into the
+// graph's `mcps` block): the desktop servers bring desktop-automation, so the skill arrives wherever
+// either server does - a walk's seed, an --add - and a configure drop cascades both ways.
+test('a server pulls the skill it brings; dropping the server orphans it, and the skill names the server as its dependent', () => {
+    const { findDependents, findOrphans } = require('./stack-select.js');
+    const g = {
+        skills: { 'desktop-automation': { mcps: [], plugins: [] }, csharp: { mcps: [], plugins: [] } },
+        agents: {}, rules: {},
+        mcps: { 'windows-desktop': { skills: ['desktop-automation'] }, 'macos-desktop': { skills: ['desktop-automation'] } },
+        catalog: { mcps: ['windows-desktop', 'macos-desktop', 'navigation'], plugins: [], hooks: [] },
+    };
+    const c = computeClosure(g, { mcps: ['macos-desktop'] });
+    assert.deepStrictEqual(c.skills, ['desktop-automation']);
+    assert.strictEqual(c.reasons['desktop-automation'], 'required by mcp macos-desktop');
+    assert.deepStrictEqual(computeClosure(g, { mcps: ['navigation'] }).skills, [], 'a server that brings nothing pulls nothing');
+    assert.deepStrictEqual(computeClosure({ ...g, mcps: undefined }, { mcps: ['windows-desktop'] }).skills, [], 'a graph with no mcps block (an older release) still closes');
+    assert.deepStrictEqual(findDependents(g, { mcps: ['windows-desktop'], skills: ['desktop-automation'] }, 'skills', 'desktop-automation'),
+        [{ category: 'mcp', name: 'windows-desktop' }]);
+    const orphans = findOrphans(g, { skills: ['desktop-automation', 'csharp'], mcps: [] }, { mcps: ['windows-desktop'] });
+    assert.deepStrictEqual(orphans.map((o) => `${o.category} ${o.name}`), ['skill desktop-automation']);
+});
+
+test('the generated graph: each desktop server brings desktop-automation, and the skill\'s own server mentions pull nothing', () => {
+    for (const name of ['windows-desktop', 'macos-desktop'])
+        assert.deepStrictEqual((graph.mcps || {})[name], { skills: ['desktop-automation'] }, name);
+    const c = computeClosure(graph, { skills: ['desktop-automation'] });
+    assert.deepStrictEqual(c.mcps, [], 'naming both servers in the skill must never install both');
+    assert.ok(computeClosure(graph, { rules: ['wpf-conventions'], mcps: ['windows-desktop'] }).skills.includes('desktop-automation'));
 });

@@ -5,14 +5,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { parseHookWirings, hooksBlock, hooksPlugin, coreEntry, HOOKS_PLUGIN } = require('./build-marketplace.js');
+const build = require('./build-marketplace.js');
+const { parseHookWirings, hooksBlock, coreEntry } = build;
 
+const dispatcher = require('../stack/hooks/shell-guards.js');
 const wirings = parseHookWirings();
 const block = hooksBlock(wirings);
 
 test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
-    const files = new Set(wirings.map(w => w.file));
+    // The shell guards launch as ONE dispatcher, which runs each of them in-process.
+    const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`) : [w.file])));
     assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
@@ -35,7 +38,7 @@ test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', (
 // script ('Exec form and shell form', code.claude.com/docs/en/hooks: 'the node plus script-path
 // pattern works on every platform'). A bare script path needs the exec bit and a shebang the
 // platform honours: five hooks were committed 100644, and Windows runs neither.
-test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 for the one declared exception), plugin-root paths', () => {
+test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 and 80 for the two declared exceptions), plugin-root paths', () => {
     for (const [event, blocks] of Object.entries(block))
     {
         assert.ok(Array.isArray(blocks) && blocks.length, `${event} must hold at least one block`);
@@ -43,8 +46,11 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 fo
             for (const h of b.hooks)
             {
                 assert.strictEqual(h.type, 'command');
-                // check-turn-build.js runs a real build at Stop - the one hook allowed past 10s.
-                const expected = /check-turn-build\.js"/.test(h.command) ? 60 : 10;
+                // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s. Its
+                // PostToolUse half only appends a path, so it keeps 10 like every other hook.
+                // The shell-guard dispatcher runs eight guards in one process: their 10s each, summed.
+                const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60
+                    : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length : 10;
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
                 assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
                     `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
@@ -63,10 +69,9 @@ test('every generated hook command runs a non-executable script, under a root wi
     try
     {
         const commands = new Set();
-        for (const entry of [hooksPlugin(), coreEntry()])
-            for (const blocks of Object.values(entry.hooks))
-                for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 18, `expected the seventeen hooks plus the layer-table guard, got ${commands.size}`);
+        for (const blocks of Object.values(coreEntry().hooks))
+            for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
+        assert.ok(commands.size >= 17, `expected the seventeen hooks (the eight shell guards through one dispatcher) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {
@@ -100,7 +105,7 @@ test('every event the stack wires is present, and each keeps its own matchers', 
 });
 
 test('one matcher holding several hooks groups them, so the entry stays readable', () => {
-    for (const [event, blocks] of Object.entries(block))
+    for (const [event, blocks] of [...Object.entries(block), ...Object.entries(coreEntry().hooks)])
     {
         const seen = new Set();
         for (const b of blocks)
@@ -112,10 +117,16 @@ test('one matcher holding several hooks groups them, so the entry stays readable
     }
 });
 
-test('the hooks plugin entry is the shared-root, inline shape spike S9 and Phase 2 proved', () => {
-    assert.strictEqual(HOOKS_PLUGIN.name, 'claude-stack-hooks');
-    assert.strictEqual(HOOKS_PLUGIN.source, './');
-    assert.strictEqual(HOOKS_PLUGIN.strict, false);
-    assert.ok(HOOKS_PLUGIN.hooks, 'the hooks are declared INLINE, so nothing sits at the shared root');
-    assert.ok(!HOOKS_PLUGIN.skills && !HOOKS_PLUGIN.agents, 'it ships hooks only');
+// 2.0.0 folds the hooks into the core (user ruling 'Fold into core in 2.0.0'): there is no hooks
+// entry to generate, and the core carries the stack hooks INLINE - still no hooks/hooks.json at the
+// shared root, which every entry over it would auto-discover (spike S9).
+test('the hooks ride the core: no hooks entry is generated, and the core declares them inline', () => {
+    for (const gone of ['hooksPlugin', 'HOOKS_PLUGIN', 'applyHooksPlugin', 'applyRenames', 'MARKETPLACE_RENAMES'])
+        assert.ok(!(gone in build), `${gone} is gone with the hooks entry and the renames map`);
+    const core = coreEntry();
+    assert.strictEqual(core.source, './');
+    assert.strictEqual(core.strict, false);
+    const wired = JSON.stringify(core.hooks);
+    for (const w of wirings) assert.ok(wired.includes(`stack/hooks/${w.file}`), `the core carries ${w.file}`);
+    assert.ok(!fs.existsSync(path.join(__dirname, '..', 'hooks', 'hooks.json')), 'nothing sits at the shared root');
 });

@@ -1,7 +1,7 @@
 # Manifest and marketplace schema
 
 Checked against the Claude Code plugins reference and marketplaces pages on 2026-09-12. Re-verify
-a field through context7 before relying on a detail that is not in the body of this file.
+a field through the documentation server before relying on a detail that is not in the body of this file.
 
 Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#marketplacejson) -
 [Loading and precedence](#loading-and-precedence) -
@@ -38,7 +38,7 @@ Contents: [plugin.json](#pluginjson) - [Layout](#layout) - [marketplace.json](#m
 | `name` | REQUIRED. Kebab-case; the namespace of every command / skill / agent (`/<name>:<cmd>`). Unique within its marketplace. |
 | `version` | Semver. Authoritative over a version in the marketplace entry, silently. When present, an update ships only on a bump. |
 | `author` | An OBJECT with `name` (plus `email`, `url`). A bare string fails strict validation. |
-| Component paths | Relative to the plugin root, starting `./`; a string or an array; a file or a directory. `commands`, `agents`, `hooks`, `mcpServers`, `lspServers`, `outputStyles`, `workflows` REPLACE the default folder; `skills` ADDS to `./skills/`. `../` is rejected - a copied plugin cannot reach above its root (a symlink inside the root is the workaround). |
+| Component paths | Relative to the plugin root, starting `./`; a string or an array; a file or a directory. `commands`, `agents`, `outputStyles`, `workflows` REPLACE the default folder; `skills` ADDS to `./skills/` (except in an entry sourced from the marketplace root, where the listed folders are the whole set); `hooks`, `mcpServers`, `lspServers` merge by their own rules. `../` is rejected - a copied plugin cannot reach above its root (a symlink inside the root is the workaround). |
 | `userConfig` | Named values the user is asked for on install; `sensitive: true` stores in secure storage and reaches hooks / servers as an environment variable. |
 | `experimental.evals` | The eval suite directory when `evals/` is taken (see `evals.md`). |
 

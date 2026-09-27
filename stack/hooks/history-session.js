@@ -2,18 +2,21 @@
 // history-session.js - SessionStart + Stop. Thin: the engine history.js sits beside it (copied, not
 // wired - the docs.js / memory.js split). Stop upserts this session's entry under <docs-path>/history/.
 // SessionStart does the same (it pins the start commit), prunes, and injects the last three entries of
-// THIS branch - what they committed, left dirty and ruled. No model call; CLAUDE_STACK_HISTORY=0 is off.
+// THIS branch - what they committed, left dirty and ruled. No model call; ALFRED_CODE_HISTORY=0 is off.
 // Fail-open in every direction: no engine, garbage stdin, no git, a locked file - exit 0, print nothing.
 // History never blocks a turn.
 'use strict';
 const path = require('path');
 
-// STACK HOOK GATES - both live in hook-prelude.js (the CLAUDE_STACK_HOOKS_OFF csv and the migration
-// window where the plugin copy stands down for a copied twin). Fail-open: no prelude runs the hook.
+// STACK HOOK GATES - they live in hook-prelude.js, whose header lists them, never inlined in every
+// hook. Fail-open: no prelude runs the hook - envOf falls back to the bare ALFRED_CODE_ read
+// (pre-2.0.0 behaviour) the same way.
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
 if (require.main === module) {
   try {
-    const { standDown } = require('./hook-prelude.js');
-    if (standDown('history-session')) process.exit(0);
+    const prelude = require('./hook-prelude.js');
+    envOf = prelude.envOf;
+    if (prelude.standDown('history-session')) process.exit(0);
   } catch { /* an install without the prelude runs the hook unchanged */ }
 }
 
@@ -44,7 +47,7 @@ function readStdinBounded(timeoutMs) {
 }
 
 async function main() {
-  if (process.env.CLAUDE_STACK_HISTORY === '0') return;
+  if (envOf(process.env, 'HISTORY') === '0') return;
   let H;
   try { H = require(path.join(__dirname, 'history.js')); } catch { return; }
   let payload;

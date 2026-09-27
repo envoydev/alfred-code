@@ -2,7 +2,7 @@
 'use strict';
 // THE INSTALL AUDIT - a read-only pass over an install's OWN agent config: what the stack or the user
 // wired into this project (.mcp.json, the project settings files, CLAUDE.md), never the project's
-// code. Advisory: it prints rows, fixes nothing and always exits 0 - /claude-stack:validate pastes
+// code. Advisory: it prints rows, fixes nothing and always exits 0 - /alfred-code:validate pastes
 // the table and asks at most once.
 //
 //   node scripts/audit-install.js [<projectRoot>] [--json]
@@ -14,7 +14,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { SECRET_SHAPE, PEM_PRIVATE } = require('./credential-shapes.js');
 
-// Unpinned on purpose: it must match the ng the workspace itself resolves.
+// Unpinned on purpose: it must match the ng the workspace itself resolves. The stack stopped
+// shipping it in 2.0.0, and the add-back line the retirement prints registers it unpinned.
 const UNPINNED_OK = new Set(['angular-cli']);
 const LAUNCHERS = new Set(['npx', 'uvx', 'bunx', 'pnpm']);
 // The flag that names the package outright, per launcher; else the first positional is it.

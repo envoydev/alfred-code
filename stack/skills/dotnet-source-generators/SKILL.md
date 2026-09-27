@@ -1,6 +1,6 @@
 ---
 name: dotnet-source-generators
-description: "Use when writing or reviewing a Roslyn source generator, weighing compile-time codegen against reflection, or when the user says source generator, IIncrementalGenerator, ISourceGenerator, GeneratedRegex, LoggerMessage, or ForAttributeWithMetadataName. Covers both sides of the line - reaching first for the framework generators that exist (GeneratedRegex, LoggerMessage, the System.Text.Json context) and authoring your own only when none fits; the authoring mechanics live in references/authoring.md. Floors at .NET 8 / C# 12. Do NOT use for ordinary code that ships no generator."
+description: "Use when writing or reviewing a Roslyn source generator, weighing compile-time codegen against reflection, or when the user says source generator, IIncrementalGenerator, ISourceGenerator, GeneratedRegex, LoggerMessage, or ForAttributeWithMetadataName. Covers both sides of the line - reaching first for the framework generators that exist (GeneratedRegex, LoggerMessage, the System.Text.Json context) and authoring your own only when none fits. Floors at .NET 8 / C# 12. Do NOT use for ordinary code that ships no generator."
 ---
 
 # .NET source generators

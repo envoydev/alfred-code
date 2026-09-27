@@ -5,7 +5,7 @@ description: "Load when hardening or reviewing an Angular web feature for securi
 
 # Angular / web frontend security
 
-Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the runtime security-guidance plugin (which reviews a live diff) and with the skill covering server-side .NET hardening, where the install has one. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
+Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the security review of a live diff (`/security-review`, which the pre-commit checkpoint runs on an auth, token or data-access change) and with the skill covering server-side .NET hardening, where the install has one. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
 
 ## XSS and the sanitizer bypass
 

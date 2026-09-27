@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
 const HOOKS = path.join(__dirname, '..', 'stack', 'hooks');
 
 function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs' } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'docs-engine-')));
   const git = (...args) => {
-    const r = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    const r = rt.spawnCommand('git', args, { cwd: root, encoding: 'utf8' });
     if (r.status !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr}`);
     return r.stdout.trim();
   };
@@ -30,9 +31,10 @@ function repo({ tracked = false, files = {}, docs = {}, docsPath = '.claude/docs
   for (const [rel, text] of Object.entries(docs)) write(path.join(docsPath, 'architecture', rel), text);
   git('add', '-A');
   git('commit', '-qm', 'seed');
-  // CLAUDE_STACK_DOCS_VERSIONING is scrubbed like the legacy docs-path spelling: this runner may itself sit in a
-  // session whose settings.json declares a mode, and a fixture must exercise the mode the CASE hands it.
-  const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_STACK_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', CLAUDE_STACK_DOCS_VERSIONING: '', ...extra });
+  // ALFRED_CODE_DOCS_VERSIONING is scrubbed like the legacy docs-path spelling: this runner may itself sit in a
+  // session whose settings.json declares a mode, and a fixture must exercise the mode the CASE hands it. The 1.x
+  // spelling too, since the engine reads it after the new one (B-M6).
+  const env = (extra) => ({ ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: docsPath, CLAUDE_DOCS_PATH: '', ALFRED_CODE_DOCS_VERSIONING: '', CLAUDE_STACK_DOCS_VERSIONING: '', ...extra }); // legacy-name
   const cli = (args, input, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs.js'), ...args], { cwd: root, input, encoding: 'utf8', env: env(extra) });
   const hook = (payload, extra = {}) => spawnSync(process.execPath, [path.join(HOOKS, 'docs-session.js')], { cwd: root, input: JSON.stringify(payload), encoding: 'utf8', env: env(extra) });
   return {

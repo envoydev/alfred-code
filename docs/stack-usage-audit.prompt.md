@@ -21,7 +21,7 @@ report.
 **Detect first, ask second.** Never ask what the machine can tell you. Before the first question,
 and writing nothing, establish and then STATE in the question text:
 
-- where this session is running (the claude-stack clone, or a consuming project root),
+- where this session is running (the alfred-code clone, or a consuming project root),
 - whether a collection root already exists and how many bundles it holds - glob
   `docs/*investigation*/` rather than assuming the default name (`docs/session-investigation/`):
   a real collection on this machine sits in the plural spelling, and a run that assumed the
@@ -112,7 +112,7 @@ Q-EVIDENCE  (always first, alone)
   a project with history and no bundles can only answer the first or third - say so instead of
   offering a choice that cannot run.
 - **Q-SECTIONS** (only when something is being generated) - `authored` - invoke
-  `/project-stack-usage-analyzer` so a model fills each report's judgment sections (slower, richer,
+  `/alfred-capture-stack-usage` so a model fills each report's judgment sections (slower, richer,
   needs a session inside that project) - or `skeleton` - `analyze-usage.js --report-md` only,
   judgment left unwritten because the audit re-derives it anyway (recommended for more than one
   project, and the only route that works from outside the project).
@@ -156,16 +156,16 @@ Hold every answer for the whole run. Re-asking a settled question mid-run is a d
 ## Phase A - collect (skipped entirely when Q-EVIDENCE was `audit what is already collected`)
 
 Once per project in `projects[]`; the Q-DATA answer picks that project's route. Destination is
-always `<claude-stack repo>/docs/session-investigation/<project>/`.
+always `<alfred-code repo>/docs/session-investigation/<project>/`.
 
 **Route 1 - the data is already generated.** Copy the WHOLE bundle set the project holds -
 `SUMMARY.md`, `_rollup.txt` as `rollup.txt`, and every per-session folder entire - out of
-`<project>/.claude/docs/claude-stack-usage-report/` (or its `CLAUDE_STACK_DOCS_PATH` root). Add the
+`<project>/.alfred/docs/alfred-code-usage-report/` (or its `ALFRED_CODE_DOCS_PATH` root - `.claude/docs` on an install from before 2.0.0). Add the
 two ledgers per session from that same root (`tools-usage/<sid>.jsonl`, `hook-blocks/<sid>.jsonl`)
 where the bundle does not already carry them. Nothing is generated. A session in scope with no
 bundle is reported as missing, and generated only under the `fill-gaps` answer.
 
-**Route 2 - generate, `authored` sections.** `/project-stack-usage-analyzer` must run in a fresh
+**Route 2 - generate, `authored` sections.** `/alfred-capture-stack-usage` must run in a fresh
 session INSIDE that project's root - it is the only route that fills the judgment sections. Invoke
 it with the scope answer, let it write one bundle per session plus its `SUMMARY.md` under the
 project's docs root, then copy the set as in route 1. For a project you are not in, name it as a
@@ -191,7 +191,7 @@ already stores its history, and this route reads it from here.
 | `report-usage.md` | `--report-md` (skeleton), or the authored file from the project route |
 | `<session-id>.jsonl` | copy of the transcript - ground truth, and the ONLY artifact carrying the actual messages |
 | `subagents/` | copy of the transcript's sibling folder when it exists |
-| `tool-usage-<sid>.jsonl` | the instrumentation ledger from the project's docs root (`<project>/.claude/docs/tools-usage/<sid>.jsonl`, or its `CLAUDE_STACK_DOCS_PATH` root) |
+| `tool-usage-<sid>.jsonl` | the instrumentation ledger from the project's docs root (`<project>/.alfred/docs/tools-usage/<sid>.jsonl`, or its `ALFRED_CODE_DOCS_PATH` root) |
 | `hook-blocks-<sid>.jsonl` | the guard-block ledger from the same root - the only place naming WHICH hook denied a call |
 
    Pass `--hook-log <ledger>`, `--hook-blocks <that session's file, never the directory>` and
@@ -335,11 +335,11 @@ already has one is skipped on re-invocation.
   project's - re-run with `--inventory <that project's .claude>` before filing a non-use finding
   off it. Read the `how` column too: a skill preloaded by a dispatched seat's frontmatter was paid
   for in full with zero calls, which is a different finding from a skill nothing reached.
-- **`/project-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
+- **`/alfred-*` skills under load.** Every one that ran is judged against its own `SKILL.md`: the
   phases it promises, the asks it must put through AskUserQuestion, the artifact it must write, the
   state file it resumes from, and whether it VERIFIED its result or asserted it. Report each as a
   row - skill, sessions seen, tokens, conformed / violated / conformed-into-a-bad-outcome, and the
-  one thing that would make it cheaper or more reliable. A `/project-*` run that produced its
+  one thing that would make it cheaper or more reliable. A `/alfred-*` run that produced its
   artifact but cost more than the work it saved is a MATERIAL token-waste finding against that
   skill, with the two numbers side by side.
 - **Report integrity.** Spot-check a model-written report's countable claims; a wrong number is
@@ -347,7 +347,7 @@ already has one is skipped on re-invocation.
 - **The audit file** `<AUDIT_DIR>/<session-id>.md`: header (id, date, stacks, task, headline
   numbers), one-line verdict, the TOKEN VERDICT and EFFECTIVENESS lines (delivered / cost / avoidable share; landed / corrections / unchecked claims / unheld stops), the scorecard rows quoted, the
   stack-surface scorecard (generated docs used or bypassed; skills fired, missed and misused; each
-  `/project-*` run with its conformance and cost), the findings ledger including positive findings,
+  `/alfred-*` run with its conformance and cost), the findings ledger including positive findings,
   report-integrity result, and `FIXED-SINCE` observations.
 
 Every finding, everywhere, uses one shape - the clustering depends on it:
@@ -377,7 +377,7 @@ contract with real consequence, or measured avoidable cost), `MINOR`. Categories
   the audit's OWN output. That last class is large and predictable - a defect in a bundle's
   `report-usage.md`, a `SUMMARY.md`, or the report-generation prompt is a local artifact, so close
   it `NOT-STACK` and route the durable half to the stack skill that owns that work
-  (`project-stack-usage-analyzer`), naming the rule that landed there.
+  (`alfred-capture-stack-usage`), naming the rule that landed there.
 - `OPEN` is a transient state, never a verdict. A finding is OPEN only between the audit that filed
   it and the routing answer that dispositions it - see Phase C's close-out.
 
@@ -443,7 +443,7 @@ which reads as unfinished work rather than as the judgment calls they were).
 
 - **Premise check on any finding about a harness or API feature.** A finding that assumes what a
   frontmatter key, CLI flag, hook event or tool parameter DOES is verified against the current docs
-  (context7) before a mechanism is built on it - the verification is what the fix cites (measured: a
+  (the documentation server) before a mechanism is built on it - the verification is what the fix cites (measured: a
   finding asked for `allowed-tools` on a command as a context saving; it is a per-turn permission
   pre-approval that removes no schema, so the fix was to write the verified semantics down, not to
   add the key).

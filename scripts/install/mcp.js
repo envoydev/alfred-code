@@ -8,7 +8,7 @@
 //
 // Four rules earned the hard way, each one a bug that shipped:
 //
-//   - R7, THE LOCKED THREE. serena, context7 and memory are plugins the installer puts beside the
+//   - R7, THE LOCKED THREE. navigation, documentation and memory are plugins the installer puts beside the
 //     core whenever the core is enabled at all - which is whenever ANY plugin route is on (not
 //     dependencies: a missing one would disable the core at load). Registering them as well
 //     double-loads them. They come back to `.mcp.json` only on the FULL copy route, where the core
@@ -25,11 +25,38 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
+const { entryHash } = require('./stamp.js');
+const { offeredOn, skipNote } = require('../../stack/mcp/desktop-launch.js');
 
 // The three that can never be dropped - see R7 above.
-const LOCKED = ['serena', 'context7', 'memory'];
+const LOCKED = ['navigation', 'documentation', 'memory'];
 const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
-const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`)];
+// Every name the browser server was registered under: the 1.x single `playwright`, the
+// `playwright-<engine>` servers 2.0.0 renamed, and one `browser-<engine>` per engine.
+const PW_SERVERS = ['playwright', ...PW_ENGINES.map((e) => `playwright-${e}`), ...PW_ENGINES.map((e) => `browser-${e}`)];
+
+// THE 2.0.0 RENAME (meta/stack-manifest.json `renamed.mcps`, old -> new): an MCP name an older release
+// used reads as the name it goes by now - the plugin and its server alike, a browser engine by its
+// prefix (`playwright-chrome` -> `browser-chrome`). Any other name comes back as it is.
+function currentMcp(name, renamed = {})
+{
+    const text = String(name);
+    if (Object.hasOwn(renamed, text)) return renamed[text];
+    const m = /^(.+)-(chrome|msedge|firefox|webkit)$/.exec(text);
+    return m && Object.hasOwn(renamed, m[1]) ? `${renamed[m[1]]}-${m[2]}` : text;
+}
+
+// Every plugin and server name the rename left behind: each old name, and for the one that expands
+// per engine (the browser) each old engine name instead - the bare 1.x `playwright` is its own legacy
+// registration (PW_SERVERS), never a plugin. What an older install can still hold.
+function renamedFrom(renamed = {})
+{
+    const out = [];
+    for (const [from, to] of Object.entries(renamed || {}))
+        if (to === 'browser') out.push(...PW_ENGINES.map((e) => `${from}-${e}`));
+        else out.push(from);
+    return out;
+}
 
 const isLocked = (name) => LOCKED.includes(name);
 
@@ -42,17 +69,36 @@ const corePluginOn = (routes) => Boolean(routes.hooks || routes.skills || routes
 // have written a server this project no longer picks - plus the four engine spellings. On a copy
 // route with the core still on it is just the locked three. On the full copy route, only what the
 // release authored as retired.
-function retiredMcps({ routes, catalog = [], authored = [] })
+function retiredMcps({ routes, catalog = [], authored = [], legacy = [] })
 {
-    const out = [...authored];
+    // The names the 2.0.0 rename left behind go on EVERY route: this release registers none of them,
+    // so one still here is the older install's own (a registration the user made under an old name is
+    // kept by the callers' shape and ledger checks).
+    const out = [...authored, ...legacy];
     if (!routes.mcps)
     {
         if (corePluginOn(routes)) out.push(...LOCKED);
         return out;
     }
     for (const entry of catalog) out.push(typeof entry === 'string' ? entry.split('|')[0] : entry.name);
-    out.push(...PW_ENGINES.map((e) => `playwright-${e}`));
+    out.push(...PW_ENGINES.map((e) => `browser-${e}`));
     return out;
+}
+
+// Of the names a release RETIRED, the ones this run still prunes. A name with a retirement row
+// (meta/retired-plugins.json) goes only while the last install's stamp predates it - that install is
+// what registered it. The first update past it prunes the registration and prints the row's add-back
+// line, so from then on a registration under the name is the user's own and stays; with no stamp at
+// all the stack never registered it either, and a server added by hand is never touched. A name with
+// no row is pruned every run, as before.
+function dueRetired({ names = [], rows = [], lastVersion = '', compare })
+{
+    return names.filter((name) =>
+    {
+        const row = rows.find((r) => r && r.name === name);
+        if (!row || !row.retiredIn) return true;
+        return Boolean(lastVersion) && compare(lastVersion, row.retiredIn) < 0;
+    });
 }
 
 // The servers this run registers under their BARE names - the only ones whose tool names may be
@@ -82,8 +128,7 @@ function registerSpec({ name, args, scope, remotes = {}, tokens = {} })
     {
         const remote = remotes[name] || {};
         const argv = ['mcp', 'add', '--transport', 'http', '--scope', scope, name, remote.url || ''];
-        // An EMPTY header (sentry --sentry-auth oauth) registers with no --header at all, so the
-        // OAuth consent flow stays on.
+        // A remote with no header registers without --header at all, so its OAuth consent flow stays on.
         if (remote.header) argv.push('--header', remote.header);
         return argv;
     }
@@ -212,8 +257,10 @@ function wantShape(expect)
 
 // USER SCOPE: the registration lives in the account config, which this seed never hand-edits. The
 // check runs through `claude mcp get`, a mismatch is retried once through the CLI, and anything
-// still wrong is REPORTED - never silently accepted.
-function verifyUser({ expects = [], scope, getShape, reregister, log = () => {}, note = () => {} })
+// still wrong is REPORTED - never silently accepted. N4: the retry removes first, so a name `owned`
+// cannot vouch for (the caller's read of the account file did not show the stack's own registration
+// there) is named once and left alone - it may be the user's own server under a stack name.
+function verifyUser({ expects = [], scope, getShape, reregister, owned = () => true, log = () => {}, note = () => {} })
 {
     const repaired = [];
     for (const expect of expects)
@@ -222,6 +269,11 @@ function verifyUser({ expects = [], scope, getShape, reregister, log = () => {},
         let have = shapeNorm(parseGetShape(getShape(expect.name)));
         if (!have) continue;                       // an older CLI, or a server the config does not expose
         if (have === want) continue;
+        if (!owned(expect.name))
+        {
+            log(`  !! mcp ${expect.name}: the ${scope}-scope registration differs from the stack's shape and is not known to be the stack's own - not re-registered, so nothing of yours is removed; if it should go: claude mcp remove ${expect.name} -s ${scope}, then re-run`);
+            continue;
+        }
         log(`  mcp shape drifted at user scope: ${expect.name} - re-registering`);
         reregister(expect.name, scope);
         have = shapeNorm(parseGetShape(getShape(expect.name)));
@@ -232,38 +284,35 @@ function verifyUser({ expects = [], scope, getShape, reregister, log = () => {},
     return { repaired };
 }
 
-// The runtime versions this run pins to. Every lookup is BOUNDED and every failure falls through
-// to UNPINNED rather than aborting: offline, or without npm / curl / python3, an install must still
-// happen - it just installs the latest at launch instead of a frozen version.
+// The runtime versions this run pins to: the RELEASE's, from the snapshot's meta/mcp-pins.json (R35) -
+// the versions the generated plugin entries launch, so the copy route, the plugin route and the
+// browser download all run one server version. The seed asks NO registry: a lookup at install time
+// had two installs a week apart run different server code from one release, and it left the
+// download at the registry's latest while the plugin launched the pin. A package with no usable row
+// installs unpinned, the generator's own fallback.
 //
 // The memory pin is spelled `==<ver>` INSIDE the extras brackets, not `@<ver>` like the others,
-// which have no extras suffix to sit next to.
-function resolvePins({ npmLatest, pypiLatest, log = () => {} })
+// which have no extras suffix to sit next to - each row names its own spelling. The desktop servers
+// take `==<ver>` too (`--from windows-mcp==<ver>`).
+const PIN_ROWS = {
+    browser: ['PW_PIN', '@<v>'], navigation: ['SERENA_PIN', '@<v>'], memory: ['MEMORY_PIN', '==<v>'],
+    'windows-desktop': ['WINDOWS_DESKTOP_PIN', '==<v>'], 'macos-desktop': ['MACOS_DESKTOP_PIN', '==<v>'],
+};
+
+function resolvePins({ pins, log = () => {} })
 {
-    const ask = (fn, pkg) => { try { return String(fn(pkg) || '').trim(); } catch { return ''; } };
-    const found = {
-        context7: ask(npmLatest, '@upstash/context7-mcp'),
-        playwright: ask(npmLatest, '@playwright/mcp'),
-        serena: ask(pypiLatest, 'serena-agent'),
-        memory: ask(pypiLatest, 'mcp-memory-service'),
-        'chrome-devtools': ask(npmLatest, 'chrome-devtools-mcp'),
-        'appium-mcp': ask(npmLatest, 'appium-mcp'),
-    };
-    for (const [name, version] of Object.entries(found))
+    const rows = pins && typeof pins === 'object' && !Array.isArray(pins) ? pins : {};
+    const out = { MEMORY_BACKEND: 'sqlite_vec', versions: {} };
+    for (const [name, [token, spelling]] of Object.entries(PIN_ROWS))
     {
-        if (version) log(`  pinned ${name}@${version}`);
-        else log(`  !! could not resolve ${name} latest - installing unpinned (re-run when online to pin it)`);
+        const row = rows[name] && typeof rows[name] === 'object' ? rows[name] : {};
+        const version = typeof row.version === 'string' && /^[0-9][0-9A-Za-z.+-]*$/.test(row.version) ? row.version : '';
+        out.versions[name] = version;
+        out[token] = version ? String(row.spelling || spelling).replace('<v>', version) : '';
+        if (version) log(`  pinned ${name}@${version} (the release pin)`);
+        else log(`  !! no release pin for ${name} in this source - installing unpinned`);
     }
-    return {
-        CTX7_PIN: found.context7 ? `@${found.context7}` : '',
-        PW_PIN: found.playwright ? `@${found.playwright}` : '',
-        SERENA_PIN: found.serena ? `@${found.serena}` : '',
-        MEMORY_PIN: found.memory ? `==${found.memory}` : '',
-        CD_PIN: found['chrome-devtools'] ? `@${found['chrome-devtools']}` : '',
-        AP_PIN: found['appium-mcp'] ? `@${found['appium-mcp']}` : '',
-        MEMORY_BACKEND: 'sqlite_vec',
-        versions: found,
-    };
+    return out;
 }
 
 // ONE server drives ONE browser, fixed at launch (`--browser`; the server has no tool to switch it
@@ -282,39 +331,109 @@ function pwArgsFor(args, engine)
     return out.join(' ');
 }
 
-// The kept set: the flag, else what is already registered (plus an explicitly enabled engine),
+// The kept set: the flag, else what is already there (registered, listed, or picked in the stamp),
 // else chrome. A legacy `playwright` server counts as its own --browser engine.
-function playwrightKept({ browsers = [], registered = [], enabled = '' })
+function playwrightKept({ browsers = [], registered = [] })
 {
     if (browsers.length) return [...browsers];
-    const have = new Set([...registered, ...(enabled ? [enabled] : [])]);
+    const have = new Set(registered);
     const kept = PW_ENGINES.filter((e) => have.has(e));
     return kept.length ? kept : ['chrome'];
 }
 
-function expandPlaywright({ mcps = [], browsers = [], registered = [], enabled = '' })
+function expandPlaywright({ mcps = [], browsers = [], registered = [] })
 {
-    const has = mcps.some((e) => String(e).split('|')[0] === 'playwright');
+    const has = mcps.some((e) => String(e).split('|')[0] === 'browser');
     if (!has) return { mcps: [...mcps], browsers: [] };
-    const kept = playwrightKept({ browsers, registered, enabled });
+    const kept = playwrightKept({ browsers, registered });
     const out = [];
     for (const entry of mcps)
     {
         const [name, args] = [String(entry).split('|')[0], String(entry).slice(String(entry).indexOf('|') + 1)];
-        if (name !== 'playwright') { out.push(entry); continue; }
-        for (const engine of kept) out.push(`playwright-${engine}|${pwArgsFor(args, engine)}`);
+        if (name !== 'browser') { out.push(entry); continue; }
+        for (const engine of kept) out.push(`browser-${engine}|${pwArgsFor(args, engine)}`);
     }
     return { mcps: out, browsers: kept };
 }
 
+// Which of the kept engines are ENABLED (R67). `flag` is the user's answer - `all`, a set, or [] for
+// none - and is APPLIED to engines already installed. With no answer (null) nothing is applied: an
+// engine `live` has a word on keeps it (R116: one registered in .mcp.json is on unless
+// disabledMcpjsonServers names it - the user's own switch on the copy route), else the one the stamp
+// recorded keeps its last choice, and one recorded nowhere is enabled. `off` is what an engine this run
+// installs is switched to right after; `outside` names what the flag asks to enable but this run does
+// not install, which the caller refuses.
+function playwrightEnabled({ kept = [], flag = null, prior = {}, live = () => undefined })
+{
+    const recorded = (e) => Array.isArray(prior.browsers) && Array.isArray(prior.enabled) && prior.browsers.includes(e);
+    let enabled;
+    if (flag === 'all') enabled = [...kept];
+    else if (Array.isArray(flag)) enabled = kept.filter((e) => flag.includes(e));
+    else enabled = kept.filter((e) => { const on = live(e); return on === undefined ? !recorded(e) || prior.enabled.includes(e) : on; });
+    return {
+        enabled,
+        off: kept.filter((e) => !enabled.includes(e)),
+        apply: flag !== null,
+        outside: Array.isArray(flag) ? flag.filter((e) => !kept.includes(e)) : [],
+    };
+}
+
+// The two sets configure's walk pre-selects (the --plan-out `browser` field): the kept engines,
+// and of them the ones ON NOW. `live(engine)` is the install scope's settings file - the file a /plugin
+// toggle writes, so an unchanged answer equals the live state and switches nothing. Only an engine that
+// file does not name falls back to the stamp's last answer, and one with no record to on.
+function playwrightLive({ kept = [], prior = {}, live = () => undefined })
+{
+    const recorded = playwrightEnabled({ kept, flag: null, prior }).enabled;
+    return {
+        installed: [...kept],
+        enabled: kept.filter((e) => { const on = live(e); return on === undefined ? recorded.includes(e) : on; }),
+    };
+}
+
+// R116 (j): what disabledMcpjsonServers gains and loses this run. On the copy route at project scope an
+// engine left off is registered AND listed, and the list moves only when the enable choice does: an
+// answer (`apply`) sets every kept engine, and with none only an engine registered NOW that is off is
+// listed - so one the user took out by hand stays out. A name with no registration here any more (a
+// dropped engine, or every engine on the plugin route, where .mcp.json holds none) leaves the list. At
+// local and user scope the registration is not in .mcp.json and no settings key reaches it (measured on
+// 2.1.282: this list rejects only .mcp.json servers, and disabledMcpServers is read from the account
+// config alone, which the installer never edits) - so there the registration IS the enable (R124 l):
+// `unregistered` names the engines left off, which the run does not register and removes if an earlier
+// run did. The stamp still records each as installed-off, so a later enable answer registers it.
+function mcpjsonSwitch({ routes = {}, scope = 'project', kept = [], enabled = [], apply = false, registered = [] })
+{
+    const name = (e) => `browser-${e}`;
+    const gone = PW_SERVERS.filter((n) => routes.mcps || !kept.map(name).includes(n));
+    const off = routes.mcps ? [] : kept.filter((e) => !enabled.includes(e));
+    if (routes.mcps) return { disable: [], enable: gone, off, unregistered: [] };
+    if (scope !== 'project') return { disable: [], enable: [], off, unregistered: off.map(name) };
+    return {
+        disable: off.filter((e) => apply || !registered.includes(e)).map(name),
+        enable: [...gone, ...(apply ? kept.filter((e) => enabled.includes(e)).map(name) : [])],
+        off, unregistered: [],
+    };
+}
+
+// R124 (m): the names enabledMcpjsonServers pre-approves - the .mcp.json servers THIS run registers and
+// does not name in disabledMcpjsonServers. Only a project-scope copy-route run writes .mcp.json, and a
+// locked server rides its plugin while the core is on, so neither a plugin-carried name nor an engine
+// left off is ever trusted here.
+function mcpjsonTrusted({ routes = {}, scope = 'project', mcps = [], off = [] })
+{
+    if (routes.mcps || scope !== 'project') return [];
+    const offNames = off.map((e) => `browser-${e}`);
+    return bareNamedMcps({ routes, mcps }).filter((n) => !offNames.includes(n));
+}
+
 // The playwright servers this run no longer keeps - a legacy `playwright` and every dropped engine.
-// Nothing on the plugin route: the engines are one plugin each and the user keeps one enabled, so
-// there is no per-engine registration to drop.
+// Nothing on the plugin route: the engines are one plugin each, and one the run no longer keeps is
+// uninstalled by the plugin layer - there is no per-engine registration to drop.
 function playwrightDrop({ routes, browsers = [] })
 {
     if (routes.mcps) return [];
     if (!browsers.length) return [];
-    const keep = new Set(browsers.map((b) => `playwright-${b}`));
+    const keep = new Set(browsers.map((b) => `browser-${b}`));
     return PW_SERVERS.filter((name) => !keep.has(name));
 }
 
@@ -324,6 +443,15 @@ function playwrightDrop({ routes, browsers = [] })
 // list exists to prevent.
 const TOOL_NAME_RE = /mcp__plugin_[A-Za-z0-9][A-Za-z0-9.-]*_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
 const DOWNCONVERT_EXT = ['.md', '.mdc', '.js', '.json', '.txt'];
+
+// One text re-spelled: each plugin tool name whose server is in `bare` takes the registered spelling.
+// The rules copy renders through this too, so a rule is compared with the text it will hold (R111).
+function respellToolNames(body, bare = [])
+{
+    const names = new Set(bare);
+    if (!names.size) return body;
+    return String(body).replace(TOOL_NAME_RE, (full, server) => (names.has(server) ? `mcp__${server}__` : full));
+}
 
 function downconvertToolNames({ roots = [], bare = [], log = () => {} })
 {
@@ -343,7 +471,7 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
             let body;
             try { body = fs.readFileSync(full, 'utf8'); }
             catch { continue; }
-            const fixed = body.replace(TOOL_NAME_RE, (full_, server) => (names.has(server) ? `mcp__${server}__` : full_));
+            const fixed = respellToolNames(body, bare);
             if (fixed === body) continue;
             try { fs.writeFileSync(full, fixed); changed += 1; }
             catch { /* a read-only tree says so elsewhere */ }
@@ -354,25 +482,221 @@ function downconvertToolNames({ roots = [], bare = [], log = () => {} })
     return changed;
 }
 
-// context7 ships as ONE catalog row whose args are `@CONTEXT7_SPEC@`: the run resolves it to the
-// hosted remote (`@HTTP@`, registered from `remotes.context7`) or, under `--context7 local`, the npx
-// transport - the twin's CONTEXT7_SPEC. Left unresolved, the copy route registered the placeholder
-// itself as the server's command.
-// The hosted context7, as the twin and the context7 plugin entry register it: `:-` sends an EMPTY
-// header when the key is unset - the keyless free tier - where a literal `${CONTEXT7_API_KEY}` is
-// rejected as an invalid key.
+// C10 (R136 q): the scope the copy route registers at. The run's own, except at user scope on the FULL
+// copy route: there the locked three went to `mcp add --scope user`, which reaches every project on the
+// account - another project's navigation and memory servers ran twice beside its plugins and its documentation tools
+// turned bare. Every server that route registers goes to THIS project's .mcp.json instead.
+const registrationScope = (routes, scope) => (scope === 'user' && !corePluginOn(routes) ? 'project' : scope);
+
+// A-M2 / A-M3: WHICH server a registration runs - the url it calls, or the package it launches - the
+// part of its shape that does not move with a pin, a flag, a path or the Windows `cmd /c` wrapper. A
+// registration of the stack's own shape is the stack's to remove; another under the same name is the
+// user's. '' when the entry names neither.
+const VALUED_FLAGS = ['--python', '--with', '--from', '--package', '-p', '--index-url', '--extra-index-url'];
+function packageName(word)
+{
+    let w = String(word || '').replace(/@[A-Z][A-Z0-9_]*@/g, '').replace(/\[[^\]]*\]/, '');
+    w = w.split(/==|>=|<=|~=/)[0];
+    const at = w.lastIndexOf('@');
+    return at > 0 ? w.slice(0, at) : w;
+}
+function identityOf(entry)
+{
+    if (!entry || typeof entry !== 'object') return '';
+    if (entry.url || entry.type === 'http' || entry.type === 'sse') return `http:${String(entry.url || '').replace(/\/+$/, '')}`;
+    let words = [String(entry.command ?? ''), ...(Array.isArray(entry.args) ? entry.args.map(String) : [])];
+    if (/^cmd(\.exe)?$/i.test(words[0]) && /^\/c$/i.test(words[1] || '')) words = words.slice(2);
+    const rest = words.slice(1);
+    const from = rest.findIndex((w) => w === '--from' || w === '--package' || w === '-p');
+    let pkg = from > -1 ? rest[from + 1] : '';
+    for (let i = 0; !pkg && i < rest.length; i += 1)
+    {
+        if (VALUED_FLAGS.includes(rest[i])) { i += 1; continue; }
+        if (!rest[i].startsWith('-')) pkg = rest[i];
+    }
+    return pkg ? `stdio:${packageName(pkg)}` : '';
+}
+
+// Every identity the stack has registered under each name: the catalog's own (a pin never counts), each
+// playwright engine and the 1.x single `playwright`, the 1.x local context7 (`--context7 local` put the
+// npx transport under the context7 name itself), and each retired server's `registration`
+// (meta/retired-plugins.json) - what the stack wrote, never the add-back line the user may have run.
+function stackIdentities({ catalog = [], remotes = {}, tokens = {}, retiredRows = [], renamed = {} })
+{
+    const out = {};
+    const add = (name, id) => { if (id) (out[name] ||= new Set()).add(id); };
+    for (const entry of catalog)
+    {
+        const text = String(entry);
+        const name = text.split('|')[0];
+        const id = identityOf(wantFor(expectShape({ name, args: text.slice(text.indexOf('|') + 1), remotes, tokens })));
+        add(name, id);
+        if (name === 'browser') for (const n of PW_SERVERS) add(n, id);
+    }
+    add('context7', 'stdio:@upstash/context7-mcp');
+    // An old name (the 2.0.0 rename) was registered with its successor's shape.
+    for (const old of renamedFrom(renamed))
+        for (const id of out[currentMcp(old, renamed)] || []) add(old, id);
+    for (const row of retiredRows)
+    {
+        const reg = row && row.registration;
+        if (reg && reg.url) add(row.name, `http:${String(reg.url).replace(/\/+$/, '')}`);
+        else if (reg && reg.package) add(row.name, `stdio:${packageName(reg.package)}`);
+    }
+    return out;
+}
+
+// R10 THE LEDGER: the .mcp.json entries this run MANAGES (`managed-mcp`, name -> hash of the entry) -
+// registered by it now, recorded by the last run and unchanged since, or, with no ledger to read (a
+// stamp from before R10), of a stack name and the stack's own shape (`adopt`). An entry changed since
+// the stack wrote it is the user's, like one it never wrote.
+function managedMcp({ servers = {}, prior = null, written = [], adopt = () => false })
+{
+    const out = {};
+    for (const [name, entry] of Object.entries(servers || {}))
+    {
+        const hash = entryHash(entry);
+        if (written.includes(name) || (prior ? prior[name] === hash : adopt(name, entry))) out[name] = hash;
+    }
+    return out;
+}
+
+// Uninstall's half: each managed entry whose hash still matches goes, and the file with them when
+// nothing else is left in it. A file that cannot be read is left exactly as it is. The installer
+// never hand-edits the ACCOUNT config, so this is .mcp.json alone - the ledger's local- and user-scope
+// registrations go through the CLI, or are printed (uninstall.js removeScopedMcp).
+function removeManagedMcp({ mcpFile, managed = {}, log = () => {}, note = () => {} })
+{
+    const removed = [];
+    if (!Object.keys(managed).length || !fs.existsSync(mcpFile)) return { removed };
+    let data;
+    try { data = JSON.parse(fs.readFileSync(mcpFile, 'utf8').replace(/^\uFEFF/, '')); }
+    catch { note('.mcp.json is not valid JSON - left untouched, nothing of the stack\'s was removed from it; fix it and re-run'); return { removed }; }
+    const servers = data && typeof data.mcpServers === 'object' && !Array.isArray(data.mcpServers) ? data.mcpServers : null;
+    if (!servers) return { removed };
+    for (const [name, hash] of Object.entries(managed))
+    {
+        if (!Object.hasOwn(servers, name)) continue;
+        if (entryHash(servers[name]) !== hash) { log(`  mcp ${name}: kept - changed since the stack registered it, so it is yours`); continue; }
+        delete servers[name];
+        removed.push(name);
+        log(`  mcp removed: ${name} (.mcp.json)`);
+    }
+    if (!removed.length) return { removed };
+    if (!Object.keys(servers).length && Object.keys(data).length === 1) { fs.rmSync(mcpFile, { force: true }); log('  .mcp.json removed - it held nothing but the stack\'s servers'); }
+    else fs.writeFileSync(mcpFile, `${JSON.stringify(data, null, 2)}\n`);
+    return { removed };
+}
+
+// The registrations one scope holds: `.mcp.json` at project scope; the account's `.claude.json` - its
+// top-level `mcpServers` at user scope, `projects[<root>].mcpServers` at local scope. `absent` (no
+// file) holds nothing; `unreadable` is said by the caller and removes nothing.
+function registrationsAt({ scope, mcpFile, accountFile, projectRoot })
+{
+    const file = scope === 'project' ? mcpFile : accountFile;
+    let data;
+    try { const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); data = raw.trim() ? JSON.parse(raw) : {}; }
+    catch (err) { return err.code === 'ENOENT' ? { state: 'absent', servers: {}, file } : { state: 'unreadable', servers: {}, file }; }
+    let servers = data && data.mcpServers;
+    if (scope === 'local')
+    {
+        const projects = (data && data.projects) || {};
+        let real = projectRoot;
+        try { real = fs.realpathSync(projectRoot); } catch { /* the path as given */ }
+        servers = (projects[projectRoot] || projects[real] || {}).mcpServers;
+    }
+    return { state: 'read', servers: servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, file };
+}
+
+// What takes a plugin-carried server's place. Claude Code connects to a server ONCE, from the highest
+// source - local, project, user, then plugins - and matches a PLUGIN server against those three by
+// ENDPOINT, not by name (code.claude.com/docs/en/mcp, scope precedence). Measured on 2.1.282 through the
+// session's init row: a user- or project-scope registration of the Context7 url, under `context7` or
+// any other name, left the documentation plugin out of the session, so every `mcp__plugin_documentation_documentation__`
+// spelling the stack ships (its tool grants, baseline-quality-gates' ToolSearch line) resolved nothing.
+// A stdio server matches on command AND args, which a launcher-started plugin entry never shares, so a
+// same-NAMED stdio registration runs BESIDE the plugin's own server - a second one. One row per
+// registration, in precedence order: `{ scope, name, plugin, kind: 'replaces' | 'beside' }`.
+const PLUGIN_ENDPOINTS = { documentation: () => `http:${CONTEXT7_REMOTE.url}` };
+function shadowingRegistrations({ plugins = [], scopes = {} })
+{
+    const rows = [];
+    for (const scope of ['local', 'project', 'user'])
+    {
+        for (const [name, entry] of Object.entries(scopes[scope] || {}))
+        {
+            const id = identityOf(entry);
+            const replaced = plugins.find((plugin) => PLUGIN_ENDPOINTS[plugin] && PLUGIN_ENDPOINTS[plugin]() === id);
+            if (replaced) rows.push({ scope, name, plugin: replaced, kind: 'replaces' });
+            else if (plugins.includes(name)) rows.push({ scope, name, plugin: name, kind: 'beside' });
+        }
+    }
+    return rows;
+}
+
+// Every playwright engine runs with a PERSISTENT profile under <project>/.playwright/<engine> - the
+// cookies and storage of whatever site a check logged into - on the plugin and the copy route alike.
+// The folder only appears once a browser has run, after setup's git-hygiene step has looked for it, so
+// a kept engine gets the folder's own `.gitignore` (`*`), the way a project-level memory database does
+// (memory.ensureProjectIgnore). An existing one is the user's, left alone.
+function ensurePlaywrightIgnore({ projectRoot, engines = [], log = () => {} })
+{
+    if (!engines.length) return false;
+    const ignore = path.join(projectRoot, '.playwright', '.gitignore');
+    if (fs.existsSync(ignore)) return false;
+    fs.mkdirSync(path.dirname(ignore), { recursive: true });
+    fs.writeFileSync(ignore, '*\n');
+    log('  browser: .playwright/.gitignore written - the browser profiles hold session cookies and are never committed');
+    return true;
+}
+
+// The hosted Context7 - the one transport since 2.0.0 cut the local npx one (R32) - as the documentation
+// plugin entry registers it: `:-` sends an EMPTY header when the key is unset - the keyless free tier -
+// where a literal `${CONTEXT7_API_KEY}` is rejected as an invalid key.
 const CONTEXT7_REMOTE = { url: 'https://mcp.context7.com/mcp', header: 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}' };
 
-function resolveContext7(mcps, { mode, pin = '' })
+// R83 a: every LOCKED server's catalog entry, added where `mcps` lacks it. On the FULL copy route the
+// registrations come from this list alone, and a selection or read-back with no `mcp` line (the
+// always-on adoption fills only a layer that has one) left it empty - a plugin-route install switched
+// to the copies registered none of the three. Logged by name.
+function withLocked({ mcps = [], catalog = [], log = () => {} })
 {
-    return mcps.map((entry) => (entry.startsWith('context7|')
-        ? (mode === 'local' ? `context7|-- npx -y @upstash/context7-mcp${pin}` : 'context7|@HTTP@')
-        : entry));
+    const have = new Set(mcps.map((e) => String(e).split('|')[0]));
+    const out = [...mcps];
+    for (const entry of catalog)
+    {
+        const name = String(entry).split('|')[0];
+        if (!isLocked(name) || have.has(name)) continue;
+        out.push(entry);
+        have.add(name);
+        log(`  mcp ${name}: locked - registered on the full copy route whatever the selection names`);
+    }
+    return out;
+}
+
+// THE DESKTOP GATE (stack/mcp/desktop-launch.js owns which OS each desktop server drives). One this
+// machine cannot run is left out of the run with one line naming why - whatever put it in the list: a
+// walk's wpf / winforms seed, an --add, or a read-back of a row another machine enabled at project scope,
+// which nothing here removes (it is simply not in the set this run installs, updates or switches) - its
+// line names the local-scope disable that keeps it off on this machine only, under `market`.
+function desktopGate({ mcps = [], platform, market })
+{
+    const kept = [];
+    const lines = [];
+    for (const entry of mcps)
+    {
+        const name = String(entry).split('|')[0];
+        if (offeredOn(name, platform)) kept.push(entry);
+        else lines.push(skipNote(name, platform, market));
+    }
+    return { kept, lines };
 }
 
 module.exports = {
-    CONTEXT7_REMOTE, resolveContext7, LOCKED, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn,
-    retiredMcps, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
+    CONTEXT7_REMOTE, LOCKED, desktopGate, PW_ENGINES, PW_SERVERS, isLocked, corePluginOn, withLocked, currentMcp, renamedFrom,
+    retiredMcps, dueRetired, bareNamedMcps, mcpArgv, registerSpec, expectShape, wantFor,
     verifyProject, verifyUser, shapeNorm, parseGetShape, wantShape,
-    playwrightDrop, downconvertToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright,
+    playwrightDrop, downconvertToolNames, respellToolNames, resolvePins, pwArgsFor, playwrightKept, expandPlaywright, playwrightEnabled, playwrightLive, mcpjsonSwitch, mcpjsonTrusted,
+    registrationScope, identityOf, packageName, stackIdentities, registrationsAt, shadowingRegistrations, ensurePlaywrightIgnore,
+    managedMcp, removeManagedMcp,
 };

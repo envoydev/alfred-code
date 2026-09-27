@@ -1,5 +1,5 @@
 {
- "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts, or process skills with no artifact trace.",
+ "_comment": "Evidence catalog - need-signals per artifact, consumed by scripts/scan-evidence.js. Signal kinds: packages (exact NuGet/npm IDs; a trailing '.' or '/' marks a prefix - matched against PackageReference Include= and package.json deps ONLY; a Directory.Packages.props PackageVersion pin alone is never usage under central package management), files (path basenames), csprojContent / content (regex with a required display label - the lint enforces it, and that every key names a real artifact). Curation bar: only unambiguous signals - a signal that fires on unrelated projects is worse than no entry. No entries for hub/router skills, the always-baseline, stack-detected artifacts (the optional plugins excepted - suggested on evidence whatever the stack), or process skills with no artifact trace.",
  "skills": {
   "dotnet-windows-service": {
    "packages": [
@@ -256,35 +256,28 @@
   }
  },
  "mcps": {
-  "appium-mcp": {
-   "packages": [
-    "appium",
-    "appium-",
-    "@wdio/",
-    "webdriverio"
-   ]
-  },
-  "playwright": {
+  "browser": {
    "packages": [
     "Microsoft.Playwright",
     "Microsoft.Playwright.",
     "@playwright/"
    ]
-  },
-  "sentry": {
-   "packages": [
-    "Sentry",
-    "Sentry.",
-    "@sentry/"
-   ],
-   "content": [
-    {
-     "glob": "appsettings*.json",
-     "regex": "sentry\\.io",
-     "label": "a sentry.io DSN"
-    }
-   ]
   }
  },
- "plugins": {}
+ "plugins": {
+  "csharp-lsp": {
+   "files": [
+    "*.csproj",
+    "*.sln"
+   ]
+  },
+  "typescript-lsp": {
+   "packages": [
+    "typescript"
+   ],
+   "files": [
+    "tsconfig.json"
+   ]
+  }
+ }
 }

@@ -5,7 +5,7 @@ description: "Load when hardening or reviewing a SQL / data-persistence feature,
 
 # SQL / data-layer security
 
-The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with the .NET application-security hardening skill (the app-layer EF and access-control surface; the ORM mechanics behind it are `dotnet-data-access`), the .NET cryptography-primitives skill (KDF, AES-GCM, constant-time compare) - both where the install has them - and `dotnet-migrate` (the reversible, data-loss-safe migration workflow). The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
+The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with the .NET application-security hardening skill (the app-layer EF and access-control surface; the ORM mechanics behind it are the .NET data-access skill's), the .NET cryptography-primitives skill (KDF, AES-GCM, constant-time compare) and the .NET migration-workflow skill (the reversible, data-loss-safe migration workflow) - each where the install has it. The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
 
 ## Injection - close every sink
 
@@ -43,7 +43,7 @@ var safe = db.Users.FromSql($"select * from users where name = {name}");        
 ## Audit and integrity
 
 - Audit who-changed-what on sensitive tables - temporal (system-versioned) tables, an audit trigger, or `created/modified by+at` columns - but the audit record must **never** store the secret it is tracking (log the fact of a password change, not the password).
-- A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are `dotnet-migrate`).
+- A migration or seed that inserts a default admin credential, grants a broad role, or disables a constraint is a finding - flag it (safe migration mechanics are the .NET migration-workflow skill's where the install has one, else the project's own migration tool).
 
 ## Probe before you report
 

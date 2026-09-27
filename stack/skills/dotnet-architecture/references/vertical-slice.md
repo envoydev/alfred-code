@@ -1,6 +1,6 @@
 # Vertical-slice architecture
 
-Feature-sliced internal structure - slice by feature, not by technical layer. Load when the chosen internal style is vsa. The shared dependency rule is in `SKILL.md`; endpoint/validation wiring in `dotnet-web-backend`; slice-isolation enforcement in `dotnet-architecture-tests`.
+Feature-sliced internal structure - slice by feature, not by technical layer. Load when the chosen internal style is vsa. The shared dependency rule is in `SKILL.md`; endpoint/validation wiring in the ASP.NET Core web hub; slice-isolation enforcement in the architecture fitness-test skill.
 
 ## The slice
 

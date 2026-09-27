@@ -19,7 +19,7 @@ These are load-bearing. Do not reason from skill intuitions.
 - `@path` imports are expanded and loaded at launch. They organize content but save zero context. Treat any 'saved tokens by moving it to an import' claim as false.
 - Unconditional rule files in `.claude/rules/` load at launch on their own, at the same priority as `.claude/CLAUDE.md`. Therefore CLAUDE.md must reference them by plain backticked path with a short framing line, never by `@import`: importing an auto-loaded rule duplicates its full content in context and pays for it twice.
 - Path-scoped rules (with `paths` frontmatter) and skills are the real on-demand mechanisms. Multi-step procedures belong in skills; path-specific guidance belongs behind a `paths` glob; deterministic must-run steps belong in hooks.
-- Keep each CLAUDE.md short, and measure 'short' in tokens as well as lines - two official tests apply together. The memory page sets the line target: 'target under 200 lines per CLAUDE.md file', because longer files consume more context and reduce adherence (a file over 4 MiB is skipped outright). The best-practices page holds every line to the question 'would removing it cause Claude to make a mistake? If not, cut it', and warns that a bloated file makes Claude ignore the instructions that matter. The cost is paid per message on every session, so this stack also measures the always-on set in characters (~tokens): lint check 33 caps the shipped baseline at 160,000 chars and `/claude-stack:status` reports each install's floor - 120 lines of dense paragraphs can cost more than 250 lines of terse bullets, so a file under 200 lines can still fail the token measure, and both numbers are reported.
+- Keep each CLAUDE.md short, and measure 'short' in tokens as well as lines - two official tests apply together. The memory page sets the line target: 'target under 200 lines per CLAUDE.md file', because longer files consume more context and reduce adherence (a file over 4 MiB is skipped outright). The best-practices page holds every line to the question 'would removing it cause Claude to make a mistake? If not, cut it', and warns that a bloated file makes Claude ignore the instructions that matter. The cost is paid per message on every session, so this stack also measures the always-on set in characters (~tokens): lint check 33 caps the shipped baseline at 160,000 chars and `/alfred-code:status` reports each install's floor - 120 lines of dense paragraphs can cost more than 250 lines of terse bullets, so a file under 200 lines can still fail the token measure, and both numbers are reported.
 - Block-level HTML comments are stripped before injection, so maintainer notes in comments cost nothing.
 - Delivery and precedence: the files reach the model as a user message after the system prompt, framed as context that 'may or may not be relevant'. Ancestors are concatenated root-down, so the file closest to the working directory is read last and tends to win a conflict - by judgment, never deterministically; `CLAUDE.local.md` appends after `CLAUDE.md` in the same directory. Both `./CLAUDE.md` and `./.claude/CLAUDE.md` load when both exist, so the seed step never creates the second beside an existing first (the template's own comment restricts the seed to a project with none - verify it in a filled project, and flag a project carrying both).
 - Import mechanics: a relative `@path` resolves against the importing file, not the working directory; `@~/...` is allowed; an import inside a code span or fence is a mention, not an import (backticks make a path literal); an import resolving outside the working directory triggers a one-time approval dialog; depth is four hops (community posts still say five).
@@ -48,7 +48,7 @@ If observed reality in the repo or current docs contradicts any of these, prefer
 
 Scope boundary: when this prompt runs alongside the rules audit prompt, this prompt still reads all rule files to build the linkage, conflict, and duplication maps, but edits only CLAUDE.md files; rule-file edits belong to that prompt. When run alone, misplaced content may be moved into new rule files, and any rule file this prompt creates must meet the bar in the rules audit prompt.
 
-Template mode: when the audited file is a template that installers copy into target projects (here `./stack/CLAUDE.template.md`, deployed by `scripts/os/claude-stack.sh` and `scripts/os/claude-stack.ps1`), two rubric points change meaning. Fact verification becomes placeholder verification: project-specific facts such as build commands, paths, and stack names must be clearly marked placeholders in one consistent format that the installer or the adopting team fills in, and no concrete fact that would be wrong in a target project may be baked into the template; a hardcoded project-specific command scores as a wrong fact. Rule linkage is validated against the deployed layout: links in the template use the paths that exist after installation (`.claude/rules/...`), while existence is checked against the source catalog at `./stack/rules`. Read the installer scripts to confirm the source-to-deployed mapping instead of assuming it.
+Template mode: when the audited file is a template that installers copy into target projects (here `./stack/CLAUDE.template.md`, deployed by `node scripts/install/alfred-code.js`), two rubric points change meaning. Fact verification becomes placeholder verification: project-specific facts such as build commands, paths, and stack names must be clearly marked placeholders in one consistent format that the installer or the adopting team fills in, and no concrete fact that would be wrong in a target project may be baked into the template; a hardcoded project-specific command scores as a wrong fact. Rule linkage is validated against the deployed layout: links in the template use the paths that exist after installation (`.claude/rules/...`), while existence is checked against the source catalog at `./stack/rules`. Read `meta/stack-manifest.json` and the installer's own `scripts/install/` modules to confirm the source-to-deployed mapping instead of assuming it.
 
 ## Operating principles
 
@@ -139,10 +139,10 @@ Produce a baseline report (see Output contract) before any editing.
 
 ---
 
-## Phase 1b - External currency check (context7)
+## Phase 1b - External currency check (the documentation server)
 
 The CLAUDE.md and template name external tools and their invocations - npx packages, MCP registrations and their flags, plugin names, version floors. Training-data recall drifts, so these claims are verified against current
-documentation through the context7 MCP - never re-asserted from memory. This check changes no
+documentation through the documentation MCP - never re-asserted from memory. This check changes no
 dimension weights (scores stay comparable across audit runs); like the other set-level defects,
 an unresolved DRIFTED finding blocks the artifact from A.
 
@@ -155,14 +155,14 @@ an unresolved DRIFTED finding blocks the artifact from A.
    tradeoffs, forbidden patterns) has no external truth to check - skip it.
 3. **Verify, bounded**: group the claims by library; per library, one `resolve-library-id` plus
    at most 2-3 `query-docs` calls covering the whole batch. Cap ~15 libraries per run - the long
-   tail rolls to the next audit and is listed as unchecked. context7 unreachable: mark the whole
+   tail rolls to the next audit and is listed as unchecked. Documentation server unreachable: mark the whole
    check SKIPPED in the report and move on; never substitute recall for the lookup.
 4. **Verdict per claim**: CURRENT (docs agree) | DRIFTED (docs contradict - a MATERIAL finding)
    | UNVERIFIABLE (docs silent - recorded, not a finding). Record the table (library, claim,
    verdict, evidence line) in the baseline report.
 5. **Remediation routing** for DRIFTED: fix it in Phase 2 - and when the drifted content is
    version-coupled detail (an API sample, a per-release config block), prefer REPLACING it with
-   the durable policy plus a fetch-at-use pointer (context7 at usage time) over updating the
+   the durable policy plus a fetch-at-use pointer (the documentation server at usage time) over updating the
    number: judgment stays in the artifact, drifting facts are fetched live.
 
 ## Phase 2 - Remediation loop
