@@ -477,6 +477,21 @@ test('a change to a watched file asks once, naming the section; a second stop is
   } finally { r.rm(); }
 });
 
+// Pilot 4 (b4-pilot-4-flow): all 8 flow cells ended on the docs reply ('docs ok'), so the last message a host reads
+// carried no task summary. The Stop ask's reply is the session's last message, so it asks for the docs line FOLLOWED
+// by the summary; a seat's SubagentStop ask keeps its own shape (pinned by the finished-agent test below).
+test('the Stop ask keeps the task summary last: the docs line, then the summary in at most three lines', () => {
+  const r = repo({ files: { 'src/Api/Program.cs': 'app.Run();\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
+  try {
+    const s = sid();
+    start(r, s);
+    r.write('src/Api/Program.cs', 'app.UseAuth();\napp.Run();\n');
+    const { reason } = JSON.parse(r.hook(stopEv(s)).stdout);
+    assert.match(reason, /  Yes -> reply: docs ok\n/);
+    assert.match(reason, /\n\nThis reply is your last message, so it carries the task summary: the docs line first \(docs ok, or\nthe section you rewrote\), then what you did in at most three lines\.$/);
+  } finally { r.rm(); }
+});
+
 test('no hit, stop_hook_active, the ask switched off, or no watch.json: silent', () => {
   const r = repo({ files: { 'src/Api/Program.cs': 'x\n', 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS, 'watch.json': WATCH() } });
   try {

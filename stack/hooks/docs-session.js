@@ -697,11 +697,19 @@ function warnLines(files, refs) {
 // askLines. An ask can be discharged with one reply ('docs ok') and ends the turn as far as a reader can
 // tell; a warning can never be discharged at all. Printing it after that affordance would let a reader who
 // answers the ask stop reading before ever reaching it, so the undischargeable half comes first.
-function finishAsk(docs, files, asks, warnings = []) {
+// At Stop the reply to this block IS the session's last message - the one a print or SDK host reads, and the one a
+// person scrolls back to - so it asks for the summary after the docs line (pilot 4: all 8 flow cells ended on
+// 'docs ok'). A seat's reply at SubagentStop is its report to the caller and keeps the shape it has.
+const SUMMARY_LAST = [
+  'This reply is your last message, so it carries the task summary: the docs line first (docs ok, or',
+  'the section you rewrote), then what you did in at most three lines.',
+];
+function finishAsk(docs, files, asks, warnings = [], closing = []) {
   const named = `${files.slice(0, FILES_NAMED).join(', ')}${files.length > FILES_NAMED ? ` and ${files.length - FILES_NAMED} more` : ''}`;
   const parts = [`Docs check: you changed ${named}`];
   if (warnings.length) parts.push('', ...warnLines(files, warnings));
   if (asks.length) parts.push('', ...askLines(docs, files, asks));
+  if (closing.length) parts.push('', ...closing);
   return parts.join('\n');
 }
 
@@ -737,7 +745,7 @@ function stop(input, root, docs, state) {
   if (unattended(input)) { log(root, input, { event: 'ask-skipped', why: 'unattended', sections: asks.map((r) => r.id), files: files.slice(0, 5) }); return; }
   state.asked = true;
   saveState(input.session_id, state);
-  const reason = finishAsk(docs, files, asks, warnings);
+  const reason = finishAsk(docs, files, asks, warnings, SUMMARY_LAST);
   log(root, input, { event: 'ask-update', sections: asks.map((r) => r.id), warnings: warnings.map((r) => r.id), files: files.slice(0, 5), kinds: [...new Set(hits.map((h) => h.kind))] });
   blockRow(root, input, reason);
   process.stdout.write(JSON.stringify({ decision: 'block', reason }));
