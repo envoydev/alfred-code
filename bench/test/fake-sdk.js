@@ -9,7 +9,7 @@
 //
 //   turns[i] = {
 //     asks:  [[question, ...], ...]          each an AskUserQuestion call through canUseTool
-//     tools: [{ name, input, blockedPath }]  each a permission request through canUseTool
+//     tools: [{ name, input, blockedPath, decisionReason }]  each a permission request through canUseTool
 //     edit:  ['rel/path']                    a file written into the clone
 //     error: '<result subtype>'              the turn ends in an error result
 //     limit: true                            the turn ends in a usage-limit result
@@ -95,7 +95,11 @@ async function* play({ prompt, options }, turns, seen, lazy)
             return [use, { type: 'user', session_id: sid, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: answer.behavior !== 'allow' }] } }];
         };
         for (const questions of turn.asks || []) yield* await ask('AskUserQuestion', { questions });
-        for (const tool of turn.tools || []) yield* await ask(tool.name, tool.input, tool.blockedPath ? { blockedPath: tool.blockedPath } : {});
+        for (const tool of turn.tools || [])
+        {
+            const extra = { ...(tool.blockedPath ? { blockedPath: tool.blockedPath } : {}), ...(tool.decisionReason ? { decisionReason: tool.decisionReason } : {}) };
+            yield* await ask(tool.name, tool.input, extra);
+        }
         for (const rel of turn.edit || [])
         {
             const file = path.join(options.cwd, rel);

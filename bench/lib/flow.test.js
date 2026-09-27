@@ -130,6 +130,28 @@ test('every other permission request is refused with print mode\'s own words, an
     assert.strictEqual(out.outcome, 'ok', 'a refusal is the session\'s to handle, as in print mode');
 });
 
+test('a refusal carries the reason the CLI gives, as print mode shows it; a file tool keeps its own sentence; no reason is the CLI default', async (t) =>
+{
+    const tools = [
+        { name: 'Bash', input: { command: 'dotnet run --project src/Api' }, decisionReason: 'This command requires approval' },
+        { name: 'Bash', input: { command: 'rm -f x' } },
+        { name: 'Write', input: { file_path: '/elsewhere/Program.cs' }, decisionReason: 'Path is outside allowed working directories' },
+    ];
+    const { seen, approvals } = await go(t, { prompts: ['{prompt}'], turns: [{ tools }] });
+    assert.deepStrictEqual(seen.permissions.map((p) => p.answer.message), [
+        'This command requires approval',
+        'Claude requested permissions to use Bash, but you haven\'t granted it yet.',
+        'Claude requested permissions to write to /elsewhere/Program.cs, but you haven\'t granted it yet.',
+    ]);
+    assert.deepStrictEqual(approvals.map((a) => a.decisionReason), ['This command requires approval', null, 'Path is outside allowed working directories'], 'the CLI\'s own reason is kept beside the refusal');
+});
+
+test('the first turn waits for the plugin MCP servers as print mode does: 2 seconds, every pending server', async (t) =>
+{
+    const { seen } = await go(t, { prompts: ['{prompt}'] });
+    assert.strictEqual(seen.options.env.CLAUDE_CODE_MCP_STARTUP_WAIT_MS, '2000', 'a streaming-input session otherwise waits for no deferred server');
+});
+
 test('an ask with no option to pick is refused like any other request', async (t) =>
 {
     const { seen, approvals } = await go(t, { prompts: ['{prompt}'], turns: [{ asks: [[{ question: 'Anything?', header: 'X', multiSelect: false, options: [] }]] }] });

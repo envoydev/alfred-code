@@ -13,6 +13,11 @@
 //   - canUseTool answers AskUserQuestion with, per question, the option whose label carries
 //     '(Recommended)', else the first, and refuses every other permission request with print mode's
 //     own words - so a flow cell gets no permission a plain cell lacks;
+//   - the first turn waits for the plugin MCP servers the way print mode's does. Print mode waits up
+//     to 2 s for every pending server; a streaming-input session waits for none of the deferred ones
+//     (CLI 2.1.283, qf(): waitForDeferrable is false there) and starts with them all pending (b4-probe-
+//     flow-ours: 4 of 4 pending, 29 tools against a plain cell's 105). CLAUDE_CODE_MCP_STARTUP_WAIT_MS
+//     = 2000 sets exactly print mode's pair - a 2 s deadline, every pending server.
 //   - every SDK message goes to stdout.jsonl (the stream-json shape print mode writes), every answer
 //     and refusal to approvals.jsonl.
 // A turn that ends in an error result, or a {file:} that names no single file, stops the flow there:
@@ -26,6 +31,7 @@ const SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const WIN = process.platform === 'win32';
 const RECOMMENDED = /\(recommended\)/i;
 const FLOW_TOKEN = /\{prompt\}|\{file:([^}]*)\}/g;
+const MCP_FIRST_TURN_WAIT_MS = '2000';
 const WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
 const READ_TOOLS = ['Read', 'Glob', 'Grep'];
 
@@ -79,14 +85,18 @@ function choose(q)
     return { answer: options[0].label, by: 'first' };
 }
 
-// Print mode's own refusal, as the CLI words an ask nobody can answer: a file tool names its path
-// ('write to' / 'read from'), anything else its tool name. The SDK is never handed the CLI's text, so
-// it is rebuilt here from the same templates.
-function refusal(toolName, input, blockedPath)
+// Print mode's own refusal is the ask's message, which the CLI never hands an SDK host - it sends a
+// reason string instead. So: a file tool names its path, as the CLI words it ('write to' / 'read
+// from'); any other ask carrying a reason gets that reason, which IS print mode's text for the common
+// case ('This command requires approval' - 5 of pilot 2's Bash refusals) and a close one for the
+// rest (a compound command's print text also lists the parts, which the host is not told); no reason
+// is the CLI's own default sentence.
+function refusal(toolName, input, blockedPath, decisionReason)
 {
     const target = blockedPath || input.file_path || input.notebook_path || input.path;
     if (target && WRITE_TOOLS.includes(toolName)) return `Claude requested permissions to write to ${target}, but you haven't granted it yet.`;
     if (target && READ_TOOLS.includes(toolName)) return `Claude requested permissions to read from ${target}, but you haven't granted it yet.`;
+    if (typeof decisionReason === 'string' && decisionReason.trim()) return decisionReason;
     return `Claude requested permissions to use ${toolName}, but you haven't granted it yet.`;
 }
 
@@ -191,9 +201,9 @@ function driver({ sdk, cli, prompts })
                 }
                 return { behavior: 'allow', updatedInput: { ...toolInput, answers } };
             }
-            const message = refusal(toolName, toolInput || {}, opts.blockedPath);
+            const message = refusal(toolName, toolInput || {}, opts.blockedPath, opts.decisionReason);
             counts.denied += 1;
-            note({ kind: 'deny', ...ids, tool: toolName, message });
+            note({ kind: 'deny', ...ids, tool: toolName, message, decisionReason: opts.decisionReason || null });
             return { behavior: 'deny', message };
         };
 
@@ -227,7 +237,7 @@ function driver({ sdk, cli, prompts })
             const q = sdk.query({
                 prompt: input(),
                 options: {
-                    pathToClaudeCodeExecutable: cli, cwd: cell.repo, env,
+                    pathToClaudeCodeExecutable: cli, cwd: cell.repo, env: { ...env, CLAUDE_CODE_MCP_STARTUP_WAIT_MS: MCP_FIRST_TURN_WAIT_MS },
                     model: session.model, effort: session.effort, permissionMode: session.permissionMode, settings: session.settingsFile,
                     settingSources: ['user', 'project', 'local'], systemPrompt: { type: 'preset', preset: 'claude_code' },
                     allowedTools: tmp ? [`Read(/${tmp}/**)`] : [], sessionId,
