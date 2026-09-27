@@ -942,6 +942,27 @@ test('guard-secret-value: a script file, awk -i inplace, pathlib .open and fs.op
   assert.equal(bash(`python3 ${script}`), 0, 'a script that names no credential file is not judged');
 });
 
+// Review of pilot 4, M1: a first-flag `sed -i` skipped the whole segment, so `sed -i '' 's/TOKEN.*/&/w /dev/stdout'`
+// printed the credential line. The skip holds only for a script that writes to no terminal stream and runs nothing.
+test('guard-secret-value: a first-flag sed -i is exempt only when its script prints and runs nothing', () => {
+  const f = fixtures();
+  const cases = [
+    [`sed -i '' 's/acme/&/w /dev/stdout' ${f.secret}`, 'w /dev/stdout'],
+    [`sed -i 's/acme/&/w /dev/stderr' ${f.secret}`, 'w /dev/stderr'],
+    [`sed -i '' 's/acme/&/W /dev/tty' ${f.secret}`, 'W /dev/tty'],
+    [`sed -i -e '/acme/w /dev/fd/1' ${f.secret}`, 'w command to /dev/fd/1'],
+    [`sed -i 's/acme/cat \\/etc\\/hosts/e' ${f.secret}`, 'the s///e flag'],
+    [`sed -i '1e date' ${f.secret}`, 'the e command'],
+    [`sed -i -f ${path.join(f.dir, 'fix.sed')} ${f.secret}`, 'a script file the guard cannot see'],
+  ];
+  const verdicts = cases.map(([command, label]) => `${label}: ${bash(command) === 2 ? 'blocked' : bash(command) === REWRITE ? 'rewritten' : 'passed'}`);
+  assert.deepEqual(verdicts, cases.map(([, label]) => `${label}: blocked`));
+  // Unchanged: a plain in-place edit runs, `-e` included, and so does a `w` into an ordinary file.
+  assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'plain sed -i');
+  assert.equal(bash(`sed -i -e 's/acme/acme2/' -e 's/x/y/' ${f.secret}`), 0, 'sed -i -e');
+  assert.equal(bash(`sed -i 's/acme/acme2/w ${path.join(f.dir, 'changed.txt')}' ${f.secret}`), 0, 'w into an ordinary file');
+});
+
 // Pilot 3: `--presence <appsettings> ConnectionStrings.Lending Notices.Gateway.ServiceToken` answered `absent` for two
 // keys that exist - it read only top-level (or `env`) keys.
 test('guard-secret-value --presence: a dotted, colon or double-underscore path reads a nested JSON key', () => {

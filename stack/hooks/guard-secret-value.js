@@ -1083,6 +1083,18 @@ function judgePwshStage(stage) {
   }
 }
 
+// A first-flag `sed -i` is an edit, not a dump - unless its script writes to a terminal stream, runs a command, or
+// sits in a file the guard cannot read (review M1: `sed -i '' 's/TOKEN.*/&/w /dev/stdout' <file>` printed the
+// credential line). Such a segment is judged like any other, so its in-place flag blocks it on a credential file.
+// Loose on purpose: a false hit costs only an Edit-tool denial on a credential file. The patterns live inside the
+// function because judgeShell runs above this line, before a module-level const would be initialised.
+function sedScriptLeaks(seg) {
+  const terminalWrite = /[wW]\s*\/(?:dev\/(?:std(?:out|err)|tty|fd\/[12])|proc\/self\/fd\/[12])\b/;
+  const exec = /(?:^|[;{}\n'"])\s*(?:\d+|\$)?(?:\s*,\s*(?:\d+|\$))?\s*!?\s*e(?=[\s;}'"]|$)|[^\w\s\\;{}'"-]\s*[gpiImM0-9]*e[gpiImM0-9]*(?=[\s;}'"]|$)/;
+  const scriptFile = /\s(?:-[a-zA-Z]*f\b|--file\b)/;
+  return terminalWrite.test(seg) || exec.test(seg) || scriptFile.test(seg);
+}
+
 function judgeShell(text, forceRuntime, main) {
   cwdAnchor = null;
   const segments = splitSegments(stripComments(text));
@@ -1106,7 +1118,7 @@ function judgeShell(text, forceRuntime, main) {
       if (redirectsToFile(seg)) continue; // output into a file never reaches the context
       if (stages.some(isReducer)) continue;
     }
-    if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg)) continue; // an edit, not a dump
+    if (/\bsed\s+(?:-\w*i|--in-place)\b/.test(seg) && !sedScriptLeaks(seg)) continue; // an edit, not a dump
 
     for (let sj = 0; sj < stages.length; sj++) {
       const stage = stages[sj];

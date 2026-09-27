@@ -115,10 +115,12 @@ change (see the invariants below).
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked. A file or variable rewrite drops the rest of the
     command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead, and so is a
-    judged stage that itself WRITES - an in-place flag on sed / perl / ruby wherever it sits, gawk's
+    judged stage that itself WRITES - an in-place flag on sed / perl / ruby among its flags, gawk's
     `-i inplace`, inline code that writes, or a runtime run on a script FILE, which the guard cannot see into
     (pilot 3's `node -e ...writeFileSync` and `perl -0pi` came back as the view, the edit never
-    ran); the denial names the Edit tool, which changes the file without printing it. A filtering
+    ran); the denial names the Edit tool, which changes the file without printing it. A `sed` whose FIRST
+    flag is `-i` is never judged - an edit, not a dump - unless its script writes to a terminal stream
+    (`w /dev/stdout`), runs a command (`e`) or sits in a `-f` file; then it is judged, and blocked. A filtering
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
