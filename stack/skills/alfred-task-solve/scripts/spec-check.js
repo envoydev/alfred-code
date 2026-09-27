@@ -6,7 +6,8 @@
 // surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests
 // or acceptance criteria). A request that misses one, spans more than one stack, or touches an auth, secret or payment
 // path keeps every gate. The words are read, never understood: a false 'gated' costs one stop, a false 'merged' costs
-// the gate, so every ambiguous signal leans gated, and the model may raise the verdict to gated but never lower it.
+// the gate, so any security signal and any doubt mean gated, and the model may raise the verdict to gated but never
+// lower it.
 //
 //   node spec-check.js [<request file>]      (the request text on stdin when no file is named)
 //
@@ -24,9 +25,14 @@ const SURFACE = [
 const OUTCOME = /\b(?:returns?|responds?|response|gets?|lists?|listing|shows?|displays?|reads|rejects?|rejected|redirects?|throws?|fails?|succeeds?|rounds?|ordered|sorted|filters?|narrows?|saves?|saved|stores?|emits?|sends?|links?|has|carries|contains|includes|null|empty|must|should)\b|\b[1-5]\d\d\b/i;
 const VERIFY = /\b(?:tests?|acceptance criteria|acceptance|assert\w*|verif(?:y|ies|ied))\b|\bgiven\b[\s\S]{0,120}\bwhen\b[\s\S]{0,120}\bthen\b/i;
 const CRITERION = /^\s*(?:[-*•]|\d+[.)])\s+/;
+const WEB_PAGE = /\bpages?\b/i;
+const PAGING = /\b(?:page ?size|pagesize|page=|page number|paged|paging|pages? by pages?|pages? through|pages? of|next page|last page|first page|deep pages?|every page|per page)\b/i;
 const STACKS = [
     ['backend', /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/|\b(?:api|endpoints?|controllers?|migrations?|database|dbcontext|ef core|sql|postgres\w*|sql server|sqlite|repository|asp\.net|backend)\b|\.cs\b/i],
-    ['web', /\b(?:web|frontend|front-end|angular|react|vue|components?|templates?|browser|ui|buttons?|menu)\b|\.(?:html|scss|css|tsx)\b/i],
+    // By path as well as by word (review C2: a backend endpoint plus `src/app/order-detail.service.ts` read as one
+    // stack): the web app's own folders, Angular's file roles, the view extensions; and the words a web change is
+    // told in. A `page` counts only outside paging talk (WEB_PAGE below).
+    ['web', /(?:^|[\s`'"(/])(?:src\/app|web|client|frontend|front-end|apps\/web|projects\/[\w-]+\/src\/app)\/[\w./-]+|\.(?:component|service|module|routes|store|page|directive|pipe|guard|resolver|interceptor|facade|effects|reducer)\.[jt]s\b|\.component\.\w+\b|\.(?:html|scss|css|tsx|jsx|vue|svelte)\b|\b(?:web|frontend|front-end|angular|react|vue|components?|templates?|browser|ui|buttons?|menu|router|routing|route guards?|routerlink|store|ngrx|signals? store)\b/i],
     ['desktop', /\b(?:wpf|winforms|windows forms|xaml|desktop app)\b/i],
     ['mobile', /\b(?:ionic|capacitor|ios|android|mobile app)\b/i],
     ['devops', /\b(?:dockerfile|docker|compose file|pipeline|github actions|ci\/cd|kubernetes|helm|terraform|deploy\w*)\b/i],
@@ -35,11 +41,11 @@ const STACKS = [
 // A sentence that leaves a surface as it is names its stack as context, not as work ('Leave `GET /api/loans` as it is
 // - the web app pages through it'), so it never counts toward the stacks the request spans.
 const CONTEXT = /\b(?:leave|leaves|leaving|untouched|unchanged|as it is|as they are)\b/i;
-// Security words that mark the work itself, wherever they stand; and the access words that mark it only when the
-// sentence does not reuse a rule that already exists ('the same 403 the report gives', 'keeps its access rule').
-const SECURITY = /\b(?:authenticat\w*|log[- ]?ins?|sign[- ]?(?:in|on|up)|passwords?|passphrases?|tokens?|jwt|oauth\w*|oidc|openid|saml|secrets?|credentials?|api[- ]?keys?|private keys?|encrypt\w*|decrypt\w*|crypto\w*|signatures?|payments?|billing|card numbers?|checkout|pci|permissions?|who (?:may|can)|only for themselves|on behalf of)\b/i;
-const ACCESS = /\b(?:authori[sz]\w*|roles?|admins? only|staff only|access rules?|forbidden|40[13])\b/i;
-const REUSE = /\b(?:same|unchanged|as it is|as they are|keeps?|existing|already)\b/i;
+// Any security signal gates, a rule reused as it stands included (review C1: 'view each other's public wishlists' with
+// 'a private wishlist returns an empty array' merged). Access and visibility, ownership and tenancy, credentials,
+// crypto, payment and personal data. A CancellationToken is the one token that is no credential.
+const SECURITY = /\b(?:auth\w*|log[- ]?ins?|sign[- ]?(?:in|on|up)|passwords?|passphrases?|tokens?|jwt|oauth\w*|oidc|openid|saml|secrets?|credentials?|api[- ]?keys?|private keys?|encrypt\w*|decrypt\w*|crypto\w*|signatures?|payments?|billing|card numbers?|checkout|pci|permissions?|who (?:may|can)|only for themselves|on behalf of|access\w*|roles?|admins?|staff only|forbidden|40[13]|visib\w*|private|public|hidden|who can (?:see|view|read)|each other'?s?|another (?:user|member)'?s?|other (?:users|members)'?|their own|own data|owners?|owned|ownership|tenants?|tenancy|multi-tenant|shar(?:e|es|ed|ing)|pii|personal (?:data|information)|gdpr|ssn|social security)\b/i;
+const NOT_A_CREDENTIAL = /\bcancellation ?tokens?\b/gi;
 
 const quote = (m) => `'${String(m).trim().slice(0, 60)}'`;
 
@@ -55,14 +61,9 @@ function classify(text) {
     const v = body.match(VERIFY);
     const verified = v ? `named - ${quote(v[0])}` : criteria >= 2 ? `${criteria} acceptance criteria listed` : '';
     const worded = sentences.filter((s) => !CONTEXT.test(s));
-    const stacks = STACKS.filter(([, re]) => worded.some((s) => re.test(s))).map(([name]) => name);
-    let security = '';
-    const strong = body.match(SECURITY);
-    if (strong) security = quote(strong[0]);
-    else {
-        const hit = sentences.find((s) => ACCESS.test(s) && !REUSE.test(s));
-        if (hit) security = quote(hit.match(ACCESS)[0]);
-    }
+    const stacks = STACKS.filter(([name, re]) => worded.some((s) => re.test(s) || (name === 'web' && WEB_PAGE.test(s) && !PAGING.test(s)))).map(([name]) => name);
+    const signal = body.replace(NOT_A_CREDENTIAL, ' ').match(SECURITY);
+    const security = signal ? quote(signal[0]) : '';
     const missing = [
         surface ? '' : 'no surface named (an endpoint, a component, a table or a file)',
         behaviour ? '' : 'no observable behaviour stated',

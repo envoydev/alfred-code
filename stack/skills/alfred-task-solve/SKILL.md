@@ -117,7 +117,7 @@ standard, whatever the file count.
 
 ## Full spec - design and audit as one step
 
-On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path keeps every gate below - a vague one above all. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`:
+On `standard`, check the request before step 1. A FULL spec names the surface (an endpoint, a component, a table or a file), the observable behaviour, and how it is verified (the tests or acceptance criteria). A request that misses any item, spans more than one stack, or touches an auth, secret or payment path (access, visibility, ownership and personal data count) keeps every gate below - a vague one above all, and any doubt. `scripts/spec-check.js` reads the request for all five; state its verdict in one line, `Spec: <full|not full> - <path> - <its reason>`:
 
 ```bash
 SPEC=.claude/skills/alfred-task-solve/scripts/spec-check.js

@@ -20,13 +20,12 @@ const FULL_API = [
   '- Newest first: ordered by `sentAt` descending, then `id` descending.',
   '- An unknown `kind` value is rejected with the same 400 the loan list gives.',
   '- An unknown member id gets the same 404 as `GET /api/members/{memberId}/loans`.',
-  '- Staff and admins only: a member-role caller gets the same 403 the overdue report gives them.',
 ].join('\n');
 
 const FULL_DATA = [
   'The export walks every loan page by page and it is slow. Add a cursor-paged `GET /api/loans/feed`.',
   'Leave `GET /api/loans` as it is - the web app pages through it.',
-  '- Same access rule as `GET /api/loans`, and the same optional filters.',
+  '- The same optional `status` filter, with the same validation.',
   '- `limit` is 1 to 100, default 20; an out-of-range limit is a 400.',
   '- The response is `{ "items": [...], "nextCursor": "..." }`; `nextCursor` is null after the last page.',
   'Add an index named `IX_Loans_DueDate_Id` on `Loans` in a new migration.',
@@ -63,7 +62,7 @@ test('a full single-stack spec takes the merged path, naming what satisfied each
     assert.strictEqual(r.path, 'merged', name);
     assert.ok(r.surface && r.behaviour && r.verified, `${name}: every item has its evidence`);
     assert.strictEqual(r.stacks.length <= 1, true, `${name}: ${r.stacks}`);
-    assert.strictEqual(r.security, '', `${name}: an access rule reused as it is is no auth path`);
+    assert.strictEqual(r.security, '', name);
   }
 });
 
@@ -94,6 +93,52 @@ test('a full spec on an auth, secret or payment path keeps every gate', () => {
     assert.notStrictEqual(r.security, '', name);
     assert.match(r.reason, /security/, name);
   }
+});
+
+// Review C1: ordinary visibility wording merged an access-control change. Any access, visibility, ownership, credential,
+// payment or personal-data signal gates - a reused rule included, since the merged path skips the stops that would
+// catch a rule applied wrong.
+const WISHLIST = [
+  'Members should now be able to view each other\'s public wishlists. Add `GET /api/wishlists/{userId}`.',
+  '- It returns the wishlist\'s `items`, newest first.',
+  '- A private wishlist returns an empty items array instead of the real contents.',
+  '- An unknown user id gets 404.',
+].join('\n');
+test('C1: a visibility, ownership or access change gates, however it is worded', () => {
+  const variants = {
+    wishlist: WISHLIST,
+    reused: FULL_DATA.replace('- The same optional', '- Same access rule as `GET /api/loans`, and the same optional'),
+    staffOnly: `${FULL_API}\n- Staff and admins only: a member-role caller gets the same 403 the overdue report gives them.`,
+    owner: 'Add `PATCH /api/lists/{id}` so the owner can rename a list.\n- It returns 200 with the list.\n- Anyone else gets 404.',
+    tenant: 'Add `GET /api/invoices` scoped to the caller\'s tenant.\n- It lists the tenant\'s invoices.\n- An empty tenant returns an empty array.',
+    share: 'Add `POST /api/lists/{id}/share` so a list can be shared with another member.\n- It returns 201.\n- Sharing twice returns 409.',
+    pii: 'Add `GET /api/members/export` with each member\'s PII columns.\n- It returns CSV.\n- An empty table returns the header only.',
+    bearer: 'Add a refresh token to `POST /api/session`.\n- It returns 200 with the new token.\n- An expired one gets 401.',
+  };
+  for (const [name, text] of Object.entries(variants)) {
+    const r = classify(text);
+    assert.strictEqual(r.path, 'gated', `${name}: ${JSON.stringify(r)}`);
+    assert.notStrictEqual(r.security, '', name);
+  }
+  const ct = classify('In src/Orders/Sync.cs, `Sync.Run` must stop when its CancellationToken fires.\n- It returns within 1 s.\n- A test cancels it mid-run.');
+  assert.strictEqual(ct.security, '', 'a CancellationToken is no credential');
+});
+
+// Review C2: a backend endpoint plus the Angular service that calls it merged as one stack.
+test('C2: an Angular .ts file, a component or a web page beside a backend change is two stacks', () => {
+  const variants = {
+    service: 'Add `GET /api/orders/{id}/timeline` returning the order\'s events, and update `src/app/order-detail.service.ts` to call it.\n- It returns the events oldest first.\n- An unknown id gets 404.',
+    component: 'Add `GET /api/orders/{id}/timeline` returning the order\'s events, and show them in `order-detail.component.ts`.\n- It returns the events oldest first.\n- An unknown id gets 404.',
+    webDir: 'Add `GET /api/orders/{id}/timeline` returning the events; `web/src/orders/detail.ts` renders them.\n- It returns the events oldest first.\n- An unknown id gets 404.',
+    page: 'Add `GET /api/orders/{id}/timeline` returning the events, and list them on the order detail page.\n- It returns the events oldest first.\n- An unknown id gets 404.',
+    store: 'Add `GET /api/orders/{id}/timeline`, and load it into the orders store.\n- It returns the events oldest first.\n- An unknown id gets 404.',
+  };
+  for (const [name, text] of Object.entries(variants)) {
+    const r = classify(text);
+    assert.deepStrictEqual([...r.stacks].sort(), ['backend', 'web'], `${name}: ${r.stacks}`);
+    assert.strictEqual(r.path, 'gated', name);
+  }
+  assert.deepStrictEqual(classify(FULL_DATA).stacks, ['backend'], 'paging words are no web page');
 });
 
 test('the CLI prints one line per item and the path last, from stdin or a file', () => {
