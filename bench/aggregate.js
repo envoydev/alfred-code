@@ -53,7 +53,8 @@ function loadRun({ benchDir, run, preregFile, metricsFn, onboardingFn })
     const unfinished = [];
     for (const a of record.arms) for (const t of record.tasks) for (let rep = 1; rep <= record.reps; rep++)
     {
-        const cell = cellsLib.cellPaths({ benchDir, run, arm: a.name, task: t.id, rep });
+        // The clone the session ran in, under the run's own work root: its transcript names that path.
+        const cell = cellsLib.cellPaths({ benchDir, workRoot: cellsLib.workRootOf(record, benchDir), run, arm: a.name, task: t.id, rep });
         if (cellsLib.state(cell) !== 'done') { unfinished.push(a.name); continue; }
         let grade;
         try { grade = JSON.parse(fs.readFileSync(path.join(cell.results, 'grade.json'), 'utf8')); }

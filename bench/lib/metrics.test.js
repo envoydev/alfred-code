@@ -95,6 +95,19 @@ test('done with no build or test after the last edit - and with one, and with no
     assert.strictEqual(transcriptMetrics([[claim]], [claim]).doneWithoutCheck, null);
 });
 
+test('an image build after the last edit is the check: the devops task\'s own build', () =>
+{
+    const edit = use('e1', 'Write', { file_path: 'src/LendingDesk.Worker/Dockerfile' }, '2026-09-23T10:00:01Z');
+    const claim = say('d', 'Done - the worker image builds.', '2026-09-23T10:00:09Z');
+    for (const command of ['docker build -f src/LendingDesk.Worker/Dockerfile -t worker:dev . 2>&1 | tail -5', 'cd /repo && docker buildx build -f src/LendingDesk.Worker/Dockerfile .'])
+    {
+        const rows = [edit, use('b1', 'Bash', { command }, '2026-09-23T10:00:05Z'), claim];
+        assert.strictEqual(transcriptMetrics([rows], rows).doneWithoutCheck, false, command);
+    }
+    const ps = [edit, use('b1', 'Bash', { command: 'docker ps --format x' }, '2026-09-23T10:00:05Z'), claim];
+    assert.strictEqual(transcriptMetrics([ps], ps).doneWithoutCheck, true, 'another docker command is no check');
+});
+
 test('a plan-file tick after the check is not the last edit - the same excluded folders the graded diff leaves out', () =>
 {
     const codeEdit = use('e1', 'Edit', { file_path: '/repo/src/a.cs' }, '2026-09-23T10:00:01Z');

@@ -11,7 +11,7 @@ const PREREG = '# Pre-registration\n\nThe metrics and the decision rule, frozen.
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // passes[arm][task] = how many of the 3 reps pass; cost[arm] = each cell's cost.
-function syntheticRun(t, { passes, cost, run = 'r-syn', model = 'claude-sonnet-5', prereg = PREREG, ungraded = null, infra = null })
+function syntheticRun(t, { passes, cost, run = 'r-syn', model = 'claude-sonnet-5', prereg = PREREG, ungraded = null, infra = null, workRoot = undefined, seen = null })
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-agg-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -27,7 +27,7 @@ function syntheticRun(t, { passes, cost, run = 'r-syn', model = 'claude-sonnet-5
     ];
     const arms = Object.keys(passes);
     fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({
-        run, mode: 'plain', model, effort: 'medium', seed: 1, reps: 3, cliVersion: 'x', harnessCommit: null,
+        run, mode: 'plain', model, effort: 'medium', seed: 1, reps: 3, cliVersion: 'x', harnessCommit: null, ...(workRoot ? { workRoot } : {}),
         arms: arms.map((name) => ({ name, pin: { kind: 'tag', value: 'v' }, hash: 'a'.repeat(64) })),
         tasks: tasks.map((x) => ({ ...x, timeLimitMin: 30, startRef: 'bench-fixture-v1', promptSha256: 'b' })),
         fixture: { tag: 'bench-fixture-v1', commit: 'c'.repeat(40) }, prereg: prereg === null ? null : { sha256: sha(prereg) }, prices: { file: 'prices.json', sha256: 'd' }, drives: [],
@@ -42,12 +42,23 @@ function syntheticRun(t, { passes, cost, run = 'r-syn', model = 'claude-sonnet-5
         const isInfra = infra === `${arm}/${task.id}/r${rep}`;
         fs.writeFileSync(path.join(cellDir, 'grade.json'), JSON.stringify({ hiddenPass: pass, suiteGreen: true, infra: isInfra ? 'mass connection failure: 60 failing tests' : null }));
     }
-    const metricsFn = (cell) => ({ outcome: 'ok', wallMs: 1000, costUsd: cost[cell.arm], unpriced: [], turns: 10, toolCalls: 20, peakCtx: 50000, netLines: 40, newDeps: [], checkWeakening: [], credentials: { count: 0, files: [] }, destructive: { attempted: 0, blocked: 0, commands: [] }, doneWithoutCheck: false });
+    const metricsFn = (cell) => (seen && seen.push(cell), { outcome: 'ok', wallMs: 1000, costUsd: cost[cell.arm], unpriced: [], turns: 10, toolCalls: 20, peakCtx: 50000, netLines: 40, newDeps: [], checkWeakening: [], credentials: { count: 0, files: [] }, destructive: { attempted: 0, blocked: 0, commands: [] }, doneWithoutCheck: false });
     const onboardingFn = (arm) => ({ ours: 2.4, ecc: 1.2, bare: 0.12 }[arm] || 0);
     return { bench, runDir, preregFile, run, go: (extra = {}) => aggregate({ benchDir: bench, run, preregFile, metricsFn, onboardingFn, ...extra }) };
 }
 
 const ALL = (n) => ({ 'api-1': n, 'api-2': n, 'web-1': n, 'web-2': n, 'guard-1': n, 'home-1': n });
+
+test('a cell is measured at the clone its session ran in, under the work root the run recorded', (t) =>
+{
+    // The transcripts name the clone by its real path under the work root; a cell path under the bench dir never
+    // matches one, so the stacks' own folders were never left out of the last-edit scan (pilot 3: 9 false flags).
+    const seen = [];
+    const workRoot = path.join(os.tmpdir(), 'alfred-bench-work');
+    syntheticRun(t, { passes: { ours: ALL(3), bare: ALL(3) }, cost: { ours: 1, bare: 1 }, workRoot, seen }).go();
+    assert.ok(seen.length > 0);
+    for (const cell of seen) assert.strictEqual(cell.repo, path.join(workRoot, 'r-syn', cell.arm, cell.task, `r${cell.rep}`, 'repo'));
+});
 
 test('refuses without a pre-registration, or when it changed since the run started', (t) =>
 {

@@ -16,7 +16,7 @@ const { DIFF_EXCLUDES } = require('./session.js');
 const ANALYZER = path.join(__dirname, '..', '..', 'scripts', 'analyze-usage.js');
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
-const BUILD_TEST = /\b(?:dotnet\s+(?:build|test)|npm\s+(?:test|run\s+(?:build|test|lint))|npx\s+(?:ng|tsc|jest|vitest)|ng\s+(?:build|test)|tsc\b|jest\b|vitest\b|yarn\s+(?:test|build)|pnpm\s+(?:test|build))/;
+const BUILD_TEST = /\b(?:dotnet\s+(?:build|test)|docker\s+(?:buildx\s+)?build|npm\s+(?:test|run\s+(?:build|test|lint))|npx\s+(?:ng|tsc|jest|vitest)|ng\s+(?:build|test)|tsc\b|jest\b|vitest\b|yarn\s+(?:test|build)|pnpm\s+(?:test|build))/;
 const DONE_CLAIM = /\b(?:done|completed?|implemented|fixed|finished|all (?:tests|checks) pass)/i;
 const TEST_SKIP = /\b(?:it|describe|test|context)\.skip\s*\(|\bx(?:it|describe|test)\s*\(|\bSkip\s*=\s*"|\[Ignore\b|\[Skip\b/;
 const DEP_LINE = /^\s*"(@?[^"\s]+)"\s*:\s*"([^"]*)"/;
