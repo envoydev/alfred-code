@@ -215,7 +215,7 @@ if (dashC) root = path.resolve(root, nativePath(unq(dashC[1])));
 // project dir stays the anchor: a subfolder cwd, or a project that is a subfolder of its repo, reads
 // the receipt where the session writes it.
 const topOf = (dir) => {
-  try { return fs.realpathSync(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()); } catch { return null; }
+  try { return fs.realpathSync.native(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()); } catch { return null; }
 };
 const gitTop = topOf(root);
 if (projectDir && gitTop && gitTop === topOf(projectDir)) root = projectDir;
@@ -685,8 +685,10 @@ function allowLines(name) {
 function sweptPaths() {
   const before = preExisting();
   if (!before.size) return [];
+  // `.native`, here and in topOf: a Windows temp dir is an 8.3 short name (`RUNNER~1`) the JS resolver keeps, while
+  // git names the long one - the two never matched, so no sweep was ever blocked there (windows-2025 CI, 2026-09-27).
   let realRoot = root;
-  try { realRoot = fs.realpathSync(root); } catch { /* keep the spelling */ }
+  try { realRoot = fs.realpathSync.native(root); } catch { /* keep the spelling */ }
   const swept = new Set();
   for (const at of addCalls) {
     const words = callWords(at);
@@ -694,7 +696,7 @@ function sweptPaths() {
     for (let i = 1; i < words.length && words[i].startsWith('-'); i += words[i] === '-C' || words[i] === '-c' ? 2 : 1) {
       if (words[i] === '-C' && words[i + 1]) cwd = path.resolve(cwd, nativePath(words[i + 1]));
     }
-    try { cwd = fs.realpathSync(cwd); } catch { /* git reports the missing directory itself */ }
+    try { cwd = fs.realpathSync.native(cwd); } catch { /* git reports the missing directory itself */ }
     const args = afterVerb(words);
     const flags = args.slice(0, args.includes('--') ? args.indexOf('--') : args.length).filter((a) => a.startsWith('-'));
     const quiet = flags.some((a) => /^--(intent-to-add|dry-run|patch|interactive|edit|update|refresh)$/.test(a) || (/^-[^-]/.test(a) && /[nNpieu]/.test(a.slice(1))));

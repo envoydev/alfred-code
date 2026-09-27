@@ -201,7 +201,10 @@ test('captures: the fixed order; run, done and skip each say why; the library co
     assert.strictEqual(lines[0], 'capture: alfred-capture-related-projects - run: read .claude/skills/alfred-capture-related-projects/SKILL.md');
     assert.strictEqual(lines[1], 'capture: alfred-capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
     assert.strictEqual(lines[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is switched off');
-    assert.strictEqual(lines[3], `capture: alfred-capture-agent-capabilities - run: read ${path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md')}`);
+    // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
+    // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
+    const libPath = path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md').split(path.sep).join('/');
+    assert.strictEqual(lines[3], `capture: alfred-capture-agent-capabilities - run: read ${libPath}`);
 
     const bare = render(plan({ inv: INV({ skills: ['alfred-capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
