@@ -27,7 +27,7 @@ const PIN_KINDS = ['tag', 'commit', 'cli'];
 // What a template's setup and onboarding may name: its own directories, the fixture's clone, the
 // arm's pinned source, the bench and repo roots, and the pin itself.
 const TEMPLATE_VARS = ['template', 'repo', 'config', 'home', 'src', 'bench', 'root', 'pin', 'arm'];
-const HARNESS_ENV = ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR'];
+const HARNESS_ENV = ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'COMPOSE_PROJECT_NAME'];
 const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');

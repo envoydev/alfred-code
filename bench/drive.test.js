@@ -13,7 +13,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { drive, selectTasks } = require('./drive.js');
 
-const { makeWorld, OAUTH } = require('./test/world.js');
+const { makeWorld, OAUTH, FAKE_DOCKER } = require('./test/world.js');
 const { fakeSdk } = require('./test/fake-sdk.js');
 const sha = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const deadPid = () => spawnSync(process.execPath, ['-e', '0']).pid;
@@ -65,6 +65,18 @@ test('a 2 arms x 2 tasks x 2 reps run completes, records itself, and reports cou
         assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(kept, 'plugins.json'), 'utf8')), [], `${arm}: the plugin list its template recorded is kept with the run`);
         assert.ok(fs.existsSync(path.join(kept, 'mcp-warm.txt')), `${arm}: the warm-up output is kept with the run`);
     }
+});
+
+test('every cell tears down its own compose project with the docker the driver was given, and no two cells share one', async (t) =>
+{
+    const w = world(t);
+    const downs = path.join(w.dir, 'docker.jsonl');
+    await drive({ ...w.opts, docker: [...FAKE_DOCKER, '--record', downs] });
+    const rows = fs.readFileSync(downs, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const projects = sessions(w.bench).map((f) => JSON.parse(fs.readFileSync(f, 'utf8')).compose.project);
+    assert.strictEqual(new Set(projects).size, 8, 'one project per cell');
+    assert.strictEqual(rows.length, 16, 'each cell is taken down before and after its session');
+    for (const p of projects) assert.strictEqual(rows.filter((r) => r.argv[2] === p).length, 2, `${p} is taken down twice`);
 });
 
 test('cells and templates live under the work root, never under the bench dir, and the run records where', async (t) =>

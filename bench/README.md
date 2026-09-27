@@ -46,7 +46,11 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   the first pilot ran its cells inside this repository and every arm loaded its rules. A resume runs only unfinished cells, and refuses when an arm, a task or the Claude Code
   version changed since the run started. It needs ONE credential set - `ANTHROPIC_API_KEY`,
   `ANTHROPIC_AUTH_TOKEN` or the subscription's `CLAUDE_CODE_OAUTH_TOKEN`, or `--auth <name>` choosing
-  one when several are - recorded by name in `run.json`, and runs on macOS and Linux only.
+  one when several are - recorded by name in `run.json`, and runs on macOS and Linux only. Each cell's
+  session runs in a compose project of its own (`COMPOSE_PROJECT_NAME`, a neutral `cell-<hash>`), and the
+  driver runs `docker compose -p <it> down -v` before the session and again after it - that project only,
+  recorded in `session.json` (`compose`) - so no cell reaches another's database (pilot 3: one `repo`
+  project for every cell).
 - `grade.js` grades serially under the run's lock. Each cell is re-created from its template, checked
   against the baseline its session recorded, patched, and tested with the task's hidden files. The
   patch is the task's change alone: a session's `diff.patch` leaves out the top-level folders the

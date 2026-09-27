@@ -7,6 +7,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const FAKE = [process.execPath, path.join(__dirname, 'fake-claude.js')];
+const FAKE_DOCKER = [process.execPath, path.join(__dirname, 'fake-docker.js')];
 const AUTH = 'world-test-auth-value-0123456789';
 const OAUTH = 'world-test-oauth-token-0123456789';
 
@@ -69,11 +70,11 @@ function makeWorld(t, { arms, tasks, run = 'r-test', fixture = null })
     const lines = [];
     const opts = {
         benchDir: bench, armsDir, tasksDir, pricesFile: prices, preregFile: path.join(bench, 'PREREGISTRATION.md'),
-        fixtureSource: src, lock, root: dir, claude: FAKE, workRoot: path.join(dir, 'work'),
+        fixtureSource: src, lock, root: dir, claude: FAKE, docker: FAKE_DOCKER, workRoot: path.join(dir, 'work'),
         base: { PATH: process.env.PATH, ANTHROPIC_API_KEY: AUTH }, log: (l) => lines.push(l),
         arms: Object.keys(arms), tasks: 'all', reps: 1, parallel: 2, seed: 7, run, mode: 'plain',
     };
     return { dir, bench, opts, lines, prices, runDir: path.join(bench, 'results', run), workRoot: opts.workRoot };
 }
 
-module.exports = { makeWorld, FAKE, AUTH, OAUTH };
+module.exports = { makeWorld, FAKE, FAKE_DOCKER, AUTH, OAUTH };

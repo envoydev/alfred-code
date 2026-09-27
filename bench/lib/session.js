@@ -19,6 +19,7 @@ const { limitHit } = require('./limit.js');
 const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
 const { installShims } = require('./dotnet-shim.js');
+const { composeProject, composeDown } = require('./compose.js');
 
 const WIN = process.platform === 'win32';
 // What the stacks keep in the clone for themselves - docs roots and their hook ledgers, serena's LSP
@@ -209,7 +210,7 @@ async function plainDriver({ cell, prompt, session, sessionId, tmp, env, claude,
     return { ...result, timedOut, started, ended: Date.now(), failed: null, extra: {} };
 }
 
-async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], base = process.env, graceSec, auth, shared, driver = plainDriver })
+async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup = [], taskDir, claude = ['claude'], docker = ['docker'], base = process.env, graceSec, auth, shared, driver = plainDriver })
 {
     const authName = auth || pickAuth(session.auth, base);
     assertIsolated(cell.repo, 'the cell');
@@ -224,9 +225,14 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const sessionId = crypto.randomUUID();
         sessionTmpDir = sessionTmp();
         const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
-        const env = sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared });
+        // The cell's own compose project (lib/compose.js): taken down before the session and again after it.
+        const compose = { project: composeProject(cell) };
+        const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared }), COMPOSE_PROJECT_NAME: compose.project };
         const graceMs = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
-        const result = await driver({ cell, prompt, session, sessionId, tmp: sessionTmpDir, env, claude, timeLimitMin, graceMs });
+        compose.before = composeDown({ project: compose.project, env, cwd: cell.work, docker });
+        let result;
+        try { result = await driver({ cell, prompt, session, sessionId, tmp: sessionTmpDir, env, claude, timeLimitMin, graceMs }); }
+        finally { compose.after = composeDown({ project: compose.project, env, cwd: cell.work, docker }); }
         const { started, ended, timedOut } = result;
 
         const transcript = findTranscript(cell.config, sessionId);
@@ -255,7 +261,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
             model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree, diffExcludes: DIFF_EXCLUDES,
-            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), ...result.extra,
+            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), compose, ...result.extra,
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
         const tmp = `${cell.session}.tmp`;

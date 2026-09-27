@@ -62,6 +62,10 @@ test('the four shipped arm files load against the shared session', () =>
     // the parent waits 30 s per launch (pilot 3: every data-02 cell hung 120-302 s). MSBuild reads the env as
     // properties, so every build of every route references its projects one after another, in the one node.
     assert.strictEqual(session.env.BuildInParallel, 'false', 'no build route starts an MSBuild worker node');
+    // Every sandboxed dotnet call dialled the telemetry endpoint the sandbox refuses (281 network refusals in ours'
+    // flow cells alone), and the model's own fix - an env prefix - is the form print mode refuses.
+    assert.strictEqual(session.env.DOTNET_CLI_TELEMETRY_OPTOUT, '1', 'no dotnet call dials its telemetry endpoint');
+    assert.strictEqual(session.env.DOTNET_NOLOGO, '1', 'no first-run banner in a session\'s output');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
@@ -248,7 +252,7 @@ test('an unknown key, a bad setup step and a name that is not the file are refus
 
 test('an arm env cannot override what the harness or common.json owns', (t) =>
 {
-    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
+    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'COMPOSE_PROJECT_NAME', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
     {
         const dir = armsDir(t, { arms: [{ ...ARM, env: { [key]: '1' } }] });
         assert.throws(() => load({ dir, names: ['solo'] }), new RegExp(`solo: env ${key} is the harness's`));

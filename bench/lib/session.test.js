@@ -13,8 +13,10 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { sessionArgv, run, prepare, onboardSync } = require('./session.js');
 const { cellPaths } = require('./cells.js');
+const { composeProject } = require('./compose.js');
 
 const FAKE = [process.execPath, path.join(__dirname, '..', 'test', 'fake-claude.js')];
+const FAKE_DOCKER = [process.execPath, path.join(__dirname, '..', 'test', 'fake-docker.js')];
 const AUTH_VALUE = 'bench-test-auth-value-0123456789';
 const SESSION = {
     model: 'claude-sonnet-5', effort: 'medium', permissionMode: 'acceptEdits', settingsFile: '/arms/harness.settings.json',
@@ -41,7 +43,7 @@ function cellFor(t, rep = 1)
     return { dir, cell, first };
 }
 
-const go = (cell, arm, extra = {}) => run({ cell, prompt: 'Add the thing.', session: SESSION, arm, timeLimitMin: 1, claude: FAKE, base: BASE, ...extra });
+const go = (cell, arm, extra = {}) => run({ cell, prompt: 'Add the thing.', session: SESSION, arm, timeLimitMin: 1, claude: FAKE, docker: FAKE_DOCKER, base: BASE, ...extra });
 
 test('the argv is exactly the shared session, and nothing an arm chose', () =>
 {
@@ -83,7 +85,7 @@ test('the session gets the cell\'s own account and home, the shared env, the arm
     assert.deepStrictEqual(seen.argv, sessionArgv({ prompt: 'Add the thing.', session: SESSION, sessionId: out.sessionId, tmp: seen.env.TMPDIR }));
     assert.strictEqual(fs.realpathSync(seen.cwd), fs.realpathSync(cell.repo));
     assert.deepStrictEqual(Object.keys(seen.env).filter((k) => !['PATH', '__CF_USER_TEXT_ENCODING'].includes(k)).sort(),
-        ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_CONFIG_DIR', 'FAKE_RECORD', 'HOME', 'TMPDIR']);
+        ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', 'CLAUDE_CODE_TMPDIR', 'CLAUDE_CONFIG_DIR', 'COMPOSE_PROJECT_NAME', 'FAKE_RECORD', 'HOME', 'TMPDIR']);
     assert.strictEqual(seen.env.CLAUDE_CONFIG_DIR, cell.config);
     assert.strictEqual(seen.env.HOME, cell.home);
 });
@@ -122,6 +124,34 @@ test('a dotnet on the PATH is shimmed into the cell\'s own bin dir, first on the
     const [first] = seen.PATH.split(path.delimiter);
     assert.strictEqual(first, path.join(cell.work, 'bin'));
     assert.strictEqual(execFileSync(path.join(cell.work, 'bin', 'dotnet'), ['build'], { stdio: 'pipe' }).toString().trim(), 'real build -m:1 -nodeReuse:false');
+});
+
+test('a session runs in its own compose project, taken down before it starts and again when it ends', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const record = path.join(dir, 'record.json');
+    const downs = path.join(dir, 'docker.jsonl');
+    await go(cell, { name: 'solo', env: { FAKE_RECORD: record } }, { docker: [...FAKE_DOCKER, '--record', downs] });
+    const project = composeProject(cell);
+    assert.strictEqual(JSON.parse(fs.readFileSync(record, 'utf8')).env.COMPOSE_PROJECT_NAME, project, 'the session\'s own docker compose lands in it');
+    const rows = fs.readFileSync(downs, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    assert.strictEqual(rows.length, 2, 'once for what a killed attempt left, once for what this session started');
+    for (const r of rows)
+    {
+        assert.deepStrictEqual(r.argv, ['compose', '-p', project, 'down', '-v'], 'exactly the cell\'s project, never another');
+        assert.strictEqual(fs.realpathSync(r.cwd), fs.realpathSync(cell.work), 'above the clone, so no compose file the session edited is read');
+    }
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).compose, { project, before: { exit: 0, error: null }, after: { exit: 0, error: null } });
+});
+
+test('a failed session is still taken down, and a teardown that fails never fails the cell', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const downs = path.join(dir, 'docker.jsonl');
+    const out = await go(cell, { name: 'solo', env: { FAKE_EXIT: '2' } }, { docker: [...FAKE_DOCKER, '--record', downs, '--exit', '1'] });
+    assert.strictEqual(out.outcome, 'error');
+    assert.strictEqual(fs.readFileSync(downs, 'utf8').split('\n').filter(Boolean).length, 2);
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).compose.after, { exit: 1, error: null });
 });
 
 test('a finished session leaves its transcript, subagents, stdout and the diff of what it changed', async (t) =>

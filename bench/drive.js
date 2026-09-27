@@ -220,7 +220,7 @@ function resolveWorkRoot(o, runP)
 
 async function drive(opts)
 {
-    const o = { ...DEFAULTS, parallel: 1, claude: ['claude'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
+    const o = { ...DEFAULTS, parallel: 1, claude: ['claude'], docker: ['docker'], base: process.env, log: (l) => console.log(l), platform: process.platform, ...opts };
     if (o.platform === 'win32') throw new Error('the harness runs on macOS and Linux only - its host protection is Claude Code\'s sandbox, which Windows does not have (D4, D12)');
     if (o.mode !== undefined && !MODES.includes(o.mode)) throw new Error(`--mode '${o.mode}' is not ${MODES.join(' or ')}`);
     if (!Number.isInteger(o.parallel) || o.parallel < 1) throw new Error(`--parallel '${o.parallel}' is not a count from 1`);
@@ -311,7 +311,7 @@ async function drive(opts)
                 cellsLib.reset(cell);
                 template.copyInto(templates[cell.arm], cell);
                 const driver = mode === 'flow' ? flowLib.driver({ sdk, cli, prompts: armBy[cell.arm].flow[task.kind] }) : undefined;
-                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, base: o.base, auth: authName, shared, driver });
+                const rec = await session.run({ cell, prompt: task.prompt, session: loaded.session, arm: armBy[cell.arm], timeLimitMin: task.timeLimitMin, startRef: task.startRef, setup: task.setup, taskDir: path.join(o.tasksDir, task.id), claude: o.claude, docker: o.docker, base: o.base, auth: authName, shared, driver });
                 counts[rec.outcome] += 1;
                 if (rec.outcome === 'limited')
                 {
