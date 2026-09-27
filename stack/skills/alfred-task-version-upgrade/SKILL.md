@@ -16,7 +16,7 @@ Read `references/upgrade-playbooks.md` before PLAN - the stack-keyed sequencing 
 
 The staged plan is presented and NOTHING is edited until the user approves - an upgrade is consequential. Two answers end the run early: 'just the plan' (exit after PLAN, hand over the plan) and 'stop'.
 
-**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/alfred-task-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. (Side effect worth knowing: an auto run never pauses, so the model the session is on at run start carries the whole run; a gated run can switch at the approval pause and drop to a cheaper model for execution.)
+**Auto mode skips the gate - only when the user explicitly asked for it in the invocation** ('run it in auto mode', '/alfred-task-version-upgrade --auto'). Never infer auto from urgency, from a clean plan, or from past runs; absent those words, the gate stands. Auto mode still stops on every hard signal below - it skips the approval pause, not the safety rails. The model trade-off between the two modes is `references/upgrade-playbooks.md`'s last section.
 
 ## The run
 

@@ -1,0 +1,165 @@
+# C# house rules - in full
+
+Read before a new type or file, a constructor taking several dependencies, a `switch`, a public API's XML
+docs, or a result / exception / logging decision - SKILL.md carries each rule as one line, this file the
+worked detail and examples behind it, in the same order. `references/csharp-style.md` stays authoritative
+for formatting, naming casing and language-feature style.
+
+**Contents:** [Style and Structure](#style-and-structure), [Runtime and Behavior](#runtime-and-behavior)
+
+## Style and Structure
+
+### File structure
+- Max 300 lines per file - a file past that is accreting more than one responsibility. Split by extracting cohesive groups of methods into new classes.
+- 120 columns per line in `.cs` files - the soft limit `references/csharp-style.md` sets; markdown, JSON, config files exempt.
+- Partial classes only for generated code (EF migrations, designer files) or extending a generated class.
+- One-type-per-file, file naming, and file-scoped namespaces follow `references/csharp-style.md` - it owns the detail.
+
+### Naming
+
+Casing, prefixes, and the `Async` suffix live in `references/csharp-style.md` - not repeated here. The house rule on top of them is naming *intent* - apply four tests to every name:
+1. **Domain-aligned** - use vocabulary from the project domain. Avoid `Manager`, `Helper`, `Data`, `Info`, `Item`, or vague verbs like `Process` / `Handle` when a domain-specific term exists.
+2. **Intent-revealing** - the name explains what the member does without reading the implementation.
+3. **DDD-consistent** - value objects model concepts, not primitives. Don't suffix entity types with `Entity` or `Aggregate`. Do suffix repositories and services.
+4. **Free of misleading names** - a method named `Save` must persist; a `Validate` method must not also mutate state.
+
+### Class member ordering
+
+Enforced by `.editorconfig`. Order: private constants/statics, private readonly, private fields, protected/public properties, constructors, public/protected/private methods. Public properties before the constructor.
+
+### Constructor parameter ordering
+
+Private readonly fields, constructor parameters, and constructor body assignments must follow the same order. Primary constructor parameter lists follow the same group order.
+
+**Group order:**
+1. `ILogger` / `ILogger<T>` - always first.
+2. Other interfaces.
+3. Classes (including sealed records, delegates such as `Func<>`, concrete service types).
+4. Structs (value types).
+
+Within each group, order by scope, broadest first. Required before optional - all defaulted params trail required ones.
+
+### Blank lines
+
+Enforced by `.editorconfig` / formatter. The non-mechanical rule: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
+
+### Methods
+- Max 20 lines per method body - a longer body is doing more than one thing and resists review. Refactor if exceeded.
+- Max 3 parameters. Use a parameter object (record or class) for more.
+- Methods do one thing. If 'and' appears in a method name, split it.
+- No `out` or `ref` parameters - they hide data flow at the call site and do not compose with async or LINQ; return a tuple or result object instead.
+- Every `switch` case body wrapped in its own `{ }` block - even when one statement, even when no variable is declared. Brace any half-braced switch you edit. Example:
+
+```csharp
+switch (x)
+{
+    case A:
+    {
+        DoA();
+
+        break;
+    }
+    case B:
+    {
+        var y = Compute();
+        Use(y);
+
+        return;
+    }
+    default:
+    {
+        return;
+    }
+}
+```
+
+Per-case braces give each case its own scope (no accidental variable leak); blank line before `break` / `return` when preceded by another statement; no blank line when the transfer is the only statement after `{` (the `default` above).
+
+### Types and variables
+- `var`, nullable reference types, records vs classes, and expression-bodied members: `references/csharp-style.md` is authoritative. The bullets below are the house additions it does not cover.
+- Value objects: model as small immutable types - typically `readonly record struct` - validate in the constructor (trust everywhere after), and expose explicit conversions / factory methods only, never an `implicit operator` (it silently defeats the type safety it exists to provide). Add a `TypeConverter` when the value object must bind from configuration.
+- Member signatures expose the narrowest useful shape: accept `IEnumerable<T>` / `IReadOnlyCollection<T>` / `IReadOnlyList<T>` (or `ReadOnlySpan<T>` on hot paths), and return a read-only collection type (`IReadOnlyList<T>`, `IReadOnlyDictionary<,>`); return a `List<T>` / array only when the caller is meant to mutate it.
+- No magic numbers or magic strings - use named constants or enums.
+- Enums: explicit underlying values for any enum persisted to a database or sent over the wire. Use `[Flags]` only when bitwise combination is intended.
+- No public mutable fields - use properties.
+- String comparison: always specify `StringComparison.Ordinal` for non-linguistic comparisons (identifiers, keys, file paths), `StringComparison.OrdinalIgnoreCase` for case-insensitive. Never rely on culture-default comparison.
+
+### Visibility and sealing
+- Default to the lowest visibility that works: `private` for class members, `internal` for assembly-scoped types, `public` only for cross-assembly API.
+- Mark new classes `sealed` unless inheritance is part of the design. Sealed classes enable JIT devirtualization and signal intent.
+- Mark methods `virtual` or `abstract` only when overriding is genuinely required. Prefer composition over inheritance.
+- Static classes only for pure utilities (no state, no I/O, no DI dependencies). For anything else, use a regular class with DI.
+- Static fields only for true constants or thread-safe caches. Mutable static state is forbidden.
+
+### Design patterns (GoF awareness)
+Reach for the framework-native construct before hand-rolling a pattern - most GoF patterns are already in the platform. Which construct replaces which pattern, the selection table, and the anti-pattern checks belong to the skill covering GoF design patterns in C# - load it to choose, implement, compare, or refactor toward any pattern; without it, prefer the framework-native construct and stop there.
+
+### Modern C# syntax preferences
+
+The modern-feature style - primary constructors, collection expressions, raw strings, `required` members, the `field` keyword, pattern matching, switch expressions - is authoritative in `references/csharp-style.md` (language feature usage). Two house preferences that document does not name: prefer `params ReadOnlySpan<T>` (C# 13) for new internal zero-alloc APIs over `params T[]`, and `System.Threading.Lock` (C# 13) for new lock objects (do not retrofit existing `lock(object)` sites).
+
+Performance concerns (sealing, readonly structs, `Span<T>` / `Memory<T>` / `ArrayPool<T>`, collection choice) belong to the skill covering .NET performance and memory layout, when your skill list has one; without it, prefer the framework default and measure before optimizing.
+
+### Forbidden patterns
+- No `#region` blocks - a file that needs regions to navigate is too big; split it instead.
+- No `using static` for non-utility classes.
+- No commented-out code - delete it.
+- No `TODO` without an associated ticket reference.
+- No reflection in business or hot-path code; use source generators or compile-time alternatives. No object-mapping libraries (AutoMapper / Mapster / ExpressMapper) - write explicit mapping methods (compile-time checked, debuggable, refactor-safe). Reflection is acceptable only in serialization, the DI container, ORM / EF, test infrastructure, or one-time bootstrap - never for DTO / domain mapping. When you must reach a private member (serializer, test helper), use `UnsafeAccessorAttribute` (.NET 8), not `System.Reflection`.
+- No `dynamic` - use `object` + pattern matching or a typed interface.
+- No top-level statements outside `Program.cs`.
+
+Routing note: when a convention here drives a package change - adding, removing, or swapping one (e.g. dropping a banned mapper, replacing Newtonsoft with System.Text.Json) - the install itself belongs to the skill covering .NET solution and package setup, where the install has it; either way use the `dotnet` CLI, never hand-edit `Directory.Packages.props`.
+
+### Documentation
+- Every public API surface has XML doc comments covering parameters, return values, thrown exceptions, and remarks for non-obvious behavior.
+- Write them in the expanded multi-line form - each tag opened and closed on its own line, full descriptive sentences, `<returns>` and every `<param>` given the same treatment as `<summary>`, never a fragment collapsed onto one `///` line. The worked good-versus-avoid pair is section 5 of `references/csharp-style.md`; open it before documenting a new public surface.
+
+---
+
+## Runtime and Behavior
+
+Behavior, I/O, and composition rules.
+
+### DateTime and timezones
+- Store and pass `DateTimeOffset`, not `DateTime`, for any value crossing process or DB boundaries.
+- All persisted timestamps in UTC. Convert to local only at the presentation boundary.
+- Never call `DateTime.Now` or `DateTime.UtcNow` directly in business logic. Inject `TimeProvider` - in-box on the floor, and `Microsoft.Bcl.TimeProvider` back-ports it to .NET Framework 4.6.2+ / .NET Standard 2.0 - so a test drives time with `FakeTimeProvider`; a hand-rolled `IClock` stays only where the codebase already has one.
+- Never call `DateTime.Now` for measurements - use `Stopwatch`.
+
+### Async, disposal, and JSON
+Read `references/runtime-behavior.md` before writing async or cancellation code, a type that owns a resource, or `System.Text.Json` configuration: it carries the house additions to the async baseline, the dispose rules and the JSON defaults. When the change is genuinely concurrent rather than merely async - deadlock avoidance, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>`, bounded parallelism - open `references/concurrency.md` instead.
+
+### Exception handling and Result pattern
+- Distinguish expected outcomes from exceptional failures. Validation, not-found, and business-rule failures are expected - return a result type rather than throwing. Prefer a domain-specific result (a sealed record with `Success` / `Failed` factory methods and an error-code enum, e.g. `CreateOrderResult`) over a generic `Result<T>` / `OneOf<,>` when the operation's failure modes are known.
+- Exceptions for unexpected failures only (I/O errors, programming errors, contract violations).
+- Catch specific exceptions; never bare `catch (Exception)` in business logic unless logging and re-throwing.
+- Do not use exceptions for control flow.
+- Re-throw with `throw;` not `throw ex;` (preserves stack trace).
+- Validate arguments at the top of public methods. Prefer the static throw-helpers over hand-written guards: `ArgumentNullException.ThrowIfNull(x)`, `ArgumentException.ThrowIfNullOrWhiteSpace(s)`, `ArgumentOutOfRangeException.ThrowIfNegative` / `ThrowIfGreaterThan(...)` (.NET 8).
+- Mapping a Result to an HTTP response and the `ProblemDetails` contract are the web surface - route via the .NET router to the ASP.NET Core error-handling skill (ProblemDetails, `IExceptionHandler`); don't shape HTTP errors in business code.
+
+### Logging
+- Structured logging via `ILogger<T>`. Use templates with named placeholders: `_logger.LogInformation("Order {OrderId} placed for {UserId}", orderId, userId)`. Never use string interpolation in log calls.
+- Log levels: `Trace` (diagnostic noise), `Debug` (dev), `Information` (business events), `Warning` (recoverable issue), `Error` (operation failed), `Critical` (system unusable).
+- Log exceptions with the exception object as the first arg: `_logger.LogError(ex, "Failed to {Action}", actionName)`. Never `.ToString()` an exception into the message.
+- Never log: passwords, tokens, secrets, full payment data, PII beyond what is operationally needed. For healthcare and e-commerce projects, treat full identifiers as PII.
+- One log statement per logical event. Avoid log spam in tight loops.
+
+### Secrets and configuration sources
+- Where secrets live (dev vs prod placement) is owned by the skill covering .NET application-security hardening (OWASP-mapped mitigations, secret placement) - reach for it rather than restating the rule here; without it, keep every secret out of source, config files and logs, and stop there.
+- Configuration layering: `appsettings.json` (defaults) -> `appsettings.{Environment}.json` -> environment variables -> command-line args. Later layers override earlier.
+- Hashing / encryption primitives route via the .NET router to the cryptography-primitives skill, where installed; the secret-leak / OWASP hardening boundary is the .NET application-security skill.
+
+Typed options binding (`IOptions<T>` / `IOptionsSnapshot<T>` / `IOptionsMonitor<T>`) and startup validation (`ValidateOnStart`, `IValidateOptions<T>`, data-annotation validation) belong to the web hub skill - the ASP.NET Core cross-cutting baseline (typed options, resilience, observability) - consult it where the install has it, do not restate here. The DI-side binding shape (`AddOptions<T>().BindConfiguration(...).ValidateOnStart()`) is `references/dependency-injection.md`; without the web hub, that is the whole rule.
+
+### LINQ
+Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and terminal-operator intent are authoritative in `references/csharp-style.md`. House additions:
+- No more than 4-5 chained operators without an intermediate variable with a descriptive name.
+- Materialize queries (`ToList`, `ToArray`) before returning from a method that owns the DbContext or connection lifetime.
+
+### Decoupling and DI lifetimes
+- Never call `new` on service-layer or infrastructure types inside a class body - use factories or DI.
+- No circular dependencies between namespaces.
+- Never inject a shorter-lifetime service into a longer-lifetime one (captive dependency). Use `IServiceScopeFactory` or a `Func<T>` factory for cross-lifetime access.
+- Composition mechanics - grouping a feature's registrations behind an `Add*` extension, keyed services, factory registration, and `TryAdd` - are `references/dependency-injection.md`; this section owns only the lifetime rules.

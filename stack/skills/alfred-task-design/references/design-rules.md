@@ -48,3 +48,18 @@ the event (request logging, client logging) the card says so instead of duplicat
 no failure exit of its own stamps `log_points: none - <reason>` - an absent field and a considered
 none must never look alike. Every point goes through the repo's existing logging seam and message
 convention - name the precedent on the card, never a second logger.
+
+## The Decisions ledger in full
+
+**Every judgment call lands on the plan with its precedent.** The plan carries a `## Decisions`
+ledger - one line per call the design made where the requirement left two defensible shapes (a
+library, a structure, a pattern, a placement, a name at a seam): `the choice - precedent: <file:symbol
+or named rule>`, or `no precedent - <reason>` said explicitly and still decided; a plan with no such
+call writes `## Decisions: none - <reason>`, so an absent ledger and a considered none never look
+alike. The implementer inherits each answer and leaves its why at the line; the reviewer gates the
+built code against the ledger. A choice the project already recorded - in its instructions file, the
+architecture docs, the code-style doc - is a decision, never a defect to design around: judge the fit
+against what the project deliberately chose, not against a convention it deliberately does not use. A
+new file's home is a decision too: the folder the repo's best-organized module uses for that kind of
+file, never a new `common` / `helpers` / `utils` dump folder. A how-to-build call is never left to the
+build or bounced to the user.

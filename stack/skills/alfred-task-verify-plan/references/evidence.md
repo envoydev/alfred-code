@@ -23,3 +23,14 @@ A flawed plan built perfectly is still wrong, and the rework lands on code that 
 the diff, its tests and its review all have to be redone. The passes are ordered cheapest-first
 for that reason: scope and existence before soundness, because a plan that fails either makes the
 rest of the audit moot.
+
+## Moved from SKILL.md (pilot 4 split)
+
+The measurement each rule in SKILL.md now states without its story.
+
+- **An evidenced Oriented line** - 'ARCHITECTURE.md plus a bounded symbol pass over six surfaces' with no read of the doc anywhere in the session and one symbol call against six claimed
+- **Stamping what was verified** - Two gate passes over one plan, neither flagged the absent header
+- **Decisions as a pass condition** - 0 occurrences of the ledger in a plan that was then stamped `Gated: passed`
+- **The judgment tag** - An unmarked transport-channel switch rode a blanket 'go ahead', landed, and was reverted on a live user interrupt - 32% of that apply phase's edits spent applying-then-reversing it
+- **Few Edit calls** - 28 single-hunk edits to one plan file in one apply pass, each at full session context
+- **Named fields** - A controlled measurement put named fields at 5 of 5 emitted against a prose condition at 0 of 1.

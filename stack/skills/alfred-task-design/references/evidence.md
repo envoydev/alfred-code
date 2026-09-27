@@ -17,3 +17,7 @@ while designing.
   advice is read by every later seat.
 - **Scope a prior plan read (Plan format).** With nothing loading the format, one run whole-read an
   unrelated 275-line ticket plan - the session's largest result and biggest context spike.
+
+## Moved from SKILL.md (pilot 4 split)
+
+- **Judge against the Asked line** - A plan that fit the code as a side-by-side prototype where the user had asked for the old path to be REPLACED was rejected after its whole build window.

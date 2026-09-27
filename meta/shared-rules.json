@@ -731,12 +731,12 @@
     "known-ceilings-filing": {
       "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
         "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/alfred-task-implement/references/known-ceilings.md",
           "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
         }
       ]
@@ -1362,7 +1362,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
           "marker": "doc-drift awareness"
         }
       ]
@@ -1567,7 +1567,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/alfred-task-implement/references/protocol-in-full.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
@@ -1587,7 +1587,7 @@
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
           "marker": "an earlier session's leftover stamp is not consent"
         },
         {
@@ -1992,7 +1992,7 @@
           "marker": "tear-down-vs-keep through the same AskUserQuestion call"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
           "marker": "names what this run started to build, test, or verify"
         },
         {
@@ -2435,7 +2435,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
           "marker": "<feature>__<contract_version>__<seat>__<task>"
         }
       ]
@@ -2468,7 +2468,7 @@
           "marker": "memories purged: <names|none>"
         },
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
           "marker": "memories purged: <names|none>"
         },
         {
@@ -3317,7 +3317,7 @@
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
-          "file": "stack/skills/alfred-task-solve/SKILL.md",
+          "file": "stack/skills/alfred-task-solve/references/close.md",
           "marker": "a task card under `<docs-path>/cross-project-tasks/`"
         },
         {
@@ -4739,12 +4739,12 @@
     "approval-stamp-absolute-path": {
       "_note": "The APPROVAL gate stamp is written with the Write tool at the ABSOLUTE ${CLAUDE_PROJECT_DIR} path (substituted in skill content, CC >= 2.1.196) (a relative path landed in the wrong cwd; the shell route is masked) - restated in every flow that writes the stamp guard-unapproved-dispatch.js reads.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve/SKILL.md",
+        "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
         "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "file": "stack/skills/alfred-task-implement/references/protocol-in-full.md",
           "marker": "Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool"
         },
         {
@@ -4943,7 +4943,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/alfred-habits-commit-checkpoint/references/publishing.md",
           "marker": "their own receipt, `<docs-path>/flow/PUSH-GATE`, in the SAME five-line shape"
         },
         {
@@ -5040,7 +5040,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+          "file": "stack/skills/alfred-habits-commit-checkpoint/references/discarding.md",
           "marker": "`<docs-path>/flow/DISCARD-ALLOW`"
         }
       ]
@@ -5675,7 +5675,7 @@
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-code-quality/SKILL.md",
+          "file": "stack/skills/alfred-capture-code-quality/references/report-receipt.md",
           "marker": "already on Opus before this run started - nothing to reset"
         },
         {

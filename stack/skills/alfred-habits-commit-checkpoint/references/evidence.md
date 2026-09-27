@@ -27,3 +27,9 @@ one audited session took the atomic shape, and two of those left the receipt unc
 Measured before the CROSS-WRITE-ALLOW receipt existed: an ask presented a sibling-repo commit +
 push + PR as its `(Recommended)` option, the user took it, and the cross-project write guard denied
 it at the first git verb - the run recommended a route the stack bans.
+
+## Moved from SKILL.md (pilot 4 split)
+
+The measurement each rule in SKILL.md now states without its story.
+
+- **Why before the commit** - Findings caught here land in the same commit; found later they become fixup noise or shipped defects.

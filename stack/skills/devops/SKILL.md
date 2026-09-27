@@ -17,28 +17,12 @@ The pipeline is production code - a broken workflow blocks every merge and a lea
 - When a build genuinely needs a secret - a private NuGet-feed PAT during restore - pass it with `RUN --mount=type=secret,id=...` so it never lands in a layer or image history, distinct from the runtime secrets pulled from the store.
 - Pin the base image by digest, never a floating :latest or a bare major tag - a moving tag makes the build non-reproducible and is a supply-chain hole. Prefer a chiseled or distroless .NET runtime image (no shell, minimal CVE surface).
 - Pin the BuildKit frontend on the Dockerfile's first line - `# syntax=docker/dockerfile:1` (to a digest for a fully locked build) - so an untrusted or moving frontend cannot run build-time code you never vetted; and treat `buildx` `--sbom` / `--provenance` attestations as metadata, not signatures - sign the image with cosign if you need provenance you can verify.
-- Build multi-arch images with `buildx --platform linux/amd64,linux/arm64` when developers are on Apple Silicon but production runs x64 - a locally-built image is otherwise the wrong architecture for the server.
+- Build multi-arch when developers and servers differ in architecture - `references/dockerfile-shape.md`.
 - Run as a non-root USER, mount the root filesystem read-only where the app allows, and keep a .dockerignore that excludes bin, obj, node_modules, .git, and every secret-bearing file.
 - Harden past non-root at runtime - drop all Linux capabilities, set no-new-privileges, cap memory / CPU / PID count, and keep the default seccomp profile plus an AppArmor or SELinux profile instead of reaching for `--privileged`, so a compromised or leaking process cannot escalate, exhaust PIDs, or starve the host. The full checklist with the compose keys: `references/docker-hardening.md`.
 - Give the container a HEALTHCHECK and proper PID-1 signal handling (an init shim) so the orchestrator can tell ready from dead and a SIGTERM drains rather than kills.
 
-The shape in one Dockerfile - multi-stage, cache-ordered, digest-pinned, non-root:
-
-```dockerfile
-# syntax=docker/dockerfile:1
-FROM mcr.microsoft.com/dotnet/sdk:8.0@sha256:<digest> AS build
-WORKDIR /src
-COPY ["App/App.csproj", "App/"]
-RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore App/App.csproj
-COPY . .
-RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish App/App.csproj -c Release -o /app
-
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble-chiseled@sha256:<digest>
-WORKDIR /app
-COPY --from=build /app .
-USER $APP_UID
-ENTRYPOINT ["dotnet", "App.dll"]
-```
+Start a new Dockerfile from the worked one in `references/dockerfile-shape.md` - multi-stage, cache-ordered, digest-pinned, non-root.
 
 ## Compose - local topology, not a secret store
 
