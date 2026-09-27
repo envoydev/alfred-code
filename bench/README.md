@@ -138,7 +138,14 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   data cells hung 120-302 s there. `BuildInParallel=false` in `common.json` reaches every build as an MSBuild
   property, so no route starts a worker node - measured 2026-09-27 with the same runtime: `dotnet ef
   migrations add X --project src/LendingDesk.Data | tail` done in 3 s, the Api as startup project answers
-  its real error in 6 s, and with the property set back to `true` the same command hangs.
+  its real error in 6 s, and with the property set back to `true` the same command hangs. `ng build`
+  aborted (134) on the unchanged baseline: Angular's persistent build cache opens an lmdb store, lmdb takes
+  a SysV semaphore the sandbox profile refuses (`ipc-sysv-sem`; the same profile with that one operation
+  allowed opens it), and lmdb's error path then frees an unallocated pointer. Angular keeps that disk cache
+  off when `CI` is set, so `common.json` `bashEnv` sets it for Bash commands alone - a file Claude Code
+  sources before each one (`CLAUDE_ENV_FILE`), never the CLI, its hooks or its MCP servers. Measured
+  2026-09-27: a piped `npm run build` in the sandbox printed `Building...` and stopped (no `dist`) without
+  it, and completed in 11 s with it - through the runtime and through the real CLI; the 25 web tests pass.
 - **D8, workspace trust.** Measured 2026-09-26 (`b4-probe-d8`, `ours`, `--include-hook-events`): a
   forced `general-purpose` dispatch fired `SubagentStart` and `SubagentStop` (both exit 0), and stderr
   carried no untrusted-workspace warning - no trust entry is written. Print mode never applies a

@@ -37,6 +37,13 @@ test('a session\'s own temp dir replaces the host\'s TMPDIR, for sandboxed and u
     assert.strictEqual(sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false }).TMPDIR, '/tmp/x', 'no temp dir named: the host\'s passes');
 });
 
+test('a Bash env file, when there is one, is named to Claude Code and nothing else of it reaches the session', () =>
+{
+    const env = sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false, envFile: '/w/cell/bash-env.sh' });
+    assert.strictEqual(env.CLAUDE_ENV_FILE, '/w/cell/bash-env.sh', 'sourced before each Bash command');
+    assert.ok(!('CLAUDE_ENV_FILE' in sessionEnv({ base: { ...BASE, CLAUDE_ENV_FILE: '/host/env.sh' }, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false })), 'never the host\'s');
+});
+
 test('the harness\'s own bin dir goes first on the PATH, so its dotnet shim wins', () =>
 {
     const env = sessionEnv({ base: BASE, session: SESSION, arm: { env: {} }, config: '/c', home: '/h', auth: false, bin: '/w/cell/bin' });

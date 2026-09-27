@@ -186,6 +186,17 @@ test('onboarding runs each prompt in the template repo with the template\'s own 
     for (const s of seen) assert.deepStrictEqual([s.cwd, s.config, s.home], [paths.repo, paths.config, paths.home]);
 });
 
+test('onboarding sources the same Bash env file every measured session does', (t) =>
+{
+    const f = fixture(t);
+    const seen = [];
+    const { paths } = build({ claude: FAKE, arm: arm([], { onboarding: ['/init'], expects: ['app.txt'] }), session: { ...SESSION, bashEnv: { CI: 'true' } }, benchDir: f.bench, fixtureSource: f.source, lock: f.lock,
+        onboard: (prompt, where) => seen.push({ file: where.env.CLAUDE_ENV_FILE, text: fs.readFileSync(where.env.CLAUDE_ENV_FILE, 'utf8'), ci: where.env.CI }) });
+    assert.strictEqual(seen[0].file, path.join(paths.dir, 'bash-env.sh'));
+    assert.match(seen[0].text, /^export CI='true'$/m);
+    assert.strictEqual(seen[0].ci, undefined);
+});
+
 test('each onboarding prompt gets its own temp dir, removed after it', (t) =>
 {
     const f = fixture(t);

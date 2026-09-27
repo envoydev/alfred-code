@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { sessionArgv, run, prepare, onboardSync, commitSetup } = require('./session.js');
+const { sessionArgv, run, prepare, onboardSync, commitSetup, writeBashEnv } = require('./session.js');
 const { cellPaths } = require('./cells.js');
 const { composeProject } = require('./compose.js');
 
@@ -138,6 +138,30 @@ test('a session with reads to deny runs under settings of its own: the shared sa
     assert.deepStrictEqual(seen.settings, { ...shared, sandbox: { ...shared.sandbox, filesystem: { allowWrite: ['~'], denyRead: ['/host', '/w'], allowRead: [cell.work, '/w/uv'] } } });
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(cell.session, 'utf8')).reads, reads, 'the record says what the cell could not read');
     assert.ok(!('denyRead' in shared.sandbox.filesystem), 'the shared settings are never changed');
+});
+
+test('the Bash env is a file each Bash command sources, the session env itself never carries it', async (t) =>
+{
+    const { dir, cell } = cellFor(t);
+    const record = path.join(dir, 'record.json');
+    await go(cell, { name: 'solo', env: { FAKE_RECORD: record } }, { session: { ...SESSION, bashEnv: { CI: 'true', ODD: "it's \"quoted\" $HOME" } } });
+    const seen = JSON.parse(fs.readFileSync(record, 'utf8')).env;
+    assert.strictEqual(seen.CLAUDE_ENV_FILE, path.join(cell.work, 'bash-env.sh'), 'in the cell\'s work dir, above the clone');
+    assert.strictEqual(seen.CI, undefined, 'the CLI never sees it');
+    const none = cellFor(t, 2);
+    const record2 = path.join(none.dir, 'record.json');
+    await go(none.cell, { name: 'solo', env: { FAKE_RECORD: record2 } });
+    assert.ok(!('CLAUDE_ENV_FILE' in JSON.parse(fs.readFileSync(record2, 'utf8')).env), 'no Bash env, no file');
+});
+
+test('the Bash env file exports each value exactly, whatever it holds', (t) =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-bashenv-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    const file = writeBashEnv(dir, { CI: 'true', ODD: "it's \"quoted\" $HOME `x` \\n" });
+    const out = execFileSync('/bin/sh', ['-c', `. "${file}"; printf '%s|%s' "$CI" "$ODD"`], { env: { PATH: process.env.PATH } }).toString();
+    assert.strictEqual(out, "true|it's \"quoted\" $HOME `x` \\n");
+    assert.strictEqual(writeBashEnv(dir, {}), null);
 });
 
 test('a session runs in its own compose project, taken down before it starts and again when it ends', async (t) =>

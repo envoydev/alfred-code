@@ -162,6 +162,17 @@ function prepare({ cell, startRef, setup = [], taskDir, task })
     }
 }
 
+// The session's Bash env (common.json bashEnv) as a file Claude Code sources before each Bash command
+// (CLAUDE_ENV_FILE); null when there is none. Each value single-quoted, so it lands exactly as written.
+function writeBashEnv(dir, bashEnv)
+{
+    const names = Object.keys(bashEnv || {});
+    if (!names.length) return null;
+    const file = path.join(dir, 'bash-env.sh');
+    fs.writeFileSync(file, names.map((k) => `export ${k}='${String(bashEnv[k]).split('\'').join('\'\\\'\'')}'`).join('\n') + '\n');
+    return file;
+}
+
 // A cell's own settings layer: the shared sandbox (common.json settings) plus the reads this cell may not make
 // (lib/reads.js). Written in the cell's work dir, above the clone, so the session never edits it; the shared file
 // is never changed.
@@ -285,7 +296,8 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         const bin = installShims({ bin: path.join(cell.work, 'bin'), PATH: base.PATH });
         // The cell's own compose project (lib/compose.js): taken down before the session and again after it.
         const compose = { project: composeProject(cell) };
-        const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared }), COMPOSE_PROJECT_NAME: compose.project };
+        const envFile = writeBashEnv(cell.work, session.bashEnv);
+        const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared, envFile }), COMPOSE_PROJECT_NAME: compose.project };
         const graceMs = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
         compose.before = composeDown({ project: compose.project, env, cwd: cell.work, docker });
         // The reads this cell may not make (lib/reads.js) go into a settings layer of its own.
@@ -393,4 +405,4 @@ function onboardSync({ prompt, where, session, claude = ['claude'], base = proce
     return { sessionId };
 }
 
-module.exports = { sessionArgv, run, plainDriver, kill, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, commitSetup, DIFF_EXCLUDES, SETUP_COMMIT };
+module.exports = { sessionArgv, run, plainDriver, kill, prepare, applySetupPatch, plantedJwt, onboardSync, snapshot, redact, findTranscript, git, commitSetup, writeBashEnv, DIFF_EXCLUDES, SETUP_COMMIT };

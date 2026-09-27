@@ -66,6 +66,11 @@ test('the four shipped arm files load against the shared session', () =>
     // flow cells alone), and the model's own fix - an env prefix - is the form print mode refuses.
     assert.strictEqual(session.env.DOTNET_CLI_TELEMETRY_OPTOUT, '1', 'no dotnet call dials its telemetry endpoint');
     assert.strictEqual(session.env.DOTNET_NOLOGO, '1', 'no first-run banner in a session\'s output');
+    // ng build aborted (134) inside the sandbox on the unchanged baseline: Angular's persistent build cache opens
+    // an lmdb store, lmdb takes a SysV semaphore the sandbox profile refuses, and lmdb's own error path frees an
+    // unallocated pointer. Angular keeps that cache off when CI is set - for Bash commands alone, never the CLI.
+    assert.deepStrictEqual(session.bashEnv, { CI: 'true' }, 'every Bash command, and nothing else, builds Angular without its disk cache');
+    assert.strictEqual(session.env.CI, undefined, 'the CLI, its hooks and its MCP servers never see it');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
@@ -252,7 +257,7 @@ test('an unknown key, a bad setup step and a name that is not the file are refus
 
 test('an arm env cannot override what the harness or common.json owns', (t) =>
 {
-    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'COMPOSE_PROJECT_NAME', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
+    for (const key of ['CLAUDE_CONFIG_DIR', 'HOME', 'TMPDIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'UV_CACHE_DIR', 'UV_PYTHON_INSTALL_DIR', 'COMPOSE_PROJECT_NAME', 'CLAUDE_ENV_FILE', 'ANTHROPIC_API_KEY', 'CONTEXT7_API_KEY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'])
     {
         const dir = armsDir(t, { arms: [{ ...ARM, env: { [key]: '1' } }] });
         assert.throws(() => load({ dir, names: ['solo'] }), new RegExp(`solo: env ${key} is the harness's`));
@@ -265,6 +270,16 @@ test('the template key follows the shared env and the restore steps, so a change
     const h = armHash(ARM, session);
     assert.notStrictEqual(armHash(ARM, { ...session, env: { A: '2' } }), h);
     assert.notStrictEqual(armHash(ARM, { ...session, restore: [] }), h);
+    assert.notStrictEqual(armHash(ARM, { ...session, bashEnv: { CI: 'true' } }), h, 'onboarding runs Bash too');
+});
+
+test('common.json bashEnv is a map of shell names to strings, absent meaning none, and an arm env cannot set one of them', (t) =>
+{
+    assert.deepStrictEqual(load({ dir: armsDir(t), names: [] }).session.bashEnv, {});
+    assert.deepStrictEqual(load({ dir: armsDir(t, { common: { ...COMMON, bashEnv: { CI: 'true' } } }), names: [] }).session.bashEnv, { CI: 'true' });
+    for (const bad of [['CI'], { CI: true }, { 'NOT-A-NAME': 'x' }, { '1X': 'x' }]) assert.throws(() => load({ dir: armsDir(t, { common: { ...COMMON, bashEnv: bad } }), names: [] }), /common\.json: bashEnv is not a map of shell variable names to strings/);
+    const dir = armsDir(t, { common: { ...COMMON, bashEnv: { CI: 'true' } }, arms: [{ ...ARM, env: { CI: '1' } }] });
+    assert.throws(() => load({ dir, names: ['solo'] }), /solo: env CI is the harness's/);
 });
 
 test('common.json restore is a list of commands, absent meaning none', (t) =>

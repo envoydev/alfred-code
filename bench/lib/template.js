@@ -22,7 +22,7 @@ const fixture = require('../fixture/verify.js');
 const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
 const { installShims } = require('./dotnet-shim.js');
-const { commitSetup, git } = require('./session.js');
+const { commitSetup, writeBashEnv, git } = require('./session.js');
 
 const READY = 'READY.json';
 const STEP_TIMEOUT_MS = 20 * 60 * 1000;
@@ -195,12 +195,13 @@ function build({ arm, session, benchDir, workRoot, root, fixtureSource, lock, on
         // The driver names the run's credential; a caller that names none gets the only one set, or none.
         const onboardAuth = auth || (session.auth.some((name) => base[name]) ? pickAuth(session.auth, base) : false);
         const bin = installShims({ bin: path.join(paths.dir, 'bin'), PATH: base.PATH });
+        const envFile = writeBashEnv(paths.dir, session.bashEnv);
         arm.onboarding.forEach((prompt, i) =>
         {
             const tmp = sessionTmp();
             try
             {
-                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared, onboarding: true });
+                const env = sessionEnv({ base, session, arm, config: paths.config, home: paths.home, auth: onboardAuth, tmp, bin, shared, envFile, onboarding: true });
                 onboard(prompt, { cwd: paths.repo, config: paths.config, home: paths.home, env, tmp, index: i + 1, dir: paths.dir });
             }
             catch (err) { throw new Error(`${arm.name} onboarding ${i + 1}: ${err.message}`); }

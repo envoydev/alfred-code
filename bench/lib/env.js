@@ -23,7 +23,7 @@ const PASS_PREFIX = ['TESTCONTAINERS_'];
 
 // `onboarding`: the arm's onboarding-only env (`onboardingEnv`, a stack's unattended switch) joins its
 // own env for that one session - never for a setup step or a measured cell.
-function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin, shared, onboarding = false })
+function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp, bin, shared, envFile, onboarding = false })
 {
     const env = {};
     for (const [k, v] of Object.entries(base))
@@ -41,6 +41,9 @@ function sessionEnv({ base = process.env, session, arm, config, home, auth, tmp,
     // session sees the same ones, so an MCP server launched through uvx starts warm in every cell.
     Object.assign(env, shared || {});
     if (tmp) Object.assign(env, { TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp });
+    // The session's Bash env (common.json bashEnv): a file Claude Code sources before each Bash command, so only
+    // Bash commands see it - never the CLI, its hooks or its MCP servers.
+    if (envFile) env.CLAUDE_ENV_FILE = envFile;
     // The harness's shims (lib/dotnet-shim.js) first, so every route to `dotnet` meets them.
     if (bin) env.PATH = env.PATH ? `${bin}${path.delimiter}${env.PATH}` : bin;
     return env;
