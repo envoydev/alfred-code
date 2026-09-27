@@ -50,7 +50,10 @@ function historyPaths(dir)
 function verify({ source, lock, dest })
 {
     if (fs.existsSync(dest) && fs.readdirSync(dest).length) throw new Error(`destination is not empty: ${dest}`);
-    execFileSync('git', ['clone', '-q', '--branch', lock.tag, '--single-branch', source, dest], { stdio: ['ignore', 'pipe', 'pipe'] });
+    // --no-local: a clone from a path copies the source's whole object store and its tags, and this source holds
+    // every task's hidden tests and the stacks' own releases (pilot 3's clones carried 19,898 objects, 401 of them
+    // the fixture's) - through the git transport only the fixture tag's history comes over.
+    execFileSync('git', ['clone', '-q', '--no-local', '--branch', lock.tag, '--single-branch', source, dest], { stdio: ['ignore', 'pipe', 'pipe'] });
     const commit = git(dest, ['rev-parse', 'HEAD']);
     if (commit !== lock.commit) throw new Error(`${lock.tag} resolves to ${commit}, the lock records ${lock.commit}`);
     const hits = stackPathsIn(historyPaths(dest));

@@ -63,6 +63,25 @@ test('verify: a clean tag whose commit matches the lock passes, and the clone is
     assert.ok(fs.existsSync(path.join(dest, 'app.txt')));
 });
 
+test('verify: the clone carries the fixture\'s own history alone - no other branch, tag or object of the source', () =>
+{
+    // The source is this repository, whose other branches hold every task's hidden tests and the stacks' own
+    // releases: a local clone copies the whole object store and its tags, so every cell could read them with git.
+    const r = repo();
+    git(r.dir, 'checkout', '-q', '-b', 'harness');
+    fs.writeFileSync(path.join(r.dir, 'hidden.txt'), 'the acceptance test a session must never see\n');
+    git(r.dir, 'add', 'hidden.txt');
+    git(r.dir, 'commit', '-q', '-m', 'hidden');
+    git(r.dir, 'tag', 'v9.9.9');
+    const hidden = git(r.dir, 'rev-parse', 'HEAD:hidden.txt');
+    git(r.dir, 'checkout', '-q', 'fixture');
+    const dest = path.join(tmp('bench-clone-'), 'c');
+    verify({ source: r.dir, lock: { tag: 'bench-fixture-v1', commit: r.head }, dest });
+    assert.deepStrictEqual(git(dest, 'tag', '-l').split('\n'), ['bench-fixture-v1'], 'the fixture tag alone');
+    assert.throws(() => git(dest, 'cat-file', '-e', hidden), /./, 'no object of another branch');
+    assert.strictEqual(git(dest, 'cat-file', '--batch-all-objects', '--batch-check').split('\n').length, git(dest, 'rev-list', '--objects', 'bench-fixture-v1').split('\n').length, 'every object is reachable from the fixture tag');
+});
+
 test('verify: a tag that resolves to another commit is refused', () =>
 {
     const r = repo();
