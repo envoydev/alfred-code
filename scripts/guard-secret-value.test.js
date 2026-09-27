@@ -901,6 +901,47 @@ test('guard-secret-value: a stage that WRITES the credential file is blocked, ne
   assert.equal(bash(`node -e "require('fs').writeFileSync('${path.join(f.dir, 'out.txt')}', 'x')"`), 0, 'a writer that names no credential file is not judged');
 });
 
+// Review of pilot 4, I1: four more write shapes still came back as the view, so their edit silently never ran - a script
+// FILE run against the credential file (the guard cannot see what it does), gawk's in-place extension, pathlib's
+// `.open('w')`, and node's `openSync(p, 'w')` + `writeSync`.
+test('guard-secret-value: a script file, awk -i inplace, pathlib .open and fs.openSync on the credential file block', () => {
+  const f = fixtures();
+  const script = path.join(f.dir, 'fix.py');
+  fs.writeFileSync(script, "import sys\np=sys.argv[1]\nopen(p,'w').write(open(p).read())\n");
+  const cases = [
+    [`python3 ${script} ${f.secret}`, 'python3 <script> <file>'],
+    [`python3 -u ${script} ${f.secret}`, 'python3 -u <script> <file>'],
+    [`cd ${f.dir} && python fix.py ${f.secret}`, 'python <relative script> <file>'],
+    [`node ${path.join(f.dir, 'fix.js')} ${f.secret}`, 'node <script> <file>'],
+    [`ruby ${path.join(f.dir, 'fix.rb')} ${f.secret}`, 'ruby <script> <file>'],
+    [`perl ${path.join(f.dir, 'fix.pl')} ${f.secret}`, 'perl <script> <file>'],
+    [`awk -i inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'awk -i inplace'],
+    [`gawk -i inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'gawk -i inplace'],
+    [`gawk --include=inplace '{gsub(/acme/,"acme2")}1' ${f.secret}`, 'gawk --include=inplace'],
+    [`python3 -c "import pathlib;p=pathlib.Path('${f.secret}');t=p.read_text();p.open('w').write(t)"`, "pathlib .open('w')"],
+    [`python3 -c "import pathlib;pathlib.Path('${f.secret}').write_text('x')"`, 'pathlib write_text'],
+    [`node -e "const fs=require('fs');const fd=fs.openSync('${f.secret}','w');fs.writeSync(fd,'x')"`, "fs.openSync(p,'w')"],
+    [`node -e "const fs=require('fs');const fd=fs.openSync('${f.secret}', 'r+');fs.writeSync(fd,'x')"`, "fs.openSync(p,'r+')"],
+  ];
+  const verdicts = cases.map(([command, label]) => {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    return `${label}: ${r.status === 2 ? 'blocked' : updatedCommand(r) ? 'rewritten' : 'passed'}`;
+  });
+  assert.deepEqual(verdicts, cases.map(([, label]) => `${label}: blocked`));
+  for (const [command, label] of cases) {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    assert.match(r.stderr, /WRITES a file|script FILE/, label);
+    assert.match(r.stderr, /Edit tool/, `${label}: names the route that works`);
+    assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN), label);
+  }
+  // Unchanged: a module run, inline code that only reads, and awk without the extension are still the view.
+  assert.equal(bash(`python3 -m json.tool ${f.secret}`), REWRITE, 'python3 -m json.tool reads');
+  assert.equal(bash(`python3 -c "import pathlib;print(pathlib.Path('${f.secret}').open().read())"`), REWRITE, 'pathlib .open() reads');
+  assert.equal(bash(`node -e "const fs=require('fs');console.log(fs.readFileSync(fs.openSync('${f.secret}','r')).length)"`), REWRITE, "openSync 'r' reads");
+  assert.equal(bash(`awk '{print}' ${f.secret}`), REWRITE, 'awk without -i inplace reads');
+  assert.equal(bash(`python3 ${script}`), 0, 'a script that names no credential file is not judged');
+});
+
 // Pilot 3: `--presence <appsettings> ConnectionStrings.Lending Notices.Gateway.ServiceToken` answered `absent` for two
 // keys that exist - it read only top-level (or `env`) keys.
 test('guard-secret-value --presence: a dotted, colon or double-underscore path reads a nested JSON key', () => {

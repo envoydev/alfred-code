@@ -585,7 +585,7 @@ const presenceHint = (file) =>
 // (`Get-Content` and its `gc` / `type` aliases, `Select-String`, `Format-Hex`, `Import-Csv`) are the
 // same reads - measured 2026-09-15, `Get-Content .env` printed the value in real pwsh - and cmdlet
 // names are case-insensitive, so the whole list is.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell)\b/;
 // A heredoc body is DATA, not shell: a plan that merely DESCRIBES `cat ~/.claude/settings.json` is
 // inert text (reproduced against the sibling guards). Blank the payload spans, keeping the character
@@ -765,17 +765,27 @@ function printsKeysOnly(stage) {
 // and the user found the old value in the config 37 minutes later. So a command carrying a CHANGING step is
 // blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
 // this list does not know (a build, a network call, a runtime) counts as changing.
-const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|[gmn]?awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
 // A stage that WRITES a file. The rewrite replaces the stage it judges too, so a writer naming the credential file
 // came back as the read-only view and its edit silently never ran - pilot 3, ours guard-02 r1:
 // `node -e "...fs.writeFileSync(path, ...)"` and `perl -0pi -e 's/.../' <file>` both returned the view, and the
 // `grep -c` after them said 0. Two shapes: an in-place flag on sed / perl / ruby, wherever it sits among the flags
-// (a cluster stops at a letter that takes an argument, so `-ne` and `-Mstrict` are not `-i`), and inline code that
-// writes - a node / deno / bun file write, python open() in a write mode or a write helper, ruby and perl writes.
+// (a cluster stops at a letter that takes an argument, so `-ne` and `-Mstrict` are not `-i`) or gawk's `-i inplace`,
+// and inline code that writes - a node / deno / bun file write or `openSync` in a write mode, python open() or
+// pathlib `.open()` in a write mode or a write helper, ruby and perl writes.
 const IN_PLACE_STOP = { sed: /[ef]/, perl: /[eEMmIxdDCFV]/, ruby: /[erICEFKWxT]/ };
+// gawk edits in place through its `inplace` extension, loaded by `-i` / `--include` (review I1).
+const AWK_INPLACE = /^(?:['"]?)(?:.*[\\/])?inplace(?:\.awk)?['"]?$/;
 function inPlaceFlag(stage) {
   const words = shellTokens(stage.replace(PREFIX_WORDS, ''));
-  const verb = (words[0] || '').replace(/^.*[\\/]/, '').replace(/^gsed$/, 'sed');
+  const verb = (words[0] || '').replace(/^.*[\\/]/, '').replace(/^gsed$/, 'sed').replace(/^[gmn]awk$/, 'awk');
+  if (verb === 'awk') {
+    for (let k = 1; k < words.length; k++) {
+      const m = words[k].match(/^(?:-i|--include)(?:=?(.+))?$/);
+      if (m && AWK_INPLACE.test(m[1] || words[k + 1] || '')) return 'awk -i inplace';
+    }
+    return null;
+  }
   const stop = IN_PLACE_STOP[verb];
   if (!stop) return null;
   for (let k = 1; k < words.length; k++) {
@@ -790,7 +800,34 @@ function inPlaceFlag(stage) {
   }
   return null;
 }
-const INLINE_WRITE = /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|renameSync|rmSync|unlinkSync|truncateSync|writeTextFile|Bun\.write|write_text|write_bytes|json\.dump|shutil\.(?:copy\w*|move)|os\.(?:replace|rename|remove|unlink)|File\.(?:write|delete|rename)|IO\.write|FileUtils\.\w+)\s*\(|\bopen\s*\([^()]*?,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bFile\.open\s*\([^()]*?,\s*['"][rb]*[wa+]|\bopen\s*\(?\s*(?:my\s+)?\$?\w+\s*,\s*['"]\+?>/;
+const INLINE_WRITE = /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|renameSync|rmSync|unlinkSync|truncateSync|writeTextFile|Bun\.write|write_text|write_bytes|json\.dump|shutil\.(?:copy\w*|move)|os\.(?:replace|rename|remove|unlink)|File\.(?:write|delete|rename)|IO\.write|FileUtils\.\w+)\s*\(|\bopen\s*\([^()]*?,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bFile\.open\s*\([^()]*?,\s*['"][rb]*[wa+]|\bopen\s*\(?\s*(?:my\s+)?\$?\w+\s*,\s*['"]\+?>|\.open\s*\(\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bopenSync\s*\([^()]*?,\s*['"][rs]*(?:[wa]|\+)[xs+]*['"]/;
+// A runtime run on a script FILE: what it does sits in a file the guard never reads, so no view can stand in for it
+// (review I1: `python3 /tmp/fix.py appsettings.json` became the view, and the script never ran). Inline code (`-c`,
+// `-e`, `-p`, `eval`, `-Command`), a module (`python3 -m json.tool`) and stdin (`-`, a heredoc) are judged as before.
+const SCRIPT_RUNTIME = /^(?:node|python(?:3(?:\.\d+)?)?|perl|ruby|deno|bun|pwsh|powershell)(?:\.exe)?$/i;
+function scriptFileRun(stage) {
+  const words = shellTokens(stage.replace(PREFIX_WORDS, ''));
+  const verb = (words[0] || '').replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '');
+  if (!SCRIPT_RUNTIME.test(verb)) return null;
+  const kind = verb.toLowerCase().replace(/\.exe$/, '').replace(/^python.*/, 'python').replace(/^powershell$/, 'pwsh');
+  for (let k = 1; k < words.length; k++) {
+    const w = words[k];
+    if (w === '-') return null;
+    if (w === '--') { k++; if (k < words.length) return `${verb} ${words[k].replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '')}`; return null; }
+    if (w.startsWith('-')) {
+      const flag = w.slice(1);
+      if (kind === 'python') { if (/^[cm]/.test(flag.replace(/^[bBdEhiIOqsSuvx]+/, ''))) return null; if (/^[WX]$/.test(flag)) k++; continue; }
+      if (kind === 'node' || kind === 'bun') { if (/^(?:[ep]|pe|-eval|-print)(?:=|$)/.test(flag)) return null; if (/^(?:r|-require|-import|-loader|-experimental-loader|-input-type)$/.test(flag)) k++; continue; }
+      if (kind === 'perl' || kind === 'ruby') { const cut = flag.search(IN_PLACE_STOP[kind]); if (cut >= 0 && /[eE]/.test(flag[cut])) return null; if (cut >= 0 && cut === flag.length - 1 && /[IMmxdDCFVrKWT]/.test(flag[cut])) k++; continue; }
+      if (kind === 'pwsh' && /^(?:c|e|ec|command|encodedcommand)$/i.test(flag)) return null;
+      continue; // `pwsh -File <script>` names it next; deno's own flags take `=` values
+    }
+    if (kind === 'deno' && /^(?:eval|repl)$/.test(w)) return null;
+    if ((kind === 'deno' || kind === 'bun') && /^(?:run|x)$/.test(w)) continue;
+    return `${verb} ${w.replace(/^['"]|['"]$/g, '').replace(/^.*[\\/]/, '')}`;
+  }
+  return null;
+}
 function stageWrites(stage, code) {
   const flag = inPlaceFlag(stage);
   if (flag) return flag;
@@ -830,10 +867,14 @@ function refuseDroppedSteps(what) {
   // The judged stage itself: a heredoc body is judged whole, since its write can sit on another line than its path.
   const own = splitPipes(splitSegments(stripComments(judging.text))[judging.seg] || '')[judging.stage] || '';
   const writes = stageWrites(own, judging.runtime ? judging.text : null);
-  if (writes) {
-    global.BLOCK_DETAIL = { branch: 'writer', matched: writes };
-    block(`Blocked: this command WRITES a file (\`${writes}\`) and names ${what} - nothing ran.\n` +
-      `The shell route would replace it with a read-only redacted view, and the write would silently never happen.\n` +
+  const script = !writes && !judging.runtime && scriptFileRun(own);
+  if (writes || script) {
+    global.BLOCK_DETAIL = { branch: writes ? 'writer' : 'opaque-script', matched: (writes || script).slice(0, 40) };
+    block((writes
+      ? `Blocked: this command WRITES a file (\`${writes}\`) and names ${what} - nothing ran.\n` +
+        `The shell route would replace it with a read-only redacted view, and the write would silently never happen.\n`
+      : `Blocked: this command runs a script FILE (\`${script}\`) and names ${what} - nothing ran.\n` +
+        `The guard cannot see what the script does, and the redacted view would silently stand in for its edit and its output.\n`) +
       `Make the edit with the Edit tool, old_string anchored on lines that hold no credential - it changes the file\n` +
       `without printing it. Then check it with a count (\`grep -c KEY <file>\`) or the presence read:\n` +
       `  node "${__filename}" --presence <file> [KEY ...]   (A.B.C reads a nested key)\n`);
