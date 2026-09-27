@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a hook case
-const { lintAskTemplates, ASK_FLOW_SKILLS } = require('./lint-skills.js');
+const { lintAskTemplates, lintFlowAskPresence, ASK_FLOW_SKILLS } = require('./lint-skills.js');
 
 const ROOT = path.join(__dirname, '..');
 const SKILLS = path.join(ROOT, 'stack', 'skills');
@@ -24,7 +24,7 @@ const skillText = (name) => {
 // Every `ask` block of a text, as { question, options: [label] }.
 const asks = (text) => [...text.matchAll(/^[ \t]*```ask\n([\s\S]*?)^[ \t]*```/gm)].map((m) => {
     const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
-    return { question: lines[0], options: lines.filter((l) => /^- '/.test(l)).map((l) => l.match(/^- '([^']*)'/)[1]) };
+    return { question: lines[0], options: lines.filter((l) => /^- '/.test(l)).map((l) => (l.match(/^- '(.*)' - /) || l.match(/^- '(.*)'\s*$/))[1]) };
 });
 const flat = (s) => s.replace(/\s+/g, ' ');
 
@@ -52,6 +52,26 @@ test('A4: lint check 61 fails an ask template with no mark, or with two', () => 
     assert.match(lintAskTemplates([{ file: 'c.md', text: block('Go (Recommended)') }]).join('\n'), /c\.md.*fewer than two options/);
     const indented = block('Go', 'Stop').split('\n').map((l) => `   ${l}`).join('\n');
     assert.match(lintAskTemplates([{ file: 'd.md', text: `1. **STEP** - ask:\n\n${indented}\n` }]).join('\n'), /d\.md.*no option marked/, 'an indented template is read too');
+});
+
+// Review of pilot 4, M6: a label holding an apostrophe read as unmarked, and a mark on the second option passed.
+test('A4: check 61 reads a label up to its last quote before the why, and wants the recommendation first', () => {
+    const block = (...opts) => ['```ask', 'Commit it? The review passed.', ...opts.map((o) => `- '${o}' - why`), '```'].join('\n');
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'e.md', text: block("Hold - don't commit yet (Recommended)", 'Commit') }]), [], 'an apostrophe inside the label');
+    assert.deepStrictEqual(lintAskTemplates([{ file: 'e.md', text: ['```ask', 'Go?', "- 'Go (Recommended)'", "- 'Stop'", '```'].join('\n') }]), [], 'an option with no why');
+    assert.match(lintAskTemplates([{ file: 'f.md', text: block('Stop', 'Go (Recommended)') }]).join('\n'), /f\.md.*'\(Recommended\)' option is listed 2nd - list it first/);
+});
+
+// M6 too: the presence check passed while any one template was left, so a stop dropped back to prose went unseen.
+test('A4: check 61 counts each flow skill\'s templates in SKILL.md itself, so removing one goes red', () => {
+    const texts = Object.fromEntries(ASK_FLOW_SKILLS.map((name) => [name, fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8')]));
+    assert.deepStrictEqual(lintFlowAskPresence(texts), [], 'the shipped SKILL.md files pass');
+    for (const name of ASK_FLOW_SKILLS) {
+        const dropped = texts[name].replace(/^([ \t]*)```ask[ \t]*\n[\s\S]*?^[ \t]*```[ \t]*\n/m, '$1(the stop, in prose)\n');
+        assert.notStrictEqual(dropped, texts[name], `${name}: a template was removed`);
+        assert.match(lintFlowAskPresence({ ...texts, [name]: dropped }).join('\n'), new RegExp(`${name}/SKILL\\.md.*\`ask\` template`), `${name}: one template fewer is red`);
+    }
+    assert.match(lintFlowAskPresence({ ...texts, 'alfred-task-solve': undefined }).join('\n'), /alfred-task-solve\/SKILL\.md/, 'a missing SKILL.md is red');
 });
 
 test('A4: the three flow skills each carry ask templates, and every one passes check 61', () => {

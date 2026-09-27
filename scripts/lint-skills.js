@@ -1123,9 +1123,14 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // 61. An ASK TEMPLATE - a fenced ```ask block: its first line the question, then one `- '<label>' - <why>` line per
 // option - marks exactly one option `(Recommended)`, and offers at least two. Pilot 3's flow block measured 18 of
 // ours' 40 asks with no mark: the approver took the first option, and one of those ('You run it, I'll continue
-// after') ended a build half-done. The three flow skills below must carry their stops as templates (at least one
-// each, in SKILL.md or a reference), so a rewrite that drops them back to prose goes red.
-const ASK_FLOW_SKILLS = ['alfred-task-solve', 'alfred-task-solve-cross', 'alfred-issue-diagnoser'];
+// after') ended a build half-done. The recommended option is listed FIRST, where the approver's pick lands. The three
+// flow skills below carry their stops as templates in SKILL.md itself - the file every run reads - and the count is
+// pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin).
+const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 5, 'alfred-task-solve-cross': 4, 'alfred-issue-diagnoser': 4 };
+const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
+// A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
+// stays in the label; an option with no why ends at its closing quote.
+const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
 function lintAskTemplates(files)
 {
     const findings = [];
@@ -1140,10 +1145,23 @@ function lintAskTemplates(files)
             const where = `${file}: the ask '${question.slice(0, 60)}'`;
             if (!question || /^- '/.test(question)) findings.push(`${where} opens with no question line - the first line is the question`);
             if (options.length < 2) findings.push(`${where} has fewer than two options - an ask with one option is a statement`);
-            const marked = options.filter((l) => /^- '[^']*\(Recommended\)'/.test(l)).length;
-            if (marked === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
-            else if (marked > 1) findings.push(`${where} has ${marked} options marked '(Recommended)' - exactly one carries the mark`);
+            const marks = options.map((l, i) => (/\(Recommended\)$/.test(askLabel(l)) ? i : -1)).filter((i) => i >= 0);
+            if (marks.length === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
+            else if (marks.length > 1) findings.push(`${where} has ${marks.length} options marked '(Recommended)' - exactly one carries the mark`);
+            else if (marks[0] !== 0) findings.push(`${where}: the '(Recommended)' option is listed ${marks[0] + 1}${['st', 'nd', 'rd'][marks[0]] || 'th'} - list it first, where the approver's pick lands`);
         }
+    }
+    return findings;
+}
+// `texts` maps each flow skill to its SKILL.md text (undefined when the file is missing).
+function lintFlowAskPresence(texts)
+{
+    const findings = [];
+    for (const [d, pinned] of Object.entries(ASK_FLOW_TEMPLATES))
+    {
+        const n = [...String(texts[d] || '').matchAll(/^[ \t]*```ask[ \t]*$/gm)].length;
+        if (n !== pinned) findings.push(`stack/skills/${d}/SKILL.md: carries ${n} \`ask\` template(s), pinned at ${pinned} - `
+            + (n < pinned ? 'a stop went back to prose (check 61)' : 'a new stop raises the pin in ASK_FLOW_TEMPLATES (check 61)'));
     }
     return findings;
 }
@@ -2259,11 +2277,9 @@ function main()
             for (const f of files) if (fs.existsSync(f)) askFiles.push({ skill: d, file: path.relative(ROOT, f), text: fs.readFileSync(f, 'utf8') });
         }
         for (const finding of lintAskTemplates(askFiles)) flag(finding);
-        for (const d of ASK_FLOW_SKILLS)
-        {
-            if (!askFiles.some((f) => f.skill === d && /^[ \t]*```ask[ \t]*$/m.test(f.text)))
-                flag(`stack/skills/${d}: carries no \`ask\` template - its stops are written as templates (check 61), so a rewrite that drops them back to prose is caught`);
-        }
+        const flowTexts = {};
+        for (const d of ASK_FLOW_SKILLS) { const f = path.join(SKILLS_DIR, d, 'SKILL.md'); flowTexts[d] = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : undefined; }
+        for (const finding of lintFlowAskPresence(flowTexts)) flag(finding);
     }
 
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
@@ -3159,6 +3175,7 @@ module.exports = {
     lintReferencePointers,
     lintReferenceContents,
     lintAskTemplates,
+    lintFlowAskPresence,
     ASK_FLOW_SKILLS,
     optionalSkills,
     optionalAgents,

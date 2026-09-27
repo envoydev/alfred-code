@@ -765,8 +765,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `skill-authoring.md` rule loads it; its A/B is `scripts/skill-comply.js`); on top of it here - the
   parity lint, HTML + count sync, house voice. A stop's question is written as an ASK TEMPLATE - a
   fenced `ask` block, the question on its first line, then one `- '<label>' - <why>` line per option -
-  and lint check 61 fails one that marks no option `(Recommended)`, or two; the three flow skills
-  (`alfred-task-solve`, `-cross`, `alfred-issue-diagnoser`) must carry theirs (pilot 3: 18 of 40 flow
-  asks had no mark, and the approver took the first option each time).
+  and lint check 61 fails one that marks no option `(Recommended)`, or two, or lists the marked one anywhere
+  but first (a label runs to its last quote before ` - `, so an apostrophe stays in it); the three flow skills
+  (`alfred-task-solve`, `-cross`, `alfred-issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
+  `ASK_FLOW_TEMPLATES`, so one stop dropped back to prose goes red (pilot 3: 18 of 40 flow asks had no mark,
+  and the approver took the first option each time).
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.
