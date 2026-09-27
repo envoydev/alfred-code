@@ -98,7 +98,7 @@ test('no arm takes more of this repository than its pinned commit', () =>
 test('ours installs the Alfred Code 2.0.0 candidate by its README route, and onboards through its init', () =>
 {
     const { arms: [ours] } = load({ dir: ARMS_DIR, names: ['ours'] });
-    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: 'a6cb77711a8b79dd7d45c6703d34b101aa10586c' });
+    assert.deepStrictEqual(ours.pin, { kind: 'commit', value: '534995b1c2d7e5a633e7275e48f697c607a6b1c8' });
     assert.deepStrictEqual(ours.setup.slice(0, 3).map((s) => s.join(' ')), PIN_FETCH, 'the pinned commit alone, never the clone\'s HEAD');
     const at = (argv) => ours.setup.findIndex((s) => s.join(' ') === argv);
     const market = at('claude plugin marketplace add {src}');
