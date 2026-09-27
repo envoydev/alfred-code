@@ -120,6 +120,17 @@ Pilot 3 reruns the harder task per group, picked from the Opus proof run's wall 
 
 **2026-09-27, before pilot 3, no result changed - `ours` re-pinned to `a6cb777`.** The stack commit pilot 3 installs: its hooks that ask a person stay quiet when the session has none (print mode's `sdk-cli` entrypoint; an Agent SDK session keeps its asks), its capabilities rule routes the MCP servers that arrive as plugins, its always-on rules and agent descriptions are shorter (a first call measured at 67,526 prompt tokens against pilot 2's 73,021 median), and its unattended init runs clean in print mode. The cost bar the owner set for the pilot-3 gate is the decision rule's own: `ours`' mean cost at most 25% above `bare`'s. No task, metric or rule changed.
 
+**2026-09-27, after pilot 3 and before pilot 4, no result changed - the harness fixes pilot 3 exposed, the same for every arm:**
+
+- `dotnet ef` inside the sandbox: it builds through the muxer beside the running dotnet, never the harness's shim, so MSBuild started a worker node whose pipe the sandbox refuses, and every data-02 cell hung 2-5 minutes. `BuildInParallel=false` in the shared env keeps every build route in one node.
+- `ng build` inside the sandbox: Angular's persistent build cache takes a semaphore the sandbox refuses, and the build aborted (exit 134) on the unchanged baseline. `CI=true` reaches Bash commands alone (a file Claude Code sources before each one), which keeps that disk cache off; the CLI never sees it.
+- A cell reads only itself: each session runs under a settings layer of its own that denies reads of this repository and of the whole work root (every other cell, every template), and re-opens its own work dir, the plugin code its account dir loads and the shared uv store. The fixture clone now carries the fixture's own history alone - a clone from a path had copied this repository's whole object store, every task's hidden tests included, into every cell.
+- One database per cell: each session runs in a compose project of its own, taken down before and after the session; `DOTNET_CLI_TELEMETRY_OPTOUT` and `DOTNET_NOLOGO` join the shared env.
+- The install state is committed like a user would: after onboarding every template commits what setup and onboarding left as `chore: project setup`, with the local settings file kept out of git as Claude Code keeps it; the lock checks the commit it sits on, and the graded diff still starts at the cell's own base tree.
+- The metrics read what happened: the 'done with no build or test after the last edit' check reads each cell at the clone its session ran in, so the stacks' own state folders are left out as pre-registered, and a `docker build` counts as a build.
+
+No task, metric or rule changed.
+
 ## Metrics (pre-registered)
 
 | Metric | Source | Role |
