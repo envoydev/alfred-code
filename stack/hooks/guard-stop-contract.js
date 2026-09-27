@@ -1201,10 +1201,12 @@ if (payload.hook_event_name === 'Stop') {
     process.stderr.write(
       'This turn reports the step done and leaves the next action pending, stated as a fact\n' +
       'rather than asked. Measured across four projects: that close draws a literal "are you\n' +
-      'finished?" from the user 2-22 minutes later. Put the pending decision (push or hold,\n' +
-      'continue or stop, which deliverable next) through ONE AskUserQuestion call with the\n' +
-      'options you already have in mind, recommended one marked. If nothing is actually\n' +
-      'pending, say so in one line with no open next action and stop.',
+      'finished?" from the user 2-22 minutes later. Put the pending decision (continue or stop,\n' +
+      'which deliverable next) through ONE AskUserQuestion call with the options you already\n' +
+      'have in mind, recommended one marked. An uncommitted diff is held for the user\'s review:\n' +
+      'a commit waits for their own word (baseline-git.md), so it is never the recommended\n' +
+      'next move. If nothing is actually pending, say so in one line with no open next action\n' +
+      'and stop.',
     );
     process.exit(2);
   }

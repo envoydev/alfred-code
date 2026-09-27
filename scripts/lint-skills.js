@@ -1120,6 +1120,34 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
     return findings;
 }
 
+// 61. An ASK TEMPLATE - a fenced ```ask block: its first line the question, then one `- '<label>' - <why>` line per
+// option - marks exactly one option `(Recommended)`, and offers at least two. Pilot 3's flow block measured 18 of
+// ours' 40 asks with no mark: the approver took the first option, and one of those ('You run it, I'll continue
+// after') ended a build half-done. The three flow skills below must carry their stops as templates (at least one
+// each, in SKILL.md or a reference), so a rewrite that drops them back to prose goes red.
+const ASK_FLOW_SKILLS = ['alfred-task-solve', 'alfred-task-solve-cross', 'alfred-issue-diagnoser'];
+function lintAskTemplates(files)
+{
+    const findings = [];
+    for (const { file, text } of files)
+    {
+        // A template may sit indented inside a numbered step; its lines are read without that indent.
+        for (const m of String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm))
+        {
+            const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+            const question = lines[0] || '';
+            const options = lines.filter((l) => /^- '/.test(l));
+            const where = `${file}: the ask '${question.slice(0, 60)}'`;
+            if (!question || /^- '/.test(question)) findings.push(`${where} opens with no question line - the first line is the question`);
+            if (options.length < 2) findings.push(`${where} has fewer than two options - an ask with one option is a statement`);
+            const marked = options.filter((l) => /^- '[^']*\(Recommended\)'/.test(l)).length;
+            if (marked === 0) findings.push(`${where} has no option marked '(Recommended)' - mark exactly one, the move this stop's rule recommends`);
+            else if (marked > 1) findings.push(`${where} has ${marked} options marked '(Recommended)' - exactly one carries the mark`);
+        }
+    }
+    return findings;
+}
+
 // 42. A plugin manifest that ENUMERATES a component directory owns two lists that must say the same
 // thing. Claude Code loads exactly what the array names, so a file added to `commands/` and not to
 // the array ships DEAD - it is in the package, downloaded by every install, and invisible to the
@@ -2220,6 +2248,23 @@ function main()
 
     // 41. A reference over 100 lines opens with a table of contents in its first 15.
     for (const finding of lintReferenceContents(SKILLS_DIR, localSkillDirs())) flag(finding);
+    // 61. Every ask template marks exactly one option (Recommended), and the flow skills keep theirs.
+    {
+        const askFiles = [];
+        for (const d of localSkillDirs())
+        {
+            const files = [path.join(SKILLS_DIR, d, 'SKILL.md')];
+            const refDir = path.join(SKILLS_DIR, d, 'references');
+            if (fs.existsSync(refDir)) for (const r of fs.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
+            for (const f of files) if (fs.existsSync(f)) askFiles.push({ skill: d, file: path.relative(ROOT, f), text: fs.readFileSync(f, 'utf8') });
+        }
+        for (const finding of lintAskTemplates(askFiles)) flag(finding);
+        for (const d of ASK_FLOW_SKILLS)
+        {
+            if (!askFiles.some((f) => f.skill === d && /^[ \t]*```ask[ \t]*$/m.test(f.text)))
+                flag(`stack/skills/${d}: carries no \`ask\` template - its stops are written as templates (check 61), so a rewrite that drops them back to prose is caught`);
+        }
+    }
 
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
     //     is re-sent on EVERY message of every session and every subagent of an install that takes
@@ -3113,6 +3158,8 @@ module.exports = {
     MEMORY_TOOLS,
     lintReferencePointers,
     lintReferenceContents,
+    lintAskTemplates,
+    ASK_FLOW_SKILLS,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

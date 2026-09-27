@@ -49,13 +49,18 @@ note 'orders-sync-disposed__diagnosis': step 3 ROOT CAUSE - mode inline, 1 hypot
 
 ## Mode - ask at start
 
-When dispatch is available, ask ONE question before the evidence pass, via AskUserQuestion -
-gather through evidence-gatherer seats, or inline in this session? - unless a calling flow
-already picked the run's mode, which is inherited, never re-asked. Recommend the seats when the
-evidence is BIG or MANY (a multi-megabyte log, a CI dump, three sources to correlate): the
-whole point of that seat is that the raw volume never lands in this context. Recommend inline
-when a single command or a bounded grep settles it. An interrupted or declined ask is answered
-by RE-ASKING, never by inference.
+When dispatch is available, ask ONE question before the evidence pass - unless a calling flow
+already picked the run's mode, which is inherited, never re-asked:
+
+```ask
+Gather the evidence <inline | through the seats>: <what settles it - one grep, or a big or many-source pull>.
+- 'Gather inline in this session (Recommended)' - a single command or a bounded grep settles it
+- 'Gather through evidence-gatherer seats' - big or many sources; the raw volume never lands here
+```
+
+The mark moves to the seats when the evidence is BIG or MANY (a multi-megabyte log, a CI dump,
+three sources to correlate): the whole point of that seat is that the raw volume never lands in
+this context. An interrupted or declined ask is answered by RE-ASKING, never by inference.
 
 ## The stop contract
 
@@ -70,6 +75,18 @@ only narrates is not a stop. Once the run has crossed the install's fresh-sessio
 context window (150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other
 window) or spans hours, the fresh-session resume IS one of the next ask's options - a CONSTRUCTION check before
 emitting each stop, not a memory: resume needs only the findings file plus the note.
+
+**Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
+recommends, the reason in its description; an ask with no mark is malformed, rebuild it before
+sending (pilot 3: both diagnose runs of the flow block asked with no mark, and the first option
+was taken). A step-done stop:
+
+```ask
+<Step> done - <findings path>. Continue to <next step>: <the one reason it is next>.
+- '<Next step> (Recommended)' - <what it does, in one line>
+- 'Gather more evidence' - <the source still missing>
+- 'Resume in a fresh session' - required past the fresh-session trigger above
+```
 
 ## The steps
 
@@ -120,7 +137,15 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    it. **This step ends at the fork below - it never continues into planning on its own.**
 4. **THE FORK** - the step-3 stop asks ONE question whose options are the three real outcomes,
    each named concretely. The recommendation is set by whether step 3 actually proved a cause -
-   proven recommends 4b, unproven recommends 4c - with the reason in the option's description:
+   proven recommends 4b, unproven moves the mark to 4c - with the reason in the option's description:
+
+   ```ask
+   The cause is <proven at file:symbol | unproven - N hypotheses ranked>. <Plan the fix | Instrument>: <why>.
+   - 'Plan the fix as tasks (Recommended)' - the cards go into the findings file for /alfred-task-solve
+   - 'Write a report on the issue' - a standalone document, no task cards
+   - 'Add log points and re-run' - one card of log points, so the next occurrence arrives a tier higher
+   ```
+
    - **4a. REPORT** ('Write a report on the issue') - finish the findings file as a standalone
      document: the observable, the evidence tier, the proven cause with its located symbol, the
      blast radius and who it affects, severity + priority, and what a fix would have to change.
@@ -148,7 +173,15 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    hours or past that same trigger (measured: a 17h15m diagnosis chat carried
    four auto-compactions, ~1.46M tokens dropped, while the findings file already held the history
    it re-sent - no `Stop` gate catches it, since that session never closed).
-   *Stop* - and this close-out stop carries anything
+   *Stop* - after 4b the close names the build as the user's own command:
+
+   ```ask
+   The fix is planned in <findings path>. Build it from that file in a fresh session.
+   - 'Build it: /alfred-task-solve <findings path> in a fresh session (Recommended)' - the file is the whole input
+   - 'Stop here' - the findings file keeps the cause and the tasks
+   ```
+
+   This close-out stop carries anything
    pending: an unwritten task card, a source the user still has to paste, a sibling repo that
    needs the same fix (that handoff is a FILE - a task card under `<docs-path>/cross-project-tasks/`
    - never chat-only prose). Delete the navigation server cursor note; keep the signature-to-fix note if the

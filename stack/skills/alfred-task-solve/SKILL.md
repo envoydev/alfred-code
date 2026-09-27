@@ -53,6 +53,19 @@ unnoticed - `none` is an answer, an omitted line is not. Markdown-bold (`**Resul
 format and counts; a status table instead of the names does not. The stop-contract hook reads the
 turn's prose and the ask's own text for all three names and says so when one is missing (measured:
 13 sessions loaded this contract, 5 used the fields at all, across 109 asks).
+
+**Every ask marks exactly one option `(Recommended)`, listed first** - the move this stop's rule
+recommends, the reason in its description. An ask with no mark is malformed: rebuild it before
+sending (pilot 3: 18 of 40 flow asks carried none, the first option was taken each time, and one
+of those - 'You run it, I'll continue after' - ended a build half-done). The templates below mark
+the usual pick; a stop's own rule may move the mark, never add a second. A step-done stop:
+
+```ask
+<Step> done - <artifact path>. Continue to <next step>: <the one reason it is next>.
+- '<Next step> (Recommended)' - <what it does, in one line>
+- 'Route back to <step>' - <the gap or finding that sends it back>
+- 'Resume in a fresh session' - required past the fresh-session trigger below
+```
 There is no non-decision stop: 'what happens next' is itself the decision. The options are
 concrete - the next step (named), the route-back where the step surfaced gaps or findings, the
 fresh-session resume on a long cycle (below), any conflict's real resolutions - the
@@ -123,11 +136,17 @@ run makes.
 3. **APPROVE** - Read `references/step-mechanics.md` now - the mode-fit rule for this ask, the
    build bar, the step-4 reviewer-fit rule and step 6's doc-drift surfaces are its content, not
    homework; this stop's `Result:` line carries `mechanics: read` as the receipt. Then present the
-   gated plan and put the gate through the stop contract's decision mechanism as ONE question
-   whose options each NAME the mode: 'Approve - build in this session', 'Approve - dispatch the
-   agent seats', 'Not yet - changes needed'. Mark recommended the mode that fits THIS plan per the
-   mode-fit rule, with the reason in the option's description - a fixed default is not a
-   recommendation. Approval and mode arrive as one answer by construction - the bare 'go'
+   gated plan and put the gate through ONE question whose options each NAME the mode:
+
+   ```ask
+   The plan is gated. Build it <in this session | through the seats>: <the mode-fit reason>.
+   - 'Approve - build in this session (Recommended)' - <why the tasks fit one chat>
+   - 'Approve - dispatch the agent seats' - <independent tasks that build in parallel>
+   - 'Not yet - changes needed' - edit the plan, or say what changes in Other
+   ```
+
+   The mark moves to the seats option when the mode-fit rule picks it for THIS plan, the reason in
+   its description - a fixed default is not a recommendation. Approval and mode arrive as one answer by construction - the bare 'go'
    that names no mode cannot happen; a typed Other answer that omits the mode is re-asked, never
    defaulted. (When the invocation already named the mode, the question carries only approve /
    not-yet - restate the mode you are stamping.) Stamp
@@ -153,22 +172,40 @@ run makes.
    ledger grows as they land. A mid-build how-to-build question is a protocol violation.
    Build-time stops are for what the BUILD cannot decide, and there are three: scope beyond the plan, a decision the plan left open that the code now forces,
    and an EXTERNAL blocker the run cannot resolve (a service or test dependency down, a credential
-   missing, a locked file). State the blocker and what is done and what is not, then put the next
-   move through ONE AskUserQuestion like every other stop - wait for the blocker to clear, re-scope
-   the task around it (name the alternate route), or drop the blocked part and close on the rest.
-   A blocker stated in prose with no ask leaves the user to supply the next move unprompted.
-   *Stop* - and this stop chooses the reviewer for step 5, through the same decision mechanism:
-   'alfred-task-verify-code in-session' - no dispatch, stays in this context; 'the stack's
-   `<stack>-verifier` seat' - isolated eyes, frontmatter model unless the user names one; or
-   'skip' - straight to step 6's done-gate. Mark recommended what fits the assembled diff per the
-   reviewer-fit rule, reason stated; skip is never the recommendation.
+   missing, a locked file). A tool the environment blocks is not yet a blocker: the build step's
+   in-session route comes first (`alfred-task-implement`'s 'When the plan meets reality' - for an
+   EF migration, the design-time factory's project, else a hand-written migration). State the
+   blocker and what is done and what is not, then put the next move through ONE ask:
+
+   ```ask
+   <What blocks task N>. <The in-session route> finishes it here - the task cannot close without it.
+   - 'Re-scope around it - <the in-session route> (Recommended)' - <what the route does, one line>
+   - 'Drop the blocked part and close on the rest' - <what stays unbuilt>
+   - 'Wait for the blocker to clear' - the run stops here until you say go
+   ```
+
+   Never offer 'retry the same command' or 'you run it' - nobody on the other side of a scripted
+   run can (pilot 3, ours data-02 r2: that pick left a model change with no migration, and every
+   integration test failed). A blocker stated in prose with no ask leaves the user to supply the
+   next move unprompted.
+   *Stop* - and this stop chooses the reviewer for step 5:
+
+   ```ask
+   The build is green. Review it <inline | through the seat>: <the reviewer-fit reason>.
+   - 'alfred-task-verify-code in-session (Recommended)' - no dispatch, stays in this context
+   - 'The <stack>-verifier seat' - isolated eyes, frontmatter model unless you name one
+   - 'Skip - straight to the done-gate' - stamped as skipped, never the recommendation
+   ```
+
+   The mark moves to the seat when the reviewer-fit rule picks it for the assembled diff.
 5. **CONFORMANCE** (unless skipped - a skip is stamped `Conformance: skipped by user`, an honest
    record, not a silent gap) - INVOKE the reviewer chosen at the step-4 stop: in-session means a
    Skill tool call on `alfred-task-verify-code`, the seat means an Agent dispatch - recording the
    choice and reviewing from memory of an earlier load is not running it, and a COMMIT-GATE
    receipt may only name a review that actually ran. Point it at the plan file so it reviews against the plan - its task cards and its `## Decisions`
    ledger - not in isolation. The review protocol -
-   build + tests rerun, plan conformance, stack traps, the live-run probe, the wire-contract trace -
+   build + tests rerun, plan conformance, stack traps, the live-run probe (an in-process run through
+   the real `Program` counts, else one boot attempt), the wire-contract trace -
    is `alfred-task-verify-code`'s (the inline default, twin of the verifier seat); the `<stack>-verifier`
    seat runs the same protocol dispatched.
    Deviations and findings become a punch list routed back to step 4 - and the fix delta gets the
@@ -185,8 +222,20 @@ run makes.
    note - stating `memories purged: <names|none>` in the close report; the close is incomplete while
    this run's deletes trail its writes. *Stop* - and this stop is where the
    close-out decisions live: anything PENDING (an uncommitted diff, an unpushed commit, a deferred
-   item, a cross-repo follow-up) goes into the ask's options - commit now / hold / whatever the
-   real fork is; only a cycle with nothing pending ends on the report alone.
+   item, a cross-repo follow-up) goes into the ask's options; only a cycle with nothing pending
+   ends on the report alone. An uncommitted diff is held for the user's review - a commit waits
+   for their word (`baseline-git.md`):
+
+   ```ask
+   The feature is done and verified; the diff is uncommitted. Hold it for your review first.
+   - 'Hold - review the diff first (Recommended)' - nothing is committed; the diff stays as it is
+   - 'Commit now' - runs `alfred-habits-commit-checkpoint` in full, then commits
+   - '<Another real fork>' - a deferred item or a cross-repo follow-up, when one exists
+   ```
+
+   A picked commit runs `alfred-habits-commit-checkpoint` whole - formatter, review, security
+   half, receipt - never a shortcut because the review already ran (pilot 3: the recommended commit
+   was taken 6 of 6 times and cost $6.36 across the flow block).
    New scope arriving in-chat after `Completed:` is a NEW cycle in a NEW plan file (a stamped file
    is a record, never a place to append) - re-enter step 1, or say plainly that the work is running
    ungated and why; never build it on a casual 'yes, add it'. Measured: 8 scope additions over one

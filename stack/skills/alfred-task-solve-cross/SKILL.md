@@ -49,7 +49,16 @@ standard, whatever the file count.
 
 ## Execution modes - the user picks: session or agents
 
-When dispatch is available, the scoping verdict IS the mode ask - one atomic step, not a verdict followed by a decision you make: the message that states the verdict fires AskUserQuestion (run this in the current session, or dispatch the agent seats?, the smallest safe mode marked recommended) and ENDS THE TURN; where the tool is absent the same message ends with plain-text options.
+When dispatch is available, the scoping verdict IS the mode ask - one atomic step, not a verdict followed by a decision you make: the message that states the verdict fires AskUserQuestion and ENDS THE TURN; where the tool is absent the same message ends with plain-text options. Every ask this skill fires marks exactly one option `(Recommended)`, listed first, the reason in its description - an ask with no mark is malformed, rebuild it (pilot 3: 18 of 40 flow asks carried none, and the first option was taken each time).
+
+```ask
+Size <size> across <domains>. Run it <in this session | through the seats>: <the smallest safe mode's reason>.
+- 'Run in this session (Recommended)' - <why one chat is the smallest safe mode>
+- 'Dispatch the agent seats - <mode>' - <what the seats buy for this task>
+- 'Resume in a fresh session' - required past a chained-run or fresh-session trigger
+```
+
+The mark follows the rules below - the smallest safe mode normally, the fresh-session hand-off past a trigger.
 
 - **The answer is a precondition, not a formality.** Delivering a verdict and continuing into design, build, or any edit without the recorded answer is a protocol violation - record the answer in the ledger as `mode: <answer> - "<user words>"` before anything past this line runs, and a headless or CI-style invocation changes nothing: the turn still ends at the ask.
 - **A mode already named IS the answer.** An invocation that already names the mode (an agents opt-in, an explicit 'inline') is never re-asked - record it and continue. No dispatch capability is the current session without asking.
@@ -78,13 +87,34 @@ When the mode is cross_domain_light or full_cross_domain, Read `references/cross
 
 **Gate every plan before it fans out.** For fan-out and cross-domain modes, audit each returned designer plan by INVOKING `alfred-task-verify-plan` (the Skill tool - load it, never replay its passes from memory: the passes evolve with the stack, your recollection does not) and running its five passes in-session - traps named for its stack, scope matches the requirement, every named thing exists, edges and safety covered, minimal - before dispatching a single implementer. Record the audit in the ledger as five per-pass verdicts by name - `risk / scope / existence / edges / soundness` - an audit entry that cannot list the five passes is an audit that did not run. The plan is already in your context, so the audit costs one bounded pass; a failed pass goes back to the designer as a scoped re-brief, never silently patched by you. Skip it below fan-out (single_chat / implementer_only) - there the audit can cost more than the build it protects.
 
-**Plan review stop - the user reads the plan before anything builds.** Once the plan passes the audit (and, cross-domain, the contract is recorded), present the gated plan - tasks, contracts, risks, and the seam interface where one exists - and put the review through AskUserQuestion - approve-and-build vs changes-needed, free text via Other (plain-text options where the harness lacks the tool) - then END THE TURN. This is the user's window to read, edit, or redirect before implementers spend anything; build only on the approving answer. The stop is about the work, not the dispatch: an inline-mode run with a substantial change (a new feature, 3+ files) stops here identically - no hook guards inline edits, this ask IS the approval. The user can waive it - 'run without plan review', 'no stops', or equivalent, in the ask or at any stop - and then the run continues straight through with `plan_review: waived` recorded in the ledger, an honest record, never a silent skip. Opting into dispatch or naming an execution mode is NOT a waiver - and neither is an instruction to run the whole flow end-to-end, finish in one pass, or end with a completion token (a CI-style ask still stops here). Only words about the review are.
+**Plan review stop - the user reads the plan before anything builds.** Once the plan passes the audit (and, cross-domain, the contract is recorded), present the gated plan - tasks, contracts, risks, and the seam interface where one exists - and put the review through AskUserQuestion (plain-text options where the harness lacks the tool), then END THE TURN:
+
+```ask
+The plan passed the audit<; the contract is recorded at v1>. Approve it to build.
+- 'Approve and build (Recommended)' - the implementers start on the gated plan
+- 'Changes needed' - edit the plan, or say what changes in Other
+```
+ This is the user's window to read, edit, or redirect before implementers spend anything; build only on the approving answer. The stop is about the work, not the dispatch: an inline-mode run with a substantial change (a new feature, 3+ files) stops here identically - no hook guards inline edits, this ask IS the approval. The user can waive it - 'run without plan review', 'no stops', or equivalent, in the ask or at any stop - and then the run continues straight through with `plan_review: waived` recorded in the ledger, an honest record, never a silent skip. Opting into dispatch or naming an execution mode is NOT a waiver - and neither is an instruction to run the whole flow end-to-end, finish in one pass, or end with a completion token (a CI-style ask still stops here). Only words about the review are.
 
 When you build each dispatch brief, keep it lean and capability-wired: each seat runs the lean-work / terseness discipline for its role (`references/token-reduction.md`) and is pointed at the installed capability - house skill, the documentation server, the navigation server, the memory handoff note - that removes a guess or a re-read (`references/capability-reuse.md`).
 
 ## Close-out - any mode
 
 At close-out (any mode), add **doc-drift awareness** - one line at most, the user decides, never auto-run: a landed change that touched an architecture-critical surface (a schema/EF migration, a new module, a moved boundary, a new or revised seam - anything the contract protocol versioned this run - or a new external dependency) gets `/alfred-capture-architecture` named in the close report; substantial new code + tests with an absent or pre-change-stamped coverage doc gets `/alfred-capture-test-coverage` the same way. The close also names what this run started to build, test, or verify and still has up - a Docker container or compose stack, seeded integration-test data, a dev server, a background watcher - and puts tear-down-vs-keep through AskUserQuestion in the same close (teardown recommended for the disposable; `none` said plainly; what the run did not start is never touched).
+
+An uncommitted diff is held for the user's review - a commit waits for their word (`baseline-git.md`), and a picked commit runs `alfred-habits-commit-checkpoint` whole, after the integration gate signed off (pilot 3: the recommended commit was taken 6 of 6 times, $6.36 across the flow block). The close's two questions, in one AskUserQuestion call:
+
+```ask
+The lanes landed and the final gate signed off; the diff is uncommitted. Hold it for your review first.
+- 'Hold - review the diff first (Recommended)' - nothing is committed; the diff stays as it is
+- 'Commit now' - runs `alfred-habits-commit-checkpoint` in full, then commits
+```
+
+```ask
+This run started <what is still up>. Tear it down - nothing later in this run needs it.
+- 'Tear it down (Recommended)' - stops only what this run started
+- 'Keep it up' - it stays running for you
+```
 
 The close opens with a **pending sweep** - anything undecided or unlanded is named as its own line or ask option, never dropped at the session's end: an earlier ask still unanswered, unpushed commits (check the upstream), an undecided push, any gate still owed (a verifier not run, a review skipped - named in the user-facing text, never only in a private receipt), and any bug flagged this run but not fixed. A flagged-but-unfixed bug also goes into the ledger or task docs BEFORE any memory purge, so the purge cannot destroy its only record. Doc-drift covers contradictions too: a decision this run made that contradicts an existing architecture or assessment entry routes the same one line (update mode), and the drift line lands in the user-facing close, never only an internal note.
 

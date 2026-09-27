@@ -1,7 +1,8 @@
 # The live probe - launching the app, the visual check, driving a browser MCP
 
 Read at step 4, before the first probe run. The mandate (probe the failable inputs, boot through
-the production composition root, make one real end-to-end call) is in SKILL.md; this file is how.
+the production composition root, make one real end-to-end call) and its bound (an in-process run
+through the real `Program` counts, else ONE boot attempt) are in SKILL.md; this file is how.
 
 ## Launch recipe
 
