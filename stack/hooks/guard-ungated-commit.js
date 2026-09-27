@@ -241,13 +241,34 @@ const docsPrefix = () => {
   }
   return `${d}/`;
 };
-// What was untracked when this session started (docs-session.js writes it once per session, root-relative, spelled
-// with core.quotePath=false) is not the session's change: out of the count and the trivial bar, and a git add that
-// would sweep it in is blocked below. No record - an older install, no SessionStart, no session id - is an empty set.
+// What was untracked when this change started (docs-session.js writes it once per HEAD at session start,
+// root-relative, spelled with core.quotePath=false) is not the change: out of the count and the trivial bar, and a
+// git add that would sweep it in is blocked below. The record for this HEAD first; a commit made since the session
+// started has none yet, so the newest record stands - a path it lists that is still untracked is still not the change,
+// and one it lists that got committed no longer matters. No record at all - an older install, no SessionStart - is an
+// empty set.
+let preExistingCache;
+function preExistingRecord() {
+  const dir = path.resolve(root, docsRootEnv(), 'flow');
+  let head = '';
+  try { head = git('rev-parse --verify -q HEAD'); } catch { head = ''; }
+  const own = path.join(dir, `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
+  if (fs.existsSync(own)) return own;
+  let newest = null;
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith('untracked-at-start-')) continue;
+      const m = fs.statSync(path.join(dir, f)).mtimeMs;
+      if (!newest || m > newest.m) newest = { f: path.join(dir, f), m };
+    }
+  } catch { /* no flow folder - no record */ }
+  return newest ? newest.f : null;
+}
 function preExisting() {
-  const sid = String(payload.session_id || '').replace(/[^\w-]/g, '');
-  if (!sid) return new Set();
-  try { return new Set(fs.readFileSync(path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${sid}`), 'utf8').split('\n').filter(Boolean)); } catch { return new Set(); }
+  if (preExistingCache) return preExistingCache;
+  const file = preExistingRecord();
+  try { preExistingCache = new Set(file ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : []); } catch { preExistingCache = new Set(); }
+  return preExistingCache;
 }
 function changedFiles() {
   const pre = docsPrefix();
@@ -700,12 +721,12 @@ if (addCalls.length) {
   if (swept.length) {
     global.BLOCK_DETAIL = { branch: 'untracked-sweep', count: swept.length };
     const rel = (name) => path.relative(root, path.resolve(root, docsRootEnv(), 'flow', name)).split(path.sep).join('/');
-    const sid = String(payload.session_id || '').replace(/[^\w-]/g, '');
+    const record = preExistingRecord();
     process.stderr.write(
-      `Blocked: this git add stages ${swept.length} path(s) that were untracked before this session started -\n` +
+      `Blocked: this git add stages ${swept.length} path(s) that were untracked before this change started -\n` +
       `${swept.slice(0, 15).map((f) => `  ${f}`).join('\n')}\n` +
       (swept.length > 15 ? `  ... and ${swept.length - 15} more\n` : '') +
-      `They are not this session's change (the list: ${rel(`untracked-at-start-${sid}`)}). Stage the session's own\n` +
+      `They are not this change (the list: ${record ? path.relative(root, record).split(path.sep).join('/') : 'none'}). Stage the change's own\n` +
       `paths by name instead - git add <path> ... When the user named these files as part of this change, write\n` +
       `${rel('UNTRACKED-ALLOW')} with one path (a directory ending in /, or *) per line and retry the SAME command;\n` +
       `otherwise do not decide for them: end this turn with ONE AskUserQuestion carrying, in this order -\n` +

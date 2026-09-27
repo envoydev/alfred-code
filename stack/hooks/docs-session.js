@@ -261,17 +261,21 @@ function main() {
 }
 
 // What was untracked before the session began is not the session's change (pilot 3: ~150 files the harness left
-// untracked drove 19 commit-gate denials, and one close committed them). The list is written ONCE per session - a
-// resume or compact start finds it and keeps it, or the session's own new files would read as pre-existing - and
-// guard-ungated-commit.js reads it by the same name: out of the receipt's count, and a git add that would sweep one in
-// is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false.
+// untracked drove 19 commit-gate denials, and one close committed them). The list is keyed by HEAD and written ONCE
+// per HEAD: a resume, a compact start, a fresh-session hand-off and a /clear all find it and keep it, so the files an
+// earlier session of the same change created stay that change's own; a commit moves HEAD and the next session takes a
+// fresh snapshot. guard-ungated-commit.js reads the same key: out of the receipt's count, and a git add that would
+// sweep one in is blocked unless the user names it. Root-relative, spelled as git lists them with core.quotePath=false,
+// at most UNTRACKED_CAP paths (past it a path reads as the change's own), and a record past SWEEP_MS goes when the
+// next one is written.
 const UNTRACKED_CAP = 20000;
-const untrackedAtStart = (root, sid) => path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${String(sid).replace(/[^\w-]/g, '')}`);
 function recordUntracked(input, root) {
-  if (!input.session_id) return '';
-  const file = untrackedAtStart(root, input.session_id);
+  let file;
   let list;
   try {
+    let head = '';
+    try { head = require('child_process').execFileSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: root, timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { /* no commit yet, or no repo - ls-files below tells them apart */ }
+    file = path.resolve(root, docsRootEnv(), 'flow', `untracked-at-start-${/^[0-9a-f]{7,64}$/.test(head) ? head : 'unborn'}`);
     if (fs.existsSync(file)) list = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
     else {
       const out = require('child_process').execFileSync('git', ['-c', 'core.quotePath=false', 'ls-files', '--others', '--exclude-standard', '-z'],
@@ -286,7 +290,7 @@ function recordUntracked(input, root) {
   } catch { return ''; }
   if (!list.length) return '';
   const rel = toPosix(path.relative(root, file));
-  return `${list.length} path${list.length === 1 ? ' was' : 's were'} untracked when this session started - not its change: a commit stages ${list.length === 1 ? 'it' : 'them'} only when the user names ${list.length === 1 ? 'it' : 'them'} (${rel}).`;
+  return `${list.length} path${list.length === 1 ? ' was' : 's were'} untracked when this change started (at this HEAD) - not its change: a commit stages ${list.length === 1 ? 'it' : 'them'} only when the user names ${list.length === 1 ? 'it' : 'them'} (${rel}).`;
 }
 function sweepRecords(dir, now = Date.now()) {
   try {

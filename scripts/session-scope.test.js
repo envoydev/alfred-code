@@ -32,9 +32,11 @@ function project() {
     const run = (hook, payload) => spawnSync(process.execPath, [path.join(HOOKS, hook)], { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env });
     const start = (s, source = 'startup') => run('docs-session.js', { hook_event_name: 'SessionStart', session_id: s, source, cwd: dir });
     const bash = (s, command) => run('guard-ungated-commit.js', { hook_event_name: 'PreToolUse', tool_name: 'Bash', session_id: s, cwd: dir, tool_input: { command } });
-    const record = (s) => path.join(dir, DOCS, 'flow', `untracked-at-start-${s}`);
+    const head = () => git('rev-parse', 'HEAD').stdout.trim();
+    const record = () => path.join(dir, DOCS, 'flow', `untracked-at-start-${head()}`);
+    const dropRecords = () => { for (const f of fs.existsSync(path.join(dir, DOCS, 'flow')) ? fs.readdirSync(path.join(dir, DOCS, 'flow')) : []) if (f.startsWith('untracked-at-start-')) fs.rmSync(path.join(dir, DOCS, 'flow', f)); };
     const flow = (name, body) => write(path.join(DOCS, 'flow', name), body);
-    return { dir, git, write, start, bash, record, flow, rm: () => fs.rmSync(dir, { recursive: true, force: true }) };
+    return { dir, git, write, start, bash, head, record, dropRecords, flow, rm: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
 
 test('SessionStart records the paths untracked before the session, and names them in one context line', () => {
@@ -43,22 +45,22 @@ test('SessionStart records the paths untracked before the session, and names the
         p.write('harness/one.txt', 'h\n'); p.write('harness/two.txt', 'h\n'); p.write('notes.txt', 'n\n');
         const out = p.start('s1');
         assert.strictEqual(out.status, 0, out.stderr);
-        assert.deepStrictEqual(fs.readFileSync(p.record('s1'), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'harness/two.txt', 'notes.txt']);
+        assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'harness/two.txt', 'notes.txt']);
         const ctx = JSON.parse(out.stdout).hookSpecificOutput.additionalContext;
-        assert.match(ctx, /3 paths were untracked when this session started/);
-        assert.match(ctx, /\.alfred\/docs\/flow\/untracked-at-start-s1/);
+        assert.match(ctx, /3 paths were untracked when this change started/);
+        assert.match(ctx, new RegExp(`\\.alfred/docs/flow/untracked-at-start-${p.head()}`));
     } finally { p.rm(); }
 });
 
-test('the record is written once per session: a resume or compact start never adds the session\'s own files', () => {
+test('the record is written once per HEAD: a resume or compact start never adds the session\'s own files', () => {
     const p = project();
     try {
         p.start('s2');
-        assert.strictEqual(fs.readFileSync(p.record('s2'), 'utf8'), '', 'a clean start still writes the (empty) record');
+        assert.strictEqual(fs.readFileSync(p.record(), 'utf8'), '', 'a clean start still writes the (empty) record');
         p.write('src/mine.cs', 'mine\n');
         const again = p.start('s2', 'compact');
-        assert.strictEqual(fs.readFileSync(p.record('s2'), 'utf8'), '', 'the session\'s own new file is not pre-existing');
-        assert.doesNotMatch(again.stdout, /untracked when this session started/, 'nothing pre-existing, no line');
+        assert.strictEqual(fs.readFileSync(p.record(), 'utf8'), '', 'the session\'s own new file is not pre-existing');
+        assert.doesNotMatch(again.stdout, /untracked when this change started/, 'nothing pre-existing, no line');
     } finally { p.rm(); }
 });
 
@@ -81,7 +83,7 @@ test('a git add that would sweep in a pre-existing untracked path is blocked, na
         for (const cmd of ['git add -A', 'git add .', 'git add --all', 'git add harness/', 'git add -A && git commit -m x', 'cd src && git add :/']) {
             const r = p.bash('s4', cmd);
             assert.strictEqual(r.status, 2, `${cmd}: ${r.stderr}`);
-            assert.match(r.stderr, /untracked before this session started/, cmd);
+            assert.match(r.stderr, /untracked before this change started/, cmd);
             assert.match(r.stderr, /harness\/one\.txt/, cmd);
             assert.match(r.stderr, /UNTRACKED-ALLOW/, cmd);
         }
@@ -98,8 +100,9 @@ test('the session\'s own paths, a named path, a survey and a dry run all pass', 
             const r = p.bash('s5', cmd);
             assert.strictEqual(r.status, 0, `${cmd}: ${r.stderr}`);
         }
-        const none = p.bash('no-record', 'git add -A');
-        assert.strictEqual(none.status, 0, 'no record for the session: nothing is judged pre-existing');
+        p.dropRecords();
+        const none = p.bash('s5', 'git add -A');
+        assert.strictEqual(none.status, 0, 'no record at all: nothing is judged pre-existing');
     } finally { p.rm(); }
 });
 
@@ -147,13 +150,73 @@ test('the receipt\'s spec count and the trivial-diff bar leave the pre-existing 
         p.flow('COMMIT-GATE', ['VERIFIED the rounding fix', 'authorized: "commit it"', `head: ${head}`, 'spec: 1 file - src/a.cs', 'live-probe: NOT RUN - test'].join('\n') + '\n');
         const r = p.bash('s7', 'git commit -am fix');
         assert.strictEqual(r.status, 0, r.stderr);
-        const other = p.bash('other-session', 'git commit -am fix');
+        p.dropRecords();
+        const other = p.bash('s7', 'git commit -am fix');
         assert.strictEqual(other.status, 2, 'without the record the same tree counts 6 files');
         assert.match(other.stderr, /spec: claims 1 file\(s\) but the tree has 6 uncommitted/);
+        p.start('s7');
         fs.rmSync(path.join(p.dir, DOCS, 'flow', 'COMMIT-GATE'));
         p.git('checkout', '--', 'src/a.cs');
         p.write('src/a.cs', 'seed\nfixed\n');
         assert.strictEqual(p.bash('s7', 'git commit -am typo').status, 0, 'a one-line fix is trivial beside the harness files');
+    } finally { p.rm(); }
+});
+
+// Review I3: keyed by session, a fresh-session hand-off or /clear read the earlier session's new files as
+// pre-existing. Keyed by HEAD, every session before the next commit shares the first one's snapshot.
+test('I3: two sessions on one HEAD - the first session\'s new file is the second\'s change, not pre-existing', () => {
+    const p = project();
+    try {
+        p.write('harness/one.txt', 'h\n');
+        p.start('first');
+        p.write('src/mine.cs', forty);
+        const hand = p.start('second');
+        assert.match(hand.stdout, /1 path was untracked/, 'the second session reuses the first snapshot');
+        assert.strictEqual(p.bash('second', 'git add src/').status, 0, 'the earlier session\'s file is committable without naming it');
+        const sweep = p.bash('second', 'git add -A');
+        assert.strictEqual(sweep.status, 2);
+        assert.match(sweep.stderr, /  harness\/one\.txt/);
+        assert.doesNotMatch(sweep.stderr, /src\/mine\.cs/);
+        const before = p.head();
+        p.git('add', 'src/mine.cs'); p.git('commit', '-qm', 'mine');
+        assert.strictEqual(p.bash('second', 'git add -A').status, 2, 'a commit mid-session keeps the last snapshot in force');
+        p.write('scratch.txt', 's\n');
+        p.start('third');
+        assert.notStrictEqual(p.head(), before);
+        assert.deepStrictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).sort(), ['harness/one.txt', 'scratch.txt'], 'a moved HEAD takes a fresh snapshot');
+    } finally { p.rm(); }
+});
+
+// Review I4: the cap and the sweep, at their boundaries.
+test('I4: the record holds at most 20000 paths - one under, at and one over', () => {
+    const p = project();
+    try {
+        const bulk = path.join(p.dir, 'bulk');
+        fs.mkdirSync(bulk);
+        for (let i = 0; i < 19999; i++) fs.writeFileSync(path.join(bulk, `f${i}`), '');
+        for (const [n, want] of [[19999, 19999], [20000, 20000], [20001, 20000]]) {
+            if (n > 19999) fs.writeFileSync(path.join(bulk, `g${n}`), '');
+            p.dropRecords();
+            p.start(`cap${n}`);
+            assert.strictEqual(fs.readFileSync(p.record(), 'utf8').split('\n').filter(Boolean).length, want, `${n} untracked`);
+        }
+    } finally { p.rm(); }
+});
+
+test('I4: a new record sweeps records past 7 days, keeps younger ones and every other flow file', () => {
+    const p = project();
+    try {
+        const day = 24 * 3600;
+        const now = Date.now() / 1000;
+        const aged = (name, secs) => { p.flow(name, 'x\n'); const f = path.join(p.dir, DOCS, 'flow', name); fs.utimesSync(f, now - secs, now - secs); return f; };
+        const over = aged('untracked-at-start-over', 7 * day + 60);
+        const under = aged('untracked-at-start-under', 7 * day - 60);
+        const other = aged('COMMIT-GATE', 30 * day);
+        p.start('sweep');
+        assert.strictEqual(fs.existsSync(over), false, 'one over 7 days goes');
+        assert.strictEqual(fs.existsSync(under), true, 'one under 7 days stays');
+        assert.strictEqual(fs.existsSync(other), true, 'a file of another kind is never swept');
+        assert.strictEqual(fs.existsSync(p.record()), true);
     } finally { p.rm(); }
 });
 

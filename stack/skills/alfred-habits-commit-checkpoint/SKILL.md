@@ -30,9 +30,9 @@ On any non-trivial diff, before committing or presenting, in order:
 Findings caught here land in the same commit; found later they become fixup noise or shipped
 defects.
 
-**Scope - the session's own change.** What was untracked before this session began is not its
-change: the docs hook lists it at session start (`<docs-path>/flow/untracked-at-start-<session>`,
-named in the start block). Stage the session's own paths by name, review and count only those in
+**Scope - the session's own change.** What was untracked before this change began is not part of
+it: the docs hook lists it at session start, once per HEAD (`<docs-path>/flow/untracked-at-start-<HEAD
+sha>`, named in the start block), so a later session on the same HEAD keeps the earlier one's files. Stage the session's own paths by name, review and count only those in
 `spec:`, and name the pre-existing ones in one line as outside the change. One goes in only when the
 user names it - the commit guard blocks a `git add` that would sweep it in (`-A`, `.`, a directory)
 until `<docs-path>/flow/UNTRACKED-ALLOW` lists it (pilot 3: ~150 such files drove 19 gate denials,
