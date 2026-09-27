@@ -243,8 +243,8 @@ and either change re-hashes `PREREGISTRATION.md`.
 
 ### B4 - the pilot
 
-`ours` checks out its pinned candidate commit from this clone, so the commit must be reachable here
-(`git cat-file -e <pin>^{commit}`); until it is, its template fails at the checkout step. 3 arms x 6 tasks (one per group) x 2 reps =
+`ours` fetches its pinned candidate commit alone from this clone, one commit deep, so the commit must be
+reachable here (`git cat-file -e <pin>^{commit}`); until it is, its template fails at the fetch step. 3 arms x 6 tasks (one per group) x 2 reps =
 36 cells plus two onboardings. Plan estimate: about $110-150 and 5-6 hours at parallel 3.
 
 ```
