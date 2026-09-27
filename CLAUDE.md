@@ -114,13 +114,17 @@ change (see the invariants below).
     value). On the shell route the dump / `echo $SECRET` / bare `env` are REWRITTEN via
     `hookSpecificOutput.updatedInput` to redacted forms (`--redacted <file>`, `--redacted-env`); the
     Read tool and a credential literal stay blocked. A file or variable rewrite drops the rest of the
-    command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead; a filtering
+    command, so one carrying a CHANGING step (an edit, a redirect, a build) is blocked instead, and so is a
+    judged stage that itself WRITES - an in-place flag on sed / perl / ruby wherever it sits, or inline code
+    that writes (pilot 3's `node -e ...writeFileSync` and `perl -0pi` came back as the view, the edit never
+    ran); the denial names the Edit tool, which changes the file without printing it. A filtering
     read (`grep`, `jq .path`, `head`) keeps its filter over the view. An environment dump is replaced
     stage by stage where it stands (`--redacted-env --note-to-stderr | <filter>`), so nothing is dropped
     and nothing blocks it (the pilot's `env | grep -i msbuild; env | grep -i dotnet_cli` was blocked). A
     lone `&` is a step boundary like `;` (`true & env` was never judged), never the `&` of `2>&1` / `&>`. A connection-string / URL password and a PEM
     private key count as credentials whatever the key. `--presence <file> [KEY ...]` is the sanctioned
-    one-key read. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
+    one-key read (a KEY spelled `A.B.C`, `A:B:C` or `A__B__C` reads a nested JSON key); the guard ships only
+    in the plugin, so every denial and view names it by its absolute path. 'Show' is honoured through the `<docs-path>/flow/SECRET-READ-ALLOW` receipt. The
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
     is `MKT`; as `KEY` it was blocked twice in pilot 2).

@@ -378,19 +378,52 @@ if (process.argv[2] === '--presence') {
   let text = null;
   try { text = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''); } catch { out.push(`# ${fileArg}: not found`); }
   let entries = {};
+  let doc = null;
   if (text != null) {
     try {
       const j = JSON.parse(text);
+      doc = j && typeof j === 'object' ? j : null;
       entries = (j && typeof j.env === 'object' && j.env) ? j.env : (j && typeof j === 'object' && !Array.isArray(j) ? j : {});
     } catch {
       for (const line of text.split(LINES)) { const m = line.match(DOTENV_LINE); if (m) entries[m[1]] = unquote(m[2]); }
     }
   }
-  const names = keys.length ? keys : Object.keys(entries).filter((k) => typeof entries[k] === 'string');
-  for (const k of names) {
-    const v = entries[k];
-    out.push(isLive(v) ? `${k}=set (${v.length} chars)` : isPlaceholder(v) ? `${k}=absent (placeholder ${v.trim()})` : `${k}=absent`);
-  }
+  // A KEY is looked up as written first (a settings.json's env block, a dotenv line, a top-level key), then as a
+  // path from the root of a JSON file: `.`, `:` (.NET configuration) or `__` (its environment spelling) between the
+  // parts, and a part may hold a dot itself (`Logging.LogLevel.Microsoft.Hosting.Lifetime`). Pilot 3 asked for
+  // `ConnectionStrings.Lending` and `Notices.Gateway.ServiceToken` and was told both were absent.
+  const own = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
+  const walk = (node, parts) => {
+    if (!parts.length) return { found: true, v: node };
+    for (let i = parts.length; i >= 1; i--) {
+      const key = parts.slice(0, i).join('.');
+      if (own(node, key)) { const r = walk(node[key], parts.slice(i)); if (r.found) return r; }
+    }
+    return { found: false };
+  };
+  const lookup = (k) => (own(entries, k) ? { found: true, v: entries[k] } : doc ? walk(doc, k.split(/\.|:|__/)) : { found: false });
+  const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  const describe = (k, r) => {
+    const v = r.found ? r.v : undefined;
+    if (v === undefined || v === null) return `${k}=absent`;
+    if (typeof v === 'string') return isLive(v) ? `${k}=set (${v.length} chars)` : isPlaceholder(v) ? `${k}=absent (placeholder ${v.trim()})` : `${k}=absent`;
+    if (Array.isArray(v)) return `${k}=set (array, ${plural(v.length, 'item')})`;
+    if (typeof v === 'object') return `${k}=set (object, ${plural(Object.keys(v).length, 'key')})`;
+    return `${k}=set (${String(v).length} chars)`;
+  };
+  // No KEY: a settings.json's env block, or a dotenv, as before; any other JSON lists every string leaf as a path.
+  const leaves = (node, prefix, acc) => {
+    for (const [k, v] of Object.entries(node)) {
+      const p = prefix ? `${prefix}.${k}` : k;
+      if (typeof v === 'string') acc.push(p);
+      else if (v !== null && typeof v === 'object') leaves(v, p, acc);
+    }
+    return acc;
+  };
+  const names = keys.length ? keys
+    : doc && entries === doc ? leaves(doc, '', [])
+      : Object.keys(entries).filter((k) => typeof entries[k] === 'string');
+  for (const k of names) out.push(describe(k, lookup(k)));
   process.stdout.write(out.length ? out.join('\n') + '\n' : '');
   process.exit(0);
 }
@@ -436,8 +469,11 @@ if (process.argv[2] === '--redacted') {
         return line.replace(SECRET_SHAPE_G, (s) => mask(s));
       }).join('\n');
     }
+    // The runnable presence command, absolute: the guard ships inside the plugin, and pilot 3's first presence call
+    // guessed `.claude/hooks/`, where only the docs, memory and history engines are copied.
     const note = noteLine(`redacted view of ${file} - ${masked} credential value(s) shown as <set (N chars)>, everything else as written` +
-      (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.'), receipt);
+      (filtered ? '; piped through the command\'s own filter, so line numbers count the view, not the file.' : '.') +
+      ` Presence of one key: node "${__filename}" --presence "${file}" KEY (A.B.C reads a nested key).`, receipt);
     if (filtered) { process.stderr.write(note + '\n'); out = body; } else out = note + '\n' + body;
   }
   process.stdout.write(out);
@@ -730,6 +766,37 @@ function printsKeysOnly(stage) {
 // blocked - visibly, naming the step - and only a read-only one is rewritten. Allowlist, not denylist: a step
 // this list does not know (a build, a network call, a runtime) counts as changing.
 const READ_ONLY_STEP = /^(?:cd|pushd|popd|ls|pwd|cat|head|tail|grep|egrep|fgrep|rg|jq|yq|sed|awk|wc|sort|uniq|cut|tr|nl|tac|column|fold|paste|echo|printf|true|false|test|\[\[?|read|stat|file|which|type|basename|dirname|realpath|readlink|date|diff|cmp|shasum|sha\d*sum|md5sum|md5|base64|xxd|od|hexdump|strings|less|more|bat|sleep|exit|set|export|unset|shopt|local)(?=\s|$)|^command\s+-v\b|^git\s+(?:status|log|diff|show|rev-parse|ls-files)\b|^find\b(?!.*\s-(?:exec|execdir|delete|ok|okdir|fprint\w*|fls)\b)|^(?:get-content|gc|get-childitem|gci|dir|get-item|gi|get-location|set-location|sl|select-string|sls|select-object|select|where-object|where|sort-object|measure-object|measure|format-table|ft|format-list|fl|out-string|write-output|write-host|test-path|resolve-path|convertfrom-json|convertto-json)(?=\s|$)/i;
+// A stage that WRITES a file. The rewrite replaces the stage it judges too, so a writer naming the credential file
+// came back as the read-only view and its edit silently never ran - pilot 3, ours guard-02 r1:
+// `node -e "...fs.writeFileSync(path, ...)"` and `perl -0pi -e 's/.../' <file>` both returned the view, and the
+// `grep -c` after them said 0. Two shapes: an in-place flag on sed / perl / ruby, wherever it sits among the flags
+// (a cluster stops at a letter that takes an argument, so `-ne` and `-Mstrict` are not `-i`), and inline code that
+// writes - a node / deno / bun file write, python open() in a write mode or a write helper, ruby and perl writes.
+const IN_PLACE_STOP = { sed: /[ef]/, perl: /[eEMmIxdDCFV]/, ruby: /[erICEFKWxT]/ };
+function inPlaceFlag(stage) {
+  const words = shellTokens(stage.replace(PREFIX_WORDS, ''));
+  const verb = (words[0] || '').replace(/^.*[\\/]/, '').replace(/^gsed$/, 'sed');
+  const stop = IN_PLACE_STOP[verb];
+  if (!stop) return null;
+  for (let k = 1; k < words.length; k++) {
+    const w = words[k];
+    if (/^--in-place(?:=|$)/.test(w)) return `${verb} --in-place`;
+    // sed reads its flags anywhere (GNU permutes them); perl and ruby stop at the script or the first file
+    if (!/^-[^-]/.test(w)) { if (verb === 'sed') continue; break; }
+    const cluster = w.slice(1);
+    const cut = cluster.search(stop);
+    if ((cut < 0 ? cluster : cluster.slice(0, cut)).includes('i')) return `${verb} -i`;
+    if (cut >= 0 && cut === cluster.length - 1) k++; // `-e <code>`: the next word is the flag's argument
+  }
+  return null;
+}
+const INLINE_WRITE = /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|createWriteStream|copyFile(?:Sync)?|renameSync|rmSync|unlinkSync|truncateSync|writeTextFile|Bun\.write|write_text|write_bytes|json\.dump|shutil\.(?:copy\w*|move)|os\.(?:replace|rename|remove|unlink)|File\.(?:write|delete|rename)|IO\.write|FileUtils\.\w+)\s*\(|\bopen\s*\([^()]*?,\s*(?:mode\s*=\s*)?['"][rbt]*[wax+][rwxabt+]*['"]|\bFile\.open\s*\([^()]*?,\s*['"][rb]*[wa+]|\bopen\s*\(?\s*(?:my\s+)?\$?\w+\s*,\s*['"]\+?>/;
+function stageWrites(stage, code) {
+  const flag = inPlaceFlag(stage);
+  if (flag) return flag;
+  const m = (code != null || RUNTIME.test(stage)) && (code != null ? code : stage).match(INLINE_WRITE);
+  return m ? m[0].replace(/\s+/g, ' ').slice(0, 40) : null;
+}
 const CONTROL_LEAD = /^(?:do|then|else|elif|if|while|until|!|\{|\()\s+/;
 const CONTROL_ALONE = /^(?:done|fi|esac|else|\}|\)|for\s+\w+\s+in\b.*)$/;
 const SELF_READ = /guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/;
@@ -751,7 +818,7 @@ function changingStep(text, skipSeg, skipStage) {
       step = step.replace(/^(?:\w+=(?:"[^"]*"|'[^']*'|\$\([^()]*\)|[^\s;|&]*)\s*)+/, '');
       if (!/^command\s+-v\b/.test(step)) step = step.replace(PREFIX_WORDS, '');
       if (!step || CONTROL_ALONE.test(step)) continue;
-      if (!READ_ONLY_STEP.test(step)) return stages[j].trim();
+      if (!READ_ONLY_STEP.test(step) || inPlaceFlag(step)) return stages[j].trim();
     }
   }
   return null;
@@ -759,7 +826,19 @@ function changingStep(text, skipSeg, skipStage) {
 // Called before every rewrite judgeShell makes. A runtime heredoc body is exempt: the rewrite already stands
 // in for the whole script, which no step list can judge.
 function refuseDroppedSteps(what) {
-  if (!judging || judging.runtime) return;
+  if (!judging) return;
+  // The judged stage itself: a heredoc body is judged whole, since its write can sit on another line than its path.
+  const own = splitPipes(splitSegments(stripComments(judging.text))[judging.seg] || '')[judging.stage] || '';
+  const writes = stageWrites(own, judging.runtime ? judging.text : null);
+  if (writes) {
+    global.BLOCK_DETAIL = { branch: 'writer', matched: writes };
+    block(`Blocked: this command WRITES a file (\`${writes}\`) and names ${what} - nothing ran.\n` +
+      `The shell route would replace it with a read-only redacted view, and the write would silently never happen.\n` +
+      `Make the edit with the Edit tool, old_string anchored on lines that hold no credential - it changes the file\n` +
+      `without printing it. Then check it with a count (\`grep -c KEY <file>\`) or the presence read:\n` +
+      `  node "${__filename}" --presence <file> [KEY ...]   (A.B.C reads a nested key)\n`);
+  }
+  if (judging.runtime) return;
   const step = changingStep(judging.text, judging.seg, judging.stage);
   if (!step) return;
   global.BLOCK_DETAIL = { branch: 'dropped-steps', matched: step.split(/\s+/)[0].slice(0, 40) };

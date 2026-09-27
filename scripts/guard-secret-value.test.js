@@ -865,3 +865,64 @@ test('guard-secret-value: a credential a command substitution computes is judged
   ];
   for (const [command, want] of cases) assert.equal(bash(command), want, command);
 });
+
+// Pilot 3, ours guard-02 r1: `node -e "...fs.writeFileSync(path, ...)..."` and `perl -0pi -e 's/.../' <file>` on a
+// credential file were REWRITTEN into its read-only redacted view, so both edits silently never ran (~66 s, 12 calls,
+// until the Edit tool made the change). A stage that WRITES while it names the file is blocked, visibly - the same
+// contract a changing step elsewhere in the command already had.
+test('guard-secret-value: a stage that WRITES the credential file is blocked, never rewritten into a read-only view', () => {
+  const f = fixtures();
+  const cases = [
+    [`perl -0pi -e 's/acme/acme2/' ${f.secret} && echo OK`, 'perl -0pi'],
+    [`perl -pi -e 's/acme/acme2/' ${f.secret}`, 'perl -pi'],
+    [`perl -i.bak -pe 's/acme/acme2/' ${f.secret}`, 'perl -i.bak'],
+    [`perl -p -i -e 's/acme/acme2/' ${f.secret}`, 'perl -p -i'],
+    [`ruby -i -pe 'gsub(/acme/, "acme2")' ${f.secret}`, 'ruby -i'],
+    [`sed -E -i '' 's/acme/acme2/' ${f.secret}`, 'sed -i after another flag'],
+    [`sed -e 's/acme/acme2/' -i ${f.secret}`, 'sed -i after the script'],
+    [`node -e "const fs=require('fs');const p='${f.secret}';const d=JSON.parse(fs.readFileSync(p,'utf8'));d.x=2;fs.writeFileSync(p,JSON.stringify(d,null,2));console.log('done')"`, 'node writeFileSync'],
+    [`node -e "require('fs').appendFileSync('${f.secret}', '\\n')"`, 'node appendFileSync'],
+    [`python3 -c "import json;p='${f.secret}';d=json.load(open(p));d['x']=2;json.dump(d, open(p,'w'))"`, "python open(p,'w')"],
+    [`python3 -c "p='${f.secret}';open(p, mode='a').write('x')"`, "python open(p, mode='a')"],
+    [`python3 - <<'PY'\nimport json\np='${f.secret}'\nd=json.load(open(p))\nopen(p, 'w').write(json.dumps(d))\nPY`, 'python heredoc writer'],
+    [`node -e "require('fs').writeFileSync('${path.join(f.dir, 'tok.txt')}', process.env.SENTRY_ACCESS_TOKEN)"`, 'a runtime writing a credential variable'],
+  ];
+  for (const [command, label] of cases) {
+    const r = run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite' });
+    assert.equal(r.status, 2, `${label}: ${updatedCommand(r) || r.stderr}`);
+    assert.match(r.stderr, /WRITES a file/, label);
+    assert.match(r.stderr, /Edit tool/, `${label}: names the route that works`);
+    assert.doesNotMatch(r.stderr, new RegExp(FAKE_TOKEN), label);
+  }
+  // Unchanged: a read through the same runtimes is still the view, and a first-flag in-place sed still passes.
+  assert.equal(bash(`perl -ne 'print' ${f.secret}`), REWRITE, 'perl reading, not writing');
+  assert.equal(bash(`python3 -c "print(open('${f.secret}').read())"`), REWRITE, 'python reading');
+  assert.equal(bash(`sed -i '' 's/acme/acme2/' ${f.secret}`), 0, 'sed -i as its first flag passes, as before');
+  assert.equal(bash(`node -e "require('fs').writeFileSync('${path.join(f.dir, 'out.txt')}', 'x')"`), 0, 'a writer that names no credential file is not judged');
+});
+
+// Pilot 3: `--presence <appsettings> ConnectionStrings.Lending Notices.Gateway.ServiceToken` answered `absent` for two
+// keys that exist - it read only top-level (or `env`) keys.
+test('guard-secret-value --presence: a dotted, colon or double-underscore path reads a nested JSON key', () => {
+  const f = fixtures();
+  const p = path.join(f.dir, 'appsettings.Development.json');
+  fs.writeFileSync(p, JSON.stringify({ ConnectionStrings: { Lending: 'Host=db;Password=' + FAKE_TOKEN }, Logging: { LogLevel: { 'Microsoft.Hosting.Lifetime': 'Information' } },
+    Notices: { DueSoonDays: 2, Gateway: { ServiceToken: FAKE_TOKEN, Enabled: true } } }, null, 2));
+  const r = presence(p, 'ConnectionStrings.Lending', 'Notices:Gateway:ServiceToken', 'Notices__DueSoonDays', 'Notices.Gateway.Missing', 'Notices.Gateway',
+    'Logging.LogLevel.Microsoft.Hosting.Lifetime');
+  assert.equal(r.stdout, [`ConnectionStrings.Lending=set (${17 + FAKE_TOKEN.length} chars)`, `Notices:Gateway:ServiceToken=set (${FAKE_TOKEN.length} chars)`,
+    'Notices__DueSoonDays=set (1 chars)', 'Notices.Gateway.Missing=absent', 'Notices.Gateway=set (object, 2 keys)',
+    'Logging.LogLevel.Microsoft.Hosting.Lifetime=set (11 chars)', ''].join('\n'));
+  assert.doesNotMatch(r.stdout + r.stderr, new RegExp(FAKE_TOKEN));
+  assert.equal(presence(p).stdout, [`ConnectionStrings.Lending=set (${17 + FAKE_TOKEN.length} chars)`, 'Logging.LogLevel.Microsoft.Hosting.Lifetime=set (11 chars)',
+    `Notices.Gateway.ServiceToken=set (${FAKE_TOKEN.length} chars)`, ''].join('\n'), 'no keys: every string leaf, as a dotted path');
+  assert.equal(presence(f.secret, 'env.SENTRY_SLUG', 'SENTRY_SLUG').stdout, 'env.SENTRY_SLUG=set (4 chars)\nSENTRY_SLUG=set (4 chars)\n', 'a settings.json: the env block first, a path from the root too');
+});
+
+// Pilot 3: the model's first presence call guessed `node .claude/hooks/guard-secret-value.js` (only the docs, memory and
+// history engines are copied there) - the redacted view it had just read named no path at all.
+test('guard-secret-value: the redacted view names the runnable presence command', () => {
+  const f = fixtures();
+  const view = cli('--redacted', f.secret).stdout;
+  assert.ok(view.split('\n')[0].includes(`node "${HOOK}" --presence "${f.secret}" KEY`), view.split('\n')[0]);
+});
