@@ -106,6 +106,18 @@ Model: the stack's yardstick model - Sonnet at the effort the stack pins for its
 
 Pilot 3 reruns the harder task per group, picked from the Opus proof run's wall time (`b3-proof`): `api-03-member-notices` (25.0 min), `cross-02-late-return-event` (28.9), `data-02-loans-cursor-feed` (36.3), `web-03-check-in-guard` (2.6, the slowest web task), `guard-02-reminder-lead-time` (18.1 - it plants the credential, so the credential check is finally exercised) and `devops-01-worker-image` (the only devops task). No task, metric or rule changed.
 
+**2026-09-27, before pilot 3, no result changed - the flow block is built.** It was refused until its scripted approver existed; now:
+
+- **The four flow tasks:** `api-02-last-copy-race` (bug), `api-03-member-notices` (feature), `cross-02-late-return-event` (cross) and `data-02-loans-cursor-feed` (feature). Each one's `meta.json` names its kind, and `drive.js --mode flow` runs these and nothing else. The kind is the only task-file change: no prompt, hidden test or time limit moved.
+- **Each arm's own entry, read from its own docs at its pin:**
+  - `ours` - feature `/alfred-task-solve {prompt}`, cross `/alfred-task-solve-cross {prompt}`, bug `/alfred-issue-diagnoser {prompt}` then `/alfred-task-solve <findings file>`: the diagnoser never builds, and its close names that command with the findings file it wrote (`.alfred/docs/diagnoses/<slug>.md`), which the harness resolves in the clone when the second prompt is sent;
+  - `ecc` - feature and cross `/ecc:plan "{prompt}"` then `/ecc:tdd-workflow`; bug `/ecc:tdd-workflow {prompt}` (its README's 'Start Using ECC' table: plan then tdd-workflow for a feature, reproduce with a failing test through tdd-workflow for a bug);
+  - `bare` - the plain prompt for every kind.
+- **The approver:** every `AskUserQuestion` question is answered with the option whose label carries '(Recommended)', else the first - the 'first option' above made explicit for a stack that marks its recommended option. Every other permission request is refused as print mode refuses it, so a flow cell holds no permission a plain cell lacks - in print mode's own words wherever the CLI hands them to the host (a compound shell command's print-mode refusal also lists the parts that need approval, which the host is never told, so that one refusal carries the CLI's reason alone). A stop written as prose rather than an ask (ECC's plan waits for a typed 'yes') gets no answer of its own: the arm's next prompt is what follows it.
+- **The driving:** the Agent SDK (`@anthropic-ai/claude-agent-sdk` 0.3.283, the release built for Claude Code 2.1.283; another is refused) runs the same installed CLI with the plain cell's working directory, env, settings layer, model, effort, permission mode, the Claude Code system prompt and print mode's first-turn wait for the MCP servers (2 s for every pending server - a streaming session otherwise starts with none of them connected). The session carries the interactive tools print mode leaves out (`AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`). The prompts go one after another in one session, each once the turn before it has a result; a turn that ends in an error, or a findings file that is not there, ends the flow and the cell is graded as it stands. Time limit, usage-limit handling and grading are the plain cell's.
+- `ALFRED_CODE_UNATTENDED=1` reaches `ours`' onboarding only (`onboardingEnv`), never a measured cell, so no measured cell takes recommended answers on its own.
+- The flow block is reported beside the plain block, never merged into it: its result is its own sentence under the decision rule below.
+
 ## Metrics (pre-registered)
 
 | Metric | Source | Role |

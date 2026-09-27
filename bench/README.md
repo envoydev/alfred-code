@@ -12,7 +12,7 @@ changed since the run started.
 |---|---|
 | `fixture.lock`, `fixture/` | the fixture tag every cell clones, its commit, and the verifier that refuses anything else |
 | `arms/common.json` | the ONE session every arm runs: model, effort, permission mode, settings layer, env |
-| `arms/<arm>.json` | an arm: its pin, setup commands, onboarding prompts and its own env - never a session field |
+| `arms/<arm>.json` | an arm: its pin, setup commands, onboarding prompts, its own env, an env its onboarding alone gets (`onboardingEnv`) and its flow entry per task kind (`flow`) - never a session field |
 | `arms/harness.settings.json` | the sandbox layer every session runs inside |
 | `arms/ecc-vocabulary.txt` | ECC's skill, agent and command names at the commit `arms/ecc.json` pins, for the prompt lint |
 | `arms/ours-vocabulary.txt` | our names at the release `arms/ours.json` pins, for the prompt lint - this tree may carry an older release |
@@ -21,7 +21,7 @@ changed since the run started.
 | `lint-prompts.js` | refuses a prompt naming either stack's machinery; part of `npm test` |
 | `prove-tasks.js` | the free solvability proof: hidden tests fail at the start, pass on the reference, suite green |
 | `lib/` | the pieces, each with its own `*.test.js` |
-| `test/` | the fake `claude` and the throwaway world the tests run on |
+| `test/` | the fake `claude`, the fake Agent SDK and the throwaway world the tests run on |
 
 ## Running it
 
@@ -32,6 +32,7 @@ dollars and ask first.
 node bench/drive.js --arms ours,ecc,bare --tasks all --reps 3 --parallel 3 [--seed n] [--run id]
                     [--auth <name>] [--wait-on-limit <hours>] [--work-root <dir>]
 node bench/drive.js --run <id> --resume
+node bench/drive.js --run <id> --mode flow --arms ours,ecc,bare --tasks <the four flow tasks> --reps 2 [...]
 node bench/grade.js <id>
 node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
 ```
@@ -58,6 +59,21 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   group, `guard` and `home-advantage` apart, the verdict in the rule's own words, and the three worst
   tasks per arm.
 - The Opus reference column is its own run: `--model claude-opus-5-5 --effort high --arms bare`.
+- `--mode flow` is the flow block, its own run on the same templates: only the tasks whose `meta.json`
+  names a `kind` (`feature`, `cross`, `bug` - the four the pre-registration names), each cell sending
+  its arm's own entry for that kind (`flow` in the arm file) through the Agent SDK
+  (`lib/flow.js`) against the same installed CLI, with a scripted approver: every `AskUserQuestion`
+  gets the option labelled '(Recommended)', else the first, and every other permission request print
+  mode's refusal (its words where the CLI hands them over; `approvals.jsonl` keeps the CLI's reason
+  beside each one). The first turn waits for the MCP servers as print mode's does (2 s,
+  `CLAUDE_CODE_MCP_STARTUP_WAIT_MS`). The prompts go one after another in one session, each once the turn before it
+  has a result; `{file:<path>}` in a prompt is the one file that path names in the clone when it is
+  sent (ours' diagnoser names its findings file as the build's input). `approvals.jsonl` beside each
+  cell's `stdout.jsonl` holds every answer and refusal. It needs the SDK installed (`npm install` at
+  the repo root - an exact dev dependency, the release built for the CLI the run drives; another is
+  refused), and a resume keeps the run's mode and refuses a changed flow entry or SDK. Grading is the
+  plain block's; `aggregate.js <plain-id> --flow <flow-id>` reports it beside the plain block, never
+  merged.
 
 A task's start state is its `startRef` plus `meta.setup`: patches applied in order, each left
 uncommitted (`{ "patch" }`) or committed on a new branch with a fixed author and date
@@ -135,7 +151,8 @@ which holds its raw account dir - is deleted as soon as the cell ends.
   the arm's pin, so that list is the record.
 - A copied account dir resolves: each arm's plugins load from the cell's own config.
 - Package restore time per cell, with a HOME of its own.
-- `--mode flow` stays refused until its scripted approver is built from what these transcripts show.
+- The flow block's approver: one flow cell per arm, each transcript read end to end - every ask
+  answered, no stall, the flow reaches its build, `approvals.jsonl` matches the asks (`b4-probe-flow-*`).
 
 ## What runs free, and what runs billed
 
@@ -220,6 +237,15 @@ node bench/grade.js b4-pilot-3
 node bench/aggregate.js b4-pilot-3
 ```
 
+Then the flow block as its own run over the four flow tasks, graded the same way and reported beside
+the plain one:
+
+```
+node bench/drive.js --run b4-pilot-3-flow --mode flow --arms ours,ecc,bare --tasks api-02-last-copy-race,api-03-member-notices,cross-02-late-return-event,data-02-loans-cursor-feed --reps 2 --parallel 6 --wait-on-limit 12 --auth CLAUDE_CODE_OAUTH_TOKEN
+node bench/grade.js b4-pilot-3-flow
+node bench/aggregate.js b4-pilot-3 --flow b4-pilot-3-flow
+```
+
 ### B5 - the measured run
 
 After B4 is closed. The pre-registration hash is recorded at the run's start and
@@ -235,6 +261,7 @@ node bench/aggregate.js b5 --reference b5-opus
 
 Plan estimate, tail included: $1,370 with `baseline` (316 cells), $1,050 without it (243 cells, drop
 `baseline` from `--arms`), 30-40 hours of wall time at parallel 3 with serial grading. Those totals
-include the `flow` block (48 cells with `baseline`, 36 without), which stays refused until B4 builds
-its scripted approver (D11) - until then the runnable part is that much smaller. The cheaper cut,
+include the `flow` block (48 cells with `baseline`, 36 without), a `--mode flow` run of its own over
+the four flow tasks; `baseline` names no flow entry yet, so a flow run naming it is refused until one
+is added. The cheaper cut,
 about $600: `--arms ours,ecc,bare` over the twelve headline ids plus the three `guard-*` ids.
