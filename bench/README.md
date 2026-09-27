@@ -50,7 +50,10 @@ node bench/aggregate.js <id> [--reference <opus-run-id>] [--flow <flow-run-id>]
   session runs in a compose project of its own (`COMPOSE_PROJECT_NAME`, a neutral `cell-<hash>`), and the
   driver runs `docker compose -p <it> down -v` before the session and again after it - that project only,
   recorded in `session.json` (`compose`) - so no cell reaches another's database (pilot 3: one `repo`
-  project for every cell). Each session also runs under a settings layer of its own, written to its work dir
+  project for every cell). The database port is the cell's own too: the driver reserves a free TCP port per
+  cell (`lib/ports.js`, `session.json` `port`), and `common.json` `cellEnv` hands the session
+  `LENDING_DB_PORT` (the fixture's compose file publishes on it) and a `ConnectionStrings__Lending` naming it,
+  so two cells starting the database at once never collide on 5432. Each session also runs under a settings layer of its own, written to its work dir
   (`lib/reads.js`): the shared sandbox plus `denyRead` for this checkout (and the main checkout a worktree
   sits in) and the whole work root - every other cell of every run, every template - with the cell's own
   work dir, the plugin code its account dir loads from outside it (its `.git` still denied) and the shared uv

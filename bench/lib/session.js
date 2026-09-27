@@ -20,6 +20,7 @@ const { removeTree } = require('./remove-tree.js');
 const { assertIsolated } = require('./isolation.js');
 const { installShims } = require('./dotnet-shim.js');
 const { composeProject, composeDown } = require('./compose.js');
+const { reservePort, releasePort } = require('./ports.js');
 
 const WIN = process.platform === 'win32';
 // What the stacks keep in the clone for themselves - docs roots and their hook ledgers, serena's LSP
@@ -287,6 +288,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
     const got = lock.acquire(cell.results);
     if (!got.ok) throw new Error(`${cell.arm}/${cell.task}/r${cell.rep} is held by pid ${got.holder}`);
     let sessionTmpDir = null;
+    let port = null;
     try
     {
         prepare({ cell, startRef, setup, taskDir, task: cell.task });
@@ -297,7 +299,10 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
         // The cell's own compose project (lib/compose.js): taken down before the session and again after it.
         const compose = { project: composeProject(cell) };
         const envFile = writeBashEnv(cell.work, session.bashEnv);
-        const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared, envFile }), COMPOSE_PROJECT_NAME: compose.project };
+        // The cell's own database port (common.json cellEnv, lib/ports.js), held until the cell ends.
+        port = await reservePort();
+        const cellEnv = Object.fromEntries(Object.entries(session.cellEnv || {}).map(([k, v]) => [k, v.split('{port}').join(String(port))]));
+        const env = { ...sessionEnv({ base, session, arm, config: cell.config, home: cell.home, auth: authName, tmp: sessionTmpDir, bin, shared, envFile }), ...cellEnv, COMPOSE_PROJECT_NAME: compose.project };
         const graceMs = (graceSec !== undefined ? graceSec : session.graceSec) * 1000;
         compose.before = composeDown({ project: compose.project, env, cwd: cell.work, docker });
         // The reads this cell may not make (lib/reads.js) go into a settings layer of its own.
@@ -333,7 +338,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
             exitCode: result.code, signal: result.signal, spawnError: result.error,
             startedAt: new Date(started).toISOString(), endedAt: new Date(ended).toISOString(), wallMs: ended - started, timeLimitMin,
             model: session.model, effort: session.effort, startRef: startRef || null, setup, baseTree, endTree, diffExcludes: DIFF_EXCLUDES,
-            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), compose, ...(reads ? { reads } : {}), ...result.extra,
+            transcript: Boolean(transcript), subagents: countJsonl(cell.subagents), compose, port, ...(reads ? { reads } : {}), ...result.extra,
         };
         // Written last and whole: a session.json that parses is what marks the cell done.
         const tmp = `${cell.session}.tmp`;
@@ -343,6 +348,7 @@ async function run({ cell, prompt, session, arm, timeLimitMin, startRef, setup =
     }
     finally
     {
+        if (port !== null) releasePort(port);
         if (sessionTmpDir) removeTree(sessionTmpDir);
         lock.release(cell.results);
     }

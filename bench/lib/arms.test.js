@@ -71,6 +71,10 @@ test('the four shipped arm files load against the shared session', () =>
     // unallocated pointer. Angular keeps that cache off when CI is set - for Bash commands alone, never the CLI.
     assert.deepStrictEqual(session.bashEnv, { CI: 'true' }, 'every Bash command, and nothing else, builds Angular without its disk cache');
     assert.strictEqual(session.env.CI, undefined, 'the CLI, its hooks and its MCP servers never see it');
+    // A compose project per cell still published every cell's database on host port 5432: two cells starting it
+    // at once collided. The fixture's compose file maps ${LENDING_DB_PORT:-5432}, and the API and the worker read
+    // ConnectionStrings:Lending, so each cell gets a free port of its own and a connection string naming it.
+    assert.deepStrictEqual(session.cellEnv, { LENDING_DB_PORT: '{port}', ConnectionStrings__Lending: 'Host=localhost;Port={port};Database=lending;Username=lending;Password=lending' }, 'the template lives here, never in code');
     assert.strictEqual(session.settings.sandbox.enabled, true);
     for (const a of arms) assert.match(a.hash, /^[0-9a-f]{64}$/);
 });
@@ -284,6 +288,17 @@ test('the template key follows the shared env and the restore steps, so a change
     assert.notStrictEqual(armHash(ARM, { ...session, env: { A: '2' } }), h);
     assert.notStrictEqual(armHash(ARM, { ...session, restore: [] }), h);
     assert.notStrictEqual(armHash(ARM, { ...session, bashEnv: { CI: 'true' } }), h, 'onboarding runs Bash too');
+    assert.notStrictEqual(armHash(ARM, { ...session, cellEnv: { P: '{port}' } }), h, 'a resume refuses a changed cell env');
+});
+
+test('common.json cellEnv is a map of strings whose one placeholder is the cell\'s own {port}, and an arm env cannot set one of them', (t) =>
+{
+    assert.deepStrictEqual(load({ dir: armsDir(t), names: [] }).session.cellEnv, {});
+    assert.deepStrictEqual(load({ dir: armsDir(t, { common: { ...COMMON, cellEnv: { P: '{port}' } } }), names: [] }).session.cellEnv, { P: '{port}' });
+    for (const bad of [['P'], { P: 1 }]) assert.throws(() => load({ dir: armsDir(t, { common: { ...COMMON, cellEnv: bad } }), names: [] }), /common\.json: cellEnv is not a map of strings/);
+    assert.throws(() => load({ dir: armsDir(t, { common: { ...COMMON, cellEnv: { P: '{host}' } } }), names: [] }), /common\.json: cellEnv P uses \{host\} - a cell's env knows \{port\} alone/);
+    const dir = armsDir(t, { common: { ...COMMON, cellEnv: { P: '{port}' } }, arms: [{ ...ARM, env: { P: '1' } }] });
+    assert.throws(() => load({ dir, names: ['solo'] }), /solo: env P is the harness's/);
 });
 
 test('common.json bashEnv is a map of shell names to strings, absent meaning none, and an arm env cannot set one of them', (t) =>

@@ -140,6 +140,25 @@ test('a session with reads to deny runs under settings of its own: the shared sa
     assert.ok(!('denyRead' in shared.sandbox.filesystem), 'the shared settings are never changed');
 });
 
+test('each cell gets a free port of its own, and its cell env names that port', async (t) =>
+{
+    const one = cellFor(t, 1);
+    const two = cellFor(t, 2);
+    const cellEnv = { LENDING_DB_PORT: '{port}', ConnectionStrings__Lending: 'Host=localhost;Port={port};Database=lending' };
+    const records = [path.join(one.dir, 'record.json'), path.join(two.dir, 'record.json')];
+    // Started together, as the pool starts parallel cells.
+    await Promise.all([one, two].map(({ cell }, i) => go(cell, { name: 'solo', env: { FAKE_RECORD: records[i], FAKE_SLEEP_MS: '300' } }, { session: { ...SESSION, cellEnv } })));
+    const seen = records.map((r) => JSON.parse(fs.readFileSync(r, 'utf8')).env);
+    const ports = seen.map((e) => e.LENDING_DB_PORT);
+    assert.notStrictEqual(ports[0], ports[1], 'two cells at once never share a port');
+    seen.forEach((e, i) =>
+    {
+        assert.match(e.LENDING_DB_PORT, /^\d+$/);
+        assert.strictEqual(e.ConnectionStrings__Lending, `Host=localhost;Port=${ports[i]};Database=lending`);
+    });
+    assert.deepStrictEqual([one, two].map(({ cell }) => String(JSON.parse(fs.readFileSync(cell.session, 'utf8')).port)), ports, 'the record names the cell\'s port');
+});
+
 test('the Bash env is a file each Bash command sources, the session env itself never carries it', async (t) =>
 {
     const { dir, cell } = cellFor(t);

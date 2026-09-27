@@ -65,7 +65,7 @@ function armHash(arm, session)
     const { flow, ...built } = arm;
     const body = {
         arm: canonical({ ...built, env: built.env || {}, onboardingEnv: built.onboardingEnv || {} }),
-        session: canonical({ model: session.model, effort: session.effort, permissionMode: session.permissionMode, settings: session.settings, env: session.env || {}, bashEnv: session.bashEnv || {}, restore: session.restore || [], cli: session.cliVersion || null }),
+        session: canonical({ model: session.model, effort: session.effort, permissionMode: session.permissionMode, settings: session.settings, env: session.env || {}, bashEnv: session.bashEnv || {}, cellEnv: session.cellEnv || {}, restore: session.restore || [], cli: session.cliVersion || null }),
     };
     return crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
 }
@@ -167,6 +167,14 @@ function loadSession(dir, override)
     // bashEnv: what every Bash command of every session sources (CLAUDE_ENV_FILE), and nothing else sees.
     const bashEnv = common.bashEnv === undefined ? {} : common.bashEnv;
     if (!isStringMap(bashEnv) || !Object.keys(bashEnv).every((k) => SHELL_NAME.test(k))) throw new Error('common.json: bashEnv is not a map of shell variable names to strings');
+    // cellEnv: what each measured cell's session gets on top of env, `{port}` being a free TCP port the driver
+    // reserves for that cell alone (lib/ports.js) - its own database port.
+    const cellEnv = common.cellEnv === undefined ? {} : common.cellEnv;
+    if (!isStringMap(cellEnv)) throw new Error('common.json: cellEnv is not a map of strings');
+    for (const [k, v] of Object.entries(cellEnv))
+    {
+        for (const m of v.matchAll(PLACEHOLDER)) if (m[1] !== 'port') throw new Error(`common.json: cellEnv ${k} uses {${m[1]}} - a cell's env knows {port} alone`);
+    }
     const restore = common.restore === undefined ? [] : common.restore;
     if (!Array.isArray(restore) || !restore.every((c) => isStrings(c) && c.length)) throw new Error('common.json: restore is not a list of commands');
 
@@ -176,7 +184,7 @@ function loadSession(dir, override)
 
     const session = {
         model: common.model, effort: common.effort, permissionMode: common.permissionMode,
-        settingsFile, settings, env: { ...common.env }, bashEnv: { ...bashEnv }, graceSec: common.graceSec,
+        settingsFile, settings, env: { ...common.env }, bashEnv: { ...bashEnv }, cellEnv: { ...cellEnv }, graceSec: common.graceSec,
         auth: [...common.auth], scrub: [...common.scrub], restore: restore.map((c) => [...c]), cliVersion: null,
     };
     if (override.model !== undefined)
@@ -225,7 +233,7 @@ function loadArm(dir, name, session)
         if (!rel || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) throw new Error(`${name}: expects '${rel}' is not a path inside the clone`);
     }
     if (arm.onboarding.length && !expects.length) throw new Error(`${name}: onboarding names no expected output - list what it must leave in the clone under expects`);
-    const owned = new Set([...HARNESS_ENV, ...session.auth, ...session.scrub, ...Object.keys(session.env), ...Object.keys(session.bashEnv || {})]);
+    const owned = new Set([...HARNESS_ENV, ...session.auth, ...session.scrub, ...Object.keys(session.env), ...Object.keys(session.bashEnv || {}), ...Object.keys(session.cellEnv || {})]);
     const env = checkEnv(name, 'env', arm.env, owned);
     const onboardingEnv = checkEnv(name, 'onboardingEnv', arm.onboardingEnv, owned);
     for (const used of placeholders([arm.setup, arm.onboarding, env, onboardingEnv]))
