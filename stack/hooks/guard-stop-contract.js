@@ -476,28 +476,54 @@ const ROTATE_RE = /\b(rotate|revoke|purge|scrub|regenerate)\b[^\n]{0,120}\b(cred
 // credential and none of the one route the USER takes. This is still turn-END detection; catching
 // it at paste time would need a UserPromptSubmit wiring this hook does not have, and the exposure
 // is already on disk by then either way - what matters is that the rotate ask happens at all.
-function secretInSession() {
+// Only what the MODEL was sent counts. The CLI stores its own copy of every tool result beside the one
+// it sends (`toolUseResult` - an Edit's whole `originalFile`, a Read's `file.content`), and that copy
+// never reaches the model: pilot 3's guard-02 cells asked for rotation on a JWT the secret guard had
+// kept out of context, found only in the Edit's `originalFile` (2 of 12 print finals replaced). A torn
+// row - the tail window's first line, or one still being written - is judged up to the stored copy,
+// which the CLI writes after `message`.
+function visibleRow(line) {
   try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 256 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
-    for (const line of buf.toString('utf8').split('\n')) {
-      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
-      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
-      if (!line.includes('"toolUseResult"') && !line.includes('"tool_result"')
-        && !/"type"\s*:\s*"user"/.test(line)) continue;
-      if (SECRET_SHAPE.test(line)) return true;
-    }
-    return false;
+    return JSON.stringify(JSON.parse(line), (k, v) => (k === 'toolUseResult' ? undefined : v));
   } catch {
-    return false;
+    const at = line.indexOf('"toolUseResult"');
+    return at < 0 ? line : line.slice(0, at);
   }
 }
+// The window is the whole session up to 64MB, read once per run: pilot 3's ecc guard-02 cells read the
+// JWT 250-300KB before a print turn ended, outside the old 256KB tail (only the Edit's stored copy near
+// the end had caught them). A 32MB transcript scans in about 110 ms.
+let TAIL = null;
+function transcriptTail() {
+  if (TAIL !== null) return TAIL;
+  const p = payload.transcript_path;
+  if (!p) return (TAIL = '');
+  const size = fs.statSync(p).size;
+  const start = Math.max(0, size - 64 * 1024 * 1024);
+  const fd = fs.openSync(p, 'r');
+  const buf = Buffer.alloc(size - start);
+  fs.readSync(fd, buf, 0, buf.length, start);
+  fs.closeSync(fd);
+  return (TAIL = buf.toString('utf8'));
+}
+// The newest row that put a credential shape in front of the model, or null.
+function secretExposure() {
+  try {
+    let found = null;
+    for (const line of transcriptTail().split('\n')) {
+      if (!SECRET_SHAPE.test(line)) continue;
+      const seen = visibleRow(line);
+      // USER-role rows: both the tool_results the model's own reads returned, and the user's own
+      // typed or pasted text. The assistant's own text is judged separately, by ROTATE_RE.
+      if (!seen.includes('"tool_result"') && !/"type"\s*:\s*"user"/.test(seen)) continue;
+      if (SECRET_SHAPE.test(seen)) found = line;
+    }
+    return found;
+  } catch {
+    return null;
+  }
+}
+const secretInSession = () => secretExposure() !== null;
 
 // The secret guard's receipt is the user's CONSENT to a value being in this transcript - the remote
 // user who asked to see it, or to have it placed where a blind copy cannot reach. A shape that
@@ -527,26 +553,18 @@ function secretReadAllowed() {
 // messages'). An answered rotate ask (the harness's own 'Your questions have been answered' row
 // naming rotation, or the defer option) covers every credential shape that entered the session
 // BEFORE it - tool results and the user's own pastes alike; only a shape that arrives after it asks
-// again. Judged over the same 256KB tail secretInSession reads, and fail-open like it.
+// again. Judged over the same window secretExposure reads, and fail-open like it.
 // ALFRED_CODE_ROTATE_ASK=0 in the settings.json env turns the branch off for a user who accepts
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
 const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
 const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
 function rotateAskAnswered() {
   try {
-    const p = payload.transcript_path;
-    if (!p) return false;
-    const size = fs.statSync(p).size;
-    const start = Math.max(0, size - 256 * 1024);
-    const fd = fs.openSync(p, 'r');
-    const buf = Buffer.alloc(size - start);
-    fs.readSync(fd, buf, 0, buf.length, start);
-    fs.closeSync(fd);
     let lastAnswer = -1;
     let lastShape = -1;
-    buf.toString('utf8').split('\n').forEach((line, i) => {
+    transcriptTail().split('\n').forEach((line, i) => {
       if (ROTATE_ANSWER_RE.test(line)) lastAnswer = i;
-      if (SECRET_SHAPE.test(line)) lastShape = i;
+      if (SECRET_SHAPE.test(line) && SECRET_SHAPE.test(visibleRow(line))) lastShape = i;
     });
     return lastAnswer >= 0 && lastAnswer > lastShape;
   } catch {
@@ -1079,7 +1097,22 @@ if (payload.hook_event_name === 'Stop') {
   // A live credential that has entered this session outranks every other close: it cannot be
   // undone by a later turn, and the transcript keeps the value whatever happens next. This branch
   // runs FIRST and fires on a clean close too - three measured exposures ended exactly there.
-  if (ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered() && (ROTATE_RE.test(prose) || (secretInSession() && !secretReadAllowed()))) {
+  const exposure = ROTATE_ASK_ON && !askJustAnswered() && !rotateAskAnswered()
+    ? (ROTATE_RE.test(prose) ? { route: 'close' } : (() => { const row = secretExposure(); return row && !secretReadAllowed() ? { route: 'shape', row } : null; })())
+    : null;
+  // With nobody at the terminal (hook-prelude.js unattended - print mode, never an SDK session) the ask
+  // cannot be answered and only replaced the final answer (pilot 3, 2 of 12 finals): one ledger row per
+  // exposure records it instead, keyed on the row that exposed it, and the close stands.
+  if (exposure && unattended(payload)) {
+    const key = require('crypto').createHash('sha1').update(exposure.row || prose).digest('hex').slice(0, 16);
+    const safe = (s) => String(s).replace(/[^a-zA-Z0-9-]/g, '_').slice(-80);
+    const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-rotate-${safe(payload.session_id || 'nosession')}-${key}.logged`;
+    if (!fs.existsSync(marker)) {
+      try { fs.writeFileSync(marker, new Date().toISOString()); } catch { /* a lost marker logs the exposure twice at most */ }
+      ledgerRow({ tool: '', mode: 'unattended', kind: 'rotate-ask',
+        reason: `skip: a credential entered this session (${exposure.route === 'close' ? 'named for rotation in the close' : 'a shape the model was sent'}) and nobody is at the terminal - logged, not held` });
+    }
+  } else if (exposure) {
     // Which of the two routes found the credential, in the ledger row - they are tuned separately.
     blockDetail('rotate-ask', (prose.match(ROTATE_RE) || [])[0] || 'secret shape in a tool result or a pasted message');
     process.stderr.write(
@@ -1099,7 +1132,7 @@ if (payload.hook_event_name === 'Stop') {
   }
   // Every branch below asks a PERSON something - a decision, a pending step, a fresh session - and
   // with nobody at the terminal (hook-prelude.js unattended) the block only buys another turn. The
-  // probes above still log and the rotation ask above still holds: that one protects a credential.
+  // probes above still log, and so does the credential branch - its row is the record of the exposure.
   if (unattended(payload)) {
     if (proseAsk(tail) || doneClose || endsOnQuestion) {
       ledgerRow({ tool: '', mode: 'unattended', kind: proseAsk(tail) ? 'prose-ask' : doneClose ? 'done-close' : 'ends-on-question',

@@ -76,8 +76,9 @@ change (see the invariants below).
   row carrying an `entrypoint` (`sdk-cli` for `claude -p`, `cli` interactive; bookkeeping rows carry none). A
   suite that drives these hooks deletes the runner's own `CLAUDE_CODE_ENTRYPOINT` first. Then the hooks that ASK a person stay quiet: no docs hold or Stop FINISH ask, no
   stop-contract prose-question, pending-close or fresh-session block (a `mode: unattended` row
-  instead), no answer-length Stop block, no fresh-session offer. Every protective denial and the
-  rotation ask are unchanged; a missing, empty or torn-last-row transcript reads as a person.
+  instead), no answer-length Stop block, no fresh-session offer, and the credential rotation ask becomes one
+  `mode: unattended` row per exposure (it replaced 2 of 12 pilot-3 finals). Every protective denial is
+  unchanged; a missing, empty or torn-last-row transcript reads as a person.
   The fresh-session arithmetic (trigger per window tier, window lookup, cold floor) lives in one
   engine, `fresh-session.js`, which the two fresh-session hooks and the monitor require from their
   own directory; a hook that runs before it lands keeps every offer off. `shell-writes.js` parses a
@@ -145,7 +146,9 @@ change (see the invariants below).
     LOG-ONLY: `PostToolUse` + `PostToolUseFailure` on the shell tools) - blocks a turn ending on a decision-shaped question in prose (the quality
     loop's mode and stage-close asks worded as statements included), or a 'done, next step pending' close; holds ONCE a subagent that stops on a wait nobody will end ('I'll wait for...' or its own
     ScheduleWakeup) with no background work of its own; a close saying the RUN has nothing pending (the pinned line in shared-rules.json) is
-    finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off).
+    finished. Credential branch: asks for rotation ONCE per exposure (`ALFRED_CODE_ROTATE_ASK=0` off), judged
+    on what the model was SENT - a tool result's `message`, never the CLI's stored `toolUseResult` copy (an
+    Edit's `originalFile` held a JWT the secret guard had kept out of context, pilot 3).
     Three LOG-ONLY probes (2026-09-25 - the habits skills lean on their descriptions and the flows that load
     them, and the misses are counted, never held or injected): a done claim over a turn's source edit
     (file tool or shell write) writes one `done-gate` row per turn - `unrun` when nothing ran after the edit,

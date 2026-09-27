@@ -160,13 +160,117 @@ test('guard-stop-contract: print mode makes no fresh-session offer; interactive 
     assert.strictEqual(stop(file(floorAnd('sdk-cli'))).status, 0, 'past the trigger with nobody there');
 });
 
-test('guard-stop-contract: the credential rotation ask stays in print mode - it protects something', () =>
+// ---------------------------------------------------------------------------------------------
+// guard-stop-contract's credential branch (pilot 3, A1): it reads what the MODEL saw, and in print mode
+// it logs instead of replacing the final answer
+// ---------------------------------------------------------------------------------------------
+// A planted credential, fake by construction: the SHAPE is what the branch reads, never a value.
+const JWT = ['eyJ' + 'hbGciOiJIUzI1NiJ9', 'eyJzdWIiOiJub3RpY2VzIn0', 'c2lnbmF0dXJlLW9ubHktYS1zaGFwZQ'].join('.');
+// A tool result row the way the 2.1.283 CLI writes it: `message` (what the model is sent) before the
+// CLI's own stored copy, `toolUseResult` - an Edit's whole `originalFile` among it.
+const toolRow = (entrypoint, sent, stored) => ({
+    type: 'user', entrypoint, uuid: `u${++n}`,
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${n}`, content: sent }] },
+    toolUseResult: { filePath: 'appsettings.Development.json', originalFile: stored, contentNotInModelContext: true },
+});
+const exposed = (entrypoint, close) => [
+    ...convo(entrypoint, 'working on it'),
+    toolRow(entrypoint, `{"Notices":{"Gateway":{"ServiceToken":"${JWT}"}}}`, 'unchanged'),
+    { type: 'assistant', entrypoint, message: { id: `m${++n}`, role: 'assistant', content: [{ type: 'text', text: close }], usage: { cache_read_input_tokens: 10 } } },
+];
+const CLOSE = 'Added DueSoonDays to the worker settings; the suite is green.';
+const credentialStop = (rows, env, session = `s${++n}`, close = CLOSE) =>
 {
-    const text = 'Done. You should rotate the API key that was printed above.';
-    const t = transcripts(text);
-    const r = run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: t.print, last_assistant_message: text });
-    assert.strictEqual(r.status, 2);
-    assert.match(r.stderr, /credential/i);
+    const root = fs.mkdtempSync(path.join(TMP, 'cred-'));
+    const tp = file(rows);
+    const r = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: session, cwd: root, transcript_path: tp, last_assistant_message: close },
+        { CLAUDE_PROJECT_DIR: root, ...(env || {}) });
+    const ledger = path.join(root, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`);
+    const rows_ = fs.existsSync(ledger) ? fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+    return { ...r, rows: rows_, root, tp, session };
+};
+
+test('guard-stop-contract: a credential only the CLI stored (an Edit\'s originalFile) is no exposure', () =>
+{
+    // Pilot 3, ours guard-02 r1 and r2: the secret guard kept the planted JWT out of the model's context, and the
+    // only copy in the transcript was `toolUseResult.originalFile` of the Edit that added DueSoonDays - never sent
+    // to the model. The rotation ask fired on it anyway and, in print mode, replaced the final summary.
+    for (const entrypoint of ['cli', 'sdk-cli'])
+    {
+        const rows = [...convo(entrypoint, 'working on it'),
+            toolRow(entrypoint, 'The file appsettings.Development.json has been updated.', `{"Notices":{"Gateway":{"ServiceToken":"${JWT}"}}}`),
+            { type: 'assistant', entrypoint, message: { id: `m${++n}`, role: 'assistant', content: [{ type: 'text', text: CLOSE }], usage: { cache_read_input_tokens: 10 } } }];
+        const r = credentialStop(rows);
+        assert.strictEqual(r.status, 0, `${entrypoint}: ${r.stderr}`);
+        assert.deepStrictEqual(r.rows.filter((row) => row.kind === 'rotate-ask'), [], `${entrypoint}: no row either`);
+    }
+});
+
+test('guard-stop-contract: a torn row is judged only up to the CLI\'s stored copy', () =>
+{
+    // The 256KB tail window cuts its first row, and a row still being written is torn at the end: the CLI writes
+    // `message` before `toolUseResult`, so the text before the stored copy is what the model was sent.
+    const head = (sent, stored) => `{"type":"user","entrypoint":"cli","message":{"role":"user","content":[{"type":"tool_result","content":"${sent}"}]},"toolUseResult":{"originalFile":"${stored}`;
+    const stop = (torn) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: file(convo('cli', 'ok'), torn), last_assistant_message: CLOSE });
+    assert.strictEqual(stop(head('updated', `token ${JWT}`)).status, 0, 'the shape only in the stored copy');
+    assert.strictEqual(stop(head(`token ${JWT}`, 'x')).status, 2, 'the shape in what was sent');
+});
+
+test('guard-stop-contract: a credential the model DID see still ends an interactive or SDK turn in the rotate ask', () =>
+{
+    for (const entrypoint of ['cli', 'sdk-ts', 'sdk-py'])
+    {
+        const r = credentialStop(exposed(entrypoint, CLOSE));
+        assert.strictEqual(r.status, 2, entrypoint);
+        assert.match(r.stderr, /Rotate it now/, entrypoint);
+        assert.ok(!r.stderr.includes(JWT), 'the value is never repeated back');
+    }
+    // The env decides first: an SDK launch keeps its ask even over a transcript written by print mode.
+    assert.strictEqual(credentialStop(exposed('sdk-cli', CLOSE), { CLAUDE_CODE_ENTRYPOINT: 'sdk-ts' }).status, 2, 'sdk-ts by the env');
+    // Pilot 3, ecc guard-02: the model read the JWT 250-300KB before the turn ended - outside the old 256KB
+    // tail, which caught those cells only through the Edit's stored copy near the end.
+    const [head, ...rest] = exposed('cli', CLOSE).slice(-2);
+    const long = [...convo('cli', 'working on it'), head,
+        ...Array.from({ length: 40 }, () => toolRow('cli', 'y'.repeat(9000), 'unchanged')), ...rest];
+    assert.strictEqual(credentialStop(long).status, 2, 'an exposure 360KB before the close');
+});
+
+test('guard-stop-contract: print mode logs a real exposure once and leaves the final answer intact', () =>
+{
+    // Pilot 3: with nobody at the terminal the rotation ask only replaced the final summary ('AskUserQuestion is
+    // disabled this session, so asking directly: rotate them now...'). The exposure is still recorded.
+    const session = `print-${++n}`;
+    const logDir = fs.mkdtempSync(path.join(TMP, 'credlog-'));
+    const first = credentialStop(exposed('sdk-cli', CLOSE), { ALFRED_CODE_HOOK_LOG_DIR: logDir }, session);
+    assert.strictEqual(first.status, 0, first.stderr);
+    assert.strictEqual(first.stderr, '', 'nothing reaches the model');
+    const logged = first.rows.filter((row) => row.kind === 'rotate-ask');
+    assert.strictEqual(logged.length, 1, 'one ledger row');
+    assert.strictEqual(logged[0].mode, 'unattended');
+    assert.match(logged[0].reason, /credential/);
+    assert.ok(!JSON.stringify(first.rows).includes(JWT), 'the row carries no value');
+    // A second Stop of the same session on the same exposure writes no second row.
+    const second = run('guard-stop-contract.js', { hook_event_name: 'Stop', session_id: session, cwd: first.root, transcript_path: first.tp, last_assistant_message: CLOSE },
+        { CLAUDE_PROJECT_DIR: first.root, ALFRED_CODE_HOOK_LOG_DIR: logDir });
+    assert.strictEqual(second.status, 0);
+    const all = fs.readFileSync(path.join(first.root, '.alfred', 'docs', 'hook-blocks', `${session}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.strictEqual(all.filter((row) => row.kind === 'rotate-ask').length, 1, 'one row per exposure, not per Stop');
+    // The launch switch and the env are print mode too; a close that names rotation is logged, not held.
+    assert.strictEqual(credentialStop(exposed('cli', CLOSE), { ALFRED_CODE_UNATTENDED: '1' }).status, 0, 'the launch switch');
+    assert.strictEqual(credentialStop(exposed('cli', CLOSE), { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' }).status, 0, 'the env');
+    const rotateClose = 'Done. You should rotate the API key that was printed above.';
+    const named = credentialStop(convo('sdk-cli', rotateClose), {}, `s${++n}`, rotateClose);
+    assert.strictEqual(named.status, 0, 'a close naming rotation');
+    assert.strictEqual(named.rows.filter((row) => row.kind === 'rotate-ask').length, 1);
+});
+
+test('guard-stop-contract: an Edit\'s stored copy after an answered rotate ask is no new exposure', () =>
+{
+    const answered = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'ta', content: 'Your questions have been answered: "Rotate it now?"="Acknowledge and defer"' }] } };
+    const filler = { type: 'user', entrypoint: 'cli', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tf', content: 'x'.repeat(9000) }] } };
+    const rows = [...exposed('cli', 'ok'), answered, filler,
+        toolRow('cli', 'The file appsettings.Development.json has been updated.', `{"ServiceToken":"${JWT}"}`), ...convo('cli', CLOSE)];
+    assert.strictEqual(credentialStop(rows).status, 0);
 });
 
 // ---------------------------------------------------------------------------------------------
