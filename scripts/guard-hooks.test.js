@@ -211,6 +211,43 @@ test('guard-stop-contract: the rotate ask is asked ONCE per exposure, and ALFRED
   assert.equal(stop('r4', [leak, assistantRow('a4', 'Wired the token as asked; tests green.')], { ALFRED_CODE_ROTATE_ASK: '0' }).status, 0, 'the switch turns the ask off');
 });
 
+// Review of pilot 4, M3: an answer naming neither rotation nor the defer option - a free-text 'Other' ('leave it, test
+// token'), or a question the model worded without the word - kept the ask coming on every turn for the rest of the
+// session. Any AskUserQuestion answered after the rotate-ask block is the user's answer to it.
+test('guard-stop-contract: any ask answered after the rotate-ask block covers the exposure', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'projM3-'));
+  const shape = 'ghp_' + 'D'.repeat(24); // fake by construction
+  const leak = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: `TOKEN=${shape}` }] } };
+  const head = 'A credential appears to have entered this session - either named for rotation in this\nturn, matched by shape in a tool result, or pasted into the chat.';
+  const block = [
+    { type: 'user', isMeta: true, message: { role: 'user', content: `Stop hook feedback:\n[node guard-stop-contract.js]: ${head}` } },
+    { type: 'system', subtype: 'stop_hook_summary', hookErrors: [head], preventedContinuation: false },
+  ];
+  const answer = (id, text) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const freeText = answer('t2', 'Your questions have been answered: "The GitHub token showed up in a tool result. What should happen to it?"="leave it, test token". You can now continue with these answers in mind.');
+  const declined = answer('t2', 'The user declined to answer the questions.');
+  const unrelated = answer('t0', 'Your questions have been answered: "Build it now?"="Yes (Recommended)"');
+  const filler = { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't3', content: 'x'.repeat(9000) }] } };
+  const readSource = answer('t5', `grep hit: '${head.split('\n')[0]}' in guard-stop-contract.js`);
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_DOCS_PATH: '.alfred/docs' };
+  const stop = (name, rows) => runIn('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: transcript(name, rows) }, { env }).status;
+  const close = assistantRow('m3', 'Left the token as you said; the rest is done.');
+  const verdicts = {
+    'free-text answer after the block': stop('m3a', [leak, ...block, freeText, filler, close]),
+    'declined after the block': stop('m3b', [leak, ...block, declined, filler, close]),
+    'answer BEFORE the block': stop('m3c', [leak, unrelated, filler, ...block, filler, close]),
+    'the block text read from source, then an unrelated answer': stop('m3d', [leak, readSource, unrelated, filler, close]),
+    'a new exposure after the answer': stop('m3e', [leak, ...block, freeText, filler, answer('t4', `OTHER=${'ghp_' + 'E'.repeat(24)}`), close]),
+  };
+  assert.deepEqual(verdicts, {
+    'free-text answer after the block': 0,
+    'declined after the block': 0,
+    'answer BEFORE the block': 2,
+    'the block text read from source, then an unrelated answer': 2,
+    'a new exposure after the answer': 2,
+  });
+});
+
 test('guard-stop-contract: one turn split across rows sharing a message.id is judged whole', () => {
   // The defect this pins: keeping only the LAST row read a thinking-only fragment as the turn and
   // passed a real decision stop - measured in six audited sessions.

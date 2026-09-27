@@ -208,7 +208,7 @@ test('guard-stop-contract: a credential only the CLI stored (an Edit\'s original
 
 test('guard-stop-contract: a torn row is judged only up to the CLI\'s stored copy', () =>
 {
-    // The 256KB tail window cuts its first row, and a row still being written is torn at the end: the CLI writes
+    // Past 64MB the scan window cuts its first row, and a row still being written is torn at the end: the CLI writes
     // `message` before `toolUseResult`, so the text before the stored copy is what the model was sent.
     const head = (sent, stored) => `{"type":"user","entrypoint":"cli","message":{"role":"user","content":[{"type":"tool_result","content":"${sent}"}]},"toolUseResult":{"originalFile":"${stored}`;
     const stop = (torn) => run('guard-stop-contract.js', { hook_event_name: 'Stop', transcript_path: file(convo('cli', 'ok'), torn), last_assistant_message: CLOSE });

@@ -558,12 +558,21 @@ function secretReadAllowed() {
 // the exposure - the value is in the transcript either way, so that is theirs to decide.
 const ROTATE_ASK_ON = envOf(process.env, 'ROTATE_ASK') !== '0';
 const ROTATE_ANSWER_RE = /Your questions have been answered:[^\n]*?(rotat|revok|acknowledge and defer)/i;
+// ANY answered or declined ask after this hook's own rotate-ask block is the answer to it (review of pilot 4, M3): a
+// free-text 'Other' ('leave it, test token') or a question worded without 'rotate' matched nothing above, so the ask
+// came back every turn. The block is the harness's hook-feedback row carrying ROTATE_ASK_HEAD - never a tool result,
+// which is how the model reading this file would carry it.
+const ROTATE_ASK_HEAD = 'A credential appears to have entered this session';
+const ANY_ANSWER_RE = /"(?:content|text)"\s*:\s*"(?:Your questions have been answered:|The user (?:declined|chose not) to answer)/;
+const isRotateBlock = (line) => line.includes(ROTATE_ASK_HEAD) && !line.includes('"tool_result"') && /Stop hook feedback|"stop_hook_summary"/.test(line);
 function rotateAskAnswered() {
   try {
     let lastAnswer = -1;
     let lastShape = -1;
+    let lastBlock = -1;
     transcriptTail().split('\n').forEach((line, i) => {
-      if (ROTATE_ANSWER_RE.test(line)) lastAnswer = i;
+      if (isRotateBlock(line)) lastBlock = i;
+      if (ROTATE_ANSWER_RE.test(line) || (lastBlock >= 0 && ANY_ANSWER_RE.test(line))) lastAnswer = i;
       if (SECRET_SHAPE.test(line) && SECRET_SHAPE.test(visibleRow(line))) lastShape = i;
     });
     return lastAnswer >= 0 && lastAnswer > lastShape;
@@ -1116,7 +1125,7 @@ if (payload.hook_event_name === 'Stop') {
     // Which of the two routes found the credential, in the ledger row - they are tuned separately.
     blockDetail('rotate-ask', (prose.match(ROTATE_RE) || [])[0] || 'secret shape in a tool result or a pasted message');
     process.stderr.write(
-      'A credential appears to have entered this session - either named for rotation in this\n' +
+      ROTATE_ASK_HEAD + ' - either named for rotation in this\n' +
       'turn, matched by shape in a tool result, or pasted into the chat. Measured seven times in\n' +
       'the audited corpus:\n' +
       'the run states it as a closing bullet, the user reads it and does not act (19m, 1h40m,\n' +
