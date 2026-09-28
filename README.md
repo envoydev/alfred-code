@@ -73,6 +73,7 @@ The full inventory of every skill, agent, rule and hook is [`docs/alfred-code.ht
 
 - **One source per run.** Every surface comes from one snapshot (the plugin cache, else the release archive, else a shallow clone), so an install is a single revision, recorded in `.claude/alfred-code.stamp`.
 - **Skills in the project, seats in the core.** Every skill you pick, the always-on ones included, is a copy in `.claude/skills/` you can switch off per project; every seat and hook rides the `alfred-code` plugin, and a seat you did not pick is denied.
+- **One data folder.** The docs, the navigation index, browser profiles and a project-level memory database live under `.alfred/` (`ALFRED_CODE_DATA_PATH`), outside `.claude/`; the shared memory lives in `~/.alfred-memory/`. An update offers to move a 2.0.0 layout (`.serena`, `.playwright`, `~/.memory-mcp`, `.claude/docs`) there once.
 - **Evidence over guesses.** A manifest scan (`*.csproj`, `package.json`) pre-selects the specialist skills the project provably uses, with the matched signal as the reason.
 - **Nothing hidden.** The table below is the whole trust surface.
 
