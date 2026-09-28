@@ -1,33 +1,62 @@
-# Alfred Code
+<p align="center">
+  <img src="docs/assets/alfred-code-logo.png" width="320" alt="Alfred Code - a butler in black and white">
+</p>
 
-<p align="center"><img src="docs/assets/alfred-code-icon.png" alt="Alfred Code" width="160"></p>
+<h1 align="center">Alfred Code</h1>
 
-The Claude Code half of a coding-agent setup - an installable stack of house skills,
-subagents, always-on and path-scoped rules, hooks, MCP servers, and plugins that gets applied to
-the projects you actually work in. This repo is the single source of truth: everything installs from
-ONE source snapshot per run, and the common run downloads nothing - Claude Code's own plugin cache
-already holds this whole repo, because every marketplace entry is sourced from the repo root (a
-release archive, then a shallow git clone, are the fallbacks for a machine with no cache). Either
-way an install is a single source revision, recorded in `.claude/alfred-code.stamp`, and consuming
-projects pull from here rather than owning their copy. The **Cursor** twin lives in its own repo,
-[`cursor-stack`](https://github.com/envoydev/cursor-stack), with its own skills, agents and
-installers - it does not clone this one, so a change that maps to Cursor is mirrored there.
+<p align="center">
+  <em>The house rules, the right tools and the checks - set up before Claude Code starts work.</em>
+</p>
 
-What it gives a project: consistent house conventions that attach themselves to the right file
-types, single-chat and multi-agent build workflows with quality gates, per-project MCP wiring
-(docs lookup, symbol navigation, shared memory, browser automation), and a guided
-install/update flow.
+<p align="center">
+  <a href="https://github.com/envoydev/alfred-code/releases"><img alt="release" src="https://img.shields.io/github/v/release/envoydev/alfred-code"></a>
+  <a href="LICENSE"><img alt="license: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <img alt="node >= 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933">
+</p>
 
-## Technologies
+Alfred Code is an installable stack for [Claude Code](https://claude.com/claude-code): house skills, subagents, rules, hooks and MCP servers, applied to the projects you actually work in. This repo is the single source of truth - a project pulls from it and never owns a copy. Its twin for Cursor is [`cursor-stack`](https://github.com/envoydev/cursor-stack), a separate repo with its own skills, agents and installers.
 
-The stack is built for this house's verticals:
+## What you get
 
-- **.NET / C#** - ASP.NET web/API, WPF desktop, console workers / bots / daemons / CLIs
-- **Angular / TypeScript** - web frontend, plus Ionic/Capacitor hybrid mobile
-- **SQL** - PostgreSQL, SQLite, SQL Server (schema, migrations, query conventions)
-- **DevOps** - Docker, GitHub Actions
+- **Conventions that attach themselves.** A rule glob-attaches the right house-style skill when you open a `.cs`, `.ts` or template file - no prompting for it.
+- **Deterministic guards, not reminders.** Hooks block a force-push to a protected branch, a catastrophic `rm`, a whole-file dump, a secret value read, an unapproved dispatch and an ungated commit.
+- **Build workflows with a gate.** A designer, implementer and verifier seat per stack; cross-domain work ends at a read-only integration reviewer.
+- **Wired tools.** Symbol navigation, current library docs, shared memory and browser automation, one plugin per server.
+- **A guided install.** It reads your manifests, shows what the project needs and why, and writes one stamp recording the exact source revision.
 
-## What gets installed
+## Stacks
+
+| Stack | Covers |
+| ----- | ------ |
+| .NET / C# | ASP.NET web and API, WPF, WinForms, console workers, bots, daemons and CLIs, Windows services |
+| Angular / TypeScript | web frontend, Ionic / Capacitor hybrid mobile, browser extensions |
+| SQL | PostgreSQL, SQLite, SQL Server: schema, migrations, query conventions |
+| DevOps | Docker, GitHub Actions |
+
+## Install
+
+```
+cd <your-project>
+claude plugin marketplace add anthropics/claude-plugins-official
+claude plugin marketplace add envoydev/alfred-code
+claude plugin install alfred-code@envoydev --scope project
+```
+
+Then, in Claude Code: `/alfred-code:setup`, restart, `/alfred-code:init`. Per-project is the default to prefer - each repo pins exactly what it uses. Requires **node >= 22.12**, the **claude** CLI and **git**; the run checks the rest and warns, never fails.
+
+## Commands
+
+| Command | What it does |
+| ------- | ------------ |
+| `/alfred-code:setup` | fresh install: reads the project, shows what it needs and why, walks the selection layer by layer, ends on a restart |
+| `/alfred-code:init` | one-time bootstrap in the new session: services the MCP servers need, memory level and note import, captures, CLAUDE.md fill |
+| `/alfred-code:update` | refresh an install to the newest release and prune what upstream removed |
+| `/alfred-code:configure` | add or drop items, at any scope |
+| `/alfred-code:validate` | reconcile an install to this project: drop what its stacks do not use, add what they lack |
+| `/alfred-code:status` | read-only view: what is enabled, whether it runs, what was used |
+| `/alfred-code:uninstall` | remove what the install ledger says the stack wrote, and nothing of yours |
+
+## What is inside
 
 | Surface | Count | What it is |
 | ------- | ----- | ---------- |
@@ -38,13 +67,16 @@ The stack is built for this house's verticals:
 | **MCP servers** | 4 | one plugin each, named for its role - navigation (Serena), documentation (Context7), memory, browser (Playwright MCP) - 7 entries, the browser one per engine; plus two opt-in desktop servers, windows-desktop (Windows-MCP, seeded for WPF and WinForms) and macos-desktop (MacOS-MCP), each offered on its own OS only; the project's closure enables its own |
 | **Plugins** | 2 + the stack's own | two optional third-party picks via the `claude` CLI, the LSP pair, each suggested on evidence (a `*.csproj`, a `tsconfig.json`) - plus `claude-hud`, which every install carries beside the core (`claude-hud` at user scope - its status line is account-wide), and the core `alfred-code` itself - the always-on skills and seats, and every hook |
 
-The full inventory - what every skill, agent, rule, and hook actually does - lives in the browser
-inventory at [`docs/alfred-code.html`](docs/alfred-code.html), not in this README.
+The full inventory of every skill, agent, rule and hook is [`docs/alfred-code.html`](docs/alfred-code.html).
+
+## How it works
+
+- **One source per run.** Every surface comes from one snapshot (the plugin cache, else the release archive, else a shallow clone), so an install is a single revision, recorded in `.claude/alfred-code.stamp`.
+- **Core plus library.** The always-on skills, core seats and all hooks ride the `alfred-code` plugin; every other pick is a copy in `.claude/` that you can switch off per project.
+- **Evidence over guesses.** A manifest scan (`*.csproj`, `package.json`) pre-selects the specialist skills the project provably uses, with the matched signal as the reason.
+- **Nothing hidden.** The table below is the whole trust surface.
 
 ## What a run actually touches
-
-Read this before the first install - it is the whole trust surface, and nothing here is hidden
-behind a flag.
 
 | | |
 | --- | --- |
@@ -68,50 +100,9 @@ enables, but no guard ever fires, so the stack's deterministic gates are gone wi
 it. `ALFRED_CODE_HOOKS_OFF` is the supported way to switch individual hooks off. Decide that one before rolling the stack out under a managed
 policy.
 
-## Install - with the marketplace plugin (guided)
-
-Register the marketplace and install the setup plugin **per project** - run both commands from
-inside the project, so the plugin binding lands in that project's own config. Per-project is the
-default to prefer: each repo pins exactly what it uses, and a machine-wide default never leaks
-the plugin into projects that do not want it (a user-scope install works, but choose it
-deliberately):
-
-```
-cd <your-project>
-claude plugin marketplace add anthropics/claude-plugins-official
-claude plugin marketplace add envoydev/alfred-code
-claude plugin install alfred-code@envoydev --scope project
-```
-
-The first line makes the official marketplace known: the optional third-party picks live there.
-
-Then `/alfred-code:setup` runs a fresh install (it decides the selection FROM the project, with
-what the project needs and why shown first) and ends on a restart; `/alfred-code:init`, typed in the
-new session, bootstraps it once (the services the MCP servers need, the memory level with the
-one-time import of Claude's old notes and its own memory's switch-off, the captures, the CLAUDE.md fill),
-`/alfred-code:update` refreshes an existing one to the newest release and prunes what the stack
-removed upstream, `/alfred-code:configure` adjusts it (add or drop items), and
-`/alfred-code:validate` reconciles an install against THIS project - prunes what its frameworks do
-not use and adds the detected stacks' missing artifacts, a per-layer walk (project mode only); and
-`/alfred-code:status` shows the install read-only, one table per area; `/alfred-code:uninstall`
-removes what the stack wrote into the project and keeps what you added or changed.
-Setup and configure walk the selection one layer at a time (rules ->
-agents -> skills -> hooks -> MCPs -> plugins) as numbered full-catalog tables, locking only what
-something kept still requires - always with the reason shown. A deterministic evidence scan of
-the project's package manifests (csproj / package.json) pre-selects the specialist skills the
-project provably uses, the matched signal shown as the reason. All detect the OS, the install
-commands check prerequisites before anything runs, and `/alfred-code` alone routes by state.
-
 ## Install - with the script
 
-The **action** (`install` | `update`) is the one required argument.
-
-The installer is one `node` command on every OS - `node scripts/install/alfred-code.js install
-[flags]` - and that is what the `/alfred-code:*` commands run. It is not a single downloadable
-file (it needs its sibling modules under `scripts/install/`), so the STANDALONE route - no checkout
-kept around long-term - downloads the release archive once, runs the seed out of it, and points
-`--source` back at the extraction so a later `update` can reuse the same copy instead of
-re-downloading:
+The installer is one `node` command on every OS. Download the release archive, run the seed out of it, and point `--source` back at the extraction so a later `update` reuses it:
 
 ```bash
 cd /path/to/your/project
@@ -119,37 +110,27 @@ mkdir -p .claude/alfred-code-src
 curl -fsSL https://github.com/envoydev/alfred-code/releases/latest/download/alfred-code.tar.gz \
   | tar -xz -C .claude/alfred-code-src
 
-node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src                 # first time
-node .claude/alfred-code-src/scripts/install/alfred-code.js update --source .claude/alfred-code-src --installed-only # later refreshes - only what is already installed, from disk
-node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --skills-only   # just the skills, nothing else
-
-# Named flags (any order): --space, --scope (project | user | local), --memory-level, --browsers, --browser-enabled, --docs-versioning, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source
-node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src --space work --scope user --memory-level scoped
+node .claude/alfred-code-src/scripts/install/alfred-code.js install --source .claude/alfred-code-src
+node .claude/alfred-code-src/scripts/install/alfred-code.js update --source .claude/alfred-code-src --installed-only
 ```
 
-The same command runs verbatim on Windows under `node.exe`, PowerShell or cmd - one program, no
-platform branch. `ALFRED_CODE_SEED=shell` (a Phase 7 flag from before 2.0.0) is retired: the frozen
-shell and PowerShell twins it used to select are gone, and setting it now refuses with a clear
-message instead of installing.
+Named flags: `--space`, `--scope` (project | user | local), `--memory-level`, `--browsers`, `--browser-enabled`, `--docs-versioning`, `--github-cli`, `--keep-pins`, `--selection`, `--installed-only`, `--add`, `--drop`, `--print-plan`, `--plan-out`, `--skills-only`, `--source`.
 
-Hard prerequisites: **node ≥ 22.12**, the **claude** CLI (it owns the plugin cache the install
-reads from), and **git** (the installers use it to find the repo root, and it is the download
-fallback when no plugin cache and no release archive are reachable).
-Everything else is per-surface - the script runs a prerequisites check first and warns
-(never fails) on what's missing, and the guided plugin flow walks you through the fixes.
+## FAQ
 
-Each run stamps the installed source commit into `alfred-code.stamp`;
-`/alfred-code:configure` diffs it against `main` to tell you what an update would bring.
+**Does it change my settings without telling me?** No. Every write is listed in 'What a run actually touches'; `/alfred-code:uninstall` removes only what the install ledger recorded.
 
-## Token & tool usage analysis
+**Does it touch my account settings?** Only the `env` keys and the plugin cache the CLI itself writes; the table above lists each one.
 
-The one piece of the stack worth naming here: the `instrument-tool-usage` hook, shipped with the
-rest in the core `alfred-code` plugin, records per-run tool / skill / MCP usage - wired by
-default behind an env gate, so it costs nothing until you flip `ALFRED_CODE_INSTRUMENT` from `"0"` to
-`"1"` in `.claude/settings.json` env (flip it back after the measured run), and
-[`scripts/analyze-usage.js`](scripts/analyze-usage.js) mines a session's transcript JSONL (plus
-its dispatched subagents) into a token/consumption report - join the two with `--hook-log` to see
-what fired and what it cost. Every per-session report carries an efficiency scorecard - the session's cost at list price (main and per seat, from the dated table in `meta/model-prices.json`), cache misses by Claude Code's own rule, compaction re-reads, build-dir reads, scoped against whole-suite test runs, checked commits, green claims with no check behind them, correction streaks, long answers, navigation (located reads against grep-then-read, whole-file denials), MCP calls a server answered with an error, dispatch overhead - each a measured number with its denominator, so a hook or rule change is read from a week of sessions instead of asserted.
+**Can I turn a hook off?** Yes: `ALFRED_CODE_HOOKS_OFF` takes a comma list, and `/alfred-code:configure` writes it for you.
+
+**What does it cost per message?** The always-on floor was measured at 87k-134k tokens across nine installs; `/alfred-code:status` reports your own.
+
+**Cursor?** Use [`cursor-stack`](https://github.com/envoydev/cursor-stack).
+
+## Measuring it
+
+The `instrument-tool-usage` hook (off until `ALFRED_CODE_INSTRUMENT` is `"1"`) records tool, skill and MCP use, and [`scripts/analyze-usage.js`](scripts/analyze-usage.js) turns a session transcript into a token report with an efficiency scorecard.
 
 ```bash
 node scripts/analyze-usage.js ~/.claude/projects/<encoded-project>/<session-id>.jsonl
