@@ -13,10 +13,6 @@
       "mcps": [],
       "plugins": []
     },
-    "alfred-capture-claude-md": {
-      "mcps": [],
-      "plugins": []
-    },
     "alfred-capture-code-quality": {
       "mcps": [],
       "plugins": []
@@ -43,6 +39,10 @@
       "mcps": [],
       "plugins": []
     },
+    "alfred-habits-adjust-claude-md": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-habits-clarify": {
       "mcps": [],
       "plugins": []
@@ -51,7 +51,15 @@
       "mcps": [],
       "plugins": []
     },
+    "alfred-habits-create-ticket": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-habits-done-gate": {
+      "mcps": [],
+      "plugins": []
+    },
+    "alfred-habits-explain-code": {
       "mcps": [],
       "plugins": []
     },
@@ -154,10 +162,6 @@
       "plugins": []
     },
     "capacitor-release": {
-      "mcps": [],
-      "plugins": []
-    },
-    "create-ticket": {
       "mcps": [],
       "plugins": []
     },
@@ -317,10 +321,6 @@
       ],
       "plugins": []
     },
-    "explain-code-tutor": {
-      "mcps": [],
-      "plugins": []
-    },
     "ilspy-decompile": {
       "mcps": [],
       "plugins": []
@@ -348,10 +348,6 @@
       "plugins": []
     },
     "nx": {
-      "mcps": [],
-      "plugins": []
-    },
-    "plugin-authoring": {
       "mcps": [],
       "plugins": []
     },

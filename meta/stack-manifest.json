@@ -3,7 +3,7 @@
   "skills": [
     {
       "repo": "envoydev/alfred-code",
-      "name": "create-ticket",
+      "name": "alfred-habits-create-ticket",
       "note": "ticket generator (bug/story/epic/task) - tracker-agnostic EN Markdown, routes to references/<type>.md"
     },
     {
@@ -13,7 +13,7 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "explain-code-tutor",
+      "name": "alfred-habits-explain-code",
       "note": "senior-mentor explainer for code/bug/concept/trade-off via real-file walkthrough; depth ELI5/intermediate/expert"
     },
     {
@@ -43,7 +43,7 @@
     },
     {
       "repo": "envoydev/alfred-code",
-      "name": "alfred-capture-claude-md",
+      "name": "alfred-habits-adjust-claude-md",
       "note": "create or improve a project's CLAUDE.md - the template's outline (Setup and Key files among it), a part's own <part>/CLAUDE.md, changes shown before an improve writes, and scripts/claude-md-check.js last; the one home of the CLAUDE.md fill /alfred-code:init runs"
     },
     {
@@ -154,7 +154,7 @@
     {
       "repo": "envoydev/alfred-code",
       "name": "alfred-habits-skill-writing",
-      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file, pointed at by plugin-authoring"
+      "note": "skill writing (Task 21, written fresh): skill vs rule / hook / reference, the description as the trigger, one home per piece, a lean platform-neutral body, proven without and with the skill plus the adverse phrasing; loaded by the skill-authoring rule on every skill file"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -170,11 +170,6 @@
       "repo": "envoydev/alfred-code",
       "name": "alfred-capture-stack-usage",
       "note": "token/tool usage audit of stack skill runs: transcript hunt -> analyze-usage.js per session -> per-session report + raw data under <docs-path>/alfred-code-usage-report/"
-    },
-    {
-      "repo": "envoydev/alfred-code",
-      "name": "plugin-authoring",
-      "note": "Claude Code plugin authoring: manifest + marketplace schema, layout and precedence, plugin root vs data paths, per-component rules, the validate / plugin-dir / details / eval loop, security review"
     },
     {
       "repo": "envoydev/alfred-code",
@@ -1030,7 +1025,11 @@
       "project-quality-loop",
       "project-architecture-quality-loop",
       "project-test-coverage-loop",
-      "project-commit-checkpoint"
+      "project-commit-checkpoint",
+      "alfred-capture-claude-md",
+      "create-ticket",
+      "explain-code-tutor",
+      "plugin-authoring"
     ],
     "agents": [
       "angular-solution-designer.md",
@@ -1101,7 +1100,10 @@
       "project-quality-loop": "alfred-loop-quality",
       "project-architecture-quality-loop": "alfred-loop-architecture-quality",
       "project-test-coverage-loop": "alfred-loop-test-coverage",
-      "project-commit-checkpoint": "alfred-habits-commit-checkpoint"
+      "project-commit-checkpoint": "alfred-habits-commit-checkpoint",
+      "alfred-capture-claude-md": "alfred-habits-adjust-claude-md",
+      "create-ticket": "alfred-habits-create-ticket",
+      "explain-code-tutor": "alfred-habits-explain-code"
     },
     "agents": {
       "ci-failure-diagnoser": "alfred-issue-diagnoser-ci",

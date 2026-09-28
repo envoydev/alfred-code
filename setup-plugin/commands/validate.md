@@ -603,7 +603,7 @@ that is gone, a command whose program is not on PATH, a placeholder or TODO left
 carrying the template's authoring text. Rows get ONE AskUserQuestion with NO option marked
 recommended - the check is heuristic, and a row can be correct text it could not resolve (a folder
 under a prefixed name, a program a script installs), so each row is the user's read: 'Review them with
-`/alfred-capture-claude-md`' (its improve mode shows every change before writing) or 'Leave them'.
+`/alfred-habits-adjust-claude-md`' (its improve mode shows every change before writing) or 'Leave them'.
 Never edit a CLAUDE.md from this command; a `command` row on a program only another OS runs is the
 user's call, not a fix.
 

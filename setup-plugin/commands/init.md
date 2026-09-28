@@ -165,7 +165,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the step cleanly. The installer seeded `.claude/CLAUDE.md` from
 `stack/CLAUDE.template.md` when the project had none; a CLAUDE.md with the project's own text (root,
 `.claude/` or a part's own) is NEVER overwritten. On a yes, read
-`$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
+`$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` (through Bash) and follow it inline, start to finish,
 with `STACK=$TMP/repo` - it is this step's instructions, the one home of the fill: its script picks
 create (the seed is still unfilled) or improve (every change shown before it is written), and the
 check closes it. The captures just run are what it cites for structure. Never offer skill, agent or

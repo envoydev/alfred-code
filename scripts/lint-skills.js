@@ -103,11 +103,6 @@ const NON_SKILL_TOKENS = new Set([
     'default-days',
     'run-s',
     'run-p',
-    // a command frontmatter field and the reserved marketplace names named in the plugin-authoring skill - identifiers, not skills.
-    'allowed-tools',
-    'claude-plugins-official',
-    'claude-community',
-    'anthropic-plugins',
     // CSP directive + npm package named in the browser-extension skill - identifiers, not skills.
     'unsafe-eval',
     'chrome-types',
@@ -2797,7 +2792,7 @@ const RETIRED_TERMS = [
     { name: 'ponytail', re: /\bponytail/i, use: "the house terms are 'build lean' / 'question the need' / 'over-build review'" },
     // 2.0.0 (the plugins audit, 2026-09-26): two third-party picks no install used.
     { name: 'security-guidance', re: /\bsecurity-guidance\b/i, use: 'what took its place is `/security-review`, the security-auditor seat and the commit checkpoint\'s security half' },
-    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-capture-claude-md)' },
+    { name: 'claude-md-management', re: /\bclaude-md-management\b/i, use: 'what took its place is the CLAUDE.md skill in the core (alfred-habits-adjust-claude-md)' },
 ];
 function lintRetiredNames(files)
 {

@@ -7,7 +7,7 @@ application. It holds what is applied to *other* projects: house-style skills, t
 template, hook scripts, convention rules, agents, and the installer that wires skills / MCP servers /
 plugins into each project. The **Cursor** twin lives in
 [`cursor-stack`](https://github.com/envoydev/cursor-stack), a sibling with its OWN skills, agents and
-installers (it does not clone this repo, and its lists may diverge - e.g. it ships no `plugin-authoring`).
+installers (it does not clone this repo, and its lists may diverge).
 A change that maps to Cursor is mirrored there in the same sitting. Consuming projects pull from
 here; a change made only inside a consuming project is throwaway.
 
@@ -43,7 +43,7 @@ change (see the invariants below).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
-  core's `alfred-capture-claude-md` skill is HOW, the one home of the fill (create, or improve with
+  core's `alfred-habits-adjust-claude-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/claude-md-check.js` is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
@@ -300,7 +300,7 @@ change (see the invariants below).
     bootstrap in the new session (`init-plan.js`: the machine installs behind one ask, the memory level
     - `scripts/install/memory.js init` imports Claude's old notes, switches its own memory off and
     writes the stamp's `initialised:` line - the captures, the CLAUDE.md fill through
-    `alfred-capture-claude-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
+    `alfred-habits-adjust-claude-md`). `ALFRED_CODE_UNATTENDED=1` in the launch environment (never seeded - a
     settings value would apply over a launcher's) runs init with nobody answering: each ask takes its
     Recommended option unless it is destructive (loses or replaces what the project or account owns - a
     claude-hud `refresh` line) or needs a person (typed text, a restart), then the option that changes
@@ -346,6 +346,11 @@ change (see the invariants below).
     seed also prunes every shipped COPY a plugin now carries. A retired pathless rule, hook wiring, MCP
     registration or plugin costs every session until pruned; a shipped-but-unneeded one is validate's
     whole-stack-absent pass, not a retirement.
+  - A retired skill or seat whose copy git TRACKS in the project is the project's own commit: the retired prune
+    and the ledger prune (`pruneCopies` / `pruneDroppedCopies`, `gitTracks`) keep it and name it. This repo
+    relies on it - `plugin-authoring` left the shipped catalog in 2.1.0 (`retired.skills`) and lives as this
+    repo's own skill in `.claude/skills/plugin-authoring`, tracked through the `.gitignore` negation
+    (`.claude/*`, `!.claude/skills/`, `.claude/skills/*`, `!.claude/skills/plugin-authoring/`).
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask

@@ -4,7 +4,7 @@
      none (auto-loaded, same as a root CLAUDE.md; keeps the repo root tidy) - copy it there by hand only when
      that seed step was skipped. To keep it committed, the project's .gitignore must ignore the .claude
      contents but track this file: `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks the re-include.
-The alfred-capture-claude-md skill fills it (create) or brings an existing one up to date (improve), and
+The alfred-habits-adjust-claude-md skill fills it (create) or brings an existing one up to date (improve), and
 ends on the deterministic check; by hand, the steps are:
 1. Write the project top from the authoring outline in the comment below - replace the
    `__PROJECT_NAME__` H1 with the project's own name, put the sections above ## Rules so the rules

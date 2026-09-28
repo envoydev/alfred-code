@@ -13,7 +13,7 @@ test('the core plugin is exactly the always closure - 30 skills, 9 agents', () =
     assert.ok(core, 'the core plugin must exist');
     assert.strictEqual(core.skills.length, 30);
     assert.strictEqual(core.agents.length, 9);
-    for (const s of ['alfred-capture-agent-capabilities', 'alfred-task-solve-cross', 'alfred-capture-claude-md'])
+    for (const s of ['alfred-capture-agent-capabilities', 'alfred-task-solve-cross', 'alfred-habits-adjust-claude-md'])
         assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);
     for (const a of ['integration-reviewer', 'security-auditor'])
         assert.ok(core.agents.includes(a), `${a} is always-closure, so it belongs to the core`);
@@ -50,8 +50,9 @@ test('the core is the only plugin; every other item is library', () => {
 });
 
 test('the opt-in skills and the opt-in agent are library like every stack item', () => {
-    for (const s of ['plugin-authoring', 'postgres', 'alfred-capture-related-projects', 'dotnet-web-backend'])
+    for (const s of ['postgres', 'alfred-capture-related-projects', 'dotnet-web-backend'])
         assert.ok(p.library.skills.includes(s), `${s} is library`);
+    assert.ok(!p.library.skills.includes('plugin-authoring') && !p.plugins[CORE].skills.includes('plugin-authoring'), 'plugin-authoring left the shipped catalog (2.1.0)');
     assert.ok(p.library.agents.includes('related-project-analyzer'));
     assert.ok(!(LIBRARY in p.plugins), 'the library is a set of files, never a plugin entry');
 });

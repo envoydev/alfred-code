@@ -789,12 +789,26 @@ function rehashKind(map, dir)
 
 // Remove each named copy the stack itself shipped. A file no list names is the project's own and is
 // never touched.
-function pruneCopies(ctx, dir, names, label, why)
+// A copy git tracks is the project's own commit, not a stale stack copy - this repo keeps its
+// plugin-authoring skill in .claude/skills after the catalog retired it. Outside a work tree, or with
+// git missing, nothing counts as tracked.
+function gitTracks(ctx, target)
+{
+    const r = ctx.rt.spawnCommand('git', ['ls-files', '-z', '--', target], { cwd: path.dirname(target), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return r.status === 0 && String(r.stdout || '').length > 0;
+}
+
+function pruneCopies(ctx, dir, names, label, why, { keepTracked = false } = {})
 {
     for (const name of names)
     {
         const target = path.join(dir, name);
         if (!fs.existsSync(target)) continue;
+        if (keepTracked && gitTracks(ctx, target))
+        {
+            ctx.log(`  ${label} kept (${why}, tracked in git): ${name}`);
+            continue;
+        }
         fs.rmSync(target, { recursive: true, force: true });
         ctx.log(`  ${label} pruned (${why}): ${name}`);
     }
@@ -816,8 +830,8 @@ function installSkillsAndAgents(ctx)
     // The same holds for a seat: a project agent outranks the plugin's own, so a leftover copy keeps
     // the old seat running. What a release retired goes on either route.
     const agentsDir = path.join(ctx.claudeDir, 'agents');
-    pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream');
-    pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream');
+    pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true });
+    pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true });
     if (ctx.routes.skills)
     {
         // A core item's copy would shadow the plugin's own; a library item this run did not pick is
@@ -1658,6 +1672,7 @@ function pruneDroppedCopies(ctx)
         const now = library.hashItem(at);
         if (!now) continue;
         if (now !== h) { ctx.log(`  ${rel}: kept - the stack copied it and this release no longer ships it, but it was changed since, so it is yours`); continue; }
+        if (/^(skills|agents)\//.test(rel) && gitTracks(ctx, at)) { ctx.log(`  ${rel}: kept - the stack copied it and this release no longer ships it, but git tracks it here, so it is yours`); continue; }
         fs.rmSync(at, { recursive: true, force: true });
         ctx.log(`  ${rel} removed - the stack copied it and this release no longer ships it`);
     }

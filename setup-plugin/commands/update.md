@@ -47,6 +47,9 @@ is kept for the projects that use it, with its uninstall command printed. The in
 marketplace key (`claude-stack` on a 1.x account - a registered key never changes), so its ids read <!-- legacy-name -->
 `alfred-code@claude-stack`: expected, not broken. <!-- legacy-name -->
 
+**Renamed in 2.1.0.** Three more skills took `alfred-habits-*` names (the last skill rows of the table below); the plugin
+authoring skill left the shipped catalog, and a retired copy git tracks in a project is kept and named, never pruned.
+
 **Renamed in 2.0.0.** The `project-*` skills and the two failure diagnosers take grouped `alfred-*`
 names. Update carries every pick, seat deny, `skillOverrides` value and selection line across and
 prunes the old copies, printing one `renamed: <kind> <old> -> <new>` line each - report them. The
@@ -83,6 +86,9 @@ prompts as its rules; `/alfred-loop-quality staged` is the stage-by-stage run a 
 | `/project-architecture-quality-loop` | `/alfred-loop-architecture-quality` |
 | `/project-test-coverage-loop` | `/alfred-loop-test-coverage` |
 | `/project-commit-checkpoint` | `/alfred-habits-commit-checkpoint` |
+| `/alfred-capture-claude-md` | `/alfred-habits-adjust-claude-md` |
+| `/create-ticket` | `/alfred-habits-create-ticket` |
+| `/explain-code-tutor` | `/alfred-habits-explain-code` |
 | seat `ci-failure-diagnoser` | seat `alfred-issue-diagnoser-ci` |
 | seat `runtime-failure-diagnoser` | seat `alfred-issue-diagnoser-runtime` |
 
@@ -486,7 +492,7 @@ never regex, never touching other wiring). A migration's `then` line goes in the
 as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's CLAUDE.md
-Read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline with
+Read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline with
 `STACK=$TMP/repo`, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules

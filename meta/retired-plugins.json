@@ -56,7 +56,7 @@
       "name": "claude-md-management",
       "marketplace": "claude-plugins-official",
       "retiredIn": "2.0.0",
-      "why": "a third-party pick the plugins audit (2026-09-26) found unused - 0 uses in 230 sessions it was enabled in; the core's alfred-capture-claude-md skill creates or improves a CLAUDE.md and closes on a deterministic check, and a session's learnings belong in the shared memory server, not the file",
+      "why": "a third-party pick the plugins audit (2026-09-26) found unused - 0 uses in 230 sessions it was enabled in; the core's alfred-habits-adjust-claude-md skill creates or improves a CLAUDE.md and closes on a deterministic check, and a session's learnings belong in the shared memory server, not the file",
       "addBack": "claude plugin install claude-md-management@claude-plugins-official --scope <scope>"
     },
     {
