@@ -453,7 +453,7 @@ function writeSettings(opts)
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
         docsVersioning, docsPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
-        inheritedOverrides = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
+        inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
     // R10: the last run's ledger (null - no stamp, or one from before it: the fallback) and the hook
@@ -760,6 +760,37 @@ function writeSettings(opts)
         fs.writeFileSync(localFile, `${JSON.stringify(local, null, 2)}\n`);
     }
     const createdLocalFile = createdLocal && localChanged;
+
+    // A local-scope run writes settings.local.json, but the stack's OWN stale rows may sit in the shared
+    // settings.json a legacy copy-route install wrote: its hook wiring (a hook file this route no longer
+    // copies, run on every call) and its 1.x env keys. Those go - by file name and by key, never a hook
+    // or key the user wrote. Nothing is added to the shared file; an unreadable one is left as it is.
+    if (sharedFile && sharedFile !== file && fs.existsSync(sharedFile))
+    {
+        let shared = null;
+        try { ({ data: shared } = readSettings(sharedFile)); }
+        catch (err) { note(`${err.message} - its stale stack rows are not removed this run`); }
+        if (shared)
+        {
+            const sharedName = path.basename(sharedFile);
+            const before = JSON.stringify(shared);
+            wireHooks(shared, [], retiredHooks);
+            const priorShared = prior && prior.hooks ? prior.hooks.filter((h) => h.file === sharedName) : [];
+            const releaseIds = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
+            for (const g of unwireIds(shared, new Set(priorShared.filter((h) => !releaseIds.has(h.id)).map((h) => h.id))))
+                log(`  ${sharedName}: hook wiring ${g.hook} (${g.event}) removed - the stack wired it and this release no longer does`);
+            if (plain(shared.env))
+            {
+                renameEnv(shared.env, migrations, log, sharedName);
+                retireAndReseed(shared.env, migrations, log, sharedName);
+            }
+            if (JSON.stringify(shared) !== before)
+            {
+                fs.writeFileSync(sharedFile, `${JSON.stringify(shared, null, 2)}\n`);
+                log(`  ${sharedName}: the stack's stale rows removed (a local-scope run writes ${label})`);
+            }
+        }
+    }
 
     if (!changed) return { written: localChanged, refused: false, createdLocal: createdLocalFile, managed };
     fs.mkdirSync(path.dirname(file), { recursive: true });

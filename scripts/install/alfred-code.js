@@ -1421,6 +1421,8 @@ function installHooksAndRules(ctx)
         // hook this run did not select keeps its wiring, one the release dropped loses it.
         ledger: { prior: ctx.ledger, releaseHooks: ctx.routes.hooks ? [] : ctx.manifest.catalogs.hooks, shippedDeny: SHIPPED_DENY },
         file: settings.settingsTarget(ctx.claudeDir, ctx.args.scope),
+        // A local-scope run leaves the stack's stale wiring and 1.x keys in settings.json - it removes them there.
+        sharedFile: ctx.args.scope === 'local' ? path.join(ctx.claudeDir, 'settings.json') : null,
         catalog, migrations, hookSpecs: wired,
         denySpecs: SECRET_DENY, retiredDeny: RETIRED_DENY, agentDeny, agentAllow,
         retiredEntries: readRetiredEntries(ctx.source.dir).map((e) => e.name), liveEntries: ctx.liveCarriers || null,
