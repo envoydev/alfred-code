@@ -1,5 +1,5 @@
 ---
-description: "FRESH install of Alfred Code into a project - ask scope + profile up front, then detect the OS + analyse the project, show what it needs and why (the evidence scan plus validate's missing and evidence-gap checks, in a fresh-install mode), and walk the selection in six dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs -> plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then one selection round - Recommended / All / None, or typed numbers to add and drop. Prerequisite check, install, the environment, permission and plugin-settings merges, then a closing card that ends on the restart and /alfred-code:init, the one-time bootstrap (services, memory, captures, CLAUDE.md). NOT for an existing install - that routes to configure."
+description: "FRESH install of Alfred Code into a project - ask scope + profile up front, then detect the OS + analyse the project, show what it needs and why (the evidence scan plus validate's missing and evidence-gap checks, in a fresh-install mode), and walk the selection in six dependency-ordered layers (rules -> agents -> skills -> hooks -> MCPs -> plugins): each layer shows ONE numbered table of the whole catalog (recommended pre-selected, locked rows carrying the required-by reason), then one selection ask - keep the marked rows, pick groups to add or drop from options, add every row, or only the locked rows. Prerequisite check, install, the environment, permission and plugin-settings merges, then a closing card that ends on the restart and /alfred-code:init, the one-time bootstrap (services, memory, captures, CLAUDE.md). NOT for an existing install - that routes to configure."
 disable-model-invocation: true
 ---
 
@@ -89,11 +89,18 @@ Project mode - detect stacks by artifact and record which apply (this detection 
 Alongside the stack scan, run the EVIDENCE scan quietly - one call, one narration line:
 `node "$TMP/repo/scripts/scan-evidence.js" --root . --catalog "$TMP/repo/meta/evidence.json" --out "$TMP/found.json"` - a deterministic read of the project's package manifests (csproj / Directory.Packages.props / package.json) against the signal catalog. Its `found` map feeds the walk's tables via `--found` and pre-selects what the project provably uses; the conclusions are computed from THIS project's files, never assumed.
 
-A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (confirm as detected - recommended; adjust via Other, naming stacks to add or drop) - the walk starts IMMEDIATELY after this answer, no other question in between:
+A project can match several. Report the detected stacks and put the confirmation through AskUserQuestion (the stacks template below - an add or a remove is picked from options, never typed) - the walk starts IMMEDIATELY after this answer, no other question in between:
 
 ```
 [step 3/11 - project analysis] confirm the detected stacks · next: rules
 Detected: aspnet (src/Api/Api.csproj - Microsoft.NET.Sdk.Web), web-angular (angular.json), devops (Dockerfile + .github/workflows/)
+```
+
+```ask
+Confirm the detected stacks: <detected csv>?
+- 'Confirm <detected csv> (Recommended)' - the walk seeds from exactly these
+- 'Add stacks' - next call lists the catalog's other stacks as multi-select questions (up to 3 questions of 4)
+- 'Remove a stack' - next call lists the detected stacks as one multi-select question
 ```
 
 Stack names are the catalog keys of `$TMP/repo/meta/recommendations.json` (`web-angular`, never `angular`) - `--stacks` takes exactly those, and the tool names an unknown one on stderr (`unknown-stack`) instead of silently seeding nothing.
@@ -123,7 +130,7 @@ mode - the one walk text this command shares with `/alfred-code:configure`, so t
 The layers run in dependency order, rules -> agents -> skills -> hooks -> MCPs -> plugins, over one
 `raw.json` of direct picks, and every layer has the same three beats: recompute quietly, paste the
 tool's full-catalog table in a fenced block after the `[step n/11 - <layer>]` banner, then one
-selection round (Recommended / All / None, or typed numbers). The file owns the table rules, the
+selection ask (Keep the marked rows / Pick ... / Add every ... / Only the locked rows, then one grouped multi-select call on 'Pick'; typing is only through Other). The file owns the table rules, the
 selection round and each layer's notes; the steps below add only what is this command's own.
 
 ## 4. Rules

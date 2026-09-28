@@ -1031,3 +1031,60 @@ test('N9: update.md states the claude-hud status-line line prints on every run, 
     assert.doesNotMatch(body, /When claude-hud is installed this run and the account has no/, 'update.md must not narrow the trigger to a fresh install this run');
     assert.match(body, /claude-hud is installed - this run or already/, 'update.md must say the line fires on every run while claude-hud is installed and statusLine is missing');
 });
+
+// ---- layer asks: every walk layer offers pickable options, never only whole-layer verdicts --------
+const { lintAskTemplates, setupAskFiles, SETUP_ASK_TEMPLATES } = require('./lint-skills.js');
+const askBlocks = (text) => [...text.matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?)^[ \t]*```/gm)]
+    .map((m) => m[1].split('\n').map((l) => l.trim()).filter(Boolean));
+const sectionOf = (text, heading) =>
+{
+    const at = text.indexOf(`\n## ${heading}\n`);
+    assert.ok(at >= 0, `walk.md has a '## ${heading}' section`);
+    const next = text.indexOf('\n## ', at + 4);
+    return text.slice(at, next < 0 ? undefined : next);
+};
+
+test('lint check 61 reads setup-plugin: a template with no recommended option is a finding', () =>
+{
+    const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'alfred-ask-'));
+    try
+    {
+        fs.mkdirSync(path.join(tmp, 'setup-plugin', 'references'), { recursive: true });
+        fs.mkdirSync(path.join(tmp, 'setup-plugin', 'commands'), { recursive: true });
+        fs.writeFileSync(path.join(tmp, 'setup-plugin', 'references', 'walk.md'), "```ask\nKeep the rows?\n- 'Keep' - why\n- 'Drop' - why\n```\n");
+        fs.writeFileSync(path.join(tmp, 'setup-plugin', 'commands', 'setup.md'), "```ask\nGo?\n- 'Go (Recommended)' - why\n- 'Stop' - why\n```\n");
+        const files = setupAskFiles(tmp);
+        assert.deepStrictEqual(files.map((f) => f.file).sort(), ['setup-plugin/commands/setup.md', 'setup-plugin/references/walk.md']);
+        const findings = lintAskTemplates(files);
+        assert.strictEqual(findings.length, 1);
+        assert.match(findings[0], /walk\.md.*no option marked '\(Recommended\)'/);
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('every layer ask in walk.md offers 2-4 options with the recommended one first', () =>
+{
+    const walk = fs.readFileSync(path.join(PLUGIN_DIR, 'references', 'walk.md'), 'utf8');
+    const blocks = askBlocks(walk);
+    assert.strictEqual(blocks.length, SETUP_ASK_TEMPLATES['setup-plugin/references/walk.md'], 'the walk.md template count is pinned');
+    for (const b of blocks)
+    {
+        const opts = b.filter((l) => /^- '/.test(l));
+        assert.ok(opts.length >= 2 && opts.length <= 4, `'${b[0].slice(0, 50)}' offers ${opts.length} options - AskUserQuestion takes 2-4`);
+        assert.match(opts[0], /\(Recommended\)'/, `'${b[0].slice(0, 50)}' lists the recommended option first`);
+        assert.strictEqual(opts.filter((l) => /\(Recommended\)'/.test(l)).length, 1);
+    }
+    for (const layer of ['Rules', 'Agents', 'Skills', 'Hooks', 'MCPs', 'Plugins'])
+        assert.ok(askBlocks(sectionOf(walk, layer)).length >= 1, `the ${layer} layer carries its own ask template`);
+    assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
+});
+
+test('setup and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
+{
+    const setup = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'setup.md'), 'utf8');
+    const configure = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'configure.md'), 'utf8');
+    assert.strictEqual(askBlocks(setup).length, SETUP_ASK_TEMPLATES['setup-plugin/commands/setup.md']);
+    assert.doesNotMatch(setup, /Recommended \/ All \/ None, or typed numbers/);
+    assert.doesNotMatch(configure, /an ADD round and a DROP round/);
+    assert.match(configure, /walk\.md's DELTA/);
+});

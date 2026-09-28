@@ -777,6 +777,6 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   but first (a label runs to its last quote before ` - `, so an apostrophe stays in it); the three flow skills
   (`alfred-task-solve`, `-cross`, `alfred-issue-diagnoser`) carry theirs in SKILL.md at a count pinned in
   `ASK_FLOW_TEMPLATES`, so one stop dropped back to prose goes red (pilot 3: 18 of 40 flow asks had no mark,
-  and the approver took the first option each time).
+  and the approver took the first option each time). The setup / configure walk's layer asks are templates too (`setup-plugin/references/walk.md` and `commands/setup.md`, pinned in `SETUP_ASK_TEMPLATES`): each layer's first ask is a single-select (keep the marked rows / pick / add every / only the locked rows) and 'Pick' opens ONE call of up to 4 multi-select questions grouped from the table's own labels, so no per-row change is typed.
 - Skills are shared with Cursor: a skill body stays platform-neutral (conditionals like 'INLINE when no
   dispatch'), never forked per platform.

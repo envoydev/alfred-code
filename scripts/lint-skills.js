@@ -1128,6 +1128,46 @@ function lintReferenceContents(skillsDir, skillDirs, fsLike = fs)
 // pinned per skill, so a rewrite that drops even one stop back to prose goes red (a new stop raises the pin).
 const ASK_FLOW_TEMPLATES = { 'alfred-task-solve': 6, 'alfred-task-solve-cross': 5, 'alfred-issue-diagnoser': 4 };
 const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
+// The setup / configure walk's layer asks are templates too (2026-09-29: a walk with whole-layer verdicts only left every
+// per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
+const SETUP_ASK_TEMPLATES = {
+    'setup-plugin/references/walk.md': 9,
+    'setup-plugin/commands/setup.md': 1,
+    'setup-plugin/commands/configure.md': 0,
+};
+// The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
+function setupAskFiles(root, fsLike = fs)
+{
+    const files = [];
+    for (const rel of Object.keys(SETUP_ASK_TEMPLATES))
+    {
+        const full = path.join(root, rel);
+        if (fsLike.existsSync(full)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(full, 'utf8') });
+    }
+    for (const dir of ['references', 'commands'])
+    {
+        const d = path.join(root, 'setup-plugin', dir);
+        if (!fsLike.existsSync(d)) continue;
+        for (const f of fsLike.readdirSync(d))
+        {
+            const rel = `setup-plugin/${dir}/${f}`;
+            if (f.endsWith('.md') && !files.some((x) => x.file === rel)) files.push({ skill: 'setup-plugin', file: rel, text: fsLike.readFileSync(path.join(d, f), 'utf8') });
+        }
+    }
+    return files;
+}
+function lintSetupAskPresence(files)
+{
+    const findings = [];
+    for (const [rel, pinned] of Object.entries(SETUP_ASK_TEMPLATES))
+    {
+        const f = files.find((x) => x.file === rel);
+        const n = f ? [...f.text.matchAll(/^[ \t]*```ask[ \t]*$/gm)].length : 0;
+        if (n !== pinned) findings.push(`${rel}: carries ${n} \`ask\` template(s), pinned at ${pinned} - `
+            + (n < pinned ? 'a layer ask went back to prose (check 61)' : 'a new ask raises the pin in SETUP_ASK_TEMPLATES (check 61)'));
+    }
+    return findings;
+}
 // A label is the text between `- '` and the LAST quote before ` - `, so an apostrophe inside it ('Hold - don't commit')
 // stays in the label; an option with no why ends at its closing quote.
 const askLabel = (line) => { const m = line.match(/^- '(.*)' - /) || line.match(/^- '(.*)'\s*$/); return m ? m[1] : ''; };
@@ -2276,7 +2316,9 @@ function main()
             if (fs.existsSync(refDir)) for (const r of fs.readdirSync(refDir)) if (r.endsWith('.md')) files.push(path.join(refDir, r));
             for (const f of files) if (fs.existsSync(f)) askFiles.push({ skill: d, file: path.relative(ROOT, f), text: fs.readFileSync(f, 'utf8') });
         }
-        for (const finding of lintAskTemplates(askFiles)) flag(finding);
+        const setupFiles = setupAskFiles(ROOT);
+        for (const finding of lintAskTemplates([...askFiles, ...setupFiles])) flag(finding);
+        for (const finding of lintSetupAskPresence(setupFiles)) flag(finding);
         const flowTexts = {};
         for (const d of ASK_FLOW_SKILLS) { const f = path.join(SKILLS_DIR, d, 'SKILL.md'); flowTexts[d] = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : undefined; }
         for (const finding of lintFlowAskPresence(flowTexts)) flag(finding);
@@ -3178,6 +3220,9 @@ module.exports = {
     lintFlowAskPresence,
     ASK_FLOW_SKILLS,
     ASK_FLOW_TEMPLATES,
+    SETUP_ASK_TEMPLATES,
+    setupAskFiles,
+    lintSetupAskPresence,
     optionalSkills,
     optionalAgents,
     lintSuggestionEdges,

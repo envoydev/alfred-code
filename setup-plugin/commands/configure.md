@@ -1,5 +1,5 @@
 ---
-description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
@@ -170,9 +170,9 @@ cannot drift. The layers run in dependency order, rules -> agents -> skills -> h
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
 `$TMP/installed.json`, and every layer has the same three beats: recompute quietly (`stack-select.js
 --selection raw.json --dropped dropped.json`, reading its `required:` and `orphan:` lines), paste the
-tool's full-catalog table in a fenced block after the `[step n/13 - <layer>]` banner, then an ADD
-round and a DROP round, a locked drop running the consent cascade. The file owns the table rules,
-the rounds and each layer's notes; the steps below add only what is this command's own.
+tool's full-catalog table in a fenced block after the `[step n/13 - <layer>]` banner, then ONE call
+of two option questions (ADD and DROP - walk.md's DELTA templates, 'Pick' opening a grouped multi-select call), a locked drop running the consent cascade. The file owns the table rules,
+the asks and each layer's notes; the steps below add only what is this command's own.
 
 ## 3. Rules
 
