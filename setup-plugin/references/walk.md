@@ -69,8 +69,9 @@ grep at 258k context to confirm this shape):
    table shown at all. A disk copy, if you want one, is `| tee "$TMP/table.txt"` - the pipe keeps
    the output visible.) **The layer turn has ONE fixed shape, in order: (1) the `[step n/N -
    <layer>]` banner, (2) the fenced block holding the tool output byte-for-byte, (3) the selection
-   question - a layer turn missing the fenced table is invalid: render the table and re-send.** The
-   plugin's `guard-layer-table.js` hook denies the ask (up to three times) when no `total: N
+   question - a layer turn missing the fenced table is invalid: paste the output you already have,
+   never re-run the table.** The plugin's `guard-layer-table.js` hook denies the ask (up to three
+   times per table, counted back to the last answered ask) when no `total: N
    <layer>` footer follows the table call in your text. Self-check before you send the question:
    your own message must carry the `total: N <layer>` footer line - it is not there unless you
    pasted the table. A prose grouping that feels equivalent (`Locked (5): ...` / `Installed (12):

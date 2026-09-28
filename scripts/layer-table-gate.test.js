@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const HOOK = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-table-'));
@@ -41,7 +41,7 @@ test('a footer for a DIFFERENT layer does not satisfy the gate', () => {
   assert.strictEqual(r.status, 2);
 });
 
-const denied = (n) => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, 'alfred-code layer-table gate: ...', true)];
+const denied = (n, layer = 'skills') => [call(`a${n}`, 'AskUserQuestion', ask), result(`a${n}`, `alfred-code layer-table gate: the ${layer} table ran but its output is not in your message`, true)];
 
 test('keeps denying a retry that only CLAIMS the paste - the measured skills turn did it three times', () => {
   const r = run([table('skills'), result('t1', 'total: 78 skills'), ...denied(1), say('[step 6/12 - skills] full 78-row catalog, pasted below'), ...denied(2)]);
@@ -59,7 +59,7 @@ test('lets the ask through after three denials for the same table call - never l
 });
 
 test('a new table call resets the denial count', () => {
-  const r = run([table('agents'), ...denied(1), ...denied(2), ...denied(3), say('```\ntotal: 43 agents\n```'), table('skills'), result('t1', 'total: 78 skills')]);
+  const r = run([table('agents'), ...denied(1, 'agents'), ...denied(2, 'agents'), ...denied(3, 'agents'), say('```\ntotal: 43 agents\n```'), table('skills'), result('t1', 'total: 78 skills')]);
   assert.strictEqual(r.status, 2);
 });
 
@@ -139,4 +139,74 @@ test('fail-open on a missing transcript or garbage payload', () => {
   assert.strictEqual(r.status, 0);
   const r2 = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'AskUserQuestion', transcript_path: path.join(TMP, 'nope.jsonl') }), encoding: 'utf8' });
   assert.strictEqual(r2.status, 0);
+});
+
+// The ask's own message (text rows + the AskUserQuestion tool_use, one message.id) is written to the
+// transcript asynchronously, so at PreToolUse time it may not be on disk yet. The hook waits for the
+// row carrying the payload's tool_use_id, and fails open when it never lands.
+const OWN = 'own1';
+const own = (text) => [
+  { type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'text', text }] } },
+  { type: 'assistant', message: { id: 'm9', role: 'assistant', content: [{ type: 'tool_use', id: OWN, name: 'AskUserQuestion', input: ask }] } },
+];
+const footer = '```\n 1  x\ntotal: 20 rules\n```';
+const base = () => [typed('/alfred-code:setup'), table('rules'), result('t1', ' 1  x\ntotal: 20 rules')];
+const write = (rows) => {
+  const p = path.join(TMP, `${Math.random().toString(36).slice(2)}.jsonl`);
+  fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  return p;
+};
+const payloadFor = (p) => JSON.stringify({ tool_name: 'AskUserQuestion', tool_input: ask, transcript_path: p, tool_use_id: OWN });
+const runWith = (rows, env = {}) => {
+  const t0 = Date.now();
+  const r = spawnSync(process.execPath, [HOOK], { input: payloadFor(write(rows)), encoding: 'utf8', env: { ...process.env, ...env } });
+  return { status: r.status, stderr: r.stderr, ms: Date.now() - t0 };
+};
+
+test('a paste in the ask own message that lands after the hook starts passes', async () => {
+  const p = write(base());
+  const child = spawn(process.execPath, [HOOK], { env: { ...process.env, ALFRED_CODE_LAYER_GATE_WAIT_MS: '3000' } });
+  child.stdin.end(payloadFor(p));
+  setTimeout(() => fs.appendFileSync(p, own(footer).map((r) => JSON.stringify(r)).join('\n') + '\n'), 300);
+  const status = await new Promise((res) => child.on('close', res));
+  assert.strictEqual(status, 0);
+});
+
+test('the ask own row never landing within the wait fails open', () => {
+  const r = runWith(base(), { ALFRED_CODE_LAYER_GATE_WAIT_MS: '150' });
+  assert.strictEqual(r.status, 0);
+  assert.ok(r.ms < 1500, `took ${r.ms}ms`);
+});
+
+test('own row on disk and no paste anywhere still denies, without waiting', () => {
+  const r = runWith([...base(), ...own('Here is the roster.')], { ALFRED_CODE_LAYER_GATE_WAIT_MS: '5000' });
+  assert.strictEqual(r.status, 2);
+  assert.ok(r.ms < 2500, `took ${r.ms}ms`);
+});
+
+test('a paste split into a text row and a tool_use row sharing one message.id passes', () => {
+  assert.strictEqual(runWith([...base(), ...own(footer)]).status, 0);
+});
+
+test('a CRLF paste passes (Windows)', () => {
+  const crlf = footer.replace(/\n/g, '\r\n');
+  const rows = [typed('/alfred-code:setup'), table('rules'), result('t1', ' 1  x\r\ntotal: 20 rules\r\n'), ...own(crlf)];
+  assert.strictEqual(runWith(rows).status, 0);
+});
+
+test('a table re-run does not reset the valve', () => {
+  const rows = [typed('/alfred-code:setup'), table('rules'), ...denied(1, 'rules'), table('rules'), ...denied(2, 'rules'), table('rules'), ...denied(3, 'rules'), table('rules'), result('t1', 'total: 20 rules')];
+  assert.strictEqual(run(rows).status, 0);
+});
+
+test('an answered ask starts a new count', () => {
+  const answered = [call('ok1', 'AskUserQuestion', ask), result('ok1', 'User has answered: Recommended')];
+  const rows = [table('rules'), ...denied(1, 'rules'), ...denied(2, 'rules'), ...denied(3, 'rules'), ...answered, table('rules'), result('t1', 'total: 20 rules')];
+  assert.strictEqual(run(rows).status, 2);
+});
+
+test('the denial tells the model not to re-run the table', () => {
+  const r = run([table('rules'), result('t1', 'total: 20 rules')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /do not re-run/i);
 });

@@ -349,7 +349,7 @@ change (see the invariants below).
   - The `/alfred-code` router is a SKILL and the workers are COMMANDS on purpose (commands list
     namespaced, skills list bare) - do not convert either back.
   - Table before question: `hooks/guard-layer-table.js` (PreToolUse `AskUserQuestion`) denies an ask
-    (up to 3 times per table) whose decision table was run but never pasted - a `stack-select.js
+    (up to 3 times per table since the last answered ask; it waits for the ask's own transcript row and fails open) whose decision table was run but never pasted - a `stack-select.js
     --table` catalog, the `plugin-settings.js` report or validate's install audit. It ships in the plugin because a fresh setup
     has no stack hooks yet; the rule text is pinned as `table-before-question`.
   - None of the seven carries `allowed-tools` - settled: it is a per-turn permission pre-approval, not a
