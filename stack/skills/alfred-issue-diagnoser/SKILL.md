@@ -111,7 +111,7 @@ cycle in the same chat, even when an earlier cycle already loaded it.
    stop rather than re-deriving it here. Write the findings file with the observable and
    `Tier: <n>`. *Stop.*
 2. **GATHER** - per the mode: dispatch one evidence-gatherer per source (reproduce this path,
-   pull and grep that log window, capture that screen), several in parallel when several
+   pull and grep that log window, capture that screen) exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), several in parallel when several
    hypotheses need confirming, and reason over the compact digests they return; or run the
    bounded commands inline. Correlate multiple sources on a shared key - a correlation/trace id,
    a timestamp window, a release version - and say which sources agreed and which did not. At

@@ -30,5 +30,5 @@ When frontend and backend live in different repositories, run one flow per repo 
 1. Scope in-session: the related-context entries say the Angular client consumes the ASP.NET API; the export touches both -> backend produces, frontend consumes, routine seam -> **cross_domain_light**.
 2. Dispatch the producer's solution-designer seat (here the .NET web one). Its plan's interface section - the export route, csv response shape, error envelope, existing orders auth policy - is recorded in the ledger as the seam.
 3. Run the aspnet vertical; brief the angular implementer(s) from the recorded interface and run the angular vertical (implementers -> verifier).
-4. Both domain verifiers sign off -> dispatch integration-reviewer; it probes the seam (content type, empty-result shape, auth on the new route) and signs off.
+4. Both domain verifiers sign off -> dispatch integration-reviewer, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it); it probes the seam (content type, empty-result shape, auth on the new route) and signs off.
 5. Commit - authorized by the integration gate, not the domain sign-offs - and close out the ledger.

@@ -49,7 +49,7 @@ alfred-issue-diagnoser-runtime is the bug-side equivalent of a solution designer
 | domain verifiers | verify the fix against diagnosis, reproduction, tests, and contract | no / read-only preferred |
 | integration-reviewer | check cross-domain issue fixes; block merging a partial fix | no / read-only preferred |
 
-The two diagnosers dispatching a read-only evidence-gatherer is the stack's one sanctioned nested dispatch. Gathering is observation, not a fix, so parallel gather-tasks do not break the one-change-at-a-time debugging discipline.
+The two diagnosers dispatching a read-only evidence-gatherer (exactly as the roster spells it, `alfred-code:<seat>` where the core plugin carries it) is the stack's one sanctioned nested dispatch. Gathering is observation, not a fix, so parallel gather-tasks do not break the one-change-at-a-time debugging discipline.
 
 ## Investigation-only mode
 

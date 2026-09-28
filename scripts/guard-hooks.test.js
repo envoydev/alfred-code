@@ -1085,6 +1085,9 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   assert.equal(disp('wpf-implementer'), 2, 'bare - the copy route and cursor-stack');
   assert.equal(disp('claude-stack-wpf:wpf-implementer'), 2, 'scoped to a per-stack plugin');
   assert.equal(disp('alfred-code:wpf-implementer'), 2, 'scoped to the core plugin');
+  // 2.1.0 ships every seat in the core, so this is the ONLY spelling a plugin-route flow can dispatch.
+  assert.equal(disp('alfred-code:aspnet-implementer'), 2, 'a stack implementer on the core, no APPROVAL');
+  assert.equal(disp('alfred-code:aspnet-verifier'), 0, 'a verifier on the core still needs no stamp');
   // Gating this one would block a tool the user chose with a message about a flow it has no part
   // in - it carries no APPROVAL convention, so there is nothing for the stamp to authorize.
   assert.equal(disp('someoneelse:their-implementer'), 0, 'a FOREIGN plugin implementer is not this flow\'s seat');
@@ -1095,6 +1098,7 @@ test('guard-unapproved-dispatch: a scoped house seat is the same seat, a foreign
   assert.equal(disp('claude-stack-wpf:wpf-verifier'), 0, 'a scoped verifier still needs no stamp');
   fs.writeFileSync(gate, 'APPROVED plan-1 - "go ahead"\n');
   assert.equal(disp('claude-stack-wpf:wpf-implementer'), 0, 'and the stamp releases the scoped seat too');
+  assert.equal(disp('alfred-code:aspnet-implementer'), 0, 'and the core spelling');
 });
 
 test("guard-unapproved-dispatch: a stamp written before this session began is another session's consent", () => {

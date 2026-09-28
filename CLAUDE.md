@@ -47,7 +47,7 @@ change (see the invariants below).
 - `stack/CLAUDE.template.md` - the stack-neutral per-project skeleton a consuming project's
   `CLAUDE.md` is filled in from. Conventions ship separately in `stack/rules/baseline-*.md`. Its
   authoring outline (Setup and Key files among it) and keep-out list say WHAT a CLAUDE.md holds; the
-  core's `alfred-habits-adjust-claude-md` skill is HOW, the one home of the fill (create, or improve with
+  always-on `alfred-habits-adjust-claude-md` skill is HOW, the one home of the fill (create, or improve with
   every change shown first, a separate part getting its own `<part>/CLAUDE.md`) - `/alfred-code:init`,
   `update` and `configure` follow it inline; and `scripts/claude-md-check.js` is the verdict it closes
   on: every named path exists, every command's program resolves on PATH or in the project, no
@@ -136,8 +136,8 @@ change (see the invariants below).
     name rule is what catches a credential a `$(...)` COMPUTES (`gh auth token`, a keychain or vault read),
     so a stack snippet never assigns a credential-shaped name (the source-protocol snippet's marketplace key
     is `MKT`; as `KEY` it was blocked twice in pilot 2).
-  - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch
-    without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
+  - `guard-unapproved-dispatch.js` (PreToolUse `Task|Agent`) - blocks an `*-implementer` dispatch (bare or
+    `alfred-code:`-prefixed; a foreign plugin's is not the flow's seat) without the `<docs-path>/flow/APPROVAL` gate file (written on explicit approval or an AUTO waiver),
     blocks a generic `general-purpose`/`claude` dispatch while that stamp is live (stamps older than 8h
     or the session are absent), and blocks an `Explore`/generic dispatch asking a SYMBOL question. An
     `Explore` / `Plan` brief gets the untrusted-content sentence appended (`updatedInput`, never a deny).
@@ -266,7 +266,10 @@ change (see the invariants below).
 - `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
   denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
   their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50;
-  plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy):
+  plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy). A plugin
+  seat answers only to `alfred-code:<seat>` (spike S1: a bare name is 'Agent type not found'), so every
+  body that dispatches a named seat says to dispatch it exactly as the roster spells it (pinned as
+  `seat-dispatch-spelling`; `scripts/seat-dispatch-spelling.test.js` fails a new site without it):
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
   - cross-cutting: `alfred-issue-diagnoser-ci`, `alfred-issue-diagnoser-runtime`, `security-auditor` (read-only

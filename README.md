@@ -65,14 +65,14 @@ Then, in Claude Code: `/alfred-code:setup`, restart, `/alfred-code:init`. Per-pr
 | **Rules** | 20 | always-on baselines + path-scoped conventions, `.claude/rules/` |
 | **Hooks** | 17 | deterministic guards (a weakened check config among them), a log-only session monitor, a turn-end build check (off by default), the architecture docs hook, the shared-memory session hook, a machine-local session history, and an env-gated usage instrument (off by default), shipped inside the core `alfred-code` plugin; only the three engines and the model-window table land in `.claude/hooks/` |
 | **MCP servers** | 4 | one plugin each, named for its role - navigation (Serena), documentation (Context7), memory, browser (Playwright MCP) - 7 entries, the browser one per engine; plus two opt-in desktop servers, windows-desktop (Windows-MCP, seeded for WPF and WinForms) and macos-desktop (MacOS-MCP), each offered on its own OS only; the project's closure enables its own |
-| **Plugins** | 2 + the stack's own | two optional third-party picks via the `claude` CLI, the LSP pair, each suggested on evidence (a `*.csproj`, a `tsconfig.json`) - plus `claude-hud`, which every install carries beside the core (`claude-hud` at user scope - its status line is account-wide), and the core `alfred-code` itself - the always-on skills and seats, and every hook |
+| **Plugins** | 2 + the stack's own | two optional third-party picks via the `claude` CLI, the LSP pair, each suggested on evidence (a `*.csproj`, a `tsconfig.json`) - plus `claude-hud`, which every install carries beside the core (`claude-hud` at user scope - its status line is account-wide), and the core `alfred-code` itself - every seat, the `/alfred-code` router and every hook |
 
 The full inventory of every skill, agent, rule and hook is [`docs/alfred-code.html`](docs/alfred-code.html).
 
 ## How it works
 
 - **One source per run.** Every surface comes from one snapshot (the plugin cache, else the release archive, else a shallow clone), so an install is a single revision, recorded in `.claude/alfred-code.stamp`.
-- **Core plus library.** The always-on skills, core seats and all hooks ride the `alfred-code` plugin; every other pick is a copy in `.claude/` that you can switch off per project.
+- **Skills in the project, seats in the core.** Every skill you pick, the always-on ones included, is a copy in `.claude/skills/` you can switch off per project; every seat and hook rides the `alfred-code` plugin, and a seat you did not pick is denied.
 - **Evidence over guesses.** A manifest scan (`*.csproj`, `package.json`) pre-selects the specialist skills the project provably uses, with the matched signal as the reason.
 - **Nothing hidden.** The table below is the whole trust surface.
 
