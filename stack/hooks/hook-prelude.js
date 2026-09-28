@@ -45,6 +45,15 @@
 // a hook it names stays off under every profile. A copied hook gets no option variable, so it reads
 // as standard.
 //
+// GATE 6 - a Cursor host. Cursor loads Claude Code hooks by default (a compatibility toggle) and turns a
+// Claude Stop block into an automatic follow-up with no loop limit, so a hook that asks or blocks can loop
+// a Cursor session forever. Under a Cursor PAYLOAD (cursorHost: a `cursor_version` field, or a camelCase
+// event name - Claude's are PascalCase) only the three PROTECTIVE guards run; every other hook stands down
+// silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
+// environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
+// every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
+// stdin is read or patched here; anything unparseable is a Claude payload.
+//
 // Every gate FAILS OPEN. A hook that cannot read the settings file, or reads junk, runs normally: a
 // guard that goes silent on a malformed file is a guard an attacker turns off by corrupting a file.
 'use strict';
@@ -338,6 +347,35 @@ function unattended(input, env)
     catch { return false; }
 }
 
+// GATE 6. The payload alone says the host: Cursor sends `cursor_version`, and its event names are camelCase
+// (`preToolUse`, `stop`) where Claude Code's are PascalCase. Anything else, junk included, is Claude.
+function cursorHost(input)
+{
+    try
+    {
+        if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+        if (typeof input.cursor_version === 'string' && input.cursor_version.trim() !== '') return true;
+        return typeof input.hook_event_name === 'string' && /^[a-z]/.test(input.hook_event_name);
+    }
+    catch { return false; }
+}
+
+// GATE 6's call. A hook runs it ONCE, right after it has parsed its own payload (`if (prelude.cursorStandDown(
+// payload, __filename)) process.exit(0)`): true only for a Cursor payload and a NON-protective hook, never for
+// a CLI invocation. No stdin is read here - the hook already holds the payload, so no bounded read moves and
+// nothing is patched. scripts/hook-prelude.test.js fails when a non-protective hook file lacks the call.
+function cursorStandDown(input, file, argv)
+{
+    try
+    {
+        if (isCliInvocation(argv)) return false;
+        const name = baseName(path.basename(String(file || '')));
+        if (!name || PROTECTIVE.has(name)) return false;
+        return cursorHost(input);
+    }
+    catch { return false; }
+}
+
 // The one call every hook makes: true means do nothing at all, exit 0, print nothing.
 function standDown(hook, env, argv)
 {
@@ -350,4 +388,4 @@ function standDown(hook, env, argv)
     catch { return false; }
 }
 
-module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };
+module.exports = { hookDisabled, hookProfile, profileOff, switchOn, HOOK_PROFILES, STRICT_ON, yieldToCopiedTwin, aliasYieldsToCore, neverSetUp, cursorHost, cursorStandDown, checkoutsOf, INSTALL_RECORDS, PROTECTIVE, standDown, isCliInvocation, unattended, COPIED_PREFIX, CORE_PLUGIN, ALIAS_PLUGIN, envOf };

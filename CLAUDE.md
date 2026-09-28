@@ -61,7 +61,7 @@ change (see the invariants below).
   `HOOK_TIMEOUTS` table (per file, per event) the seed writes, and launches as `node "${CLAUDE_PLUGIN_ROOT}/<file>"` (a bare path needs the exec bit, and
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
-  `ALFRED_CODE_HOOKS_OFF`. The five gates live in `hook-prelude.js`, never inlined: the csv opt-out;
+  `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
   the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret
   and force-push guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
   the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
@@ -69,7 +69,7 @@ change (see the invariants below).
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
   the rm, secret and force-push guards stay live, writing no row - R54, R86); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
-  `alfred-code@*` its `installed_plugins.json` row can load (S26). All fail open. Beside the gates,
+  `alfred-code@*` its `installed_plugins.json` row can load (S26); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret and force-push guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; else
   `CLAUDE_CODE_ENTRYPOINT` when set (the 2.1.283 CLI sets `sdk-cli` in print mode, rewriting an inherited
   `cli`, and keeps an SDK launch's `sdk-ts` / `sdk-py`, which stay interactive); else the transcript's newest

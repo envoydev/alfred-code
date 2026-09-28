@@ -110,6 +110,10 @@ if (require.main === module)
   let payload;
   try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
   if (!payload || typeof payload !== 'object') process.exit(0);
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  let cursorOff = false;
+  try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+  if (cursorOff) process.exit(0);
   const event = payload.hook_event_name;
   if (event !== 'PostToolUse' && event !== 'UserPromptSubmit') process.exit(0);
 
