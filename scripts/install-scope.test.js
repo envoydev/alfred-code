@@ -393,7 +393,7 @@ test('install-scope: --memory-level project at --scope user on the FULL copy rou
         inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
     });
     assert.match(out, /memory=project \(/, out);
-    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), out);
+    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), out);
     assert.deepStrictEqual(calls.filter((c) => /^mcp add .*--scope user/.test(c)), []);
 });
 
@@ -437,27 +437,33 @@ test('install-scope: a 1.x global install updated with --memory-level project on
         assert.match(out, /were moved from/, `${label}: the 1.x install was not migrated\n${out}`);
         assert.strictEqual(result.skill, true, label);
         assert.match(result.stamp, /^scope: user$/m, label);
-        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.alfred', '.alfred-memory', 'memory.db'), `${label}\n${out}`);
     }
 });
 
 test('install-scope: a project-level memory path already in .mcp.json is kept at --scope user on the full copy route (m5, C10)', POSIX_ONLY, () =>
 {
-    const { out, result } = seedRun('update', SELECTION, {
-        args: ['--scope', 'user'],
-        env: FULL_COPY,
-        prepare: (repo) =>
-        {
-            // The project root the installer resolves is git's own, symlinks resolved (macOS /var).
-            const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
-            fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
-                mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } },
-            }));
-        },
-        inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
-    });
-    assert.match(out, /memory=project \(/, out);
-    assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, '.memory-mcp', 'memory.db'), out);
+    // The level is kept; the path is the one the database LIVES at - a 2.0.0 file not moved yet keeps its
+    // registration byte-for-byte, and with no file anywhere the current place is named (Task 7a).
+    for (const [label, exists, want] of [['a database there', true, ['.memory-mcp', 'memory.db']], ['no database yet', false, ['.alfred', '.alfred-memory', 'memory.db']]])
+    {
+        const { out, result } = seedRun('update', SELECTION, {
+            args: ['--scope', 'user'],
+            env: FULL_COPY,
+            prepare: (repo) =>
+            {
+                // The project root the installer resolves is git's own, symlinks resolved (macOS /var).
+                const db = path.join(fs.realpathSync(repo), '.memory-mcp', 'memory.db');
+                if (exists) { fs.mkdirSync(path.dirname(db), { recursive: true }); fs.writeFileSync(db, ''); }
+                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({
+                    mcpServers: { memory: { type: 'stdio', command: 'uvx', args: [], env: { MCP_MEMORY_SQLITE_PATH: db } } },
+                }));
+            },
+            inspect: (repo) => ({ env: memoryIn(repo), real: fs.realpathSync(repo) }),
+        });
+        assert.match(out, /memory=project \(/, `${label}\n${out}`);
+        assert.strictEqual(result.env.MCP_MEMORY_SQLITE_PATH, path.join(result.real, ...want), `${label}\n${out}`);
+    }
 });
 
 test('install-scope: --memory-level project at --scope project is never refused on the MCP copy route (I5)', POSIX_ONLY, () =>

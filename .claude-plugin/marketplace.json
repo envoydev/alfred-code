@@ -22,9 +22,6 @@
       "mcpServers": {
         "serena": {
           "command": "node",
-          "env": {
-            "SERENA_HOME": ".serena/home"
-          },
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
             "--package",
@@ -97,16 +94,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-chrome": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "chrome",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+            "chrome"
           ]
         }
       },
@@ -126,16 +120,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-msedge": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "msedge",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+            "msedge"
           ]
         }
       },
@@ -155,16 +146,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-firefox": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "firefox",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+            "firefox"
           ]
         }
       },
@@ -184,16 +172,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-webkit": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "webkit",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+            "webkit"
           ]
         }
       },
@@ -204,7 +189,7 @@
     {
       "name": "navigation",
       "source": "./",
-      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
       "version": "2.0.0",
       "author": {
         "name": "envoydev",
@@ -214,9 +199,6 @@
       "mcpServers": {
         "navigation": {
           "command": "node",
-          "env": {
-            "SERENA_HOME": ".serena/home"
-          },
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
             "--package",
@@ -255,7 +237,7 @@
     {
       "name": "browser-chrome",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
+      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/chrome, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.0.0",
       "author": {
         "name": "envoydev",
@@ -264,16 +246,13 @@
       "strict": false,
       "mcpServers": {
         "browser-chrome": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "chrome",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+            "chrome"
           ]
         }
       },
@@ -284,7 +263,7 @@
     {
       "name": "browser-msedge",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
+      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/msedge, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.0.0",
       "author": {
         "name": "envoydev",
@@ -293,16 +272,13 @@
       "strict": false,
       "mcpServers": {
         "browser-msedge": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "msedge",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+            "msedge"
           ]
         }
       },
@@ -313,7 +289,7 @@
     {
       "name": "browser-firefox",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
+      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/firefox, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.0.0",
       "author": {
         "name": "envoydev",
@@ -322,16 +298,13 @@
       "strict": false,
       "mcpServers": {
         "browser-firefox": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "firefox",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+            "firefox"
           ]
         }
       },
@@ -342,7 +315,7 @@
     {
       "name": "browser-webkit",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
+      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/webkit, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
       "version": "2.0.0",
       "author": {
         "name": "envoydev",
@@ -351,16 +324,13 @@
       "strict": false,
       "mcpServers": {
         "browser-webkit": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "webkit",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+            "webkit"
           ]
         }
       },

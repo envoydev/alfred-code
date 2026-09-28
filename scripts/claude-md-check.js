@@ -27,8 +27,9 @@ const rt = require('./install/runtime.js');
 const TEMPLATE_DEFAULT = path.join(__dirname, '..', 'stack', 'CLAUDE.template.md');
 const USAGE = 'usage: node claude-md-check.js [--root <dir>] [--file <path> ...] [--template <file>] | --list [--root <dir>]';
 
-// Folders that hold someone else's files or a build's output - never a CLAUDE.md of the project's own.
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', 'dist', 'build', 'out', 'target', 'vendor', '.venv', 'venv', '__pycache__', '.serena', '.playwright', '.memory-mcp']);
+// Folders that hold someone else's files or a build's output - never a CLAUDE.md of the project's own. The
+// data root's default (`.alfred`: the stack's docs and its servers' data) and the 2.0.0 server folders too.
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'bin', 'obj', 'dist', 'build', 'out', 'target', 'vendor', '.venv', 'venv', '__pycache__', '.serena', '.playwright', '.memory-mcp', '.alfred', '.alfred-memory']);
 
 // The extensions a code span must end in to count as a FILE name without a '/' in it. Lowercase only:
 // `System.Text.Json` is a namespace, `appsettings.json` is a file.

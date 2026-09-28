@@ -1177,7 +1177,7 @@ test('seed install + update --scope user (full copy route): every stack server l
         assert.deepStrictEqual(userCalls, [], `step ${i} registered at user scope:\n${userCalls.join('\n')}\n${outs[i]}`);
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome'])
             assert.ok(step.mcp[name], `step ${i}: ${name} is not in this project's .mcp.json: ${Object.keys(step.mcp).join(',')}\n${outs[i]}`);
-        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.memory-mcp', 'memory.db'), 'the project-level database is this project\'s');
+        assert.strictEqual(step.mcp.memory.env.MCP_MEMORY_SQLITE_PATH, path.join(step.real, '.alfred', '.alfred-memory', 'memory.db'), 'the project-level database is this project\'s');
         for (const name of ['navigation', 'memory', 'documentation', 'browser-chrome']) assert.ok((step.trusted || []).includes(name), `step ${i}: ${name} is not pre-approved`);
         assert.match(step.stamp, /^scope: user$/m);
         assert.match(outs[i], /mcp: navigation still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run \/alfred-code:update: claude mcp remove navigation -s user/, outs[i]);
@@ -1521,13 +1521,20 @@ test('ensurePlaywrightIgnore: a kept engine ignores its profile folder, once, an
     assert.strictEqual(fs.readFileSync(file, 'utf8'), '# mine\nchrome/\n', 'the user\'s own file was rewritten');
 });
 
-test('seed install: a kept playwright engine leaves .playwright/.gitignore behind, and no engine leaves no folder', POSIX_ONLY, () =>
+test('seed install: a kept engine\'s profile folder is out of git - the data root ignores it, a 2.0.0 .playwright keeps its own file - and no engine leaves no folder', POSIX_ONLY, () =>
 {
     const kept = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
         plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
+        inspect: (repo) => ({ data: fs.readFileSync(path.join(repo, '.alfred', '.gitignore'), 'utf8'), old: fs.existsSync(path.join(repo, '.playwright')) }),
+    });
+    assert.match(kept.result.data, /^\/\*$/m, kept.out);
+    assert.strictEqual(kept.result.old, false, 'nothing at the 2.0.0 place on a fresh install');
+    const legacy = seedRun('install', 'skill markdown-style\nrule markdown-docs\nmcp browser\n', {
+        plugins: JSON.stringify(STACK_ROWS('envoydev')), args: ['--playwright-browsers', 'chrome'],
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.playwright', 'chrome'), { recursive: true }); fs.writeFileSync(path.join(repo, '.playwright', 'chrome', 'Cookies'), 'c'); },
         inspect: (repo) => { try { return fs.readFileSync(path.join(repo, '.playwright', '.gitignore'), 'utf8'); } catch { return null; } },
     });
-    assert.strictEqual(kept.result, '*\n', kept.out);
+    assert.strictEqual(legacy.result, '*\n', legacy.out);
     const none = seedRun('install', 'skill markdown-style\nrule markdown-docs\n', {
         plugins: JSON.stringify(STACK_ROWS('envoydev')),
         inspect: (repo) => fs.existsSync(path.join(repo, '.playwright')),

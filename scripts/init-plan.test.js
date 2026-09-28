@@ -52,7 +52,7 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
+        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
     // Order is install order: uv, python, csharp-ls, the engines, the index - then the account's hud.
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
     assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index',
@@ -148,7 +148,7 @@ test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 P
     const lines = render(plan({ inv: INV(), root, platform: 'win32', arch: 'arm64', env: E({ PROCESSOR_ARCHITECTURE: 'ARM64' }), probe: NONE }));
     assert.match(lineOf(lines, /^machine: uv /), /powershell -ExecutionPolicy ByPass -c "irm https:\/\/astral\.sh\/uv\/install\.ps1 \| iex"$/);
     assert.match(lineOf(lines, /^machine: python /), /uv python install cpython-3\.13-windows-x86_64-none$/);
-    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
+    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.alfred\\serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
 });
 
 test('machine: a picked chrome or msedge is found on PATH or at its app install location, and reported when missing (M2)', () =>

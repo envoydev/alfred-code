@@ -1127,8 +1127,8 @@ const ASK_FLOW_SKILLS = Object.keys(ASK_FLOW_TEMPLATES);
 // per-row change to typing). Pinned per file like the flow skills, so a layer ask dropped back to prose goes red.
 const SETUP_ASK_TEMPLATES = {
     'setup-plugin/references/walk.md': 9,
-    'setup-plugin/commands/setup.md': 1,
-    'setup-plugin/commands/configure.md': 0,
+    'setup-plugin/commands/setup.md': 2,
+    'setup-plugin/commands/configure.md': 1,
 };
 // The setup-plugin files that carry ask templates, read from `root` (the repo, or a fixture).
 function setupAskFiles(root, fsLike = fs)

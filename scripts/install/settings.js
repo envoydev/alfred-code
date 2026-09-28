@@ -234,7 +234,7 @@ function retireAndReseed(env, migrations, log, label, only = () => true)
 // C8: a PERSONAL_KEYS value always goes to the overlay when there is one, and leaves this file.
 // `sharedKeys` (C5): a decision that shapes committed state lands in THIS file even when the overlay
 // holds the key - the hooks copy route's HOOKS_OFF complement, which is the committed wiring's mirror.
-function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
+function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited, overlay, overlayUnreadable = false, sharedKeys = [], log, label = 'settings.json', overlayLabel = 'settings.local.json' })
 {
     let changed = renameEnv(env, migrations, log, label);
     const beneath = inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? { ...inherited } : {};
@@ -263,6 +263,20 @@ function applyEnv(env, { catalog, migrations, docsVersioning, docsPath, memoryDb
             into.ALFRED_CODE_DOCS_PATH = docsPath.value;
             if (mine) changed = true;
             log(`  ${lab} env: ALFRED_CODE_DOCS_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${docsPath.value}' (${docsPath.why})`);
+        }
+    }
+
+    // 3c. THE DATA ROOT DECISION (alfred-code.js dataRootStep) - a root this run moved the data to, or a
+    // fresh install's chosen one; the absent-only seed below writes the default otherwise.
+    if (dataPath && dataPath.value)
+    {
+        const { into, lab, mine } = at('ALFRED_CODE_DATA_PATH');
+        const old = into.ALFRED_CODE_DATA_PATH;
+        if (old !== dataPath.value)
+        {
+            into.ALFRED_CODE_DATA_PATH = dataPath.value;
+            if (mine) changed = true;
+            log(`  ${lab} env: ALFRED_CODE_DATA_PATH ${old === undefined ? 'absent' : `'${old}'`} -> '${dataPath.value}' (${dataPath.why})`);
         }
     }
 
@@ -452,7 +466,7 @@ function writeSettings(opts)
         file, hookSpecs = [], retiredHooks = [], denySpecs = [], retiredDeny = [], retiredEntries = [], liveEntries = null,
         agentDeny = [], agentAllow = [],
         mcpNames = [], mcpOff = [], mcpjsonDisable = [], mcpjsonEnable = [], catalog = [], migrations = {},
-        docsVersioning, docsPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
+        docsVersioning, docsPath = null, dataPath = null, memoryDb, hooksOff, hooksAnswered = false, inheritedEnv = null, localFile = null, renamed = null,
         inheritedOverrides = null, sharedFile = null, sharedKeys = [], attribution = null, worktreeBase = null, ledger = {},
         log = () => {}, note = () => {},
     } = opts;
@@ -653,7 +667,7 @@ function writeSettings(opts)
     }
     const overlay = local && local.env && typeof local.env === 'object' && !Array.isArray(local.env) ? local.env : null;
     const overlayBefore = overlay && !createdLocal ? JSON.stringify(overlay) : null;
-    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
+    if (applyEnv((data.env ??= {}), { catalog, migrations, docsVersioning, docsPath, dataPath, memoryDb, hooksOff, hooksAnswered, inherited: inheritedEnv, overlay, overlayUnreadable: localUnreadable, sharedKeys, log, label,
         overlayLabel: localFile ? path.basename(localFile) : undefined })) changed = true;
     // R10: the ledger pass, over the env of each file this run writes, the deny lists and the wirings.
     const localName = localFile ? path.basename(localFile) : null;

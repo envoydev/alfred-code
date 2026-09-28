@@ -49,19 +49,47 @@ const rmDir = (dir) => fs.rmSync(dir, { recursive: true, force: true });
 
 // --- pathForLevel / levelOfPath -------------------------------------------------------------------
 
-test('each level maps to its database and back', () => {
+test('each level maps to its database under .alfred-memory and back', () => {
   const home = '/home/u';
   const projectRoot = '/work/app';
   const cases = [
-    ['global', { home, projectRoot }, '/home/u/.memory-mcp/memory.db'],
-    ['scoped', { home, space: 'work', projectRoot }, '/home/u/.memory-mcp/memory_work.db'],
-    ['scoped', { home, projectRoot }, '/home/u/.memory-mcp/memory_default.db'],
-    ['project', { home, projectRoot }, '/work/app/.memory-mcp/memory.db'],
+    ['global', { home, projectRoot }, '/home/u/.alfred-memory/memory.db'],
+    ['scoped', { home, space: 'work', projectRoot }, '/home/u/.alfred-memory/memory_work.db'],
+    ['scoped', { home, projectRoot }, '/home/u/.alfred-memory/memory_default.db'],
+    ['project', { home, projectRoot }, '/work/app/.alfred/.alfred-memory/memory.db'],
+    ['project', { home, projectRoot, root: '.data' }, '/work/app/.data/.alfred-memory/memory.db'],
   ];
   for (const [level, opts, want] of cases) {
     assert.strictEqual(m.pathForLevel(level, opts), path.normalize(want), level);
     assert.strictEqual(m.levelOfPath(want, { home, projectRoot }), level, want);
   }
+});
+
+test('a 2.0.0 .memory-mcp database still reads as its level', () => {
+  const home = '/home/u';
+  const projectRoot = '/work/app';
+  assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/memory.db', { home, projectRoot }), 'global');
+  assert.strictEqual(m.levelOfPath('/home/u/.memory-mcp/memory_x.db', { home, projectRoot }), 'scoped');
+  assert.strictEqual(m.levelOfPath('/work/app/.memory-mcp/memory.db', { home, projectRoot }), 'project');
+});
+
+test('registeredDbPath: a database not moved yet is read at its old place, and a moved one through the link', () => {
+  const home = tmpDir('memory-live-');
+  try {
+    const project = path.join(home, 'app');
+    fs.mkdirSync(path.join(project, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(home, '.alfred-memory', 'memory.db') } }));
+    fs.mkdirSync(path.join(home, '.memory-mcp'));
+    fs.writeFileSync(path.join(home, '.memory-mcp', 'memory.db'), 'DB');
+    const config = path.join(home, 'acct');
+    assert.strictEqual(m.registeredDbPath(project, { home, configDir: config }), path.join(home, '.memory-mcp', 'memory.db'), 'the launcher has not moved it yet');
+    fs.renameSync(path.join(home, '.memory-mcp'), path.join(home, '.alfred-memory'));
+    if (process.platform !== 'win32') fs.symlinkSync('.alfred-memory', path.join(home, '.memory-mcp'), 'dir');
+    assert.strictEqual(m.registeredDbPath(project, { home, configDir: config }), path.join(home, '.alfred-memory', 'memory.db'));
+    // A project not yet updated still names the old path: it reaches the same file through the link.
+    fs.writeFileSync(path.join(project, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(home, '.memory-mcp', 'memory.db') } }));
+    if (process.platform !== 'win32') assert.strictEqual(fs.readFileSync(m.registeredDbPath(project, { home, configDir: config }), 'utf8'), 'DB');
+  } finally { rmDir(home); }
 });
 
 test('an unknown level throws, a foreign path has no level', () => {

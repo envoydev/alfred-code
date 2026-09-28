@@ -7,7 +7,7 @@ set -e
 git config user.email fixture@example.invalid
 git config user.name fixture
 mkdir -p src/auth scripts test
-printf '.alfred/docs/\n.serena/\n.memory-mcp/\n' >> .gitignore
+printf '.alfred/\n.serena/\n.memory-mcp/\n' >> .gitignore
 cat > package.json <<'JSON'
 { "name": "fixture", "private": true, "scripts": { "format": "node scripts/format.js", "test": "node --test" } }
 JSON

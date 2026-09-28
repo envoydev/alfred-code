@@ -317,14 +317,20 @@ function resolvePins({ pins, log = () => {} })
 
 // ONE server drives ONE browser, fixed at launch (`--browser`; the server has no tool to switch it
 // - measured), so the manifest's single `playwright` row expands into one entry per kept engine,
-// each with its own profile folder, because a persistent profile belongs to one engine.
+// each with its own profile folder, because a persistent profile belongs to one engine. The manifest
+// spells the folder `@BROWSER_DIR@`, which becomes that engine's own token `@BROWSER_DIR_<ENGINE>@` - the
+// run resolves each to where the engine's profile lives (the data root, or a 2.0.0 .playwright/<engine>
+// not moved yet); a folder spelled any other way gets `/<engine>` appended, as before the data root.
 function pwArgsFor(args, engine)
 {
     const words = String(args).split(/\s+/).filter(Boolean);
+    const own = `@BROWSER_DIR_${engine.toUpperCase()}@`;
     const out = [];
     for (let i = 0; i < words.length; i += 1)
     {
-        const word = words[i - 1] === '--user-data-dir' ? `${words[i]}/${engine}` : words[i];
+        let word = words[i];
+        if (word.includes('@BROWSER_DIR@')) word = word.split('@BROWSER_DIR@').join(own);
+        else if (words[i - 1] === '--user-data-dir') word = `${word}/${engine}`;
         out.push(word);
         if (/^@playwright\/mcp/.test(word)) out.push('--browser', engine);
     }

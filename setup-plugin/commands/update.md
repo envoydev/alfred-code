@@ -165,7 +165,7 @@ sits in the account dir: this command is its route - step 2's preflight reads th
 installer moves it into the project. `legacy-unstamped` is a legacy copy-route install that never wrote a
 stamp (no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys,
 three or more of its skill, seat or rule names) -> go on: this command is its route - step 2's preflight
-prints `no-stamp` (the fast path) and offers its docs move like any older install's, and the installer logs
+prints `no-stamp` (the fast path) and offers its data move like any older install's, and the installer logs
 `no stamp: an unstamped legacy install`, reads the picks off disk (each old name under its new one, a
 project's own skill never one of them), prunes the old copies and writes the stamp. `installed` /
 `initialised` -> go on. Every scope - project,
@@ -219,11 +219,13 @@ It prints, in order:
   `ALFRED_CODE_HOOKS_OFF`, the walk's None, a parked entry), `unknown` (the plugin listing could
   not be read). A rename whose old name the stamp's picks never named and the disk never held
   prints no row - it was declined under that name.
-- `docs-move: offer <from> -> <to><TAB>tracked=<n> untracked=<n>[<TAB>ignored=yes][<TAB>conflicts=<n>]` - this install
-  still writes its docs under the OLD default `.claude/docs` (the stack's own seed, never a root the
-  user chose); `docs-move: repoint ...` (the old root holds nothing - the installer takes the new
-  default itself, report its log line) or `docs-move: none (<why>)` otherwise. Only `offer` is asked,
-  below.
+- `data-move: offer <root><TAB>from=<places><TAB>docs=<n> serena=yes|no browser=<engines|none> memory=yes|no[<TAB>ignored=yes][<TAB>conflicts=<n>]`
+  - this project's data sits outside its data root (`ALFRED_CODE_DATA_PATH`, `.alfred` by default): the
+  docs at the old default `.claude/docs` or under an earlier root, and the 2.0.0 server folders -
+  `.serena` (the navigation index, handoff notes and language servers), `.playwright/<engine>` (browser
+  profiles), `.memory-mcp` (a project-level memory database). `from=` names each place. `data-move: none
+  (<why>)` otherwise - an empty old docs root is re-pointed by the installer itself (report its log
+  line). Only `offer` is asked, below.
 - `env-keys: <names>` - the scope's settings `env` KEY NAMES before the run, and the
   before-state step 7 diffs its read-back against. Names only: the script never prints a value,
   and neither do you. An `unattended: on` line closes the output: nobody answers this run, and every
@@ -275,25 +277,33 @@ path runs, and so does every `renamed` row, unasked; every `was-off` row becomes
 `--drop "<category> <name>"`, so the user's switch-off carries onto the new name. `arrives`, `off` and `unknown` are never
 asked - they go in the step-7 report. No offer, no ask: this is still the no-questions refresh.
 
-**The docs root - ONE ask, and only on `docs-move: offer`.** 2.0.0 moved the default docs root from
-`.claude/docs` to `.alfred/docs`: Claude Code prompts for every write under `.claude/` - every plan,
-capture and commit receipt - denies it in `dontAsk`, and no allow rule lifts it
-(code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves without this answer. One
-AskUserQuestion, before the installer runs: **Move to .alfred/docs (Recommended)** - the `tracked`
-files move through `git mv` (history kept, staged as renames for the user to commit), the rest by
-rename, in one step, and the docs-root rule is re-stamped; nothing else is written - or **Keep at
-.claude/docs** - `ALFRED_CODE_DOCS_PATH=.claude/docs` becomes the user's own value and no later update
-asks again. `ignored=yes` means git never saw the old root: the move keeps it that way (the new root
-gets a `.gitignore` of `*` and `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say so in the Move
-option. The answer is `--docs-move move` or `--docs-move keep` on the installer call of whichever
-path runs. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one question
-each. A `conflicts=<n>` field means files already sit at the new root: do not ask - name the count,
-run without the flag (the old root stays in effect), and the next update offers again once they are
-moved. After a move the log carries `docs root: moved ...`, the `--log` call prints `restart: yes`,
-and until that restart this session writes under the NEW root - its loaded rule text still names
-the old one. Unattended, both asks take their Recommended option - the move overwrites nothing (a
-conflict already stops it) and adding the recommended items only adds - each logged as one
-`unattended: <question> -> <choice>` line.
+**The data root - ONE ask, and only on `data-move: offer`.** Alfred Code keeps a project's data in ONE
+folder, `.alfred` at the project root by default: the docs, the navigation server's folder and home,
+the browser profiles and a project-level memory database. It sits outside `.claude/`, where Claude Code
+prompts for every write - every plan, capture and commit receipt - denies it in `dontAsk`, and no allow
+rule lifts it (code.claude.com/docs/en/permission-modes, 'Protected paths'). Nothing moves without this
+answer. One AskUserQuestion, before the installer runs, naming the `from=` places:
+
+```ask
+Move this project's Alfred Code data into <root>? From <from places>: the docs through git mv where tracked, the navigation index, browser profiles and project memory at each server's next start, after a restart. Recommended: one folder outside .claude/, its machine state kept out of git.
+- '<root> - move everything (Recommended)' - the docs move now, the servers' data at their next start once nothing holds it; nothing is overwritten
+- 'Keep the current layout' - nothing moves, the servers keep reading where their data is, and no later update asks again (configure can still move it)
+```
+
+A typed folder (Other) is a custom root: `--data-path <folder> --data-move move`; it must be relative,
+inside the project, never under `.claude/`, with no space. The recommended answer is `--data-move move`,
+the keep answer `--data-move keep` - on the installer call of whichever path runs (the 2.0.0 spelling
+`--docs-move` is read for one release). `ignored=yes` means git never saw the old docs root: the move
+keeps it that way (the docs' own `.gitignore` of `*`, `ALFRED_CODE_DOCS_VERSIONING` becomes `local`) - say
+so in the move option. When the new-items ask fires too, both go in the SAME AskUserQuestion call, one
+question each. A `conflicts=<n>` field means data already sits at the new place: do not ask - name the
+count, run without the flag (the old places stay in effect), and the next update offers again once
+they are cleared. After a move the log carries `docs root: moved ...` and `data root: ...` lines (what
+moved now, what waits for a server's next start), the `--log` call prints `restart: yes`, and until that
+restart this session writes the docs under the NEW root - its loaded rule text still names the old one.
+Unattended, both asks take their Recommended option - the move overwrites nothing (a conflict already
+stops it) and adding the recommended items only adds - each logged as one `unattended: <question> ->
+<choice>` line.
 
 ## 3. Fast path - refresh in place (the common case)
 Run the installer; it reads the install back itself, closes new dependencies through
@@ -303,7 +313,7 @@ Run the installer; it reads the install back itself, closes new dependencies thr
 post-install read below has a file that was actually written (the shared contract is in
 `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--docs-move move|keep] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add "<category> <name>"]... [--drop "<category> <name>"]... [--space <name>] --keep-pins [--docs-versioning git|local] [--data-move move|keep] [--data-path <folder>] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"`
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 
 `--docs-versioning` is passed ONLY when the user's own invocation names a value (`/alfred-code:update
@@ -379,7 +389,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|data root:|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -541,9 +551,10 @@ what was taken, what stays off or was left, each by name), and the restart line.
   .claude/settings.local.json to .gitignore` line carries the `!!` marker (a machine path would
   otherwise be committed), so it also arrives as a `warn:` line - report it once, here, not again
   under RESTART / WARN.
-- **DOCS ROOT** - every `docs root:` / `docs move:` line the grep caught, verbatim: the move (with its
-  `git mv` count, which the user commits), the kept root, the re-point, the refused move with its files,
-  or the offer still open when no answer was passed.
+- **DATA ROOT** - every `docs root:` / `docs move:` / `data root:` line the grep caught, verbatim: the docs
+  move (with its `git mv` count, which the user commits), what moved now and what waits for a server's
+  next start, the kept layout, the re-point, the refused move with its files, or the offer still open
+  when no answer was passed.
 - **MEMORY** - when the grep caught a memory line, report it verbatim: the `memory:` level/database
   line (present whenever `--memory-level` was passed, the level changed, or this run adopted the
   registration for the first time - the fast path's own default now, whenever it was absent, not
@@ -588,9 +599,11 @@ fresh-session gate as '40% of the context window, 150k floor', a spelling retire
 is the VALIDATE bullet's `policy-rev:` trigger above, one printed row, not a re-confirmed grep pair
 (measured: re-confirmed 3 extra times, ~275k tokens, against an already-conclusive first read).
 When the navigation server is installed, also name the one-off re-index as a next step whenever this run
-re-seeded `.serena/project.yml` - an install predating the seeding has no `ignored_paths`, so its
-cache was built over the navigation server's own language-server directory: `SERENA_HOME=.serena/home uvx --python
-3.13 --from serena-agent serena project index` (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
+re-seeded serena's `project.yml` (under the data root, or a 2.0.0 `.serena` not moved yet) - an install
+predating the seeding has no `ignored_paths`, so its cache was built over the navigation server's own
+language-server directory: `SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent serena
+project index` (the data root's own folder in place of `.alfred`; `.serena/home` while a 2.0.0 folder has
+not moved; Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`). Never invoke it from this run - the skill is manual-only (`disable-model-invocation`), so a
 Skill call is DENIED by `guard-fresh-session-start.js`, which reads that flag from the skill's own
 frontmatter. Do not lean on the harness for it: measured both ways, one update run's call was
 refused and another slipped through. The report line is the mechanism.

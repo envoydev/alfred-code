@@ -57,29 +57,26 @@ touches no committed file). The lines, minus anything the project already covers
 
 ```gitignore
 .claude/
-.serena/
 .mcp.json
 ```
 
 - `.claude/` - the install and the stamp are machine-local. To COMMIT `.claude/CLAUDE.md` while
   ignoring the rest, the pair is `.claude/*` + `!.claude/CLAUDE.md` - a bare directory ignore blocks
   the re-include.
-- `.alfred/docs/` - the default docs root, outside `.claude/` because Claude Code prompts for every
-  write there. It carries its own `.gitignore`, written from `ALFRED_CODE_DOCS_VERSIONING`: `local`
-  keeps the whole root out of git, `git` (a fresh project's default) commits the docs and keeps only
-  the hooks' machine state out. To keep the docs machine-local, switch it once with
-  `/alfred-code:update --docs-versioning local`.
-- `.serena/` - the per-project LSP cache and the navigation server's local memories (only when the navigation server is
-  installed). Never commit it.
+- `.alfred/` - the data root (`ALFRED_CODE_DATA_PATH`), outside `.claude/` because Claude Code prompts
+  for every write there: the docs (`.alfred/docs/`), the navigation server's index, handoff notes and
+  language servers (`.alfred/serena/`), the browser profiles holding session cookies
+  (`.alfred/browser/<engine>/`) and a project-level memory database (`.alfred/.alfred-memory/`). It
+  carries its own `.gitignore`, which keeps everything but `docs/` out of git, so it never needs a line
+  here. The docs carry their own, written from `ALFRED_CODE_DOCS_VERSIONING`: `local` keeps them out of
+  git, `git` (a fresh project's default) commits them and keeps only the hooks' machine state out. To
+  keep the docs machine-local, switch it once with `/alfred-code:update --docs-versioning local`.
 - `.mcp.json` - only on the opt-out route (`ALFRED_CODE_MCPS_VIA_PLUGIN=false`); the default run
   carries every server on its own plugin and PRUNES the stack's names out of this file. Where it
   does exist it is regenerated on every run, so a local edit is wiped anyway. No file, nothing to ignore.
-- `.memory-mcp/` - only present at a `project`-level memory install; whichever run set that level
-  (init, update or configure) wrote its own `.memory-mcp/.gitignore` (`*`), so it never needs a line
-  here. Nothing to do.
-- `.playwright/` - only when a browser engine is kept; the run wrote its own
-  `.playwright/.gitignore` (`*`), since the browser profiles hold session cookies, so it never needs
-  a line here either. Nothing to do.
+- `.serena/`, `.playwright/`, `.memory-mcp/` - the 2.0.0 places of the same data, present only until
+  `/alfred-code:update` moves them under the data root; each carries its own `.gitignore` (`*`), so none
+  needs a line here. Nothing to do.
 - Add runtime dirs only when they appear in the tree: `.slopwatch/`.
 
 ## 3. Check the shared memory landed
@@ -101,8 +98,9 @@ saved from here on gets a real 384-dim embedding and searches normally.
 
 ## 4. Index the codebase for the navigation server (when installed)
 
-The installer already wrote `.serena/project.yml` - the project name, the `language_servers` it
-detected from your files, and `ignored_paths` for `.serena` / `.claude` / `.playwright`. What is left is the index:
+The installer already wrote serena's `project.yml` under the data root (`.alfred/serena/project.yml`) -
+the project name, the `language_servers` it detected from your files, and `ignored_paths` for the data
+root, `.claude` and the 2.0.0 `.serena` / `.playwright`. What is left is the index:
 The navigation server answers symbol questions from an LSP cache, and until it is built the first lookup in a
 session pays for the whole workspace load.
 
@@ -110,18 +108,21 @@ Init builds it once; by hand, run it from the project root (the first run also d
 C# Roslyn, which needs .NET 10+; the navigation server installs the runtime itself if it is missing):
 
 ```bash
-SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent serena project index
+SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent serena project index
 ```
 
+(Your data root in place of `.alfred` when you chose another; `.serena/home` while a 2.0.0 `.serena`
+has not moved yet.)
+
 `--python 3.13` is the interpreter every compiled dependency has a wheel for - uvx would otherwise
-take the newest, and 3.14 has no pyyaml wheel. (Windows PowerShell: `$env:SERENA_HOME='.serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`).
+take the newest, and 3.14 has no pyyaml wheel. (Windows PowerShell: `$env:SERENA_HOME='.alfred\serena\home'` - the navigation server hands the path to cmd.exe unquoted, where a `/` cuts it, and so would a space in an absolute path - and, on Windows on ARM, `--python cpython-3.13-windows-x86_64-none`).
 
 Or paste this prompt and let the session do it:
 
 ```text
-Index this project for the navigation server (SERENA_HOME=.serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), then verify with
+Index this project for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), then verify with
 find_symbol and find_referencing_symbols on a symbol you pick from the code. If the run reports
-failed files, look at .serena/project.yml - its language_servers and ignored_paths - and tell me
+failed files, look at .alfred/serena/project.yml - its language_servers and ignored_paths - and tell me
 what you changed.
 ```
 
@@ -168,7 +169,7 @@ dependencies) leaves session-side state describing the OLD tree. Worth pasting t
 
 ```text
 I switched branches and the structure changed. Re-run dependency install if needed, restart the
-language server, re-index for the navigation server (SERENA_HOME=.serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), and check
+language server, re-index for the navigation server (SERENA_HOME=.alfred/serena/home, `uvx --python 3.13 --from serena-agent serena project index` - on Windows the spelling above), and check
 whether the navigation-server memories still describe this branch accurately.
 ```
 

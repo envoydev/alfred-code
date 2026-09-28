@@ -1079,6 +1079,20 @@ test('every layer ask in walk.md offers 2-4 options with the recommended one fir
     assert.match(walk, /one AskUserQuestion call of up to 4 multi-select questions/i, 'the Pick follow-up is one call of up to 4 questions');
 });
 
+// The data-root question (2.1.0) rides the same template shape as the walk's layer asks, so lint 61 holds
+// its recommended option - '.alfred (Recommended)' - first in both homes that ask it.
+test('the data-root question is one ask template in setup and configure, .alfred recommended first', () =>
+{
+    for (const rel of ['commands/setup.md', 'commands/configure.md'])
+    {
+        const text = fs.readFileSync(path.join(PLUGIN_DIR, rel), 'utf8');
+        const data = askBlocks(text).filter((b) => /keep this project's data/i.test(b[0]));
+        assert.strictEqual(data.length, 1, `${rel} carries the data question as one ask template`);
+        const opts = data[0].filter((l) => /^- '/.test(l));
+        assert.match(opts[0], /^- '\.alfred \(Recommended\)'/, `${rel}: .alfred is the recommended first option`);
+    }
+});
+
 test('setup and configure name option asks, not typed numbers, for stacks and the add/drop rounds', () =>
 {
     const setup = fs.readFileSync(path.join(PLUGIN_DIR, 'commands', 'setup.md'), 'utf8');

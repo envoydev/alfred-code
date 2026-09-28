@@ -341,20 +341,20 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 function mcpServerShapes(options = {})
 {
     const { suffix } = readPins(options);
-    const proj = '${CLAUDE_PROJECT_DIR}';
     const root = '${CLAUDE_PLUGIN_ROOT}';
     const browsers = {};
     for (const engine of PW_ENGINES)
     {
         const name = `browser-${engine}`;
         browsers[name] = {
-            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/${engine}, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
             servers: {
                 [name]: {
-                    command: 'npx',
-                    args: ['-y', `@playwright/mcp${suffix('browser')}`, '--browser', engine,
-                        `--user-data-dir`, `${proj}/.playwright/${engine}`,
-                        `--output-dir`, `${proj}/.playwright/${engine}/output`],
+                    // The launcher, not npx directly: the profile's place is the project's data root
+                    // (ALFRED_CODE_DATA_PATH, a PROJECT setting a plugin entry never sees), and a move
+                    // the installer recorded runs there, once no browser holds the profile.
+                    command: 'node',
+                    args: [`${root}/stack/mcp/browser-launch.js`, '--package', `@playwright/mcp${suffix('browser')}`, '--browser', engine],
                 },
             },
         };
@@ -363,15 +363,14 @@ function mcpServerShapes(options = {})
         // --- the three locked servers -----------------------------------------------------------
         navigation: {
             locked: true,
-            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
+            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
                 navigation: {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
-                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another.
+                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another -
+                    // and it sets SERENA_HOME to the data root's own home, RELATIVE, resolved against the
+                    // server's cwd, which is the project (stack/mcp/serena-launch.js).
                     command: 'node',
-                    // SERENA_HOME stays RELATIVE: it resolves against the server's cwd, which is the
-                    // project. An absolute path here would pool every project into one home.
-                    env: { SERENA_HOME: '.serena/home' },
                     args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
                         // Always claude-code inside a Claude Code plugin; the ide-assistant value is
                         // cursor-stack's, and its own registration keeps it.

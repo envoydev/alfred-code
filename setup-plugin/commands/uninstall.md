@@ -31,8 +31,9 @@ worktree), before anything is downloaded:
 Put ONE AskUserQuestion: 'Uninstall the stack from this project (Recommended)' vs 'Keep it'. The
 question names what goes (the stack's plugin rows and MCP registrations at this project's scope, its
 settings entries, hook wirings and copied files, the stamp) and what stays (anything the user added or
-changed since the stack wrote it, a user-scope plugin row or MCP registration, the docs root,
-`.serena/`, the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
+changed since the stack wrote it, a user-scope plugin row or MCP registration, the data root (the
+docs, the navigation index, the browser profiles - `.alfred/` by default, or a 2.0.0 `.serena/` /
+`.playwright/`), the memory database; at user scope also the seats denied here and `ALFRED_CODE_HOOKS_OFF`,
 since the user-scope core stays loaded). 'Keep it' -> end the turn, nothing downloaded.
 
 ## 3. Resolve the snapshot, then run the seed

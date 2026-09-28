@@ -299,8 +299,9 @@ change (see the invariants below).
   hard-disable).
 - `stack/rules/` - twenty single-job rules, each a library copy in `.claude/rules/`. Seven always-on `baseline-*.md`
   (no `paths:`): interaction, quality-gates, security, git (the commit checkpoint itself is the
-  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever,
-  default `.alfred/docs`; the installer stamps its value over `__DOCS_ROOT__` on every run),
+  `alfred-habits-commit-checkpoint` skill), navigation, docs-root (`ALFRED_CODE_DOCS_PATH` is the ONLY lever the
+  hooks read, default `.alfred/docs`, written by the installer as `<data root>/docs`; it stamps its value over
+  `__DOCS_ROOT__` on every run),
   memory (what belongs in the shared `memory` MCP, when to save it, and to search before asking or
   reading - locks the server in the way `baseline-navigation` locks the navigation server).
   Skill/agent usage policy + MCP routing live in the GENERATED `baseline-project-agent-capabilities.md`.
@@ -439,7 +440,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
 | Agents | all 44 in the core plugin (2.1.0), every one the selection did not pick denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` - measured to leave the listing and the bill (spike S3, rebrand-evidence S6) - wherever the core loads, the skills copy route included; the full copy route (no core) writes none and copies the picked seats into `.claude/agents` (absence is off). An update reads the seats back off the core minus the denied, gated by the stamp's picks and the ledger's `managed-deny`, so a seat a release adds is offered, never on by itself; a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update|uninstall>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since is kept and its hash carried - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since is kept and its hash carried - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), `data-root:` / `data-pending:` / `data-move: kept` (the data root in effect, the server-data moves owed to a launcher, a kept layout - below), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent + the pre-commit checkpoint's security half (`alfred-habits-commit-checkpoint`) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -491,7 +492,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   (`stack-graph.js` MCP_COMMON_WORDS): the word is too common to prove a need. Catalog of 6 names, 9 plugins:
   - `browser` (Playwright MCP) - seeded for web-angular / ionic / extension, evidence-proven elsewhere. One catalog
     entry, expanded after the selection into ONE PLUGIN per kept browser (`browser-chrome|msedge|firefox|
-    webkit`, each `--browser <engine>` + profile `.playwright/<engine>`; firefox/webkit downloaded at the
+    webkit`, each started through `stack/mcp/browser-launch.js` with `--browser <engine>` + profile
+    `<data root>/browser/<engine>` - a 2.0.0 `.playwright/<engine>` serves until its move; firefox/webkit downloaded at the
     release pin) - not one plugin declaring four, which would load four copies of the tool schemas every
     session. Setup/configure ask `--browsers` (install) and `--browser-enabled` (absent: all
     on at install, none flipped by update); the stamp's two lines (`browser-engines:`, `browser-enabled:`) are the record on EVERY route (a
@@ -507,8 +509,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
     registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
     and lets load - never a plugin-carried locked server or an engine left off. A legacy 1.x `playwright` server
-    migrates. The browser agents grant all four. A kept engine writes `.playwright/.gitignore` (`*`): the
-    browser profiles hold session cookies.
+    migrates. The browser agents grant all four. The data root's own `.gitignore` keeps the profiles out of
+    git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
   - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
     is the one home of which OS each drives; the walk's table, `--missing` / `--redundant`, the installer
@@ -552,10 +554,16 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     (`--playwright-browsers`, `--playwright-enabled`) and stamp lines (`playwright-browsers:`,
     `playwright-enabled:`) are read for one release.
 - **`memory` is required like navigation and documentation**, chosen per install by LEVEL rather than by
-  a droppable pick: `global` (`~/.memory-mcp/memory.db`, every Claude account and Cursor on the
-  machine - the default for a fresh install), `scoped` (`~/.memory-mcp/memory_<space>.db`,
-  `memory_default.db` with no space - one account), `project` (`<project>/.memory-mcp/memory.db`,
-  gitignored - this project only). `--memory-level` sets it; init and configure ASK it (one
+  a droppable pick: `global` (`~/.alfred-memory/memory.db`, every Claude account and Cursor on the
+  machine - the default for a fresh install), `scoped` (`~/.alfred-memory/memory_<space>.db`,
+  `memory_default.db` with no space - one account), `project` (`<project>/<data root>/.alfred-memory/memory.db`,
+  gitignored - this project only). The folder is `.alfred-memory` wherever it sits (2.1.0); the 2.0.0
+  `~/.memory-mcp` is moved by the memory launcher at a start when no database in it is open (no `-wal` /
+  `-shm` - Windows refuses renaming an open file, and SQLite calls renaming an open database undefined),
+  and a link is left at the old path (a junction on Windows) so Cursor and an install not yet updated reach
+  the same file; until then every reader - the launcher, the session-start engine, the installer's level -
+  serves the old place (`data-root.js liveMemoryDb`), never a second, empty database. A 2.0.0 path reads as
+  its level and resolves to the new spelling, and the settings name where the file LIVES now. `--memory-level` sets it; init and configure ASK it (one
   AskUserQuestion, the three levels, `global` recommended), update passes it only when the invocation
   names one, and changing it re-points the server, never touching the database file. The server needs
   the `[sqlite]` extra - `mcp-memory-service[sqlite]==<ver>` via `uvx --with numpy --from ...` - for
@@ -577,26 +585,33 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `memory_search` by meaning; `memory.js reembed` fixes it (the service has no re-embed tool): the
   marker is the stored vector's norm (about 11 for a hash embedding, 1 for the sentence model), each
   row is deleted, stored and given back its dates through the service, after an owner-only backup
-  under `~/.memory-mcp/backups/` that `reembed --restore <backup>` replays. A row tied to another
+  under `~/.alfred-memory/backups/` (a 2.0.0 `~/.memory-mcp` not moved yet keeps them) that `reembed --restore <backup>` replays. A row tied to another
   memory (superseded, a child, a graph edge) is left alone; the first row goes alone and stops the run
   when its new vector is still not unit length. `memory.js duplicates` reports same-content pairs and
   deletes nothing.
-- **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` in its cwd). Its
+- **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` or `.git` walking
+  up from its cwd); a project with no `.git` of its own whose folder has moved under the data root gets
+  `--project <cwd>` from the launcher instead (the literal directory, not the failed expansion below). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
-  enabled), so the installer SEEDS `.serena/project.yml` on install and update: project name, the
-  `language_servers` their own scan detects (C#, TypeScript/JS), and `ignored_paths` for `.serena` /
-  `.claude` / `.playwright`. A key that already has entries is never rewritten, and never appended twice
-  (a duplicate YAML key is an error). The key was renamed from `languages` in serena 1.7.0; the C#
+  enabled), so the installer SEEDS serena's `project.yml` (`<data root>/serena/`, or a 2.0.0 `.serena` not
+  moved yet) on install and update: project name, the `language_servers` their own scan detects (C#,
+  TypeScript/JS), and `ignored_paths` for the data root, `.claude`, `.serena` and `.playwright`. A key that
+  already has entries is never rewritten - except the stack's own value (2.0.0's or the data-root shape),
+  which follows the root - and never appended twice (a duplicate YAML key is an error). The key was renamed from `languages` in serena 1.7.0; the C#
   Roslyn server needs .NET 10+ (serena installs it into `SERENA_HOME`). Two approaches FAIL - do not
   retry: (1) an `mcp_tool` `SessionStart` hook calling `activate_project`; (2)
   `--project ${CLAUDE_PROJECT_DIR}`. `.mcp.json` DOES expand `${VAR}` / `${VAR:-default}`, but
   `CLAUDE_PROJECT_DIR` is not reliably in scope at parse time, and expansion reads only the shell
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
   `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
-- **The navigation server's state is isolated per project** via `-e SERENA_HOME=.serena/home`; memories live in
-  `.serena/memories/`. The whole `.serena/` must be gitignored (LSP cache ~327MB for C#, memories): the
-  installer writes `.serena/.gitignore` (`*`) whenever the server is kept, widening serena's own narrower
-  file (`/cache`, `/project.local.yml`) and keeping any other one as the project's.
+- **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
+  `<data root>/serena/home` (the launcher sets it; the copy route registers it), and serena's per-project
+  folder - the index cache, `memories/`, `project.yml` - is `<data root>/serena`, named by
+  `project_serena_folder_location` in the home's own `serena_config.yml` (serena 1.7.0 has no flag for it;
+  `data-root.js ensureSerenaConfig` writes it absent-only and follows the root only over the stack's own
+  value, never a user's central path). The data root's `.gitignore` keeps it out of git (LSP cache ~327MB
+  for C#); a 2.0.0 `.serena/` still in use keeps its own `.gitignore` (`*`), widened from serena's
+  narrower one (`/cache`, `/project.local.yml`), any other text the project's.
 - **Every uvx-launched server runs on a PINNED Python** - `stack/mcp/uv-python.js` is the one answer: `3.13`,
   the x64 `cpython-3.13-windows-x86_64-none` on Windows on ARM; `ALFRED_CODE_UV_PYTHON` overrides,
   read from the shell, then `settings.local.json`, `settings.json` and the account settings (a plugin
@@ -604,19 +619,20 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   pyyaml 6.0.2 ships no 3.14 wheel, so an unpinned start dies without a C compiler (Claude Code shows
   only CONNECTION_CLOSED); Windows ARM64 has no wheel for five compiled deps on ANY Python, while the
   x64 build runs there under emulation. Every such plugin entry starts through a node launcher
-  (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`) because the right value is the MACHINE's
+  (`serena-launch.js`, `memory-launch.js`, `desktop-launch.js`; the browser engines' npx through
+  `browser-launch.js`, for the profile's place) because the right value is the MACHINE's
   (windows-mcp 0.8.6 already needs 3.14, so `refresh-mcp-pins.js` takes the newest release the pinned
   Python can install); the copy route
   resolves `@UV_PYTHON@` into `.mcp.json`. Never hand-patch a cached entry - the next refresh
   overwrites it (`docs/uv-python-pin-evidence.md`). The serena launcher keeps `SERENA_HOME` RELATIVE
-  in the platform's separator, and the copy route registers `.serena\home` on Windows
-  (`@SERENA_HOME@`): serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
+  in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows
+  (`@SERENA_HOME@`) - which is why the data root may hold no space: serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
   gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
   launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them.
 - **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
-  per-project memory (`.serena/memories/`) is the EPHEMERAL handoff bus between agents within one
+  per-project memory (`<data root>/serena/memories/`) is the EPHEMERAL handoff bus between agents within one
   feature, never a place for what should outlast it; Claude's own built-in memory (`MEMORY.md` +
   `memory/*.md`) is SWITCHED OFF (`autoMemoryEnabled: false`) by the install when the project has no
   notes, else by `/alfred-code:init` after a one-time import of its existing notes into the `memory` MCP - it has no search and is not shared
@@ -636,9 +652,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
   `tools-usage/`, `.branches/`, `docs-log.jsonl`). An install on the old default is never moved
   silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the
-  catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - `update-preflight.js`
-  prints `docs-move: offer ...`, update asks move (recommended) or keep, and the answer is
-  `--docs-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
+  catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - since 2.1.0 as part of the data
+  move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)
+  or keep, and the answer is `--data-move move|keep`. Move: one step, `git mv` for tracked files (history kept, staged as
   renames), a rename for the rest, every file put back on any failure, the key re-pointed and the rule
   re-stamped, a restart named. Keep: the key becomes the user's own value, out of the ledger, and no
   update offers again. No answer: nothing moves, and an absent key is written back as the old root so
@@ -648,6 +664,31 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   export and the seed writes one anyway. A move keeps what git saw: an old root git ignored, with nothing
   tracked, becomes a `local` root (`ignored=yes` in the offer). A conflict or an unreadable settings file
   moves nothing, and the rule keeps the root it was stamped with.
+- **One data root for the project's data** (2.1.0, the user's decision of 2026-09-29): `ALFRED_CODE_DATA_PATH`,
+  default `.alfred` at the project root - relative, never under `.claude/`, no space, no `..` (`data-root.js
+  checkDataPath`) - holds the docs (`<root>/docs`), serena's folder and home (`<root>/serena`), the browser
+  profiles (`<root>/browser/<engine>`) and a project-level memory database (`<root>/.alfred-memory`).
+  `stack/mcp/data-root.js` is the one home of every place, read by the three launchers, the installer, init's
+  plan and the preflight. The docs root is written as `<root>/docs` unless the user set their own (a value the
+  ledger does not record is never moved). `<root>/.gitignore` is `/*` plus `!/docs/` (`docs.ensureDataIgnore`,
+  header-marked, a project's own text kept): a bare `*` would make `git check-ignore` answer yes for the docs
+  and the versioning seed would read every fresh project as `local`. THE MOVE: the docs move inline
+  (`docs.docsMovePlan` generalised - the old default, whoever set it, is asked once more, or the stack's docs
+  under an earlier root); a server's own data is LIVE while the session running the installer holds it, so on
+  a route where its launcher runs the installer records a stamp line `data-pending: <class> <from> -> <to>` and
+  the launcher moves it at its next start, only when nothing holds it (a database with no `-wal`/`-shm`/
+  `-journal`, a browser profile with no Chromium `Singleton*` or Firefox `lock`; serena none - the launcher
+  starts before serena does); on the copy route, which runs no launcher, the installer moves inline with the
+  same checks, and a refused move stays pending for the next run. With no pending line a launcher never moves
+  anything: the new place when it holds data, else the 2.0.0 one (`liveDir`). `update-preflight.js` prints
+  `data-move: offer <root> from=... docs=<n> serena= browser= memory=` (the stamp's kept engines, the memory
+  class at the project level only); update asks ONE question (move recommended, keep, or a typed folder), the
+  answer is `--data-move move|keep` (`--docs-move` read for one release) and `--data-path <folder>`; keep writes
+  `data-move: kept` and no later update offers again; configure's data question passes `--data-path <new>
+  --data-move move`. A `--data-path` over a root that holds data without `--data-move move` is not applied. The
+  stamp's `data-root:` line is the next run's baseline, so a root changed by hand is still found; a root the
+  data left is removed once only its `.gitignore` remains. The cursor-stack twin still reads `.serena` /
+  `.memory-mcp` until its mirror lands - the home memory link covers the database, not the index.
 - **Two stores, split by durability** (hard rule). The committed architecture docs
   (`<docs-path>/architecture/ARCHITECTURE.md` + `references/`, owned by
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed

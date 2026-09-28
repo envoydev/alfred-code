@@ -3,14 +3,23 @@
   "secret_key_pattern": "(TOKEN|SECRET|KEY|PASSWORD|PASSWD|DSN|CREDENTIAL|AUTH)$",
   "env": [
     {
+      "key": "ALFRED_CODE_DATA_PATH",
+      "default": ".alfred",
+      "ask": true,
+      "what": "the ONE folder, relative to the project, where Alfred Code keeps this project's data: the docs (`<root>/docs`), the navigation server's index, handoff notes and language servers (`<root>/serena`), the browser profiles (`<root>/browser/<engine>`) and a project-level memory database (`<root>/.alfred-memory`). Default `.alfred` at the project root - outside `.claude/`, where Claude Code prompts for every write. Its own `.gitignore` keeps everything but the docs out of git. Changing it (configure) MOVES the data: the docs at once, each server's data at that server's next start, once nothing holds it. No space, no `..`, never under `.claude/`.",
+      "validate": {
+        "type": "relative-path"
+      }
+    },
+    {
       "key": "ALFRED_CODE_DOCS_PATH",
       "default": ".alfred/docs",
       "former_defaults": [
         ".claude/docs"
       ],
-      "ask": true,
+      "ask": false,
       "renamed_from": "CLAUDE_DOCS_PATH",
-      "what": "the generated-docs root every capture, loop and hook writes under. Default `.alfred/docs` - outside `.claude/`, where Claude Code prompts for every write and no allow rule lifts it. The root carries its own `.gitignore`, shaped by ALFRED_CODE_DOCS_VERSIONING: `local` keeps it machine-local, `git` commits the docs and keeps only the hooks' machine state out. A committed forward-slash path like `docs` shares the captured docs with the team. Existing docs never move with it.",
+      "what": "the generated-docs root every capture, loop and hook writes under. The installer writes it as `<data root>/docs` (ALFRED_CODE_DATA_PATH, `.alfred/docs` by default) and moves it with the data root; set it by hand only to keep the docs somewhere of your own, such as a committed `docs` shared with the team - a value you set is never moved. Outside `.claude/`, where Claude Code prompts for every write and no allow rule lifts it. The root carries its own `.gitignore`, shaped by ALFRED_CODE_DOCS_VERSIONING: `local` keeps it machine-local, `git` commits the docs and keeps only the hooks' machine state out.",
       "validate": {
         "type": "relative-path"
       }
@@ -245,10 +254,10 @@
     },
     {
       "key": "ALFRED_CODE_MEMORY_DB",
-      "default": "~/.memory-mcp/memory.db",
+      "default": "~/.alfred-memory/memory.db",
       "ask": false,
       "written": true,
-      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.memory-mcp/memory.db, `scoped` ~/.memory-mcp/memory_<space>.db, `project` <project>/.memory-mcp/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
+      "what": "the shared `memory` MCP database this install points at - the path the `--memory-level` choice resolved to (`global` ~/.alfred-memory/memory.db, `scoped` ~/.alfred-memory/memory_<space>.db, `project` <project>/<data root>/.alfred-memory/memory.db). The plugin route's launcher (`stack/mcp/memory-launch.js`) reads it from this file because a plugin MCP entry cannot expand a project env key; with the key absent it falls back to the global default. A 2.0.0 `~/.memory-mcp` is moved to `~/.alfred-memory` by that launcher once no server holds it, with a link left at the old path. Written every run from the resolved level, never seeded - change it with `--memory-level` / `-MemoryLevel`, never by hand, and note that re-pointing the registration never moves or touches the old database file.",
       "validate": {
         "type": "absolute-path"
       }

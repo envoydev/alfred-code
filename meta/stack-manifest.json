@@ -960,11 +960,11 @@
     {
       "name": "navigation",
       "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (.serena/home - gitignore it, holds ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; --project-from-cwd self-activates the repo (.serena/project.yml in cwd) on launch; PyPI (not git), dashboard off"
+      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch; PyPI (not git), dashboard off"
     },
     {
       "name": "browser",
-      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright --output-dir ${CLAUDE_PROJECT_DIR:-.}/.playwright/output",
+      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@ --output-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@/output",
       "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser"
     },
     {

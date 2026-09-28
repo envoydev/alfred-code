@@ -330,6 +330,10 @@ table of the actionable rows only - an install whose env already matches gets th
   `.claude/docs` holds files (`find .claude/docs -type f | head -1` prints a path) is never offered
   either: those docs sit under the pre-2.0.0 default, so the catalog's `.alfred/docs` would point every
   hook away from them - name `/alfred-code:update`, which offers the one-time move, in its reason column.
+  `ALFRED_CODE_DATA_PATH` is never offered from here, MISSING or changed: the data root carries the docs
+  and every server's data, so a new value without the move would strand them - name
+  `/alfred-code:configure` (its data question moves them) in its reason column; a missing key is written
+  back by the next update from the stamp's `data-root:` line.
   Every other MISSING row still offers the catalog default unchanged.
 - **OLD NAME** - a row's `renamed_from` still present in the file. Accepting MOVES the value to the
   new key and drops the old one; nothing is deleted and no default is written over it. The

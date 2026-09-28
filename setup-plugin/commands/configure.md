@@ -245,8 +245,27 @@ absent its `mode:` line falls back to the same rule) - and offer THAT probed val
 (`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
 git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
-One behaviour lives here rather than in the catalog, because it is about what this step DOES: a
-docs-root change re-stamps the deployed rule (below) and moves no existing docs. Claude Code's own
+Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
+DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
+navigation server's folder and home, the browser profiles, a project-level memory database - so changing
+it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
+plugin data storage as a whole, the current value shown with what it holds:
+
+```ask
+Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: .alfred at the project root - one folder outside .claude/, where Claude Code prompts for every write; its own .gitignore keeps everything but the docs out of git.
+- '.alfred (Recommended)' - everything under one folder; data elsewhere now (a 2.0.0 .serena, .playwright, .memory-mcp or docs at .claude/docs) is moved there
+- 'Keep <current>' - nothing moves; offered only when the current value is not .alfred
+```
+
+A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
+Keeping `.alfred` when it is already the value is no change. A change - to `.alfred` from a 2.0.0
+layout, or to another folder - runs `node $TMP/repo/scripts/install/alfred-code.js update --source
+$TMP/repo --scope <scope> --installed-only --data-path <folder> --data-move move 2>&1 | tee
+"$TMP/install.log"` (step 12's installer call carries both flags when it runs anyway); report its
+`docs root:` and `data root:` lines verbatim - the docs move at once, each server's data at that
+server's next start once nothing holds it - and name the restart. A docs-root change (the docs value
+set by hand, for docs somewhere of the user's own) re-stamps the deployed rule (below) and moves no
+existing docs; a docs value the user set is never moved by a data-root change either. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
@@ -331,7 +350,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new

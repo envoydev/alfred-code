@@ -38,6 +38,7 @@ const rt = require('./install/runtime.js');  // R105: every external command thr
 const REPO = path.join(__dirname, '..');
 const { pythonRequest } = require(path.join(REPO, 'stack', 'mcp', 'uv-python.js'));
 const { serenaHomeFor } = require(path.join(REPO, 'stack', 'mcp', 'serena-launch.js'));
+const dataRoot = require(path.join(REPO, 'stack', 'mcp', 'data-root.js'));
 const { resolveDocsRoot } = require(path.join(REPO, 'scripts', 'install', 'copy.js'));
 const { browserCandidates } = require(path.join(REPO, 'scripts', 'stack-select.js'));
 const { planHud, resolveConfigDir } = require(path.join(REPO, 'scripts', 'hud-statusline.js'));
@@ -128,9 +129,12 @@ function plan({ inv, root, platform = process.platform, arch = process.arch, env
         }
     }
 
-    const serenaHome = serenaHomeFor(platform);
+    // serena's folder this start: under the data root, or a 2.0.0 .serena its launcher has not moved yet.
+    const data = dataRoot.dataRootOf({ env, projectDir: root }).root;
+    const serenaDir = dataRoot.liveDir({ projectDir: root, cls: 'serena', root: data, pending: dataRoot.pendingOf(root), move: false }).dir;
+    const serenaHome = serenaHomeFor(platform, data, serenaDir);
     const index = `uvx --python ${request} --from serena-agent${pinOf('navigation')} serena project index`;
-    add('serena index', nonEmptyDir(path.join(root, '.serena', 'cache')) ? 'present' : afterUv,
+    add('serena index', nonEmptyDir(path.join(root, ...serenaDir.split('/'), 'cache')) ? 'present' : afterUv,
         win ? `$env:SERENA_HOME='${serenaHome}'; ${index}` : `SERENA_HOME=${serenaHome} ${index}`);
 
     // claude-hud arrives configured: its account statusLine plus the plugin-settings row, one command.

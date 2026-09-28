@@ -35,7 +35,7 @@ Read it at step 1, before the tier is named.
   last part is the reusable half, keyed to the signature, never a dump of the log.
 
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the slug's note (or
-an equivalent direct read of `.serena/memories/`) and read the findings file's stamps. A run
+an equivalent direct read of `<data root>/serena/memories/`, `.alfred` by default) and read the findings file's stamps. A run
 mid-flight resumes at its cursor - never re-run a step already stamped. A run between steps 2
 and 3 looks like:
 

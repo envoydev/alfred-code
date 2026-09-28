@@ -114,10 +114,14 @@ The shared memory database the `memory` server reads. Paste this table first:
 ```
 | level | database | who shares it |
 |---|---|---|
-| global (Recommended) | ~/.memory-mcp/memory.db | every Claude account and Cursor on this machine |
-| scoped | ~/.memory-mcp/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
-| project | <project>/.memory-mcp/memory.db, gitignored | this project only, from any account |
+| global (Recommended) | ~/.alfred-memory/memory.db | every Claude account and Cursor on this machine |
+| scoped | ~/.alfred-memory/memory_<space>.db (memory_default.db with no space) | just this one Claude account, and Cursor installed with the same space |
+| project | <project>/.alfred/.alfred-memory/memory.db (under the data root), gitignored | this project only, from any account |
 ```
+
+A 2.0.0 database under `~/.memory-mcp` (or `<project>/.memory-mcp`) is the same level: the memory
+server's launcher moves the folder at its next start once no server holds it, and links the old path
+so Cursor and an install not yet updated reach the same file; until then the level names it where it is.
 
 Then ONE AskUserQuestion with those three options, `global` marked Recommended - the whole point of
 shared memory. Picking `project` while this project's related-projects domain names sibling repos
@@ -130,7 +134,7 @@ stamp's `initialised:` line change:
 (`--space` when this session's account dir is `~/.claude-<name>`; the same `PATH` prefix as step 3
 after a fresh uv). It writes the level into the
 `ALFRED_CODE_MEMORY_DB` key the server's launcher reads (the settings file the stamp's scope names),
-writes `.memory-mcp/.gitignore` at `project` level, imports this project's old `MEMORY.md` /
+writes the database folder's own `.gitignore` at `project` level, imports this project's old `MEMORY.md` /
 `memory/*.md` notes into THAT database once through the memory service, and - only when the import
 succeeds - switches Claude's own memory off (`autoMemoryEnabled: false`; an install that found no notes
 already did, and the step reports it as already off) and marks the stamp

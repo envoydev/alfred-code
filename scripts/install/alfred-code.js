@@ -25,6 +25,7 @@ const selection = require('./selection.js');
 const plugins = require('./plugins.js');
 const { pythonRequest } = require('../../stack/mcp/uv-python.js');
 const { serenaHomeFor } = require('../../stack/mcp/serena-launch.js');
+const dataRoot = require('../../stack/mcp/data-root.js');
 const { copyRouteExclude, platformOf, prereqNotes, DESKTOP_OS } = require('../../stack/mcp/desktop-launch.js');
 const mcp = require('./mcp.js');
 const copy = require('./copy.js');
@@ -152,10 +153,14 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // else global. C9 (R136 r): CLAUDE_CONFIG_DIR alone names the account, but the global and scoped
     // databases live under the HOME - with none they would be a RELATIVE path, written into settings and
     // resolved against whatever cwd reads it. Refused like the no-home case above, before anything runs.
+    // THE DATA ROOT (stack/mcp/data-root.js): the one folder this run lays the project's data under - the
+    // docs, serena's folder and home, the browser profiles, a project-level memory database. Resolved before
+    // the memory level, whose project database sits under it.
+    const dataInfo = resolveDataRoot({ args, claudeDir, projectRoot, log });
     const level = memory.resolveLevel({
         flag: args.memoryLevel,
         registeredPath: registeredMemoryPath(mcpFile, claudeDir),
-        home, space: args.space, projectRoot,
+        home, space: args.space, projectRoot, root: dataInfo.root,
     });
     if (!home && !path.isAbsolute(level.dbPath))
     {
@@ -571,6 +576,17 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         }
 
         // --- the run ---------------------------------------------------------------
+        // The data move: what is owed, what this run moves itself (a server no launcher starts on this
+        // route), what it leaves to a launcher's next start - then where each class lives now, which is what
+        // the copy route registers and the settings name.
+        const lockedPlugin = Boolean(routes.mcps) || plugins.corePluginOn(routes);
+        const launched = (cls) => (cls === 'serena' || cls === 'memory' ? lockedPlugin : Boolean(routes.mcps));
+        const dataPlan = planDataMove({
+            projectRoot, info: dataInfo, engines: pw.browsers, memoryProject: level.level === 'project', launched,
+            answer: args.dataMove, stamped: (Boolean(stampFile) && fs.existsSync(stampFile)) || Boolean(legacyUnstamped), log, note,
+        });
+        const liveOf = (cls) => dataRoot.liveDir({ projectDir: projectRoot, cls, root: dataInfo.root, pending: dataPlan.pending, move: false }).dir;
+        level.dbPath = liveMemoryPath({ level, projectRoot, home, liveOf, owed: dataPlan.pending.some((r) => r.cls === 'memory' && launched('memory')), registered: registeredMemoryPath(mcpFile, claudeDir) });
         const tokens = {
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: level.dbPath,
             // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
@@ -578,8 +594,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // such file, and its manifest then carries no @UV_PYTHON@ to resolve anyway.
             // A-I5: the account the run's claude calls use - a --space run's own, not the default one.
             UV_PYTHON: pythonRequest({ env: cliEnv, projectDir: projectRoot }),
-            // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows.
-            SERENA_HOME: serenaHomeFor(),
+            // serena's home in the platform's own separator: a '/' reaches cmd.exe on Windows - under the data
+            // root, or in a 2.0.0 .serena not moved yet.
+            SERENA_HOME: serenaHomeFor(process.platform, dataInfo.root, liveOf('serena')),
+            // Each browser engine's profile folder (mcp.pwArgsFor spells the manifest's @BROWSER_DIR@ per engine).
+            ...Object.fromEntries(dataRoot.ENGINES.map((e) => [`BROWSER_DIR_${e.toUpperCase()}`, liveOf(`browser-${e}`)])),
             SERENA_PIN: pins.SERENA_PIN, PW_PIN: pins.PW_PIN,
             MEMORY_PIN: pins.MEMORY_PIN, MEMORY_BACKEND: pins.MEMORY_BACKEND,
             WINDOWS_DESKTOP_PIN: pins.WINDOWS_DESKTOP_PIN, MACOS_DESKTOP_PIN: pins.MACOS_DESKTOP_PIN,
@@ -607,6 +626,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
             market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
+            dataInfo, dataPlan, liveOf,
             // The MCP plugin and server names the 2.0.0 rename left behind (manifest `renamed.mcps`).
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
@@ -663,6 +683,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             stoodDown: stoodDownRecord(ctx),
             library: ctx.library || { skills: {}, agents: {}, rules: {} },
             ledger: ledgerOf(ctx),
+            data: { root: dataInfo.root, pending: dataPlan.pending, kept: dataPlan.kept },
         });
 
         summarise(ctx, failures);
@@ -701,12 +722,7 @@ function runLayers(ctx)
     catch (err) { ctx.note(`${docsPath}/.gitignore could not be written (${err.message}) - add the docs root's machine state to the repo's own .gitignore`); }
     if (args.action === 'install') ctx.seededClaudeMd = seeds.seedClaudeMd({ projectRoot: ctx.projectRoot, sourceDir: ctx.source.dir, log: ctx.log, note: ctx.note });
     selection.respellRenamed({ projectRoot: ctx.projectRoot, renamed: ctx.manifest.renamed, log: ctx.log, note: ctx.note });
-    const navigation = ctx.lists.mcps.some((e) => e.startsWith('navigation|'));
-    serena.seedProject({ projectRoot: ctx.projectRoot, selected: navigation, log: ctx.log });
-    try { serena.ensureSerenaIgnore({ projectRoot: ctx.projectRoot, selected: navigation, log: ctx.log }); }
-    catch (err) { ctx.note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
-    try { mcp.ensurePlaywrightIgnore({ projectRoot: ctx.projectRoot, engines: pwEngines(ctx), log: ctx.log }); }
-    catch (err) { ctx.note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
+    dataRootLayer(ctx, docsPath);
     seeds.playwrightDownloads({
         browsers: pwEngines(ctx),
         pin: ctx.pins.PW_PIN,
@@ -714,6 +730,165 @@ function runLayers(ctx)
         log: ctx.log,
     });
     downconvert(ctx);
+}
+
+// The data root's own files, once the docs root is settled: its `.gitignore` (docs.ensureDataIgnore - the
+// docs stay visible to git, everything else is machine state), serena's project.yml seeded where serena
+// reads it this run (the root, or a 2.0.0 .serena its launcher has not moved yet) and its home config
+// pointing serena at the folder (the launcher writes it too - the installer's copy serves the copy route,
+// which runs no launcher, and a `serena project index` run before any start). A 2.0.0 place still in use
+// keeps its own `.gitignore`; a root the data left is removed once only its `.gitignore` remains.
+function dataRootLayer(ctx, docsPath)
+{
+    const { projectRoot, log, note } = ctx;
+    const root = ctx.dataInfo.root;
+    try { docs.ensureDataIgnore({ projectRoot, root, docsPath, log }); }
+    catch (err) { note(`${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore, keeping its docs/ folder visible`); }
+    const navigation = ctx.lists.mcps.some((e) => e.startsWith('navigation|'));
+    const serenaDir = ctx.liveOf('serena');
+    serena.seedProject({ projectRoot, selected: navigation, dir: serenaDir, root, log });
+    if (navigation && serenaDir !== dataRoot.LEGACY.serena)
+    {
+        try
+        {
+            const said = dataRoot.ensureSerenaConfig(path.join(projectRoot, ...`${serenaDir}/home`.split('/')), serenaDir);
+            if (said !== 'current') log(`  serena: ${serenaDir}/home/serena_config.yml ${said === 'kept' ? 'names its own project folder - left as it is' : `${said} - the per-project folder is ${serenaDir}`}`);
+        }
+        catch (err) { note(`${serenaDir}/home/serena_config.yml could not be written (${err.message}) - serena falls back to .serena`); }
+    }
+    if (serenaDir === dataRoot.LEGACY.serena)
+    {
+        try { serena.ensureSerenaIgnore({ projectRoot, selected: navigation, log }); }
+        catch (err) { note(`.serena/.gitignore could not be written (${err.message}) - add .serena/ to the repo's own .gitignore`); }
+    }
+    const legacyEngines = pwEngines(ctx).filter((e) => ctx.liveOf(`browser-${e}`) === dataRoot.legacyOf(`browser-${e}`));
+    try { mcp.ensurePlaywrightIgnore({ projectRoot, engines: legacyEngines, log }); }
+    catch (err) { note(`.playwright/.gitignore could not be written (${err.message}) - add .playwright/ to the repo's own .gitignore`); }
+    for (const old of new Set([ctx.dataInfo.prior, ...ctx.dataPlan.left].filter((r) => r && r !== root)))
+        docs.pruneDataRoot({ projectRoot, root: old, log });
+    // The 2.0.0 browser folder once every profile left it: only the stack's own `.gitignore` remains.
+    const pw = path.join(projectRoot, dataRoot.LEGACY.browser);
+    try
+    {
+        const names = fs.readdirSync(pw);
+        if (names.length === 1 && names[0] === '.gitignore' && fs.readFileSync(path.join(pw, '.gitignore'), 'utf8') === '*\n')
+        { fs.rmSync(pw, { recursive: true }); log(`  data root: ${dataRoot.LEGACY.browser}/ removed - every profile moved`); }
+    }
+    catch { /* absent, or not the stack's to remove */ }
+    if (ctx.dataPlan.moved.length || ctx.dataPlan.pending.length)
+        log(`data root: ${root} - ${ctx.dataPlan.moved.length} moved now, ${ctx.dataPlan.pending.length} waiting for a server's next start; restart the session`);
+}
+
+// THE DATA ROOT this run lays the project's data under (stack/mcp/data-root.js): the settings value this
+// install reads (settings.local.json over settings.json - never a shell export), else the root the last
+// stamp recorded, else `.alfred`. `--data-path` changes it only where no data would be stranded: with
+// `--data-move move`, or when the current root holds nothing. `prior` is where the data may still be - the
+// root this run leaves, or one the stamp names that a hand edit replaced.
+function resolveDataRoot({ args, claudeDir, projectRoot, log })
+{
+    const stampRead = stampLayer.stampFiles({ projectRoot }).read;
+    const recorded = stampRead ? stampLayer.readDataLines(stampRead) : { root: '', pending: [], kept: false };
+    let current = recorded.root || dataRoot.DATA_ROOT_DEFAULT;
+    let invalid = false;
+    for (const name of ['settings.local.json', 'settings.json'])
+    {
+        const raw = (readJson(path.join(claudeDir, name)).env || {}).ALFRED_CODE_DATA_PATH;
+        if (typeof raw !== 'string' || !raw) continue;
+        const checked = dataRoot.checkDataPath(raw);
+        if (checked.ok) current = checked.value;
+        else { invalid = true; log(`data root: ALFRED_CODE_DATA_PATH '${raw}' in ${name} refused (${checked.why}) - ${current} used; fix or remove the value`); }
+        break;
+    }
+    let root = current;
+    if (args.dataPath && args.dataPath !== current)
+    {
+        const base = path.join(projectRoot, ...current.split('/'));
+        let holds = false;
+        try { holds = fs.readdirSync(base).some((n) => n !== '.gitignore'); } catch { holds = false; }
+        if (holds && args.dataMove !== 'move')
+            log(`data root: --data-path ${args.dataPath} not applied - ${current} holds this project's data; pass --data-move move to carry it there`);
+        else root = args.dataPath;
+    }
+    const prior = root !== current ? current : (recorded.root && recorded.root !== root ? recorded.root : null);
+    return { root, current, prior, recorded, invalid };
+}
+
+// What the data move owes and does this run. A pending line carried from the last run stays while its data
+// still sits at `from` and its target is this root's; one whose server no launcher starts on this route is
+// retried inline. `--data-move move` moves every class whose data is elsewhere: inline where no launcher
+// runs (the copy route - a browser profile a browser holds, or a database a server has open, waits), else
+// recorded for the launcher, which moves it at the server's next start. `keep` cancels what is owed and
+// marks the layout kept. No answer moves nothing and names the offer.
+function planDataMove({ projectRoot, info, engines, memoryProject, launched, answer, stamped, log, note })
+{
+    const abs = (rel) => path.join(projectRoot, ...rel.split('/'));
+    // A folder holding nothing but its `.gitignore` holds no data (data-root.js reads it the same way).
+    const holds = (rel) => { try { return fs.readdirSync(abs(rel)).some((n) => n !== '.gitignore'); } catch { return false; } };
+    const same = (a, b) => a.cls === b.cls && a.from === b.from && a.to === b.to;
+    const server = (cls) => (cls === 'serena' ? 'navigation' : cls === 'memory' ? 'memory' : cls);
+    const inline = (row) =>
+    {
+        const busy = row.cls.startsWith('browser-') ? dataRoot.profileLocks : row.cls === 'memory' ? dataRoot.busyDbs : () => [];
+        const held = busy(abs(row.from));
+        if (held.length) return { ok: false, why: `held open: ${held.join(', ')}` };
+        const r = dataRoot.moveEntry(abs(row.from), abs(row.to));
+        return r.state === 'moved' ? { ok: true } : { ok: false, why: r.why || r.state };
+    };
+    const moved = [];
+    // A root a recorded move has now emptied (its launcher ran) is pruned by the data-root layer.
+    const left = info.recorded.pending.filter((p) => !holds(p.from)).map((p) => dataRoot.rootOfPlace(p.cls, p.from)).filter(Boolean);
+    let pending = info.recorded.pending.filter((p) => holds(p.from) && p.to === dataRoot.targetOf(p.cls, info.root));
+    let kept = info.recorded.kept && answer !== 'move';
+    if (answer === 'keep') { kept = true; pending = []; }
+    pending = pending.filter((p) =>
+    {
+        if (launched(p.cls)) return true;
+        const r = inline(p);
+        if (r.ok) { moved.push(p); left.push(dataRoot.rootOfPlace(p.cls, p.from)); log(`data root: moved ${p.from} -> ${p.to}`); }
+        return !r.ok;
+    });
+    const rows = stamped ? dataRoot.dataMovePlan({ projectRoot, root: info.root, prior: info.prior, engines, memory: memoryProject }) : [];
+    const open = rows.filter((r) => !pending.some((p) => same(p, r)));
+    if (answer === 'move')
+    {
+        for (const row of open)
+        {
+            if (row.conflict) { note(`data root: ${row.from} not moved - ${row.to} already holds data; move or remove one of them, then run /alfred-code:update --data-move move`); continue; }
+            if (launched(row.cls))
+            {
+                pending.push({ cls: row.cls, from: row.from, to: row.to });
+                log(`data root: ${row.from} -> ${row.to} moves at the ${server(row.cls)} server's next start, once nothing holds it - restart the session`);
+                continue;
+            }
+            const r = inline(row);
+            if (r.ok) { moved.push(row); log(`data root: moved ${row.from} -> ${row.to}`); }
+            else { pending.push({ cls: row.cls, from: row.from, to: row.to }); log(`data root: ${row.from} not moved yet (${r.why}) - the next run tries again`); }
+        }
+    }
+    else if (open.length && !kept)
+        log(`data root: ${open.map((r) => r.from).join(', ')} sit outside ${info.root} - /alfred-code:update offers the move to ${info.root} (--data-move move|keep); nothing moved`);
+    return { pending, kept, moved, rows, left: [...new Set(left.filter((r) => r && r !== info.root))] };
+}
+
+// The memory database the settings (and a copy-route registration) name: where the file LIVES now. A
+// project database the memory launcher still owes a move names its new place - the launcher moves it there
+// and every reader falls back until then (data-root.js liveMemoryDb); otherwise the place it sits, so a
+// server with no launcher never opens a second, empty database beside it. The registered spelling is kept
+// when it names that same file.
+function liveMemoryPath({ level, projectRoot, home, liveOf, owed, registered })
+{
+    let live = level.dbPath;
+    if (level.level === 'project' && !owed)
+    {
+        const found = path.join(projectRoot, ...liveOf('memory').split('/'), 'memory.db');
+        if (fs.existsSync(found)) live = found;
+    }
+    else if (level.level === 'global' || level.level === 'scoped') live = dataRoot.liveMemoryDb(level.dbPath, { home, projectRoot });
+    // The same file under another spelling of its directory (macOS /var -> /private/var) keeps the registered
+    // one - never a 2.0.0 folder name reaching the moved database through its link, which is re-spelled.
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    const sameFolder = registered && path.basename(path.dirname(registered)) === path.basename(path.dirname(live));
+    return sameFolder && fs.existsSync(registered) && real(registered) === real(live) ? registered : live;
 }
 
 // The docs root this run leaves in effect, and the one-time move out of the old default
@@ -726,35 +901,40 @@ function docsRootStep(ctx)
     const { args, log, note } = ctx;
     const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
     const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
-    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope }), ledger: managed, stamped });
+    const views = docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope });
+    const to = `${ctx.dataInfo.root}/docs`;
+    const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...views, ledger: managed, stamped, to, kept: ctx.dataInfo.recorded.kept });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;
-    if (plan.state !== 'offer' && args.docsMove) log(`docs move: nothing to offer (${plan.why}) - --docs-move ignored`);
+    if (plan.state !== 'offer' && args.dataMove) log(`docs move: nothing to offer (${plan.why}) - the docs stay where they are`);
     if (plan.state === 'repoint')
     {
-        ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old default held nothing' };
-        log(`docs root: ${plan.from} (the old default) holds nothing - re-pointed to ${plan.to}`);
+        ctx.docsPath = { value: plan.to, own: 'stack', why: 'the old root held nothing' };
+        log(`docs root: ${plan.from} holds nothing - re-pointed to ${plan.to}`);
     }
+    // A first install lays the docs under the data root it was given - unless a docs root is already set.
+    else if (!stamped && plan.state === 'none' && !['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH'].some((k) => views.env[k] || (views.personal && views.personal[k]))) // legacy-name
+        ctx.docsPath = { value: to, own: 'stack', why: 'the data root' };
     else if (plan.state === 'offer')
     {
         const held = { value: plan.from, own: 'stack', why: 'its docs are still there' };
         const count = plan.tracked.length + plan.untracked.length;
-        if (args.docsMove === 'keep')
+        if (args.dataMove === 'keep')
         {
-            ctx.docsPath = { value: plan.from, own: 'user', why: '--docs-move keep' };
+            ctx.docsPath = { value: plan.from, own: plan.from === docs.LEGACY_DOCS_ROOT ? 'user' : 'stack', why: '--data-move keep' };
             log(`docs root: kept at ${plan.from} - ALFRED_CODE_DOCS_PATH is yours from here on; no update offers the move again`);
         }
-        else if (args.docsMove === 'move' && plan.conflicts.length)
+        else if (args.dataMove === 'move' && plan.conflicts.length)
         {
             ctx.docsPath = held;
             note(`docs root: not moved - ${plan.conflicts.length} file(s) already at ${plan.to}: ${plan.conflicts.slice(0, 5).join(', ')} - move or remove them, then run /alfred-code:update again`);
         }
-        else if (args.docsMove === 'move')
+        else if (args.dataMove === 'move')
         {
             const moved = docs.moveDocsRoot({ projectRoot: ctx.projectRoot, plan });
             if (moved.ok)
             {
-                ctx.docsPath = { value: plan.to, own: 'stack', why: '--docs-move move' };
+                ctx.docsPath = { value: plan.to, own: 'stack', why: '--data-move move' };
                 // A move keeps what git saw: an old root git ignored, with nothing tracked, stays out of git
                 // as a `local` root (its own `.gitignore` of `*`) - unless this run names a versioning itself.
                 if (plan.ignored && !args.docsVersioning) ctx.docsVersioningCarry = 'local';
@@ -770,7 +950,7 @@ function docsRootStep(ctx)
         else
         {
             ctx.docsPath = held;
-            log(`docs root: ${plan.from} is the old default and holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--docs-move move|keep); nothing moved`);
+            log(`docs root: ${plan.from}${plan.from === docs.LEGACY_DOCS_ROOT ? ' is the old default and' : ''} holds ${count} file(s) - /alfred-code:update offers the move to ${plan.to} (--data-move move|keep); nothing moved`);
         }
     }
     // A settings file that cannot be read says nothing about the root, so the rule keeps the root it was
@@ -1465,6 +1645,10 @@ function installHooksAndRules(ctx)
             seed: docs.docsVersioningSeed({ projectRoot: ctx.projectRoot, docsPath: docsRoot }),
         },
         docsPath: ctx.docsPath,
+        // The data root this run lays the data under: written when it differs from the file's value - a
+        // root a move carried the data to, or a first install's chosen one - never over a value the run
+        // refused (resolveDataRoot says so), which stays the user's to fix.
+        dataPath: ctx.dataInfo.invalid ? null : { value: ctx.dataInfo.root, why: ctx.dataInfo.root !== ctx.dataInfo.current ? '--data-path' : 'the data root' },
         // R124 (m): trust exactly the .mcp.json servers this run registered and lets load; every other
         // stack name leaves the list (a plugin-carried locked server, an engine left off, anything at
         // local or user scope). A name the user added is not a stack name and stays.
@@ -1513,9 +1697,11 @@ function installHooksAndRules(ctx)
 
 function importMemory(ctx)
 {
-    if (ctx.level.level === 'project')
+    // A project database its launcher still owes a move keeps its old folder's own .gitignore, and moves with
+    // it - a file written at the new place first would make that place look taken.
+    if (ctx.level.level === 'project' && !ctx.dataPlan.pending.some((p) => p.cls === 'memory'))
     {
-        try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log); }
+        try { memory.ensureProjectIgnore(ctx.projectRoot, ctx.log, ctx.level.dbPath); }
         catch (err) { ctx.note(`${memory.MEMORY_DIR}/.gitignore could not be written (${err.message}) - add the folder to the repo's own .gitignore`); }
     }
     // Task 18a I1: the notes import and the switch-off belong to /alfred-code:init (`memory.js init`),
@@ -1745,7 +1931,7 @@ function runUninstall({ projectRoot, claudeDir, configDir, accountFile, env, has
     settings.removeManagedSettings({ claudeDir, ledger, shippedDeny: SHIPPED_DENY, mcpRemoved: removed, scope, log, note });
     uninstallLayer.removeManagedFiles({ claudeDir, skillsDir: path.join(claudeDir, 'skills'), library: stampLayer.readLibrary(file) || {}, files: ledger.files || {}, log });
     const memoryOff = ['settings.json', 'settings.local.json'].some((n) => readJson(path.join(claudeDir, n)).autoMemoryEnabled === false);
-    log(`  kept, yours or your data: a CLAUDE.md you filled in, the docs root, .serena/, the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
+    log(`  kept, yours or your data: a CLAUDE.md you filled in, the data root (the docs, the navigation index, the browser profiles - ${dataRoot.dataRootOf({ env: {}, projectDir: projectRoot }).root}/, or a 2.0.0 .serena/ / .playwright/), the memory database${memoryOff ? '; autoMemoryEnabled: false stays - Claude\'s own memory is off until you remove that key' : ''}`);
     if (failures()) { log(`  stamp kept - ${path.basename(file)} still lists what is left; run uninstall again to finish`); return 0; }
     fs.rmSync(file, { force: true });
     log(`  stamp removed: ${path.basename(file)} - every item the ledger listed is gone, or named above as kept`);

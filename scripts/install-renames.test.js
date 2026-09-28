@@ -671,7 +671,7 @@ test('seed update --installed-only over an UNSTAMPED legacy install: picks under
     assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /my-own-helper/.test(e)), 'nor recorded as a stack pick');
     // The 1.x key held the old default, the stack's own seed, over no docs at all - so it takes the new default.
     assert.strictEqual(first.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'an empty old root is re-pointed');
-    assert.match(outs[0], /docs root: \.claude\/docs \(the old default\) holds nothing - re-pointed to \.alfred\/docs/);
+    assert.match(outs[0], /docs root: \.claude\/docs holds nothing - re-pointed to \.alfred\/docs/);
     assert.ok(!Object.keys(first.settings.env).some((k) => k.startsWith('CLAUDE_STACK_')), JSON.stringify(first.settings.env)); // legacy-name
     assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine');
     const wired = JSON.stringify(first.settings.hooks || {});

@@ -29,10 +29,12 @@
 //                                           classified by derive-state's classifyNew against THIS
 //                                           install: arrives | renamed | offer | off | unknown;
 //                                           'new: none' if none)
-//   docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tconflicts=<n>]
-//            | repoint <from> -> <to> (nothing to move) | none (<why>)
-//                                           (the one-time move out of the old default docs root;
-//                                           a project install only)
+//   data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none> memory=yes|no[\tignored=yes][\tconflicts=<n>]
+//            | none (<why>)
+//                                           (the project's data outside its data root - the 2.0.0
+//                                           layout or an earlier root: the docs, serena's folder, the
+//                                           browser profiles, a project memory database; a project
+//                                           install only)
 //   env-keys: <comma-separated key names>   (or 'env-keys: none')
 //   unattended: on                          (only with ALFRED_CODE_UNATTENDED=1)
 //
@@ -311,8 +313,9 @@ function runLogMode(logFile)
     for (const l of warnLines) console.log(`warn: ${l.trim()}`);
     const m = /mcps=(\d+)/.exec(text);
     const mcps = m ? Number(m[1]) : 0;
-    // A moved docs root: the session's loaded baseline-docs-root rule still names the old one.
-    const docsMoved = /docs root: moved /.test(text);
+    // A moved docs root: the session's loaded baseline-docs-root rule still names the old one. A data move
+    // a server's launcher makes at its next start waits for that start.
+    const docsMoved = /docs root: moved /.test(text) || /^==> data root: .* (moved now|waiting for a server's next start)/m.test(text);
     console.log(`restart: ${(mcps > 0 || hooks > 0 || docsMoved) ? 'yes' : 'no'}`);
 }
 
@@ -396,17 +399,31 @@ function main()
     const routes = require('./install/plugins.js').committedRoutesAt({ env: process.env, claudeDir: routeDir, scope: stampScope === 'local' ? 'local' : 'project' });
     for (const l of newItemLines({ root, claudeDir, snapshot, settings: layered || settings, stampFile, compareLines: lines, routes })) console.log(l);
 
-    // The one-time docs-root offer, from the rule the installer applies (docs.docsMovePlan): the same
-    // settings view the docs root is read from, and the stamp's ledger for who wrote the value.
+    // The data move, from the rules the installer applies (docs.dataOffer): the docs plan over the same
+    // settings view the docs root is read from and the stamp's ledger for who wrote the value, plus every
+    // server's data outside the root - the kept engines the stamp names, the memory folder at the project level.
     if (!accountDir)
     {
         const docs = require('./install/docs.js');
-        const ledger = require('./install/stamp.js').readLedger(stampFile);
+        const stampLib = require('./install/stamp.js');
+        const dataRoot = require('../stack/mcp/data-root.js');
+        const ledger = stampLib.readLedger(stampFile);
         const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
-        console.log(docs.docsMoveLine(docs.docsMovePlan({
-            projectRoot: path.resolve(root), ...docs.docsMoveViews({ claudeDir, scope: stampScope === 'local' ? 'local' : 'project' }),
+        const projectRoot = path.resolve(root);
+        let stampText = '';
+        try { stampText = fs.readFileSync(stampFile, 'utf8'); } catch { stampText = ''; }
+        const scope = stampScope === 'local' ? 'local' : 'project';
+        const env = settingsLib.readBackSettings(claudeDir, 'local').env || {};
+        const checked = dataRoot.checkDataPath(env.ALFRED_CODE_DATA_PATH || '');
+        const recorded = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
+        const dataRootNow = checked.ok ? checked.value : recorded || dataRoot.DATA_ROOT_DEFAULT;
+        const db = env.ALFRED_CODE_MEMORY_DB || '';
+        console.log(docs.dataOfferLine(docs.dataOffer({
+            projectRoot, claudeDir, scope, ledger: managed, stampText, root: dataRootNow,
             // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
-            ledger: managed, stamped: fs.existsSync(stampFile) || require('./install/stamp.js').legacyUnstamped(root),
+            stamped: fs.existsSync(stampFile) || stampLib.legacyUnstamped(root),
+            engines: stampLib.readBrowserLines(stampFile).browsers || [],
+            memoryProject: dataRoot.memoryLevelOf(db, { home: require('node:os').homedir(), projectRoot }) === 'project',
         })));
     }
 
