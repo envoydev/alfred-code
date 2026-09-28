@@ -24,7 +24,7 @@ Both are the house review protocol; this skill just keeps it in your chat. `/cod
 
 ## The review - in order, all inline
 
-Load the stack's house skill FIRST (the one your convention rules auto-attach for these file types; its router names the specialist siblings), so you check against ITS trap list, not a generic one. Dispatch nothing at any step.
+Load the stack's house skill FIRST (the one your convention rules auto-attach for these file types; its router names the specialist siblings), so you check against ITS trap list, not a generic one. Dispatch nothing at any step. Before the verdict is stamped, load `alfred-habits-done-gate` (the Skill tool): a pass is claimed only on a build and suite run this session, quoted.
 
 1. **Build + tests, rerun and quoted.** Rerun `build` and the suite yourself this session - never trust a pasted or prior-run result. Quote the output.
 2. **Plan conformance.** When a plan file exists, gate the code against it: every task present, nothing built outside a task's boundary, each `## Decisions` ledger entry honored (the built shape is the decided one, its why at the line), each task's `log_points` placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them), each acceptance criterion DEMONSTRATED by a run in this session, never assumed from reading the diff (`alfred-habits-done-gate` - run the check, quote the output, then claim it).

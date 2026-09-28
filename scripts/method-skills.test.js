@@ -214,3 +214,14 @@ test('the habit descriptions are triggers only - when, and what they are not for
             assert.ok(!desc.includes(step), `${skill}'s description retells its loop: '${step}'`);
     }
 });
+
+test('the inline task skills load their method skill through the Skill tool at the right point', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    const design = body('alfred-task-design');
+    assert.match(design, /Before you orient or design anything, load `alfred-habits-clarify` \(the Skill tool\) and run it/, 'design loads clarify first');
+    assert.match(design, /Load `alfred-habits-plan-writing` first \(the Skill tool\)/, 'design loads plan-writing');
+    assert.match(body('alfred-task-implement'), /load `alfred-habits-plan-writing` \(the Skill tool\)[^.]*and `alfred-habits-test-first`/, 'implement loads test-first');
+    const verify = body('alfred-task-verify-code');
+    assert.match(verify, /Before the verdict is stamped, load `alfred-habits-done-gate` \(the Skill tool\)/, 'verify-code loads the done gate');
+    assert.match(verify, /only on a build and suite run this session/, 'a pass needs a run this session');
+});
