@@ -22,6 +22,8 @@ worktree), before anything is downloaded:
 - `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:uninstall from there' and stop - the installer refuses this tree too.
 - `legacy-global` -> a 1.x global install: route to `/alfred-code:update` first (it moves the
   install into the project and records the ledger), and stop.
+- `legacy-unstamped` -> a legacy copy-route install that never wrote a stamp: route to `/alfred-code:update` first (it writes the
+  stamp and the ledger this command removes by - with neither it refuses), and stop.
 - `installed` / `initialised` -> go on.
 
 ## 2. Confirm once

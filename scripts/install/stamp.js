@@ -517,15 +517,55 @@ function worktreeMain(projectRoot)
     return at && !ownCheckouts(projectRoot).includes(at) ? at : null;
 }
 
-// The router's one read: not-installed | legacy-global | worktree-of-installed | installed (never
-// initialised) | initialised. The stamp is read in the checkout that holds the record.
+// Task 3 (2.1.0): a legacy COPY-route install that never wrote a stamp and copied no `hooks/docs.js` holds
+// no install record, so the router read it `not-installed` - setup took the fresh ladder and update sent
+// it back to setup. Its signatures, each an independent hit: (a) the stack's hook files in `.claude/hooks`,
+// (b) a stack env key (either prefix) in settings.json or settings.local.json, (c) three or more skill,
+// seat or rule names the stack ever shipped - the catalog, a renamed item's old name, a retired one. TWO
+// hits claim the tree; one never does - skills alone are the project's own as often as the stack's. The
+// hooks' record list is NOT extended, so they stay down until the update writes the stamp. `manifest`
+// defaults to this tree's own; an unreadable one claims nothing.
+const STACK_ENV_KEY = /^(ALFRED_CODE_|CLAUDE_STACK_)/; // legacy-name
+function legacySignature(root, { manifest } = {})
+{
+    let names;
+    try { names = require('./manifest.js').stackNames(manifest || require('./manifest.js').loadManifest(path.join(__dirname, '..', '..'))); }
+    catch { return false; }
+    const claudeDir = path.join(root, '.claude');
+    const list = (dir, test) => { try { return fs.readdirSync(path.join(claudeDir, dir), { withFileTypes: true }).filter(test).map((d) => d.name); } catch { return []; } };
+    const hooks = list('hooks', (d) => d.isFile() && d.name.endsWith('.js')).some((f) => names.hooks.has(f.replace(/\.js$/, '')));
+    const envKeys = ['settings.json', 'settings.local.json'].some((file) =>
+    {
+        try
+        {
+            const env = (JSON.parse(fs.readFileSync(path.join(claudeDir, file), 'utf8')) || {}).env;
+            return Boolean(env) && typeof env === 'object' && !Array.isArray(env) && Object.keys(env).some((k) => STACK_ENV_KEY.test(k));
+        }
+        catch { return false; }
+    });
+    const items = list('skills', (d) => d.isDirectory()).filter((n) => names.skills.has(n)).length
+        + list('agents', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.agents.has(f.replace(/\.md$/, ''))).length
+        + list('rules', (d) => d.isFile() && d.name.endsWith('.md')).filter((f) => names.rules.has(f.replace(/\.md$/, ''))).length;
+    return [hooks, envKeys, items >= 3].filter(Boolean).length >= 2;
+}
+
+// No install record in this directory's checkouts, and the legacy signature in the dir or its git top level
+// - the trees a run started here installs into. The router, the preflight and the installer all ask this.
+function legacyUnstamped(projectRoot, { manifest } = {})
+{
+    if (recordCheckout(projectRoot).at) return false;
+    return ownCheckouts(projectRoot).some((at) => legacySignature(at, { manifest }));
+}
+
+// The router's one read: not-installed | legacy-global | legacy-unstamped | worktree-of-installed |
+// installed (never initialised) | initialised. The stamp is read in the checkout that holds the record.
 // worktree-of-installed is R95 above - the CLI prints the main checkout's path after it. legacy-global
 // is a 1.x global install whose stamp the first update has not moved into the project yet: update's to
-// take, never init's (N1).
+// take, never init's (N1). legacy-unstamped is the record-less copy-route install above, update's too.
 function installState(projectRoot, env = process.env)
 {
     const { at } = recordCheckout(projectRoot);
-    if (!at) return 'not-installed';
+    if (!at) return legacyUnstamped(projectRoot) ? 'legacy-unstamped' : 'not-installed';
     if (worktreeMain(projectRoot)) return 'worktree-of-installed';
     const claudeDir = path.join(at, '.claude');
     if (legacyGlobalStamp(projectRoot, env)) return 'legacy-global';
@@ -659,7 +699,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
     readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
-    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, worktreeMain, installScope,
+    readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, legacySignature, legacyUnstamped, worktreeMain, installScope,
     accountDir,
 };
 

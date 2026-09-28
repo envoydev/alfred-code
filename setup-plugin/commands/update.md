@@ -156,7 +156,13 @@ repo, its git top level or a worktree's main checkout - never from `.claude/skil
 `.claude/agents`, which a plugin-route install may not have. `not-installed` -> stop and route to
 the sibling `/alfred-code:setup` command. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:update from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here; the installer refuses that tree too. `legacy-global` is a 1.x GLOBAL install whose stamp still
 sits in the account dir: this command is its route - step 2's preflight reads that stamp and the
-installer moves it into the project. `installed` / `initialised` -> go on. Every scope - project,
+installer moves it into the project. `legacy-unstamped` is a legacy copy-route install that never wrote a
+stamp (no install record, but two of the stack's own signatures in `.claude/`: its hook files, its env keys,
+three or more of its skill, seat or rule names) -> go on: this command is its route - step 2's preflight
+prints `no-stamp` (the fast path) and offers its docs move like any older install's, and the installer logs
+`no stamp: an unstamped legacy install`, reads the picks off disk (each old name under its new one, a
+project's own skill never one of them), prunes the old copies and writes the stamp. `installed` /
+`initialised` -> go on. Every scope - project,
 user or local - keeps the stamp, the library copies and the settings in the project's `.claude/`,
 so there is one mode. The user names items to add or drop -> that is the sibling
 `/alfred-code:configure` command, not this one. One installer on every OS (step 3).

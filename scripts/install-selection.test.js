@@ -128,6 +128,30 @@ test('derive: with the shipped catalog, only a stack hook is a hook item - a use
     assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [], shippedHooks: ['docs-session'] }), [], 'a lone user file is no install evidence');
 });
 
+// Task 3 (2.1.0): `.claude/skills`, `agents` and `rules` are the project's folders too. With the stack's
+// names to go by - the catalog, the renamed map's old names and the retired lists - only a stack name is an
+// item: a project's own skill was read back as a pick, and alone it made --installed-only claim an install.
+test('derive: with the stack\'s names, a project\'s own skill, seat or rule is no item - old and retired names still are', () =>
+{
+    const { stackNames, loadManifest: load } = require('./install/manifest.js');
+    const known = stackNames(load(path.join(__dirname, '..')));
+    const oldSkill = Object.keys(known.renamedSkills)[0];
+    const dir = target({ skills: ['markdown-style', oldSkill, 'my-own-helper'], agents: ['security-auditor', 'my-own-seat'], rules: ['baseline-security', 'my-own-rule'] });
+    const lines = sel.deriveFromDisk({ claudeDir: dir, knownPlugins: [], known });
+    assert.deepStrictEqual(lines.filter((l) => /^(skill|agent|rule) /.test(l)).sort(),
+        ['agent security-auditor', 'rule baseline-security', `skill ${oldSkill}`, 'skill markdown-style'].sort());
+    const own = target({ skills: ['my-own-helper'], agents: ['my-own-seat'], rules: ['my-own-rule'] });
+    assert.deepStrictEqual(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [], known }), [], 'the project\'s own files are no install evidence');
+    assert.ok(sel.deriveFromDisk({ claudeDir: own, knownPlugins: [] }).includes('skill my-own-helper'), 'with no names to go by every folder is read, as before');
+});
+
+test('read-back: a project holding only its own skill is no install', () =>
+{
+    const claudeDir = target({ skills: ['my-own-helper'] });
+    const r = sel.readBack({ claudeDir, mcpServers: [], listing: [], settings: {}, routes: { skills: true, hooks: true, mcps: true }, manifest: require('./install/manifest.js').loadManifest(path.join(__dirname, '..')), sourceDir: path.join(__dirname, '..'), always: {} });
+    assert.strictEqual(r.installed, false, r.lines.join(', '));
+});
+
 test('derive: a skill folder without a SKILL.md is not a skill', () =>
 {
     const dir = target({ skills: ['project-aspnet'] });

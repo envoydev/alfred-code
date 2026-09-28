@@ -28,6 +28,7 @@ const { hookDisabled, envOf } = require('../../stack/hooks/hook-prelude.js');
 const { BRAND, LEGACY, currentName, rowOn } = require('./brand.js');
 const { USER_OFF_WINS, corePluginOn, rowsOn } = require('./plugins.js');
 const { currentMcp } = require('./mcp.js');
+const { stackNames } = require('./manifest.js');
 
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
@@ -106,17 +107,21 @@ const listDir = (dir, test) =>
 // `skillsDir`: a 1.x global install kept its skills in the account dir, everything else in the project.
 // `shippedHooks` (R56): the stack's hook names - `.claude/hooks/` is the user's folder too, and a file
 // of their own there is no hook item; null (no catalog to go by) reads every non-engine file.
-function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null })
+// `known` (manifest.js stackNames): the same for skills, seats and rules - only a name the stack ever
+// shipped (the catalog, a renamed item's old name, a retired one) is an item, so a project's own skill is
+// neither a pick nor install evidence; null reads every folder.
+function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'), mcpServers = [], plugins = [], knownPlugins = [], shippedHooks = null, known = null })
 {
     const lines = [];
+    const ours = (kind, name) => !known || known[kind].has(name);
     for (const name of listDir(skillsDir, (d) => d.isDirectory()))
-        if (fs.existsSync(path.join(skillsDir, name, 'SKILL.md'))) lines.push(`skill ${name}`);
+        if (ours('skills', name) && fs.existsSync(path.join(skillsDir, name, 'SKILL.md'))) lines.push(`skill ${name}`);
     for (const f of listDir(path.join(claudeDir, 'agents'), (d) => d.isFile() && d.name.endsWith('.md')))
-        lines.push(`agent ${f.replace(/\.md$/, '')}`);
+        if (ours('agents', f.replace(/\.md$/, ''))) lines.push(`agent ${f.replace(/\.md$/, '')}`);
     for (const f of listDir(path.join(claudeDir, 'rules'), (d) => d.isFile() && d.name.endsWith('.md')))
     {
         const name = f.replace(/\.md$/, '');
-        if (!RULE_EXCLUDE.test(name)) lines.push(`rule ${name}`);
+        if (!RULE_EXCLUDE.test(name) && ours('rules', name)) lines.push(`rule ${name}`);
     }
     for (const f of listDir(path.join(claudeDir, 'hooks'), (d) => d.isFile() && d.name.endsWith('.js')))
     {
@@ -131,12 +136,12 @@ function deriveFromDisk({ claudeDir, skillsDir = path.join(claudeDir, 'skills'),
     }
     // Plugins are machine-level, so they come from the CLI listing rather than a project directory -
     // without this the fast path filtered PLUGINS to empty and `update` ran on nothing.
-    const known = new Set(knownPlugins.map(nameOfPlugin));
+    const listedKnown = new Set(knownPlugins.map(nameOfPlugin));
     const seenPlugin = new Set();
     for (const p of plugins)
     {
         const name = nameOfPlugin(p);
-        if (known.has(name) && !seenPlugin.has(name)) { seenPlugin.add(name); lines.push(`plugin ${name}`); }
+        if (listedKnown.has(name) && !seenPlugin.has(name)) { seenPlugin.add(name); lines.push(`plugin ${name}`); }
     }
     // None listed is none picked. No fallback to the manifest's set, even when the CLI could not be
     // read: update INSTALLS an absent plugin, so that fallback put all five on a project whose user
@@ -201,7 +206,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // An MCP name from before the 2.0.0 rename - a listing row, a .mcp.json server - is read under its
     // new one: the same server the user picked (manifest `renamed.mcps`).
     const cur = (name) => currentMcp(name, (manifest.renamed && manifest.renamed.mcps) || {});
-    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped }), renaming);
+    let lines = renameLines(deriveFromDisk({ claudeDir, skillsDir, mcpServers: mcpServers.map(cur), plugins: listing.map((r) => r.name), knownPlugins: manifest.plugins, shippedHooks: shipped, known: stackNames(manifest) }), renaming);
     const none = { lines, closeFrom: [], parked: [], deny: [], installed: false, answered: { hooks: false, agents: false }, engines: [] };
     const ours = (stackListing || listing).filter((r) => r.marketplace === marketplace);
     // On the plugin routes an install whose every pick an entry carries, with no rule copied, leaves

@@ -654,3 +654,21 @@ test('env-keys: the before-state is the file the run writes - settings.local.jso
     const shared = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
     assert.match(shared.out, /^env-keys: SHARED_ONLY$/m, shared.out);
 });
+
+// Task 3 (2.1.0): an unstamped legacy copy-route install (`stamp.js state` reads `legacy-unstamped`) takes
+// update's normal path, so its docs under the old default are OFFERED the move like any older install's -
+// 'no install record' let the default change under them silently. A tree with no stack signature stays a
+// fresh project with nothing to offer.
+test('docs-move: an unstamped legacy install is offered the move; a tree with no stack signature is not', () => {
+    const legacyKey = { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }; // legacy-name
+    const { snap, install, fixtureFile } = scaffold({ stamp: null, settings: { env: legacyKey } });
+    fs.mkdirSync(path.join(install, '.claude', 'docs', 'architecture'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
+    const bare = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
+    assert.match(bare.out, /^docs-move: none \(no install record - a fresh install takes the new default\)$/m, 'one signature is no install');
+    fs.mkdirSync(path.join(install, '.claude', 'hooks'), { recursive: true });
+    fs.writeFileSync(path.join(install, '.claude', 'hooks', 'guard-catastrophic-rm.js'), '// old\n');
+    const legacy = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile]);
+    assert.strictEqual(legacy.code, 2, 'still no stamp to compare');
+    assert.match(legacy.out, /^docs-move: offer \.claude\/docs -> \.alfred\/docs\ttracked=0 untracked=1$/m, legacy.out);
+});

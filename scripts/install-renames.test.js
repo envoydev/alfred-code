@@ -543,6 +543,78 @@ test('seed update --installed-only on the copy route: the old copies become new 
     assert.strictEqual(renamedLines(out).length, 3, renamedLines(out).join('\n'));
 });
 
+// Shape 4 (2.1.0 Task 3): a legacy copy-route install that never wrote a stamp - old-name copies, the stack's
+// hooks copied and wired, an old seat, a rule, the 1.x env key - and beside them a project's own skill. The
+// state is `legacy-unstamped`, update's to take: its picks come off disk under their new names, the old
+// copies go, the stamp is written, and the project's own skill is neither touched nor recorded.
+function unstampedLegacy(repo)
+{
+    for (const n of ['project-solve-task', 'project-commit-checkpoint', 'project-related-context', 'markdown-style']) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n));
+    write(repo, '.claude/skills/my-own-helper/SKILL.md', skill('my-own-helper'));
+    for (const n of ['guard-catastrophic-rm', 'guard-read-whole-file', 'hook-prelude']) write(repo, `.claude/hooks/${n}.js`, '// old\n');
+    write(repo, '.claude/agents/ci-failure-diagnoser.md', '---\nname: ci-failure-diagnoser\n---\n');
+    write(repo, '.claude/rules/baseline-interaction.md');
+    write(repo, '.claude/settings.json', JSON.stringify({
+        env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs', MY_OWN_KEY: 'mine' }, // legacy-name
+        hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-catastrophic-rm.js"' }] },
+            { matcher: 'Bash', hooks: [{ type: 'command', command: 'node my-own-check.js' }] }] },
+    }, null, 2));
+}
+test('seed update --installed-only over an UNSTAMPED legacy install: picks under their new names, old copies gone, the project\'s own skill untouched, and a re-run is quiet', POSIX_ONLY, () =>
+{
+    const stampLayer = require('./install/stamp.js');
+    const before = { state: null };
+    // The first run installs the core and the locked three, so the re-run's listing names them - with no
+    // listing at all the read is blind, and a blind read carries the stamp's picks verbatim at the end.
+    const listed = JSON.stringify(['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.0', scope: 'project', enabled: true })));
+    const { steps, outs } = seedRun(['update', 'update'], '', {
+        args: ['--installed-only'],
+        prepare: (repo) => { unstampedLegacy(repo); before.state = stampLayer.installState(repo, { CLAUDE_CONFIG_DIR: path.join(repo, 'no-account') }); },
+        each: (repo, i) =>
+        {
+            if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'plugins.json'), listed);
+            return { ...inspect(repo), mine: fs.readFileSync(path.join(repo, '.claude', 'skills', 'my-own-helper', 'SKILL.md'), 'utf8'),
+                state: stampLayer.installState(repo, { CLAUDE_CONFIG_DIR: path.join(repo, 'no-account') }) };
+        },
+    });
+    assert.strictEqual(before.state, 'legacy-unstamped');
+    const [first, second] = steps;
+    assert.strictEqual(first.state, 'installed', 'the update wrote the stamp');
+    const names = (list) => list.map((e) => e.split('@')[0]);
+    for (const n of ['alfred-task-solve', 'alfred-habits-commit-checkpoint', 'alfred-capture-related-projects', 'markdown-style'])
+        assert.ok(names(first.pickedSkills).includes(n), `${n} is a pick: ${first.pickedSkills.join(',')}`);
+    assert.ok(names(first.pickedAgents).includes('alfred-issue-diagnoser-ci'), first.pickedAgents.join(','));
+    const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);
+    assert.deepStrictEqual([...first.skills, ...first.agents.map((f) => f.replace(/\.md$/, ''))].filter((n) => old.has(n)), [], 'every old copy is pruned');
+    assert.ok(first.skills.includes('my-own-helper'), `the project's own skill stays: ${first.skills.join(' ')}`);
+    assert.strictEqual(first.mine, skill('my-own-helper'), 'and is not rewritten');
+    assert.ok(![...first.pickedSkills, ...first.librarySkills].some((e) => /my-own-helper/.test(e)), 'nor recorded as a stack pick');
+    // The 1.x key held the old default, the stack's own seed, over no docs at all - so it takes the new default.
+    assert.strictEqual(first.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'an empty old root is re-pointed');
+    assert.match(outs[0], /docs root: \.claude\/docs \(the old default\) holds nothing - re-pointed to \.alfred\/docs/);
+    assert.ok(!Object.keys(first.settings.env).some((k) => k.startsWith('CLAUDE_STACK_')), JSON.stringify(first.settings.env)); // legacy-name
+    assert.strictEqual(first.settings.env.MY_OWN_KEY, 'mine');
+    const wired = JSON.stringify(first.settings.hooks || {});
+    assert.ok(!wired.includes('.claude/hooks/guard-'), `the old copy's wiring goes with its file: ${wired}`);
+    assert.ok(wired.includes('node my-own-check.js'), `the project's own hook stays wired: ${wired}`);
+    assert.strictEqual(renamedLines(outs[0]).length, 4, renamedLines(outs[0]).join('\n'));
+    assert.deepStrictEqual(renamedLines(outs[1]), [], 'the re-run has nothing left to rename');
+    assert.deepStrictEqual([second.pickedSkills, second.pickedAgents, second.skills, second.agents, second.settings], [first.pickedSkills, first.pickedAgents, first.skills, first.agents, first.settings], 'the re-run changes nothing');
+});
+
+// A project's own skill alone is no install to update: --installed-only refuses it as it refuses an empty tree.
+test('seed update --installed-only: a project holding only its own skills is not installed', POSIX_ONLY, () =>
+{
+    const { code, err, result } = seedRun('update', '', {
+        args: ['--installed-only'], failOk: true,
+        prepare: (repo) => { for (const n of ['my-own-helper', 'another-one']) write(repo, `.claude/skills/${n}/SKILL.md`, skill(n)); },
+        inspect: (repo) => ({ stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')), skills: fs.readdirSync(path.join(repo, '.claude', 'skills')).sort() }),
+    });
+    assert.strictEqual(code, 1, err);
+    assert.match(err, /--installed-only found nothing installed/);
+    assert.deepStrictEqual(result, { stamp: false, skills: ['another-one', 'my-own-helper'] });
+});
+
 // A selection line - a walk's file or an --add / --drop - naming an old item names the new one.
 test('seed install --selection and update --add: a line naming an old item installs the new one', POSIX_ONLY, () =>
 {

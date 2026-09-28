@@ -192,6 +192,38 @@ test('installer: an absent key with docs at the old root is written back as the 
     assert.match(result.stamp, new RegExp(`settings\\.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`), 'the stack\'s own value - a later update still offers');
 });
 
+// Task 3 (2.1.0): an unstamped legacy copy-route install - no stamp, no copied engine, but the stack's hooks
+// and skills on disk - is update's to take, so its docs under the old default are the stack's own too: held
+// and offered, never left behind while the root silently becomes the new default.
+test('installer: an unstamped legacy install with docs at the old root keeps them in effect and names the offer', POSIX_ONLY, () =>
+{
+    const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+    const prepare = (r) =>
+    {
+        const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(r, rel)), { recursive: true }); fs.writeFileSync(path.join(r, rel), body); };
+        for (const n of Object.keys(renamed.skills).slice(0, 3)) put(`.claude/skills/${n}/SKILL.md`, `---\nname: ${n}\n---\n`);
+        put('.claude/hooks/guard-catastrophic-rm.js', '// old\n');
+        put('.claude/rules/baseline-interaction.md', '# old\n');
+        put('.claude/settings.json', '{}\n');
+        for (const [rel, body] of Object.entries(OLD)) put(rel, body);
+    };
+    const { out, result } = seedRun('update', '', { args: updateArgs(), prepare, inspect: look });
+    assert.match(out, /docs root: \.claude\/docs is the old default and holds 2 file\(s\) - \/alfred-code:update offers the move to \.alfred\/docs \(--docs-move move\|keep\); nothing moved/, out);
+    assert.deepStrictEqual([result.env.ALFRED_CODE_DOCS_PATH, result.rule, result.old, result.moved], ['.claude/docs', '.claude/docs', true, false]);
+
+    // The 1.x key holding the old default is the stack's own seed there too - no ledger says otherwise, so the
+    // installer offers what the preflight offered, and a 'move' answer moves the tree.
+    const keyed = (r) => { prepare(r); fs.writeFileSync(path.join(r, '.claude', 'settings.json'), JSON.stringify({ env: { CLAUDE_STACK_DOCS_PATH: '.claude/docs' } })); }; // legacy-name
+    const held = seedRun('update', '', { args: updateArgs(), prepare: keyed, inspect: look });
+    assert.match(held.out, /docs root: \.claude\/docs is the old default and holds 2 file\(s\)/, held.out);
+    // With no answer the held root stays the stack's in the new ledger, so the next update offers again: an
+    // unstamped install has no ledger, which is not an empty one saying the stack managed nothing here.
+    assert.match(held.result.stamp, new RegExp(`settings\\.json:ALFRED_CODE_DOCS_PATH=${valueHash('.claude/docs')}`), 'the stack\'s own value - a later update still offers');
+    const moved = seedRun('update', '', { args: updateArgs('--docs-move', 'move'), prepare: keyed, inspect: look });
+    assert.match(moved.out, /docs root: moved \.claude\/docs -> \.alfred\/docs \(2 file\(s\)/, moved.out);
+    assert.deepStrictEqual([moved.result.env.ALFRED_CODE_DOCS_PATH, moved.result.rule, moved.result.old, moved.result.moved], ['.alfred/docs', '.alfred/docs', false, true]);
+});
+
 test('installer: --docs-move move moves the tree, re-points the key and re-stamps the rule', POSIX_ONLY, () =>
 {
     for (const ledger of [true, false])

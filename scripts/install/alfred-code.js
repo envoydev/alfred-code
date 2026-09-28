@@ -235,10 +235,16 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const unmigrated = Boolean(legacyAcct) && (args.action === 'update' || args.printPlan) && fs.existsSync(legacyAcct);
         if (unmigrated) stampFile = legacyAcct;
         if (unmigrated && args.printPlan) skillsDir = path.join(configDir, 'skills');
+        const manifest = loadManifest(resolved.dir);
+        // Task 3 (2.1.0): a legacy copy-route install that never wrote a stamp - the router's own test
+        // (stamp.js legacyUnstamped), read BEFORE any layer prunes the old copies it is recognised by. Its
+        // picks come off disk, and it is an install from before the ledger, like an older stamp's (below).
+        const legacyUnstamped = !stampFile && stampLayer.legacyUnstamped(projectRoot, { manifest });
         // R10: the last run's ledger - what it wrote and manages here. Null for a stamp from before it
-        // (and a 1.x account stamp): each layer then falls back to its old evidence. No stamp at all is a
-        // project the stack has managed nothing in yet, so whatever is already there is the user's.
-        const priorLedger = stampFile ? stampLayer.readLedger(stampFile) : stampLayer.emptyLedger();
+        // (and a 1.x account stamp, and an unstamped legacy install): each layer then falls back to its old
+        // evidence. No stamp at all is otherwise a project the stack has managed nothing in yet, so whatever
+        // is already there is the user's.
+        const priorLedger = stampFile ? stampLayer.readLedger(stampFile) : legacyUnstamped ? null : stampLayer.emptyLedger();
 
         // A-I1 (final review A, ruling): an unmigrated 1.x GLOBAL install - the router's legacy-global
         // test - keeps the scope its account stamp names (`global` = user), whatever --scope arrives: the
@@ -275,8 +281,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const cliScope = args.scope;
 
         log(`action: ${args.action} [scope=${args.scope}, account=${configDir}]`);
+        if (legacyUnstamped) log('no stamp: an unstamped legacy install - its picks are read from disk, an old name under its new one');
 
-        const manifest = loadManifest(resolved.dir);
         // C5: at project and user scope a route switch only settings.local.json holds is personal, and
         // never decides what this run commits (plugins.js committedRoutes).
         const routes = plugins.committedRoutesAt({ env, claudeDir, scope: args.scope, log });
@@ -584,7 +590,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             args, env, cliEnv, log, note, plain, cli, rt, source: resolved, manifest, lists, routes,
             projectRoot, claudeDir, skillsDir, configDir, mcpFile, home, stampFile,
             pins, tokens, remotes, level, hasClaude, claudeBroken, picked, answered, dropEntries, cliScope, refreshed,
-            market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger,
+            market, marketSeen, readMarkets, retiredMcpsDue, leavingLocal, ledger: priorLedger, legacyUnstamped,
             // The MCP plugin and server names the 2.0.0 rename left behind (manifest `renamed.mcps`).
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
@@ -703,7 +709,7 @@ function docsRootStep(ctx)
 {
     const { args, log, note } = ctx;
     const managed = ctx.ledger && ctx.ledger.env ? Object.assign({}, ...Object.values(ctx.ledger.env)) : null;
-    const stamped = Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile);
+    const stamped = (Boolean(ctx.stampFile) && fs.existsSync(ctx.stampFile)) || Boolean(ctx.legacyUnstamped);
     const plan = docs.docsMovePlan({ projectRoot: ctx.projectRoot, ...docs.docsMoveViews({ claudeDir: ctx.claudeDir, scope: args.scope }), ledger: managed, stamped });
     ctx.docsPath = null;
     ctx.docsVersioningCarry = null;

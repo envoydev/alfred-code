@@ -404,7 +404,8 @@ function main()
         const managed = ledger && ledger.env ? Object.assign({}, ...Object.values(ledger.env)) : null;
         console.log(docs.docsMoveLine(docs.docsMovePlan({
             projectRoot: path.resolve(root), ...docs.docsMoveViews({ claudeDir, scope: stampScope === 'local' ? 'local' : 'project' }),
-            ledger: managed, stamped: fs.existsSync(stampFile),
+            // An unstamped legacy install (stamp.js legacy-unstamped) is update's to take, its docs root the stack's own.
+            ledger: managed, stamped: fs.existsSync(stampFile) || require('./install/stamp.js').legacyUnstamped(root),
         })));
     }
 

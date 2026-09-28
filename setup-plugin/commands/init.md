@@ -16,7 +16,9 @@ main checkout; its second, `unattended: on|off`, says whether anyone answers thi
 
 - **Nothing installed** - `not-installed`: stop and name `/alfred-code:setup` for the USER to type,
   then end the turn. `legacy-global` (a 1.x global install whose stamp still sits in the account
-  dir): stop the same way on `/alfred-code:update`, which moves it into the project. Both are
+  dir): stop the same way on `/alfred-code:update`, which moves it into the project. `legacy-unstamped`
+  (a legacy copy-route install that never wrote a stamp): stop the same way on `/alfred-code:update`,
+  which reads its picks off disk and writes the stamp. All are
   `disable-model-invocation` - the user's to type, never a Skill call from this run - and each
   belongs in its own session. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:init from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here.
 - **Setup ran in THIS session** - stop: name the restart, then `/alfred-code:init` in the new

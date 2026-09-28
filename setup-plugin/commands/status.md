@@ -26,6 +26,10 @@ install records the hooks read (`alfred-code.stamp`, the 1.x `claude-stack.stamp
 - `legacy-global` -> a 1.x global install whose stamp still sits in the account dir: say so and
   route to `/alfred-code:update`, which moves it into the project. Render nothing else - its copies
   are not where this command reads.
+- `legacy-unstamped` -> say so and route to `/alfred-code:update`: a legacy copy-route install that never
+  wrote a stamp (no install record, but two of the stack's own signatures in `.claude/`), whose picks
+  update reads off disk before it writes the stamp. Render nothing else - with no stamp every table below
+  reads nothing.
 - `installed` or `initialised` -> go on.
 
 Every install lives in the PROJECT at every scope: the stamp, the library copies, the rules, the

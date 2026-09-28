@@ -84,7 +84,8 @@ comparable banner by banner; the content varies, the skeleton never does.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
   -> stop and route to `/alfred-code:update`, which moves it into the project; configure runs after
-  it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
+  it. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
+  which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched

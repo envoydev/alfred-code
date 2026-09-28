@@ -544,6 +544,23 @@ test('status and configure name the 1.x stamp beside alfred-code.stamp', () => {
     }
 });
 
+// Task 3 (2.1.0): a legacy copy-route install that never wrote a stamp read `not-installed`, so setup took
+// the fresh ladder and update sent it back to setup - the same ping-pong. The state is its own now: update
+// takes it on its normal path, setup asks once (update recommended), every other gate routes it to update.
+test('an unstamped legacy install routes to update from every gate; setup asks once, update recommended', () =>
+{
+    const router = flat(fs.readFileSync(path.join(PLUGIN_DIR, 'skills', 'alfred-code', 'SKILL.md'), 'utf8'));
+    assert.match(router, /prints `not-installed`, `legacy-global`, `legacy-unstamped`,/);
+    assert.match(router, /Legacy unstamped -> `\/alfred-code:update`, whatever the ask/);
+    const setup = flat(cmdBody('setup'));
+    assert.match(setup, /`legacy-unstamped` \([^)]*\) -> ONE AskUserQuestion: 'Update this install \(Recommended\)'[^;]*'Fresh setup anyway'/);
+    assert.match(setup, /'Update this install' -> stop and route to `\/alfred-code:update`/);
+    assert.match(setup, /'Fresh setup anyway' -> go on/);
+    assert.match(flat(cmdBody('update')), /`legacy-unstamped` [^;]*-> go on: this command is its route/);
+    for (const name of ['init', 'configure', 'validate', 'status', 'uninstall'])
+        assert.match(flat(cmdBody(name)), /`legacy-unstamped`[^`]*`\/alfred-code:update`/, `${name} routes it to update`);
+});
+
 // R95 (Task 18b fix round 1): the review measured a loop in a git worktree of an installed checkout -
 // the state read named the main checkout's install, every reader after it read the worktree's empty
 // `.claude`, so update named setup and setup named update. Every gate now reads the worktree state and

@@ -320,7 +320,11 @@ change (see the invariants below).
     grants, hook wirings and credential literals, pasted before one ask, never auto-fixed, and the
     CLAUDE.md check - `claude-md-check.js` rows offered to the skill's improve mode, no option recommended), `/alfred-code:uninstall`
     (the seed's `uninstall` over the stamp's ledger, below; user-scope plugin rows and MCP registrations printed, never run). In a git
-    worktree of an installed checkout every command stops and names the main checkout.
+    worktree of an installed checkout every command stops and names the main checkout. A legacy copy-route install that never
+    wrote a stamp reads `legacy-unstamped` (`stamp.js legacySignature`: no install record, and TWO of the stack's hook files, a
+    stack env key, three or more stack skill / seat / rule names - never skills alone); update takes it as a pre-ledger install
+    (picks off disk, old names renamed, docs move offered), setup asks once with update recommended, the rest route to update, and
+    the hooks' record list is NOT extended, so they stay down until that update writes the stamp.
   - configure and validate never inventory by hand: `update --installed-only --print-plan --plan-out`
     writes the installer's own read-back as their `--installed` JSON (with `left_out` - denied seats,
     items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either

@@ -59,4 +59,22 @@ function loadManifest(sourceDir)
     };
 }
 
-module.exports = { loadManifest, renderHook, renderSkill, renderMcp, MANIFEST };
+// Every name the stack ever shipped a copy under, by kind - the catalog (inactive rows included), the
+// renamed map's old names and the retired lists - so a file under `.claude/` is told apart from the
+// project's own: `.claude/skills`, `agents`, `rules` and `hooks` are the project's folders too.
+// `renamedSkills` / `renamedAgents` are the old -> new maps themselves.
+function stackNames(manifest)
+{
+    const bare = (list, ext) => (list || []).map((f) => String(f).replace(ext, ''));
+    const rows = manifest.rows || {};
+    return {
+        skills: new Set([...manifest.catalogs.skills.map((e) => e.split('|').pop()), ...Object.keys(manifest.renamed.skills), ...manifest.retired.skills]),
+        agents: new Set([...bare((rows.agents || []).map((r) => r.file), /\.md$/), ...Object.keys(manifest.renamed.agents), ...bare(manifest.retired.agents, /\.md$/)]),
+        rules: new Set([...bare((rows.rules || []).map((r) => r.file), /\.md$/), ...bare(manifest.retired.rules, /\.md$/)]),
+        hooks: new Set([...manifest.catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')), ...bare(manifest.retired.hooks, /\.js$/)]),
+        renamedSkills: manifest.renamed.skills,
+        renamedAgents: manifest.renamed.agents,
+    };
+}
+
+module.exports = { loadManifest, stackNames, renderHook, renderSkill, renderMcp, MANIFEST };
