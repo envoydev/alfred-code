@@ -20,7 +20,9 @@
 //     configure and stays removed.
 //   - THE ALWAYS-ON BASELINE IS ADOPTED THE SAME WAY, with NO drop exception: the always set is
 //     locked, so an always item absent from disk is adopted whatever the stamp says. A stamp naming
-//     the shipped list once read as a drop of everything, and the memory rule never arrived.
+//     the shipped list once read as a drop of everything, and the memory rule never arrived. From
+//     2.1.0 the always SKILLS are copies too, adopted the same way; an always SEAT rides the core and
+//     is adopted unless the user denied it.
 const fs = require('node:fs');
 const path = require('node:path');
 const { readInstalled, stampCarried, splitPick, homeOf, retiredHomeOf, stackSeat } = require('../derive-state.js');
@@ -174,20 +176,28 @@ function adoptHooks({ lines, catalog = [], shippedBefore = [], log = () => {} })
 }
 
 // The always-on baseline, with NO drop exception - the set is locked, like serena. A layer this
-// install does not carry AT ALL (no rule line, or no mcp line) stays absent.
-function adoptAlways({ lines, always = {}, log = () => {} })
+// install does not carry AT ALL (no rule line, or no mcp line) stays absent. The always skills are
+// adopted into any install that carries skills or rules (2.1.0: no plugin carries them, so a copy is
+// the only way an install has them). An always SEAT rides the core and its off-switch is the deny,
+// so it is adopted only while the core loads it (`coreOn`) and only when `deny` does not name it -
+// on the full copy route absence on disk is its off-state, and adopting there would undo a drop.
+function adoptAlways({ lines, always = {}, log = () => {}, deny = [], coreOn = false })
 {
     const out = [...lines];
+    const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+    const adopt = (category, name) =>
+    {
+        if (out.includes(`${category} ${name}`)) return;
+        out.push(`${category} ${name}`);
+        log(`installed-only: adopting ${category} ${name} - always shipped by this release and absent here`);
+    };
     for (const [category, key] of [['rule', 'rules'], ['mcp', 'mcps']])
     {
         if (!out.some((l) => l.startsWith(`${category} `))) continue;
-        for (const name of always[key] || [])
-        {
-            if (out.includes(`${category} ${name}`)) continue;
-            out.push(`${category} ${name}`);
-            log(`installed-only: adopting ${category} ${name} - always shipped by this release and absent here`);
-        }
+        for (const name of always[key] || []) adopt(category, name);
     }
+    if (out.some((l) => /^(skill|rule) /.test(l))) for (const name of always.skills || []) adopt('skill', name);
+    if (coreOn) for (const name of always.agents || []) if (!denied.has(name)) adopt('agent', name);
     return out;
 }
 
@@ -198,7 +208,10 @@ function adoptAlways({ lines, always = {}, log = () => {} })
 // `serena` or `sentry` is not ours. `answered` names the surfaces the read found EVIDENCE of; the
 // caller writes nothing back for the others, so a listing that could not be read (no CLI, a failed
 // call) switches nothing off instead of switching everything off for good.
-function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, log = () => {} })
+// `seatsRoute`: the stamp's `seats-route:` (null on a stamp from before 2.1.0) - what the enabled core
+// carried when the last install ran (derive-state readInstalled's `core`). `ledgerSeats`: the seats
+// whose deny the last run's ledger records as the stack's own (`managed-deny`).
+function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackListing, settings, routes = {}, manifest, sourceDir, stampHooks = [], lastHooksRoute = null, stampPicked, stampEngines, always = {}, marketplace = BRAND.marketplace, said = new Set(), sharedOnlyDeny = [], committedEnv = null, scope, isOn = () => undefined, seatsRoute = null, ledgerSeats = [], log = () => {} })
 {
     const shipped = [...new Set(manifest.catalogs.hooks.map(nameOfFile))];
     // A copy an older release wrote under a name this one renamed is the renamed item (`renamed` below).
@@ -241,36 +254,47 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     const parked = ours.filter((r) => !rowOn(r) && !pickedEngines.includes(engineOf(cur(r.name)))).map((r) => currentName(cur(r.name)));
     // A 1.x settings file spells the switch-off CLAUDE_STACK_HOOKS_OFF until this run's env pass renames it. // legacy-name
     // A switch onto the FULL copy route disables the core (plugins.copyRouteStandDown), and that route
-    // reads skills and seats from the disk - where a plugin-route install holds only the extras, so the
-    // core's own items were never copied and loaded nowhere after the switch. What the core carried is
-    // what the project runs today: read back as the skills route reads it, and copied before the core
-    // goes off. The rows the stand-down disables - on at this run's scope by the settings file's word,
+    // reads skills and seats from the disk - where a plugin-route install holds no seat (2.1.0) or, before
+    // 2.1.0, none of the core's items, so they were never copied and loaded nowhere after the switch.
+    // What the core carried is what the project runs today: read back as the skills route reads it, and
+    // copied before the core goes off. The rows the stand-down disables - on at this run's scope by the settings file's word,
     // else the listing's flag (S22, S28).
     const leaving = !corePluginOn(routes)
         && rowsOn({ rows: ours, names: [BRAND.core, LEGACY.core], market: marketplace, isOn }).some((r) => !scope || r.scope === scope);
-    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes: leaving ? { ...routes, skills: true } : routes, sourceDir });
+    // A retired entry carries its whole stack, picked or not, and the library copies what the
+    // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
+    // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
+    // stamp without picks takes everything (the adoption path below). The same picks gate the seats
+    // a 2.1 core carries (readInstalled's `known`).
+    const picks = ours.length && stampPicked
+        ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
+        : null;
+    const core = seatsRoute === 'plugin' ? 'current' : seatsRoute === 'copy' ? 'none' : 'former';
+    // The same holds for a switch onto the skills copy route with the core still on: the seats the core
+    // carried last run (2.1.0 - none of them on disk) are what the project runs, and are copied now.
+    const copying = leaving || (!routes.skills && corePluginOn(routes) && seatsRoute === 'plugin');
+    const installed = readInstalled({ plugins: names, deny, hooksOff: envOf(env, 'HOOKS_OFF'), routes: copying ? { ...routes, skills: true } : routes, sourceDir, core, picks, managedSeats: ledgerSeats });
     // The walk's None held across a release: every hook the LAST release shipped is switched off, so
     // a hook this one added stays off too rather than arriving on alone.
     const noneBefore = routes.hooks && names.includes(BRAND.core) && stampHooks.length > 0
         && stampHooks.every((h) => hookDisabled(h, { ALFRED_CODE_HOOKS_OFF: String(envOf(env, 'HOOKS_OFF') || '') }));
-    // A retired entry carries its whole stack, picked or not, and the library copies what the
-    // selection holds - so with the stamp's picks to go by, an item only an enabled retired entry
-    // carries joins it only as a pick; one a kept pick requires comes back through the closure. A
-    // stamp without picks takes everything (the adoption path below).
-    const picks = ours.length && stampPicked
-        ? new Set(['skill', 'agent'].flatMap((k) => (stampPicked[`${k}s`] || []).map((e) => `${k} ${splitPick(e).name}`)))
-        : null;
-    const { placement, readRetiredEntries } = require('../plugin-placement.js');
-    const place = picks ? placement() : null;
-    const retired = picks ? readRetiredEntries() : [];
-    const unpickedRetired = (line) =>
-    {
-        const m = picks && /^(skill|agent) (\S+)$/.exec(line);
-        if (!m || picks.has(line) || homeOf(place, `${m[1]}s`, m[2])) return false;
-        return names.includes(retiredHomeOf(`${m[1]}s`, m[2], retired));
-    };
     for (const line of noneBefore ? installed.filter((l) => !l.startsWith('hook ')).concat('hook none') : installed)
-        if (!lines.includes(line) && !unpickedRetired(line)) lines.push(line);
+        if (!lines.includes(line)) lines.push(line);
+    // A seat the stamp homes in the core ran on the core, whatever that release's placement: on a real
+    // 2.0.x stamp these are always seats read above already, and on a stamp whose `seats-route:` line is
+    // missing or garbled they keep the picks from reading as never run.
+    if (core === 'former' && routes.skills && stampPicked && names.includes(BRAND.core))
+    {
+        const denied = new Set(deny.map(stackSeat).filter(Boolean));
+        // A stamp is project text: only a seat this release ships is ever read back from it.
+        const shippedSeats = new Set((manifest.agents || []).map(nameOfFile));
+        const validSeat = (name) => shippedSeats.has(name);
+        for (const entry of stampPicked.agents || [])
+        {
+            const { name, home } = splitPick(entry);
+            if (home && currentName(home) === BRAND.core && validSeat(name) && !denied.has(name) && !lines.includes(`agent ${name}`)) lines.push(`agent ${name}`);
+        }
+    }
     if (noneBefore && installed.some((l) => l.startsWith('hook ') && l !== 'hook none'))
         log('installed-only: every hook was switched off - the hooks this release added stay off too');
     // Only with a listing to say which entries are enabled and parked - without one the stamp would
@@ -291,7 +315,7 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // empty line that would leave a moved item nothing to carry it across.
     // What a switch onto the full copy route copies is the disk that route reads its picks from - so
     // it is picked from this run on, or the next run's stamp would differ from this one's.
-    if (leaving)
+    if (copying)
         for (const line of installed)
             if (/^(skill|agent) /.test(line) && lines.includes(line) && !closeFrom.includes(line)) closeFrom.push(line);
     if (stampPicked === null && ours.length)
@@ -299,6 +323,16 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
         const adopted = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
         closeFrom.push(...adopted);
         if (adopted.length) log(`installed-only: the stamp predates recorded picks - ${adopted.length} skills and seats the enabled entries carry are recorded as picked`);
+    }
+    // A stamp from before 2.1.0: what its core carried - the always closure - ran in this project, and
+    // from this run on it is copies and allowed seats, which the next run reads back as picks (the disk,
+    // and the stamp's picks gating the seats). Recorded as picked NOW, or the next run's stamp would
+    // differ from this one's.
+    if (core === 'former' && routes.skills && names.includes(BRAND.core))
+    {
+        const carried = installed.filter((l) => /^(skill|agent) /.test(l) && lines.includes(l) && !closeFrom.includes(l));
+        closeFrom.push(...carried);
+        log(`installed-only: the stamp predates 2.1.0 - its core is read as the always closure it carried: those skills become copies, and every seat this install never ran is denied${carried.length ? ` (${carried.length} carried items recorded as picked)` : ''}`);
     }
 
     // On a copy route, no hook on disk read as 'every hook' - the update copied and wired them all
@@ -346,7 +380,13 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
                 : `installed-only: no hook is copied here yet - copying the ${on.length} ALFRED_CODE_HOOKS_OFF does not name`);
         }
     }
-    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) };
+    // The seats surface is answered by the core's row - its carriage and the deny list are the seat
+    // state - or, when the last run did NOT carry the seats on the core (a stamp from before 2.1.0, a
+    // copy route, no stamp at all), by the disk: its seat copies plus the always seats are then every seat
+    // the project runs, so a run that is about to load the core (the legacy install it bootstraps, a
+    // listing that could not be read) denies the rest in the same run. A 2.1 plugin-route install read
+    // blind answers nothing - its seats are on no disk.
+    const answered = { hooks: lines.some((l) => l.startsWith('hook ')), agents: names.includes(BRAND.core) || (corePluginOn(routes) && seatsRoute !== 'plugin') };
     const listedEngines = routes.mcps ? names.map(engineOf).filter(Boolean) : [];
     const engines = PW_ORDER.filter((e) => listedEngines.includes(e) || pickedEngines.includes(e));
     if (pickedEngines.length && !lines.includes('mcp browser'))
@@ -359,8 +399,10 @@ function readBack({ claudeDir, skillsDir, mcpServers = [], listing = [], stackLi
     // adopting against an older stamp would switch back on the very hooks the user named there.
     if (!(routes.hooks && names.includes(BRAND.core)))
         lines = adoptHooks({ lines, catalog: manifest.catalogs.hooks, shippedBefore: stampHooks, log });
-    lines = adoptAlways({ lines, always, log });
-    for (const line of lines) if (/^(rule|mcp|plugin|hook) /.test(line) && !closeFrom.includes(line)) closeFrom.push(line);
+    const before = new Set(lines);
+    lines = adoptAlways({ lines, always, log, deny, coreOn: corePluginOn(routes) });
+    for (const line of lines)
+        if ((/^(rule|mcp|plugin|hook) /.test(line) || (/^(skill|agent) /.test(line) && !before.has(line))) && !closeFrom.includes(line)) closeFrom.push(line);
     // No stack row at all: the listing could not be read (or nothing of ours is installed), so this
     // run cannot tell a pick the user dropped from one it merely cannot see.
     return { lines, closeFrom, parked, deny, installed: true, answered, engines, blind: !ours.length };

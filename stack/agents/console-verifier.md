@@ -10,7 +10,7 @@ skills:
   - dotnet-code-quality
   - dotnet-testing
   - dotnet-hosted-services
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

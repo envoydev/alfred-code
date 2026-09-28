@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Agent Capabilities - inventory what is installed, generate the awareness rule
 
-Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`browser` where nothing renders a browser UI), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
+Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`browser` where nothing renders a browser UI), seats it never picked (each denied in `permissions.deny`). A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 

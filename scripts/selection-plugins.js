@@ -6,9 +6,9 @@
 //   node scripts/selection-plugins.js --selection <file> --copy   the items no plugin carries
 //   node scripts/selection-plugins.js --items <plugin>[,<plugin>]  the skills and agents those carry
 //
-// The core plugin carries the always closure; every other skill and agent is LIBRARY, listed by no
-// entry (plugin-placement.js says why). So an install is: enable the core, copy the library items
-// the selection picked, copy nothing else. `copy` is that library list.
+// The core plugin carries every seat; every skill is LIBRARY, listed by no entry (plugin-placement.js
+// says why). So an install is: enable the core, copy the skills the selection picked, copy nothing
+// else - a seat it did not pick is denied (derive-state.js). `copy` is that library list.
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, CORE, readRetiredEntries } = require('./plugin-placement.js');
@@ -57,8 +57,7 @@ function pluginsFor(picked, options = {})
         for (const s of items.skills) homes.set(`skill:${s}`, plugin);
         for (const a of items.agents) homes.set(`agent:${a}`, plugin);
     }
-    // The core is always enabled: it carries the guided-walk commands and the baseline skills, and
-    // every other entry depends on it.
+    // The core is always enabled: it carries the guided-walk commands, the hooks and every seat.
     const wanted = new Set([CORE]);
     const copy = { skills: [], agents: [] };
     const add = (name) =>

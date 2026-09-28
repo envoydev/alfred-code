@@ -223,8 +223,8 @@ what the table already shows.
 FRESH: the only skills seed is `always.skills` - the house METHOD set: the cross-task orchestrator
 plus the manual `alfred-task-*` / `alfred-capture-*` / `alfred-loop-*` / `alfred-issue-*` skills (the inline execution twins, the capture/loop generators,
 the upgrade planner) and the seven `alfred-habits-*` habits, all pre-selected `recommended` - LOCKED
-on the plugin route (they ride the core plugin, which carries no per-skill deny, so a drop there logs
-'not applied'), droppable only on the `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` copy route; their need is
+on every route (copies since 2.1.0, adopted by every update, so a drop logs 'not applied'; a project
+that wants one quiet sets it `off` or `name-only` in `skillOverrides`, which keeps the copy); their need is
 'the stack is installed', not anything a project manifest could prove, which is why they are seeded
 rather than evidence-scanned. The ONE deliberate exception is `alfred-task-build-from-scratch` - greenfield-only by
 its own description, dead weight on an existing project, so it is never seeded; offer it as an

@@ -7,7 +7,7 @@ effort: xhigh
 color: purple
 skills:
   - devops
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

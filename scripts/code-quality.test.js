@@ -52,18 +52,19 @@ function seededLoops()
 const bashBlocks = (text) => [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
 const runBash = (script, cwd) => spawnSync('bash', ['-c', script], { cwd, encoding: 'utf8' });
 
-test('the capture and its seat ride the core, placed by the rule that places the architecture-quality pair', () =>
+test('the capture is a copy and its seat rides the core, placed by the rule that places the architecture-quality pair', () =>
 {
+    // 2.1.0: every skill is a project copy, every seat rides the core.
     const p = placement();
     const core = p.plugins[CORE];
     for (const s of ['alfred-capture-architecture-quality', 'alfred-loop-architecture-quality', 'alfred-loop-quality', 'alfred-capture-code-quality'])
     {
-        assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);
-        assert.ok(!p.library.skills.includes(s), `${s} is never a library copy`);
+        assert.ok(p.library.skills.includes(s), `${s} is a project copy`);
+        assert.ok(!core.skills.includes(s), `${s} rides no plugin`);
     }
     for (const a of ['architecture-analyzer', 'code-quality-analyzer'])
     {
-        assert.ok(core.agents.includes(a), `${a} is always-closure, so it belongs to the core`);
+        assert.ok(core.agents.includes(a), `${a} rides the core`);
         assert.ok(!p.library.agents.includes(a), `${a} is never a library copy`);
     }
 
@@ -81,7 +82,7 @@ test('the capture and its seat ride the core, placed by the rule that places the
     assert.ok(graph.agents['code-quality-analyzer'], 'graph agent node');
 
     const entries = JSON.stringify(JSON.parse(read('meta/plugin-entries.json')));
-    assert.ok(entries.includes('./stack/skills/alfred-capture-code-quality"'), 'the generated core entry lists the skill');
+    assert.ok(!entries.includes('./stack/skills/alfred-capture-code-quality"'), 'the skill is a project copy - no entry lists it');
     assert.ok(entries.includes('./stack/agents/code-quality-analyzer.md"'), 'the generated core entry lists the seat');
 
     // The loop invokes the capture as a Skill call, so it carries no disable-model-invocation - and the
@@ -413,7 +414,7 @@ test('the CLAUDE.md seat counts match the agents on disk', () =>
     const doc = read('CLAUDE.md');
     assert.match(doc, new RegExp(`\`stack/agents/\` - ${n} subagents`));
     assert.match(doc, new RegExp(`twins of all ${n}\\b`));
-    assert.match(doc, new RegExp(`every other seat of the ${n} is a library copy`));
+    assert.match(doc, new RegExp(`all ${n} in the core plugin`));
 });
 
 test('the shared-rules registry pins the new homes of the loop and capture rules', () =>

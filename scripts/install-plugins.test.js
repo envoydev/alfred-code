@@ -1382,7 +1382,7 @@ test('seed update --installed-only: a 1.x install under its old key keeps its pi
             };
         } });
     assert.ok(/marketplace: claude-stack/.test(out), out); // legacy-name
-    assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style@alfred-code'), `skills: ${result.picks[0]}`);
+    assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style'), `skills (a copy since 2.1.0, no plugin home): ${result.picks[0]}`);
     assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor@alfred-code'), `agents: ${result.picks[1]}`);
     assert.strictEqual(result.oldStamp, false, 'the 1.x stamp is left beside the new one');
     assert.deepStrictEqual(result.deny, ['Agent(alfred-code:code-style-analyzer)'], 'the deny in one spelling');

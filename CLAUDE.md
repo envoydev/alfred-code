@@ -22,14 +22,18 @@ change (see the invariants below).
 ## Layout - one home per concern
 
 - `stack/skills/` - the house-style skills (`SKILL.md` each), auto-activating on their keywords /
-  file types. The always closure rides the CORE plugin; every other skill and agent is LIBRARY -
-  listed by no marketplace entry, copied into `.claude/skills` / `.claude/agents` per pick - and
-  every rule is a library copy in `.claude/rules` the same way (`scripts/install/library.js`, each
-  copy's hash in the stamp), because a plugin skill is locked on and only a project copy can be
-  switched off per project (measured, the 2026-09-24 library test). `scripts/library-check.js`
-  reports drift and staleness for validate and status; the core's SessionStart line
-  (`setup-plugin/hooks/library-stamp.js`) says when the copies are older than the stack.
-  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy route.
+  file types. Every one is LIBRARY (2.1.0) - listed by no marketplace entry, copied into
+  `.claude/skills` per pick, the always ones included (locked: adopted by every update, a drop
+  refused; `skillOverrides` is the per-project lever) - and every rule is a library copy in
+  `.claude/rules` the same way (`scripts/install/library.js`, each copy's hash in the stamp), because a
+  plugin skill is locked on and only a project copy can be switched off per project (measured, the
+  2026-09-24 library test). `scripts/library-check.js` reports drift and staleness for validate and
+  status; the core's SessionStart line (`setup-plugin/hooks/library-stamp.js`) says when the copies
+  are older than the stack - and, for a stamp from before 2.1.0 (no `seats-route:`) under a core at or
+  past it, that the skills and seat denies wait for `/alfred-code:update` (the skew window: the core
+  updates itself, the copies do not). `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` restores the 0.2.x copy
+  route, which since 2.1.0 moves only the SEATS (copied into `.claude/agents`); with the core still on
+  there, the seats it lists beside the copies are denied the same way.
 - `scripts/install/` - THE INSTALLER, and the ONLY route: `alfred-code.js` is the entry, one module
   per layer beside it (`args`, `brand`, `source`, `manifest`, `selection`, `library`, `copy`,
   `settings`, `env-migrations`, `plugins`, `mcp`, `docs`, `serena`, `memory`, `seeds`, `pins`,
@@ -259,7 +263,10 @@ change (see the invariants below).
   The guided walk's hooks layer makes them selectable, the whole catalog recommended (a selection with
   no `hook` lines keeps every hook on; setup's None emits `hook none` through `stack-select.js
   --hooks-answered`, setup only, which switches every hook off).
-- `stack/agents/` - 44 subagents, core seats in the core plugin, the rest library copies:
+- `stack/agents/` - 44 subagents, all in the core plugin (2.1.0), each one the selection did not pick
+  denied as `Agent(alfred-code:<seat>)` (a seat whose preloaded skills were not copied is never picked);
+  their `skills:` preloads are BARE - the project copy (`npm run scope-preloads`, lint check 50;
+  plugin-migration-evidence S6 measured a plugin seat's bare preload load the project copy):
   - resolvers: `dotnet-build-error-resolver`, `dotnet-test-failure-resolver`, `ng-build-error-resolver`,
     `angular-test-resolver`;
   - cross-cutting: `alfred-issue-diagnoser-ci`, `alfred-issue-diagnoser-runtime`, `security-auditor` (read-only
@@ -334,7 +341,7 @@ change (see the invariants below).
     items of a parked retired entry - and `parked_plugins`, so the walk's closure cannot switch either
     back on), and they apply as `derive-state.js --delta` lines turned into `--add` / `--drop` over the same
     read-back. A drop runs BEFORE the closure: one something kept requires, or a locked always-on rule
-    or server, is logged 'not applied'; a dropped core seat is denied, a dropped hook named off, a
+    or server, is logged 'not applied'; a dropped seat is denied, a dropped hook named off, a
     dropped library copy deleted (a copy-route hook unwired too), and an MCP entry nothing kept needs
     is disabled at the run's own scope and route - never the core (which carries the hooks) or the
     three locked servers.
@@ -369,11 +376,13 @@ change (see the invariants below).
   - `stack-graph.json` - generated dependency graph read by `stack-select.js`; regenerate with
     `npm run graph` (lint fails when stale).
   - `plugin-entries.json` - the GENERATED core entry, computed by `scripts/build-marketplace.js` from
-    the placement rule in `scripts/plugin-placement.js`: the core is the always closure plus every
-    stack hook, every other item is library. Regenerate with `npm run marketplace`; lint checks 44 and
-    45 fail when the file is stale, a second plugin appears, or an item has no home or two. The live
-    marketplace also lists the two 1.x ids as RETIRED aliases (`aliasEntries`, from `brand.js`
-    `LEGACY`): the core under its old name, and the old hooks id carrying nothing. No `renames` key -
+    the placement rule in `scripts/plugin-placement.js`: the core is the router skill, every seat and
+    every stack hook, every stack skill is library (2.1.0). Regenerate with `npm run marketplace`; lint
+    checks 44 and 45 fail when the file is stale, a second plugin appears, or an item has no home or
+    two. The live marketplace also lists the two 1.x ids as RETIRED aliases (`aliasEntries`, from
+    `brand.js` `LEGACY`): the core under its old name carrying what the core carried before 2.1.0 (the
+    always closure, `formerCore` - a straggler has no copies yet), and the old hooks id carrying
+    nothing. No `renames` key -
     a rename strands a 1.x install, a listed id refreshes in place (`docs/rebrand-evidence.md` S11,
     S21); lint 49 fails on a `renames` key or an `alfred-code-hooks` entry.
   - `retired-entries.json` - the 20 per-stack entries 1.2.0 shipped, FROZEN and listed under a RETIRED
@@ -421,13 +430,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 
 | Surface | Delivery |
 |---|---|
-| Skills | the core plugin (`alfred-code@envoydev`, the always closure) plus LIBRARY copies of every other pick in `.claude/skills`, hashed in the stamp; `library-check.js` reports drift and staleness |
+| Skills | LIBRARY copies of every pick in `.claude/skills`, the always ones included (2.1.0 - no plugin carries a stack skill; the core carries only the `/alfred-code` router), hashed in the stamp; `library-check.js` reports drift and staleness |
 | MCP | the 9 generated `<server>@envoydev` plugin entries the project's closure reaches (`build-marketplace.js --mcp-entries`), plus the six pre-2.0.0 ids listed as RETIRED aliases for installs not yet updated; `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores `claude mcp add` -> `<repo>/.mcp.json` with its drift verify |
 | Plugins | 2 OPTIONAL third-party picks (`claude plugin install`), the `*-lsp` pair, each suggested on evidence (`meta/evidence.json`) (`superpowers` left them in 2.0.0, never touched - R109; claude-md-management and security-guidance were RETIRED in 2.0.0 on the user's call, 2026-09-26, superseding R27 - `meta/retired-plugins.json`: the first update past 2.0.0 uninstalls each as `name@claude-plugins-official` at this run's scope and prints its add-back line, a row at another scope kept and named; a row put back after it is the user's own, `plugins.retirementDue`) - plus the REQUIRED `claude-hud` (user scope - its status line is account-wide), installed beside the core every run (`CORE_DEP_PLUGINS` = the manifest's parked rows, lint 51), never re-enabled once the user disables it (`install` would - measured on 2.1.282), statusLine + compact layout set by `/alfred-code:init` (`hud-statusline.js`) - plus the core. The core declares NO `dependencies`: `plugin update` installs none a release adds, a plugin missing one is disabled at load (measured on 2.1.280). Every run refreshes each marketplace its specs name once, reads each plugin as `name@marketplace`; install updates one already listed, update installs an absent one, enables a parked one, then updates, at the scope `claude plugin list --json` reports; `--installed-only` reads back only ENABLED stack entries (the core always is) |
 | Hooks | folded into the core `alfred-code@envoydev` plugin (all seventeen, generated from the manifest's `hooks[]`); only `docs.js` / `memory.js` / `history.js` / `model-windows.json` are copied; instrumentation off via ALFRED_CODE_INSTRUMENT=0 |
-| Agents | core seats in the core plugin, unpicked ones denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` (the copy routes write none - absence is off); every other seat of the 44 is a library copy in `.claude/agents`, and a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
+| Agents | all 44 in the core plugin (2.1.0), every one the selection did not pick denied as `Agent(alfred-code:<seat>)` in the project `permissions.deny` - measured to leave the listing and the bill (spike S3, rebrand-evidence S6) - wherever the core loads, the skills copy route included; the full copy route (no core) writes none and copies the picked seats into `.claude/agents` (absence is off). An update reads the seats back off the core minus the denied, gated by the stamp's picks and the ledger's `managed-deny`, so a seat a release adds is offered, never on by itself; a retired entry's seat deny gains the core spelling, and keeps its own while that entry is still installed (Claude Code matches the exact home name), so the seat stays off |
 | Installer | `node scripts/install/alfred-code.js <install|update|uninstall>` from the snapshot, one command on every OS |
-| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
+| Install stamp | `alfred-code.stamp` in the project's `.claude/` at EVERY scope - source commit, `picked-skills` / `picked-agents` (only the PICKS, as `name@home` - a skill plain since 2.1.0, a seat `@alfred-code`: `--installed-only` unions them back so an item a release moves is kept; a stamp with neither line takes what the enabled entries carry), `seats-route` (`plugin` or `copy` - how the run delivered the seats; a stamp WITHOUT it is from before 2.1.0, and its first update reads the core as the always closure it then carried: the always skills become copies, a library seat copy is pruned - one edited since is kept and its hash carried - and every seat the install never ran is denied), `library-skills` / `library-agents` / `library-rules` (`name=<sha256>` of each copy as written), `stood-down` (what the full copy route switched off here, `<scope>:<spec>` - the one thing a switch back enables), the LEDGER `managed-env` / `-deny` / `-hooks` / `-mcp` / `-files` (what the run wrote, each at its hash and in the FILE it was recorded for - a move off `local` carries a deny row into settings.json only where that file did not hold it before, and with no ledger a secret-file deny is never claimed; `-mcp` records the copy route's local- and user-scope registrations with their scope; a settings or account file the run could not read keeps its rows as recorded. Update removes what the release stopped writing, a value changed since is the user's and kept; uninstall removes only these - a local-scope registration through the CLI, a user-scope one printed; at user scope the seat denies and `ALFRED_CODE_HOOKS_OFF` stay, the core still loading - and refuses a stamp with none, or a plugin listing it cannot read, before any change), and `initialised:` - `pending` until init dates it (or the next run, on an older stamp with memory already off); configure diffs it against `main`. Scopes are `project`, `user` and `local` (`global` is read as `user`): the stamp and every copy stay in the project, the scope says where plugin rows are enabled (`user` makes every plugin / MCP call user-scoped), and `local` writes the stack's settings to `settings.local.json`. At every scope the stack keys `settings.local.json` holds are read over `settings.json`, and a write to one goes back there (R99). A 1.x account-dir stamp is read by update (which moves it into the project), `--print-plan` (configure and validate's read-back), `update-preflight.js`, `library-check`, `stamp.js state`, `stamp.js scope` (`installScope` falls back to it, A-I1), and the `library-stamp.js` SessionStart hook (B-I1) |
 | Convention gate | nine path-scoped convention rules in `.claude/rules/` |
 | Security review | `/security-review` + the `security-auditor` agent + the pre-commit checkpoint's security half (`alfred-habits-commit-checkpoint`) |
 | Project instructions | `CLAUDE.md` (seeded to `.claude/CLAUDE.md`) |
@@ -447,17 +456,16 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
   the browser, on which the installer re-spells the copied skills, agents, rules and hooks to the bare
   names a registration writes - that needs the FILES, so the switch belongs with
-  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). On the FULL copy
-  route alone (all three switches `false`, so no core plugin) the copied agents' `alfred-code:<skill>`
-  preloads are re-spelled to the bare skill too - nothing serves the qualified name there; with the
-  core on they stay and resolve. The LOCKED THREE
+  `ALFRED_CODE_SKILLS_VIA_PLUGIN=false` (a mixed pair is reported, never half-fixed). A seat's
+  `skills:` preloads are bare in the source since 2.1.0, so a copied seat resolves the project copies
+  on every route (the full copy route's `alfred-code:<skill>` re-spelling has nothing left to do). The LOCKED THREE
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
   twice. They come back to `.mcp.json` only on the FULL copy route, at every scope - never `mcp add
   --scope user`; every registration and verify
   pass skips a locked name while the core is on. A switch onto that route disables the core and the
-  locked three first, and copies every skill and seat the core carried, a denied seat excepted - that
-  route reads them from the disk, where a plugin-route install holds only the extras. At `user` scope
+  locked three first, and copies every seat the core carried, a denied seat excepted - that route reads
+  them from the disk, where a plugin-route install holds no seat. At `user` scope
   the rows are switched off in THIS project only (`disable --scope project`, which Claude Code honours
   over the user row while every other project keeps it - measured on 2.1.282, I2). Each off lands in
   the stamp's `stood-down` line, and a switch back enables exactly those, at the scope they were

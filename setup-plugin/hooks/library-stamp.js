@@ -13,6 +13,12 @@
 // repo never set up, with the same account stamp beside it, gets silence (B-I1). The project stamp is
 // read under either name: a project the 1.x release installed holds the old stamp until its first
 // update (brand.js stampFile - the new name wins).
+//
+// THE 2.1.0 SKEW WINDOW. 2.1.0 moved every skill out of the core into the project and every seat into
+// the core, each unpicked one denied. The core updates itself (another project's update, auto-update);
+// the copies and the denies move only on this project's /alfred-code:update. A stamp from before the
+// move (no `seats-route:` line) under a core at or past 2.1.0 is that window - the house skills the
+// rules name are not installed yet and every seat is listed - so the line says it in those words.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -24,10 +30,10 @@ function main()
     const root = process.env.CLAUDE_PLUGIN_ROOT;
     if (!root) return;
     const project = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-    let readLibrary, validItemName, installState, legacyAccountStamp, stampFile;
+    let readLibrary, validItemName, installState, legacyAccountStamp, stampFile, readSeatsRoute;
     try
     {
-        ({ readLibrary, validItemName, installState, legacyAccountStamp } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
+        ({ readLibrary, validItemName, installState, legacyAccountStamp, readSeatsRoute } = require(path.join(root, 'scripts', 'install', 'stamp.js')));
         ({ stampFile } = require(path.join(root, 'scripts', 'install', 'brand.js')));
     }
     catch { return; }
@@ -47,8 +53,11 @@ function main()
     const release = /^\d+\.\d+\.\d+$/;
     if (!release.test(String(lib.version)) || !release.test(String(stack))) return;
     const n = (v) => String(v).split('.').map((x) => parseInt(x, 10) || 0);
+    const newer = (x, y) => (x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : (x[2] || 0) > (y[2] || 0));
     const [a, b] = [n(stack), n(lib.version)];
-    const older = a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : (a[2] || 0) > (b[2] || 0);
+    const older = newer(a, b);
+    const MOVE = [2, 1, 0];
+    const moved = older && !newer(MOVE, a) && newer(MOVE, b) && !(readSeatsRoute && readSeatsRoute(projectStampFile || legacyFile));
     // I6 (R47, fix round 1): a personal skill in the ACCOUNT dir overrides a project library copy of
     // the same name (Claude Code runs personal over project) - flagged here too, whether or not the
     // stamp is stale, since library-check.js's own read only runs on demand (validate/status).
@@ -67,7 +76,8 @@ function main()
     }) : [];
     if (!older && !shadowed.length) return;
     const parts = [];
-    if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
+    if (moved) parts.push(`this project's skills and seats are from ${lib.version}, and 2.1.0 moved every skill into the project and every seat into the core (the stack is ${stack}) - until /alfred-code:update runs here the house skills the rules name are not installed and every seat is listed undenied: run /alfred-code:update now`);
+    else if (older) parts.push(`this project's library copies are from ${lib.version}, the stack is ${stack} - run /alfred-code:update to take the newer skills and agents`);
     if (shadowed.length) parts.push(`an account skill overrides this project's own copy of the same name (Claude Code runs personal over project): ${shadowed.join(', ')} - remove the account copy once every project has updated`);
     const line = `alfred-code: ${parts.join('; ')}.`;
     process.stdout.write(JSON.stringify({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } }));

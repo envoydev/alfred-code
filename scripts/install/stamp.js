@@ -20,6 +20,12 @@
 // leaves the same empty folder - so the None is read back from this line alone. A stamp without it (1.x,
 // or 2.0.0 before it) is an unknown route, never a None.
 //
+// `seats-route` is `plugin` or `copy`: how THIS run delivered the seats (2.1.0: every seat rides the
+// core on the plugin route, each unpicked one denied; the copy route copies the picked ones). The next
+// `--installed-only` reads the seats back by it - off the core minus the denied on `plugin`, off the
+// disk on `copy` - and a stamp WITHOUT the line is from before 2.1.0, when the core carried only the
+// always closure and every other seat was a library copy (derive-state readInstalled's `core`).
+//
 // `picked-skills` / `picked-agents` are the skills and seats this run installed. The next
 // `--installed-only` reads the plugin state back through THAT release's placement, so an item a
 // release moved into an entry this project has not enabled would drop out; these two lines carry it
@@ -215,7 +221,7 @@ function readLedger(file)
 
 function renderStamp(fields)
 {
-    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null } = fields;
+    const { repoUrl, ref, sha, version, installed, action, scope, initialised, hooks, hooksRoute, seatsRoute, alwaysRules, alwaysMcps, picked = {}, playwright = [], playwrightEnabled, stoodDown = [], library = {}, ledger = null } = fields;
     const hashes = (map) => Object.entries(map || {}).map(([n, h]) => `${n}=${h}`).join(',');
     return [
         '# alfred-code install stamp - machine-local, written by the alfred-code installer.',
@@ -233,6 +239,7 @@ function renderStamp(fields)
         ...(initialised ? [`initialised: ${initialised}`] : []),
         `shipped-hooks: ${hooks.join(',')}`,
         ...(hooksRoute ? [`hooks-route: ${hooksRoute}`] : []),
+        ...(seatsRoute ? [`seats-route: ${seatsRoute}`] : []),
         `installed-always-rules: ${alwaysRules.join(',')}`,
         `installed-always-mcps: ${alwaysMcps.join(',')}`,
         `picked-skills: ${(picked.skills || []).join(',')}`,
@@ -266,7 +273,7 @@ function stampFiles(at)
 function writeStamp(opts)
 {
     const {
-        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
+        source, action, scope, configDir, projectRoot, mcpFile, hooksCatalog, hooksRoute, seatsRoute, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
         version = '', now = new Date(), log = () => {}, note = () => {},
     } = opts;
     const initialised = opts.initialised || initialisedValue({ claudeDir: stampDir({ projectRoot }), now });
@@ -294,7 +301,7 @@ function writeStamp(opts)
             repoUrl: source.repoUrl, ref: source.ref, sha: source.sha, version,
             installed: now.toISOString().replace(/\.\d{3}Z$/, 'Z'),
             action, scope, initialised,
-            hooks: shippedHooks(hooksCatalog), hooksRoute,
+            hooks: shippedHooks(hooksCatalog), hooksRoute, seatsRoute,
             alwaysRules: always.rules, alwaysMcps: always.mcps, picked, playwright, playwrightEnabled, stoodDown, library, ledger,
         }));
     }
@@ -369,6 +376,16 @@ function readHooksRoute(file)
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
     const route = ((/^hooks-route: (.*)$/m.exec(text) || [])[1] || '').trim();
+    return route === 'copy' || route === 'plugin' ? route : null;
+}
+
+// The route the last run delivered the SEATS by - `plugin` or `copy` - else null: no stamp, or one from
+// before 2.1.0 (its core carried the always closure).
+function readSeatsRoute(file)
+{
+    let text = '';
+    try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
+    const route = ((/^seats-route: (.*)$/m.exec(text) || [])[1] || '').trim();
     return route === 'copy' || route === 'plugin' ? route : null;
 }
 
@@ -698,7 +715,7 @@ function migrateLegacyGlobal({ configDir, projectRoot, renamed = null, log = () 
 
 module.exports = {
     writeStamp, stampPath, stampFiles, renderStamp, shippedHooks, installedAlways, family,
-    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
+    readPicked, readLibrary, readLedger, emptyLedger, valueHash, entryHash, LEDGER_FILES, readStampScope, readHooksRoute, readSeatsRoute, markHooksRoute, readPlaywright, readPlaywrightEnabled, readBrowserLines, readStoodDown, readVersion, migrateLegacyGlobal, validItemName,
     readInitialised, initialisedValue, isInitialised, installState, markInitialised, legacyAccountStamp, legacyGlobalStamp, legacySignature, legacyUnstamped, worktreeMain, installScope,
     accountDir,
 };

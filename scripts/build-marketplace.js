@@ -16,18 +16,18 @@
 //   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
-// own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
-// outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
-// refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
-// entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
-// agents - plus the layer-table hook INLINE that plugin.json used to declare. Dropping it on the way
-// across would be a silent behaviour change.
+// own .claude-plugin/plugin.json was its manifest; its seats live under stack/, outside that folder,
+// and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1 refused to build on it). At
+// `source: './'` nothing under setup-plugin/ is auto-discovered, so the entry carries every path
+// explicitly - the guided-walk commands, the router skill and every seat (2.1.0: no stack skill rides
+// a plugin, each is a project copy) - plus the layer-table hook INLINE that plugin.json used to
+// declare. Dropping it on the way across would be a silent behaviour change.
 //
 // From 2.0.0 the core also carries EVERY stack hook inline (user ruling 'Fold into core in 2.0.0'):
 // there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
+const { placement, formerCore, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
@@ -179,16 +179,24 @@ function retiredMarketplaceEntries(options = {})
 // with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
 // that stays listed refreshes in place (S21). So both 1.x ids stay in the catalog through the 2.x
 // line, and the seed's migration installs the new core and removes them (install/plugins.js
-// migrateLegacy). The core's alias is the 2.0.0 core under its old name; the hooks id carries
-// nothing - an explicit empty `skills`, because an entry that omits the key auto-discovers the
-// shared root's skill folders (S20, which validated exactly this shape under --strict). Dropping
-// either from the catalog is a total blackout for a straggler still on it (S25).
+// migrateLegacy). The core's alias is the core under its old name with the ITEMS the core carried
+// before 2.1.0 (`formerCore`, the always closure): a straggler on it has no project copies yet, so
+// the 2.1.0 core's own lists - no skill, every seat undenied - would take its habit skills away and
+// list 44 seats it never picked until its update runs. The hooks id carries nothing - an explicit
+// empty `skills`, because an entry that omits the key auto-discovers the shared root's skill folders
+// (S20, which validated exactly this shape under --strict). Dropping either from the catalog is a
+// total blackout for a straggler still on it (S25).
 function aliasEntries(options = {})
 {
     const core = coreEntry(options);
+    const former = formerCore(options);
     const description = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs ${CORE} and removes this entry.`;
     return [
-        { ...core, name: LEGACY.core, description },
+        {
+            ...core, name: LEGACY.core, description,
+            skills: ['./setup-plugin/skills/alfred-code'].concat(former.skills.map((s) => `./stack/skills/${s}`)),
+            agents: former.agents.map((a) => `./stack/agents/${a}.md`),
+        },
         { name: LEGACY.hooks, source: './', description, version: core.version, author: core.author, strict: false, skills: [] },
     ];
 }

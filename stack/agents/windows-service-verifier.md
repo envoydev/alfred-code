@@ -11,7 +11,7 @@ skills:
   - dotnet-testing
   - dotnet-hosted-services
   - dotnet-windows-service
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

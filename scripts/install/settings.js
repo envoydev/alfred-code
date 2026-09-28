@@ -562,10 +562,14 @@ function writeSettings(opts)
     // it was; an --installed-only refresh passes the lists it READ BACK from this array, so it
     // writes the same seat state it found. A seat's OTHER stack spellings go either way: a release
     // that moved the seat to another entry left an entry addressing nothing.
+    // A deny leaves the spelling of a retired entry (or the 1.x core) that still loads here: Claude Code
+    // matches the exact home name, so that spelling is what keeps the seat off while the entry loads
+    // (the respell pass above); an allow clears every spelling.
+    const liveSpelling = (entry) => { const m = /^Agent\(([a-z0-9-]+):/.exec(entry); return Boolean(m && homes.includes(m[1]) && live(m[1])); };
     const dropSeat = (rule, keep) =>
     {
         const seat = stackSeat(rule);
-        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat)
+        for (const entry of [...deny]) if (entry !== keep && seat && stackSeat(entry) === seat && !(keep && liveSpelling(entry)))
         { deny.splice(deny.indexOf(entry), 1); changed = true; log(entry === rule ? `  ${label}: agent allowed again ${entry}` : `  ${label}: agent entry dropped ${entry} (the seat's old spelling)`); }
     };
     for (const rule of agentDeny)

@@ -92,9 +92,10 @@ output.
 `claude-stack-<stack>` entry an older release installed and update has not removed yet) enabled in <!-- legacy-name -->
 the plugins listing, the installed set is what those plugins CARRY - `node
 "${CLAUDE_PLUGIN_ROOT}/scripts/selection-plugins.js" --items <their names, comma-separated>` prints
-one `skill <name>` / `agent <name>` line each - UNIONED with the LIBRARY copies on disk
-(`.claude/skills/<name>/`, `.claude/agents/<name>.md`: every item outside the core, copied per
-pick). Without any such entry the disk is the whole set.
+one `skill <name>` / `agent <name>` line each (the core: every seat, no skill) - minus every seat
+`permissions.deny` names (`Agent(alfred-code:<seat>)`, each seat the project did not pick), UNIONED
+with the LIBRARY copies on disk (`.claude/skills/<name>/`: every skill, copied per pick;
+`.claude/agents/<name>.md` on the copy route). Without any such entry the disk is the whole set.
 
 | skill | origin |
 |---|---|
@@ -139,12 +140,14 @@ text was 12.6k-13.8k). Path-scoped rules are excluded - they load only on a matc
 
 Add a SECOND line for the plugins' share of the same floor, which is the half no repo-side check
 can ever see (the repo's lint reads this repo; the injections live in the plugin cache on THIS
-machine). `<key>` is the marketplace key from the general table. The stack's OWN entries are
-counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
-(deny rules merge across scopes, so pass every one that exists) prints the skill descriptions they
-carry (a `disable-model-invocation` skill costs nothing, which is why this number sits below the
-repo lint's always-on budget, which counts every description) plus the SEATS' descriptions minus
-every seat `permissions.deny` switches off - take its `chars`. The entries it lists under `skipped`
+machine). `<key>` is the marketplace key from the general table. The stack's OWN share is
+counted by one script, never by hand: `node "${CLAUDE_PLUGIN_ROOT}/scripts/derive-state.js" --floor --plugins <the enabled @<key> entries, comma-separated> --skills-dir .claude/skills --settings <account settings.json> --settings .claude/settings.json --settings .claude/settings.local.json`
+(deny rules and `skillOverrides` merge across scopes, so pass every one that exists, in that order)
+prints the descriptions of the stack skills copied into the project (2.1.0: no plugin carries a
+skill; a `disable-model-invocation` copy, or one `skillOverrides` sets to anything but `on`, costs
+nothing, which is why this number sits below the repo lint's always-on budget, which counts every
+description) plus the SEATS' descriptions minus every seat `permissions.deny` switches off - take its
+`chars`. The entries it lists under `skipped`
 (the MCP entries) are OTHER plugins for the next sentence, and the core joins them for its HOOKS
 alone - the stack hooks ride the core, and `--floor` counts only its skills and seats. For each
 OTHER enabled plugin, total its skill, command and agent DESCRIPTION frontmatter (skipping a
@@ -156,8 +159,8 @@ matters because a SessionStart injection is invisible everywhere else - `claude 
 does not show it, and one measured install paid 8,337 injected chars a session for two plugins on
 top of their descriptions.
 
-The library copies - skills, agents AND rules alike, since no plugin ever carries a rule - get one
-more table, from the stamp's hashes, checked against the running plugin:
+The library copies - every skill, a seat on its copy route, AND every rule, since no plugin ever
+carries a rule - get one more table, from the stamp's hashes, checked against the running plugin:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/library-check.js" --project . --source "${CLAUDE_PLUGIN_ROOT}" --json

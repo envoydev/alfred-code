@@ -2373,7 +2373,7 @@ function main()
     // too, so a hand edit to any entry is drift, not a change; the two 1.x aliases are generated
     // like the retired entries, and a `renames` key or a hooks entry is a finding.
     for (const finding of lintMarketplaceEntries()) flag(finding);
-    // 50. Every agent's `skills:` preload carries the plugin prefix the placement gives it.
+    // 50. Every agent's `skills:` preload is spelled as the placement homes it - bare, the project copy.
     for (const finding of lintAgentPreloads()) flag(finding);
     // 51. The seed's CORE_DEP_PLUGINS mirrors the manifest's parked cross-marketplace dependencies.
     for (const finding of lintCoreDependencies()) flag(finding);
@@ -2417,9 +2417,10 @@ function main()
 // ---------------------------------------------------------------------------------------------
 // 44 + 45. Placement is COMPUTED from meta/recommendations.json + meta/stack-graph.json, so the
 // generated entries are derivable - and a drift between what the rule computes and what is committed
-// is exactly the failure this pair exists to catch. Since 1.3.0 the rule has ONE plugin, the core; every
-// other item is library, copied per pick, so a project pays exactly its per-item closure by
-// construction and the old cost gate has nothing left to measure.
+// is exactly the failure this pair exists to catch. Since 1.3.0 the rule has ONE plugin, the core; since
+// 2.1.0 it carries every seat and no skill, every skill is library, copied per pick, and a seat nobody
+// picked is denied - so a project pays exactly its per-item closure by construction and the old cost
+// gate has nothing left to measure.
 function lintPluginPlacement(placeIn)
 {
     const out = [];
@@ -2443,7 +2444,7 @@ function lintPluginPlacement(placeIn)
     }
 
     if (Object.keys(place.plugins).length !== 1 || !place.plugins[placeMod.CORE])
-        out.push(`the placement ships plugins other than ${placeMod.CORE} - every non-core item is library, copied per pick.`);
+        out.push(`the placement ships plugins other than ${placeMod.CORE} - every skill is library, copied per pick, and every seat rides the core.`);
 
     const seen = new Map();
     const note = (key, where) =>
@@ -3007,9 +3008,9 @@ function lintHooksEntry(liveIn)
     return out;
 }
 
-// 50. A preload names a plugin skill, and a BARE name silently preloads a stale `.claude/skills/`
-// copy when one is present (spike S6) - the exact shape every migrating project has for a session.
-// The prefix is computed from the placement, so this only checks that the files agree with it.
+// 50. A preload's spelling is computed from the placement (2.1.0: every house skill is a project copy,
+// so every house cite is bare - spike S6 measured a plugin seat's bare preload load the project copy),
+// and a manual-only skill is never preloadable. This only checks that the files agree with it.
 function lintAgentPreloads()
 {
     let rows;

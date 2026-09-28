@@ -6,8 +6,8 @@ model: opus
 effort: xhigh
 color: orange
 skills:
-  - alfred-code:alfred-habits-root-cause
-  - alfred-code:alfred-issue-signatures-runtime
+  - alfred-habits-root-cause
+  - alfred-issue-signatures-runtime
 
 ---
 

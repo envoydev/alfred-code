@@ -358,16 +358,17 @@ rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on di
 that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
 items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
 
-- a core seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny`); a hook on the plugin
-  route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy route, or a
-  library copy) has its file deleted, a copied hook its wiring too;
+- a seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny` - the core carries every one
+  since 2.1.0); a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent,
+  rule or hook (every skill is a copy, a seat or hook only on its copy route) has its file deleted, a
+  copied hook its wiring too;
 - an MCP entry nothing kept needs any more - a dropped server's own entry - is disabled:
   `plugin disabled [<scope>]: <entry>`;
-- a core skill logs `skill <name> stays loaded`: the core carries it and no setting unloads a plugin
-  skill, so it is reported as carried, never as removed;
+- a drop of an always-on skill logs `not applied - locked`, like a locked rule: every install
+  carries it (its own per-project lever is `skillOverrides`, which leaves the copy in place);
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
-  after the `required:` line naming what needs it, and a drop of an always-on rule or server logs
-  `not applied - locked` - report both as kept, with that reason;
+  after the `required:` line naming what needs it, and a drop of an always-on rule, skill or server
+  logs `not applied - locked` - report both as kept, with that reason;
 - a stack entry enabled at a DIFFERENT scope than this run's is never disabled: the log names it and
   the command, for the user to run if nothing else needs it.
 

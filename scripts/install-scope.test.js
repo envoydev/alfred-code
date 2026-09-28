@@ -372,7 +372,9 @@ test('install-scope: update --installed-only --print-plan reads a 1.x account st
             projectStamp: exists(repo, '.claude', 'alfred-code.stamp'),
         }),
     });
-    assert.match(out, /^plan skills: csharp$/m, out);
+    // The pick, read in place, plus the always skills - locked, and a copy on every route since 2.1.0.
+    assert.match(out, /^plan skills: (.* )?csharp( .*)?$/m, out);
+    assert.match(out, /^plan skills: (.* )?alfred-habits-done-gate( .*)?$/m, out);
     assert.doesNotMatch(out, /were moved from/, 'a --print-plan read must never migrate');
     assert.strictEqual(result.migratedSkill, false, 'the account skill must not be copied into the project by a read-only run');
     assert.strictEqual(result.projectStamp, false, 'a --print-plan run must never write the project its own stamp');

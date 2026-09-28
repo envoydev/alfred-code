@@ -268,7 +268,8 @@ function newItemLines({ root, claudeDir, snapshot, settings, stampFile, compareL
         deny: s.permissions && Array.isArray(s.permissions.deny) ? s.permissions.deny : [],
         hooksOff,
         routes,
-        always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || {},
+        // The snapshot's always set; a snapshot without one leaves the derivation its own source's.
+        always: ((readJson(path.join(snapshot, 'meta', 'recommendations.json')) || {}).always) || undefined,
         hasHooks,
         copied: libraryCopies(claudeDir),
         picked: pickedByKind(stampFile, splitPick),

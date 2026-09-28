@@ -9,7 +9,7 @@ skills:
   - csharp-design-patterns
   - dotnet-hosted-services
   - dotnet-testing
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

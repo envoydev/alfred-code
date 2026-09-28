@@ -10,7 +10,7 @@ skills:
   - dotnet-code-quality
   - dotnet-testing
   - dotnet-winforms
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

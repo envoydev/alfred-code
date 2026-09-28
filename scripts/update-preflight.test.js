@@ -303,7 +303,7 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
     assert.strictEqual(code, 0, out);
     const rows = out.split('\n').filter((l) => l.startsWith('new: '));
     assert.deepStrictEqual(rows.filter((r) => !r.startsWith('new: rule ')), [
-        'new: skill markdown-style\tarrives\talfred-code',
+        'new: skill markdown-style\tarrives\t-',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
         'new: hook docs-session\tarrives\talfred-code',
@@ -319,7 +319,9 @@ test('new items: a core item arrives, a library item is offered, the user\'s off
 // a value only the local file holds yields to settings.json; a shell export it does not hold stands;
 // at local scope the local file is the install's own settings and stands too.
 test('new items: the routes are read the installer\'s way - a personal switch in settings.local.json yields to settings.json (N6)', () => {
-    const fixture = { files: [{ status: 'added', filename: 'stack/skills/markdown-style/SKILL.md' }] };
+    // An always SEAT: it rides the core on the plugin route (arrives) and is copied only on a yes on the
+    // copy route - a skill is a copy on both since 2.1.0, so it no longer tells the routes apart.
+    const fixture = { files: [{ status: 'added', filename: 'stack/agents/evidence-gatherer.md' }] };
     const env = { ...process.env, ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false' };
     const verdict = ({ local, stamp }) =>
     {
@@ -328,11 +330,11 @@ test('new items: the routes are read the installer\'s way - a personal switch in
         const listing = path.join(install, 'listing.json');
         fs.writeFileSync(listing, JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true }]));
         const { out } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing], env);
-        return (/^new: skill markdown-style\t.*$/m.exec(out) || [out])[0];
+        return (/^new: agent evidence-gatherer\t.*$/m.exec(out) || [out])[0];
     };
-    assert.strictEqual(verdict({ local: true }), 'new: skill markdown-style\tarrives\talfred-code', 'a personal switch decided the committed route');
-    assert.match(verdict({ local: false }), /^new: skill markdown-style\toffer\t-/, 'a shell export the local file does not hold is the run\'s own');
-    assert.match(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), /^new: skill markdown-style\toffer\t-/, 'at local scope the local file is the install\'s own');
+    assert.strictEqual(verdict({ local: true }), 'new: agent evidence-gatherer\tarrives\talfred-code', 'a personal switch decided the committed route');
+    assert.match(verdict({ local: false }), /^new: agent evidence-gatherer\toffer\t-/, 'a shell export the local file does not hold is the run\'s own');
+    assert.match(verdict({ local: true, stamp: 'sha: aaa111\nversion: 0.2.60\nscope: local\n' }), /^new: agent evidence-gatherer\toffer\t-/, 'at local scope the local file is the install\'s own');
 });
 
 test('new items: a library skill the project already copied makes the rule that pulls it the free take', () => {
@@ -352,7 +354,7 @@ test('new items: a library skill the project already copied makes the rule that 
     assert.match(out, /^new: rule sql-conventions\toffer\t-\ttake$/m);
 });
 
-test('new items: none added prints `new: none`; an unreadable listing leaves a core item unknown, never offered, and a library item offered', () => {
+test('new items: none added prints `new: none`; an unreadable listing leaves an always skill arriving and a library item offered', () => {
     const quiet = scaffold({ fixture: { files: [{ status: 'modified', filename: 'stack/skills/csharp/SKILL.md' }] } });
     const r1 = run(['--snapshot', quiet.snap, '--root', quiet.install, '--fixture', quiet.fixtureFile]);
     assert.match(r1.out, /^new: none$/m);
@@ -361,7 +363,8 @@ test('new items: none added prints `new: none`; an unreadable listing leaves a c
     const bad = path.join(blind.install, 'listing.json');
     fs.writeFileSync(bad, '{ not json');
     const r2 = run(['--snapshot', blind.snap, '--root', blind.install, '--fixture', blind.fixtureFile, '--listing', bad]);
-    assert.match(r2.out, /^new: skill markdown-style\tunknown\talfred-code$/m);
+    // An always-closure skill is a copy (2.1.0) - it arrives whatever the listing says.
+    assert.match(r2.out, /^new: skill markdown-style\tarrives\t-$/m);
     // a library item is a copy, so no plugin listing decides it
     assert.match(r2.out, /^new: skill dotnet-web-backend\toffer\t-\tleave$/m);
 });
@@ -415,7 +418,7 @@ test('new items: the snapshot\'s renamed map names the old spelling when the com
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
     assert.match(out, new RegExp(`^new: skill alfred-capture-related-projects\\trenamed\\t-\\tfrom=${old}\\told-on-disk$`, 'm'), out);
-    assert.match(out, new RegExp(`^new: skill alfred-task-solve\\tarrives\\talfred-code\\tfrom=${oldOf('alfred-task-solve')}$`, 'm'), out);
+    assert.match(out, new RegExp(`^new: skill alfred-task-solve\\tarrives\\t-\\tfrom=${oldOf('alfred-task-solve')}$`, 'm'), out);
 });
 
 // M8 (Task 22 fix round 1): a renamed library item whose OLD name the stamp's picks never named and the
@@ -499,7 +502,7 @@ test('new items: a stale disabled flag on the core changes no verdict - a core i
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
     assert.deepStrictEqual(out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule ')), [
-        'new: skill markdown-style\tarrives\talfred-code',
+        'new: skill markdown-style\tarrives\t-',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
         'new: hook docs-session\tarrives\talfred-code',
@@ -528,16 +531,18 @@ test('new items: a 1.x install is read under its old stamp, marketplace key, cor
     assert.match(out, /^version: 1\.3\.0 -> 0\.2\.70$/m, 'the 1.x stamp is the compare base');
     const rows = out.split('\n').filter((l) => l.startsWith('new: ') && !l.startsWith('new: rule '));
     assert.deepStrictEqual(rows, [
-        'new: skill markdown-style\tarrives\talfred-code',
+        'new: skill markdown-style\tarrives\t-',
         'new: skill dotnet-web-backend\toffer\t-\tleave',
         'new: agent code-style-analyzer\toff\talfred-code',
         'new: hook docs-session\tarrives\talfred-code',
     ]);
     // an explicit --marketplace still wins over what the listing says: a key no core row is listed
-    // under reads the core as absent, so its item is only offered (a listed core is never parked by
-    // its flag any more - S22 - so the leftover's disabled row cannot show the forcing)
+    // under reads the core as absent - which no longer moves a skill (a copy since 2.1.0, whatever the
+    // key), and the denied seat stays off either way (a listed core is never parked by its flag any
+    // more - S22 - so the leftover's disabled row cannot show the forcing)
     const forced = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing, '--marketplace', 'elsewhere']).out;
-    assert.match(forced, /^new: skill markdown-style\toffer\t/m, forced);
+    assert.match(forced, /^new: skill markdown-style\tarrives\t-$/m, forced);
+    assert.match(forced, /^new: agent code-style-analyzer\toff\talfred-code$/m, forced);
 });
 
 test('global mode: an account dir holding only the 1.x stamp is still the account dir', () => {
@@ -578,7 +583,7 @@ test('new items: the key comes from THIS project\'s rows, never another project\
     ]));
     const { out, code } = run(['--snapshot', snap, '--root', install, '--fixture', fixtureFile, '--listing', listing]);
     assert.strictEqual(code, 0, out);
-    assert.match(out, /^new: skill markdown-style\tarrives\talfred-code$/m, out);
+    assert.match(out, /^new: skill markdown-style\tarrives\t-$/m, out);
     assert.match(out, /^new: hook docs-session\tarrives\talfred-code$/m, out);
 });
 

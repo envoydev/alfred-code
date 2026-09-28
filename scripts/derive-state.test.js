@@ -16,9 +16,8 @@
 //     silently drops a seat the user just asked for.
 //   - a hook is off when the release SHIPS it and this selection did not pick it, whole catalog,
 //     because the core carries every one whatever the project picked.
-//   - a skill cannot be switched off at all (spike S2: skillOverrides moved 0 tokens on a plugin
-//     skill), so a skill the closure carries and the selection did not pick is REPORTED, never
-//     silently counted as dropped.
+//   - a skill is a project COPY (2.1.0), so a skill the selection did not pick is simply not
+//     copied - no plugin carries one it could not drop.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -162,18 +161,6 @@ test('derive-state: the hooks off-list is the whole shipped catalog minus what w
     assert.strictEqual(got.env.ALFRED_CODE_HOOKS_OFF, got.hooks.off.join(','));
 });
 
-test('derive-state: a skill the closure carries but nobody picked is REPORTED, never dropped', () =>
-{
-    const file = realSelection();
-    const got = derive(file);
-    const picked = readSelection(file);
-    const carried = itemsOf(got.plugins.map((p) => p.split('@')[0])).skills;
-    assert.deepStrictEqual(got.skills.carried, carried);
-    assert.deepStrictEqual(got.skills.undroppable, carried.filter((s) => !picked.skills.has(s)));
-    // The whole point of R1: there is no off-list for skills, so nothing may claim one.
-    assert.ok(!Object.hasOwn(got.skills, 'off'), 'a skill off-list would be a lever that does not exist');
-});
-
 test('derive-state: rules and MCP servers pass through as picked - they are copied and registered by name', () =>
 {
     // Both lists are SORTED, and the fixture is written so that file order, reverse order and
@@ -195,8 +182,9 @@ test('derive-state: an empty selection installs the core and denies every seat i
     assert.deepStrictEqual(got.plugins, ['alfred-code@envoydev'], 'the core is always enabled');
     const core = itemsOf(['alfred-code']);
     assert.deepStrictEqual(got.agents.off, core.agents, 'the core seats ride in either way, so each is denied');
+    assert.strictEqual(core.agents.length, 44, 'every seat rides the core');
     assert.deepStrictEqual(got.agents.on, []);
-    assert.deepStrictEqual(got.skills.undroppable, core.skills, 'and its skills are reported, because nothing can drop them');
+    assert.deepStrictEqual([core.skills, got.skills.library], [[], []], 'no skill rides the core, and none was picked to copy');
 });
 
 test('derive-state: a selection file that does not exist fails loudly, never as an empty install', () =>
@@ -341,13 +329,12 @@ test('writable: a surface the read-back found no evidence of writes nothing back
     const { writable } = require('./derive-state.js');
     const state = derive(realSelection());
     const none = writable(state, { routes: ALL_ROUTES, answered: { hooks: false, agents: false } });
-    assert.deepStrictEqual({ ...none, undroppable: undefined }, { hooksOff: [], hooksAnswered: false, agentDeny: [], agentAllow: [], undroppable: undefined });
+    assert.deepStrictEqual(none, { hooksOff: [], hooksAnswered: false, agentDeny: [], agentAllow: [] });
     const both = writable(state, { routes: ALL_ROUTES, answered: { hooks: true, agents: true } });
     assert.strictEqual(both.hooksAnswered, true);
     assert.deepStrictEqual(both.agentAllow, state.agents.allow);
     const copy = writable(state, { routes: {}, answered: { hooks: true, agents: true } });
-    assert.deepStrictEqual([copy.hooksOff, copy.agentDeny, copy.agentAllow, copy.undroppable], [[], [], [], []], 'the copy routes write no off-state and carry nothing unpicked');
-    assert.deepStrictEqual(both.undroppable, state.skills.undroppable, 'a plugin carries what the selection did not pick');
+    assert.deepStrictEqual([copy.hooksOff, copy.agentDeny, copy.agentAllow], [[], [], []], 'the full copy route writes no off-state');
 });
 
 // The hooks ride the core (2.0.0), and the core is on whenever ANY plugin route is. On the hooks copy
@@ -396,19 +383,19 @@ const FLOOR_ENTRIES = ['alfred-code', 'claude-stack-aspnet'];
 
 test('floor: the model-invocable skills plus the seats not denied, from the stack\'s own entries', () =>
 {
+    // A retired per-stack entry still enabled carries skills; the core carries every seat and no skill.
     const carried = itemsOf(FLOOR_ENTRIES, { placement: placement() });
     const manual = carried.skills.filter((s) => /^disable-model-invocation:\s*true\s*$/m.test(fs.readFileSync(path.join(ROOT, 'stack/skills', s, 'SKILL.md'), 'utf8')));
-    assert.ok(manual.length > 0, 'the fixture carries a manual-only skill');
     const all = floor({ plugins: FLOOR_ENTRIES });
     assert.strictEqual(all.skills.count, carried.skills.length - manual.length);
+    assert.ok(all.skills.count > 0, 'the retired entry\'s skills count while it is enabled');
     assert.strictEqual(all.agents.count, carried.agents.length);
     const one = floor({ plugins: FLOOR_ENTRIES.map((p) => `${p}@envoydev`), deny: ['Agent(alfred-code:security-auditor)', 'Read(.env)'] });
     assert.deepStrictEqual(one.agents.denied, ['security-auditor']);
     assert.strictEqual(all.agents.chars - one.agents.chars, descriptionChars('agent', 'security-auditor'));
     assert.strictEqual(one.chars, one.skills.chars + one.agents.chars);
-    // A retired entry still enabled here loads its items every session until the update removes it,
-    // and its seat is hidden by the deny spelled under that entry.
-    const retiredDeny = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(claude-stack-aspnet:aspnet-implementer)'] });
+    // A seat both entries list is hidden by the deny spelled under its CURRENT home, the core.
+    const retiredDeny = floor({ plugins: FLOOR_ENTRIES, deny: ['Agent(alfred-code:aspnet-implementer)'] });
     assert.deepStrictEqual(retiredDeny.agents.denied, ['aspnet-implementer']);
 });
 
@@ -463,15 +450,16 @@ test('derive-state CLI: `written` is what THIS route writes - the full copy rout
     const run = (env) => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--selection', sel], { encoding: 'utf8', env: { ...process.env, ...env } }));
     const plugin = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: '', ALFRED_CODE_HOOKS_VIA_PLUGIN: '', ALFRED_CODE_MCPS_VIA_PLUGIN: '' });
     assert.deepStrictEqual(plugin.routes, { hooks: true, skills: true, mcps: true });
-    assert.deepStrictEqual(plugin.written.agentDeny, ['Agent(alfred-code:security-auditor)']);
+    assert.deepStrictEqual(plugin.written.agentDeny, plugin.agents.deny);
+    assert.ok(plugin.written.agentDeny.includes('Agent(alfred-code:security-auditor)') && plugin.written.agentDeny.includes('Agent(alfred-code:web-angular-implementer)'),
+        'the seat the walk dropped, and every seat it never picked');
     assert.deepStrictEqual(plugin.written.hooksOff, ['guard-answer-length']);
-    assert.deepStrictEqual(plugin.written.undroppable, plugin.skills.undroppable);
-    // The MCP route alone keeps the core on, and the core carries every hook (2.0.0): the unpicked
-    // hook is still named off, while the skill and seat surfaces - copied on this route - write nothing.
+    // The MCP route alone keeps the core on, and the core carries every hook (2.0.0) and every seat
+    // (2.1.0): the unpicked hook is still named off, and the seats it lists beside the copies are denied.
     const copy = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
-    assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff, copy.written.undroppable], [[], ['guard-answer-length'], []]);
+    assert.deepStrictEqual([copy.written.agentDeny, copy.written.hooksOff], [plugin.agents.deny, ['guard-answer-length']]);
     const full = run({ ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false' });
-    assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff, full.written.undroppable], [[], [], []]);
+    assert.deepStrictEqual([full.written.agentDeny, full.written.hooksOff], [[], []]);
 });
 
 test('setup reports only keys the derivation prints', () =>
@@ -525,20 +513,29 @@ test('floor CLI: every --settings file given counts - deny rules merge across sc
 // refresh, anything else is an OFFER the user takes or leaves, and the user's own off-state wins.
 const { stampCarried, classifyNew } = require('./derive-state.js');
 
-test('stampCarried: an item MOVED out of an entry still enabled here into the core comes back through the core', () =>
+test('stampCarried: a seat MOVED out of an entry still enabled here into the core comes back through the core', () =>
 {
     const stamp = { skills: ['alfred-task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross', 'agent security-auditor']); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), ['agent security-auditor']); // legacy-name
+});
+
+// 2.1.0 moved every core skill into the project: a 2.0.x stamp homes each `@alfred-code`, and the core is
+// still enabled - a pick the release moved, carried as one.
+test('stampCarried (2.1.0): a skill the core carried, library now, is carried as a pick', () =>
+{
+    const stamp = { skills: ['alfred-task-solve-cross@alfred-code', 'csharp'], agents: ['security-auditor@alfred-code', 'aspnet-implementer'] };
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross']);
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: [], routes: ALL_ROUTES }), [], 'no core enabled - nothing to carry it across');
 });
 
 test('stampCarried: no move, an uninstalled or parked old home, a parked core, a denied seat, a library item - nothing', () =>
 {
     const moved = { skills: ['alfred-task-solve-cross@claude-stack-old'], agents: ['security-auditor@claude-stack-old'] }; // legacy-name
-    assert.deepStrictEqual(stampCarried({ stamp: { skills: ['alfred-task-solve-cross@alfred-code'] }, enabled: ['alfred-code'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
+    assert.deepStrictEqual(stampCarried({ stamp: { agents: ['security-auditor@alfred-code'] }, enabled: ['alfred-code'], routes: ALL_ROUTES }), [], 'the same home - readInstalled already has it');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], routes: ALL_ROUTES }), [], 'the user uninstalled the old home');
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: [], parked: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'the user parked the old home'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], parked: ['alfred-code'], routes: ALL_ROUTES }), [], 'the new home is parked'); // legacy-name
-    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross'], 'a seat denied under any spelling'); // legacy-name
+    assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], deny: ['Agent(claude-stack-x:security-auditor)'], routes: ALL_ROUTES }), [], 'a seat denied under any spelling'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['angular-material', 'alfred-task-solve-cross'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library copy, and a plain name with no stamped home'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: { skills: ['dotnet-web-backend@claude-stack-old'] }, enabled: ['claude-stack-old'], routes: ALL_ROUTES }), [], 'a library item homed in an entry that is no retired one'); // legacy-name
     assert.deepStrictEqual(stampCarried({ stamp: moved, enabled: ['claude-stack-old'], routes: { skills: false } }), []); // legacy-name
@@ -562,7 +559,10 @@ test('readInstalled: every hook switched off reads back as `hook none`, not as u
     assert.deepStrictEqual(lines, ['hook none']);
 });
 
-test('classifyNew: a core item arrives, a library item is offered, the user\'s off-state wins', () =>
+// The always closure arrives on its own (2.1.0): the always skills and seats, and what the always rules
+// require - `markdown-docs` pulling `markdown-style` here.
+const ALWAYS_BASE = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8')).always;
+test('classifyNew: an always-closure item arrives, a stack item is offered, the user\'s off-state wins', () =>
 {
     const added = [
         { category: 'skill', name: 'markdown-style' }, { category: 'skill', name: 'dotnet-web-backend' },
@@ -573,7 +573,7 @@ test('classifyNew: a core item arrives, a library item is offered, the user\'s o
     ];
     const rows = classifyNew({
         added, plugins: ['alfred-code'], deny: ['Agent(alfred-code:code-style-analyzer)'],
-        hooksOff: 'guard-answer-length', routes: ALL_ROUTES, always: { rules: ['baseline-memory'] }, sourceDir: ROOT,
+        hooksOff: 'guard-answer-length', routes: ALL_ROUTES, always: ALWAYS_BASE, sourceDir: ROOT,
     });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
     assert.strictEqual(by['skill markdown-style'].verdict, 'arrives');
@@ -587,7 +587,7 @@ test('classifyNew: a core item arrives, a library item is offered, the user\'s o
     assert.deepStrictEqual([by['hook docs-session'].verdict, by['hook docs-session'].entry], ['arrives', 'alfred-code'], 'the hooks ride the core');
     assert.strictEqual(by['hook guard-answer-length'].verdict, 'off');
     assert.deepStrictEqual([by['skill angular-material'].verdict, by['skill angular-material'].entry], ['offer', null], 'a library item is copied only on a yes');
-    assert.deepStrictEqual([by['rule markdown-docs'].verdict, by['rule markdown-docs'].recommend, by['rule markdown-docs'].enables, by['rule markdown-docs'].copies], ['offer', 'take', [], []], 'a rule whose closure the core already carries is the free take');
+    assert.strictEqual(by['rule markdown-docs'].verdict, 'arrives', 'an always rule is adopted - and markdown-style with it, as its closure');
 });
 
 test('classifyNew: a library item the project already copied costs nothing, so the rule that pulls it is the free take', () =>
@@ -602,7 +602,8 @@ test('classifyNew: on the copy routes a skill or seat is copied only on a yes, a
 {
     const added = [{ category: 'skill', name: 'markdown-style' }, { category: 'agent', name: 'evidence-gatherer' }, { category: 'hook', name: 'docs-session' }];
     const withHooks = classifyNew({ added, plugins: ['alfred-code'], routes: {}, hasHooks: true, sourceDir: ROOT });
-    assert.deepStrictEqual(withHooks.map((r) => r.verdict), ['offer', 'offer', 'arrives']);
+    // An always-closure skill is copied on every route (2.1.0); a seat is copied only on a yes here.
+    assert.deepStrictEqual(withHooks.map((r) => r.verdict), ['arrives', 'offer', 'arrives']);
     const noHooks = classifyNew({ added, plugins: [], routes: {}, hasHooks: false, sourceDir: ROOT });
     assert.strictEqual(noHooks[2].verdict, 'offer');
 });
@@ -635,7 +636,7 @@ test('classifyNew: a rename is carried when its old copy is on disk, and an old 
             { category: 'agent', name: 'evidence-gatherer', from: 'old-gatherer' },
             { category: 'hook', name: 'docs-session', from: 'old-docs' },
         ],
-        plugins: ['alfred-code'], deny: ['Agent(alfred-code:old-gatherer)'], hooksOff: 'old-docs', routes: ALL_ROUTES, sourceDir: ROOT,
+        plugins: ['alfred-code'], deny: ['Agent(alfred-code:old-gatherer)'], hooksOff: 'old-docs', routes: ALL_ROUTES, always: ALWAYS_BASE, sourceDir: ROOT,
     });
     const by = Object.fromEntries(rows.map((r) => [r.name, r]));
     assert.deepStrictEqual([by['sql-conventions'].verdict, by['sql-conventions'].from], ['renamed', 'old-sql']);
@@ -760,7 +761,7 @@ test('a parked retired entry carries nothing across', () =>
 test('a picked library seat clears its deny, so a seat switched off in 1.2.0 comes back when picked again', () =>
 {
     const state = fromText(['agent angular-test-resolver', 'agent evidence-gatherer']);
-    assert.ok(state.agents.library.includes('angular-test-resolver'));
+    assert.ok(state.agents.on.includes('angular-test-resolver'));
     assert.ok(state.agents.allow.includes('Agent(alfred-code:angular-test-resolver)'), state.agents.allow.join(','));
     assert.ok(!state.agents.deny.includes('Agent(alfred-code:angular-test-resolver)'));
 });
@@ -783,8 +784,9 @@ test('readInstalled: the core under its 1.x name, beside the 1.x hooks id, reads
 test('stampCarried: a 1.x stamp homed `@claude-stack` is homed in the core - no move, whichever name the listing uses', () => // legacy-name
 {
     const stamp = { skills: [`alfred-task-solve-cross@${OLD}`], agents: [`security-auditor@${OLD}`] };
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: [OLD], routes: ALL_ROUTES }), [], 'the old core name is the same entry, not a moved-from one');
-    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), []);
+    // The seat stays in the same entry; the skill moved out of it into the project (2.1.0) either way.
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: [OLD], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross'], 'the old core name is the same entry, not a moved-from one');
+    assert.deepStrictEqual(stampCarried({ stamp, enabled: ['alfred-code'], routes: ALL_ROUTES }), ['skill alfred-task-solve-cross']);
 });
 
 test('floor: the 1.x core entry counts as the core, and its 1.x seat deny still hides the seat (S6)', () =>
@@ -798,7 +800,7 @@ test('floor: the 1.x core entry counts as the core, and its 1.x seat deny still 
 test('classifyNew: an item the 1.x-named core carries arrives, and a 1.x seat deny keeps it off', () =>
 {
     const added = [{ category: 'skill', name: 'markdown-style' }, { category: 'agent', name: 'code-style-analyzer' }, { category: 'hook', name: 'docs-session' }];
-    const rows = classifyNew({ added, plugins: [OLD, `${OLD}-hooks`], deny: [`Agent(${OLD}:code-style-analyzer)`], routes: ALL_ROUTES, sourceDir: ROOT });
+    const rows = classifyNew({ added, plugins: [OLD, `${OLD}-hooks`], deny: [`Agent(${OLD}:code-style-analyzer)`], routes: ALL_ROUTES, always: ALWAYS_BASE, sourceDir: ROOT });
     const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r.verdict]));
     assert.deepStrictEqual(by, { 'skill markdown-style': 'arrives', 'agent code-style-analyzer': 'off', 'hook docs-session': 'arrives' });
 });
@@ -809,4 +811,104 @@ test('classifyNew: a skill that arrives with its server is never offered alone',
 {
     const rows = classifyNew({ added: [{ category: 'skill', name: 'desktop-automation' }, { category: 'skill', name: 'angular-material' }], plugins: ['alfred-code'], routes: ALL_ROUTES, sourceDir: ROOT });
     assert.deepStrictEqual(rows.map((r) => r.name), ['angular-material']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 2.1.0: every skill is a project copy, every seat rides the core, and a seat the selection did not
+// pick is denied. A 2.0.x install was written under the OTHER placement - its core carried the always
+// closure and every stack seat was a library copy - so its read-back must go by what ITS core carried.
+const { formerCore } = require('./plugin-placement.js');
+const ALWAYS = JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'recommendations.json'), 'utf8')).always;
+
+test('deriveState (2.1.0): every picked skill is a copy and every unpicked seat is denied', () =>
+{
+    const file = realSelection();
+    const got = derive(file);
+    const picked = readSelection(file);
+    assert.deepStrictEqual(got.skills.carried, [], 'no plugin carries a skill');
+    assert.deepStrictEqual(got.skills.library, [...picked.skills].sort(), 'every picked skill is copied');
+    assert.ok(!Object.hasOwn(got.skills, 'undroppable'), 'nothing is carried unpicked, so nothing is reported undroppable');
+    const all = Object.keys(JSON.parse(fs.readFileSync(path.join(ROOT, 'meta', 'stack-graph.json'), 'utf8')).agents).sort();
+    assert.deepStrictEqual(got.agents.off, all.filter((a) => !picked.agents.has(a)), 'a deny per unpicked seat');
+    assert.ok(got.agents.deny.includes('Agent(alfred-code:web-angular-implementer)'), 'a stack seat the aspnet selection did not pick');
+    assert.deepStrictEqual(got.agents.library, [], 'no seat is copied');
+});
+
+test('readInstalled (2.1.0 BLOCKER): a 2.0.x install reads its core as the always closure, never as all 44 seats', () =>
+{
+    const former = formerCore();
+    const lines = readInstalled({ plugins: ['alfred-code', 'navigation'], deny: ['Agent(alfred-code:code-style-analyzer)'], routes: { skills: true }, core: 'former', sourceDir: ROOT });
+    for (const s of former.skills) assert.ok(lines.includes(`skill ${s}`), `the always skill ${s} the 2.0.x core carried is read back`);
+    for (const a of former.agents.filter((x) => x !== 'code-style-analyzer')) assert.ok(lines.includes(`agent ${a}`), `the 2.0.x core seat ${a}`);
+    assert.ok(!lines.includes('agent code-style-analyzer'), 'a denied seat stays off');
+    assert.ok(!lines.includes('agent aspnet-implementer'), 'a stack seat was a library copy - its disk copy says whether it was picked');
+    assert.strictEqual(lines.filter((l) => l.startsWith('agent ')).length, former.agents.length - 1);
+});
+
+test('readInstalled (2.1.0): the seats the core carries are read back only as the last install knew them', () =>
+{
+    const lines = readInstalled({
+        plugins: ['alfred-code'], deny: ['Agent(alfred-code:aspnet-verifier)'], routes: { skills: true }, core: 'current', sourceDir: ROOT,
+        picks: new Set(['agent aspnet-implementer', 'agent security-auditor', 'agent aspnet-verifier']), managedSeats: ['aspnet-verifier', 'web-angular-implementer'],
+    });
+    assert.ok(lines.includes('agent aspnet-implementer') && lines.includes('agent security-auditor'), 'picked and not denied');
+    assert.ok(!lines.includes('agent aspnet-verifier'), 'picked once, denied since - off');
+    assert.ok(lines.includes('agent web-angular-implementer'), 'the stack denied it and the deny is gone - the user allowed it by hand');
+    assert.ok(!lines.includes('agent dotnet-console-implementer'), 'neither picked nor denied by the last install - a seat this release added, offered, never on by itself');
+    assert.ok(!lines.some((l) => l.startsWith('skill ')), 'the core carries no skill');
+    const ungated = readInstalled({ plugins: ['alfred-code'], deny: [], routes: { skills: true }, core: 'current', sourceDir: ROOT });
+    assert.strictEqual(ungated.filter((l) => l.startsWith('agent ')).length, 44, 'with no picks to go by, every seat the core carries and nothing denies');
+});
+
+test('readInstalled (2.1.0): a last run that copied the seats reads no item off the core', () =>
+{
+    const lines = readInstalled({ plugins: ['alfred-code'], routes: { skills: true, hooks: true }, core: 'none', sourceDir: ROOT });
+    assert.ok(!lines.some((l) => /^(skill|agent) /.test(l)), lines.join(','));
+    assert.ok(lines.includes('hook docs-session'), 'the hooks still ride the core');
+});
+
+test('classifyNew (2.1.0): an always skill or seat arrives, a stack seat is offered, a denied seat stays off', () =>
+{
+    const added = [
+        { category: 'skill', name: 'alfred-habits-done-gate' }, { category: 'skill', name: 'dotnet-web-backend' },
+        { category: 'agent', name: 'aspnet-implementer' }, { category: 'agent', name: 'evidence-gatherer' }, { category: 'agent', name: 'code-style-analyzer' },
+    ];
+    const rows = classifyNew({ added, plugins: ['alfred-code'], deny: ['Agent(alfred-code:code-style-analyzer)'], routes: ALL_ROUTES, always: ALWAYS, sourceDir: ROOT });
+    const by = Object.fromEntries(rows.map((r) => [`${r.category} ${r.name}`, r]));
+    assert.deepStrictEqual([by['skill alfred-habits-done-gate'].verdict, by['skill alfred-habits-done-gate'].entry], ['arrives', null], 'a locked skill is copied into every install');
+    assert.deepStrictEqual([by['skill dotnet-web-backend'].verdict, by['skill dotnet-web-backend'].entry], ['offer', null]);
+    assert.deepStrictEqual([by['agent aspnet-implementer'].verdict, by['agent aspnet-implementer'].entry, by['agent aspnet-implementer'].recommend], ['offer', 'alfred-code', 'leave'],
+        'the core carries it, but a seat nobody picked is denied - taking it copies its skills');
+    assert.ok(by['agent aspnet-implementer'].copies.includes('skill csharp'), 'the preloads a yes copies are named');
+    assert.strictEqual(by['agent evidence-gatherer'].verdict, 'arrives');
+    assert.strictEqual(by['agent code-style-analyzer'].verdict, 'off');
+});
+
+test('writable (2.1.0): the seat off-state is written whenever the core loads the seats - the skills copy route with the core on included', () =>
+{
+    const { writable } = require('./derive-state.js');
+    const state = narrowed({ dropAgent: 'security-auditor', dropHook: 'guard-answer-length' });
+    const both = { hooks: true, agents: true };
+    assert.deepStrictEqual(writable(state, { routes: ALL_ROUTES, answered: both }).agentDeny, state.agents.deny);
+    const mixed = writable(state, { routes: { skills: false, hooks: true, mcps: true }, answered: both });
+    assert.deepStrictEqual([mixed.agentDeny, mixed.agentAllow], [state.agents.deny, state.agents.allow], 'the core lists every seat on this route too - the unpicked ones are denied');
+    assert.deepStrictEqual(writable(state, { routes: {}, answered: both }).agentDeny, [], 'no core on the full copy route - absence is off');
+    assert.ok(!Object.hasOwn(mixed, 'undroppable'));
+});
+
+test('floor (2.1.0): the project\'s skill copies count - a manual-only, overridden or foreign one does not; the core counts its seats', () =>
+{
+    const dir = fs.mkdtempSync(path.join(TMP, 'floor-skills-'));
+    for (const s of ['alfred-habits-done-gate', 'alfred-task-solve', 'csharp', 'markdown-style'])
+        fs.cpSync(path.join(ROOT, 'stack', 'skills', s), path.join(dir, s), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'my-own-skill'));
+    fs.writeFileSync(path.join(dir, 'my-own-skill', 'SKILL.md'), '---\nname: my-own-skill\ndescription: mine\n---\n');
+    const got = floor({ plugins: ['alfred-code'], skillsDir: dir, overrides: { csharp: 'off', 'markdown-style': 'name-only' } });
+    assert.deepStrictEqual([got.skills.count, got.skills.chars], [1, descriptionChars('skill', 'alfred-habits-done-gate')], 'alfred-task-solve is manual-only');
+    assert.strictEqual(got.agents.count, 44);
+    const settingsFile = path.join(TMP, 'floor-overrides.json');
+    fs.writeFileSync(settingsFile, JSON.stringify({ skillOverrides: { csharp: 'off', 'markdown-style': 'name-only' }, permissions: { deny: ['Agent(alfred-code:aspnet-implementer)'] } }));
+    const { execFileSync } = require('node:child_process');
+    const cli = JSON.parse(execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'derive-state.js'), '--floor', '--plugins', 'alfred-code', '--skills-dir', dir, '--settings', settingsFile], { encoding: 'utf8' }));
+    assert.deepStrictEqual([cli.skills.count, cli.agents.count, cli.agents.denied], [1, 43, ['aspnet-implementer']]);
 });

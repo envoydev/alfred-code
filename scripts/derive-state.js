@@ -3,7 +3,7 @@
 // THE ONE DERIVATION - what a selection means for a project, decided once.
 //
 //   node scripts/derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope <scope>]
-//   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--settings <file>]
+//   node scripts/derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <file>]...
 //
 // Before this script, four readers answered the same question in their own words: the three guided
 // walks described what the install would write, and the seed computed it again in code. That is how
@@ -18,25 +18,24 @@
 // Three rules, one per surface, each measured:
 //
 //   - AGENTS have a real lever. Spike S3: `permissions.deny: ["Agent(<plugin>:<name>)"]` drops the
-//     seat from the listing and its description from the bill, -434 tokens for one seat. With 43
-//     seats shipped that is the largest trim left. The scoped identifier is the measured address;
-//     the docs give the general form as `Agent(AgentName)` ('Agent (subagents)',
-//     code.claude.com/docs/en/permissions), which is the spelling for a project-local seat. It is written only for a seat an ENABLED plugin
-//     carries: a seat in a plugin this project never enabled is not loaded at all, so denying it is
-//     noise now and a trap later - the day that plugin is enabled, the stale entry silently drops a
-//     seat the user just asked for.
-//   - A CORE SKILL has none. Spike S2: `skillOverrides` moved 0 tokens on a plugin skill under
-//     either the bare or the scoped key, and the 2026-09-24 library test found why - a plugin skill
-//     is locked on. So a core skill the selection did not pick is REPORTED as undroppable, and there
-//     is deliberately no `off` key to mistake for a lever. Every OTHER skill is a LIBRARY copy, and
-//     a copy is droppable: deleted by a drop, or switched per project through `skillOverrides`.
+//     seat from the listing and its description from the bill, -434 tokens for one seat. From 2.1.0
+//     every seat rides the core, so every seat the selection did not pick is denied - a seat whose
+//     preloaded skills were not copied never reaches a dispatch. The scoped identifier is the measured
+//     address; the docs give the general form as `Agent(AgentName)` ('Agent (subagents)',
+//     code.claude.com/docs/en/permissions), which is the spelling for a project-local seat. It is
+//     written only for a seat an ENABLED plugin carries: a seat in a plugin this project never enabled
+//     is not loaded at all, so denying it is noise now and a trap later - the day that plugin is
+//     enabled, the stale entry silently drops a seat the user just asked for.
+//   - SKILLS are copies. From 2.1.0 no plugin carries a skill, so every picked skill is copied into
+//     the project, and a copy is droppable: deleted by a drop, or switched per project through
+//     `skillOverrides`. (A plugin skill had no lever at all - spike S2 moved 0 tokens.)
 //   - HOOKS are switched off by NAME, against the whole shipped catalog, because the core carries
 //     every one whatever the project picked (`ALFRED_CODE_HOOKS_OFF`, Phase 2; the core since 2.0.0).
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { pluginsFor, readSelection, parseSelectionText, itemsOf } = require('./selection-plugins.js');
-const { placement, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
+const { placement, formerCore, descriptionChars, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { loadManifest } = require('./install/manifest.js');
 const { hookDisabled } = require('../stack/hooks/hook-prelude.js');
 const { committedRoutesAt, corePluginOn } = require('./install/plugins.js');
@@ -114,8 +113,6 @@ function deriveState({ selection, selectionText, sourceDir = REPO, marketplace =
             picked: [...picked.skills].sort(),
             carried: carried.skills,
             library: copy.skills,
-            // No `off` key, deliberately: R1 of the phase plan. Nothing can drop these.
-            undroppable: carried.skills.filter((s) => !picked.skills.has(s)),
         },
         agents: {
             on: [...picked.agents].sort(),
@@ -138,7 +135,7 @@ const catalogServer = (name) => String(name)
     .replace(/^browser-(chrome|msedge|firefox|webkit)$/, 'browser');
 
 // THE INVERSE, for a run that asks nothing (`update --installed-only`): the selection lines the
-// project carries NOW on each plugin route. On those routes `.claude/` holds only the library copies, so the
+// project carries NOW on each plugin route. On those routes `.claude/` holds only the copies, so the
 // disk read alone found no seat and no hook - and the derivation above then switched every one of
 // them off. Each surface is read from the state ITS route writes: the enabled entries' contents
 // minus the seats `permissions.deny` names, the hook catalog minus ALFRED_CODE_HOOKS_OFF, the MCP
@@ -146,7 +143,19 @@ const catalogServer = (name) => String(name)
 // which is how a seat or hook the user switched off survives an update. `plugins` is this stack's
 // ENABLED entries only (`install/selection.js` readBack filters the listing); a surface whose route
 // is off, or whose entry is absent, reads back nothing and the caller's disk read decides.
-function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO } = {})
+//
+// `core` says what the enabled core carried when the LAST install ran (the stamp's `seats-route:`):
+//   - 'current' - a 2.1 plugin-route install: every seat, and the one that ran denied each seat it
+//     did not pick. `picks` (the stamp's picks, as selection lines) and `managedSeats` (the seats whose
+//     deny the stack wrote, the ledger's `managed-deny`) gate them: a seat neither picked nor denied by
+//     the last install is one this release ADDED, left for update's offer - never on by itself.
+//     A seat the stack denied whose deny is gone was allowed by hand, and stays on.
+//   - 'former' - a stamp from before 2.1.0 (no `seats-route:` line): its core carried the always
+//     closure (`formerCore`), and every other seat was a library copy the disk read finds - read as
+//     'every seat minus the denied', all 44 came back picked and no deny was written (the 2.1.0
+//     migration BLOCKER), while the always skills, carried by nothing now, dropped out.
+//   - 'none' - the last run copied the seats (`seats-route: copy`): the disk decides.
+function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceDir = REPO, core = 'current', picks = null, managedSeats = [] } = {})
 {
     // A 1.x listing's core is the same entry under its old name, and it carries the hooks.
     const names = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])))];
@@ -154,19 +163,25 @@ function readInstalled({ plugins = [], deny = [], hooksOff, routes = {}, sourceD
     if (routes.skills)
     {
         const place = placement();
-        const carried = itemsOf(names.filter((n) => place.plugins[n]), { placement: place });
+        const coreItems = core === 'former' ? formerCore() : core === 'none' ? { skills: [], agents: [] } : place.plugins[CORE];
+        const read = { ...place, plugins: { ...place.plugins, [CORE]: { ...place.plugins[CORE], ...coreItems } } };
+        const carried = itemsOf(names.filter((n) => read.plugins[n]), { placement: read, retired: [] });
         // By SEAT, under any stack entry's spelling: a release that moves a seat to another entry
         // changes its deny spelling, and the seat the user switched off must stay off across it.
         const denied = new Set((Array.isArray(deny) ? deny : []).map(stackSeat).filter(Boolean));
+        const known = core === 'current' && picks ? new Set([...picks].filter((l) => l.startsWith('agent ')).map((l) => l.slice(6)).concat(managedSeats)) : null;
         for (const s of carried.skills) lines.push(`skill ${s}`);
-        for (const a of carried.agents) if (!denied.has(a)) lines.push(`agent ${a}`);
+        for (const a of carried.agents) if (!denied.has(a) && (!known || known.has(a))) lines.push(`agent ${a}`);
         // An entry retired in 1.3.0 that is still enabled here: its items are what the project runs
-        // today, so they read back as installed until update copies the picks and removes it.
+        // today, so they read back as installed until update copies the picks and removes it - with
+        // the stamp's picks to go by, only as a pick (an item one of them requires comes back through
+        // the closure).
         const retired = new Map(readRetiredEntries(sourceDir).map((e) => [e.name, e]));
+        const joins = (line) => !lines.includes(line) && (!picks || picks.has(line));
         for (const name of names.filter((n) => retired.has(n)))
         {
-            for (const s of retired.get(name).skills) if (!lines.includes(`skill ${s}`)) lines.push(`skill ${s}`);
-            for (const a of retired.get(name).agents) if (!denied.has(a) && !lines.includes(`agent ${a}`)) lines.push(`agent ${a}`);
+            for (const s of retired.get(name).skills) if (joins(`skill ${s}`)) lines.push(`skill ${s}`);
+            for (const a of retired.get(name).agents) if (!denied.has(a) && joins(`agent ${a}`)) lines.push(`agent ${a}`);
         }
     }
     const manifest = loadManifest(sourceDir);
@@ -224,8 +239,11 @@ function stampCarried({ stamp = {}, enabled = [], parked = [], deny = [], routes
             if (!validItemName(name)) continue;
             const was = stamped && currentName(stamped);
             const home = homeOf(place, kind, name);
-            // Homed in a retired entry that is still enabled, library now: carried as a pick.
-            if (was && retiredNames.has(was) && on.has(was) && !home)
+            // Homed in the core or a retired entry, still enabled here, library now: carried as a pick -
+            // the release moved it into the project (2.1.0 moved every core skill so).
+            // A core-homed SEAT with no home now is no seat this release ships (every seat rides the core).
+            const movedOutOfCore = was === CORE && kind === 'skills' && place.library.skills.includes(name);
+            if (was && (retiredNames.has(was) || movedOutOfCore) && on.has(was) && !home)
             {
                 if (!(kind === 'agents' && denied.has(name))) lines.push(`${line} ${name}`);
                 continue;
@@ -270,8 +288,10 @@ function costOfTaking({ category, name, place, graph, enabled, copied })
 // matches the off-state by name, so the new name comes on and the report must say so. M8: an offer
 // whose OLD name is neither on disk nor in `picked` (the stamp's picks by kind, null when it records
 // none) was declined under that name, so it is left out - never offered as new.
-function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always = {}, hasHooks = true, copied = null, picked = null, sourceDir = REPO } = {})
+function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOff, noneBefore = false, routes = {}, always, hasHooks = true, copied = null, picked = null, sourceDir = REPO } = {})
 {
+    // No always set handed in: the source's own, the one the placement and the installer read.
+    if (!always) { try { always = JSON.parse(fs.readFileSync(path.join(sourceDir, 'meta', 'recommendations.json'), 'utf8')).always || {}; } catch { always = {}; } }
     const place = placement();
     const manifest = loadManifest(sourceDir);
     let graph = null;
@@ -290,12 +310,18 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
     // A skill a server brings arrives with that server (the graph's `mcps` block) - offered alone, it is
     // a skill with nothing to drive.
     const brought = new Set(Object.values((graph && graph.mcps) || {}).flatMap((n) => n.skills || []));
+    // The always CLOSURE arrives on its own: the locked rules and skills are adopted, the always seats
+    // too unless denied, and the installer's closure pulls in what those require.
+    const { computeClosure } = require('./stack-select.js');
+    const alwaysClosed = graph && graph.catalog ? computeClosure(graph, always) : { skills: always.skills || [], agents: always.agents || [] };
     for (const { category, name, from, oldOnDisk } of added)
     {
         if (!ships[category] || !ships[category].has(name)) continue;
         if (category === 'skill' && brought.has(name)) continue;
         const row = { category, name, verdict: 'offer', entry: null };
         if (category === 'rule') { if ((always.rules || []).includes(name)) row.verdict = 'arrives'; }
+        // A locked skill is copied into every install (install/selection.js adoptAlways), whatever the route.
+        else if (category === 'skill' && alwaysClosed.skills.includes(name)) row.verdict = 'arrives';
         else if (category === 'hook')
         {
             if (routes.hooks)
@@ -308,11 +334,15 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
         else
         {
             row.entry = routes.skills ? homeOf(place, `${category}s`, name) : null;
+            // Every seat rides the core (2.1.0), and one nobody picked is denied: a new seat arrives on
+            // only when it is an always seat, adopted unless the user denied it - any other is offered,
+            // and taking it copies the skills it preloads.
+            const adopted = category !== 'agent' || alwaysClosed.agents.includes(name);
             if (row.entry)
             {
-                if (enabled === null) row.verdict = 'unknown';
+                if (enabled === null) row.verdict = adopted ? 'unknown' : 'offer';
                 else if (off.has(row.entry) || (category === 'agent' && denied.has(name))) row.verdict = 'off';
-                else if (enabled.has(row.entry)) row.verdict = 'arrives';
+                else if (enabled.has(row.entry) && adopted) row.verdict = 'arrives';
             }
         }
         if (from)
@@ -322,6 +352,9 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
             // The old copy is pruned whatever the new name's verdict - an arriving rename leaves it too.
             if (oldOnDisk) row.oldOnDisk = true;
             if (row.verdict === 'offer' && oldOnDisk) row.verdict = 'renamed';
+            // A seat has no copy on disk to go by (it rides the core): the stamp's pick of the old name is
+            // what says the install carries it.
+            if (row.verdict === 'offer' && category === 'agent' && picked && picked.agent && picked.agent.has(from)) row.verdict = 'renamed';
             if ((category === 'agent' && denied.has(from)) || (category === 'hook' && hookOff(from))) row.wasOff = true;
         }
         if (row.verdict === 'offer')
@@ -343,7 +376,9 @@ function classifyNew({ added = [], plugins = [], parked = [], deny = [], hooksOf
 function writable(state, { routes = {}, answered = { hooks: true, agents: true }, wired = null, shipped = [] } = {})
 {
     const hooks = Boolean(state && state.hooks.answered && answered.hooks !== false);
-    const agents = Boolean(state && answered.agents && routes.skills);
+    // Whenever the CORE loads - it carries every seat (2.1.0), so on the skills copy route with the
+    // core on the seats it lists beside the copies are switched off the same way.
+    const agents = Boolean(state && answered.agents && corePluginOn(routes));
     // The hooks copy route with the core on: the core carries every hook, and a hook the project does
     // not wire has no twin to stand down for, so this name is its only off-switch. The list is the
     // complement of what the run WIRES, whatever the read-back answered - a pre-11b install never
@@ -356,12 +391,10 @@ function writable(state, { routes = {}, answered = { hooks: true, agents: true }
         hooksAnswered: besideCore || hooks,
         agentDeny: agents ? state.agents.deny : [],
         agentAllow: agents ? state.agents.allow : [],
-        // Carried without a pick only where a plugin carries skills; the copy route copies the picks.
-        undroppable: state && routes.skills ? state.skills.undroppable : [],
     };
 }
 
-// THE FLOOR the stack's own entries add to every message: the description of each model-invocable
+// THE FLOOR the stack adds to every message: the description of each model-invocable
 // skill they carry (a `disable-model-invocation` skill's is not in context - 'Control who invokes a
 // skill', code.claude.com/docs/en/skills) and of each seat not denied (spike S3: a denied seat
 // leaves the Agent listing). Status reports it; before this the seats were not counted at all.
@@ -373,7 +406,33 @@ const manualOnly = (skill) =>
     catch { return false; }
 };
 
-function floor({ plugins = [], deny = [] } = {})
+// The project's own skill COPIES (2.1.0: every stack skill is one) - `skillsDir`, the project's
+// `.claude/skills`. Only a folder named for a skill the stack ships counts (the project's own skills
+// are its own bill), read from the COPY's frontmatter: a copy an older release wrote says what this
+// session loads. A `skillOverrides` value other than 'on' lists no description ('name-only' lists the
+// name alone, 'user-invocable-only' and 'off' hide it - 'Override skill visibility from settings',
+// code.claude.com/docs/en/skills).
+function copiedSkills(skillsDir, overrides = {})
+{
+    if (!skillsDir) return [];
+    let graph = {};
+    try { graph = JSON.parse(fs.readFileSync(path.join(REPO, 'meta', 'stack-graph.json'), 'utf8')).skills || {}; } catch { graph = {}; }
+    let dirs = [];
+    try { dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { dirs = []; }
+    const out = [];
+    for (const name of dirs.filter((n) => Object.hasOwn(graph, n)).sort())
+    {
+        let text;
+        try { text = fs.readFileSync(path.join(skillsDir, name, 'SKILL.md'), 'utf8'); } catch { continue; }
+        const mode = overrides && typeof overrides === 'object' && typeof overrides[name] === 'string' ? overrides[name] : 'on';
+        if (mode !== 'on' || manualOnlyText(text)) continue;
+        const fm = (/^---\r?\n([\s\S]*?)\r?\n---/.exec(text) || [])[1] || '';
+        out.push({ name, chars: ((/^description:\s*(.*)$/m.exec(fm) || [])[1] || '').length });
+    }
+    return out;
+}
+
+function floor({ plugins = [], deny = [], skillsDir = null, overrides = {} } = {})
 {
     const place = placement();
     const named = [...new Set(plugins.map((p) => currentName(String(p).split('@')[0])).filter(Boolean))];
@@ -391,6 +450,7 @@ function floor({ plugins = [], deny = [] } = {})
     const denied = new Set(carried.agents.filter((a) => specs.has(denySpec(a, homes.get(a) || CORE))
         || (!homes.has(a) || homes.get(a) === CORE) && specs.has(denySpec(a, LEGACY.core))));
     const skills = carried.skills.filter((s) => !manualOnly(s));
+    const copies = copiedSkills(skillsDir, overrides);
     const seats = carried.agents.filter((a) => !denied.has(a));
     const sum = (kind, names) => names.reduce((n, name) => n + descriptionChars(kind, name), 0);
     // `skipped`: the entries this count does not cover - the MCP entries, and any other plugin. The
@@ -400,7 +460,7 @@ function floor({ plugins = [], deny = [] } = {})
     const out = {
         entries,
         skipped: named.filter((n) => !place.plugins[n]).sort(),
-        skills: { count: skills.length, chars: sum('skill', skills) },
+        skills: { count: skills.length + copies.length, chars: sum('skill', skills) + copies.reduce((n, c) => n + c.chars, 0) },
         agents: { count: seats.length, denied: carried.agents.filter((a) => denied.has(a)), chars: sum('agent', seats) },
     };
     out.chars = out.skills.chars + out.agents.chars;
@@ -414,22 +474,26 @@ function main(argv)
     {
         // Every --settings file counts: deny rules merge across the account, project and local
         // scopes, so a seat switched off in any of them is off. An unreadable file denies nothing.
+        // `skillOverrides` the same way, a later file over an earlier one - pass them account, project,
+        // local, the order Claude Code ranks them.
         const deny = [];
+        const overrides = {};
         argv.forEach((a, i) =>
         {
             if (a !== '--settings' || !argv[i + 1]) return;
             let stored = {};
             try { stored = JSON.parse(fs.readFileSync(argv[i + 1], 'utf8')); } catch { stored = {}; }
             if (stored && stored.permissions && Array.isArray(stored.permissions.deny)) deny.push(...stored.permissions.deny);
+            if (stored && stored.skillOverrides && typeof stored.skillOverrides === 'object' && !Array.isArray(stored.skillOverrides)) Object.assign(overrides, stored.skillOverrides);
         });
         const plugins = String(arg('--plugins') || '').split(',').map((p) => p.trim()).filter(Boolean);
-        console.log(JSON.stringify(floor({ plugins, deny }), null, 2));
+        console.log(JSON.stringify(floor({ plugins, deny, skillsDir: arg('--skills-dir') ? path.resolve(arg('--skills-dir')) : null, overrides }), null, 2));
         return 0;
     }
     const selection = arg('--selection');
     if (!selection)
     {
-        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local]\n       derive-state.js --floor --plugins <enabled entries, csv> [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
+        console.error('usage: derive-state.js --selection <file> [--source <dir>] [--marketplace <name>] [--root <project>] [--scope project|user|local]\n       derive-state.js --floor --plugins <enabled entries, csv> [--skills-dir <.claude/skills>] [--settings <settings.json>]...\n       derive-state.js --delta --installed <inventory.json> --selection <file> [--picked <walk file>]');
         return 1;
     }
     if (argv.includes('--delta'))

@@ -42,9 +42,9 @@ test('every verifier, implementer and resolver preloads the done gate, every imp
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver',
         'alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
         assert.ok(preloads(seat).includes('alfred-habits-root-cause'), `${seat} preloads alfred-habits-root-cause`);
-    // Scoped to the core, the spelling a stale library copy cannot shadow (Spike S6).
+    // Bare since 2.1.0: every skill is a project copy, and a plugin seat's bare preload loads it (Spike S6).
     for (const seat of [...verifiers, ...implementers, ...resolvers])
-        assert.match(read(`stack/agents/${seat}.md`), /^\s*-\s*alfred-code:alfred-habits-done-gate$/m, `${seat} scopes the preload to the core`);
+        assert.match(read(`stack/agents/${seat}.md`), /^\s*-\s*alfred-habits-done-gate$/m, `${seat} preloads the project copy, bare`);
 });
 
 test('the flows load their method skills by name, at the step that needs them', () => {

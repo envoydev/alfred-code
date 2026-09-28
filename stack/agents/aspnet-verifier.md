@@ -11,7 +11,7 @@ skills:
   - dotnet-testing
   - dotnet-web-backend
   - dotnet-data-access
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

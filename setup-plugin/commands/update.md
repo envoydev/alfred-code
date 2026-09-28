@@ -379,7 +379,7 @@ and two consecutive greps of the same log (measured) cost two full context re-se
 line:
 
 ```bash
-grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook)|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
+grep -aE 'installed/refreshed this run|mcp repaired:|mcp pruned:|add it back:|is installed at [a-z]+ scope, not this run|is parked here - kept|plugin [A-Za-z0-9_.-]+:|plugin pruned|installed-only: (required|adopting|keeping|adding|dropping|every hook|the stamp predates)|agent kept:|names nothing this release ships|was dropped from this install|settings(\.local)?\.json( env)?:|renamed:|were moved from|docs (migration|domain|root|move)|memory:|memory import:|autoMemoryEnabled|=set \(|=absent|serena project index|!!|overwriting a hand-edited copy|scope: this project is a 1\.x global install|context7-local removed|core moved to alfred-code|has no status line yet|plugin moved \[' "$TMP/install.log"
 ```
 
 That one pattern carries every fact step 7 reports: the refresh counts, the repaired
@@ -473,7 +473,11 @@ it) and every offer the step-2 ask took. A removed name needs no flag - this rel
 does not ship it, so the read-back cannot carry it - and step 5 deletes its files. Never rebuild the
 selection from a disk inventory on the Node seed: on the plugin routes `.claude/` holds only the
 library copies, and a selection built from it switches off every seat an enabled entry carries (the Phase 8
-read-back exists for exactly that). A `required:` line (a dependency the new release introduced) is auto-kept and
+read-back exists for exactly that). The first update past 2.1.0 is the one that moves an install
+across: its stamp has no `seats-route:` line, so the read-back goes by what the 2.0.x core carried -
+the always skills become copies, a library seat copy is pruned (an edited one is kept and named), and
+every seat the install never ran is denied; the installer says it in one `installed-only: the stamp
+predates 2.1.0` line (and one `agent kept:` line per edited seat copy it leaves). A `required:` line (a dependency the new release introduced) is auto-kept and
 reported. An `unknown:` line is NEVER prune evidence: a skill, agent, rule or hook the user wrote,
 and an MCP server added by hand, print exactly that way, and the installer leaves every one of
 them in place (it only replaces the names it ships; a hand-added `.mcp.json` server is never

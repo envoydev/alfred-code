@@ -754,7 +754,7 @@
     <div id="content"></div>
 
     <div class="inv-sources">
-      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, the always-on ones carried by the core <code>alfred-code</code> plugin, every other pick copied into the project as a library copy (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
+      Sources: <code>built-in</code> ships with Claude Code CLI &middot; <code>house</code> published to <code>envoydev/alfred-code</code>, every skill pick copied into the project as a library copy and every subagent carried by the core <code>alfred-code</code> plugin, each one the project did not pick denied (<code>node scripts/install/alfred-code.js install --skills-only</code>, or the <code>alfred-code</code> plugin) &middot; <code>plugins</code> installed via <code>/plugin install &lt;name&gt;@&lt;marketplace&gt;</code> &middot; <code>repository</code> (plugin-bundled commands) installs with its plugin, no separate step.
     </div>
   </section>
 
@@ -790,7 +790,7 @@ const builtin = {
 
 const house = {
   title: "Skills (House)",
-  meta: "Convention skills, authored in this repo and published to envoydev/alfred-code. The always-on ones ride the core plugin; every other pick is copied into the project as a library copy, hashed in the install stamp. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
+  meta: "Convention skills, authored in this repo and published to envoydev/alfred-code. Every pick, the always-on ones included, is copied into the project as a library copy, hashed in the install stamp. Invocation: auto = fires on its description; manual = /-command only (disable-model-invocation).",
   invokeColumn: true,
   source: "https://github.com/envoydev/alfred-code",
   install: "node scripts/install/alfred-code.js install --skills-only",

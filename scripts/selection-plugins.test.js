@@ -20,16 +20,16 @@ function sel(lines)
 test('a selection file enables the core and copies its library picks', () => {
     const picked = readSelection(sel(['skill dotnet-wpf', 'agent wpf-implementer', 'skill alfred-task-solve-cross', '# a comment', '']));
     const { plugins, copy } = pluginsFor(picked);
-    assert.deepStrictEqual(plugins, [CORE], 'the core carries the commands and the baseline; no stack plugin exists');
-    assert.deepStrictEqual(copy.skills, ['dotnet-wpf'], 'a stack skill is a library copy');
-    assert.deepStrictEqual(copy.agents, ['wpf-implementer'], 'and so is a stack seat');
+    assert.deepStrictEqual(plugins, [CORE], 'the core carries the commands, the hooks and every seat; no stack plugin exists');
+    assert.deepStrictEqual(copy.skills, ['alfred-task-solve-cross', 'dotnet-wpf'], 'every skill is a library copy, an always one included');
+    assert.deepStrictEqual(copy.agents, [], 'a seat rides the core - never copied');
 });
 
 test('an opt-in item is library like any other and pulls in no plugin of its own', () => {
     const { plugins, copy } = pluginsFor(readSelection(sel(['skill angular-material', 'agent related-project-analyzer'])));
     assert.deepStrictEqual(plugins, [CORE], 'a library pick pulls in no plugin');
     assert.deepStrictEqual(copy.skills, ['angular-material']);
-    assert.deepStrictEqual(copy.agents, ['related-project-analyzer']);
+    assert.deepStrictEqual(copy.agents, [], 'the opt-in seat rides the core, off until picked');
 });
 
 // The whole point of the split: what the plugins carry plus what is copied must be exactly what was

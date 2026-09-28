@@ -9,7 +9,7 @@ skills:
   - database-conventions
   - dotnet-migrate
   - dotnet-testing
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

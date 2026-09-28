@@ -179,16 +179,15 @@ Run: `node stack-select.js --selection "$TMP/raw.json" --emit "$TMP/selection.tx
 "$TMP/state.json"` (the `<scope>` the installer call below takes - the routes are read as it reads
 them) and render four lines from it, nothing added:
 
-- skill and agent plugins - when `routes.skills` is true, `skill and agent plugins: <n> - <names>`
-  from `plugins`; otherwise `skill and agent plugins: copy route - copied into .claude/`. The hooks
-  entry, the MCP entries and the plugins-layer picks are not in this list - their own layers named
-  them.
-- `seats switched off:` the seat names in `written.agentDeny` (`permissions.deny` entries -
-  configure brings one back), or `none`.
+- `skills copied:` the count of `skills.library` - every picked skill is a copy in `.claude/skills`
+  on every route, so a project can switch any one off (`skillOverrides`, or configure's drop).
+- seats - when `routes.skills` is true, `seats: ride the core plugin - <n> picked` (the count of
+  `agents.on`); otherwise `seats: copy route - copied into .claude/agents`.
+- `seats switched off:` the seat names in `written.agentDeny` (`permissions.deny` entries - every
+  seat the selection did not pick, since the core carries all of them; configure brings one back),
+  or `none`.
 - `hooks switched off:` the names in `written.hooksOff` (`ALFRED_CODE_HOOKS_OFF`), or `none` - on
   the hooks copy route a hook not picked is simply not copied.
-- `carried but not picked:` `written.undroppable`, or `none` - a plugin skill cannot be dropped on
-  its own; say so once when the list is not empty.
 
 `written` is the installer's own rule applied to the routes this environment runs, so it IS what
 the install writes.

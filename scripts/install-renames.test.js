@@ -411,8 +411,9 @@ test('seed update --installed-only over a 1.3.0 stamp: every old pick is carried
         plugins: V13_LISTING, args: ['--installed-only'], prepare: v13Plugin, each: inspect,
     });
     const [first, second] = steps;
-    assert.ok(first.pickedSkills.includes('alfred-task-solve@alfred-code'), first.pickedSkills.join(','));
-    assert.ok(first.pickedSkills.includes('alfred-habits-commit-checkpoint@alfred-code'), first.pickedSkills.join(','));
+    // A skill is a copy since 2.1.0 - its pick has no plugin home.
+    assert.ok(first.pickedSkills.includes('alfred-task-solve'), first.pickedSkills.join(','));
+    assert.ok(first.pickedSkills.includes('alfred-habits-commit-checkpoint'), first.pickedSkills.join(','));
     assert.ok(first.pickedSkills.includes('alfred-capture-related-projects'), `the library pick is carried: ${first.pickedSkills.join(',')}`);
     assert.ok(first.pickedAgents.includes('alfred-issue-diagnoser-ci@alfred-code'), first.pickedAgents.join(','));
     const old = new Set([...Object.keys(RENAMED.skills), ...Object.keys(RENAMED.agents)]);

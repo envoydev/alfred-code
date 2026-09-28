@@ -32,7 +32,7 @@ const settings = require('./settings.js');
 const serena = require('./serena.js');
 const memory = require('./memory.js');
 const docs = require('./docs.js');
-const { deriveState, writable, homeOf, splitPick } = require('../derive-state.js');
+const { deriveState, writable, homeOf, splitPick, stackSeat } = require('../derive-state.js');
 const { placement, readRetiredEntries, readRetiredPlugins, CORE } = require('../plugin-placement.js');
 const seeds = require('./seeds.js');
 const pinsLayer = require('./pins.js');
@@ -413,6 +413,11 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
                 stampHooks: readStampHooks(stampFile),
                 lastHooksRoute: stampLayer.readHooksRoute(stampFile),
                 stampPicked: lastPicked, stampEngines,
+                // 2.1.0: how the last run delivered the seats (null before 2.1.0 - its core carried the
+                // always closure), and the seats whose deny the stack itself wrote (a deny gone from
+                // one of those since is the user's hand-allow).
+                seatsRoute: stampLayer.readSeatsRoute(stampFile),
+                ledgerSeats: [...new Set(((priorLedger && priorLedger.deny) || []).map((d) => stackSeat(d.entry)).filter(Boolean))],
                 always, marketplace: market, said: renaming.said, scope: cliScope, isOn: engineOn({ configDir, claudeDir }), log,
                 sharedOnlyDeny: (leavingLocal && args.printPlan ? 'local' : args.scope) === 'local' ? settings.sharedOnlyDeny(claudeDir) : [],
                 // C5: the copy route's hooks are committed wiring - read from settings.json alone there.
@@ -426,9 +431,10 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             leftOut = selection.leftOut({ parked: back.parked, deny: back.deny });
             const withAdds = desktopLines(selection.addLines(back.lines, args.add, log));
             const graph = readJson(path.join(resolved.dir, 'meta', 'stack-graph.json'));
-            // The always-on rules and servers are locked: the read-back adopts them whatever the disk
-            // says, so a drop of one would come straight back on the next update.
-            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.mcps || []).map((n) => `mcp ${n}`)]);
+            // The always-on rules, skills and servers are locked: the read-back adopts them whatever the
+            // disk says, so a drop of one would come straight back on the next update. (A skill's own
+            // per-project lever is `skillOverrides`, which leaves the copy in place.)
+            const locked = new Set([...(always.rules || []).map((n) => `rule ${n}`), ...(always.skills || []).map((n) => `skill ${n}`), ...(always.mcps || []).map((n) => `mcp ${n}`)]);
             for (const l of args.drop.filter((d) => locked.has(d)))
                 log(`installed-only: --drop ${l} not applied - locked, every install carries it`);
             const drops = args.drop.filter((d) => !locked.has(d));
@@ -436,13 +442,23 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             // back and is reported - the walk's own closure would have kept it, and a drop the next
             // update's closure undoes is no drop at all.
             const withDrops = selection.dropLines(withAdds, drops, log);
-            const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: back.deny, log: say });
+            // Every seat rides the core (2.1.0), so a deny also stands for 'never picked' - a seat an --add
+            // REQUIRES is taken with it (the add is the user's newest word); the closure over the kept
+            // picks still leaves a denied seat out.
+            const addSeats = new Set(graph.catalog && args.add.length ? require('../stack-select.js').computeClosure(graph, {
+                skills: args.add.filter((l) => l.startsWith('skill ')).map((l) => l.slice(6)), agents: args.add.filter((l) => l.startsWith('agent ')).map((l) => l.slice(6)),
+                rules: args.add.filter((l) => l.startsWith('rule ')).map((l) => l.slice(5)), mcps: [], plugins: [],
+            }).agents : []);
+            const closeDeny = back.deny.filter((d) => !addSeats.has(stackSeat(d)));
+            const close = (lines, from, say) => selection.closeLines(lines, { from, graph: graph.catalog ? graph : null, parked: back.parked, deny: closeDeny, log: say });
             const from = desktopLines([...back.closeFrom, ...args.add]).filter((l) => !drops.includes(l));
             let closed = close(withDrops, from, log);
             // A layer the closure brought in (a skill requiring context7 in an install that carried
             // no server) is carried now, so the locked set joins it in THIS run - adopted only by the
             // next update, one update was not the fixed point.
-            const adopted = selection.adoptAlways({ lines: closed, always, log });
+            // An always seat this run's --drop switched off is not adopted back (its deny lands only now).
+            const adopted = selection.adoptAlways({ lines: closed, always, log, deny: back.deny, coreOn: plugins.corePluginOn(routes) })
+                .filter((l) => closed.includes(l) || !drops.includes(l));
             if (adopted.length > closed.length)
                 closed = close(adopted, [...from, ...adopted.filter((l) => !closed.includes(l))], log);
             args.dropApplied = drops.filter((l) => !closed.includes(l));
@@ -641,7 +657,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         pruneDroppedCopies(ctx);
         stampLayer.writeStamp({
             source: resolved, action: args.action, scope: args.scope, configDir, projectRoot, mcpFile,
-            hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy',
+            hooksCatalog: manifest.catalogs.hooks, hooksRoute: ctx.routes.hooks ? 'plugin' : 'copy', seatsRoute: ctx.routes.skills ? 'plugin' : 'copy',
             version: releaseVersion(resolved.dir), log, note,
             picked: stampPickLists(lists, stampPicks, carriedPicks), playwright: pwEngines(ctx), playwrightEnabled: ctx.pw.enabled,
             stoodDown: stoodDownRecord(ctx),
@@ -824,31 +840,43 @@ function installSkillsAndAgents(ctx)
     ctx.routes = closure.routes;
     ctx.stackEntries = closure.entries;
 
-    // On the plugin route only the LIBRARY travels by copy, and a leftover copy SHADOWS the plugin's
-    // own with no error and no sign in the transcript - so the prune runs BEFORE the enable.
+    // On the plugin route every skill travels by copy and every seat rides the core (2.1.0). A seat's
+    // leftover copy - a 2.0.x library seat, or the copy route's - lists BESIDE the core's own under
+    // another name, so it goes BEFORE the enable. What a release retired goes on either route.
     const skillNames = ctx.lists.skills.map((e) => e.split('|').pop());
-    // The same holds for a seat: a project agent outranks the plugin's own, so a leftover copy keeps
-    // the old seat running. What a release retired goes on either route.
     const agentsDir = path.join(ctx.claudeDir, 'agents');
     pruneCopies(ctx, ctx.skillsDir, ctx.manifest.retired.skills, 'skill', 'retired upstream', { keepTracked: true });
     pruneCopies(ctx, agentsDir, ctx.manifest.retired.agents, 'agent', 'retired upstream', { keepTracked: true });
     if (ctx.routes.skills)
     {
-        // A core item's copy would shadow the plugin's own; a library item this run did not pick is
-        // switched off, and its absence is how.
+        // A library item this run did not pick is switched off, and its absence is how; a seat the core
+        // carries is pruned as a copy - unless the project edited it since the stack wrote it (its hash
+        // no longer the stamp's): kept, said, and its recorded hash carried, so library-check reports it
+        // as edited and no later run deletes it either.
         const core = placement().plugins[CORE];
+        const stamped = stampLayer.readLibrary(ctx.stampFile);
         const unpicked = (names, picked) => names.filter((n) => !picked.includes(n));
         const skills = unpicked(ctx.manifest.skills.map((e) => e.split('|').pop()), closure.extraSkills);
         const agents = unpicked(ctx.manifest.agents.map((f) => f.replace(/\.md$/, '')), closure.extraAgents);
+        const edited = (n) =>
+        {
+            const was = stamped && stamped.agents && stamped.agents[n];
+            const now = was && library.hashItem(path.join(agentsDir, `${n}.md`));
+            return Boolean(now && now !== was);
+        };
+        const keptSeats = agents.filter((n) => core.agents.includes(n) && edited(n));
+        for (const n of keptSeats)
+            ctx.log(`  agent kept: ${n}.md - edited in the project since the stack copied it, so it is yours; it lists beside ${CORE}:${n} - delete it to use the plugin's seat`);
         pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => core.skills.includes(n)), 'skill', 'now carried by a plugin');
         pruneCopies(ctx, ctx.skillsDir, skills.filter((n) => !core.skills.includes(n)), 'skill', 'library item not picked');
-        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
+        pruneCopies(ctx, agentsDir, agents.filter((n) => core.agents.includes(n) && !keptSeats.includes(n)).map((n) => `${n}.md`), 'agent', 'now carried by a plugin');
         pruneCopies(ctx, agentsDir, agents.filter((n) => !core.agents.includes(n)).map((n) => `${n}.md`), 'agent', 'library item not picked');
         ctx.library = library.copyLibrary({
             sourceDir: ctx.source.dir, skillsDir: ctx.skillsDir, agentsDir,
             skills: closure.extraSkills, agents: closure.extraAgents,
-            stamped: stampLayer.readLibrary(ctx.stampFile), log: ctx.log, note: ctx.note,
+            stamped, log: ctx.log, note: ctx.note,
         });
+        for (const n of keptSeats) ctx.library.agents[n] = stamped.agents[n];
         return;
     }
 

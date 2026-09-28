@@ -11,7 +11,7 @@ skills:
   - typescript
   - javascript
   - angular-testing
-  - alfred-code:alfred-habits-done-gate
+  - alfred-habits-done-gate
 
 ---
 

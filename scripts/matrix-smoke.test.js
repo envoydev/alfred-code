@@ -64,13 +64,14 @@ for (const route of Object.keys(ROUTES))
         assert.ok(result.claudeMd, 'the CLAUDE.md seed landed');
         assert.deepStrictEqual(result.engines, ['docs.js', 'memory.js', 'model-windows.json'], 'both hook engines and the window table are copied on every route');
         assert.match(result.stamp, /^action: install$/m, 'the stamp names the action');
-        assert.match(result.stamp, /^picked-skills: markdown-style@/m, 'the stamp records the pick');
+        assert.match(result.stamp, /^picked-skills: markdown-style$/m, 'the stamp records the pick - a copy, no plugin home (2.1.0)');
+        assert.match(result.stamp, route === 'plugin' ? /^seats-route: plugin$/m : /^seats-route: copy$/m, 'how the seats came');
         assert.strictEqual(result.settings.env.ALFRED_CODE_DOCS_PATH, '.alfred/docs', 'the settings env is seeded');
         if (route === 'plugin')
         {
             assert.ok(calls.includes('plugin install alfred-code@envoydev --scope project -y'), 'the core entry is installed');
             assert.ok(!calls.some((c) => /-hooks@/.test(c)), 'no hooks entry is installed - the hooks ride the core');
-            assert.ok(!result.skill, 'the plugin carries the skill - no copy lands');
+            assert.ok(result.skill, 'every skill is a copy on the plugin route too (2.1.0)');
             assert.strictEqual(result.mcp, null, 'nothing is registered in .mcp.json on the plugin route');
         }
         else
