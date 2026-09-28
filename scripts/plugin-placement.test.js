@@ -8,10 +8,10 @@ const { placement, costOf, costToday, CORE, LIBRARY } = require('./plugin-placem
 const REPO = path.resolve(__dirname, '..');
 const p = placement();
 
-test('the core plugin is exactly the always closure - 30 skills, 9 agents', () => {
+test('the core plugin is exactly the always closure - 31 skills, 9 agents', () => {
     const core = p.plugins[CORE];
     assert.ok(core, 'the core plugin must exist');
-    assert.strictEqual(core.skills.length, 30);
+    assert.strictEqual(core.skills.length, 31);
     assert.strictEqual(core.agents.length, 9);
     for (const s of ['alfred-capture-agent-capabilities', 'alfred-task-solve-cross', 'alfred-habits-adjust-claude-md'])
         assert.ok(core.skills.includes(s), `${s} is always-closure, so it belongs to the core`);

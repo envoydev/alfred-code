@@ -1,10 +1,10 @@
 ---
 name: alfred-capture-agent-capabilities
-description: "The deliberate capabilities capture. Use when the user asks to capture the project capabilities, refresh the capabilities rule, or find out what this project has installed - and after an install, a stack update, or a manifest trim. Manual, /-only. It inventories what THIS project actually has - the slash-only orchestration skills, the subagent seats, the MCP servers, the plugins - and regenerates wholesale the always-on awareness rule .claude/rules/baseline-project-agent-capabilities.md: the fixed house usage policy plus the real inventory, never an assumed stack. NOT for capturing architecture (alfred-capture-architecture), code style (alfred-capture-code-style), or a sibling repo's context - that is the sibling-context capture, where the project installed one."
+description: "The deliberate capabilities capture. Use when the user asks to capture the agent capabilities, refresh the capabilities rule, or find out what this project has installed - and after an install, a stack update, or a manifest trim. Manual, /-only. It inventories what THIS project actually has - the slash-only orchestration skills, the subagent seats, the MCP servers, the plugins - and regenerates wholesale the always-on awareness rule .claude/rules/baseline-project-agent-capabilities.md: the fixed house usage policy plus the real inventory, never an assumed stack. NOT for capturing architecture (alfred-capture-architecture), code style (alfred-capture-code-style), the run book on building, starting and logging into the app (alfred-capture-project-capabilities), or a sibling repo's context - that is the sibling-context capture, where the project installed one."
 disable-model-invocation: true
 ---
 
-# Project Capabilities - inventory what is installed, generate the awareness rule
+# Agent Capabilities - inventory what is installed, generate the awareness rule
 
 Every project trims the stack differently - skills commented out of the manifest, MCPs dropped (`browser` where nothing renders a browser UI), seats it never installed. A predefined list would name capabilities the project does not have; this skill reads the REAL inventory and generates the rule from it, so every session knows exactly what this project can do - and never gets steered at a capability that is not there.
 

@@ -25,6 +25,10 @@
       "mcps": [],
       "plugins": []
     },
+    "alfred-capture-project-capabilities": {
+      "mcps": [],
+      "plugins": []
+    },
     "alfred-capture-related-projects": {
       "mcps": [
         "memory"

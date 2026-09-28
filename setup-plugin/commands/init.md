@@ -1,5 +1,5 @@
 ---
-description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
+description: "One-time bootstrap of an Alfred Code install, run in the session AFTER setup's restart - installs what the kept MCP servers need to start (uv, the pinned Python, csharp-ls when csharp-lsp is kept, the picked browsers, the navigation-server index, claude-hud's status line in its compact layout - every machine-level install through ONE ask first), sets this project's shared-memory level and imports Claude's old notes (no reinstall), runs the captures the install carries (related projects, architecture, code style, the run book, agent capabilities) by following each SKILL.md inline, then offers the CLAUDE.md fill. Nothing installed yet routes to /alfred-code:setup."
 disable-model-invocation: true
 ---
 
@@ -74,8 +74,9 @@ One call, nothing changed: `node "$TMP/repo/scripts/install/alfred-code.js" upda
   browsers (a firefox / webkit setup's install failed to download; a chrome / msedge the
   machine does not have), the navigation-server index, then the account's claude-hud status line and compact
   layout. The command is the exact one to run.
-- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the four
-  captures in their fixed order, each only when the install lists its skill AND its seat.
+- `capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>` - the five
+  captures in their fixed order, each only when the install lists its skill AND its seat (the run
+  book and agent capabilities have none).
 
 Nothing is inferred beyond those lines: a machine item the plan does not name is not this run's.
 

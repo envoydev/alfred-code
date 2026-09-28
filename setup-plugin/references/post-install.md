@@ -151,10 +151,13 @@ missing one); do not shuffle it. A later re-run is yours to type: all but the tw
    orient. Runs after the navigation-server index above, because the capture navigates by symbol.
 3. `/alfred-capture-code-style` - captures how the codebase really writes each language and
    generates the path-scoped project-code-style rule.
-4. `/alfred-capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
+4. `/alfred-capture-project-capabilities` - the run book: how to build, start, reach and log into the
+   app, the flows and edge cases a manual check exercises, where debugging starts. It reads the repo
+   first and asks only for the gaps; credentials are recorded by where they live, never by value.
+5. `/alfred-capture-agent-capabilities` - LAST, so the generated usage-policy rule reflects the final
    inventory including anything the captures above added.
 
-Optional fifth, whenever you want the coverage picture: `/alfred-capture-test-coverage` - it
+Optional, whenever you want the coverage picture: `/alfred-capture-test-coverage` - it
 measures the suite and asks for YOUR coverage bar on first capture, recording it for every later
 run.
 

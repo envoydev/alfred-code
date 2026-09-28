@@ -14,7 +14,8 @@ ends on the deterministic check; by hand, the steps are:
 3. The rows marked GENERATED come from captures /alfred-code:init already ran for the installed ones -
    filling this file never re-runs one whose file exists. A row whose file is missing takes its capture, in the post-install
    order: /alfred-capture-related-projects ONLY when this project has sibling repos (a standalone repo
-   drops that row instead), then /alfred-capture-architecture, /alfred-capture-code-style, then
+   drops that row instead), then /alfred-capture-architecture, /alfred-capture-code-style,
+   /alfred-capture-project-capabilities, then
    /alfred-capture-agent-capabilities LAST, so its generated inventory reflects the final install. All but
    /alfred-capture-architecture are slash-only: the user types them - a model Skill call is refused.
 If the repo's canonical agent instructions already live in an AGENTS.md (for other agent
@@ -107,4 +108,5 @@ running it.
 | `.claude/rules/baseline-project-agent-capabilities.md` (GENERATED - user-run /alfred-capture-agent-capabilities after install, update, or a trim) | the skill / agent usage policy (dispatch is explicit-only) plus this project's real skill / seat / MCP inventory |
 | `.claude/rules/baseline-project-architecture.md` (GENERATED - run /alfred-capture-architecture) | architecture docs pointer - where the docs live, read before a structural change; the orientation itself arrives through the docs hook |
 | `.claude/rules/baseline-project-related-context.md` (GENERATED, OPTIONAL - only where the project has sibling repos; user-run /alfred-capture-related-projects with their paths/URLs) | sibling-repo awareness - name / location / relation / seam per sibling |
+| `.claude/rules/baseline-project-run-book.md` (GENERATED - user-run /alfred-capture-project-capabilities) | run book pointer - where `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` lives: how to build, start, log into and hand-check the app, read before a manual check |
 | `.claude/rules/project-code-style.md` (GENERATED - user-run /alfred-capture-code-style; path-scoped, plus the full doc) | the project's actual code style - the condensed core auto-attaches on any matching file touch (main session and subagents); the full capture stays in `<docs-path>/code-style/CODE-STYLE.md` |

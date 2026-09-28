@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-agent-capabilities'],
+    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['navigation', 'documentation', 'memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -196,15 +196,21 @@ test('captures: the fixed order; run, done and skip each say why; the library co
         .filter((l) => l.startsWith('capture:'));
     assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
         'capture: alfred-capture-related-projects', 'capture: alfred-capture-architecture',
-        'capture: alfred-capture-code-style', 'capture: alfred-capture-agent-capabilities',
+        'capture: alfred-capture-code-style', 'capture: alfred-capture-project-capabilities', 'capture: alfred-capture-agent-capabilities',
     ]);
     assert.strictEqual(lines[0], 'capture: alfred-capture-related-projects - run: read .claude/skills/alfred-capture-related-projects/SKILL.md');
     assert.strictEqual(lines[1], 'capture: alfred-capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
     assert.strictEqual(lines[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
-    const libPath = path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md').split(path.sep).join('/');
-    assert.strictEqual(lines[3], `capture: alfred-capture-agent-capabilities - run: read ${libPath}`);
+    const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
+    // The run book has no seat: the capture reads the repo and asks in the main session.
+    assert.strictEqual(lines[3], `capture: alfred-capture-project-capabilities - run: read ${libPath('alfred-capture-project-capabilities')}`);
+    assert.strictEqual(lines[4], `capture: alfred-capture-agent-capabilities - run: read ${libPath('alfred-capture-agent-capabilities')}`);
+    fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
+    const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
+    assert.strictEqual(again[3], 'capture: alfred-capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
 
     const bare = render(plan({ inv: INV({ skills: ['alfred-capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
@@ -233,7 +239,7 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     assert.ok(lines.includes('machine: uv - present'), r.stdout);
     assert.ok(lines.includes('machine: python 3.13 - missing: uv python install 3.13'), 'uv present, so no after-uv');
     assert.ok(lines.includes('machine: csharp-ls - missing: dotnet tool install --global csharp-ls'));
-    assert.match(lines[lines.length - 1], /^init-plan: 4 to install, 0 blocked, 4 captures to run$/);
+    assert.match(lines[lines.length - 1], /^init-plan: 4 to install, 0 blocked, 5 captures to run$/);
 
     const missing = spawnSync(process.execPath, [SCRIPT, '--installed', path.join(root, 'nope.json'), '--root', root], { env, encoding: 'utf8' });
     assert.strictEqual(missing.status, 2);

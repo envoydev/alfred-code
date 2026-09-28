@@ -274,7 +274,11 @@ change (see the invariants below).
   `sonnet`/`medium`, support seats `sonnet`. Captures are deliberate-only
   (`alfred-capture-architecture` writes `architecture/ARCHITECTURE.md` and
   `baseline-project-architecture.md`; the findings go to `alfred-capture-architecture-quality`
-  (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`); never in a build flow).
+  (`quality/ASSESSMENT.md`), the code's to `alfred-capture-code-quality` (`quality/CODE-ASSESSMENT.md`), and the
+  run book to `alfred-capture-project-capabilities` (`project-capabilities/PROJECT-CAPABILITIES.md` and
+  `baseline-project-run-book.md` - how to build, start, reach, log into and hand-check the app, which the
+  ten verifiers, `alfred-issue-diagnoser-runtime`, `evidence-gatherer` and `integration-reviewer` read
+  before they run it, pinned as `run-book-read-first`); never in a build flow).
   `alfred-task-solve-cross` is the single entry-point orchestrator (single-stack vertical per
   `references/domain-trio-protocol.md`; cross-domain runs freeze the contract and end at
   `integration-reviewer`; two tasks sharing a directory run as `isolation: "worktree"` seats, which
@@ -638,7 +642,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `alfred-capture-architecture`) are the DURABLE truth every seat reads to orient, refreshed
   deliberately (that skill or `alfred-loop-architecture-quality`), never after each change. The code
   style lives in `<docs-path>/code-style/CODE-STYLE.md` + the path-scoped `project-code-style.md` rule
-  (owned by `alfred-capture-code-style`). The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
+  (owned by `alfred-capture-code-style`). The run book lives in
+  `<docs-path>/project-capabilities/PROJECT-CAPABILITIES.md` (owned by
+  `alfred-capture-project-capabilities`, repo facts first, the user's answers for the gaps): a
+  credential appears there only as WHERE it lives - an env var, a vault item, or a key in the
+  `credentials.local.env` template the capture writes empty and gitignores in its own folder - never
+  as a value. The findings (`quality/ASSESSMENT.md`, `quality/CODE-ASSESSMENT.md`, owned by the
   two `*-quality` captures) are the opposite of durable - recomputed fresh every run, so
   `quality/` carries no `watch.json` and is no docs domain. Navigation-server memory (`<feature>__<contract_version>__<seat>`,
   never the `memory` MCP) is the EPHEMERAL inter-seat bus; anything that must survive a fresh clone

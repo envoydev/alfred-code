@@ -78,6 +78,11 @@
     },
     {
       "repo": "envoydev/alfred-code",
+      "name": "alfred-capture-project-capabilities",
+      "note": "deliberate run-book capture - reads the repo first (the first-look scan, launch configs, compose, README), asks only for the gaps (start and reach, login and where the credentials live, flows and edge cases, before-you-run and debugging), writes docs/project-capabilities/PROJECT-CAPABILITIES.md (its own docs domain) + the generated pointer rule baseline-project-run-book.md; credentials by location, never by value; manual /-only"
+    },
+    {
+      "repo": "envoydev/alfred-code",
       "name": "alfred-capture-related-projects",
       "note": "deliberate related-projects capture - args paths/URLs, fans out related-project-analyzer per sibling, writes the awareness rule baseline-project-related-context.md + docs/related-projects/RELATED-PROJECTS.md (its own docs domain; docs/related-context/ stays the plain drop box for every other sibling-repo paper); manual /-only"
     },

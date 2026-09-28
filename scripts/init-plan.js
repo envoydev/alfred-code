@@ -19,8 +19,8 @@
 //     The command is the exact one to run; init puts every missing one through ONE ask.
 //
 //   capture: <skill> - run: read <SKILL.md> | done: <output> exists | skip: <why>
-//     The four captures in their fixed order, each only when the install lists its skill AND its seat
-//     (agent-capabilities has none). init READS the SKILL.md and follows it inline: these skills are
+//     The five captures in their fixed order, each only when the install lists its skill AND its seat
+//     (project-capabilities and agent-capabilities have none). init READS the SKILL.md and follows it inline: these skills are
 //     manual-only, so a Skill call is denied. An existing output is done - re-capturing is the user's
 //     call, later. The library copy in .claude/skills wins over the plugin's.
 //
@@ -54,6 +54,8 @@ const CAPTURES = [
     { skill: 'alfred-capture-related-projects', seat: 'related-project-analyzer', output: () => '.claude/rules/baseline-project-related-context.md' },
     { skill: 'alfred-capture-architecture', seat: 'architecture-analyzer', output: (docs) => `${docs}/architecture/ARCHITECTURE.md` },
     { skill: 'alfred-capture-code-style', seat: 'code-style-analyzer', output: (docs) => `${docs}/code-style/CODE-STYLE.md` },
+    // The run book: no seat - it reads the repo and asks for the gaps in the main session.
+    { skill: 'alfred-capture-project-capabilities', seat: null, output: (docs) => `${docs}/project-capabilities/PROJECT-CAPABILITIES.md` },
     // Its own precheck decides whether the generated rule is current - always run when installed.
     { skill: 'alfred-capture-agent-capabilities', seat: null, output: null },
 ];

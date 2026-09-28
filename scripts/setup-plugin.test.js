@@ -143,10 +143,10 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     assert.match(flat(init), /`# adds <n> claude-hud keys: <names>`/);
     assert.match(flat(init), /settings\.json\.bak\.<time>/);
     assert.match(flat(init), /follow it inline, start to finish - never a Skill call/);
-    // The four captures, in the brief's order, are the SCRIPT's table - the body cites the script.
+    // The five captures, in the brief's order, are the SCRIPT's table - the body cites the script.
     const { CAPTURES } = require('./init-plan.js');
-    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-agent-capabilities']);
-    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null]);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.skill), ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities']);
+    assert.deepStrictEqual(CAPTURES.map((c) => c.seat), ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer', null, null]);
     assert.ok(!/sentry/i.test(init), 'no sentry step (R28)');
     assert.ok(!/allowed-tools/.test(init.split('---')[1]), 'no command carries allowed-tools');
 });
