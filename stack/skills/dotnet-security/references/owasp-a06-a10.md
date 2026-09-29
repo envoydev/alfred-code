@@ -15,7 +15,7 @@ The per-category detail the skill body summarizes in one bullet each. Open the c
 
 Most of the code in a service is other people's, and that code has its own published vulnerabilities.
 
-- **Audit dependencies in CI, not by hand.** `dotnet list package --vulnerable --include-transitive` fails the build when a known-bad package (direct or pulled in beneath one) is present; transitive coverage matters because the flaw is usually two levels down.
+- **Audit dependencies in CI, not by hand.** The gate is NuGet Audit, which runs on every restore: raise its high and critical codes to errors (`<WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>`) and the restore fails when a known-bad package (direct or pulled in beneath one) is present. Set `NuGetAuditMode` `all` below net10.0 - the default there audits direct references only, and transitive coverage matters because the flaw is usually two levels down. `dotnet list package --vulnerable --include-transitive` is the report a human reads; it exits 0 on a finding, so a CI step built on it never goes red. To keep a new advisory from blocking unrelated fixes, the NuGet docs' pattern raises the codes only in a dedicated audit pipeline (an MSBuild condition on a property the pipeline passes to `dotnet restore`).
 - **Patch on a schedule, not on incident.** Keep packages current and the runtime supported - a framework past end-of-life stops getting security fixes entirely.
 - **Pin and verify.** Lock files plus package source mapping (a nuget.config `packageSourceMapping` section) stop a dependency-confusion swap, where a malicious public package shadows an internal one:
 

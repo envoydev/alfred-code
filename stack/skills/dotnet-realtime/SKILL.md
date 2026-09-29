@@ -46,7 +46,9 @@ public sealed class OrdersHub : Hub<IOrdersClient>
 {
     public override async Task OnConnectedAsync()
     {
-        var customerId = Context.User?.FindFirst("sub")?.Value;
+        // NameIdentifier: JWT bearer's default claim mapping moves "sub" there, so
+        // FindFirst("sub") reads null; it is also the id Clients.User(id) targets
+        var customerId = Context.UserIdentifier;
         if (customerId is not null)
             await Groups.AddToGroupAsync(Context.ConnectionId, $"customer-{customerId}");
         await base.OnConnectedAsync();

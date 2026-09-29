@@ -26,7 +26,7 @@ The language-level call - when to throw versus when to return - is `csharp`. Thi
 
 ## One place maps an error to a status
 - Convert the domain error to an HTTP status in a single helper - an `Error -> IResult` switch, or a `result.Match(onOk, onError)` extension - so an identical failure yields an identical status and body across every endpoint. Handlers call the helper; they do not each pick a status code.
-- House mapping, kept in one file: invalid input 400, unauthenticated 401, forbidden 403, missing resource 404, conflict/uniqueness 409, broken domain rule 422, anything unmapped 500.
+- House mapping, kept in one file: invalid input 400, unauthenticated 401, forbidden 403, missing resource 404, conflict/uniqueness 409, broken domain rule 422, anything unmapped 500. Ownership decides between the two middle ones: a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action.
 
 ```csharp
 public abstract record Error(string Code, string Message);

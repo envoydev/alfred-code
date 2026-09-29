@@ -79,4 +79,4 @@ A workflow that parses is not a workflow that runs. Before any done word on a ch
 
 ## .NET Aspire - orchestration
 
-- The Aspire AppHost is the composition root for the local run and the deployment manifest; service discovery and connection strings flow through it, not hardcoded per service. Depth belongs to the skill covering local cloud-native orchestration, where the install has it; without it, the rules in this section are the whole guidance.
+- The Aspire AppHost is the composition root for the local run; service discovery and connection strings flow through it, not hardcoded per service. This house deploys through CI and container tooling; `aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default - one this skill makes with the pipeline, never a side effect of adding an AppHost. Depth belongs to the skill covering local cloud-native orchestration, where the install has it; without it, the rules in this section are the whole guidance.

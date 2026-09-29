@@ -59,5 +59,5 @@ The safety playbook is `dotnet-migrate`; this is the wiring it leaves open.
 
 ## Provider notes
 
-- Behind a Postgres transaction pooler, disable driver prepared statements: connection string `Max Auto Prepare=0` (the pooler modes themselves are the Postgres engine skill's).
+- Behind a Postgres transaction pooler that does not track prepared statements (PgBouncer does when `max_prepared_statements` is non-zero), keep Npgsql's `Max Auto Prepare` at its default 0 and call no explicit `Prepare()`; the pooler modes themselves are the Postgres engine skill's.
 - SQLite provider: EF migrations rebuild tables for many schema ops (limited `ALTER TABLE`) - review the generated SQL; the rebuild mechanics are the SQLite engine skill's.

@@ -2026,6 +2026,19 @@
         }
       ]
     },
+    "markdown-docs-root-carve-out": {
+      "_note": "The docs root and the generated rules belong to the skill that writes them, so the Markdown style pass skips them. The markdown-docs rule owns the carve-out; markdown-style restates it because the rule never attaches on a shell write and the skill, once loaded, would sweep every doc the session writes. 2.1.4 audit I41.",
+      "owner": {
+        "file": "stack/rules/markdown-docs.md",
+        "marker": "The generated docs root is NOT governed here, and neither are the generated rules."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/markdown-style/SKILL.md",
+          "marker": "The generated docs root is NOT governed here, and neither are the generated rules."
+        }
+      ]
+    },
     "serena-overview-file-not-directory": {
       "_note": "get_symbols_overview takes ONE file path, never a directory - a directory call only errors and costs the round trip (measured: 24 directory-path errors in one session, 7 across 3 capture seats in another, both post-documentation - the satellite rule alone did not force first-batch behavior, so the line is restated at each operative overview step). Owned by the navigation baseline.",
       "owner": {
@@ -4806,6 +4819,19 @@
         }
       ]
     },
+    "aspire-deploy-stance": {
+      "_note": "Aspire ships `aspire publish` / `aspire deploy`; the house deploys through CI and container tooling and adopts them only as a deliberate pipeline decision. Stated as policy, not as a product limit, in the DevOps skill (owner - pipeline decisions are its) and the Aspire orchestration skill. 2.1.4 audit I36.",
+      "owner": {
+        "file": "stack/skills/devops/SKILL.md",
+        "marker": "`aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-aspire/SKILL.md",
+          "marker": "`aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default"
+        }
+      ]
+    },
     "catalogue-dispatch-explicit-only": {
       "_note": "The two failure-signature catalogues run triage in the MAIN session and never start evidence-gatherer seats on their own say-so - dispatch is explicit-only house-wide, inherited from a calling flow that already asked, otherwise asked once. Same Execution-modes paragraph in both.",
       "owner": {
@@ -4935,6 +4961,44 @@
         {
           "file": "stack/skills/dotnet-mvc-controllers/references/net-framework-48.md",
           "marker": "Binding straight onto an entity is mass-assignment: a caller can over-post a field the form never exposed - an owner id, an `IsAdmin` - and have it persisted."
+        }
+      ]
+    },
+    "nuget-audit-ci-gate": {
+      "_note": "The vulnerable-package CI gate is restore-time NuGet Audit with NU1903;NU1904 raised to errors (NuGetAuditMode all below net10.0); `dotnet list package --vulnerable --include-transitive` is only the report - it exits 0 on a finding (measured on SDK 10.0.203 with Newtonsoft.Json 12.0.1: listing exit 0, restore with the codes as errors exit 1). The security skill owns it; the A06 reference, the ASP.NET baseline's tooling line and the CPM audit section restate it because each can load alone. 2.1.4 audit C4.",
+      "owner": {
+        "file": "stack/skills/dotnet-security/SKILL.md",
+        "marker": "exits 0 on a finding"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-security/references/owasp-a06-a10.md",
+          "marker": "exits 0 on a finding"
+        },
+        {
+          "file": "stack/skills/dotnet-web-backend/SKILL.md",
+          "marker": "exits 0 on a finding"
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/references/central-package-management.md",
+          "marker": "exits 0 on a finding"
+        }
+      ]
+    },
+    "idor-status-no-existence-disclosure": {
+      "_note": "One house answer for a resource the caller does not own: 404 (no existence disclosure), 403 only where the caller can see the resource but not the action. The security skill's IDOR snippet owns it; the testing hub's negative-security line and the error-handling status map restate it, since all three co-load in the ASP.NET closure and a test written from one must pass against code written from another. 2.1.4 audit I39, controller decision.",
+      "owner": {
+        "file": "stack/skills/dotnet-security/SKILL.md",
+        "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-testing/SKILL.md",
+          "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
+        },
+        {
+          "file": "stack/skills/dotnet-web-error-handling/SKILL.md",
+          "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
         }
       ]
     },
@@ -5457,6 +5521,23 @@
         {
           "file": "stack/skills/typescript/SKILL.md",
           "marker": "CODE-STYLE.md` are higher priority"
+        }
+      ]
+    },
+    "config-protection-gate-named": {
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "until the user allows it. Ask for that allowance with the error count the flag surfaces, and never route around the block"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block"
+        },
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "until the user allows it. Ask for that allowance with the warning count the wave surfaces, and never route around the block"
         }
       ]
     },

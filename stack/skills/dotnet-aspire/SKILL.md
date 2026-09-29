@@ -21,7 +21,7 @@ The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check pr
 
 ## What Aspire is and is not
 
-- **Local run only, never a deployment system.** The graph drives `dotnet run` on the AppHost; getting the app onto a server belongs to CI and container tooling.
+- **Local orchestration here; deploys are a pipeline decision.** The graph drives `dotnet run` on the AppHost. This house deploys through CI and container tooling; `aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default - the DevOps skill's call, not this one's.
 - **No Aspire type inside business logic.** A service reads its connection string from configuration as usual; the AppHost is only what hands it over. An Aspire type in a handler means the wiring leaked a layer.
 - **First-party integration over a bare container.** Postgres, Redis, RabbitMQ, SQL Server and the rest each bring the connection string, a health check and traces; a hand-configured container brings none of them.
 
@@ -64,7 +64,7 @@ builder.Build().Run();
 
 ### Keep dev-only extras out of other environments
 
-Conveniences like `.WithPgAdmin()`, `.WithRedisInsight()`, a broker's management UI, or a seeded data volume are for the developer loop and must never travel further. Gate them behind `builder.ExecutionContext.IsRunMode` (or an explicit dev check) so they only attach during a local run and are absent when the manifest is published. The same applies to fixed host ports - pin them only where a developer genuinely needs a stable address, and let Aspire assign the rest.
+Conveniences like `.WithPgAdmin()`, `.WithRedisInsight()`, a broker's management UI, or a seeded data volume are for the developer loop and must never travel further. Gate them behind `builder.ExecutionContext.IsRunMode` (or an explicit dev check) so they only attach during a local run and are absent from anything `aspire publish` generates. The same applies to fixed host ports - pin them only where a developer genuinely needs a stable address, and let Aspire assign the rest.
 
 ## ServiceDefaults: one call per service
 

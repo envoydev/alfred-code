@@ -94,4 +94,4 @@ dotnet list package --vulnerable --include-transitive # known CVEs, including tr
 dotnet list package --deprecated                      # deprecated packages
 ```
 
-Run `--vulnerable --include-transitive` in CI - a vulnerability usually rides in transitively, and transitive pinning (above) is how you pin the fix.
+`--vulnerable --include-transitive` is the report - it exits 0 on a finding, so it gates nothing in CI. The gate is restore-time NuGet Audit with `NU1903;NU1904` in `WarningsAsErrors` (and `NuGetAuditMode` `all` below net10.0, so transitive packages are audited too); a vulnerability usually rides in transitively, and transitive pinning (above) is how you pin the fix.

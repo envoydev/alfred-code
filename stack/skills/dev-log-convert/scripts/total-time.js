@@ -1,16 +1,28 @@
 #!/usr/bin/env node
 // total-time.js - normalize the time token on each drafted task line and total the day.
 // Dependencies: none - Node.js built-ins only (no install, no network).
-// Usage: node scripts/total-time.js < lines.txt      (one task line per input line)
-//        printf '%s\n' 'ABC-1 fixed x - 1h 30m' | node scripts/total-time.js
+// Usage: node "<skill dir>/scripts/total-time.js" < lines.txt      (one task line per input line)
+//        printf '%s\n' '1 ABC-1 (1h 30m) - Fixed x.' | node "<skill dir>/scripts/total-time.js"
 // Output: one row per line with its normalized time, then the day total in `Xh Ym`.
-// A line carrying no time token is reported as `(time not specified)` and counts as zero.
+// The time of a line is its bracketed token after the ticket id - `<n> <TICKET-ID> (<time>) - <summary>`.
+// A duration in the summary ('raised the TTL to 30m') is never counted. A line whose head carries
+// no bracketed time is reported as `(time not specified)` and counts as zero.
 
 const UNIT = /(\d+(?:[.,]\d+)?)\s*(год|гг|хвил|хв|г|h|m)(?![\p{L}\d])/giu;
 
+// The first bracket on the line, and only when no ' - ' separator precedes it: past the separator a
+// bracket belongs to the summary, not the task's time.
+function timeToken(line) {
+  const m = /\(([^)]*)\)/u.exec(line);
+  if (!m || line.slice(0, m.index).includes(' - ')) return null;
+  return m[1];
+}
+
 function minutesOf(line) {
+  const token = timeToken(line);
+  if (token === null) return null;
   let total = 0, found = false;
-  for (const m of line.matchAll(UNIT)) {
+  for (const m of token.matchAll(UNIT)) {
     const value = parseFloat(m[1].replace(',', '.'));
     const unit = m[2].toLowerCase();
     const isHour = unit === 'h' || unit === 'г' || unit === 'год' || unit === 'гг';

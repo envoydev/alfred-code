@@ -26,8 +26,8 @@ Carry the answer into the output contract below. One approval covers one target:
 ## The artifact - sync then build
 - The web build comes first, then the bridge copy, then the native build. Never build native off a stale `www/`: run `npm run build` -> `npx cap sync` (copies web assets and updates native deps) -> the native build. `cap sync` is the step that makes the native shell match the code you just shipped.
 - Prefer `npx cap build ios` / `npx cap build android` (stable, not experimental in 6+) for a one-shot signed artifact: iOS produces an `.ipa`, Android an `.aab` (default) or `.apk`. It wraps the platform tools so local and CI agree on flags.
-- In CI, or when you need archive control, drive the platform tools directly: `xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release archive` then `-exportArchive` for the `.ipa`; `./gradlew bundleRelease` for the `.aab` (`assembleRelease` only when a raw `.apk` is genuinely needed). Ship the `.aab` to Play, not the `.apk` - Play requires the bundle and serves device-optimized splits from it.
-- Match the iOS archive target to the dependency manager: Capacitor 8 defaults new iOS projects to Swift Package Manager, which has no CocoaPods `.xcworkspace` - archive it with `-project ios/App/App.xcodeproj`, not the `-workspace ...App.xcworkspace` above. A CocoaPods project (older, or `cap add ios --packagemanager CocoaPods`) keeps the workspace; `npx cap build ios` resolves the right target either way, and `npx cap migrate` applies the mechanical changes on a version bump.
+- In CI, or when you need archive control, drive the platform tools directly: `xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release archive` then `-exportArchive` for the `.ipa`; `./gradlew bundleRelease` for the `.aab` (`assembleRelease` only when a raw `.apk` is genuinely needed). Ship the `.aab` to Play, not the `.apk` - Play requires the bundle and serves device-optimized splits from it.
+- Match the iOS archive target to the dependency manager: Capacitor 8 defaults new iOS projects to Swift Package Manager, which has no CocoaPods `.xcworkspace` - hence the `-project ios/App/App.xcodeproj` above. A CocoaPods project (older, or `cap add ios --packagemanager CocoaPods`) archives its workspace instead (`-workspace ios/App/App.xcworkspace`); `npx cap build ios` resolves the right target either way, and `npx cap migrate` applies the mechanical changes on a version bump.
 
 ## Signing and store submission - the invariants
 The mechanics - certificate + provisioning-profile setup, App Store Connect API keys and Fastlane match, keystore flags and apksigner, the TestFlight / Play track ladder - live in `references/signing.md`; load it when actually wiring signing or a submission. What holds regardless:
@@ -59,7 +59,8 @@ platform :ios do
     app_store_connect_api_key(key_id: ENV['ASC_KEY_ID'],
       issuer_id: ENV['ASC_ISSUER_ID'], key_content: ENV['ASC_KEY_P8'])
     match(type: 'appstore', readonly: true)
-    build_app(workspace: 'ios/App/App.xcworkspace', scheme: 'App')
+    build_app(project: 'ios/App/App.xcodeproj', scheme: 'App')
+    # a CocoaPods project archives its workspace: build_app(workspace: 'ios/App/App.xcworkspace', scheme: 'App')
     pilot   # -> TestFlight, not production
   end
 end

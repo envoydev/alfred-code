@@ -96,7 +96,15 @@ Total time: <sum across all groups>.
 - Accept decimal hours in input and convert: `0.25h` → `15m`, `0.5h` → `30m`, `0.75h` → `45m`, `1.25h` → `1h 15m`, `2.5h` → `2h 30m`.
 - If time is not provided for a task, write `(time not specified)`.
 - Multi-ticket day granularity: one entry per ticket is not a safe default - mirror the granularity of the user's prior day-entries in the same log, and where no precedent exists, ask via AskUserQuestion (measured: a two-ticket day drafted per-ticket was rejected for merged wording).
-- Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through `scripts/total-time.js` (`node scripts/total-time.js < <that file>` - Node.js built-ins only, nothing to install) and confirm its total equals the printed `Total time`; it normalizes the h/m, Ukrainian and decimal-hour spellings and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where the script cannot be run, re-add the times by hand and say the check was manual.
+- Self-check before output: write the drafted task lines of each day to a file inside the session's own scratch directory (never the project tree, never outside it), then run them through this skill's bundled `total-time.js` - resolved from the skill's own folder, never from the session's working directory, where a bare `scripts/` path misses it or runs the project's own file (Node.js built-ins only, nothing to install; run from the project root):
+
+  ```bash
+  T="${CLAUDE_SKILL_DIR}/scripts/total-time.js"
+  [ -f "$T" ] || T=.claude/skills/dev-log-convert/scripts/total-time.js
+  node "$T" < "$LINES"   # LINES = the scratch file holding the drafted task lines
+  ```
+
+  Confirm its total equals the printed `Total time`; it reads only the bracketed time after the ticket id (a duration in the summary never counts), normalizes the h/m, Ukrainian and decimal-hour spellings, and counts a `(time not specified)` line as zero. On a mismatch, take the script's total - never print an unverified sum. Where neither path holds the script, re-add the times by hand and say the check was manual.
 
 **Task grouping within a day**
 - Keep only the main points - no extra explanations, no step-by-step process.

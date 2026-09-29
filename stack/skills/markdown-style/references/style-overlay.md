@@ -13,7 +13,7 @@ Every rule name in this file, by section - search the name verbatim to jump to i
 - **Authoring philosophy** - `style/philosophy/minimum-viable`, `style/philosophy/better-than-best`
 - **Headings** - `style/headings/atx-only`, `style/headings/single-h1`, `style/headings/unique-names`, `style/headings/sentence-case-and-product-names`, `style/headings/blank-lines-around`
 - **Document skeleton** - `style/skeleton/recommended`, `style/skeleton/title-matches-filename`, `style/skeleton/intro-1-to-3-sentences`, `style/skeleton/see-also-section`
-- **Table of contents** - `style/toc/use-when-long`, `style/toc/placement`
+- **Table of contents** - `style/toc/use-when-long`, `style/toc/renderer-support`, `style/toc/placement`
 - **Line length** - `style/line-length/80`, `style/line-length/exceptions`
 - **Whitespace and line breaks** - `style/whitespace/no-trailing`, `style/line-breaks/sparingly`
 - **Lists** - `style/lists/lazy-numbering-long`, `style/lists/full-numbering-short`, `style/lists/indent-4`, `style/lists/single-space-only-for-trivial`, `style/lists/prefer-list-to-table`
@@ -70,7 +70,7 @@ The recommended document skeleton:
 
 <1-3 sentence introduction, written for a newcomer who knows the system exists but not this doc.>
 
-[TOC]
+<table of contents for a long doc - see style/toc/renderer-support>
 
 ## Topic
 
@@ -103,11 +103,15 @@ A final `## See also` section is the canonical location for links the reader mig
 
 ### `style/toc/use-when-long`
 
-Use the `[TOC]` directive for any document that does not fit on one laptop screen. Short docs do not need a TOC - it adds noise.
+Give any document that does not fit on one laptop screen a table of contents. Short docs do not need one - it adds noise.
+
+### `style/toc/renderer-support`
+
+Write the `[TOC]` directive only where the renderer supports it - Gitiles (the host Google's guide is written for), GitLab, and Python-Markdown's `toc` extension each replace it with the heading list. GitHub has no such directive (it builds its own Outline menu from the headings), so there `[TOC]` renders as literal text. Elsewhere - GitHub, or a renderer you cannot name - a long doc gets a `## Contents` list of anchor links (the shape this skill's own references use), or none on GitHub, whose Outline menu already lists the headings.
 
 ### `style/toc/placement`
 
-Place `[TOC]` between the introduction and the first `## H2`. Position matters for screen readers and keyboard navigation, since `[TOC]` injects the table of contents at that point in the DOM.
+Place the table of contents between the introduction and the first `## H2` - the `[TOC]` line where the renderer supports it, else the `## Contents` list. Position matters for screen readers and keyboard navigation, since the table of contents lands at that point in the DOM.
 
 ## Line length
 
@@ -278,6 +282,6 @@ The source guide is deliberately silent on:
 
 - **Emphasis convention** - `**bold**` vs `__bold__`, `*italic*` vs `_italic_`. The syntax canon already covers compatibility; the style overlay does not pick a winner. Follow project convention.
 - **File naming** - only that the H1 should match or nearly match the filename. No imposed kebab-case vs snake_case rule.
-- **Hard document length thresholds** - only the qualitative 'above the fold on a laptop' criterion for whether `[TOC]` is justified.
+- **Hard document length thresholds** - only the qualitative 'above the fold on a laptop' criterion for whether a table of contents is justified.
 
 When the architect asks 'what should I do about X' and X is on this list, the skill responds: the style guide is silent - follow the project's existing convention, or pick one and apply it consistently.
