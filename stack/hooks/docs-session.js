@@ -132,11 +132,17 @@ const emit = (event, text) => {
   if (event === 'SessionStart') startNote = '';
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: body } }));
 };
-// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
-// `tool_input.command` exactly as Bash does, and both installer twins wire this hook on the matcher
-// `Read|Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell|Grep|Glob`. Judging only `Bash` left the first-change
-// gate open on every Windows session and earned a doc read through PowerShell no consult credit.
-const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list,
+// shipped beside this hook on both routes. Judging only `Bash` left the first-change gate open on every Windows
+// session and earned a doc read through PowerShell no consult credit; a copy that runs before the module lands
+// judges the file tools alone.
+let isShellTool = () => false;
+try { ({ isShellTool } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* see above */ }
+// The navigation server's two edit tools the stack keeps on (the user's ruling of 2026-09-29, I12 - the other five
+// are off at its launch): each changes a source file, named in `tool_input.relative_path` (toolPaths reads it), so
+// its first change is held like an Edit's. Both routes' spellings: the plugin's scoped server and the copy route's
+// bare one, written as a pattern.
+const NAV_EDIT = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 // One log file holds every session's rows, and two sessions interleave in it, so each row carries the id that
 // tells them apart. It lives under the docs root beside hook-blocks/ and tools-usage/ - every other ledger in
 // this stack does, and under .claude/ a project that commits that folder accumulated this one in git.
@@ -622,15 +628,16 @@ function preToolUse(input, root, docs, state) {
   // get credit for reading it. domains() is already required to succeed for this hook to have run at all (see
   // main()'s own gate above), so no extra guard is needed here.
   const docRoots = docs.domains().map((d) => toPosix(path.relative(root, docs.domainDir(d))));
-  // Only these six tools can name a source target, so nothing else pays for the watch list.
+  // Only these tools can name a source target, so nothing else pays for the watch list.
   const name = input.tool_name || '';
-  const isWrite = /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) || isShellTool(name);
+  const fileWrite = /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name) || NAV_EDIT.test(name);
+  const isWrite = fileWrite || isShellTool(name);
   let roots = ['src', 'tests'];
   if (isWrite) { try { roots = docs.loadWatch().sourceRoots; } catch {} }
   const command = typeof (input.tool_input || {}).command === 'string' ? input.tool_input.command : '';
   const shellWrites = isShellTool(name) ? writeTargets(command) : null;
   let wrote = [];
-  if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) wrote = paths;
+  if (fileWrite) wrote = paths;
   else if (shellWrites) wrote = relative(root, shellWrites.map((x) => (x === UNKNOWN_SOURCE_WRITE ? `${roots[0]}/*` : x)));
   // A PreToolUse write is INTENT. It is banked at each exit below that lets the call PROCEED and never on the deny,
   // so a write this hook holds is not credited to the seat that tried it. Banked before the source-root filter,

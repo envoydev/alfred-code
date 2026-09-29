@@ -9,6 +9,15 @@
 'use strict';
 const path = require('path');
 
+// THE SHELL ROUTE - every tool whose payload carries a shell `tool_input.command`. The PowerShell tool is the
+// same route under a second name (122 PowerShell calls measured in a 115-session corpus with no gate on any,
+// 2026-09-12), and Monitor runs its `command` in the background under Bash's own permission rules
+// (code.claude.com/docs/en/tools-reference, 'Monitor tool'; a `ws` watch carries no command and passes). One
+// list, required by every shell guard (and matched by the manifest's shell rows and shell-guards.js MATCHER),
+// so the next command-running tool is one line here instead of five inline copies.
+const SHELL_TOOLS = ['Bash', 'PowerShell', 'Monitor'];
+const isShellTool = (name) => SHELL_TOOLS.includes(String(name || ''));
+
 // A heredoc BODY is DATA, not shell - a plan that DESCRIBES a command is inert text, and
 // matching it blocks a document write for its own prose. Blank the body, keep the length. The
 // heredoc's own first line stays: `cat <<'EOF' > ../other/f.txt` carries its redirect THERE, and
@@ -316,4 +325,4 @@ function scanShell(rawCommand) {
   return { command, quoted, inQuotes, expandVars, cds, targets, gitWrites };
 }
 
-module.exports = { scanShell, anchorAt, blankHeredocs, quotedSpans, shellWords, unquote, isVar };
+module.exports = { scanShell, anchorAt, blankHeredocs, quotedSpans, shellWords, unquote, isVar, SHELL_TOOLS, isShellTool };

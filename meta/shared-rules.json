@@ -3091,7 +3091,7 @@
       ]
     },
     "hook-block-telemetry": {
-      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in all TEN hooks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
@@ -3107,6 +3107,10 @@
         },
         {
           "file": "stack/hooks/guard-config-protection.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-desktop-exec.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
@@ -3719,27 +3723,6 @@
         {
           "file": "stack/hooks/guard-ungated-commit.js",
           "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        }
-      ]
-    },
-    "shell-tool-route": {
-      "_note": "The PowerShell tool is the shell route under a second name: its payload carries `tool_input.command` exactly as Bash does, and scripts/analyze-usage.js has read it as a shell call since 34 of 38 test runs in one collection arrived that way. Three guards branch on the tool name before judging a command, and each matched 'Bash' alone until 2026-09-12, when a hook audit measured 122 PowerShell calls in a 115-session corpus with no gate on any of them. The installers' HOOKS manifest wires the matcher `Bash|PowerShell` for six guards; these three also need the in-file test, and each hook is a standalone file with no shared module, which is why the copies are inline. The other three shell guards read tool_input.command with no tool-name branch and need no copy.",
-      "owner": {
-        "file": "stack/hooks/guard-cross-project-write.js",
-        "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-config-protection.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-        },
-        {
-          "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-        },
-        {
-          "file": "stack/hooks/guard-secret-value.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
         }
       ]
     },

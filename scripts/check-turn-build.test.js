@@ -224,3 +224,20 @@ test('turn-build: on Windows the tsc.cmd shim runs through the shell QUOTED - a 
     const cs = { kind: 'cs', config: 'C:\\a b\\App.csproj', cwd: 'C:\\a b', bin: 'dotnet' };
     assert.deepStrictEqual(commandFor(cs, true), { cmd: 'dotnet', args: ['build', '--no-restore', '-v', 'q', 'C:\\a b\\App.csproj'], shell: false });
 });
+
+// I12 (the user's ruling of 2026-09-29): the navigation server keeps rename_symbol and safe_delete_symbol on, and
+// both change a source file - named in `relative_path`, from the project root. Both routes' spellings (built at run
+// time - lint check 54 bans the bare server spelling as literal text).
+test('turn-build: the navigation server\'s two kept edit tools record their file, on both routes', () =>
+{
+    const p = project();
+    const sub = path.join(p.root, 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    for (const server of ['plugin_navigation_navigation', 'navigation'])
+        for (const tool of ['rename_symbol', 'safe_delete_symbol'])
+            assert.strictEqual(p.run({ hook_event_name: 'PostToolUse', cwd: sub, tool_name: `mcp__${server}__${tool}`, tool_input: { name_path: 'A/b', relative_path: 'src/a.ts' } }).status, 0);
+    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_navigation_navigation__find_symbol', tool_input: { name_path: 'A', relative_path: 'src/b.ts' } });
+    p.run({ hook_event_name: 'PostToolUse', tool_name: 'mcp__plugin_navigation_navigation__rename_symbol', tool_input: { name_path: 'A' } });
+    assert.deepStrictEqual(fs.readFileSync(p.list, 'utf8').trim().split('\n'), Array(4).fill(path.join(p.root, 'src', 'a.ts')),
+        'four edits, each from the project root whatever the cwd; a lookup and an edit with no file record nothing');
+});

@@ -133,14 +133,23 @@ if (unsetRepo && !(isImplementer && seat.includes(':'))) process.exit(0);
 // A symbol question routed at a grep-shaped seat: block and send it back to the navigation server.
 // The patterns are the QUESTION shapes baseline-navigation names, not tool words - a
 // sweep brief ('map the auth module', 'which files configure logging') carries none.
+// 'reference to' / 'usages of' describe a TEXT sweep as often as a symbol hunt (the 2026-09-28 block was
+// 'every reference to plugin-authoring' over the manifest, the graph and the docs), so they count only when a
+// CODE IDENTIFIER follows: backticked, CamelCase or camelCase, a call `name(`, or a member `A.B` / `A::B` -
+// never a kebab-case, path or file-shaped token, which the navigation server cannot resolve anyway.
+const FILE_EXT = '(?:json[c5]?|md|mdx|mdc|ya?ml|toml|ini|html?|txt|xml|csv|lock|[cm]?[jt]sx?|cs|csproj|sln|props|targets|py|sh|ps1|css|scss|env)';
+const IDENT = [
+  `\`(?![^\`\\n]*\\.${FILE_EXT}\`)[A-Za-z_$][\\w$]*(?:(?:\\.|::|#)[A-Za-z_$][\\w$]*)*(?:\\(\\))?\``,
+  `(?![\\w$]*(?:(?:\\.|::)[\\w$]+)*\\.${FILE_EXT}(?![\\w$-]))[A-Za-z_$][\\w$]*(?:\\.|::)[A-Za-z_$][\\w$]*(?:(?:\\.|::)[A-Za-z_$][\\w$]*)*(?![\\w$/-])`,
+  '[A-Za-z_$][\\w$]*\\(',
+  '(?:[A-Z][a-z0-9]+|[a-z][a-z0-9]*)[A-Z][A-Za-z0-9]*(?![\\w$/-])',
+].join('|');
 const SYMBOL_QUESTION = new RegExp(
   [
     'who calls\\b',
     'call(?:ers|[- ]sites)\\s+(?:of|for)\\b',
     'where\\s+(?:is|are)\\s+\\S.{0,60}?\\b(?:defined|declared|implemented|instantiated|registered)\\b',
     '\\b(?:find|locate|get)\\s+(?:the\\s+)?(?:definition|declaration|implementation|signature|body)\\s+of\\b',
-    '\\breferences?\\s+to\\b',
-    '\\busages?\\s+of\\b',
     '\\bwhat\\s+type\\b',
     '\\bimplementations?\\s+of\\b',
     '\\bsubclasses\\s+of\\b',
@@ -148,9 +157,11 @@ const SYMBOL_QUESTION = new RegExp(
   ].join('|'),
   'i',
 );
+// Case-SENSITIVE, unlike the shapes above: under the `i` flag every word reads as CamelCase.
+const REFERENCE_QUESTION = new RegExp(`\\b(?:[Rr]eferences?\\s+[Tt]o|[Uu]sages?\\s+[Oo]f)\\s+(?:[Tt]he\\s+)?(?:${IDENT})`);
 if (SEARCH_SEATS.has(seat)) {
   const brief = `${input.prompt || ''}\n${input.description || ''}`;
-  const asked = brief.match(SYMBOL_QUESTION);
+  const asked = brief.match(SYMBOL_QUESTION) || brief.match(REFERENCE_QUESTION);
   if (asked) {
     process.stderr.write(
       `Blocked: dispatch of ${seat} for a SYMBOL question ('${asked[0].trim()}').\n` +

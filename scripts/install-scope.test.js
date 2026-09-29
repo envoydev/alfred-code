@@ -542,7 +542,7 @@ test('install-scope: a local-scope update --installed-only keeps the hooks the u
         inspect: (repo) => json(repo, path.join('.claude', 'settings.local.json')).env.ALFRED_CODE_HOOKS_OFF,
     });
     assert.match(outs[1], /action: update \[scope=local,/, outs[1]);
-    assert.ok(before && before.split(',').length === 16, `setup did not switch 16 hooks off: ${before}`);
+    assert.ok(before && before.split(',').length === 17, `setup did not switch 17 hooks off: ${before}`);
     assert.strictEqual(result, before, `a local-scope update --installed-only must keep the hooks the user switched off; before='${before}' after='${result}'`);
 });
 
@@ -667,7 +667,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // ever lands on its disk.
         runOn(projectB, selB, ['install', '--scope', 'user']);
         // Project A installs SECOND (same account), on the copy route, with an explicit None - its
-        // own stamp says 'copy' and its own ALFRED_CODE_HOOKS_OFF names all 17.
+        // own stamp says 'copy' and its own ALFRED_CODE_HOOKS_OFF names all 18.
         runOn(projectA, selA, ['install', '--scope', 'user'], { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false' });
 
         const stampOf = (repo) => fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8');
@@ -687,7 +687,7 @@ test('install-scope: a user-scope project reads only its OWN stamp for the hooks
         // Project A is untouched by B's later run - still its own real None.
         const aSettings = JSON.parse(fs.readFileSync(path.join(projectA, '.claude', 'settings.json'), 'utf8'));
         const aOff = String((aSettings.env && aSettings.env.ALFRED_CODE_HOOKS_OFF) || '').split(',').filter(Boolean);
-        assert.strictEqual(aOff.length, 17, `project A's own None must stay 17, unaffected by B: ${aOff.join(',')}`);
+        assert.strictEqual(aOff.length, 18, `project A's own None must stay 18, unaffected by B: ${aOff.join(',')}`);
     }
     finally { fs.rmSync(work, { recursive: true, force: true }); }
 });

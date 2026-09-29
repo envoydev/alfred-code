@@ -1116,10 +1116,10 @@ test("guard-unapproved-dispatch: a stamp written before this session began is an
   assert.equal(disp(), 0, 'a stamp written during the session');
 });
 
-test('guard-stop-contract: the AskUserQuestion branch injects and NEVER denies', () => {
+test('guard-stop-contract: the AskUserQuestion branch injects its notes, and denies only a house-voice slip', () => {
   // It used to deny an ask carrying no fresh-session option, which stopped Claude mid-response to
-  // rebuild the question. The matcher is wired again, injection-only: every path exits 0, and what
-  // it emits is `hookSpecificOutput.additionalContext` the model reads while building the ask.
+  // rebuild the question. The judgement notes are injected (`hookSpecificOutput.additionalContext`, read with
+  // the answer); only the ask's own house voice is denied, with the corrected strings (I3, below).
   const logDir = fs.mkdtempSync(path.join(TMP, 'asklog-'));
   const hot = transcript('ask-hot', [assistantRow('h1', 'ok', { cache_read_input_tokens: 900000 })]);
   const cold = transcript('ask-cold', [
@@ -1136,7 +1136,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects and NEVER denies',
   assert.equal(deep.status, 0, 'no fresh option, deep into a 1M session - it injects, it does not deny');
   assert.match(ctxOf(deep), /resume in a fresh session/i, 'the fresh-session offer reaches a flow whose every stop is a tool call');
   assert.equal(ask(hot, [{ question: 'Continue or resume in a fresh session?', options: [{ label: 'Fresh session', description: 'resume' }] }]).status, 0);
-  assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /add an option to/i,
+  assert.doesNotMatch(ctxOf(ask(hot, [{ question: 'Next?', options: [{ label: 'Resume in a fresh session', description: 'start clean' }] }])), /offered no fresh session/i,
     'an ask that already offers it is not told to offer it');
 
   // stale scope: an option naming repo state, with no state read in this turn
@@ -1149,8 +1149,16 @@ test('guard-stop-contract: the AskUserQuestion branch injects and NEVER denies',
   // house voice, on a surface no Stop hook reads
   const voice = ask(cold, [{ question: 'Target - staging or prod?', header: 'Target', options: [{ label: 'staging', description: 'the shared box' }] }]);
   assert.equal(ctxOf(voice), '', "a plain hyphen and an apostrophe are clean - and a clean ask emits nothing at all");
-  assert.match(ctxOf(ask(cold, [{ question: 'Pick one \u2014 now', options: [{ label: 'the "fast" one', description: 'x' }] }])),
-    /em- or en-dash.*double quote/s, 'an em-dash and a double quote in the ask text are both named');
+  // I3 (2.1.4 audit): a PreToolUse note lands next to the tool RESULT - for an ask, the user's answer - so the one
+  // deterministic check on the ask's own text is a DENY carrying the corrected strings, once per ask text.
+  const slip = [{ question: 'Pick one \u2014 now', header: 'Pick', options: [{ label: 'the "fast" one', description: 'x \u2013 y' }] }];
+  const denied = ask(cold, slip);
+  assert.equal(denied.status, 2, 'an em-dash and a double quote in the ask text deny it before it is sent');
+  assert.match(denied.stderr, /em- or en-dash.*double quote/s, 'both are named');
+  assert.match(denied.stderr, /Pick one - now/, 'the corrected question');
+  assert.match(denied.stderr, /the 'fast' one/, 'the corrected label');
+  assert.match(denied.stderr, /x - y/, 'the corrected description');
+  assert.equal(ask(cold, slip).status, 0, 'the same ask re-sent unchanged is let through - never a loop');
 
   // two typed turns before one reply - the contradicted-recommendation shape
   const two = ask(transcript('ask-two', [
@@ -1158,7 +1166,7 @@ test('guard-stop-contract: the AskUserQuestion branch injects and NEVER denies',
     { type: 'user', message: { content: 'and add the health endpoint' } },
     assistantRow('t1', 'ok', { cache_read_input_tokens: 900 }),
   ]), [{ question: 'Which one?', options: [{ label: 'Deploy staging', description: 'x' }] }]);
-  assert.match(ctxOf(two), /more than one message before this reply/);
+  assert.match(ctxOf(two), /more than one message before the ask just answered/);
 });
 
 test('guard-stop-contract: prose offers, tool-call ends, continuations and unreadable turns', () => {
@@ -1267,6 +1275,26 @@ test('guard-unapproved-dispatch: a symbol question never goes to a grep-shaped s
   assert.equal(disp('Explore', 'Map the auth module and report which files configure logging'), 0, 'a broad sweep');
   assert.equal(disp('Explore', 'x'), 0, 'an empty brief');
   assert.equal(disp('aspnet-verifier', 'who calls Foo'), 0, 'a named seat carries serena itself');
+});
+
+// I5 (2.1.4 audit): 'reference to' / 'usages of' is a symbol question only when a CODE IDENTIFIER follows -
+// the week's one dispatch block was a text sweep for a kebab-case skill name over config and docs.
+test('guard-unapproved-dispatch: a reference sweep over config and docs is no symbol question', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'proj-'));
+  const disp = (seat, prompt) => runIn('guard-unapproved-dispatch.js',
+    { tool_name: 'Agent', tool_input: { subagent_type: seat, prompt } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root } }).status;
+  // the 2026-09-28 brief, verbatim in its shape
+  assert.equal(disp('general-purpose', 'Research renames and habit calls. Find every reference to plugin-authoring (manifest, graph, evidence.json, recommendations.json, HTML, README counts, rules like skill-authoring.md, CLAUDE.md)'), 0, 'a kebab-case name');
+  assert.equal(disp('Explore', 'List the references to README.md and settings.json across the docs'), 0, 'file-shaped tokens');
+  assert.equal(disp('Explore', 'Find usages of `stack-manifest.json` in the scripts'), 0, 'a backticked file');
+  assert.equal(disp('Explore', 'count the usages of the word deprecated in the changelog'), 0, 'plain words');
+  // a real symbol brief still blocks, in every identifier shape
+  assert.equal(disp('Explore', 'Find every reference to `resolveRoot`'), 2, 'backticked identifier');
+  assert.equal(disp('Explore', 'list the usages of OrderController'), 2, 'CamelCase');
+  assert.equal(disp('Explore', 'find references to load_manifest( in the installer'), 2, 'snake_case call');
+  assert.equal(disp('general-purpose', 'every reference to Program.Main'), 2, 'member form');
+  assert.equal(disp('Explore', 'usages of Orders::Service please'), 2, 'scope form');
 });
 
 // The built-in Explore and Plan load none of the project's rules, so baseline-security's untrusted-content
@@ -1984,6 +2012,23 @@ test('guard-read-whole-file: a sweep over .md files is a sweep; one named .md fi
   assert.equal(call('for f in .claude/skills/*/SKILL.md; do cat "$f"; done'), 2, 'a loop over every SKILL.md is blocked');
   assert.equal(call(`cat ${NOTES}`), 0, 'one named markdown file is still a fine read');
   assert.equal(call('find .claude/skills -name SKILL.md -exec cat {} \\;'), 2, 'find -exec over the same set too');
+});
+
+// I4 (2.1.4 audit): the loop branch matched any `for ... do ... cat` whose text named a gated extension anywhere -
+// the loop variable was never checked and quoted text counted. Replayed and denied live during the audit.
+test('guard-read-whole-file: a loop sweeps only when cat reads the loop variable over gated files', () => {
+  const r = (command) => runIn('guard-read-whole-file.js', { tool_name: 'Bash', tool_input: { command }, session_id: 'sweep-var' }, {});
+  const call = (command) => r(command).status;
+  // the audit's replay: the `cat` sits in a quoted JSON string, the `.js` is `node x.js`
+  assert.equal(call(`for tool in Bash Monitor; do printf '%s: ' $tool; echo "{\\"tool_name\\":\\"$tool\\",\\"tool_input\\":{\\"command\\":\\"cat .env\\"}}" | node x.js; done`), 0, 'a quoted cat is text');
+  assert.equal(call('for f in .alfred/docs/hook-blocks/*.jsonl; do cat "$f" | node -e "process.stdin.pipe(process.stdout)" x.js; done'), 0, 'a loop over ledger files, a .js elsewhere');
+  assert.equal(call('for n in 1 2 3; do cat notes.txt; echo run.ts; done'), 0, 'cat of a fixed non-gated file');
+  // the positive controls still block
+  assert.equal(call('for f in src/*.ts; do cat "$f"; done'), 2, 'the loop variable over a glob of sources');
+  assert.equal(call('for d in .claude/skills/*; do cat ${d}/SKILL.md; done'), 2, 'the braced variable naming a gated file');
+  assert.equal(call("for f in $(git ls-files '*.cs'); do cat -n $f; done"), 2, 'a substitution listing sources');
+  const detail = r('for f in src/*.ts; do cat "$f"; done');
+  assert.match(detail.stderr, /shell loop over a file list/);
 });
 
 test('guard-read-whole-file: a whole Read of an oversized file is blocked whatever its extension', () => {
@@ -2852,4 +2897,77 @@ test('every hook-blocks ledger file is named from a sanitised session id', () =>
     const text = fs.readFileSync(path.join(HOOKS, f), 'utf8');
     assert.doesNotMatch(text, /\$\{(?:payload|input)\.session_id \|\| 'nosession'\}\.jsonl/, `${f} names a ledger file from a raw session id`);
   }
+});
+
+// ---- guard-desktop-exec (I10, the user's ruling of 2026-09-29) -----------------------------------
+// Windows-MCP excludes tools by NAME, never by mode, so its `App` tool keeps `launch_executable` - a Popen of any
+// executable with caller-given args (wheel windows_mcp/tools/app.py:90 at 0.8.5) - and MacOS-MCP's `Shell` runs a
+// shell command no shell guard sees. Both spellings: the plugin route's and the copy route's (built at run time -
+// lint check 54 bans the bare server spelling as literal text).
+const WIN_APP = ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`];
+const MAC_SHELL = ['mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`];
+function desktopRun(root, tool_name, tool_input, extra = {}) {
+  return spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name, tool_input, ...extra }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root },
+  });
+}
+test('guard-desktop-exec: App launch_executable and every macOS Shell call are denied on both spellings', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-'));
+  for (const tool of WIN_APP) {
+    const r = desktopRun(root, tool, { mode: 'launch_executable', executable: 'C:\\Windows\\System32\\cmd.exe', args: ['/c', 'del', 'x'] });
+    assert.equal(r.status, 2, `${tool} launch_executable`);
+    assert.match(r.stderr, /launch_executable/);
+    assert.match(r.stderr, /ONE AskUserQuestion/, 'the decision goes to the user through one ask');
+    assert.match(r.stderr, /DESKTOP-EXEC-ALLOW/, 'and names the receipt that opens it');
+    for (const mode of ['launch', 'switch', 'resize']) assert.equal(desktopRun(root, tool, { mode, name: 'Notepad' }).status, 0, `${tool} ${mode} passes`);
+    assert.equal(desktopRun(root, tool, { name: 'Notepad' }).status, 0, `${tool} with no mode (the tool's default launch) passes`);
+  }
+  for (const tool of MAC_SHELL) {
+    const r = desktopRun(root, tool, { command: 'ls ~' });
+    assert.equal(r.status, 2, `${tool}`);
+    assert.match(r.stderr, /Bash tool/, 'the command goes back to the shell route the guards see');
+  }
+  for (const tool of ['mcp__plugin_windows-desktop_windows-desktop__Click', 'mcp__plugin_macos-desktop_macos-desktop__App', 'Bash'])
+    assert.equal(desktopRun(root, tool, { mode: 'launch_executable', command: 'ls' }).status, 0, `${tool} is not this guard's`);
+  const rows = fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', 'desk.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  assert.equal(rows.length, WIN_APP.length + MAC_SHELL.length, 'one ledger row per block');
+  assert.ok(rows.every((row) => row.hook === 'guard-desktop-exec.js'));
+});
+
+test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session, under 8h', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-allow-'));
+  const receipt = path.join(root, '.alfred', 'docs', 'flow', 'DESKTOP-EXEC-ALLOW');
+  fs.mkdirSync(path.dirname(receipt), { recursive: true });
+  const launch = { mode: 'launch_executable', executable: 'C:\\Tools\\build.exe' };
+  fs.writeFileSync(receipt, '# the user allowed it\nbuild.exe\n');
+  assert.equal(desktopRun(root, WIN_APP[0], launch).status, 0, 'the executable named');
+  assert.equal(desktopRun(root, WIN_APP[0], { ...launch, executable: 'C:\\Tools\\other.exe' }).status, 2, 'another executable is not');
+  assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }).status, 2, 'nor the macOS shell');
+  fs.writeFileSync(receipt, 'Shell\nApp\n');
+  assert.equal(desktopRun(root, WIN_APP[1], { ...launch, executable: 'C:\\Tools\\other.exe' }).status, 0, '`App` opens every launch');
+  assert.equal(desktopRun(root, MAC_SHELL[1], { command: 'ls' }).status, 0, '`Shell` opens the macOS shell');
+  fs.writeFileSync(receipt, '*\n');
+  const old = new Date(Date.now() - 9 * 60 * 60 * 1000);
+  fs.utimesSync(receipt, old, old);
+  assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }).status, 2, 'a receipt past 8h is stale');
+  // a receipt written before this session began is another session's consent
+  const tp = path.join(root, 'session.jsonl');
+  fs.writeFileSync(receipt, '*\n');
+  const before = new Date(Date.now() - 60 * 1000);
+  fs.utimesSync(receipt, before, before);
+  fs.writeFileSync(tp, '{}\n');
+  const st = fs.statSync(tp);
+  if (st.birthtimeMs && st.birthtimeMs !== st.ctimeMs) assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }, { transcript_path: tp }).status, 2, 'written before the session');
+});
+
+test('guard-desktop-exec: the csv opt-out switches it off, and garbage input never blocks', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-off-'));
+  const off = spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
+    input: JSON.stringify({ tool_name: MAC_SHELL[0], tool_input: { command: 'ls' } }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, ALFRED_CODE_HOOKS_OFF: 'guard-desktop-exec' },
+  });
+  assert.equal(off.status, 0);
+  assert.equal(spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], { input: 'not json', encoding: 'utf8' }).status, 0);
+  assert.equal(desktopRun(root, WIN_APP[0], null).status, 0, 'no tool_input');
 });

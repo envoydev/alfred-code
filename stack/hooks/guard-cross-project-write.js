@@ -383,20 +383,14 @@ if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
   process.exit(0);
 }
 
-// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
-// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
-// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
-// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
-// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
-const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
-if (!isShellTool(tool)) process.exit(0);
-
 // What the command WRITES is parsed in shell-writes.js beside this hook - the heredoc blanking, the
 // quoted spans, the write-shaped verbs and the interpreter scripts - shared with the done gate in
 // guard-stop-contract.js, which counts the same targets as source edits. It ships with this hook on
 // both routes; a copy that runs before it lands judges no shell command rather than crash.
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is that module's one list.
 let shell;
 try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { process.exit(0); }
+if (!shell.isShellTool(tool)) process.exit(0);
 const rawCommand = String(input.command || '');
 const scan = shell.scanShell(rawCommand);
 const command = scan.command;

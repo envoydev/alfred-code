@@ -149,7 +149,7 @@ test('guard-stop-contract: the prose-ask denial quotes the session\'s own carry 
 
 // ---------------------------------------------------------------------------------------------
 // 5 + 6 + 7. the AskUserQuestion branch: absolute numbers, the long-run route, mid-turn prose,
-//            and the solve-task stop fields. Injection only - every path exits 0.
+//            and the solve-task stop fields. Injection only - every path here exits 0 (the ask's own house voice is the one deny).
 // ---------------------------------------------------------------------------------------------
 const ctxOf = (r) => { try { return JSON.parse(r.stdout).hookSpecificOutput.additionalContext; } catch { return ''; } };
 const askIn = (tp, questions, env) => runIn('guard-stop-contract.js',
@@ -202,7 +202,7 @@ test('guard-stop-contract: the prose written before an ask is checked for house 
     { type: 'user', message: { role: 'user', content: 'run the update' } },
     assistantRow('d1', 'The refresh landed — no migrations, prune list empty.', { cache_read_input_tokens: 900 }),
   ]);
-  assert.match(ctxOf(askIn(withDash, oneQ)), /before this ask carries an em-dash/i, 'the mid-turn em-dash is named before the ask ships');
+  assert.match(ctxOf(askIn(withDash, oneQ)), /before the ask just answered carries an em-dash/i, 'the mid-turn em-dash is named, for the rest of the turn');
   const clean = transcript('ask-clean', [
     { type: 'user', message: { role: 'user', content: 'run the update' } },
     assistantRow('c1', 'The refresh landed - no migrations, prune list empty.', { cache_read_input_tokens: 900 }),

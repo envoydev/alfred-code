@@ -50,10 +50,10 @@ const GUARDS = [
     'docs-session',
 ];
 const SELF = 'shell-guards';
-const MATCHER = 'Bash|PowerShell';
+const MATCHER = 'Bash|PowerShell|Monitor';
 
 // ---- the wiring ---------------------------------------------------------------------------------
-// The manifest keeps one `<guard>.js::Bash|PowerShell` row per guard - that is the catalog the walk
+// The manifest keeps one `<guard>.js::Bash|PowerShell|Monitor` row per guard (the shell route: shell-writes.js SHELL_TOOLS) - that is the catalog the walk
 // selects from and the csv names. Both generators (the core entry's hooks block and the copy route's
 // settings.json) fold those rows into ONE dispatcher row, at the place of the first. The copy route
 // passes `listGuards`: a strict subset is named in the wiring's args, so a guard the selection left

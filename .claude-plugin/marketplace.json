@@ -475,7 +475,7 @@
             ]
           },
           {
-            "matcher": "Bash|PowerShell",
+            "matcher": "Bash|PowerShell|Monitor",
             "hooks": [
               {
                 "type": "command",
@@ -550,7 +550,27 @@
             ]
           },
           {
+            "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -697,6 +717,16 @@
           },
           {
             "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -850,7 +880,7 @@
             ]
           },
           {
-            "matcher": "Bash|PowerShell",
+            "matcher": "Bash|PowerShell|Monitor",
             "hooks": [
               {
                 "type": "command",
@@ -925,7 +955,27 @@
             ]
           },
           {
+            "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -1072,6 +1122,16 @@
           },
           {
             "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
