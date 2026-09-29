@@ -1,6 +1,6 @@
 ---
 name: alfred-task-version-upgrade
-description: "Use when planning a breaking upgrade - 'upgrade to .NET 10', 'ng update to v20', 'this package's new major breaks us'. Manual, /-only. Not for routine bumps."
+description: "Use when planning a breaking upgrade - 'upgrade to .NET 10', 'ng update to v20', 'this package's new major breaks us'. Not for routine bumps."
 disable-model-invocation: true
 ---
 
@@ -38,7 +38,25 @@ Green baseline first - build + tests green, zero pending EF migrations, before a
 Cross the surface against located usage: a breaking change nothing uses is not a task. Split engine-applied vs hand edits. Sequence foundation-first per the playbooks (SDK pin -> TFM -> framework packages in lockstep -> code edits on .NET; one major at a time with `ng update` + the peer matrix on Angular). Each stage carries: its edits, its verification command, its rollback point. Genuinely user-level calls (accept a new major's baseline, drop a deprecated dependency) go to the gate as questions, never guessed. **Hard cap: 2 planning passes.**
 
 ### 4. APPROVAL GATE
-Present the staged plan, then put the gate through AskUserQuestion as ONE call: 'Approve - execute the stages' (recommended when no user-level question is open), 'Just the plan - exit here, hand over the plan', 'Stop - changes needed'; free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). Auto mode (explicitly requested) proceeds without the pause.
+Present the staged plan, then put the gate through AskUserQuestion as ONE call - free text stays available via Other, and the PLAN step's user-level calls join the same call as their own questions (plain-text options where the harness lacks the tool). With no user-level call open:
+
+```ask
+The staged plan is ready: <n> stages, each with its verification and rollback point. Execute it stage by stage.
+- 'Approve - execute the stages (Recommended)' - each stage runs and gates green before the next
+- 'Just the plan' - exit here and hand over the plan
+- 'Stop - changes needed' - say what changes in Other
+```
+
+With a user-level call still open, executing would guess its answer, so the plan is the recommendation:
+
+```ask
+The staged plan is ready, but <n> user-level call(s) are open. Take the plan and settle them first.
+- 'Just the plan (Recommended)' - exit here with the plan; the open calls are yours to settle
+- 'Approve - execute the stages' - run the stages on the answers given in this same call
+- 'Stop - changes needed' - say what changes in Other
+```
+
+Auto mode (explicitly requested) proceeds without the pause.
 
 ### 5. EXECUTE - stage by stage
 Before the first implementer dispatch, write the approval gate file `<docs-path>/flow/APPROVAL` - first line `APPROVED <plan id> - "<the user's words, verbatim>"` from the gate's approving answer, or `AUTO - "<their words, verbatim>"` from the auto-mode invocation - the dispatch hook blocks an unstamped implementer; delete the file when the run completes. Write the stamp at the ABSOLUTE path `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL` with the Write tool. Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it. A relative write follows whatever cwd the shell drifted to and the dispatch then bounces. The stamp belongs to the session that dispatches - written when its own decision lands, deleted at its own close; an earlier session's leftover stamp is not consent. If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier, stop and put the choice through AskUserQuestion (retry the stamp, or run this stage inline) rather than retrying blind or dispatching around the gate.

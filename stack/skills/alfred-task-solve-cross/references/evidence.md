@@ -9,6 +9,8 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 
 ## Execution modes
 
+- **Every ask marks exactly one option `(Recommended)`, listed first** - measured: in one benchmark round 18 of 40 flow asks carried no mark, and the approver took the first option each time
+
 - **Chained runs. When THIS session already ran an orchestration cycle** - measured: chained orchestrations grew one session's per-message context ~19x
 
 - **When dispatch is available, the scoping verdict IS the mode** - measured: two headless runs rolled through the mid-flow form of this ask straight to a finished feature - one shipped the runtime defect the gated flow exists to catch - while the same model honored the ask shaped as an unskippable step
@@ -16,6 +18,8 @@ for them. Audit material: read it to learn WHY a rule is shaped the way it is, n
 - **Honor a fresh-session answer. When any ask's answer picks the** - measured: one run took a tool-held 'Fresh session' answer and continued 1h51m to 490k ctx
 
 ## Close-out
+
+- **A picked commit runs `alfred-habits-commit-checkpoint` whole** - measured: in one benchmark round the recommended commit was taken 6 of 6 times, $6.36 across the flow block
 
 - **The close opens with a pending sweep - anything undecided** - measured: one purge did, and one plaintext-credential decision died at /exit
 

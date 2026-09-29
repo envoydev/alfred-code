@@ -9,11 +9,8 @@ A red check is not automatically a code bug. The highest-value call in CI triage
 
 ## When to use
 
-Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the CI diagnoser seat.
-
-Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline.
-
-Not a crash on your own machine (that is the runtime failure-signatures skill), not authoring CI/CD (the pipeline-authoring house skill covers that).
+- Also a workflow YAML that broke, or a flaky pipeline to separate from a real defect.
+- A crash on your own machine goes to the runtime failure-signatures skill; authoring CI/CD to the pipeline-authoring house skill.
 
 ## First: pull the right log, read the right line
 
@@ -36,7 +33,7 @@ This catalogue is single-sourced: the alfred-issue-diagnoser-ci seat preloads th
 inline and seated forms never drift. Loaded INSIDE the seat, this section is already satisfied -
 the seat is the dispatched form, and the rest of this section is not read there. Loaded in the
 MAIN session, run the triage HERE and Read `references/gatherer-fan-out.md` before deciding on
-evidence-gatherers - the inherit-or-ask rule, the three dispatch triggers, the stay-inline shape
+evidence-gatherers - the inherit-or-ask rule, the four dispatch triggers, the stay-inline shape
 and a worked fan-out are that file. Either way, dispatch is explicit-only house-wide, so the seats
 never start on your own say-so. Do NOT dispatch the diagnoser seat from this skill - the
 signatures are already in context, so the seat would only duplicate them; the seat exists for the

@@ -22,8 +22,9 @@ capture overwrites it.
 
 ## 1. Resolve the scan
 
-The script ships in the stack's plugin cache, where several versions can sit side by side and the
-NEWEST is the one this skill came from. From the project root:
+The script ships in the stack's plugin cache, where several versions can sit side by side; take the
+newest (normally the release these copies came from; after a core update it can be newer). From the
+project root:
 
 ```bash
 SCAN=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/* "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/claude-stack/*; do   # legacy-name: a 1.x dir until orphaned

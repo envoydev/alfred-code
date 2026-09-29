@@ -156,3 +156,12 @@ test('the CLI prints one line per item and the path last, from stdin or a file',
   const missing = run('', [path.join(__dirname, 'no-such-request.txt')]);
   assert.notStrictEqual(missing.status, 0, 'an unreadable file is an error, never an empty request read as a verdict');
 });
+
+// The cross-task orchestrator runs the same check on its single-chat path. Every skill is a library copy in its
+// own folder, so it carries its own copy of the script rather than reading into alfred-task-solve's (2.1.5 audit M100);
+// the two stay byte-identical.
+test('the cross-task orchestrator carries a byte-identical copy of the script in its own folder', () => {
+  const twin = path.join(__dirname, '..', 'stack', 'skills', 'alfred-task-solve-cross', 'scripts', 'spec-check.js');
+  assert.ok(require('node:fs').existsSync(twin), 'alfred-task-solve-cross/scripts/spec-check.js exists');
+  assert.strictEqual(require('node:fs').readFileSync(twin, 'utf8'), require('node:fs').readFileSync(SCRIPT, 'utf8'), 'the twin matches the owner byte for byte');
+});

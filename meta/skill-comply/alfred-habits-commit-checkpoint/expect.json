@@ -108,7 +108,7 @@
     {
       "id": "receipt-security-row",
       "from": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
-      "quote": "On a security-relevant diff the receipt adds a sixth line: `security:` naming each category checked and its verdict",
+      "quote": "On a security-relevant diff the receipt adds an extra line: `security:` naming each category checked and its verdict",
       "graders": [
         {
           "type": "tool_used",

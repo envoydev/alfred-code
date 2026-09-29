@@ -731,7 +731,7 @@
     "known-ceilings-filing": {
       "_note": "The close step that files the ceilings rows through docs.js set - the orchestrator's close-out and the in-chat implementer's finish each carry it, because either can close a build alone.",
       "owner": {
-        "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+        "file": "stack/skills/alfred-task-solve-cross/references/close-out.md",
         "marker": "then pipe the whole section - `## Known ceilings`, a `<!-- covers: -->` line naming every row's file, the table with the new rows appended - into `docs.js set architecture/ARCHITECTURE.md#known-ceilings --expect <that hash>`"
       },
       "sites": [
@@ -1385,7 +1385,7 @@
       ]
     },
     "domain-trio-protocol-vendored": {
-      "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, because any of them may be installed without alfred-task-solve-cross. An edit to the owner file is a copy of the whole file over each site.",
+      "_note": "The domain-trio vertical's execution protocol - vendored VERBATIM (whole file) into every skill that dispatches the trio directly, so each loop and the greenfield build reads its own copy. An edit to the owner file is a copy of the whole file over each site. Its deep-dive pointers into the owner's references/ are a sanctioned cross-folder read, like every sibling pointer check 34 resolves (2.1.5 audit M98): the owner is always installed (a locked always skill), and every such pointer names its inline fallback ('where installed', or what to do absent it), so a copy still runs where the owner's folder is missing (a Cursor twin, a trimmed install) - vendoring those references too would put five more files in four more folders.",
       "owner": {
         "file": "stack/skills/alfred-task-solve-cross/references/domain-trio-protocol.md",
         "marker": "The main session is the only orchestrator for the whole vertical"
@@ -1444,10 +1444,10 @@
       ]
     },
     "generated-rule-lifecycle": {
-      "_note": "The generated-rule survival invariant: a per-project GENERATED rule is never listed in the installer's fetch manifest (a fetch would overwrite the capture) and nothing prunes .claude/rules/, so it survives stack update. Three generating skills restate it.",
+      "_note": "The generated-rule survival invariant: a per-project GENERATED rule is never listed in the installer's catalog (a copy would overwrite the capture) and no install ledger records it, so /alfred-code:update never touches it - library rule copies ARE pruned when dropped or retired, so 'nothing prunes .claude/rules/' is no longer the reason (2.1.5 audit M79). Every generating skill restates it.",
       "owner": {
         "file": "stack/skills/alfred-capture-architecture/SKILL.md",
-        "marker": "the installer's manifest must not list this rule"
+        "marker": "the installer's catalog must not list this rule"
       },
       "sites": [
         {
@@ -1456,15 +1456,15 @@
         },
         {
           "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
-          "marker": "deliberately NOT in the stack installer's fetch manifest"
+          "marker": "deliberately NOT in the stack installer's catalog"
         },
         {
           "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
-          "marker": "stays out of the installer's fetch manifest"
+          "marker": "stays out of the installer's catalog"
         },
         {
           "file": "stack/skills/alfred-capture-project-capabilities/SKILL.md",
-          "marker": "It stays out of the installer's fetch manifest"
+          "marker": "It stays out of the installer's catalog"
         }
       ]
     },
@@ -2535,24 +2535,24 @@
     "loop-stage-findings-gate-line": {
       "_note": "The starter stage prompts' shared findings-gate line - a deviation is a finding only with a named breakage; a wrong finding costs more than a missed one. Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/alfred-loop-quality/references/code-quality.md",
+        "file": "stack/skills/alfred-loop-quality/assets/loops-starter/code-quality.md",
         "marker": "a wrong finding costs more than a missed one"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/references/structure.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/structure.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/naming.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/naming.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/comments.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/comments.md",
           "marker": "a wrong finding costs more than a missed one"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/logging.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/logging.md",
           "marker": "a wrong finding costs more than a missed one"
         }
       ]
@@ -2560,24 +2560,24 @@
     "loop-stage-bar-line": {
       "_note": "The starter stage prompts' shared Bar: line (zero findings at every severity, real findings only, open:[] valid on pass 1, never trimmed). Byte-identical across the five audit stage prompts.",
       "owner": {
-        "file": "stack/skills/alfred-loop-quality/references/code-quality.md",
+        "file": "stack/skills/alfred-loop-quality/assets/loops-starter/code-quality.md",
         "marker": "Bar: zero findings at every severity - real findings only"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-loop-quality/references/structure.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/structure.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/naming.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/naming.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/comments.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/comments.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         },
         {
-          "file": "stack/skills/alfred-loop-quality/references/logging.md",
+          "file": "stack/skills/alfred-loop-quality/assets/loops-starter/logging.md",
           "marker": "Bar: zero findings at every severity - real findings only"
         }
       ]
@@ -5914,7 +5914,7 @@
       ]
     },
     "loop-declined-set": {
-      "_note": "A loop keeps what the user declined this run as an in-context list, never a file, so a declined finding is not re-proposed within the run and nothing about it outlives the run. Owned by the architecture-quality loop; restated in the code-quality loop.",
+      "_note": "A loop keeps what the user declined this run as an in-context list, never a file, so a declined finding is not re-proposed within the run and nothing about it outlives the run. Owned by the architecture-quality loop; restated in the code-quality and coverage loops.",
       "owner": {
         "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
         "marker": "an in-context list only, never written to a file"
@@ -5922,6 +5922,10 @@
       "sites": [
         {
           "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "an in-context list only, never written to a file"
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
           "marker": "an in-context list only, never written to a file"
         }
       ]
@@ -6038,15 +6042,15 @@
       ]
     },
     "full-spec-script": {
-      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, so a path change is one pin.",
+      "_note": "The two-home lookup of the full-spec check script (the project copy, else the newest plugin cache entry). The same snippet in both flows, each reading its OWN copy of the script (2.1.5 audit M100: the cross-task orchestrator carries a byte-identical twin in its scripts/, held by spec-check.test.js), so a lookup change is one pin.",
       "owner": {
         "file": "stack/skills/alfred-task-solve/SKILL.md",
-        "marker": "f=\"$d/stack/skills/alfred-task-solve/scripts/spec-check.js\""
+        "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
-          "marker": "f=\"$d/stack/skills/alfred-task-solve/scripts/spec-check.js\""
+          "file": "stack/skills/alfred-task-solve-cross/references/full-spec.md",
+          "marker": "/scripts/spec-check.js\" [ -f \"$f\" ] && [ ! -e \"$d/.orphaned_at\" ]"
         }
       ]
     },

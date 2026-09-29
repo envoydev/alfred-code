@@ -23,9 +23,9 @@ nothing to install, no per-skill fork): the precheck, the inventory with a print
 the live `claude mcp list`, the paste-ready MCP routing rows, the compare verdict and the
 post-write verify.
 
-The script has TWO homes - copied under `.claude/skills/`, or carried by the plugin that ships this
-skill, where the cache can hold several versions and the NEWEST is the one this skill came from - so
-resolve it ONCE: the block prints the path, and every later call pastes that literal as `<caps>` (each Bash
+The script has TWO homes - this skill's copy under `.claude/skills/`, or the stack's plugin cache, where
+several versions can sit side by side and the newest is taken (normally the release these copies came
+from; after a core update it can be newer) - so resolve it ONCE: the block prints the path, and every later call pastes that literal as `<caps>` (each Bash
 call is its own shell, so a variable set here is gone by the next). Run all of it from the project root:
 
 ```bash
@@ -128,9 +128,9 @@ addressable only as `<plugin>:<seat>`, and a bare name returns 'Agent type not f
 <the script's PLUGINS name line; omit the section when it printed `CLI absent`>
 ```
 
-The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's fetch manifest, so a stack update cannot overwrite it.
+The usage-policy section is the house skill/agent policy's ONE home - it ships verbatim from this skill (a policy wording change lands here and reaches projects on their next re-run). Copy the `<!-- policy-rev: ... -->` line with it, unchanged: it is a content stamp over the block, recomputed by the stack's own lint whenever the policy text moves, and it is the ONLY way to tell a project carrying a current copy from one carrying a two-release-old one. `/alfred-code:validate` compares a project's stamp against the snapshot's. Like every generated `baseline-project-*.md` rule it stays out of the installer's catalog, so `/alfred-code:update` cannot overwrite it.
 
-This skill was renamed from project-capabilities: when a legacy `.claude/rules/baseline-project-capabilities.md` exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
+The 1.x project-capabilities skill (this one's old name, not the run-book capture) wrote `.claude/rules/baseline-project-capabilities.md`: when that legacy rule exists, delete it in the same run - this rule supersedes it, and nothing else ever prunes generated rules.
 
 ### 3. VERIFY - after the write, before the report
 
@@ -166,4 +166,4 @@ Then the prose, short - four things, each its own line so none of them is skimme
 ## Don't game it
 The rule lists what the inventory proved, nothing else - no capability assumed from the house defaults, no row for a server or skill the project dropped, and an unreadable source reported as unreadable (the script prints it that way) rather than filled from memory.
 
-A thin `.claude/skills` is not by itself a broken install: when the layers come from plugins the script prints `SOURCE: PLUGIN-COVERED` and reports the UNION - what those plugins carry plus whatever is copied locally, which on that route is only the items no plugin holds. Stop and say so only when it printed neither a local nor a plugin source.
+A thin `.claude/agents` is not by itself a broken install: the core carries the seats (every skill is a copy under `.claude/skills`), so when a layer comes from plugins the script prints `SOURCE: PLUGIN-COVERED` and reports the UNION - what the enabled plugins carry plus whatever is copied locally. Stop and say so only when it printed neither a local nor a plugin source.

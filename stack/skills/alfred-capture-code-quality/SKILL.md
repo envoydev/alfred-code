@@ -21,7 +21,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 
 - A tiered, gated assessment against the numbered prompts under the loops folder, the convention rules and the recorded code style; every finding is tied to its file:line and rule and recomputed fresh each run into `quality/CODE-ASSESSMENT.md`.
 - Deliberate only, never mid-build; fixes nothing and never writes the decision log.
-- Not for fixing the findings (/alfred-loop-quality), the architecture (alfred-capture-architecture-quality), test coverage (the coverage capture), recording the code style (alfred-capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (alfred-task-verify-code).
+- Not for fixing the findings (/alfred-loop-quality), the architecture (alfred-capture-architecture-quality), test coverage (the coverage capture), recording the code style (/alfred-capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (alfred-task-verify-code).
 
 ## Execution modes
 
@@ -46,7 +46,7 @@ Collect the rule sources, in precedence order (`references/doc-shape.md` says wh
 2. **`<docs-path>/code-style/CODE-STYLE.md`** - the style the project actually follows; absent, say so.
 3. **The stack's convention rules** - the path-scoped files under `.claude/rules/` whose globs attach a file family to its house convention skill. Only the families the target actually holds count.
 
-**No rule source at all - stop.** No stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the two ways to get rules: record the code style with `alfred-capture-code-style`, or run `/alfred-loop-quality`, which seeds the `loops/` starter set.
+**No rule source at all - stop.** No stage prompt under `loops/`, no `CODE-STYLE.md` and no convention rule attaching to a file family the target holds: say so in one line and stop before GATHER, writing nothing - a doc judged against nothing reads as clean code. Name the two ways to get rules, both the user's to run: `/alfred-capture-code-style` records the code style, and `/alfred-loop-quality` seeds the `loops/` starter set.
 
 Then the modules, inside the target - the scope the invocation names (the quality loop hands its TARGET), else the whole project: the Project structure table of `<docs-path>/architecture/ARCHITECTURE.md` when the map exists, else the target's top-level source folders from one listing (say the map is missing - a stale or absent map is a note, never a blocker). Read `<docs-path>/quality/CODE-ASSESSMENT.md` if it exists - not ground truth, but gate question 3 folds a re-measurement into its entries - and the decision log plus the project CLAUDE.md's recorded choices, which gate question 4 depends on.
 

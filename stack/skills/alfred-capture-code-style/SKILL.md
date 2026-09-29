@@ -17,7 +17,7 @@ The per-language configs (`.editorconfig`, eslint/prettier, `tsconfig`, the SQL 
 
 - The deliberate project code-style capture; re-run to refresh in place.
 - It fans out code-style-analyzer agents (one per detected language), merges their reports into `code-style/CODE-STYLE.md` under the docs root, and generates the path-scoped project-code-style rule that auto-attaches the style core whenever a matching file is touched - in the main session AND in dispatched subagents.
-- Not for architecture (alfred-capture-architecture), one language's style question (@agent-code-style-analyzer alone), or enforcing style (the per-language configs stay the enforced source).
+- Not for architecture (alfred-capture-architecture), one language's style question (the code-style-analyzer seat alone, picked from the @ typeahead), or enforcing style (the per-language configs stay the enforced source).
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before a first capture's fan-out, via AskUserQuestion - characterize via code-style-analyzer seats (recommend it: the seats absorb the reads), or in-session? - unless a calling flow already picked the run's mode, which is inherited, never re-asked. Pick once, hold for the run:
@@ -45,7 +45,7 @@ Build the extension union from the agents' **Language + extensions** sections ON
 
 Regenerate on every run - the rule is derived output, cheap to rebuild, and rebuilding from the same reports as the doc is what keeps the two in sync. Never hand-reconcile it. Wholesale is mechanical, and it is a REPLACE, never a delete: READ the existing rule first (it is short), then Write the fresh one over it. The read is what makes the Write legal; an `rm` first is denied by the auto-mode classifier, which costs exactly the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Verify after writing: frontmatter parses, every glob came from an observed extension, the doc pointer names an existing file.
 
-This generated rule is per-project output, deliberately NOT in the stack's RULES set - the installer fetches only named files and never prunes `.claude/rules/`, so `stack update` never touches it.
+This generated rule is per-project output, deliberately NOT in the stack's RULES set - no installer ledger records this generated rule, so `/alfred-code:update` never touches it.
 
 ### 5. RETIRE - remove the legacy hook, if present
 Earlier captures generated `.claude/hooks/inject-code-style.js` + a `settings.json` PreToolUse entry. The rule replaces it (one home per piece - both together would double-inject in main sessions). If the hook file exists: delete it, then parse `.claude/settings.json`, remove the PreToolUse entry whose command references `inject-code-style.js`, and rewrite - never regex-edit JSON, never touch the entries the stack installer wired. Nothing to retire on a clean project: skip silently.
