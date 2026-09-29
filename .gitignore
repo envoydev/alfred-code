@@ -17,11 +17,19 @@ node_modules/
 # Windows
 Thumbs.db
 
-# claude - everything in .claude/ stays local except this repo's own plugin-authoring skill
+# claude - everything in .claude/ stays local except this repo's own skills: plugin-authoring and
+# the repo-audit family (maintenance tools for this repo, never part of the shipped catalog)
 .claude/*
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/plugin-authoring/
+!.claude/skills/repo-audit-agents/
+!.claude/skills/repo-audit-claude-md/
+!.claude/skills/repo-audit-hooks/
+!.claude/skills/repo-audit-plugin/
+!.claude/skills/repo-audit-rules/
+!.claude/skills/repo-audit-skills/
+!.claude/skills/repo-audit-usage/
 # this repo's own data root when a worktree carries no settings (hook receipts, docs state)
 /.alfred/
 REPORT.md
