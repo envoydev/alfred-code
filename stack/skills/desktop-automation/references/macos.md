@@ -13,11 +13,13 @@ like. Checked against MacOS-MCP 0.4.6, the release the stack pins; macOS 12 or l
 - **Other:** `Wait`, `Scrape`, `Notification`, and `Shell` (shell commands and AppleScript through
   osascript).
 
-## Shell stays on
+## Shell stays in the list, behind a guard
 
-MacOS-MCP has no flag to switch a tool off, so `Shell` is always in the list: the skill's rule is what
-keeps a UI task in the UI. A user who wants it gone can list it in MacOS-MCP's own
-`~/.macos-mcp/config.toml`, under `[tools]`, as `exclude = ['Shell']`.
+MacOS-MCP has no flag to switch a tool off, so `Shell` is always in the list. A house guard denies every
+`Shell` call - shell commands and AppleScript alike - unless the user allowed it in
+`<docs-path>/flow/DESKTOP-EXEC-ALLOW`, and the skill's rule keeps a UI task in the UI either way. A user
+who wants it gone can list it in MacOS-MCP's own `~/.macos-mcp/config.toml`, under `[tools]`, as
+`exclude = ['Shell']`.
 
 ## The two grants
 
@@ -33,11 +35,16 @@ Both live in System Settings > Privacy & Security, and only the user can give th
 
 What their absence looks like:
 
-- An **empty snapshot** - no focused window, no elements - while apps are open: Accessibility is
-  missing. It is not a closed app, and launching the app again changes nothing.
-- **Black screenshots**: Screen Recording is missing.
-- On a start with either missing, the server opens System Settings by itself;
-  `MACOS_MCP_SKIP_PERMISSION_CHECK=1` in the shell that starts Claude Code stops that.
+- **The server fails to connect at start, and System Settings opens by itself.** MacOS-MCP 0.4.6 checks
+  its grants before it serves and exits when one is missing; its log (`/mcp`) names which - 'Required
+  permissions not granted: Accessibility'.
+- `MACOS_MCP_SKIP_PERMISSION_CHECK=1` in the shell that starts Claude Code makes it start ungranted: a
+  warning in place of the exit, and no System Settings. Only then does an **empty snapshot** - no
+  focused window, no elements, while apps are open - mean Accessibility is missing; it is not a closed
+  app, and launching the app again changes nothing.
+- **Black screenshots**: Screen Recording is missing. The start check does not catch it - its Screen
+  Recording test only asks System Events for its version - so a server that started cleanly can still
+  return them.
 
 Restart the server (reconnect from `/mcp`) after a grant.
 

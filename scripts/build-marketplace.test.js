@@ -192,16 +192,18 @@ const SHIPPED = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '.claude-p
 const shippedBy = Object.fromEntries(SHIPPED.plugins.map(e => [e.name, e]));
 
 test('every shipped entry reaches the core through its dependencies, with no cycle', () => {
-    // The three locked MCP servers are the exception, and by design: the installer installs them
-    // beside the core on every run, and a plugin that depends on nothing can never be disabled at
-    // load by a missing one. Everything else must reach the core, or enabling it would not enable
-    // the baseline. The two 1.x aliases are the core under its old name and an empty id, so the old
-    // core's alias counts as the core for a retired entry, whose frozen dependency still names it. A
-    // renamed locked server's retired id carries its successor's shape, so it depends on nothing either.
-    const lockedAliases = mcpAliasEntries().filter((a) => !a.dependencies).map((a) => a.name);
+    // Every MCP entry is the exception, and by design: the installer installs the core on every run, a
+    // plugin that depends on nothing can never be disabled at load by a missing one, and one that names
+    // the core blocks each core disable while it is on (I7) - an alias naming the 2.x core is unmet for
+    // the not-yet-updated installs it exists for (I6). An MCP entry carries servers and nothing else,
+    // which is how applyMcpPlugins recognises one. Everything else must reach the core, or enabling it
+    // would not enable the baseline. The two 1.x aliases are the core under its old name and an empty
+    // id, so the old core's alias counts as the core for a retired entry, whose frozen dependency still
+    // names it.
+    const mcpOnly = (p) => p.mcpServers && !p.skills && !p.agents && !p.commands && !p.hooks;
     for (const e of SHIPPED.plugins)
     {
-        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name) || lockedAliases.includes(e.name)) continue;
+        if (e.name === 'alfred-code' || e.name === LEGACY.core || e.name === LEGACY.hooks || LOCKED.includes(e.name) || mcpOnly(e)) continue;
         const seen = new Set();
         const stack = [e.name];
         while (stack.length)
@@ -258,12 +260,13 @@ test('the three locked MCP plugins ship standalone, one server each, depending o
 });
 
 // The desktop servers drive the machine's own apps: each one plugin, one server of its own name, a
-// droppable pick that names the core, started through the launcher that pins the Python and refuses
-// on the other OS. windows-desktop ships with shell, registry and process control switched off.
+// droppable pick that depends on nothing (I7), started through the launcher that pins the Python and
+// refuses on the other OS. windows-desktop ships with shell, registry, process and file-system control
+// switched off (I10: FileSystem writes, moves and deletes where no house guard looks).
 test('the two desktop MCP plugins: one server each, launched through desktop-launch.js at the release pin', () => {
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
     const want = {
-        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process'],
+        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
         'macos-desktop': ['--server', 'macos-desktop', '--package', `macos-mcp==${pins['macos-desktop'].version}`, '--', 'serve'],
     };
     for (const [name, args] of Object.entries(want))
@@ -271,11 +274,39 @@ test('the two desktop MCP plugins: one server each, launched through desktop-lau
         const entry = shippedBy[name];
         assert.ok(entry, `${name} is not in the marketplace`);
         assert.deepStrictEqual(Object.keys(entry.mcpServers), [name], `${name} must carry exactly one server of its own name`);
-        assert.deepStrictEqual(entry.dependencies, ['alfred-code'], `${name} is a droppable pick, so it names the core`);
+        assert.strictEqual(entry.dependencies, undefined, `${name} depends on nothing - a dependency on the core blocks every core disable while it is on (I7)`);
         const server = entry.mcpServers[name];
         assert.strictEqual(server.command, 'node');
         assert.deepStrictEqual(server.args, ['${CLAUDE_PLUGIN_ROOT}/stack/mcp/desktop-launch.js', ...args]);
         assert.ok(fs.existsSync(path.join(__dirname, '..', 'stack', 'mcp', 'desktop-launch.js')), 'the launcher the entry names is not in the tree');
+    }
+});
+
+// I7: Claude Code refuses to disable a plugin an enabled one depends on ('new-core is still required by
+// pw', measured on 2.1.284), so an MCP entry naming the core blocked the full copy route's core stand-down
+// and a user's own core disable while a browser or desktop row was on. Since 2.1.0 the core carries no
+// skill those servers need, and the installer installs the core on every run: no MCP entry names it.
+test('no generated MCP entry declares a dependency - none may block a core disable (I7)', () => {
+    const { mcpPlugins } = require('./build-marketplace.js');
+    for (const entry of mcpPlugins())
+    {
+        assert.strictEqual(entry.dependencies, undefined, `${entry.name} declares ${JSON.stringify(entry.dependencies)}`);
+        assert.ok(shippedBy[entry.name], `${entry.name} is not in the live marketplace`);
+        assert.strictEqual(shippedBy[entry.name].dependencies, undefined, `the live ${entry.name} entry still declares a dependency`);
+    }
+});
+
+// I6: the renamed ids exist for an install NOT yet updated - a 1.x or 2.0.0 one whose core is the old id
+// or absent. An alias naming the 2.x core is unmet for exactly that audience: after a catalog refresh the
+// CLI reports 'Dependency "alfred-code@..." is not installed' and the alias's server does not load
+// (measured on 2.1.284, spike in the plugin audit).
+test('no renamed MCP alias names a dependency, so its not-yet-updated audience keeps its server (I6)', () => {
+    const aliases = mcpAliasEntries();
+    assert.ok(aliases.some((a) => a.name.startsWith('playwright-')), 'the browser aliases are among them');
+    for (const alias of aliases)
+    {
+        assert.strictEqual(alias.dependencies, undefined, `${alias.name} declares ${JSON.stringify(alias.dependencies)}`);
+        assert.strictEqual(shippedBy[alias.name].dependencies, undefined, `the live ${alias.name} entry still declares a dependency`);
     }
 });
 

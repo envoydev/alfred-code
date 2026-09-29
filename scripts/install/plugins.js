@@ -508,13 +508,18 @@ function restoreStoodDown({ record = [], plugins = [], isOn, cli, log = () => {}
 // (copyRouteStandDown): `disable --scope project`, returned as `{ scope, spec }` for the stamp's
 // `stood-down` record, which the switch back enables (restoreStoodDown). One already off here, or off
 // at user scope, calls nothing. Returns `{ gone, off }`.
-function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], hereOnly = false, legacy = [], isOn, cli, log = () => {}, note = () => {} })
+//
+// I8: THE DESKTOP SERVERS the copy route registers go the same way - `desktop` names each one this run
+// registers in .mcp.json (the OS gate already left out one this machine cannot run). Left enabled, its
+// plugin row ran Windows-MCP or MacOS-MCP a second time beside the registration: two UI-automation
+// servers on one desktop and two tool sets. The plugin route installs it back from the MCP picks.
+function engineStandDown({ rows = [], market = BRAND.marketplace, scope, engines = [], desktop = [], hereOnly = false, legacy = [], isOn, cli, log = () => {}, note = () => {} })
 {
     const gone = [];
     const off = [];
     // `legacy`: the full copy route's old `playwright-<engine>` ids (the 2.0.0 rename) - whichever are
     // installed, since no swap runs with the core off; they go the same way as the engines kept here.
-    const names = [...engines.map((e) => `browser-${e}`), ...legacy];
+    const names = [...engines.map((e) => `browser-${e}`), ...desktop, ...legacy];
     const on = new Set(rowsOn({ rows, names, market, isOn }));
     const ours = names.flatMap((name) => rows.filter((r) => r.name === name && r.marketplace === market));
     const at = standDownScope(scope);

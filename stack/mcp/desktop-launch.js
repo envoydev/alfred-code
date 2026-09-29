@@ -10,12 +10,16 @@
 //   - THE OS. Each server drives THIS machine's own desktop, and an entry enabled at project scope
 //     reaches every machine that opens the project. On the other OS it exits at once with one line
 //     naming why, instead of downloading a package that cannot import there.
-//   - THE TOOL GATE (windows-desktop). The entry passes `--exclude-tools PowerShell,Registry,Process`:
-//     shell, registry and process control stay off. ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces that
-//     list, and `none` passes no flag at all (Windows-MCP's own config then decides) - read from the
-//     shell, then settings.local.json, settings.json and the account settings, since a plugin server
-//     never gets a PROJECT settings env key. MacOS-MCP 0.4.6 has no such flag: its Shell tool stays
-//     on, and the desktop-automation skill carries that rule.
+//   - THE TOOL GATE (windows-desktop). The entry passes `--exclude-tools PowerShell,Registry,Process,FileSystem`:
+//     shell, registry, process control and file writes, moves and deletes stay off. Windows-MCP gates by
+//     tool NAME, never by mode, so `App` stays on whole - launch, switch and resize, and its
+//     `launch_executable` mode, which starts any program with the arguments given (windows-mcp 0.8.5
+//     tools/app.py): a house guard denies that mode unless the user allowed it in
+//     <docs-path>/flow/DESKTOP-EXEC-ALLOW. ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and
+//     `none` passes no flag at all (Windows-MCP's own config then decides) - read from the shell, then
+//     settings.local.json, settings.json and the account settings, since a plugin server never gets a
+//     PROJECT settings env key. MacOS-MCP 0.4.6 has no such flag: its Shell tool stays in the list, and
+//     the same guard denies every Shell call unless DESKTOP-EXEC-ALLOW allows it.
 //
 // Everything after `--` goes to the server unchanged. stdout is the MCP stream: nothing is written to
 // it here, diagnostics go to stderr, which Claude Code shows in the server's log.
@@ -30,7 +34,7 @@ const DESKTOP = {
     'macos-desktop': { os: 'darwin', bin: 'macos-mcp', upstream: 'MacOS-MCP' },
 };
 const DESKTOP_OS = Object.fromEntries(Object.entries(DESKTOP).map(([name, row]) => [name, row.os]));
-const DEFAULT_EXCLUDE = 'PowerShell,Registry,Process';
+const DEFAULT_EXCLUDE = 'PowerShell,Registry,Process,FileSystem';
 // Both upstreams send PostHog usage events unless ANONYMIZED_TELEMETRY is 'false' (their lifespan reads it,
 // default 'true' - windows-mcp 0.8.5 and macos-mcp 0.4.6). The plugin entries pass this env, and the copy
 // route registers the same pair: a server driving the user's own desktop reports to nobody.
@@ -104,8 +108,10 @@ function prereqNotes(name, { uvx = true } = {})
     const lines = name === 'windows-desktop'
         ? ["  desktop: windows-desktop needs the Windows display language set to English (Windows-MCP's App tool reads app names in English), and Claude Code at the same privilege level as the app it drives - a UAC prompt can never be automated",
             `  desktop: windows-desktop - ${DEFAULT_EXCLUDE.split(',').join(', ').replace(/, (?=[^,]*$)/, ' and ')} stay off (ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: another list, or none for every tool); ${first}`]
-        : ["  !! desktop: macos-desktop needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; an empty snapshot means Accessibility is missing, black screenshots mean Screen Recording is",
-            `  desktop: macos-desktop - its Shell tool stays on (MacOS-MCP has no flag for it; exclude = ['Shell'] under [tools] in ~/.macos-mcp/config.toml turns it off); ${first}`];
+        // I45: MacOS-MCP 0.4.6 checks its grants before it serves and exits when one is missing
+        // (permissions.py validate_permissions) - an empty snapshot needs MACOS_MCP_SKIP_PERMISSION_CHECK=1 first.
+        : ["  !! desktop: macos-desktop needs Accessibility and Screen Recording (System Settings > Privacy & Security) for the terminal or IDE running Claude Code and for the uv-managed Python it runs on - approve the 'would like to control this computer' dialog at its first start; a server that fails to connect at start while System Settings opens is missing a grant - its log names which; black screenshots mean Screen Recording is missing",
+            `  desktop: macos-desktop - its Shell tool stays in the list, and a house guard denies every Shell call unless DESKTOP-EXEC-ALLOW allows it (MacOS-MCP has no flag for it; exclude = ['Shell'] under [tools] in ~/.macos-mcp/config.toml removes it); ${first}`];
     if (!uvx) lines.unshift(`  !! desktop: ${name} starts through uvx, which is not on PATH - install uv (https://docs.astral.sh/uv/)`);
     return lines;
 }

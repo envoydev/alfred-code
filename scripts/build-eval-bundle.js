@@ -10,8 +10,14 @@
 // `alfred-code`, the core's own name, so a core agent's `alfred-code:<skill>` preload resolves as
 // it does in a project; a library agent's BARE preload (a project copy resolves it by name) is
 // rewritten to that spelling here, in the copy, never in the source. `meta/evals/library/*` travel
-// as the bundle's `evals/`: one case per stack profile, each graded with `arm: both` so the
-// with/without-plugin delta is measured, not assumed.
+// as the bundle's `evals/`: one case per stack profile, each graded on both arms so the
+// with/without-plugin delta is measured, not assumed, plus the size-first cases of alfred-task-solve
+// (a library skill since 2.1.0, so only the bundle carries it).
+//
+// The core's commands and router call `${CLAUDE_PLUGIN_ROOT}/scripts/...`, `.../setup-plugin/references/...`
+// and `.../stack/hooks/...` - the core's plugin root is the repo root. The bundle copies those trees
+// (and `meta/`, which the scripts read) to the same relative paths, so every path a bundled body names
+// resolves inside the bundle as it does in the core (the 2.1.4 audit, I9).
 const fs = require('node:fs');
 const path = require('node:path');
 const { placement, CORE } = require('./plugin-placement.js');
@@ -61,6 +67,12 @@ function build(out, { repo = REPO } = {})
     for (const a of agents)
         fs.writeFileSync(path.join(out, 'agents', `${a}.md`), scopePreloads(fs.readFileSync(path.join(repo, 'stack', 'agents', `${a}.md`), 'utf8'), house));
     for (const c of core.commands) fs.copyFileSync(path.join(repo, c), path.join(out, 'commands', path.basename(c)));
+
+    // The trees the bundled bodies name under ${CLAUDE_PLUGIN_ROOT} - and what the scripts read - at the
+    // core's own relative paths. The library cases already travel as evals/, so meta/evals is left out.
+    const ROOT_TREES = ['scripts', 'meta', 'stack', path.join('setup-plugin', 'references')];
+    for (const tree of ROOT_TREES)
+        fs.cpSync(path.join(repo, tree), path.join(out, tree), { recursive: true, filter: (src) => path.relative(repo, src) !== path.join('meta', 'evals') });
 
     const casesDir = path.join(repo, 'meta', 'evals', 'library');
     const cases = fs.existsSync(casesDir) ? fs.readdirSync(casesDir).filter((c) => fs.existsSync(path.join(casesDir, c, 'case.yaml'))) : [];

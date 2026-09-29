@@ -103,10 +103,7 @@
             "chrome"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "playwright-msedge",
@@ -129,10 +126,7 @@
             "msedge"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "playwright-firefox",
@@ -155,10 +149,7 @@
             "firefox"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "playwright-webkit",
@@ -181,10 +172,7 @@
             "webkit"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "navigation",
@@ -255,10 +243,7 @@
             "chrome"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "browser-msedge",
@@ -281,10 +266,7 @@
             "msedge"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "browser-firefox",
@@ -307,10 +289,7 @@
             "firefox"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "browser-webkit",
@@ -333,15 +312,12 @@
             "webkit"
           ]
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "windows-desktop",
       "source": "./",
-      "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
+      "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process, FileSystem stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
       "version": "2.1.3",
       "author": {
         "name": "envoydev",
@@ -360,16 +336,13 @@
             "--",
             "serve",
             "--exclude-tools",
-            "PowerShell,Registry,Process"
+            "PowerShell,Registry,Process,FileSystem"
           ],
           "env": {
             "ANONYMIZED_TELEMETRY": "false"
           }
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "macos-desktop",
@@ -397,10 +370,7 @@
             "ANONYMIZED_TELEMETRY": "false"
           }
         }
-      },
-      "dependencies": [
-        "alfred-code"
-      ]
+      }
     },
     {
       "name": "alfred-code",

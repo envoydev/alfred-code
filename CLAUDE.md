@@ -411,9 +411,14 @@ change (see the invariants below).
     until update copies its picks and uninstalls it (leaves first); a PARKED one, or one at another
     scope, is kept and logged with its uninstall command. The FILE stays while the names are retired:
     it is the only record of what each entry carried.
-  - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`;
+  - `evals/library/` - one `claude plugin eval` case per stack profile, graded `arm: both`, plus the
+    three `size-first-*` cases of `alfred-task-solve` (2.1.4 - a library skill only the bundle carries);
     `npm run eval-bundle -- <out>` puts the core and the whole library into ONE plugin named
-    `alfred-code` so the eval CLI can load a library item. The run is billed.
+    `alfred-code` so the eval CLI can load a library item, with the `scripts/`, `meta/`, `stack/` and
+    `setup-plugin/references/` trees at the core's own relative paths, so every
+    `${CLAUDE_PLUGIN_ROOT}/...` a bundled body names resolves. The core's own cases
+    (`setup-plugin/evals/`) run against the CORE entry installed from a scratch marketplace of the tree,
+    never `setup-plugin/` alone (its plugin root holds no `scripts/`). The run is billed.
   - `environment.json` - the ONE list of settings.json `env` values the stack owns; adding a variable is
     one row plus the seed's own (lint check 58 - not check 27, which is the `suggests:` removal
     check below).
@@ -480,7 +485,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   on every route (the full copy route's `alfred-code:<skill>` re-spelling has nothing left to do). The LOCKED THREE
   are plugin-only whenever any plugin route is on: installed beside the core (never as its
   `dependencies`, see the Plugins surface) and never also registered, which would run each server
-  twice. They come back to `.mcp.json` only on the FULL copy route, at every scope - never `mcp add
+  twice. No MCP entry declares `dependencies` at all (2.1.4, I7): Claude Code refuses to disable a plugin
+  an enabled one depends on ('... is still required by ...', measured on 2.1.284), so a browser or
+  desktop entry naming the core blocked the full copy route's core stand-down and a user's own core
+  disable, for a core that carries nothing those servers need. They come back to `.mcp.json` only on the FULL copy route, at every scope - never `mcp add
   --scope user`; every registration and verify
   pass skips a locked name while the core is on. A switch onto that route disables the core and the
   locked three first, and copies every seat the core carried, a denied seat excepted - that route reads
@@ -524,8 +532,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     registered (the stamp keeps it installed, its browser is still downloaded) and a later enable
     registers it (R124). `enabledMcpjsonServers` names only the `.mcp.json` servers the run registered
     and lets load - never a plugin-carried locked server or an engine left off. A legacy 1.x `playwright` server
-    migrates. The browser agents grant all four, each minus `browser_run_code_unsafe` (RCE-equivalent) through their
-    `disallowedTools`, which Claude Code applies before `tools` resolves (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
+    migrates. Both routes start Playwright MCP with `--no-webmcp` (the launcher's argv, the copy route's
+    manifest row): 0.0.82 collects and lists the tools a visited PAGE registers through WebMCP by default,
+    and a page is data, never a toolbox. The browser agents grant all four, each minus `browser_run_code_unsafe`
+    (RCE-equivalent) through their `disallowedTools`, which Claude Code applies before `tools` resolves
+    (code.claude.com/docs/en/sub-agents). The data root's own `.gitignore` keeps the profiles out of
     git (they hold session cookies); a 2.0.0 `.playwright/<engine>` still in use gets `.playwright/.gitignore` (`*`).
   - `windows-desktop` (Windows-MCP) and `macos-desktop` (MacOS-MCP) - each drives the machine's OWN
     desktop apps, so each installs on its own OS only and neither on Linux (`stack/mcp/desktop-launch.js`
@@ -538,11 +549,20 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     <name>@<marketplace> --scope local`, this machine only, since `/plugin` would switch the committed row
     off for the teammate on the right OS too - and the run that brings one in prints its prerequisites once (English
     display language and matching privilege on Windows, the Accessibility and Screen Recording grants
-    on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process`;
+    on macOS, uv when missing). Windows-MCP starts with `--exclude-tools PowerShell,Registry,Process,FileSystem`
+    (2.1.4, I10: FileSystem writes, moves and deletes where no house guard looks);
     `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
     the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
-    `WINDOWS_MCP_EXCLUDE_TOOLS`. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
-    no subcommand it exits with usage, measured). `ALFRED_CODE_PLATFORM` (or stack-select's `--platform`)
+    `WINDOWS_MCP_EXCLUDE_TOOLS`. The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
+    mode starts any program: a house guard denies that mode and every MacOS-MCP `Shell` call unless
+    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
+    no subcommand it exits with usage, measured); it checks its Accessibility grant (and a System Events
+    probe it calls Screen Recording) before it serves and EXITS when one is missing - the server fails to
+    connect and System Settings opens - unless `MACOS_MCP_SKIP_PERMISSION_CHECK=1` starts it ungranted. On
+    the copy route a desktop server's plugin row goes the engine way (I8, `engineStandDown`): uninstalled
+    at the run's scope before its registration, or at user scope on the FULL copy route switched off in
+    this project only and recorded in `stood-down:` - left on, it ran a second UI-automation server beside
+    the registration. `ALFRED_CODE_PLATFORM` (or stack-select's `--platform`)
     stands in for the OS where a run must be judged as another's - the tests and the temp-project matrix.
     Both start their upstream with `ANONYMIZED_TELEMETRY=false` (the entries' `env`, the copy route's
     registration): both wheels read it, defaulting to `true`, and send PostHog usage events otherwise.
@@ -559,7 +579,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   - **The 2.0.0 rename** (`meta/stack-manifest.json` `renamed.mcps`, the one table): `serena`,
     `context7` and `playwright-<engine>` are `navigation`, `documentation` and `browser-<engine>`, plugin
     and server alike. The old ids stay LISTED as RETIRED aliases carrying their successor's server under
-    the old name (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
+    the old name and no dependency (I6: their audience has no 2.x core, so a dependency on it stops the
+    alias's server loading) (`build-marketplace.js mcpAliasEntries`, held by lint 53), so an install not yet updated
     keeps its tools after a marketplace refresh (S25). Update swaps each old row at THIS run's scope
     (`plugins.migrateRenamed`): the successor installed there first, then the old id removed - an
     engine keeps its on/off, a locked server comes on. An old row at ANOTHER scope serves the projects
@@ -635,7 +656,21 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `--project ${CLAUDE_PROJECT_DIR}`. `.mcp.json` DOES expand `${VAR}` / `${VAR:-default}`, but
   `CLAUDE_PROJECT_DIR` is not reliably in scope at parse time, and expansion reads only the shell
   environment plus the ACCOUNT settings.json `env` (an unset `${VAR}` stays literal with a
-  `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`; Claude with `claude-code`.
+  `claude mcp list` warning). Cursor runs serena with `--context ide-assistant`. Claude runs it on the
+  stack's own context, `stack/mcp/navigation-context.yml` (2.1.4, I12 - ruling 'Keep rename + safe
+  delete'): serena 1.7.0's `claude-code` context (its six exclusions, `single_project`, structured output
+  off) plus `replace_content`, `replace_in_files`, `replace_symbol_body`, `insert_after_symbol`,
+  `insert_before_symbol` and `onboarding` off - writes no Edit/Write-matched hook sees - with
+  `rename_symbol` and `safe_delete_symbol` kept, and a prompt that sends edits to the harness tools
+  (never calling Edit forbidden). serena reads `--context <path>` as a custom context file
+  (`context_mode.py`: a separator or a `.yml` suffix). The plugin entry keeps `--context claude-code` and
+  `serena-launch.js` swaps in the file beside it (`contextArgs`) - an entry naming the file would stop a
+  project whose plugin cache predates it, since Claude Code launches the refreshed entry against the
+  installed version. The full copy route copies it to `.claude/navigation-context.yml` (beside the
+  `.mcp.json` that names it, so a clone carries both) and registers `--context .claude/navigation-context.yml`
+  (`@SERENA_CONTEXT@`, relative like `SERENA_HOME`; a snapshot without the file keeps `claude-code`); the
+  verify pass reads the same token, the ledger's `managed-files` records the copy, and a run that no
+  longer registers navigation (a plugin route) removes an unchanged copy, as uninstall does.
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
   `<data root>/serena/home` (the launcher sets it; the copy route registers it), and serena's per-project
   folder - the index cache, `memories/`, `project.yml` - is `<data root>/serena`, named by

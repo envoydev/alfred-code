@@ -149,6 +149,8 @@ const LEDGER_FILES = ['settings.json', 'settings.local.json'];
 const HEX = /^[0-9a-f]{64}$/;
 const ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const FILE_KINDS = ['hooks', 'skills', 'agents'];
+// The copies that sit directly in .claude: the seeded CLAUDE.md, and the full copy route's serena context (I12).
+const ROOT_FILES = ['CLAUDE.md', 'navigation-context.yml'];
 const SETTINGS_PATH = /^(?:attribution\.(?:commit|pr|sessionUrl)|worktree\.baseRef)$/;
 const MCP_SCOPES = ['local', 'user'];
 const emptyLedger = () => ({ env: {}, deny: [], hooks: [], mcp: {}, mcpAt: {}, files: {}, settings: {} });
@@ -220,7 +222,7 @@ function readLedger(file)
     if (files) out.files = Object.fromEntries(files.map((item) => cut(item, '=')).filter(([rel, h]) =>
     {
         const parts = rel.split('/');
-        return HEX.test(h) && (rel === 'CLAUDE.md' || (parts.length === 2 && FILE_KINDS.includes(parts[0]) && validItemName(parts[1])));
+        return HEX.test(h) && (ROOT_FILES.includes(rel) || (parts.length === 2 && FILE_KINDS.includes(parts[0]) && validItemName(parts[1])));
     }));
     return out;
 }
