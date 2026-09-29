@@ -70,17 +70,17 @@ change (see the invariants below).
   never runs on Windows). `ALFRED_CODE_HOOKS_VIA_PLUGIN=false` restores the 0.2.x copy route (the
   core's copies stand down for the wired ones); the walk writes the hooks it did NOT pick into
   `ALFRED_CODE_HOOKS_OFF`. The six gates live in `hook-prelude.js`, never inlined: the csv opt-out;
-  the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret
-  and force-push guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
+  the core's `hook_profile` userConfig (`/config`, account-level; `minimal` keeps only the rm, secret,
+  force-push and desktop exec guards, `strict` reads `ALFRED_CODE_TURN_CHECK` as on, the csv still wins);
   the plugin copy standing down beside a still-wired copied twin; a repo never set up (no install
   record in it, its git top level or - for a git worktree - its main checkout, so a worktree of an
   installed checkout counts as set up; under a user-scope core such a repo is written nothing and only
-  the rm, secret and force-push guards stay live, writing no row - R54, R86 - plus the dispatch guard's
+  the rm, secret, force-push and desktop exec guards stay live, writing no row - R54, R86 - plus the dispatch guard's
   implementer gate, M9. Known ceiling: such a repo still lists all 44 core seats, 12,531 characters of
   descriptions in every session's first call where 2.0.0 listed 9, since no deny is written into a repo the
   stack never touched - revisit when a plugin's agents can be scoped per project); and the 1.x ALIAS - a
   hook launched from a `.../claude-stack/<version>` root stands down while settings enable an <!-- legacy-name -->
-  `alfred-code@*` its `installed_plugins.json` row can load (S26); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret and force-push guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
+  `alfred-code@*` its `installed_plugins.json` row can load (S26); and a Cursor host, judged from the PAYLOAD alone (`cursor_version`, or a camelCase event name - never Cursor's environment variables, which a `claude` session in its terminal inherits): Cursor loads Claude hooks by default and turns a Stop block into an unbounded follow-up, so only the rm, secret, force-push and desktop exec guards run there and every other hook stands down silently, no ledger row. Each non-protective hook makes the call itself, `cursorStandDown(payload, __filename)`, right after parsing its own payload (no stdin is read or patched by the prelude; a test fails a hook file that lacks it). All fail open. Beside the gates,
   `unattended(input)` says nobody is at the terminal - `ALFRED_CODE_UNATTENDED=1`; else
   `CLAUDE_CODE_ENTRYPOINT` when set (the 2.1.283 CLI sets `sdk-cli` in print mode, rewriting an inherited
   `cli`, and keeps an SDK launch's `sdk-ts` / `sdk-py`, which stay interactive); else the transcript's newest
@@ -133,7 +133,8 @@ change (see the invariants below).
     are judged like `cat` (I2). A git command that prints file content (`git diff`, `git show`, `git log -p`,
     `git stash show -p`) is PROBED - the same read run as argv, no shell, 3s / 8MB, external diff, textconv and
     fsmonitor off - and only when its output would carry a credential, or it cannot be probed (a word the shell
-    expands, `-c` config, `--output`, a `cd` before it, a failed run), gets `| node <guard> --redact-stdin` where
+    expands, `-c` config, `--output`, a `cd` or a changing step before it - the probe runs before the command, so
+    `git add -N . && git diff HEAD` would read the tree without the new file - a failed run), gets `| node <guard> --redact-stdin` where
     it stands: a stream mode masking a credential key's value (JSON, dotenv, YAML) in a config file the diff header
     names, a URL password, a credential shape and a PEM body line by line, the note on stderr. A clean diff runs
     as written - an unconditional pipe would make every read-only `git diff` ask permission. Summary forms and
@@ -244,7 +245,9 @@ change (see the invariants below).
     user's ruling of 2026-09-29 (I10): Windows-MCP's `App` with `mode: launch_executable` (any executable, caller-given
     args - the server excludes tools by NAME, never by mode) and every MacOS-MCP `Shell` call (a shell command no
     shell guard sees) are denied; `App`'s `launch` / `switch` / `resize` pass. 'Allow' is honoured through
-    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's path or file name, or `*`).
+    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` (`App`, `Shell`, one executable's path or file name, or `*`). PROTECTIVE
+    (final review IM2, the user's ruling): it holds under `minimal`, a Cursor payload and a repo never set up, where
+    it writes no row - the Shell it gates is one the other protective guards never see.
   - `monitor-session.js` (`PostToolUse` on every tool + `UserPromptSubmit`) - a live monitor that never
     denies: one actor running the same tool with the same input 5 times in a turn, more than 20 distinct files
     written in a turn, the context at 80% of the fresh-session trigger (read from `fresh-session.js`, once per

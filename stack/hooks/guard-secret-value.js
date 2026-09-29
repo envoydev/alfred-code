@@ -1156,9 +1156,12 @@ function redactGitStages(text) {
   const segs = splitSegments(text, seps);
   if (seps.length !== segs.length - 1) return text;
   let changed = false;
-  let moved = false; // a `cd` earlier in the command: the probe cannot know where git runs
-  const out = segs.map((seg) => {
-    if (/^\s*(?:cd|pushd|popd)\b/.test(seg)) moved = true;
+  // The probe runs NOW, before any step of the command, so it reads the wrong tree once an earlier step moves
+  // the shell (`cd`) or changes what git sees (`git add -N .` - the security-review diff's own first step, which
+  // printed a new file's credential unmasked; final review IM1). changingStep's allowlist decides the second.
+  let moved = false;
+  const out = segs.map((seg, n) => {
+    if (/^\s*(?:cd|pushd|popd)\b/.test(seg) || (n > 0 && changingStep(segs[n - 1], -1, -1))) moved = true;
     const stages = splitPipes(seg);
     if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
     if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;

@@ -2961,6 +2961,18 @@ test('guard-desktop-exec: the DESKTOP-EXEC-ALLOW receipt opens it - this session
   if (st.birthtimeMs && st.birthtimeMs !== st.ctimeMs) assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'ls' }, { transcript_path: tp }).status, 2, 'written before the session');
 });
 
+// Final review IM2 (the user's ruling, 2026-09-29: 'Make it protective'): the Shell it gates is a shell no shell
+// guard sees, so it holds wherever the rm, secret and force-push guards do.
+test('guard-desktop-exec: protective - it holds under hook_profile minimal and a Cursor payload', () => {
+  const root = fs.mkdtempSync(path.join(TMP, 'desk-prot-'));
+  const minimal = spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'desk', tool_name: MAC_SHELL[0], tool_input: { command: 'rm -rf ~' } }), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' },
+  });
+  assert.equal(minimal.status, 2, 'minimal keeps it');
+  assert.equal(desktopRun(root, MAC_SHELL[0], { command: 'rm -rf ~' }, { cursor_version: '1.7.0' }).status, 2, 'a Cursor payload keeps it');
+});
+
 test('guard-desktop-exec: the csv opt-out switches it off, and garbage input never blocks', () => {
   const root = fs.mkdtempSync(path.join(TMP, 'desk-off-'));
   const off = spawnSync(process.execPath, [path.join(HOOKS, 'guard-desktop-exec.js')], {

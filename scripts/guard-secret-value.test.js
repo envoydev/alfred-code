@@ -1101,4 +1101,29 @@ test('I2: a git dump with nothing to mask runs as written; one the probe cannot 
   for (const c of ['git diff $REV', 'git -c diff.external=x diff', 'git diff --output=o.patch', 'cd sub && git diff', 'git diff not-a-revision'])
     assert.equal(at(c), REWRITE, `${c}: not probed, so piped`);
   assert.ok(!fs.existsSync(path.join(repo, 'o.patch')), 'the probe never ran a writing flag');
+  for (const c of ['git status && git diff', 'git log --oneline -1; git show HEAD'])
+    assert.equal(at(c), 0, `${c}: a read-only step before it leaves the probe standing`);
+});
+
+// Final review IM1: the probe runs at PreToolUse, BEFORE the command's earlier steps. The security-review diff
+// baseline-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
+// probe saw the tree before `git add -N .`, found nothing, piped nothing, and the run printed the new credential.
+test('IM1: a git dump after a step that changes the tree is piped unprobed - a new untracked credential stays masked', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-new-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'app.js'), 'const x = 1;\n');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'appsettings.json'), JSON.stringify({ Api: { ClientSecret: FAKE_TOKEN } }, null, 2) + '\n');
+  for (const c of ['git add -N . && git diff HEAD; git reset -q', 'git add appsettings.json && git diff --cached']) {
+    const cmd = updatedCommand(run({ tool_name: 'Bash', tool_input: { command: c }, session_id: 'suite', cwd: repo }, { CLAUDE_PROJECT_DIR: repo }));
+    assert.ok(cmd && cmd.includes('--redact-stdin'), `${c} -> ${cmd}`);
+    const out = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!out.stdout.includes(FAKE_TOKEN), `${c} printed a credential:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked value`);
+    git('reset', '-q');
+  }
 });

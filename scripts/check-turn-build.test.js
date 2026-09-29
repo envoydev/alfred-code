@@ -106,7 +106,7 @@ test('turn-build: profile strict runs the check over a seeded 0; the csv and pro
     assert.deepStrictEqual(csv.p.spawned(), [], 'the csv wins over strict');
     const minimal = setUp({ ALFRED_CODE_TURN_CHECK: '1', CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' });
     assert.strictEqual(minimal.stop.status, 0);
-    assert.deepStrictEqual(minimal.p.spawned(), [], 'minimal keeps only the three protective guards');
+    assert.deepStrictEqual(minimal.p.spawned(), [], 'minimal keeps only the protective guards');
 });
 
 test('turn-build: once per turn - the continuation Stop after a block passes, even with errors still there', { skip: !posix && 'stub binaries are shell scripts' }, () =>

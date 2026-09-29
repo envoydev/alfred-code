@@ -93,7 +93,7 @@ function coreEntry(options = {})
             hook_profile: {
                 type: 'string',
                 title: 'Hook profile',
-                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
+                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret, force-push and desktop exec guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
                 default: 'standard',
             },
         },

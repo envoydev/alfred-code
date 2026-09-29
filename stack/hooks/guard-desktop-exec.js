@@ -24,12 +24,16 @@ const path = require('path');
 // hook. Fail-open on purpose - no prelude, no project dir or a malformed settings file all leave
 // this hook running.
 let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+// PROTECTIVE (hook-prelude.js, final review IM2): live under `minimal`, a Cursor payload and a repo never set up,
+// where it writes no block row (R54) - false fails open to logging.
+let unsetRepo = false;
 if (require.main === module) {
   let off = false;
   try {
     const prelude = require('./hook-prelude.js');
     envOf = prelude.envOf;
     off = prelude.standDown('guard-desktop-exec');
+    unsetRepo = prelude.neverSetUp();
   } catch { /* an install without the prelude runs the hook unchanged */ }
   if (off) process.exit(0);
 }
@@ -43,10 +47,6 @@ const MAC_SHELL = /^mcp__(?:plugin_macos-desktop_)?macos-desktop__Shell$/;
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8')); } catch { process.exit(0); }
 if (!payload || typeof payload !== 'object') process.exit(0);
-// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
-let cursorOff = false;
-try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
-if (cursorOff) process.exit(0);
 
     // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
     // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -62,7 +62,7 @@ if (cursorOff) process.exit(0);
         const exit = process.exit.bind(process);
         process.exit = (code) =>
         {
-            if (code === 2)
+            if (code === 2 && !unsetRepo)
             {
                 try
                 {
