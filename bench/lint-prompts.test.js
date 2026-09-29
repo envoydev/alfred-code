@@ -19,7 +19,7 @@ test('a hyphenated name of either stack is flagged as a whole token, in any case
 test('a single-word name is flagged only as a slash command, never as a plain word', () =>
 {
     assert.deepStrictEqual(words('Make a plan for the dotnet API before you init the database.'), []);
-    assert.deepStrictEqual(words('Run /plan first, then /ecc:plan and /claude-stack:init.'), ['/plan', '/ecc:plan', '/claude-stack:init']);
+    assert.deepStrictEqual(words('Run /plan first, then /ecc:plan and /alfred-code:init.'), ['/plan', '/ecc:plan', '/alfred-code:init']);
     assert.deepStrictEqual(words('Add GET /api/loans/overdue and keep /health as it is.'), []);
 });
 
@@ -34,7 +34,7 @@ test('our names are read from the tree, ECC\'s from the pinned list, and an abse
 {
     const root = path.join(__dirname, '..');
     const ours = ourNames(root);
-    for (const n of ['dotnet-minimal-api', 'project-solve-cross-task', 'integration-reviewer', 'init', 'claude-stack']) assert.ok(ours.includes(n), n);
+    for (const n of ['dotnet-minimal-api', 'alfred-task-solve-cross', 'integration-reviewer', 'init', 'alfred-code']) assert.ok(ours.includes(n), n);
     const ecc = eccNames(path.join(__dirname, 'arms', 'ecc-vocabulary.txt'));
     assert.ok(ecc.includes('codebase-onboarding') && ecc.includes('tdd-workflow') && !ecc.some((n) => n.startsWith('#')));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-lint-'));
