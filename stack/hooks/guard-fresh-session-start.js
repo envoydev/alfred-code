@@ -341,7 +341,7 @@ if (EVENT === 'SessionStart') {
         'or plan file it resumes from), or continue here on the summary with the cost stated. If ' +
         'the remaining work is a single short step, say so and just finish it instead of asking. ' +
         'Two more things for the moment after a compaction. The summary above is the harness' + String.fromCharCode(39) + 's own ' +
-        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts (measured: ' +
+        'and it is in English: keep answering in the language of the user' + String.fromCharCode(39) + 's own prompts, unless a loaded skill sets the answer language (measured: ' +
         'two sessions switched to English right after compacting). And when a plan or state file is ' +
         'live, re-read its HEADER first - it holds the anchors and the next step - before re-orienting ' +
         'from the code (measured: a resume grepped the tree and read a 10k-char source range before ' +

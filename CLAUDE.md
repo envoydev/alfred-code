@@ -241,7 +241,7 @@ change (see the invariants below).
     typed command and names it in `command_name`, the typed prompt settling a plugin command's namespace; its matcher, a
     regex with no colon, lists the orchestration commands, so no ordinary prompt spawns it; never blocks - a blocked
     expansion shows its reason to the user only); `SessionStart` matcher `compact` injects the ask plus two lines: answer in
-    the language of the user's prompts, and re-read a live plan file's header first. `PreCompact` writes
+    the language of the user's prompts (unless a loaded skill sets it), and re-read a live plan file's header first. `PreCompact` writes
     `<docs-path>/flow/COMPACT-STATE` first (the live plan, the open flow stamps with their ages, the
     files this session wrote, no model call), and the compact start points at it - even with every
     fresh-session offer off.
