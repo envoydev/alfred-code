@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-architecture
-description: "Captures or refreshes the project's architecture docs - the structure map and the always-on architecture rule. Use when the user asks to capture, document or refresh the architecture, or asks what the project's structure or module boundaries are. Deliberate only, never mid-build; not for fixing what it finds, code style, test coverage, or a pros/cons judgement of the architecture - that reads this map."
+description: "Use when asked to capture, document or refresh the architecture, or what the structure or module boundaries are. Deliberate only. Not for pros/cons judgement."
 ---
 
 # Project Architecture Analyzer - Capture the Architecture (Deliberate)
@@ -19,6 +19,11 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 This is capture only: it maps the structure, it does not judge it. The pros/cons read over this map - weaknesses, strengths, tiered and gated - is a separate deliberate capture, recomputed fresh every run rather than stored here, matched from the installed skill list by what it covers. `alfred-loop-architecture-quality` runs both captures (this one for the map, that one for the findings) as its ANALYZE step and routes fixes by tier. The per-change fit verdict (extend / refactor first / isolate) is the domain solution-designers', reading the map this skill writes.
 
 Read `references/doc-shapes.md` (the map's required shape and the write protocol) and `references/hazards.md` (the stack-keyed hazard catalog) before AGGREGATE - they are this skill's contract, not suggestions. `vocabulary-roles.md` and `report-fields.md` are read at their step; the report's `References:` line records every one of them.
+
+## When to use
+
+- Captures or refreshes the project's architecture docs - the structure map and the always-on architecture rule.
+- Deliberate only, never mid-build; not for fixing what it finds, code style, test coverage, or a pros/cons judgement of the architecture - that reads this map.
 
 ## Execution modes
 

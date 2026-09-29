@@ -1,6 +1,6 @@
 ---
 name: alfred-habits-adjust-claude-md
-description: "Use when a project's CLAUDE.md is to be written, filled in or brought up to date - the seeded .claude/CLAUDE.md still unfilled, a CLAUDE.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own CLAUDE.md, or what the CLAUDE.md check reported. Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it. Not for a skill, a rule or a hook - the skill-authoring method owns those - nor a README, nor a preference or lesson, which the shared memory server keeps."
+description: "Use when a CLAUDE.md is to be written, filled in or updated - an unfilled seeded one, a stale one, a part needing its own. Not for skills or rules."
 ---
 
 # CLAUDE.md capture - create or improve a project's instruction file
@@ -15,6 +15,12 @@ never mixed:
 - **This skill** owns HOW - which mode, where the facts come from, what is shown before a write.
 - **The check** (`scripts/claude-md-check.js`) owns the verdict - every named path exists, every
   command's program resolves, no placeholder, TODO or template text is left. It runs last, every time.
+
+## When to use
+
+- A project's CLAUDE.md written, filled in or brought up to date: the seeded `.claude/CLAUDE.md` still unfilled, a CLAUDE.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own CLAUDE.md, or what the CLAUDE.md check reported.
+- Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it.
+- Not for a skill, a rule or a hook - the skill-authoring method owns those - nor a README, nor a preference or lesson, which the shared memory server keeps.
 
 ## 1. Resolve the stack's files
 

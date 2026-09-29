@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-architecture-quality
-description: "Judges the project's architecture as it stands - a reasoned strengths/weaknesses assessment, tiered and gated, recomputed fresh every run from the structure map, the code and any recorded decisions. Use when the user asks to assess, evaluate or judge the architecture, or asks what its weaknesses, risks or tradeoffs are. Deliberate only, never mid-build; reads the decision log but never writes to it, and keeps no version of its own output - the findings are a cache, not a record. Not for building the map itself, fixing what it finds, judging the code against its own quality rules (alfred-capture-code-quality), code style, or test coverage - the assessment keeps only structural testability blockers, never coverage gaps."
+description: "Use when asked to assess, evaluate or judge the architecture, or its weaknesses, risks or tradeoffs. Not for code-rule findings (alfred-capture-code-quality)."
 ---
 
 # Project Architecture Quality Analyzer - Judge the Architecture (Deliberate)
@@ -18,6 +18,16 @@ You are the judgment seat for this run: you read the project's architecture map,
 **Model check, at run start rather than after.** This judgment is the expensive kind, and this skill carries NO `model` pin, deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model, so set the session itself to Opus with `/model` before a run and drop it back after. When this session is not on Opus, say so in the first thing the user sees (inside the mode ask where one fires, otherwise the opening line) so the switch can happen before the judgment is spent; the REPORT step's `Model:` line closes the loop.
 
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+
+## When to use
+
+- It judges the project's architecture as it stands - a reasoned strengths/weaknesses assessment, tiered and gated,
+  recomputed fresh every run from the structure map, the code and any recorded decisions.
+- Deliberate only, never mid-build; reads the decision log but never writes to it, and keeps no version of its own
+  output - the findings are a cache, not a record.
+- Not for building the map itself, fixing what it finds, judging the code against its own quality rules
+  (alfred-capture-code-quality), code style, or test coverage - the assessment keeps only structural testability
+  blockers, never coverage gaps.
 
 ## Execution modes
 

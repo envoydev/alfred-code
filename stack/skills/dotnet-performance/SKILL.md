@@ -1,6 +1,6 @@
 ---
 name: dotnet-performance
-description: "Use when a .NET type sits on a hot path or high-throughput loop, or when picking a serialization format: struct vs class, allocations, Span, ValueTask, JSON vs Protobuf vs MessagePack. Not the starting point for 'my app is slow' - measure first with the diagnostics skill."
+description: "Use when a .NET type sits on a hot path or picking a serialization format - struct vs class, Span, ValueTask, JSON vs Protobuf. Not for 'my app is slow'."
 ---
 
 # dotnet-performance (decision layer)
@@ -10,6 +10,11 @@ Two performance-aware design calls that are cheap to get right up front and expe
 - Type allocation / memory layout -> `references/type-design.md`
 - Serialization-format choice -> `references/serialization.md`
 - .NET Framework 4.8 caveats (the 'slow span', NuGet-only fast-path packages) -> `references/net-framework-48.md`
+
+## When to use
+
+- Also fires on: high-throughput loop, allocations, MessagePack.
+- Not the starting point for 'my app is slow' - measure first with the diagnostics skill.
 
 ## Measure first
 

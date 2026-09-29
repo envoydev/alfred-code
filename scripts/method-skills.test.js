@@ -142,9 +142,15 @@ test('the skill-writing habit is the sixth habit, in the core, and says what a s
     // R121: every opener the house descriptions use is one the habit allows.
     assert.ok(flat.includes('`Load when`'), 'the Load when opener is allowed');
     // Review I3: the frontmatter facts every skill needs live here, where every install has them.
-    for (const fact of ['1% of the context window', 'skillListingBudgetFraction', '1,536', '`when_to_use`', 'defaults to the folder name',
-        '`disable-model-invocation: true`', '`user-invocable: false`', 'the documentation server'])
+    // 2.1.2: the listing budget and the per-entry cap are version-coupled, so the habit points at the
+    // docs page to read at use instead of pinning a number, and states the house cap (lint 15c) and
+    // the shape that fits under it.
+    for (const fact of ['At most 160 characters', 'https://code.claude.com/docs/en/skills', 'never from memory', '`when_to_use`',
+        'One short `Not for` boundary, and only where it stops a real mis-fire', '`## When to use` section of the body',
+        'defaults to the folder name', '`disable-model-invocation: true`', '`user-invocable: false`'])
         assert.ok(flat.includes(fact), `the habit states '${fact}'`);
+    for (const pinned of ['1% of the context window', '1,536'])
+        assert.ok(!flat.includes(pinned), `the habit reads the budget at use, never pins '${pinned}'`);
     const recs = JSON.parse(read('meta/recommendations.json'));
     assert.ok(recs.always.skills.includes('alfred-habits-skill-writing'), 'seeded in the always set, like the other five');
     assert.match(read('setup-plugin/references/walk.md'), /the seven `alfred-habits-\*` habits/, 'the walk counts seven habits - the commit checkpoint joined them in the rename');

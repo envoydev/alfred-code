@@ -1,6 +1,6 @@
 ---
 name: dotnet-aspire
-description: "Load when scaffolding or editing an AppHost or ServiceDefaults, declaring resources and references, wiring discovery, or when the user says Aspire, AppHost, AddProject, WithReference, service discovery, or Aspire dashboard. .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard. Services floor at .NET 8 / C# 12. Do NOT load for non-Aspire projects, production deployment, or publishing images - those are the DevOps skill's."
+description: "Load when scaffolding or editing an AppHost or ServiceDefaults - Aspire, AddProject, WithReference, service discovery. Not for production deploys or images."
 ---
 
 # .NET Aspire - local orchestration
@@ -12,6 +12,12 @@ Aspire is two cooperating pieces, and this skill is about both:
 - **ServiceDefaults**, a shared library every service calls into for the cross-cutting plumbing.
 
 The cross-cutting plumbing itself - OpenTelemetry exporters, the health-check probes, the resilience handlers - is configured by the skill covering the ASP.NET Core cross-cutting baseline (typed options, resilience, observability), where the install has one; without it, keep the defaults the templates ship and change one knob at a time with the reason recorded. ServiceDefaults is just the composition point where they all get registered in one call. This skill owns the orchestration; it does not re-teach what goes inside the defaults.
+
+## When to use
+
+- Also fires on: declaring resources and references, wiring discovery.
+- .NET Aspire conventions for local cloud-native orchestration - the AppHost that declares the topology, the shared ServiceDefaults extension every service calls once, name-based service discovery, AppHost-injected connection strings, and the developer dashboard.
+- Do NOT load for non-Aspire projects, production deployment, or publishing images - those are the DevOps skill's.
 
 ## What Aspire is and is not
 

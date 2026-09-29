@@ -1,11 +1,19 @@
 ---
 name: sqlite
-description: "Use when the work touches a SQLite database - a `.db` file, a PRAGMA, an embedded/desktop/mobile/test store, or an EF Core SQLite provider quirk. The SQLite-specific delta on top of the cross-engine database hub: when SQLite fits, the single-writer / WAL concurrency model and busy-timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables and date/bool storage, limited ALTER TABLE and the table-rebuild, connection-per-thread and in-memory test DBs, B-tree-only indexing, FTS5, and backup. Not the cross-engine schema and transaction rules - those are the hub skill, loaded first - and not a server-class concurrent-writer workload, which is the PostgreSQL skill."
+description: "Use when the work touches SQLite - a .db file, a PRAGMA, an embedded or test store, an EF Core SQLite quirk. Not for server-class concurrent writers (Postgres)."
 ---
 
 # sqlite (engine specialist)
 
 The SQLite-specific layer. **Cross-engine conventions - schema design, migrations, indexing and transaction rules, connection handling - are the cross-engine database hub's; load that hub first where the install has it, and do not restate it.** The EF Core side is the ORM-side skill's (EF Core / Dapper). This is only what changes *because the engine is SQLite*, and stands on its own when the hub is absent.
+
+## When to use
+
+Use when the work touches a SQLite database - a `.db` file, a PRAGMA, an embedded/desktop/mobile/test store, or an EF Core SQLite provider quirk.
+
+The SQLite-specific delta on top of the cross-engine database hub: when SQLite fits, the single-writer / WAL concurrency model and busy-timeout, PRAGMAs (foreign_keys, journal_mode, synchronous), type affinity vs STRICT tables and date/bool storage, limited ALTER TABLE and the table-rebuild, connection-per-thread and in-memory test DBs, B-tree-only indexing, FTS5, and backup.
+
+Not the cross-engine schema and transaction rules - those are the hub skill, loaded first - and not a server-class concurrent-writer workload, which is the PostgreSQL skill.
 
 ## When it fits
 

@@ -1,6 +1,6 @@
 ---
 name: dotnet-diagnostics
-description: "Use when benchmarking a .NET hot path (BenchmarkDotNet) or when a process crashed, hung or leaks memory: capture a dump with dotnet-dump / dotnet-gcdump and do first-look SOS analysis. CoreCLR only. Not for CPU profiling, APM or distributed tracing."
+description: "Use when benchmarking a .NET hot path (BenchmarkDotNet) or debugging a crash, hang or memory leak with dotnet-dump. Not for CPU profiling or tracing."
 ---
 
 # dotnet-diagnostics (decision layer)
@@ -9,6 +9,11 @@ Two ways to put numbers on a .NET process instead of guessing: benchmark a hot p
 
 - Time a hot path / compare two implementations -> `references/microbenchmarking.md`
 - A process crashed, hung, or is leaking - capture and read a dump -> `references/dumps.md`
+
+## When to use
+
+- Captures a dump with dotnet-dump / dotnet-gcdump and does first-look SOS analysis. CoreCLR only.
+- Not for CPU profiling, APM or distributed tracing.
 
 ## Measure first
 

@@ -1,6 +1,6 @@
 ---
 name: database-conventions
-description: "Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index. Database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Deeper work routes out per engine and per stack - the body names each route and what to do when the project installed none of them. Do NOT load for app-only in-memory data structures or a project with no persistence layer."
+description: "Load before designing or changing a schema, writing SQL raw or via an ORM, or adding a migration, view, procedure or index. Not for in-memory data structures."
 ---
 
 # Database conventions
@@ -10,6 +10,14 @@ For engine-specific syntax or feature support not pinned down here, resolve it w
 A database is the one part of a system where a careless change is permanent: a dropped column takes its data with it, a missing index turns a query into a table scan under load, an unbounded result set is a memory incident waiting for the row count to grow. These conventions are the engine-neutral defaults that keep that from happening; the deep, engine-specific work routes to the companions cited per section.
 
 **SQL writing style is authoritative in `references/sql-style.md`** - casing, formatting and layout, naming style, query construction, data-type choice, NULL handling, dialect portability, and the per-engine cheat-sheet (PostgreSQL / SQL Server / SQLite). This SKILL.md owns schema design and operational safety (schema, migrations, indexes, transactions, connections); where the two overlap on naming, query safety, or engine data types, the style reference wins. **Above both, a project's own SQL style - a co-located `SQL_STYLE.md` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.**
+
+## When to use
+
+Load before designing or modifying a schema, writing SQL raw or through an ORM, modeling a document store, or creating a migration, view, procedure, or index.
+
+Database conventions across Postgres, SQL Server/T-SQL, SQLite, and MongoDB - the engine-neutral rules for schema design, migrations, indexes, foreign keys, transactions, connection management, query safety, N+1 prevention, and secret handling, plus the per-engine pitfalls that bite. Deeper work routes out per engine and per stack - the body names each route and what to do when the project installed none of them.
+
+Do NOT load for app-only in-memory data structures or a project with no persistence layer.
 
 ## Choosing a store
 

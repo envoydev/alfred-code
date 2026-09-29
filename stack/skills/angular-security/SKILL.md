@@ -1,11 +1,17 @@
 ---
 name: angular-security
-description: "Load when hardening or reviewing an Angular web feature for security: XSS and bypassSecurityTrust, innerHTML, CSP nonces, CSRF/XSRF, secrets in the bundle, auth-token storage, SSR leaks, open redirects, vulnerable npm packages. Not for non-security work or the mobile native surface."
+description: "Load when hardening or reviewing Angular web security - XSS, bypassSecurityTrust, CSP nonces, XSRF, token storage, SSR leaks. Not for non-security or mobile."
 ---
 
 # Angular / web frontend security
 
 Angular escapes interpolated values by output context by default, so the classic reflected XSS is closed out of the box. The vulnerabilities are where you leave that path, trust the client with something it should not hold, or reach a DOM sink Angular never saw. This is the client-side map; it pairs with the security review of a live diff (`/security-review`, which the pre-commit checkpoint runs on an auth, token or data-access change) and with the skill covering server-side .NET hardening, where the install has one. Treat every value that crossed a trust boundary - an API response, a route param, a deep link, a postMessage - as hostile until proven otherwise.
+
+## When to use
+
+Load when hardening or reviewing an Angular web feature for security: XSS and bypassSecurityTrust, innerHTML, CSP nonces, CSRF/XSRF, secrets in the bundle, auth-token storage, SSR leaks, open redirects, vulnerable npm packages.
+
+Not for non-security work or the mobile native surface.
 
 ## XSS and the sanitizer bypass
 

@@ -1,11 +1,17 @@
 ---
 name: alfred-habits-commit-checkpoint
-description: "Use before any non-trivial git commit, git push or gh pr merge - 'commit this', 'ready to commit', 'push it', 'open the PR', 'merge it' - or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt. The pre-commit checkpoint (formatter, code review, the security review on auth, secret, crypto, payment and data-access paths) and the receipts the commit guard reads. Not for the done gate before it, which proves the change works, or the commit message's shape, which the git baseline owns."
+description: "Use before a non-trivial git commit, git push or gh pr merge - 'commit this', 'push it', 'open the PR'. Not for the done gate, which proves the change works."
 ---
 
 # Commit checkpoint - the gate before a commit or a publish
 
 The protocol `baseline-git.md` points at: what runs before a non-trivial commit, the exemptions, the receipt the `guard-ungated-commit` hook reads at commit time, and the same ceremony for `git push` / `gh pr merge`. The commit-message shape and the branch discipline stay in the rule. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
+
+## When to use
+
+- Fires before any non-trivial git commit, git push or gh pr merge - 'commit this', 'ready to commit', 'push it', 'open the PR', 'merge it' - or when the commit guard denies one for a missing COMMIT-GATE or PUSH-GATE receipt.
+- The pre-commit checkpoint (formatter, code review, the security review on auth, secret, crypto, payment and data-access paths) and the receipts the commit guard reads.
+- Not for the done gate before it, which proves the change works, or the commit message's shape, which the git baseline owns.
 
 ## Pre-commit checkpoint
 

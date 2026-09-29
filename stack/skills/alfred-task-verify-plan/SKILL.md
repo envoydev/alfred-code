@@ -1,6 +1,6 @@
 ---
 name: alfred-task-verify-plan
-description: "Use to audit an implementation plan or design before writing code: checks it names the stack's non-obvious traps, matches the scope, covers edge and safety cases, and stays minimal. Triggers on review this plan, is this design sound, does the plan miss anything, before I build. Not the built-code review (alfred-task-verify-code)."
+description: "Use to audit a plan or design before writing code - 'review this plan', 'is this design sound', 'does the plan miss anything'. Not the built-code review."
 ---
 
 # Verify Plan - a risk-coverage audit of a plan before you build
@@ -13,6 +13,8 @@ Audit inline in this chat, the five passes below. On an agents request, dispatch
 
 ## When to use / not
 
+- Checks the plan names the stack's non-obvious traps, matches the scope, covers edge and safety cases, and stays minimal.
+- Triggers also on 'before I build'.
 - Use it the moment a plan exists and before implementation starts - especially for anything with a boundary, state, auth, migration, or concurrency surface. The plan file is the whole input: a fresh session (or a different model) audits it as well as the chat that designed it - and independent eyes on the page are the point.
 - Not code review - that is `alfred-task-verify-code`, after the build.
 - Not plan *creation* - that is `alfred-task-design` (`alfred-habits-plan-writing` is the format), after `alfred-habits-clarify` settles an ambiguous ask. This audits a plan that already exists.

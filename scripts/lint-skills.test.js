@@ -1176,6 +1176,27 @@ test('an agent description is capped at 300 chars', () =>
     assert.deepStrictEqual(lintAgentDescription('agents/a.md', undefined), [], 'no description is check 1\'s finding, not this one');
 });
 
+// 2.1.2 (live check F3, 2026-09-29): a 200K-window session logged 'Skill listing over budget: 39 skills,
+// 19901 chars > 8000' - the listing budget is 1% of the context window, so Claude Code dropped the
+// descriptions that carry the trigger words. A skill description (plus any `when_to_use`, which the listing
+// appends to it) is capped at 160 chars; the rest lives in the skill body.
+test('a skill description plus its when_to_use is capped at 160 chars', () =>
+{
+    const { lintSkillDescription, SKILL_DESC_LIMIT } = require('./lint-skills.js');
+    assert.strictEqual(SKILL_DESC_LIMIT, 160);
+    assert.deepStrictEqual(lintSkillDescription('skills/a/SKILL.md', 'x'.repeat(159)), [], 'one under');
+    assert.deepStrictEqual(lintSkillDescription('skills/a/SKILL.md', 'x'.repeat(160)), [], 'at the cap');
+    const over = lintSkillDescription('skills/a/SKILL.md', 'x'.repeat(161));
+    assert.strictEqual(over.length, 1, 'one over');
+    assert.match(over[0], /skills\/a\/SKILL\.md description is 161 chars \(> 160\)/);
+    assert.match(over[0], /## When to use/, 'the finding says where the rest goes');
+    assert.deepStrictEqual(lintSkillDescription('skills/a/SKILL.md', 'x'.repeat(100), 'y'.repeat(60)), [], 'description + when_to_use at the cap');
+    const both = lintSkillDescription('skills/a/SKILL.md', 'x'.repeat(100), 'y'.repeat(61));
+    assert.strictEqual(both.length, 1, 'the listing appends when_to_use, so the pair is what is capped');
+    assert.match(both[0], /description \+ when_to_use is 161 chars \(> 160\)/);
+    assert.deepStrictEqual(lintSkillDescription('skills/a/SKILL.md', undefined), [], 'no description is check 1\'s finding, not this one');
+});
+
 // Review A, M7: the 300-char cut dropped the seat to use instead from three 'Do NOT use' clauses; where the cap has
 // room, the alternative is named.
 test('a capped agent description still names the seat to use instead', () =>

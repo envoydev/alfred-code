@@ -1,11 +1,17 @@
 ---
 name: alfred-habits-root-cause
-description: "Use when anything fails and its cause is not yet proven, BEFORE the first fix is written - a red test, a build or compile error, a stack trace, an exception, a crash, a flaky or intermittent failure, a regression, wrong output, 'it worked yesterday' - and again when a fix did not hold. The debugging method that proves the cause before any change is made to fix it. Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job."
+description: "Use when a failure's cause is unproven, before the first fix - red test, build error, stack trace, flaky run. Not for known signatures, which catalogs own."
 ---
 
 # Root cause - one hypothesis, one change, then the fix
 
 A fix aimed at a symptom moves the failure somewhere nobody is looking. This is the loop every diagnosis in the stack runs on: the diagnoser seats preload it, the build and test resolvers localize with it, and the investigation flow proves its root cause through it. It finds the cause and says where the fix belongs; who writes the fix is the caller's scope. The loop runs on the obvious one-liner and under time pressure too - a simple bug is one fast pass, not a skipped one.
+
+## When to use
+
+- Fires BEFORE the first fix is written, for: a red test, a build or compile error, a stack trace, an exception, a crash, a flaky or intermittent failure, a regression, wrong output, 'it worked yesterday' - and again when a fix did not hold.
+- The debugging method that proves the cause before any change is made to fix it.
+- Not for what a known failure signature usually means, which the signature catalogs cover, or a whole investigation from scattered evidence (logs, monitors, a customer report), which is the gated diagnose flow's job.
 
 ## The loop
 

@@ -1,12 +1,18 @@
 ---
 name: alfred-task-build-from-scratch
-description: "Build a new application or major module from scratch. Use when the user asks to build from scratch, start a new project or app, go greenfield, or scaffold - before any code exists; manual, /-only. DESIGN runs IN-SESSION on Opus (checked at run start - a frontmatter pin lasts one turn): the spec becomes 2-3 reasoned architecture options and the user picks, and nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice, through the domain seats or in-session per the run-start ask. Not for changing an existing codebase - a feature inside a live app is `alfred-task-solve-cross`, a new module in an existing repo is the alfred-capture-architecture capture plus that stack's solution-designer."
+description: "Use when asked to build from scratch, start a new app or go greenfield - before any code exists. Manual, /-only. Not for changing an existing codebase."
 disable-model-invocation: true
 ---
 
 # Project Build From Scratch - Greenfield Design, Scaffold, Build
 
 Use this skill to build a new application or a major new module from scratch, before code exists. The design happens here, in-session - there is no dispatched greenfield seat: with no code to read, a design pass reasons from the spec that is already in this conversation, and its options come back to the user anyway. This skill carries NO `model` pin for that DESIGN turn, deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model (measured: invocations ran on the session model, while agent-level pins in the same session held exactly), so check the session model at run start: when it is not Opus, say so in the opening line, so the switch to `/model` Opus can happen before the options are reasoned. After the user's pick the session can drop to a cheaper model, which is fine: scaffold and build are dispatch mechanics.
+
+## When to use
+
+- Build a new application or major module from scratch, also on 'scaffold'; manual, /-only.
+- DESIGN runs IN-SESSION on Opus (checked at run start - a frontmatter pin lasts one turn): the spec becomes 2-3 reasoned architecture options and the user picks, and nothing is scaffolded before that pick. Then the stack's real new-project command + baseline wiring, then the build slice by slice, through the domain seats or in-session per the run-start ask.
+- Not for changing an existing codebase - a feature inside a live app goes to the cross-domain task flow, and a new module in an existing repo is the architecture capture plus that stack's solution-designer.
 
 ## Steps
 

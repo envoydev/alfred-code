@@ -1,6 +1,6 @@
 ---
 name: dotnet-openapi
-description: "Use before adding API docs, editing the generated spec, declaring a security scheme, or standing up a Swagger / Scalar docs UI on an ASP.NET Core service - Swashbuckle, NSwag, Microsoft.AspNetCore.OpenApi (AddOpenApi / MapOpenApi), transformers, versioned documents. Floors at .NET 8 / C# 12. Do NOT use for non-HTTP code, internal APIs with no published contract, or the auth pipeline the scheme describes (the .NET authentication skill)."
+description: "Use before adding API docs, editing the spec or standing up Swagger/Scalar on ASP.NET Core - Swashbuckle, NSwag, AddOpenApi. Not for non-HTTP code or auth."
 ---
 
 # ASP.NET Core OpenAPI - the document and the docs UI
@@ -8,6 +8,11 @@ description: "Use before adding API docs, editing the generated spec, declaring 
 OpenAPI is two separate concerns that get conflated: producing a faithful machine-readable description of the API, and rendering that description as something a human can click through. This skill owns both. The endpoint declarations the document is generated *from* - route groups, filters, `.WithName()`, the typed results - belong to whichever skill covers your endpoint surface; here we assume those exist and concentrate on turning them into an accurate spec and a usable UI. Floor is .NET 8 / C# 12.
 
 The single discipline that runs through everything below: the document is generated, never hand-written. You shape the endpoints and the metadata, and the pipeline derives the spec. A spec edited by hand drifts from the running code the first time anyone forgets to update it.
+
+## When to use
+
+- Also fires on: editing the generated spec, declaring a security scheme, transformers, versioned documents, MapOpenApi.
+- Do NOT use for non-HTTP code, internal APIs with no published contract, or the auth pipeline the scheme describes (the .NET authentication skill).
 
 ## Pick one generator, by framework floor
 

@@ -1,6 +1,6 @@
 ---
 name: alfred-issue-diagnoser
-description: "Use to investigate a failure of any kind in THIS chat, from whatever evidence you actually have - a pasted error-monitor event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow. Four gated steps: triage the evidence to a tier, gather (inline or evidence-gatherer seats), prove the root cause, then a user fork - write a report, plan the fix as contracted tasks, or add log points and re-run. Read-only throughout: it never writes the fix. Trigger on investigate this bug, diagnose this failure, what is causing this, triage this report. Not the fix build (alfred-task-solve takes the tasks from here), not a signature lookup you already have the answer for."
+description: "Use to investigate a failure in this chat from any evidence - an error event, logs, red CI, a stack trace, a screenshot, 'what is causing this'. Read-only."
 disable-model-invocation: true
 ---
 
@@ -10,6 +10,13 @@ One reported failure, four steps, the user holds the gate between them. This ski
 chain, the stops, the evidence accounting, and the fork at the end; the catalogues and the
 seats do the specialist work. It is READ-ONLY from start to finish - no step here writes code,
 so no approval stamp and no commit gate come into play.
+
+## When to use
+
+- Evidence can be a pasted error-monitor event, one log file, several log sources at once, a red CI run, a stack trace, a screenshot, or nothing but a customer saying checkout is slow.
+- Four gated steps: triage the evidence to a tier, gather (inline or evidence-gatherer seats), prove the root cause, then a user fork - write a report, plan the fix as contracted tasks, or add log points and re-run.
+- Read-only throughout: it never writes the fix. Triggers also on 'investigate this bug', 'diagnose this failure', 'triage this report'.
+- Not the fix build (alfred-task-solve takes the tasks from here), not a signature lookup you already have the answer for.
 
 ## Evidence tiers - name the tier, carry it as the confidence label
 

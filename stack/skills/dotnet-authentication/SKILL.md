@@ -1,6 +1,6 @@
 ---
 name: dotnet-authentication
-description: "Load before standing up a sign-in flow, wiring JWT bearer, cookies or OpenID Connect, adding ASP.NET Identity, writing an authorization policy or handler, or protecting an endpoint - ASP.NET Core authentication (who the caller is) and authorization (what they may do). Floors at .NET 8 / C# 12. Do NOT load for the OWASP hardening sweep, secret placement, or crypto primitives - the .NET application-security and cryptography skills own those."
+description: "Load before wiring sign-in, JWT bearer, cookies, OpenID Connect, ASP.NET Identity or authorization policies. Not for OWASP sweeps or crypto."
 ---
 
 # ASP.NET Core authentication and authorization
@@ -8,6 +8,11 @@ description: "Load before standing up a sign-in flow, wiring JWT bearer, cookies
 Two questions, never one. **Authentication** answers who the caller is and hands you a `ClaimsPrincipal`. **Authorization** answers what that principal may do. The framework keeps them as separate middlewares - `UseAuthentication()` then `UseAuthorization()`, in that order - and so should your thinking. A 401 means the framework could not establish identity; a 403 means it knows who you are and the answer is still no.
 
 Baseline is .NET 8 / C# 12. On .NET Framework 4.8 the OWIN / Katana + ASP.NET Identity 2.x auth stack is in `references/net-framework-48.md`.
+
+## When to use
+
+- ASP.NET Core authentication (who the caller is) and authorization (what they may do). Also fires on: standing up a sign-in flow, an authorization handler, protecting an endpoint.
+- Do NOT load for the OWASP hardening sweep, secret placement, or crypto primitives - the .NET application-security and cryptography skills own those.
 
 ## Pick the scheme from the surface
 

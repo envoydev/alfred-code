@@ -1,11 +1,19 @@
 ---
 name: database-security
-description: "Load when hardening or reviewing a SQL / data-persistence feature, when a security sweep reaches the data stack, or on asks like 'is this query injectable' or 'can one tenant read another's rows'. SQL / data-layer security-hardening reference, organized by the persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. The body names each deeper route and what to do when the project installed none of them. Do NOT load for non-security work."
+description: "Load when hardening or security-reviewing SQL or data-layer code - 'is this query injectable', 'can one tenant read another's rows'. Not for non-security work."
 ---
 
 # SQL / data-layer security
 
 The database is the crown jewels and the last line of defense - by the time a request reaches it, every app-layer control has either held or failed. This is the persistence-layer map: how injection, over-privilege, tenant leakage, and secret handling show up at the SQL boundary and what to do about each. It pairs with the .NET application-security hardening skill (the app-layer EF and access-control surface; the ORM mechanics behind it are the .NET data-access skill's), the .NET cryptography-primitives skill (KDF, AES-GCM, constant-time compare) and the .NET migration-workflow skill (the reversible, data-loss-safe migration workflow) - each where the install has it. The rule under all of it: the database enforces its own security, because an app bug should not become a full-table breach.
+
+## When to use
+
+Load when hardening or reviewing a SQL / data-persistence feature, when a security sweep reaches the data stack, or on asks like 'is this query injectable' or 'can one tenant read another's rows'.
+
+Covers, by persistence threat surface: SQL injection closed at every sink, least-privilege database accounts, row-level security and tenant isolation (the data-layer IDOR), secrets kept out of connection strings, encryption at rest and in transit, sensitive-data exposure and masking, and audit logging that never records the secret. The body names each deeper route and what to do when the project installed none of them.
+
+Do NOT load for non-security work.
 
 ## Injection - close every sink
 

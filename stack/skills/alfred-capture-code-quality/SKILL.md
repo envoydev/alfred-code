@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-code-quality
-description: "Use when the user asks to assess, audit or judge the code quality, or which of the project's own quality rules the code breaks - a tiered, gated assessment against the numbered prompts under the loops folder, the convention rules and the recorded code style, every finding tied to its file:line and rule, recomputed fresh each run into quality/CODE-ASSESSMENT.md. Deliberate only, never mid-build; fixes nothing and never writes the decision log. Not for fixing the findings (/alfred-loop-quality), the architecture (alfred-capture-architecture-quality), test coverage (the coverage capture), recording the code style (alfred-capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (alfred-task-verify-code)."
+description: "Use when asked to assess, audit or judge the code quality or which of the project's quality rules the code breaks. Deliberate only. Not for fixing findings."
 ---
 
 # Code Quality Capture - Judge the Code Against Its Rules (Deliberate)
@@ -16,6 +16,12 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 **No first-run/update split, no zero-drift shortcut.** Every run reads fresh and writes fresh - a changed rule, an accepted decision or a shipped fix changes the answer even when the code did not.
 
 **Model check, at run start rather than after.** The judgment is the expensive kind, and this skill carries NO `model` pin, deliberately: a skill-level pin lasts only for the turn it activates in, so set the session itself to Opus with `/model` before a run. When this session is not on Opus, say so in the first thing the user sees (inside the mode ask where one fires, otherwise the opening line); the REPORT step's `Model:` line closes the loop.
+
+## When to use
+
+- A tiered, gated assessment against the numbered prompts under the loops folder, the convention rules and the recorded code style; every finding is tied to its file:line and rule and recomputed fresh each run into `quality/CODE-ASSESSMENT.md`.
+- Deliberate only, never mid-build; fixes nothing and never writes the decision log.
+- Not for fixing the findings (/alfred-loop-quality), the architecture (alfred-capture-architecture-quality), test coverage (the coverage capture), recording the code style (alfred-capture-code-style), a security audit (/security-review or the security-auditor seat) or one diff (alfred-task-verify-code).
 
 ## Execution modes
 

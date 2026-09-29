@@ -1,11 +1,16 @@
 ---
 name: csharp-design-patterns
-description: "Apply GoF design patterns idiomatically in C#. Use when implementing, choosing, comparing or reviewing a pattern, or when a design problem (object creation sprawl, switch-on-type logic, tight coupling, undo/redo, plugins) needs one. Not for architectural patterns like repository, CQRS or layering."
+description: "Use when implementing, choosing or reviewing a GoF design pattern in C#, or for switch-on-type, coupling, undo/redo. Not for repository or CQRS."
 ---
 
 # C# Design Patterns
 
 Guidance for selecting and implementing design patterns in modern C#/.NET. Content is structured after refactoring.guru (intent, applicability, pros and cons) and dofactory (.NET-optimized variants that use framework features instead of hand-rolled GoF structure).
+
+## When to use
+
+- Apply GoF design patterns idiomatically in C#. Problem shapes that call for one: object creation sprawl, switch-on-type logic, tight coupling, undo/redo, plugins.
+- Not for architectural patterns like repository, CQRS or layering.
 
 ## Core principles
 

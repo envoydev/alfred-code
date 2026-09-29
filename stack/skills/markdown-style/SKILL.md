@@ -1,6 +1,6 @@
 ---
 name: markdown-style
-description: "Markdown authoring and review skill - the two-layer rule set (syntax canon = valid, portable Markdown from the Markdown Guide; style overlay = opinionated house form from Google's style guide) plus the review procedure. Load when authoring or restructuring any .md (README, ADR, runbook, how-to, design doc) or on an explicit 'lint / style-check / fix this markdown', 'ATX vs setext', 'should I use a TOC?', or 'fix the headings / list indentation' ask. Markdown form only - not prose clarity (that is Vale) or spelling (codespell / hunspell)."
+description: "Load when authoring or restructuring any .md, or on 'lint / style-check / fix this markdown', 'ATX vs setext', 'use a TOC?'. Not for prose clarity or spelling."
 ---
 
 # markdown-style
@@ -18,6 +18,14 @@ and do not re-load it for the next `.md` - it is already in context. Neither `re
 opened unless a specific rule the two quick-reference tables do not settle is actually in dispute
 (measured: one session carried this skill across 11 messages for 1.6M cache-read tokens - ~52% of
 that session's whole cache-read, for a single style check on one file).
+
+## When to use
+
+Load when authoring or restructuring any .md (README, ADR, runbook, how-to, design doc) or on an explicit 'lint / style-check / fix this markdown', 'ATX vs setext', 'should I use a TOC?', or 'fix the headings / list indentation' ask.
+
+The two-layer rule set (syntax canon = valid, portable Markdown from the Markdown Guide; style overlay = opinionated house form from Google's style guide) plus the review procedure.
+
+Markdown form only - not prose clarity (that is Vale) or spelling (codespell / hunspell).
 
 ## How to run a review
 

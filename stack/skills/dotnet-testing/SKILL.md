@@ -1,6 +1,6 @@
 ---
 name: dotnet-testing
-description: "Use before writing, modifying, or reviewing .NET tests, auditing test quality or smells, running mutation testing, or configuring coverage - do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library. Defaults are xUnit, NSubstitute and FluentAssertions 7.x; coverage mechanics, library routing, Testcontainers, Aspire integration and snapshot testing are in `references/`. Floors at .NET 8 / C# 12. Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those."
+description: "Use before writing, changing or reviewing .NET tests, auditing test quality, mutation testing or coverage. Not for Angular, Ionic or plain TS/JS tests."
 ---
 
 # .NET Testing Approach
@@ -8,6 +8,12 @@ description: "Use before writing, modifying, or reviewing .NET tests, auditing t
 This skill captures the **approach**, not a single library. The principles below apply regardless of which test runner, substitute library, or assertion library a project picks. Library routing is in §Library choices.
 
 **Floor: .NET 8 / C# 12.** Testing classic ASP.NET on .NET Framework 4.8 (in-memory OWIN `TestServer`, `HttpContextBase`) is `references/net-framework-48.md`.
+
+## When to use
+
+- Do not rely on recall. The .NET testing hub: the architecture-neutral approach for unit / integration / E2E tests, not a single library.
+- Defaults are xUnit, NSubstitute and FluentAssertions 7.x; coverage mechanics, library routing, Testcontainers, Aspire integration and snapshot testing are in `references/`.
+- Do NOT load for Angular or Ionic tests, or for plain TS/JS outside a framework harness - the Angular and the TypeScript/JavaScript testing skills own those.
 
 ## Test strategy by responsibility (architecture-neutral)
 

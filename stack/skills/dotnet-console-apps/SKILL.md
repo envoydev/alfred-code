@@ -1,11 +1,17 @@
 ---
 name: dotnet-console-apps
-description: "Use when building a .NET CLI tool, a chat or trading bot, or a bot's command surface - or when the user names System.CommandLine, Spectre.Console, Cocona, Telegram.Bot, Discord.Net, SlackNet, CryptoExchange.Net, or a bot. Covers the console binary's interface: a one-shot CLI (argument parsing, subcommands, exit codes) or a long-running gateway bot or consumer run inside a BackgroundService. Floors at .NET 8 / C# 12. Do NOT use for the host lifecycle itself - that is the hosted-worker skill covering the generic host and `BackgroundService` - nor for a web API or webhook endpoint, or a desktop GUI."
+description: "Use when building a .NET CLI tool or chat/trading bot - System.CommandLine, Spectre.Console, Telegram.Bot. Not for host lifecycle, web APIs or GUIs."
 ---
 
 # .NET console apps - the CLI and bot interface surface
 
 A console binary is one of two things by its external interface: a **one-shot CLI tool** (parse arguments, do the work, return an exit code) or a **long-running gateway app** (a bot or consumer that stays connected and reacts to events). The generic host that runs the long-running kind - lifecycle, `BackgroundService`, graceful shutdown, and the 24/7 hardening: `HttpClient` pooling, resilience pipelines, rate limiting, `ClientWebSocket` reconnect, deployment - is the hosted-worker skill's. This skill assumes that skill is loaded alongside and, where the install lacks it, holds a bot to the floors under 'Bots and gateway consumers'. This skill owns the interface layer on top: how a CLI parses its command surface, and how each bot platform's SDK plugs into that host. Floor is .NET 8 / C# 12.
+
+## When to use
+
+- Also fires on: SlackNet, CryptoExchange.Net, a bot's command surface.
+- Covers the console binary's interface: a one-shot CLI (argument parsing, subcommands, exit codes) or a long-running gateway bot or consumer run inside a BackgroundService.
+- Do NOT use for the host lifecycle itself - that is the hosted-worker skill covering the generic host and `BackgroundService` - nor for a web API or webhook endpoint, or a desktop GUI.
 
 ## CLI argument parsing
 

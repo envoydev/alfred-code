@@ -1,6 +1,6 @@
 ---
 name: desktop-automation
-description: "Use when driving a native desktop app through the windows-desktop (Windows-MCP) or macos-desktop (MacOS-MCP) server - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one. Covers the observe, one action, verify loop, which app types give semantic control and which fall back to coordinates, the dialogs never to drive (elevation, credentials, payment, delete), keeping to the UI instead of shell, registry or file-system tools, and the setup failures (English display language, privilege level, Accessibility and Screen Recording). Not for a web page in a browser, which the browser server drives, or for writing the app's code or its UI tests, which the framework's own conventions cover."
+description: "Use when driving a native desktop app through the windows-desktop or macos-desktop server - clicking, typing, checking UI, reading a Snapshot or Click result."
 ---
 
 # Desktop automation - observe, one action, verify
@@ -14,6 +14,14 @@ Where the harness defers MCP tools (Claude Code), load them before the first cal
 on Windows, and on macOS
 `ToolSearch select:mcp__plugin_macos-desktop_macos-desktop__Snapshot,mcp__plugin_macos-desktop_macos-desktop__Click,mcp__plugin_macos-desktop_macos-desktop__Type,mcp__plugin_macos-desktop_macos-desktop__App`.
 Only one of the two servers is ever installed - each runs on its own OS only.
+
+## When to use
+
+Use when driving a native desktop app through the windows-desktop (Windows-MCP) or macos-desktop (MacOS-MCP) server - clicking, typing or checking UI in a WPF, WinForms, Win32, UWP, Office, Explorer, Java or native macOS app, or reading a Snapshot or Click result from one.
+
+Covers the observe, one action, verify loop; which app types give semantic control and which fall back to coordinates; the dialogs never to drive (elevation, credentials, payment, delete); keeping to the UI instead of shell, registry or file-system tools; and the setup failures (English display language, privilege level, Accessibility and Screen Recording).
+
+Not for a web page in a browser, which the browser server drives, or for writing the app's code or its UI tests, which the framework's own conventions cover.
 
 ## The loop
 

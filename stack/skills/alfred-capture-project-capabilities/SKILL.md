@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-project-capabilities
-description: "The deliberate run-book capture. Use when the user asks to capture the project capabilities or the run book - how to build, start, reach and log in to the app, the flows and edge cases a manual check exercises, the debug entry points - so an agent can run the app and hand-verify a change. Manual, /-only, re-run to refresh. It reads the repo first, asks only for the gaps, and writes project-capabilities/PROJECT-CAPABILITIES.md under the docs root plus the generated pointer rule baseline-project-run-book.md; a credential is recorded by where it lives, never by value. NOT the installed-tools inventory (the agent-capabilities capture), the architecture map or the code style."
+description: "Use when asked to capture the project capabilities or run book - how to build, start and log in to the app. Manual, /-only. Not for the tools inventory."
 disable-model-invocation: true
 ---
 
@@ -19,6 +19,12 @@ guessing. Two artifacts come out:
 
 The repo answers first; the user fills only what the repo cannot show. There is no judgment to spend
 beyond that, so the skill carries no model pin: the session's own model runs it.
+
+## When to use
+
+- The deliberate run-book capture: how to build, start, reach and log in to the app, the flows and edge cases a manual check exercises, the debug entry points - so an agent can run the app and hand-verify a change. Re-run to refresh.
+- It reads the repo first, asks only for the gaps, and writes `project-capabilities/PROJECT-CAPABILITIES.md` under the docs root plus the generated pointer rule `baseline-project-run-book.md`; a credential is recorded by where it lives, never by value.
+- Not the installed-tools inventory (the agent-capabilities capture), the architecture map or the code style.
 
 ## Credentials - the hard rule
 

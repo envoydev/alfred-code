@@ -1,6 +1,6 @@
 ---
 name: angular-material
-description: "Load when building UI with @angular/material or @angular/cdk - importing component modules, theming with mat.theme or the --mat-sys-* tokens, dark mode or density, restyling one Material component, reaching for a CDK primitive (virtual scroll, overlay, drag and drop, focus trap), or writing harness tests. Angular Material and CDK conventions for @angular/material 17+ - the library specifically, not generic Material Design 3 or @material/web. Not for general Angular CSS such as :host or ::ng-deep (the Angular styling skill), and skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material."
+description: "Load when building UI with @angular/material or @angular/cdk - mat.theme, --mat-sys-* tokens, CDK overlay, virtual scroll. Not for general Angular CSS."
 ---
 
 # Angular Material and CDK
@@ -8,6 +8,12 @@ description: "Load when building UI with @angular/material or @angular/cdk - imp
 This is the component-library layer: `@angular/material` (the Material 3 components) sitting on top of `@angular/cdk` (the unstyled behavior primitives). The framework itself - signals, change detection, standalone components, the testing setup - is the Angular conventions skill's and the language the TypeScript one's; load both alongside this where the install has them, and without them treat this file as Material-only and say so. The general CSS/styling layer that holds Material or not - `ViewEncapsulation`, `:host`, the `::ng-deep` ways out, the app's own design tokens, responsive strategy - is `angular-styling`; this skill owns only the Material-specific `mat.theme` and `--mat-sys-*` token work.
 
 Floor is `@angular/material` 17+ - standalone components are the default there. The single-mixin M3 theming API this skill teaches (`mat.theme`, the `--mat-sys-*` system tokens, the `mat.<component>-overrides` mixins) needs v19+; on v17-v18 read `references/versions.md` first. The post-v19 deltas that bite - the v20 `matButton` and raw-token renames, the v21 FocusTrap break, Angular Aria, Popover-based overlays - live in `references/versions.md`; check it when the workspace is past v19.
+
+## When to use
+
+Load when building UI with @angular/material or @angular/cdk - importing component modules, theming with mat.theme or the --mat-sys-* tokens, dark mode or density, restyling one Material component, reaching for a CDK primitive (virtual scroll, overlay, drag and drop, focus trap), or writing harness tests. Angular Material and CDK conventions for @angular/material 17+ - the library specifically, not generic Material Design 3 or @material/web.
+
+Not for general Angular CSS such as :host or ::ng-deep (the Angular styling skill), and skip for PrimeNG, Spartan UI, Ionic, or apps not using Angular Material.
 
 ## Import what you use, nothing more
 

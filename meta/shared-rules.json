@@ -1762,7 +1762,7 @@
       ]
     },
     "assessment-coverage-carve-out": {
-      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to alfred-capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill description because a live run flagged coverage as a weakness with the reference-only statement. Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
+      "_note": "The architecture assessment's coverage carve-out: test-suite weaknesses (coverage numbers, missing/weak tests, absent test infrastructure) belong to alfred-capture-test-coverage's COVERAGE.md, never ASSESSMENT.md - only the structural testability blocker stays. Canonical in doc-shape.md; restated at the JUDGE step and in the skill's '## When to use' section because a live run flagged coverage as a weakness with the reference-only statement (the description carried it until 2.1.2 capped descriptions at 160 chars, lint check 15c). Moved from alfred-capture-architecture to alfred-capture-architecture-quality when the findings judgment split out of the map capture.",
       "owner": {
         "file": "stack/skills/alfred-capture-architecture-quality/references/doc-shape.md",
         "marker": "Test-suite weaknesses are OUT OF SCOPE"

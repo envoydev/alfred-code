@@ -1,6 +1,6 @@
 ---
 name: alfred-task-implement
-description: "Use when you have a task plan and want to build it in this chat, task by task: honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review. Triggers on execute the plan, build the plan, implement task 2. Not for a plan-less ad-hoc edit, or the whole gated cycle from design to done (/alfred-task-solve)."
+description: "Use to build a task plan in this chat, task by task - 'execute the plan', 'build the plan', 'implement task 2'. Not for ad-hoc edits or the full gated cycle."
 ---
 
 # Project Implementer - execute a verified plan, task by task, in one chat
@@ -10,6 +10,11 @@ This is the build step of the single-session vertical: `alfred-task-design` prod
 The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 The plan FILE is the whole input - not the chat that produced it. Run this in a fresh session (or `/clear` between tasks) and the context stays at plan size instead of dragging the design run forward with every call - in a long build that carried conversation, not the tools, is the dominant token cost; the per-task ticks below make any task boundary a safe resume point.
+
+## When to use
+
+- You have a task plan and want to build it in this chat: it honors each task's contract, writes code + tests, gates each task green before the next, then hands to the build review.
+- Not for a plan-less ad-hoc edit, or the whole gated cycle from design to done (/alfred-task-solve).
 
 ## Build mode - this chat or the implementer seats
 

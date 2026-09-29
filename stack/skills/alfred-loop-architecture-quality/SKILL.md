@@ -1,6 +1,6 @@
 ---
 name: alfred-loop-architecture-quality
-description: "The deliberate architecture analyze-assess-improve loop. Use when the user asks to run the architecture quality loop or to analyze and improve the architecture; manual, /-only. It recaptures the structure map and the pros/cons findings every round, works the Must-fix weaknesses by tier - structural ones flagged for a user decision, never auto-applied - proposes but never writes any decision the run turns up, and loops until the fixable cons resolve or plateau. NOT for a code-quality polish (alfred-loop-quality), a single feature build (alfred-task-solve-cross), a capture-only run with no fixes (/alfred-capture-architecture alone), or test-suite and coverage weaknesses - the deliberate coverage analyze-and-improve loop covers those."
+description: "Use when asked to run the architecture quality loop or to analyze and improve the architecture. Manual, /-only. Not for code polish or a capture-only run."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,11 @@ disable-model-invocation: true
 You drive a deliberate loop that improves a project's architecture: analyze it, get a reasoned assessment, work the fixable weaknesses by tier, reconcile the map, and loop until the fixable ones are resolved or the loop plateaus. The assessment itself is never yours to write or prune - a separate deliberate capture recomputes it fresh every round. It runs only when a user invokes it (`/alfred-loop-architecture-quality`), never automatically - architecture analysis is expensive and its changes are consequential; the code-focused counterpart is `alfred-loop-quality`. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 Best run in Claude Code, where you can dispatch the analysis and build seats and edit files across rounds. On a large codebase, scope it - point it at one bounded context or module subtree per run. This skill carries NO `model` pin (the architecture judgment runs in-session, per the capture), deliberately: a skill-level `model` pin applies only for the rest of the turn in which the skill activates and is not saved to settings, so a multi-turn run returns to the session model (measured: three invocations ran on the session model, while agent-level pins held exactly), so set the session to Opus with `/model` for the run and switch back at the final report. The run-start mode ask carries the check: when the session is not on Opus, the ask says so - the switch happens before any judgment is spent, never discovered after.
+
+## When to use
+
+- The deliberate architecture analyze-assess-improve loop: it recaptures the structure map and the pros/cons findings every round, works the Must-fix weaknesses by tier - structural ones flagged for a user decision, never auto-applied - proposes but never writes any decision the run turns up, and loops until the fixable cons resolve or plateau.
+- Not for a code-quality polish (alfred-loop-quality), a single feature build (alfred-task-solve-cross), a capture-only run with no fixes (/alfred-capture-architecture alone), or test-suite and coverage weaknesses - the deliberate coverage analyze-and-improve loop covers those.
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence - a project can carry the agent files on disk with no Agent tool to dispatch them, which is still INLINE. Detection only names what is possible; the user picks: when dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - run the loop in the current session, or dispatch the stack seats? - then hold the answer for the run. No dispatch capability is INLINE without asking - never offer seats that cannot run. Every AskUserQuestion below falls back to plain-text options where the harness lacks the tool.

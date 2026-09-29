@@ -1,11 +1,19 @@
 ---
 name: npm
-description: "Professional npm usage for consuming and publishing packages. Fires on package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'. Covers lockfile and npm ci discipline, the supply-chain baseline (ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing. NOT for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground."
+description: "Use when working on package.json, package-lock.json or .npmrc, npm install/ci/publish, dependency updates or audits. Not for TypeScript style or CI authoring."
 ---
 
 # npm - professional consuming, securing, publishing
 
 npm's dominant risk is the supply chain: self-replicating worm campaigns (Shai-Hulud and successors, 2025-2026) spread through install-time scripts and stolen publish tokens across hundreds of packages. The defenses below are cheap and mechanical - treat them as the baseline, not as hardening for later. History, numbers, and the full tooling landscape: `references/supply-chain.md`.
+
+## When to use
+
+Use for consuming and publishing packages: package.json / package-lock.json / .npmrc work, npm install/ci/publish questions, dependency updates or vulnerability reports, supply-chain concerns, 'set up npm for this repo'.
+
+Covers lockfile and npm ci discipline, the supply-chain baseline (ignore-scripts, min-release-age, allow-git, OIDC publishing), honest npm-audit gating, peer-conflict resolution, and ESM-first publishing.
+
+Not for language-level TypeScript style or a framework's own conventions - those are their own skills where the project has them - or for authoring CI pipelines beyond npm's own steps, which is the pipeline-authoring skill's ground.
 
 ## Non-negotiables (any repo that has a package.json)
 

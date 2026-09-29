@@ -1,6 +1,6 @@
 ---
 name: dotnet-web-backend
-description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - this is the .NET web hub, loaded ahead of the focused companion that covers the how. Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis). Floors at .NET 8 / C# 12. Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers."
+description: "Use first for any ASP.NET Core, Web API, minimal API or microservice work - the .NET web hub. Not for console, CLI, desktop, daemon or message-only consumers."
 ---
 
 # .NET Web / HTTP Service Conventions
@@ -8,6 +8,12 @@ description: "Use first for any ASP.NET Core, Web API, minimal API or microservi
 This is the web hub - the first skill to load for any HTTP service, the place the cross-cutting concerns every ASP.NET Core app shares are decided once. It is deliberately architecture-neutral: it tells you how the HTTP client, validation, resilience, observability, and caching layers behave, and it sends you to a focused companion for endpoint mechanics, errors, OpenAPI, and auth. It mandates no particular architecture - that is a separate, deliberate choice covered below. Floor is .NET 8 / C# 12; anything that needs a later runtime is flagged.
 
 On .NET Framework 4.8 the classic pipeline (MVC 5 / Web API 2 / Web Forms) differs materially - the single-threaded request context, no `IHttpClientFactory`, the OWIN pipeline - see `references/net-framework-48.md`.
+
+## When to use
+
+- The .NET web hub, loaded ahead of the focused companion that covers the how.
+- Owns the architecture-neutral cross-cutting baseline every ASP.NET Core service shares: IHttpClientFactory, FluentValidation, resilience via Microsoft.Extensions.Http.Resilience, API versioning, typed options with startup validation (IOptions / ValidateOnStart), observability (structured logging, OpenTelemetry to OTLP, correlation IDs, health checks), and caching (IMemoryCache, HybridCache, Redis).
+- Do NOT use for console binaries, CLI tools, desktop apps, WPF/MAUI, daemons, or message-only consumers.
 
 ## Architecture - pick exactly one, here
 

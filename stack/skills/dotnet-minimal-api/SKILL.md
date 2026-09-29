@@ -1,11 +1,17 @@
 ---
 name: dotnet-minimal-api
-description: "Use before writing or editing ASP.NET Core minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Covers how an endpoint is shaped and wired, not what surrounds it: MapGroup registration, TypedResults and Results-of-T outcome unions, IEndpointFilter, parameter binding, endpoint metadata, and hardened IFormFile uploads. Floors at .NET 8 / C# 12; later additions are flagged optional. Do NOT use for MVC or API controllers (that is the controller-based Web API skill), gRPC, SignalR, or non-HTTP code."
+description: "Use before writing or editing ASP.NET Core minimal API endpoints - MapGet, MapPost, MapGroup, endpoint filters. Not for MVC controllers, gRPC or SignalR."
 ---
 
 # ASP.NET Core minimal API - endpoint mechanics
 
 This skill owns the shape of a minimal API endpoint: where it is registered, what it returns, how parameters bind, and how a cross-cutting concern hangs off it. It stops at the endpoint boundary. The pipeline-wide concerns - OpenAPI document generation, validation library choice, resilience, observability, response caching - belong to the ASP.NET Core cross-cutting hub, the failure-to-`ProblemDetails` contract to the HTTP error-handling skill, the docs UI to the OpenAPI skill, and auth configuration to the .NET authentication skill; the controller-based counterpart is the skill covering controller-based Web APIs. Where your skill list has none of them, the endpoint rules below still execute - keep the concern out of the lambda and report the surrounding wiring as unowned rather than inventing a second convention for it. Floor is .NET 8 / C# 12; anything newer is marked optional.
+
+## When to use
+
+- Covers how an endpoint is shaped and wired, not what surrounds it: MapGroup registration, TypedResults and Results-of-T outcome unions, IEndpointFilter, parameter binding, endpoint metadata, and hardened IFormFile uploads.
+- Later additions (beyond the .NET 8 floor) are flagged optional.
+- Do NOT use for MVC or API controllers (that is the controller-based Web API skill), gRPC, SignalR, or non-HTTP code.
 
 ## Where endpoints live
 

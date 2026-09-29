@@ -1,6 +1,6 @@
 ---
 name: dotnet-winforms
-description: "WinForms conventions for maintenance and modernization. Load before editing any Form, UserControl, code-behind, presenter, or .Designer.cs. Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests. Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface. Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno."
+description: "Load before editing any WinForms Form, UserControl, code-behind, presenter or .Designer.cs. Not for WPF, WinUI 3, MAUI, Avalonia or Uno."
 ---
 
 # WinForms conventions
@@ -24,6 +24,13 @@ Out of scope, by design: the async / nullable / mapping baseline -> `csharp`; de
 observer, and memento orchestration -> `csharp-design-patterns`; test framework + UI-automation
 mechanics -> `dotnet-testing`; the upgrade safety playbook (baseline, staged, rollback) ->
 `dotnet-migrate`.
+
+## When to use
+
+- WinForms conventions for maintenance and modernization.
+- Covers logic out of code-behind (MVP passive view for legacy, the .NET 8 MVVM binding engine for new), DI-resolvable forms, async/await with no UI-thread blocking, BindingSource + INotifyPropertyChanged binding, control/component/GDI disposal, PerMonitorV2 high-DPI, virtual-mode grids, presenter unit tests.
+- Floors new work at .NET 8 / C# 12 and covers 4.8 as the supported-but-frozen maintenance surface.
+- Do NOT load for WPF - that is the WPF conventions skill - nor for WinUI 3, MAUI, Avalonia, or Uno.
 
 ## Logic out of code-behind - the one rule everything rests on
 

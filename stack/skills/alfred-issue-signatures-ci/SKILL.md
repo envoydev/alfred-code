@@ -1,11 +1,19 @@
 ---
 name: alfred-issue-signatures-ci
-description: Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the alfred-issue-diagnoser-ci seat. Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline. Not a crash on your own machine (that is alfred-issue-signatures-runtime), not authoring CI/CD (the pipeline-authoring house skill covers that).
+description: "Use when CI or a PR check goes red - red CI, passes locally but fails in CI, NU1301, ERESOLVE, exit 137. Not for a local crash or authoring CI/CD."
 ---
 
 # CI Triage - turn a red pipeline into a verdict and a route
 
 A red check is not automatically a code bug. The highest-value call in CI triage is the red-in-CI, green-locally delta: is this a real defect CI merely surfaced first, or an environment / pin / config / workflow failure that never touched the code? Route a config or runner failure to a code fix and you thrash on code that was never wrong. This is the single-chat form of the alfred-issue-diagnoser-ci seat - match the failure to a signature, make that call, and route it, all in the current context. It is the CI sibling of the local-runtime signature catalogue (a crash on your own machine) and runs on `alfred-habits-root-cause` - read the full error, quote the part that matters, form one hypothesis, and prove it with a check before changing anything.
+
+## When to use
+
+Use when a CI pipeline or PR check goes red and you want to triage it yourself in the current chat - match the failure to a signature, make the call between a real code defect CI surfaced first and an environment / pin / config / workflow failure that never touched the code, and route it. The single-chat form of the CI diagnoser seat.
+
+Trigger on red CI, PR check failing, passes locally but fails in CI, NU1301, ERESOLVE, exit 137, workflow YAML broke, flaky pipeline.
+
+Not a crash on your own machine (that is the runtime failure-signatures skill), not authoring CI/CD (the pipeline-authoring house skill covers that).
 
 ## First: pull the right log, read the right line
 

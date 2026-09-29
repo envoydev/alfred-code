@@ -1,6 +1,6 @@
 ---
 name: dotnet-messaging
-description: "Use when wiring a message bus, an outbox, a saga or process manager, integration events, or background message processing in .NET - or when the user names Wolverine, MassTransit, RabbitMQ, Azure Service Bus, queue, or pub/sub. Covers broker-backed, event-driven communication between modules and services: the transactional outbox, idempotent consumers under at-least-once delivery, choreography versus sagas, versioned message contracts, and RabbitMQ or Azure Service Bus transports. Floors at .NET 8 / C# 12. Do NOT use for in-process reactive streams or for synchronous request/response over HTTP; the consumer's host process itself is the hosted-worker skill's."
+description: "Use when wiring a message bus, outbox, saga or integration events in .NET - Wolverine, MassTransit, RabbitMQ, Service Bus. Not for in-process streams or HTTP."
 ---
 
 # .NET messaging - event-driven communication
@@ -8,6 +8,12 @@ description: "Use when wiring a message bus, an outbox, a saga or process manage
 This is about durable, broker-backed messages crossing a process or module boundary asynchronously. The defining traits: the sender does not wait for the receiver, the broker persists the message, and delivery is at-least-once. Everything here exists to make that delivery model safe.
 
 Floor is .NET 8 / C# 12. What this skill does NOT cover: in-memory reactive streams (Rx / System.Reactive), and synchronous in-process cross-cutting concerns - HTTP, mediation, resilience pipelines - which belong to the ASP.NET Core cross-cutting hub. If the caller is awaiting a reply right now, it is not messaging. This skill owns the broker and the consumer contract - delivery, idempotency, retries; the generic *host* a consumer runs inside (the `BackgroundService`/worker process, its lifecycle and shutdown) belongs to the hosted-worker skill. Pushing a handled message's outcome to connected clients in real time (SignalR) is the server-to-client last hop, not broker delivery - that belongs to the real-time push skill.
+
+## When to use
+
+- Also fires on: process manager, background message processing, queue, pub/sub.
+- Covers broker-backed, event-driven communication between modules and services: the transactional outbox, idempotent consumers under at-least-once delivery, choreography versus sagas, versioned message contracts, and RabbitMQ or Azure Service Bus transports.
+- Do NOT use for in-process reactive streams or for synchronous request/response over HTTP; the consumer's host process itself is the hosted-worker skill's.
 
 ## Pick the library: Wolverine
 

@@ -1,6 +1,6 @@
 ---
 name: typescript
-description: Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing questions in checked .js files - the TypeScript type layer over the `javascript` baseline. Covers the strict flag set, modeling data with types, narrowing unknown instead of any, branded primitives, and checked JS via JSDoc and checkJs. Baseline is TypeScript 5+. Load `javascript` with it, the base-language layer this stacks on; in an Angular project also load the Angular framework-conventions skill, when your skill list has one - Angular template type-checking and component typing belong there, not here. Not for base-language rules alone (javascript) or C#/.NET.
+description: "Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing checked .js files. Not for base-language rules alone (javascript) or C#."
 ---
 
 # TypeScript conventions - the type layer
@@ -10,6 +10,15 @@ description: Load before writing or editing any .ts or .tsx file, for tsconfig w
 The single organizing idea: the compiler is the cheapest test you have. Configure it to be strict, describe your data so it can check the data, and never quietly disable it.
 
 **The concrete tooling and the rule-by-rule style live in `references/typescript-style.md`** - the tsconfig (`@tsconfig/strictest`), the ESLint flat config (typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`), Prettier, `.editorconfig`, and the naming / interface-vs-type / import / class-member rules those tools enforce. This SKILL.md owns the conceptual model below; where the two overlap, the reference is authoritative on the concrete rule. **Above both, a project's own config (its `.editorconfig`, `eslint.config.mjs`, `.prettierrc`, `tsconfig.json`) and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.**
+
+## When to use
+
+- Before writing or editing any `.ts` or `.tsx` file, for tsconfig work, and for typing questions in checked `.js`
+  files - the TypeScript type layer over the `javascript` baseline.
+- Covers the strict flag set, modeling data with types, narrowing unknown instead of any, branded primitives, and
+  checked JS via JSDoc and checkJs.
+- In an Angular project also load the Angular framework-conventions skill, when your skill list has one - Angular
+  template type-checking and component typing belong there, not here.
 
 ## Make the compiler strict, then stricter
 

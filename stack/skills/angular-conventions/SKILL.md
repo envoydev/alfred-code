@@ -1,6 +1,6 @@
 ---
 name: angular-conventions
-description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject. Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript."
+description: "Load when creating or editing an Angular component, service, directive, pipe or template, refactoring to signals, or reviewing Angular code. Not for React."
 ---
 
 # Angular conventions
@@ -8,6 +8,12 @@ description: "Load when creating or editing an Angular component, service, direc
 House rules for Angular, floored at v17 and reaching forward to whatever the workspace is actually on (v20, v21, v22): version-gated idioms name their floor inline, the rest applies from v17 up, and a newer idiom is adopted only when the installed version ships it. The language underneath (strict TypeScript, type modeling, modules, async, error handling, lint and format) is the house TypeScript skill's - load it beside this one; everything here is purely Angular. Material components and the CDK, the broader web index, and the Ionic/Capacitor layer are each their own skill - match them from your skill list by what they cover, and skip any this project did not install. This file is opinion, not reference: it states the choices the team has settled on and the divergences kept on purpose. For any API surface not pinned down here, reach for the `documentation` MCP rather than memory - and never by grepping `node_modules` bundles. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load. Version specifics live in per-version delta files - load only the one your workspace is on (`references/v22.md`, `v21.md`, `v20.md`, `v19.md`: stable versus experimental, API spellings and deprecations, the Node.js/TypeScript floor, fact-checked against angular.dev); on v17/v18 there is no delta and this file alone governs.
 
 **The enforceable config lives in `references/angular-style.md`** - the angular-eslint + Prettier flat config, the naming table, modern-vs-legacy examples. A project's own config (`eslint.config.js`, `angular.json`, `.prettierrc`, `.editorconfig`) and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority - follow the project where it diverges.
+
+## When to use
+
+Angular conventions from v17 up - standalone everything, signals as the default state primitive, OnPush and zoneless, block control flow, signal inputs and outputs, deferred loading, RxJS only where streams earn it, forms, routing, SSR and hydration, accessibility, harness testing, banned patterns, reward-hacking shortcuts to reject.
+
+Not for React, Vue, Svelte, Solid, plain DOM, or non-Angular TypeScript.
 
 ## Standalone is the only module model
 - Every component, directive, and pipe is `standalone` - the implicit default from v19, declared explicitly before that. `NgModule` does not appear in new code; the bootstrap is `bootstrapApplication` with an `ApplicationConfig`.

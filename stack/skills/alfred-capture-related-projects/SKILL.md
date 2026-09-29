@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-related-projects
-description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos' - passing local paths or git URLs (it analyzes what you name, it never scans). Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept. NOT this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name)."
+description: "Use when the user names sibling repos to capture - 'capture the related projects', 'map the sibling repos'. Not for this repo's own architecture."
 disable-model-invocation: true
 ---
 
@@ -14,6 +14,12 @@ You drive the deliberate capture of a project's related repositories, and you ow
 Both are generated files; a re-run refreshes both in place. The rule's name is deliberately NOT in the stack installer's fetch manifest (and never may be - a fetch would overwrite the generated copy) and nothing prunes the rules directory, so both survive `stack update`. Under the default layout both are machine-local (`.claude/*` is gitignored and the docs root defaults inside it) - a fresh clone re-runs the capture; only a committed docs root ships the doc with the repo.
 
 **Args-driven, never a scan.** The user names the related projects - local paths or git URLs, optionally with a relation hint each (`../backend`, `git@github.com:org/shared-contracts.git provides-to`). In-repo sub-projects are siblings too: `./server`, `./client` in a monorepo are valid locations, and their entries give alfred-task-solve-cross the dependency direction for producer-first ordering. No args: ask for them via AskUserQuestion (free text via Other - never options scraped from a filesystem scan; a plain-text ask where the harness lacks the tool) and stop. Do not guess at siblings from the filesystem.
+
+## When to use
+
+- Passing local paths or git URLs: it analyzes what you name, it never scans.
+- Characterizes each sibling and writes BOTH tiers: the always-on awareness rule `.claude/rules/baseline-project-related-context.md` (name / location / relation / seam per sibling) and the on-demand orientation doc `related-projects/RELATED-PROJECTS.md` under the docs root. Re-run to refresh - entries upserted, unlisted ones kept.
+- Not this repo's own architecture (alfred-capture-architecture), and not dynamic cross-repo findings (those go to the shared `memory` MCP, tagged with the sibling's name).
 
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via the read-only seats that characterize one sibling repo each (recommend it: the seats absorb the reads), or in-session? - then pick once, hold for the run:

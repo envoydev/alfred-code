@@ -810,11 +810,20 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
 - **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 160,000 chars (87,307 on 2026-09-27: pathless rules 24,481, agent descriptions 12,516, skill descriptions 50,310 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`). A rule moved into the
+  every agent and skill DESCRIPTION and fails over 160,000 chars (51,473 on 2026-09-29: pathless rules 25,090, agent descriptions 12,619, skill descriptions 13,764 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from 50,719). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
   'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries
-  every enabled seat's description in every session's first call.
+  every enabled seat's description in every session's first call. A SKILL description (plus any
+  `when_to_use`) is capped at 160 chars (check 15c): 'Use when' / 'Load when' with the strongest trigger
+  phrases and at most one short 'Not for', the rest in the body's `## When to use` section. Claude Code
+  lists every model-invocable skill's description on every turn inside ONE budget that scales with the
+  context window, and past it drops the least-used skills' descriptions whole
+  (<https://code.claude.com/docs/en/skills> - read the figure at use, never pin it here). Measured on a
+  TypeScript install, 200K window, Claude Code 2.1.284: '39 skills, 19901 chars > 8000 budget' before the cap,
+  '39 skills, 10781 chars' after it (the drop is exactly the 9,120 chars the stack's 24 listed descriptions
+  lost) - the stack's share now ~4.3K, the other 15 entries (~6.5K) not the stack's to trim. The authoring
+  method is `alfred-habits-skill-writing`.
 
 ## Maintenance gotchas
 

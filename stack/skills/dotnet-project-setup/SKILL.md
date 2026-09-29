@@ -1,6 +1,6 @@
 ---
 name: dotnet-project-setup
-description: "Use to set up a .NET solution, add a project or NuGet package, or pin a dotnet tool, and when touching .slnx, Directory.Build.props, Directory.Packages.props, global.json or .config/dotnet-tools.json. Not for analyzers / .editorconfig or CI workflows."
+description: "Use to set up a .NET solution, add a project or NuGet package, or pin a dotnet tool - .slnx, Directory.Build.props, global.json. Not for analyzers or CI."
 ---
 
 # dotnet-project-setup (build spine)
@@ -13,6 +13,11 @@ The files that configure every project in a solution at once - the layout, `.sln
 - Analyzers, `TreatWarningsAsErrors`, `.editorconfig`, the CI quality gate -> `dotnet-code-quality`. Do not put these in `Directory.Build.props` here.
 - CI workflows, container / `dotnet pack` packaging, SourceLink -> the CI-and-deploy skill.
 - The dotnet-ef tool's migration workflow (add / apply migrations) -> `dotnet-migrate`.
+
+## When to use
+
+- Also fires on: Directory.Packages.props, .config/dotnet-tools.json.
+- Not for analyzers / .editorconfig or CI workflows.
 
 ## Canonical layout
 

@@ -1,11 +1,17 @@
 ---
 name: dotnet-hosted-services
-description: "Use when writing a worker service, a `BackgroundService` or `IHostedService`, a periodic job, a bot or daemon host, or any in-process background task hung off the generic host. .NET hosted-service and worker conventions, floored at .NET 8 / C# 12, with the 24/7 detail in `references/`. Do NOT use for the broker side of a consumer - the delivery contract, idempotency and retry policy are the messaging skill's, though the consumer's host process is still this skill - nor for HTTP endpoints or reactive in-memory streams."
+description: "Use when writing a worker service, BackgroundService or IHostedService, a periodic job, or a bot or daemon host. Not for HTTP or broker contracts."
 ---
 
 # .NET hosted services - background work on the generic host
 
 This skill owns the host a long-running task runs inside: how the work is registered, which base type to derive from, what happens when it throws, how it reaches a scoped dependency, how it loops, and how it stops cleanly. It stops at the host boundary. When the work is *driven by a broker* - a queue consumer, an outbox relay, a saga - the delivery contract, idempotency, and retry policy are the broker-messaging skill's (where installed); this skill only owns the host process those consumers happen to live in. The HTTP service around an in-process background task is the web hub skill's (the ASP.NET Core cross-cutting baseline). The general concurrency mechanics - awaiting without deadlock, cancellation threading, `SemaphoreSlim` / `Interlocked`, `Channel<T>` basics, bounded parallelism - are the `csharp` language baseline's; what the worker loop adds on top of them is in the trap section below. Floor is .NET 8 / C# 12; anything newer is marked optional.
+
+## When to use
+
+- Also fires on: any in-process background task hung off the generic host.
+- .NET hosted-service and worker conventions, with the 24/7 detail in `references/`.
+- Do NOT use for the broker side of a consumer - the delivery contract, idempotency and retry policy are the messaging skill's, though the consumer's host process is still this skill - nor for HTTP endpoints or reactive in-memory streams.
 
 ## The two host shapes
 

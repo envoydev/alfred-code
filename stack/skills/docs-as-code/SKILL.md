@@ -1,6 +1,6 @@
 ---
 name: docs-as-code
-description: "Load before writing or reviewing ANY documentation artifact of these types, whatever the subject - a sequence, ER or C4 diagram in Markdown, an ADR or decision-log entry, or a diagram-tooling choice (Mermaid vs DBML vs Structurizr). Authoring conventions for documentation as versioned text - Mermaid diagrams, decision records (ADR - Nygard + MADR 4) and C4 model views, routed per doc type to references/. NOT the repo's committed architecture capture (`alfred-capture-architecture` owns the docs root's architecture/ folder), not Markdown prose style, and not database design itself."
+description: "Load before writing or reviewing a Mermaid sequence, ER or C4 diagram, an ADR or decision-log entry, or a diagram-tool choice. Not for the architecture capture."
 ---
 
 # Docs as Code - documentation artifacts as versioned text
@@ -11,6 +11,12 @@ any subject, not just architecture: an API flow, a schema, a process, a decision
 inline in the doc they explain (a standalone `.mmd` only when several docs share one).
 Structure goes in diagrams; rationale goes in ADRs; the two link to each other, never restate
 each other.
+
+## When to use
+
+Load before writing or reviewing ANY documentation artifact of these types, whatever the subject - a sequence, ER or C4 diagram in Markdown, an ADR or decision-log entry, or a diagram-tooling choice (Mermaid vs DBML vs Structurizr). Authoring conventions for documentation as versioned text - Mermaid diagrams, decision records (ADR - Nygard + MADR 4) and C4 model views, routed per doc type to references/.
+
+NOT the repo's committed architecture capture (`alfred-capture-architecture` owns the docs root's architecture/ folder), not Markdown prose style, and not database design itself.
 
 ## Pick the artifact
 

@@ -1,11 +1,17 @@
 ---
 name: postgres
-description: "PostgreSQL engine specialist - the Postgres-specific delta on top of the cross-engine database conventions. Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index / pooling / RLS decision. Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, not another engine's SQL, and not an analytics or columnar workload, where this tuning advice inverts."
+description: "Load for hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index, pooling or RLS choice. Not for other DBs."
 ---
 
 # postgres (engine specialist)
 
 The Postgres-specific layer. **Cross-engine conventions - schema design, migrations, indexing and transaction rules, connection handling - are the cross-engine database hub's; load that hub first where the install has it, and do not restate it here.** RLS basics and least-privilege logins are the data-layer security skill's; the .NET/EF Core side is the ORM-side skill's (EF Core / Dapper). This file is only what changes *because the engine is Postgres*, and stands on its own when the hub is absent.
+
+## When to use
+
+Load for any hand-written Postgres SQL, an .sql file on a Postgres project, an EXPLAIN plan, a slow query, or an index / pooling / RLS decision. The Postgres-specific delta on top of the cross-engine database conventions.
+
+Not the cross-engine schema and transaction rules - the cross-engine database hub owns those, load it first where the install has it - not the ORM / EF Core side, which is its own skill, not another engine's SQL, and not an analytics or columnar workload, where this tuning advice inverts.
 
 ## Schema and types
 

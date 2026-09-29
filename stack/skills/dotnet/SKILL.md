@@ -1,6 +1,6 @@
 ---
 name: dotnet
-description: "Router for .NET / C# work: maps a work area (endpoint, EF Core query, BackgroundService, messaging, testing, performance, WPF / WinForms) to the one specialist skill to load. Load when starting or navigating any .NET backend or desktop task. Not for front-end work (the Angular / TypeScript conventions skills) or non-.NET work, and never instead of the specialist it names."
+description: "Load when starting or navigating any .NET / C# backend or desktop task - the router that maps the work area to one specialist skill. Not for non-.NET work."
 ---
 
 # dotnet (skill router)
@@ -10,6 +10,11 @@ description: "Router for .NET / C# work: maps a work area (endpoint, EF Core que
 The single source-of-truth index mapping a concrete .NET work area - a construct, command, file, or task - to the one focused skill to load. It routes, it does not restate: load the named skill for the actual guidance. Pick by what you are about to do; if several rows match, load several.
 
 **The trigger is the artifact**, not 'am I doing .NET'. In a specific repo, that repo's `CLAUDE.md` binds these rows to its own file names and folders.
+
+## When to use
+
+- Maps a work area (endpoint, EF Core query, BackgroundService, messaging, testing, performance, WPF / WinForms) to the one specialist skill to load.
+- Not for front-end work (the Angular / TypeScript conventions skills) or non-.NET work, and never instead of the specialist it names.
 
 ## Language and types
 

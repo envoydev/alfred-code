@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-stack-usage
-description: "Use when the user asks to analyze the stack usage, audit all sessions for this project, or whether the stack is efficient here - the token and tool usage audit of alfred-code skill runs in THIS project. Manual, /-only. It finds EVERY session transcript with a stack-skill run (or the SESSIONS named), runs the stack's analyze-usage.js over each, and writes a per-session report (tokens, tool calls, the efficiency scorecard, waste, protocol check, verdict) plus the raw data for a follow-up agent, and a cross-session SUMMARY.md when several sessions are audited. NOT for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices."
+description: "Use when asked to analyze the stack usage or audit this project's sessions for token and tool cost. Manual, /-only. Not for live cost or fixing findings."
 disable-model-invocation: true
 ---
 
@@ -9,6 +9,12 @@ disable-model-invocation: true
 You audit what alfred-code skill runs in this project actually cost: find the session transcripts, run the stack's offline analyzer over them, and write one report per session with the raw data next to it, so a later agent can re-analyze without re-collecting. The question every bundle answers is whether Claude Code with the stack is EFFICIENT in this project - in tokens (what the session paid against what it delivered) and in effectiveness (did the work land, how many corrections it took, how many claims had a check behind them) - so the analyzer prints an efficiency scorecard per session and the report carries an authored efficiency verdict built from it. The measurements behind these rules live in `references/evidence.md` - an audit appendix, not a run-time load.
 
 Run the audit from a FRESH session that names the target session id(s) - never from the tail of the session being audited. The work is offline (a node script plus report writing) and needs none of the audited chat's context, and an in-session run re-sends its whole accumulated context on every message for a report a fresh session produces from ~20k.
+
+## When to use
+
+- The token and tool usage audit of alfred-code skill runs in THIS project; also for 'whether the stack is efficient here'.
+- It finds EVERY session transcript with a stack-skill run (or the SESSIONS named), runs the stack's analyze-usage.js over each, and writes a per-session report (tokens, tool calls, the efficiency scorecard, waste, protocol check, verdict) plus the raw data for a follow-up agent, and a cross-session SUMMARY.md when several sessions are audited.
+- Not for live session cost (claude-hud shows that), fixing the findings (route them to the owning skill), or benchmarking model choices.
 
 ## Inputs
 

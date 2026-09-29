@@ -1,11 +1,17 @@
 ---
 name: dotnet-architecture-tests
-description: "Load when adding or reviewing architecture / fitness tests or enforcing layer/dependency rules, or when the user names NetArchTest, ArchUnitNET, fitness function, architecture test, or dependency rule. .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure the architecture-decision skill prescribes cannot erode silently. Floors at .NET 8 / C# 12. Do NOT load for runtime behavior tests or analyzer / formatter config - the .NET testing and code-quality skills own those."
+description: "Load when adding or reviewing architecture or fitness tests, layer/dependency rules - NetArchTest, ArchUnitNET. Not for runtime tests or analyzer config."
 ---
 
 # .NET architecture tests - fitness functions
 
 The architecture-decision skill decides *what* the structure should be (clean, vertical-slice, DDD, modular, microservices); this skill makes a test *prove* it, and fail the build the moment a boundary is crossed. Without that, a layering rule lives only in a diagram and a reviewer's memory, so it erodes silently - one stray `using` at a time - until the next big refactor. It is the enforcement counterpart to those concept skills - the same relationship the .NET code-quality skill has to the C# style rules. Baseline is .NET 8 / C# 12.
+
+## When to use
+
+- Also fires on: fitness function, architecture test, dependency rule.
+- .NET conventions for architecture fitness tests - encoding layer/dependency/naming/isolation rules as tests that fail the build on a violation, so the structure the architecture-decision skill prescribes cannot erode silently.
+- Do NOT load for runtime behavior tests or analyzer / formatter config - the .NET testing and code-quality skills own those.
 
 ## Pick the library: NetArchTest by default
 

@@ -1,12 +1,17 @@
 ---
 name: alfred-loop-test-coverage
-description: "Use when the user asks to raise the test coverage or run the coverage loop - the deliberate coverage analyze-triage-fix loop. Manual, /-only. It runs the alfred-capture-test-coverage capture, works the coverage doc's weak points by tier - structural gaps flagged for a user decision, never auto-applied - re-runs the capture to reconcile the docs, and loops until the requirement holds or the loop plateaus. NOT for a measure-only run with no fixes (/alfred-capture-test-coverage alone), a code-quality polish (alfred-loop-quality), or an architecture / structure pass (alfred-loop-architecture-quality)."
+description: "Use when asked to raise the test coverage or run the coverage loop. Manual, /-only. Not for a measure-only run, code polish or architecture."
 disable-model-invocation: true
 ---
 
 # Test Coverage Loop - Measure, Triage, Fix (Deliberate)
 
 You drive a deliberate loop that raises a project's test coverage to its requirement: run the capture, work the weak points by tier, reconcile the docs, loop until the requirement holds or the loop plateaus. Coverage lives OUTSIDE the build flows - implementers write each task's tests as part of done, but nothing in a build run measures coverage - so this loop is the user-controlled cadence where the accumulated gap gets worked, exactly like `alfred-loop-architecture-quality` for architecture. The named tradeoff of that model: a feature can land below the requirement between runs - this loop is where it catches up.
+
+## When to use
+
+- The deliberate coverage analyze-triage-fix loop: it runs the alfred-capture-test-coverage capture, works the coverage doc's weak points by tier - structural gaps flagged for a user decision, never auto-applied - re-runs the capture to reconcile the docs, and loops until the requirement holds or the loop plateaus.
+- Not for a measure-only run with no fixes (/alfred-capture-test-coverage alone), a code-quality polish (alfred-loop-quality), or an architecture / structure pass (alfred-loop-architecture-quality).
 
 ## Execution modes
 When dispatch is available, ask ONE question before ANALYZE, via AskUserQuestion - work the fixes in the current session (INLINE), or dispatch the stack seats (DELEGATED)? - then hold the answer for the run; no dispatch capability (a Cursor session, a non-stack project) is INLINE without asking. INLINE works every fix yourself in this session. DELEGATED dispatches each test-writing brief to the matching `<stack>-implementer` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), up to 3 at once, routes a red build/test to the matching resolver, and runs a substantial refactor through the stack's designer -> implementers -> verifier vertical (this skill's own `references/domain-trio-protocol.md`). In DELEGATED mode, the mode ask's answer IS the dispatch consent for small test-writing briefs: write the `<docs-path>/flow/APPROVAL` stamp (`APPROVED small-tier - "<the answer, verbatim>"`) the moment that answer lands, and rewrite it as substantial-tier plan approvals arrive - the dispatch guard is deliberately tier-blind, so an unstamped small-brief dispatch just bounces. A surface with no matching seat runs INLINE regardless. In BOTH modes the instrumented run stays the capture's, in the main session - a coverage run never enters a dispatch brief (seat gates are fast; the capture owns the measurement).

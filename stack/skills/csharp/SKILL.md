@@ -1,6 +1,6 @@
 ---
 name: csharp
-description: "Load before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled conventions. C# conventions (.NET 8 / C# 12 floor) - style and structure plus runtime behavior, with the per-area deltas in `references/`. The always-load baseline underneath the specialist areas. Do NOT load it INSTEAD of one: architectural style choices, EF query shaping, ASP.NET request-pipeline work and performance tuning route out through the .NET router where the install has one."
+description: "Load before creating or editing any .cs file - writing, reviewing or refactoring C#. Not instead of a .NET specialist area (EF queries, the ASP.NET pipeline)."
 ---
 
 # C# Conventions
@@ -14,6 +14,15 @@ C# style, structure, and runtime conventions in one place: how code is shaped (n
 **Floor: .NET 8 / C# 12.** Every rule below assumes at least this target - `TimeProvider`, `UnsafeAccessorAttribute`, the static argument throw-helpers, and the C# 12 collection expressions / primary constructors are all in. Where a convention names a newer feature (C# 13 `System.Threading.Lock`, the C# 14 `field` keyword), it flags the version inline; treat those as opt-in once the project's target moves up.
 
 Specialized concerns route through the .NET router skill - the one whose description maps each work area (concurrency, performance / memory layout, design patterns, serialization, DI registration, config binding, DDD, architecture, packaging) to its focused skill - where the install has it: load the skill it names, and with no router match work from the skills already loaded. This file stays the style and runtime baseline only.
+
+## When to use
+
+- Before creating or editing any `.cs` file - writing, reviewing, or refactoring C#; do not lean on recalled
+  conventions.
+- The always-load baseline underneath the specialist areas: style and structure plus runtime behavior, with the
+  per-area deltas in `references/`.
+- Do NOT load it INSTEAD of one: architectural style choices, EF query shaping, ASP.NET request-pipeline work and
+  performance tuning route out through the .NET router where the install has one.
 
 ---
 
