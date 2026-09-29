@@ -120,6 +120,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // names - with --space and no CLAUDE_CONFIG_DIR, the default one, while every write of the installer's
     // own lands in the space's. So every CLI spawn carries the space's account; one set already wins.
     const cliEnv = args.space && !env.CLAUDE_CONFIG_DIR ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env;
+    // The account file the CLI keeps its user- and local-scope MCP registrations in (mcp.registrationsAt).
+    const accountFile = path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json');
     const projectRoot = rt.gitRoot(cwd) || cwd;
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
@@ -206,7 +208,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'), env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
+        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
 
     try
     {
@@ -410,10 +412,22 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
             const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: market });
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
+            const ledgeredRegistrations = () =>
+            {
+                const regScope = mcp.registrationScope(routes, cliScope);
+                if (routes.mcps || regScope === 'project') return [];
+                const ours = (priorLedger && priorLedger.mcpAt && priorLedger.mcpAt[regScope]) || {};
+                return Object.keys(mcp.registrationsAt({ scope: regScope, mcpFile, accountFile, projectRoot }).servers).filter((name) => Object.hasOwn(ours, name));
+            };
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
-                mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
+                // The MCP copy route registers where mcp.registrationScope says - at local scope the account's
+                // projects[<root>].mcpServers, not .mcp.json (matrix 3d, 2.1.4: a local desktop server read
+                // as absent, so the update re-spelled its skill and seat to plugin tools nothing served). Only
+                // the names the ledger says the stack registered there: a server of the user's own under a
+                // stack name is theirs, never a pick (the matrix re-run saw one adopted and rewritten).
+                mcpServers: [...new Set([...Object.keys(readJson(mcpFile).mcpServers || {}), ...ledgeredRegistrations()])],
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -636,7 +650,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
-            accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'),
+            accountFile,
             mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
             pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonCurrent }) },
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
