@@ -1730,7 +1730,8 @@ test("guard-cross-project-write: a block ends in an ask, and the user's allow is
   assert.equal(denied.status, 2);
   assert.match(denied.stderr, /ONE AskUserQuestion/, 'the denial mandates the ask');
   assert.match(denied.stderr, /Task card in this project \(Recommended\)/, 'the card is the recommended option');
-  assert.ok(denied.stderr.includes(`Allow writes into ${fs.realpathSync(other)} for this session`), 'the allow option names the other ROOT, not the file');
+  // the NATIVE realpath, as the guard resolves it: the JS one keeps a Windows 8.3 short name (windows-latest's RUNNER~1)
+  assert.ok(denied.stderr.includes(`Allow writes into ${fs.realpathSync.native(other)} for this session`), 'the allow option names the other ROOT, not the file');
   assert.match(denied.stderr, /flow[\\/]CROSS-WRITE-ALLOW/, 'the denial names the receipt (path.join spells the separator per OS - measured: windows-latest printed a backslash)');
   assert.doesNotMatch(denied.stderr, /stale/, 'no receipt, no staleness talk');
   // the receipt: one root per line, comments allowed, this session's own

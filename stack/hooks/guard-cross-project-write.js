@@ -165,13 +165,15 @@ const expandTilde = (p) => (p === '~' || p.startsWith('~/') || (process.platform
 // them breaks the memory system), the hook log dir, and device files. ALFRED_CODE_ALLOW_WRITE_OUTSIDE
 // is the deliberate escape hatch: a list of extra roots (colon-separated, semicolon on Windows; a
 // leading ~ expands) for the rare project that really does own a second tree (a generated-output
-// dir, a deploy checkout).
+// dir, a deploy checkout). Each resolves with realish, not real: an allowance for a tree not created yet
+// resolves through its existing ancestor exactly as a target does - real() kept a missing path as written, so an
+// 8.3 short name or a link never met its target (measured on windows-latest).
 const allowRoots = [
   os.tmpdir(), '/tmp', '/private/tmp', '/var/folders', '/dev',
   envOf(process.env, 'HOOK_LOG_DIR'),
   ...(HOME ? [path.join(HOME, '.claude')] : []),
   ...(envOf(process.env, 'ALLOW_WRITE_OUTSIDE') || '').split(path.delimiter).map((s) => s.trim()),
-].filter(Boolean).map(expandTilde).map(nativePath).map(real);
+].filter(Boolean).map(expandTilde).map(realish);
 
 function inside(target, dir) {
   const t = fold(realish(target));
@@ -207,7 +209,7 @@ const receiptRoots = (() => {
       return [];
     }
     return fs.readFileSync(RECEIPT, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
-      .map(expandTilde).map(nativePath).map(real).filter((d) => !inside(ROOT, d));
+      .map(expandTilde).map(realish).filter((d) => !inside(ROOT, d));
   } catch { return []; } // absent or unreadable - no allowance recorded
 })();
 // ~/.claude-<space> account dirs are siblings of ~/.claude, matched by prefix. The prefix is

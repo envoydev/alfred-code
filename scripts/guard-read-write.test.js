@@ -329,3 +329,19 @@ test('guard-cross-project-write: on Windows an allowance and a target compare wi
   assert.equal(write(path.join(flipCase(proj), 'Deep', 'New', 'b.ts'), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' }), 0, 'the project in another drive and folder case');
   assert.equal(write(path.join(other, 'a.ts'), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' }), 2, 'and outside is still outside');
 });
+
+test('guard-cross-project-write: an allowance for a tree not created yet resolves through its existing ancestor, as the target does', () => {
+  // A missing allowance fell back to path.resolve and kept its spelling, while the target resolved its existing
+  // ancestor on disk, so the two never met (windows-latest: an allowance under RUNNER~1, the target under runneradmin).
+  // A link stands in for the 8.3 name here: a junction on win32 needs no privilege, the type is ignored elsewhere.
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'AllowProj-')));
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'AllowReal-')));
+  const link = path.join(TMP, 'AllowLink');
+  fs.symlinkSync(base, link, 'junction');
+  const tree = path.join(link, 'Not', 'Yet');
+  const write = (file) => run(XWRITE, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: tree } }).status;
+  assert.equal(write(path.join(tree, 'a.ts')), 0, 'the allowance covers its own tree before it exists');
+  assert.equal(write(path.join(base, 'Not', 'Yet', 'b.ts')), 0, 'spelled through the link or not');
+  assert.equal(write(path.join(base, 'Other', 'c.ts')), 2, 'and a sibling of the allowed tree is still outside');
+});
