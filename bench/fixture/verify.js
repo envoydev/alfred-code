@@ -7,7 +7,7 @@
 //   node bench/fixture/verify.js <dest> [--source <repo>]      clone the locked tag into <dest>, verified
 //   node bench/fixture/verify.js --write-lock [--source <repo>] freeze: record the tag's commit in the lock
 //
-// <repo> defaults to this repository, whose `bench-fixture` branch holds the fixture's own history.
+// <repo> defaults to this repository, whose `benchmarks/fixture` branch holds the fixture's own history.
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
