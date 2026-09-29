@@ -174,7 +174,7 @@ close-out line (step 6) is a POINTER for the user to type, never a call this run
      repair-agent rules; tick the same plan file per task as reports land. MINT the run's contract
      version - `<the plan's Approved: date>-<plan slug>` - and put it in EVERY dispatch prompt
      verbatim, with the seat's memory-handoff line spelled out:
-     `write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
+     `mcp__plugin_navigation_navigation__write_memory('<feature>__<contract_version>__<seat>__<task>', ...)`. Each seat's green gate
      stays fast - build + fast tests, never integration replays or another minutes-long run; the
      slow full run happens once, in this session, at the step-5 review / step-6 done-gate.
    Both modes build to the step mechanics' bar, and the plan's `## Decisions` ledger grows as they

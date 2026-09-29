@@ -498,9 +498,12 @@ function renameDeny(settings, opts = {})
 // re-spelled too; the per-file line says how many, and a second run finds nothing.
 // The 2.0.0 MCP rename in the same files: a tool spelling (the plugin form, or the bare one a copy-route
 // registration answers) and a backticked server name, each as written by the capture that saw it.
-function mcpRespellPairs(renamedMcps = {})
+// M46: the browser before one server per engine was ONE registration under the renamed name itself (1.x
+// `playwright`), so its bare spelling follows to the first engine this project keeps - chrome when it keeps none,
+// the default engine.
+function mcpRespellPairs(renamedMcps = {}, engines = [])
 {
-    const { renamedFrom, currentMcp } = require('./mcp.js');
+    const { renamedFrom, currentMcp, PW_ENGINES } = require('./mcp.js');
     const out = {};
     for (const old of renamedFrom(renamedMcps))
     {
@@ -509,6 +512,9 @@ function mcpRespellPairs(renamedMcps = {})
         out[`mcp__${old}__`] = `mcp__${now}__`;
         out[`\`${old}\``] = `\`${now}\``;
     }
+    const first = engines.find((e) => PW_ENGINES.includes(e)) || 'chrome';
+    for (const [from, to] of Object.entries(renamedMcps || {}))
+        if (to === 'browser') out[`mcp__${from}__`] = `mcp__${to}-${first}__`;
     return out;
 }
 
@@ -544,12 +550,12 @@ function respellDocsRoot({ projectRoot, from, to, log = () => {}, note = () => {
     return done.length;
 }
 
-function respellRenamed({ projectRoot, renamed, log = () => {}, note = () => {} })
+function respellRenamed({ projectRoot, renamed, engines = [], log = () => {}, note = () => {} })
 {
     const pairs = { ...((renamed && renamed.skills) || {}), ...((renamed && renamed.agents) || {}) };
     const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
     const escape = (o) => o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {});
+    const mcpPairs = mcpRespellPairs((renamed && renamed.mcps) || {}, engines);
     const mcpOlds = Object.keys(mcpPairs).sort((a, b) => b.length - a.length);
     if (!olds.length && !mcpOlds.length) return 0;
     const re = olds.length ? new RegExp(`(?<![A-Za-z0-9_-])(${olds.map(escape).join('|')})(?![A-Za-z0-9_-])`, 'g') : null;

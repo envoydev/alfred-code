@@ -1738,8 +1738,8 @@ test('a token past the label cut is still masked - the mask runs before the slic
 
 // ---------- navigation: located reads, symbol tools against grep-then-read, whole-file denials ----------
 // Three synthetic transcripts, each counted by hand below. A read counts when it names a SOURCE file
-// (a code extension, outside a build dir) on either route; it is LOCATED when a symbol tool (serena's
-// three symbol tools, the LSP tool) or a grep (the Grep tool, serena's pattern search, a shell grep/rg
+// (a code extension, outside a build dir) on either route; it is LOCATED when a symbol tool (serena's five
+// locate tools, the LSP tool) or a grep (the Grep tool, serena's pattern search, a shell grep/rg
 // opening a command segment) sits in the 3 tool calls before it, or in the same call. A symbol step
 // in that window wins over a grep. Whole-file denials come from the block ledger when it is passed,
 // else from the transcript's own hook bracket.
@@ -1754,6 +1754,21 @@ function navTranscript(file, calls, results = {}) {
   });
   fs.writeFileSync(file, body);
 }
+
+// M36: serena 1.7.0 locates with find_declaration and find_implementations too (serena tools list --all at the pin);
+// a read those two located was scored unlocated.
+test('M36 navigation: find_declaration and find_implementations locate a read like the other symbol tools', () => {
+  const dir = tmp();
+  const file = path.join(dir, 'session.jsonl');
+  navTranscript(file, [
+    navCall('d1', SERENA('find_declaration'), { name_path: 'Orders' }),
+    navCall('d2', 'Read', { file_path: 'src/Orders.cs', offset: 10, limit: 30 }),
+    navCall('d3', SERENA('find_implementations'), { name_path: 'IBill' }),
+    navCall('d4', 'Read', { file_path: 'src/Billing.cs', offset: 1, limit: 20 }),
+  ]);
+  const { main } = run([file]);
+  assert.deepStrictEqual(main.efficiency.navigation, { reads: 2, located: 2, symbolLocated: 2, grepLocated: 0, symbolCalls: 2, grepCalls: 0 });
+});
 
 test('navigation A: serena-first reads are located, a read after an edit is not', () => {
   // a1 find_symbol (symbol) | a2 Read Orders.cs: window [symbol] -> LOCATED by symbol

@@ -176,7 +176,7 @@ test('inventory: a registered server with no catalog row gets its first call in 
     const { out } = run([], { cwd: root, bin: stubCli(path.join(TMP, 'addback-cli')) });
     const row = out.split('\n').find((l) => /- `angular-cli` - routing: see project docs/.test(l));
     assert.ok(row, `no fallback row for angular-cli in:\n${out}`);
-    assert.match(row, /first call: `ToolSearch select:` plus the `mcp__angular-cli__\*` names/);
+    assert.match(row, /first call: `ToolSearch select:` plus the `mcp__angular-cli__\*` names/); // mcp-fixture - a retired server's add-back registration spelling
     assert.doesNotMatch(row, /mcp__plugin_/);
 });
 

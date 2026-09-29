@@ -39,7 +39,7 @@ test('I45: the installer\'s macOS prerequisite line names the failed start first
 {
     const { prereqNotes } = require('../stack/mcp/desktop-launch.js');
     const lines = prereqNotes('macos-desktop').join('\n');
-    assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; black screenshots mean Screen Recording is missing/);
+    assert.match(lines, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; a black vision snapshot means Screen Recording is missing/);
     assert.doesNotMatch(lines, /an empty snapshot means Accessibility is missing/);
 });
 

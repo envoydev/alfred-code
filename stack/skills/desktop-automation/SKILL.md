@@ -10,9 +10,10 @@ whatever window is in front, and nothing undoes it. So the run looks before ever
 after it, and it drives only the UI the user asked about.
 
 Where the harness defers MCP tools (Claude Code), load them before the first call:
-`ToolSearch select:mcp__plugin_windows-desktop_windows-desktop__Snapshot,mcp__plugin_windows-desktop_windows-desktop__Click,mcp__plugin_windows-desktop_windows-desktop__Type,mcp__plugin_windows-desktop_windows-desktop__WaitFor`
-on Windows, and on macOS
-`ToolSearch select:mcp__plugin_macos-desktop_macos-desktop__Snapshot,mcp__plugin_macos-desktop_macos-desktop__Click,mcp__plugin_macos-desktop_macos-desktop__Type,mcp__plugin_macos-desktop_macos-desktop__App`.
+`ToolSearch select:mcp__plugin_windows-desktop_windows-desktop__Snapshot,mcp__plugin_windows-desktop_windows-desktop__Click,mcp__plugin_windows-desktop_windows-desktop__Type,mcp__plugin_windows-desktop_windows-desktop__WaitFor`,
+plus the other `mcp__plugin_windows-desktop_windows-desktop__*` names the session's own listing shows, on Windows, and on macOS
+`ToolSearch select:mcp__plugin_macos-desktop_macos-desktop__Snapshot,mcp__plugin_macos-desktop_macos-desktop__Click,mcp__plugin_macos-desktop_macos-desktop__Type,mcp__plugin_macos-desktop_macos-desktop__App`,
+plus the other `mcp__plugin_macos-desktop_macos-desktop__*` names the session's own listing shows.
 Only one of the two servers is ever installed - each runs on its own OS only.
 
 ## When to use

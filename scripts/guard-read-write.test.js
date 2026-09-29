@@ -157,13 +157,15 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(inClaude, LONG_JS);
   const r = run(READ, { tool_name: 'Read', tool_input: { file_path: inClaude } });
   assert.equal(r.status, 2, 'the whole-file read is still blocked');
-  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__serena/, 'but no tools that cannot index this tree');
+  // M30: the hook's remedy line is the plugin spelling - the old `select:mcp__serena` pattern matched nothing any hook
+  // writes, so it could never fail (the ordinary-path case below proves this pattern does match a real remedy).
+  assert.doesNotMatch(r.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/, 'but no tools that cannot index this tree');
   assert.match(r.stderr, /ignored_paths/, 'the denial says why');
   assert.match(r.stderr, /grep -n/, 'and gives a remedy that works there');
   const inSerena = path.join(ROOT, '.serena', 'cache', 'big.ts');
   fs.mkdirSync(path.dirname(inSerena), { recursive: true });
   fs.writeFileSync(inSerena, LONG_JS);
-  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__serena/,
+  assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/,
     "serena's own tree either");
   // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds serena's own home and the browser profiles:
   // seeded into ignored_paths too, so no navigation remedy there either - the default and a custom root alike.

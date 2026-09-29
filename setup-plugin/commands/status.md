@@ -217,7 +217,7 @@ listed`. No CLI: the banner + `claude CLI unavailable - skipped` for the column.
 | navigation | stdio | node .../serena-launch.js ... --project-from-cwd | ✔ Connected |
 | memory | stdio | node .../memory-launch.js | ✔ Connected |
 | documentation | http | https://mcp.context7.com/mcp | ✔ Connected |
-| browser-firefox | stdio | npx -y @playwright/mcp@0.0.80 --browser firefox ... | ✘ Failed to connect |
+| browser-firefox | stdio | node .../browser-launch.js --package @playwright/mcp@<pin> --browser firefox | ✘ Failed to connect |
 
 `target` is the command or URL, middle-truncated to keep the row one line; on the plugin route it
 is the entry's own declaration. The browser server has one server per installed browser

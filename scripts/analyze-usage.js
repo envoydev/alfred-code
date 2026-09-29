@@ -193,7 +193,8 @@ function rmVerifyTail(cmd) {
 const NAV_WINDOW = 3;
 const WHOLE_FILE_HOOK = 'guard-read-whole-file.js';
 const SOURCE_EXT_RE = /\.(?:cs|fs|vb|ts|tsx|mts|cts|js|jsx|mjs|cjs|py|go|rs|java|kt|kts|scala|rb|php|swift|dart|c|h|cc|cpp|cxx|hpp|hh|m|mm|lua)$/i;
-const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview']);
+// serena 1.7.0's locate tools: the three symbol tools plus find_declaration and find_implementations (M36).
+const SERENA_SYMBOL_TOOLS = new Set(['find_symbol', 'find_referencing_symbols', 'get_symbols_overview', 'find_declaration', 'find_implementations']);
 // The navigation server's name, and the one it went by before 2.0.0 - an older transcript still says serena.
 const NAVIGATION_SERVERS = new Set(['navigation', 'serena']);
 const SHELL_GREP_RE = /^\s*(?:\w+=\S*\s+)*(?:grep|egrep|fgrep|rg|ag|ack|git\s+grep)\b/;

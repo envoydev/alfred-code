@@ -265,9 +265,10 @@ test('the three locked MCP plugins ship standalone, one server each, depending o
 // switched off (I10: FileSystem writes, moves and deletes where no house guard looks).
 test('the two desktop MCP plugins: one server each, launched through desktop-launch.js at the release pin', () => {
     const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).pins;
+    const cut = ['--exclude-newer', `${JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).refreshed}T23:59:59Z`];
     const want = {
-        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
-        'macos-desktop': ['--server', 'macos-desktop', '--package', `macos-mcp==${pins['macos-desktop'].version}`, '--', 'serve'],
+        'windows-desktop': ['--server', 'windows-desktop', '--package', `windows-mcp==${pins['windows-desktop'].version}`, ...cut, '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem'],
+        'macos-desktop': ['--server', 'macos-desktop', '--package', `macos-mcp==${pins['macos-desktop'].version}`, ...cut, '--', 'serve'],
     };
     for (const [name, args] of Object.entries(want))
     {
@@ -316,6 +317,48 @@ test('no renamed MCP alias names a dependency, so its not-yet-updated audience k
 test('the two desktop MCP plugins start their upstream with its telemetry off', () => {
     for (const name of ['windows-desktop', 'macos-desktop'])
         assert.deepStrictEqual(shippedBy[name].mcpServers[name].env, { ANONYMIZED_TELEMETRY: 'false' }, `${name} must pass ANONYMIZED_TELEMETRY=false`);
+});
+
+// M22: a retired entry's audience is an install still on the 1.x core, whose update command is spelled with the
+// 1.x plugin name - the core alias's own description already says so. '/alfred-code:update' does not exist there.
+test('M22 every retired entry names the update command its 1.x audience has', () =>
+{
+    const want = `/${LEGACY.core}:update`;
+    for (const entry of [...retiredMarketplaceEntries(), ...mcpAliasEntries()])
+    {
+        assert.ok(entry.description.includes(want), `${entry.name}: ${entry.description}`);
+        assert.ok(!entry.description.includes('/alfred-code:update'), `${entry.name} still names a command a 1.x install lacks`);
+        assert.strictEqual(shippedBy[entry.name].description, entry.description, `the live ${entry.name} entry is regenerated`);
+    }
+});
+
+// M24: every uvx-started server passes the release's dependency cut-off (the pins file's refreshed day, its last
+// second UTC) to its launcher, beside the pin it was generated with; the npx browser has no uvx and takes none.
+test('M24 each uvx MCP entry hands its launcher the release cut-off, and the browser entries none', () =>
+{
+    const pins = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
+    const cutoff = `${pins.refreshed}T23:59:59Z`;
+    for (const name of ['navigation', 'memory', 'windows-desktop', 'macos-desktop'])
+    {
+        const args = shippedBy[name].mcpServers[name].args;
+        const at = args.indexOf('--exclude-newer');
+        assert.ok(at > 0 && args[at + 1] === cutoff, `${name}: ${args.join(' ')}`);
+        const rest = args.indexOf('--');
+        assert.ok(rest < 0 || at < rest, `${name}: the cut-off is a launcher flag, before the server's own arguments`);
+    }
+    for (const engine of ['chrome', 'msedge', 'firefox', 'webkit'])
+        assert.ok(!shippedBy[`browser-${engine}`].mcpServers[`browser-${engine}`].args.includes('--exclude-newer'));
+});
+
+// M25: Context7 documents `Context7-API-Key` (or Authorization: Bearer) and warns a header name with an underscore
+// can be dropped by a proxy, which silently drops a keyed user to the free tier. Probed 2026-09-29: an empty
+// Context7-API-Key is the anonymous tier, a bogus one is 'Invalid API key' - the server reads the name.
+test('M25 the documentation entry sends the key as Context7-API-Key, empty when unset', () =>
+{
+    const server = shippedBy.documentation.mcpServers.documentation;
+    assert.deepStrictEqual(server.headers, { 'Context7-API-Key': '${CONTEXT7_API_KEY:-}' });
+    const { CONTEXT7_REMOTE } = require('./install/mcp.js');
+    assert.strictEqual(CONTEXT7_REMOTE.header, 'Context7-API-Key: ${CONTEXT7_API_KEY:-}', 'the copy route sends the same header');
 });
 
 test('the retired entries stay listed for one release, marked retired', () =>

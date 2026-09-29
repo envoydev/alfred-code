@@ -300,6 +300,118 @@ const RECORDING_CLAUDE = ['printf \'%s\\n\' "$*" >> "$CLAUDE_STUB_LOG"',
 const accountOf = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), 'utf8')); } catch { return {}; } };
 const localServers = (account) => Object.values(account.projects || {}).map((p) => Object.keys(p.mcpServers || {})).flat().sort();
 
+// X1 (matrix 2.1.4 re-run, observation 1): at PROJECT scope the --installed-only read-back took every .mcp.json name
+// as a pick, so a server of the user's own under a stack name (`macos-desktop` running `node my-desktop.js`) was
+// overwritten with the stack's entry on the next update, recorded in managed-mcp and pulled in the desktop skill.
+// Only the names the prior stamp's managed-mcp ledger records at project scope are picks; a stamp with no ledger (a
+// pre-ledger install) keeps reading every name, as it did.
+const PROJECT_COPY = { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' };
+const mcpjsonOf = (repo) => { try { return JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8')).mcpServers || {}; } catch { return {}; } };
+const projectState = (repo) => ({
+    entry: mcpjsonOf(repo)['macos-desktop'] || null,
+    skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'desktop-automation')),
+    stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+});
+test('X1 seed update --installed-only (full copy route, project scope): the user\'s own .mcp.json server under a stack name is never adopted', POSIX_ONLY, () =>
+{
+    const own = { command: 'node', args: ['my-desktop.js'] };
+    const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\n', {
+        env: PROJECT_COPY, args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i === 0)
+            {
+                const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
+                data.mcpServers['macos-desktop'] = own;
+                fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
+            }
+            return projectState(repo);
+        },
+    });
+    const after = steps[1];
+    assert.deepStrictEqual(after.entry, own, `the user's server was rewritten:\n${outs[1]}`);
+    assert.strictEqual(after.skill, false, `its skill was copied in as if picked:\n${outs[1]}`);
+    assert.doesNotMatch(after.stamp, /macos-desktop/, `it reached the stamp:\n${after.stamp}`);
+});
+
+test('X1 seed update --installed-only (full copy route, project scope): a server the stack registered is still read back - with a ledger and without one', POSIX_ONLY, () =>
+{
+    for (const preLedger of [false, true])
+    {
+        const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+            env: PROJECT_COPY, args: [[], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                const file = path.join(repo, '.claude', 'alfred-code.stamp');
+                if (i === 0 && preLedger) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').split('\n').filter((l) => !/^managed-/.test(l)).join('\n'));
+                return projectState(repo);
+            },
+        });
+        assert.ok(steps[0].entry && steps[0].skill, `the install itself (preLedger=${preLedger}):\n${outs[0]}`);
+        assert.ok(steps[1].entry, `the update dropped macos-desktop (preLedger=${preLedger}):\n${outs[1]}`);
+        assert.strictEqual(steps[1].skill, true, `the update dropped its skill (preLedger=${preLedger}):\n${outs[1]}`);
+        assert.match(steps[1].stamp, /^managed-mcp:.*\bmacos-desktop=/m, `the ledger records it again (preLedger=${preLedger})`);
+    }
+});
+
+// X1, the browser-engine half (review 2.1.5 plugin, MATERIAL 3): the engines .mcp.json registers were read back with no
+// ledger gate, so a user's own `browser-firefox` was overwritten with the stack's npx entry, entered managed-mcp (so
+// uninstall would delete it) and grew the stamp's browser-engines. An engine is read back only when the prior stamp's
+// managed-mcp ledger records its browser-<e> / playwright-<e> name; the stamp's browser-engines stays the record.
+const engineState = (repo) => ({
+    firefox: mcpjsonOf(repo)['browser-firefox'] || null,
+    stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+});
+const stampLine = (stamp, key) => (stamp.split('\n').find((l) => l.startsWith(`${key}:`)) || '').slice(key.length + 1).trim();
+test('X1 seed update --installed-only (full copy route): the user\'s own browser-<engine> in .mcp.json is never taken as a kept engine - project and user scope', POSIX_ONLY, () =>
+{
+    const own = { command: 'node', args: ['my-ff.js'] };
+    for (const scope of ['project', 'user'])
+    {
+        const { steps, outs } = seedRun(['install', 'update', 'update'], 'rule markdown-docs\nmcp browser\n', {
+            env: PROJECT_COPY, args: [['--scope', scope, '--browsers', 'chrome'], ['--scope', scope, '--installed-only'], ['--scope', scope, '--installed-only']],
+            each: (repo, i) =>
+            {
+                if (i === 0)
+                {
+                    const data = JSON.parse(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'));
+                    data.mcpServers['browser-firefox'] = own;
+                    fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify(data, null, 2));
+                }
+                return engineState(repo);
+            },
+        });
+        for (const i of [1, 2])
+        {
+            assert.deepStrictEqual(steps[i].firefox, own, `${scope}, update ${i}: the user's server was rewritten:\n${outs[i]}`);
+            assert.doesNotMatch(stampLine(steps[i].stamp, 'managed-mcp'), /browser-firefox/, `${scope}, update ${i}: it entered the ledger`);
+            assert.strictEqual(stampLine(steps[i].stamp, 'browser-engines'), 'chrome', `${scope}, update ${i}: browser-engines grew`);
+        }
+    }
+});
+
+test('X1 seed update --installed-only (full copy route): an engine the stack registered is still read back from .mcp.json - ledgered, or on a pre-ledger stamp', POSIX_ONLY, () =>
+{
+    for (const preLedger of [false, true])
+    {
+        const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nmcp browser\n', {
+            env: PROJECT_COPY, args: [['--browsers', 'chrome,firefox'], ['--installed-only']],
+            each: (repo, i) =>
+            {
+                // Only .mcp.json and the ledger can answer: the stamp's own browser lines are taken away.
+                const file = path.join(repo, '.claude', 'alfred-code.stamp');
+                const drop = preLedger ? /^(browser-(engines|enabled)|managed-[a-z]+):/ : /^browser-(engines|enabled):/;
+                if (i === 0) fs.writeFileSync(file, fs.readFileSync(file, 'utf8').split('\n').filter((l) => !drop.test(l)).join('\n'));
+                return engineState(repo);
+            },
+        });
+        assert.ok(steps[0].firefox, `the install registered firefox (preLedger=${preLedger}):\n${outs[0]}`);
+        assert.ok(steps[1].firefox, `the update dropped firefox (preLedger=${preLedger}):\n${outs[1]}`);
+        assert.strictEqual(stampLine(steps[1].stamp, 'browser-engines'), 'chrome,firefox', `preLedger=${preLedger}\n${outs[1]}`);
+        assert.match(stampLine(steps[1].stamp, 'managed-mcp'), /\bbrowser-firefox=/, `preLedger=${preLedger}`);
+    }
+});
+
 test('uninstall removes the copy route\'s own local-scope registrations and keeps the user\'s', POSIX_ONLY, () =>
 {
     const { calls, steps, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\n', {

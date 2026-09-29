@@ -755,6 +755,29 @@ test('check 46: the repo root reserves every name a shared-source entry auto-dis
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+// M21: the plugin reference's standard layout auto-loads more default locations than check 46 listed: `bin/` (on
+// the Bash PATH of every entry), `output-styles/`, `workflows/`, `themes/`, and a root SKILL.md (a single-skill
+// plugin) - code.claude.com/docs/en/plugins-reference, 'Path behavior rules'. Nothing sits there today.
+test('M21 check 46 reserves the default bin, output-styles, workflows and themes folders and a root SKILL.md', () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { lintRepoRootReserved, RESERVED_ROOT_NAMES } = require('./lint-skills.js');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rootlint46-'));
+    try
+    {
+        for (const name of ['bin', 'output-styles', 'workflows', 'themes', 'SKILL.md'])
+        {
+            assert.ok(RESERVED_ROOT_NAMES.includes(name), `${name} is reserved`);
+            const full = path.join(tmp, name);
+            if (name.endsWith('.md')) fs.writeFileSync(full, '---\nname: x\n---\n'); else fs.mkdirSync(full);
+            assert.ok(lintRepoRootReserved(tmp).some((f) => f.includes(`\`${name}\``)), `a root ${name} is a finding`);
+        }
+        assert.deepStrictEqual(lintRepoRootReserved(), [], 'this repo root is clean');
+    }
+    finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test('check 48: the core carries the manifest\'s hook wiring, and every wired hook carries the gate', () => {
     const { lintHooksEntry } = require('./lint-skills.js');
     assert.deepStrictEqual(lintHooksEntry(), [],
@@ -1124,6 +1147,54 @@ test('check 58: lintEnvironmentCatalog catches catalog/seed/command/migration dr
     const migrationsMismatch = { migrations: [{ id: 'm2', rename_settings_env: { from: 'OLD_FOO', to: 'ALFRED_CODE_FOO' } }] };
     assert.ok(lintEnvironmentCatalog({ env: baseRows() }, seedSrcOk, migrationsMismatch, commandSrcOk)
         .some((f) => /ALFRED_CODE_FOO does not record renamed_from 'OLD_FOO'/.test(f)));
+});
+
+// M31 (check 54): the bare registration spelling of a server the stack RENAMED or RETIRED resolves to nothing too,
+// and the check built its pattern from today's names only - the old serena spelling passed it. The fixture lines below
+// carry the marker the check skips, which is what a deliberate old spelling in a test does.
+test('M31 check 54 flags a renamed or retired server\'s bare spelling, and skips a marked fixture line', () => {
+    const { lintMcpToolNames } = require('./lint-skills.js');
+    for (const text of ['x mcp__serena__find_symbol y\n', 'mcp__context7__query-docs\n', 'mcp__playwright__browser_navigate\n', // mcp-fixture
+        'mcp__playwright-chrome__browser_snapshot\n', 'mcp__sentry__find_issues\n', 'mcp__navigation__find_symbol\n']) // mcp-fixture
+    {
+        const hit = lintMcpToolNames({ files: [{ file: 'stack/agents/a.md', text }] });
+        assert.strictEqual(hit.length, 1, `${text.trim()}: ${JSON.stringify(hit)}`);
+        assert.match(hit[0], /stack\/agents\/a\.md:1 /);
+    }
+    assert.deepStrictEqual(lintMcpToolNames({ files: [{ file: 'scripts/t.test.js', text: 'mcp__serena__find_symbol // mcp-fixture\n' }] }), [], 'a marked fixture line passes'); // mcp-fixture
+    assert.deepStrictEqual(lintMcpToolNames(), [], 'the live tree carries none');
+});
+
+// M35 (check 59): the renamed MCP aliases stay LISTED for installs not yet updated, and the nine seats the 1.x core
+// alias carries grant their old spellings for that window - on a seat's `tools:` / `disallowedTools:` line only.
+// Anywhere else an alias spelling is the stale one check 59 exists for.
+test('M35 check 59 lets a seat\'s grant line name a listed alias, and nothing else', () => {
+    const { lintStaleMcpToolNames } = require('./lint-skills.js');
+    const entries = [{ name: 'navigation', mcpServers: { navigation: {} } }];
+    const aliases = [{ name: 'serena', mcpServers: { serena: {} } }];
+    const grant = 'tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_serena_serena__find_symbol\n'; // mcp-fixture
+    assert.deepStrictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: grant }] }), []);
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/agents/a.md', text: 'Call `mcp__plugin_serena_serena__find_symbol`.\n' }] }).length, 1, 'a body line'); // mcp-fixture
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases, files: [{ file: 'stack/skills/x/SKILL.md', text: grant }] }).length, 1, 'a skill'); // mcp-fixture
+    assert.strictEqual(lintStaleMcpToolNames({ entries, aliases: [], files: [{ file: 'stack/agents/a.md', text: grant }] }).length, 1, 'an id no alias lists');
+});
+
+// M31 (check 62): a pin bump that renames or drops a tool ships a silent drop - check 59 reads only the plugin and
+// server part of a spelling. meta/mcp-tools.json records each pinned server's tool names (refresh-mcp-pins.js
+// --write), and a shipped plugin spelling whose TOOL is not listed there is a finding; an alias spelling is judged
+// by its successor's list, and a wildcard names no tool.
+test('M31 check 62 flags a plugin tool spelling whose tool the pinned server does not have', () => {
+    const { lintMcpToolsAtPin } = require('./lint-mcp-tools.js');
+    const tools = { servers: { memory: { version: '1', tools: ['memory_store', 'memory_search'] }, browser: { version: '1', tools: ['browser_navigate'] }, navigation: { version: '1', tools: ['find_symbol'] } } };
+    const ok = 'mcp__plugin_memory_memory__memory_store, mcp__plugin_browser-webkit_browser-webkit__browser_navigate, mcp__plugin_browser-chrome_browser-chrome__*\n';
+    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'stack/a.md', text: ok }] }), []);
+    const bad = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/b.md', text: 'x\nmcp__plugin_memory_memory__retrieve_memory\n' }] }); // mcp-fixture
+    assert.strictEqual(bad.length, 1);
+    assert.match(bad[0], /stack\/b\.md:2 .*retrieve_memory.*memory/);
+    const alias = lintMcpToolsAtPin({ tools, files: [{ file: 'stack/c.md', text: 'mcp__plugin_serena_serena__find_symbol mcp__plugin_serena_serena__nope\n' }] }); // mcp-fixture
+    assert.strictEqual(alias.length, 1, 'an alias spelling is judged by its successor\'s list');
+    assert.deepStrictEqual(lintMcpToolsAtPin({ tools, files: [{ file: 'scripts/t.js', text: 'mcp__plugin_memory_memory__nope // mcp-fixture\n' }] }), [], 'a marked fixture line passes');
+    assert.deepStrictEqual(lintMcpToolsAtPin(), [], 'every shipped spelling names a tool its pinned server has');
 });
 
 // Check 59. A renamed MCP server leaves its old plugin spelling behind in every `tools:` allowlist and

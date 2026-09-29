@@ -5815,6 +5815,19 @@
         }
       ]
     },
+    "memory-toolsearch-line": {
+      "_note": "The memory MCP's tools are DEFERRED, so the rule and the session-start hook each hand the model the ONE ToolSearch line that loads them (2.1.5 audit M44: the line had two homes nothing tied together). A renamed tool or server is one edit here and the lint names every copy.",
+      "owner": {
+        "file": "stack/rules/baseline-memory.md",
+        "marker": "ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list"
+      },
+      "sites": [
+        {
+          "file": "stack/hooks/memory-session.js",
+          "marker": "ToolSearch select:mcp__plugin_memory_memory__memory_store,mcp__plugin_memory_memory__memory_search,mcp__plugin_memory_memory__memory_list"
+        }
+      ]
+    },
     "env-legacy-fallback": {
       "_note": "2.0.0 renamed every setting from its 1.x prefix to ALFRED_CODE_*. hook-prelude.js's envOf(env, suffix) is the ONE implementation every ordinary hook requires; the three engines (docs.js, memory.js, history.js) and the two MCP launchers (memory-launch.js, uv-python.js) ship without the prelude beside them on at least one route, so each carries its own byte-identical inline copy instead of a require. A change to the fallback rule (the DOCS_PATH third spelling included) is five edits, not one.",
       "owner": {

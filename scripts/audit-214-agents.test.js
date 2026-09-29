@@ -171,7 +171,8 @@ test('I11: every disallowedTools entry is a real tool spelling, and none removes
         if (!deny.length) continue;
         // a misspelled deny fails OPEN - the tool it meant to remove stays granted
         assert.deepStrictEqual(lint.lintAgentTools(`agents/${seat}.md`, `tools: ${deny.join(', ')}\n`), [], seat);
-        assert.deepStrictEqual(lint.lintStaleMcpToolNames({ files: [{ file: `stack/agents/${seat}.md`, text: deny.join('\n') }] }), [], seat);
+        // 2.1.5 M35: judged on the seat's own grant line, where a listed 1.x alias's spelling is allowed.
+        assert.deepStrictEqual(lint.lintStaleMcpToolNames({ files: [{ file: `stack/agents/${seat}.md`, text: `disallowedTools: ${deny.join(', ')}` }] }), [], seat);
         assert.deepStrictEqual(deny.filter((t) => tools(seat).includes(t)), [], `${seat}: a tool listed in both is removed`);
     }
 });

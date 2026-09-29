@@ -326,7 +326,11 @@ change (see the invariants below).
   Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (baseline-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
-  `scripts/audit-214-agents.test.js` holds the grants.
+  `scripts/audit-214-agents.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
+  carries also grant (and deny) the OLD spelling of each renamed server they hold - `serena`, `context7`,
+  `playwright-<engine>` - because those alias ids still serve their successor's server under the old name to an
+  install not yet updated (2.1.5 M35); an absent server's tool is inert, and check 59 allows an alias spelling on a
+  seat's `tools:` / `disallowedTools:` line only.
   Pins: resolvers `sonnet`/`high`, designers `opus`/`xhigh`, verifiers `sonnet`/`xhigh`, implementers
   `sonnet`/`medium`, support seats `sonnet`, and three read-only reasoners on `opus` - `alfred-issue-diagnoser-ci`
   `high`, `alfred-issue-diagnoser-runtime` and `security-auditor` `xhigh` (the reasons, and the A/B they still lack, in
@@ -467,6 +471,9 @@ change (see the invariants below).
   - `plugin-settings.json` - recommended config for INSTALLED plugins, applied by
     `scripts/plugin-settings.js`: walks report and ask in the plugins layer turn, apply after install;
     add-only by default (`--replace` overwrites); each row names the verified plugin VERSION (lint 28).
+  - `mcp-pins.json` / `mcp-tools.json` - the MCP runtime pins with their `refreshed` day (the uvx dependency
+    cut-off), and each pinned server's tool names at its pin (lint check 62), both written only by
+    `node scripts/refresh-mcp-pins.js --write`.
   - `model-prices.json` - the list prices `analyze-usage.js` bills its cost row from, with the source page and
     fetch date inside; refreshed from that page, never from memory (a unit test pins the page's multipliers).
   - `judgment.json`, `migrations.json` - existence-detected retirements of GENERATED artifacts plus the
@@ -508,10 +515,13 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **Every MCP server ships as its OWN plugin, and the tool names say so.** ONE PLUGIN, ONE SERVER,
   SAME NAME (lint check 53): a plugin server's tools are `mcp__plugin_<plugin>_<server>__<tool>`, so
   every shipped tool name is `mcp__plugin_<n>_<n>__<tool>`, and lint check 54 fails on a bare
-  `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` (it resolves to nothing: a
+  `mcp__<server>__` under `stack/`, `setup-plugin/`, `meta/` or `scripts/` - today's servers and every name
+  `renamed.mcps` / `retired.mcps` left behind (it resolves to nothing: a
   `tools:` allowlist silently drops the tool, a `ToolSearch select:` line finds none); check 59 fails
-  on a plugin spelling whose plugin ships no server there - a renamed server's old spelling (a
-  deliberate fixture line carries `mcp-fixture` in a comment). A plugin's
+  on a plugin spelling whose plugin ships no server there - a renamed server's old spelling; check 62 fails
+  on one whose TOOL its pinned server lacks (`meta/mcp-tools.json`, each server's tool names at its pin, written
+  by `refresh-mcp-pins.js --write`), so a pin bump that renames a tool is a finding, not a silent drop. All three
+  live in `scripts/lint-mcp-tools.js`, and a deliberate fixture line carries `mcp-fixture` in a comment. A plugin's
   servers LOAD TOGETHER, so a second server in one entry would put a second set of tool schemas in
   every session. The entries are GENERATED (`scripts/build-marketplace.js --mcp-entries`, from
   `meta/mcp-pins.json`); `ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0.2.x registration route for
@@ -590,9 +600,12 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     (2.1.4, I10: FileSystem writes, moves and deletes where no house guard looks);
     `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list (`none` lifts it) - read by the launcher from
     the shell and the three settings files, and on the copy route resolved into Windows-MCP's own
-    `WINDOWS_MCP_EXCLUDE_TOOLS`. The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
+    `WINDOWS_MCP_EXCLUDE_TOOLS`; each name is checked against the pinned tool list (`desktop-launch.js WINDOWS_TOOLS`,
+    held equal to `meta/mcp-tools.json`: case mended, an unknown one named and dropped, a list naming none keeps the
+    default), and Windows-MCP's own `WINDOWS_MCP_TOOLS`, which OVERRIDES the list, never reaches it - the launcher
+    drops it from the child's environment and the copy route registers it empty (2.1.5 M41). The gate is by tool NAME, so `App` stays whole, and its `launch_executable`
     mode starts any program: a house guard denies that mode and every MacOS-MCP `Shell` call unless
-    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no such flag, and runs as `macos-mcp serve` (with
+    `<docs-path>/flow/DESKTOP-EXEC-ALLOW` allows it. MacOS-MCP 0.4.6 has no exclude flag; its own config.toml `[tools] exclude` removes a tool, which the stack does not write, and it runs as `macos-mcp serve` (with
     no subcommand it exits with usage, measured); it checks its Accessibility grant (and a System Events
     probe it calls Screen Recording) before it serves and EXITS when one is missing - the server fails to
     connect and System Settings opens - unless `MACOS_MCP_SKIP_PERMISSION_CHECK=1` starts it ungranted. On
@@ -608,8 +621,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
     server no seat of it holds is listed main-thread-only in `scripts/audit-214-agents.test.js` (browser-extension's browser).
-  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `CONTEXT7_API_KEY` header expands from
-    the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
+  - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
+    Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
+    `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,
     `chrome-devtools`, `appium-mcp`, `sentry` and `context7-local` (manifest `retired.mcps`,
     `meta/retired-plugins.json`): update uninstalls each only as `name@<stack key>` and prints its
     add-back line.
@@ -681,7 +695,9 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   deletes nothing.
 - **The navigation server (Serena) self-activates via `--project-from-cwd`** (finds `.serena/project.yml` or `.git` walking
   up from its cwd); a project with no `.git` of its own whose folder has moved under the data root gets
-  `--project <cwd>` from the launcher instead (the literal directory, not the failed expansion below). Its
+  `--project <cwd>` from the launcher instead (the literal directory, not the failed expansion below), and the
+  copy route registers `--project .` there (`@SERENA_PROJECT_FLAG@ @SERENA_PROJECT_DIR@`, serena resolving it against
+  its cwd - 2.1.5 M26). Its
   AUTO-GENERATED config is not a substitute (empty language list filled async, only the top language
   enabled), so the installer SEEDS serena's `project.yml` (`<data root>/serena/`, or a 2.0.0 `.serena` not
   moved yet) on install and update: project name, the `language_servers` their own scan detects (C#,
@@ -704,8 +720,11 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `serena-launch.js` swaps in the file beside it (`contextArgs`) - an entry naming the file would stop a
   project whose plugin cache predates it, since Claude Code launches the refreshed entry against the
   installed version. The full copy route copies it to `.claude/navigation-context.yml` (beside the
-  `.mcp.json` that names it, so a clone carries both) and registers `--context .claude/navigation-context.yml`
-  (`@SERENA_CONTEXT@`, relative like `SERENA_HOME`; a snapshot without the file keeps `claude-code`); the
+  `.mcp.json` that names it, so a clone carries both) and registers `--context ${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml`
+  (`@SERENA_CONTEXT@`; 2.1.5 R6: serena fails CLOSED on a context path that does not resolve, so it is anchored the
+  way the browser row anchors its profile - Claude Code sets `CLAUDE_PROJECT_DIR` in the server's environment, not its
+  own, so the `.mcp.json` expansion usually takes the default, today's cwd-relative path, and is absolute only where
+  the launching shell exports it (code.claude.com/docs/en/mcp); a snapshot without the file keeps `claude-code`); the
   verify pass reads the same token, the ledger's `managed-files` records the copy, and a run that no
   longer registers navigation (a plugin route) removes an unchanged copy, as uninstall does.
 - **The navigation server's state is isolated per project** under the data root: `SERENA_HOME` is
@@ -732,7 +751,18 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   in the platform's separator, and the copy route registers `.alfred\serena\home` on Windows
   (`@SERENA_HOME@`) - which is why the data root may hold no space: serena 1.7.0 execs its TypeScript server through npm's `.bin` shim, so cmd.exe
   gets the path UNQUOTED and cuts it at its first `/` (an absolute one at the first space). Both
-  launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them.
+  launchers pass a stop signal on to uvx (`runUvx`), or the server outlives them. The pin fixes only the top
+  package, so every uvx start also takes the release's dependency CUT-OFF (2.1.5 M24): `--exclude-newer
+  <refreshed>T23:59:59Z`, the pins file's own day (uv takes only what was uploaded before it -
+  docs.astral.sh/uv/concepts/resolution), passed by each plugin entry to its launcher beside the pin it was
+  generated with (an older launcher ignores the flag), resolved into the copy route's rows (`@UV_EXCLUDE_FLAG@
+  @UV_EXCLUDE_NEWER@`, two words dropped when the day is missing) and spelled into init's and the docs' index
+  command; a `UV_EXCLUDE_NEWER` the user set (the env, then the three settings files - `uv-python.js
+  userExcludeNewer`) replaces it everywhere: the launcher hands it to uv, the copy route registers it and init's
+  index command spells it, `false` meaning no cut-off (a mirror that publishes no upload time serves nothing under
+  one - the post-install connect check names the escape). `refresh-mcp-pins.js` also REFUSES a serena bump (exit 1, the pin kept) until the new release's
+  `claude-code.yml` hashes as the `# upstream:` line in `navigation-context.yml` records - re-diff, re-record,
+  refresh (2.1.5 R7).
 - **Three memory stores and one record, don't conflate:** the `memory` MCP is the SHARED memory - preferences,
   corrections, project facts and agent lessons, searchable by meaning, one database per chosen
   level (global/scoped/project) read by every Claude account and Cursor at that level; the navigation server's
@@ -828,7 +858,8 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
 - **`develop` is where work lands; `main` is the release branch.** Merging `develop` -> `main` IS the
   release: the workflow rebuilds the archive and tags `v<version>` from
   `setup-plugin/.claude-plugin/plugin.json`. Bump it (plus `marketplace.json` metadata; lint enforces
-  equality) on `develop` with any release-worthy change. Never commit feature work to `main`; keep `main`
+  equality) on `develop` with any release-worthy change - a merge that reuses a version whose tag names another
+  commit FAILS the release job (2.1.5 M27; only a manual run with `replace_tag` moves it). Never commit feature work to `main`; keep `main`
   the GitHub default branch. Lint + test workflows gate every push and PR.
 - **Public repo.** No private project names or absolute local paths in tracked files.
 - **The 1.x name is retired, never reused.** Its spellings (`CLAUDE_STACK_*`, the older <!-- legacy-name -->
@@ -839,12 +870,14 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   in code), and only history (`docs/*-evidence.md`, `meta/migrations.json`,
   `meta/retired-entries.json`), the marketplace's generated `plugins[]` and the retired entry names
   pass unmarked. Anything NEW is `alfred-code` / `ALFRED_CODE_` from day one.
-- **The repo root is a plugin source, so seven names are RESERVED there.** Every marketplace entry
+- **The repo root is a plugin source, so twelve names are RESERVED there.** Every marketplace entry
   shares this root as its `source` and lists the paths it ships, but a shared root is auto-discovered
   whatever an entry lists (measured, spike S9c in `docs/plugin-migration-evidence.md`): a root
   `agents/` or `commands/` loads once PER ENTRY, a root `.mcp.json` or `hooks/hooks.json` loads once
   and is attributed to a different entry each time. So `skills/`, `commands/`, `agents/`,
-  `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root (lint
+  `hooks/hooks.json`, `monitors/`, `settings.json` and `.lsp.json` never appear at the root, nor the other
+  default locations the plugin reference names - `bin/` (it would sit on every entry's Bash PATH),
+  `output-styles/`, `workflows/`, `themes/` and a root `SKILL.md` (a single-skill plugin) (lint
   check 46), and hooks and MCP servers are declared INLINE in each entry instead. `.mcp.json` is the
   one exception, because this repo is also a consuming project: it stays machine-local and
   gitignored, and the temp-project matrix installs from `scripts/clean-export.js` so it cannot leak

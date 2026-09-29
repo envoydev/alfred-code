@@ -21,7 +21,7 @@ const LAUNCHERS = new Set(['npx', 'uvx', 'bunx', 'pnpm']);
 // The flag that names the package outright, per launcher; else the first positional is it.
 const PACKAGE_FLAGS = { npx: ['-p', '--package'], uvx: ['--from'], bunx: ['-p', '--package'], pnpm: [] };
 // Flags whose VALUE is not the package - `uvx --with numpy --from pkg==1 bin` launches pkg.
-const VALUE_FLAGS = new Set(['--with', '--python', '-p', '--package', '--from', '--index-url']);
+const VALUE_FLAGS = new Set(['--with', '--python', '-p', '--package', '--from', '--index-url', '--exclude-newer']);
 const WIDE_SHELL = /^(Bash|PowerShell)(\((\*|:\*|\*:\*)\))?$/;
 const SPLICES_INPUT = /\$\{?(tool_input|file_path|command)\b/i;
 

@@ -1,7 +1,7 @@
 ---
 name: code-quality-analyzer
 description: "Use as the code-quality capture's read-only gatherer for one module: findings against the rules the dispatch hands it, each tied to file:line. Do NOT use to map architecture (architecture-analyzer), measure coverage (test-coverage-analyzer), record style (code-style-analyzer), fix or write files."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_documentation_documentation__*
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_documentation_documentation__*, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_context7_context7__*
 model: sonnet
 effort: medium
 color: yellow

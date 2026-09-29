@@ -28,7 +28,7 @@ You are the judgment seat for this run: you gather the project's quality rules, 
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - judge the modules via code-quality-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
 - **DELEGATED** - dispatch code-quality-analyzer per module as below; the gate, the tiers and the writing stay here.
-- **INLINE** (chosen, or no dispatch - Cursor, or a scope too small to fan out): judge the modules yourself, serena-first and bounded, by the seat's own finding shape, and continue at JUDGE identically.
+- **INLINE** (chosen, or no dispatch - Cursor, or a scope too small to fan out): judge the modules yourself, navigation-server-first and bounded, by the seat's own finding shape, and continue at JUDGE identically.
 
 ## The run
 

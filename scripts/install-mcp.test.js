@@ -49,7 +49,7 @@ test('register-spec: a hosted server registers http with its header, and an EMPT
     const remotes = { documentation: mcp.CONTEXT7_REMOTE };
     assert.deepStrictEqual(mcp.registerSpec({ name: 'documentation', args: '@HTTP@', scope: 'project', remotes }),
         ['mcp', 'add', '--transport', 'http', '--scope', 'project', 'documentation',
-            'https://mcp.context7.com/mcp', '--header', 'CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}']);
+            'https://mcp.context7.com/mcp', '--header', 'Context7-API-Key: ${CONTEXT7_API_KEY:-}']);
     // A remote with no header: no --header at all, so its browser consent flow stays on.
     const oauth = mcp.registerSpec({ name: 'documentation', args: '@HTTP@', scope: 'project', remotes: { documentation: { url: 'https://x/mcp/a', header: '' } } });
     assert.ok(!oauth.includes('--header'), oauth.join(' '));
@@ -336,6 +336,87 @@ test('pins: the RELEASE pins from meta/mcp-pins.json - a package with no usable 
         assert.strictEqual(mcp.resolvePins({ pins: garbage }).PW_PIN, '', `pins=${JSON.stringify(garbage)}`);
 });
 
+// M24: the copy route registers uvx itself, so each uvx row carries the release's dependency cut-off - the pins
+// file's refreshed day, its last second UTC - right after the Python pin, the same value the plugin entries pass
+// their launchers. A source with no refreshed day registers no cut-off, and no empty argv word either.
+test('M24 pins: the copy route\'s uvx rows carry the release cut-off, and none when the pins file names no day', () =>
+{
+    const file = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
+    const pins = mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed });
+    assert.strictEqual(pins.UV_EXCLUDE_FLAG, '--exclude-newer');
+    assert.strictEqual(pins.UV_EXCLUDE_NEWER, `${file.refreshed}T23:59:59Z`);
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+    const tokens = { ...pins, UV_PYTHON: '3.13' };
+    for (const row of manifest.mcps.filter((m) => /\buvx\b/.test(m.args)))
+    {
+        const words = mcp.mcpArgv(row.args, tokens);
+        const at = words.indexOf('--python');
+        assert.deepStrictEqual(words.slice(at, at + 4), ['--python', '3.13', '--exclude-newer', pins.UV_EXCLUDE_NEWER], `${row.name}: ${words.join(' ')}`);
+        const bare = mcp.mcpArgv(row.args, { ...mcp.resolvePins({ pins: file.pins }), UV_PYTHON: '3.13' });
+        assert.ok(!bare.includes('--exclude-newer') && !bare.includes(''), `${row.name} with no day: ${JSON.stringify(bare)}`);
+    }
+    assert.strictEqual(manifest.mcps.filter((m) => /\buvx\b/.test(m.args)).length, 4, 'navigation, memory and the two desktop servers');
+});
+
+// An index that publishes no PEP 700 upload time (a private mirror) makes every file unavailable under a cut-off, and
+// a baked `--exclude-newer` beats uv's own UV_EXCLUDE_NEWER - so the user's value, read where the stack reads its other
+// settings, is what the copy route registers: their date, or no cut-off at all for `false`.
+test('M24 pins: a UV_EXCLUDE_NEWER the user set replaces the release cut-off - their value, or none for false - said once', () =>
+{
+    const file = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8'));
+    const run = (own) => { const logs = []; return { pins: mcp.resolvePins({ pins: file.pins, refreshed: file.refreshed, own, log: (m) => logs.push(m) }), logs }; };
+    const off = run('false');
+    assert.deepStrictEqual([off.pins.UV_EXCLUDE_FLAG, off.pins.UV_EXCLUDE_NEWER], ['', '']);
+    assert.strictEqual(off.logs.filter((m) => /UV_EXCLUDE_NEWER/.test(m)).length, 1, off.logs.join(' | '));
+    assert.match(off.logs.find((m) => /UV_EXCLUDE_NEWER/.test(m)), /UV_EXCLUDE_NEWER=false is set - every uvx server starts with no dependency cut-off/);
+    const dated = run('2026-01-15T00:00:00Z');
+    assert.deepStrictEqual([dated.pins.UV_EXCLUDE_FLAG, dated.pins.UV_EXCLUDE_NEWER], ['--exclude-newer', '2026-01-15T00:00:00Z']);
+    const absent = run('');
+    assert.deepStrictEqual([absent.pins.UV_EXCLUDE_FLAG, absent.pins.UV_EXCLUDE_NEWER], ['--exclude-newer', `${file.refreshed}T23:59:59Z`]);
+    assert.ok(!absent.logs.some((m) => /UV_EXCLUDE_NEWER/.test(m)), 'no line when the user set nothing');
+    // Read the way every other user-set value is: the run's env, then settings.local.json, settings.json, the account.
+    const { userExcludeNewer } = require('../stack/mcp/uv-python.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uv-exclude-'));
+    try
+    {
+        fs.mkdirSync(path.join(dir, '.claude'));
+        fs.mkdirSync(path.join(dir, 'acct'));
+        const acct = { CLAUDE_CONFIG_DIR: path.join(dir, 'acct') };
+        fs.writeFileSync(path.join(dir, 'acct', 'settings.json'), JSON.stringify({ env: { UV_EXCLUDE_NEWER: '2026-02-01' } }));
+        assert.strictEqual(userExcludeNewer({ env: acct, projectDir: dir }), '2026-02-01', 'the account settings');
+        fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ env: { UV_EXCLUDE_NEWER: 'false' } }));
+        assert.strictEqual(userExcludeNewer({ env: acct, projectDir: dir }), 'false', 'the project settings over the account');
+        fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { UV_EXCLUDE_NEWER: '2026-03-01' } }));
+        assert.strictEqual(userExcludeNewer({ env: acct, projectDir: dir }), '2026-03-01', 'this machine\'s file over the shared one');
+        assert.strictEqual(userExcludeNewer({ env: { ...acct, UV_EXCLUDE_NEWER: ' false ' }, projectDir: dir }), 'false', 'the run\'s own env first');
+        assert.strictEqual(userExcludeNewer({ env: {}, projectDir: undefined }), '');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// M26: serena 1.7.0's --project-from-cwd finds a project only by `.serena/project.yml` or `.git` walking up (cli.py
+// find_project_root), so a project with no `.git` of its own whose serena folder moved under the data root activates an
+// ancestor or nothing. The plugin launcher names the cwd there (serena-launch.js projectArgs); the copy route, which
+// runs no launcher, registers the same choice - `--project .`, which serena resolves against its cwd, the project.
+test('M26 copy route: the navigation row names the project outright where --project-from-cwd cannot find it', () =>
+{
+    const { copyRouteProject } = require('../stack/mcp/serena-launch.js');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nav-project-'));
+    try
+    {
+        assert.deepStrictEqual(copyRouteProject({ projectDir: dir, serenaDir: '.alfred/serena' }), { SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' }, 'no .git, the folder moved');
+        assert.deepStrictEqual(copyRouteProject({ projectDir: dir, serenaDir: '.serena' }), { SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' }, 'a 2.0.0 .serena is found from the cwd');
+        fs.mkdirSync(path.join(dir, '.git'));
+        assert.deepStrictEqual(copyRouteProject({ projectDir: dir, serenaDir: '.alfred/serena' }), { SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' }, 'a .git is found from the cwd');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+    const row = manifest.mcps.find((m) => m.name === 'navigation').args;
+    const words = (t) => mcp.mcpArgv(row, { UV_PYTHON: '3.13', SERENA_HOME: '.alfred/serena/home', SERENA_CONTEXT: 'claude-code', ...t });
+    assert.deepStrictEqual(words({ SERENA_PROJECT_FLAG: '--project', SERENA_PROJECT_DIR: '.' }).slice(-2), ['--project', '.']);
+    assert.deepStrictEqual(words({ SERENA_PROJECT_FLAG: '--project-from-cwd', SERENA_PROJECT_DIR: '' }).slice(-1), ['--project-from-cwd']);
+});
+
 test('pins: each is spelled as its row says - memory ==<ver> inside the extras brackets, the others @<ver>', () =>
 {
     // It sits INSIDE the extras brackets - `mcp-memory-service[sqlite]==<ver>` - where an @ would
@@ -360,16 +441,22 @@ test('copy route: windows-desktop registers with the release pin and the tool ga
     const mac = manifest.catalogs.mcps.find((e) => e.startsWith('macos-desktop|'));
     assert.ok(row && mac, 'both desktop servers are catalog rows');
     const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
-    const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }) };
+    const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }),
+        UV_EXCLUDE_FLAG: '--exclude-newer', UV_EXCLUDE_NEWER: '2026-09-29T23:59:59Z' };
     const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
-    // I10: FileSystem (write, copy, move, delete) is off on this route too.
+    // I10: FileSystem (write, copy, move, delete) is off on this route too. M41: WINDOWS_MCP_TOOLS (Windows-MCP's
+    // --tools, which OVERRIDES --exclude-tools) is registered EMPTY - click reads an empty variable as unset - so
+    // one inherited from the shell never lifts the gate.
     assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
-        '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
+        '-e', 'WINDOWS_MCP_TOOLS=', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
     assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
-        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
+        ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--exclude-newer', '2026-09-29T23:59:59Z', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
         'the upstream telemetry is off on the copy route too');
     assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } }), '', 'none leaves Windows-MCP its own config');
     assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'PowerShell' } }), 'PowerShell');
+    // M41: the copy route's override is checked like the launcher's - case mended, a list of no real tool is the default.
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'powershell' } }), 'PowerShell');
+    assert.strictEqual(copyRouteExclude({ env: { ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'bogus' } }), 'PowerShell,Registry,Process,FileSystem');
     assert.strictEqual(mcp.identityOf({ command: 'uvx', args: ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve'] }), 'stdio:windows-mcp');
 });
 
@@ -2008,7 +2095,10 @@ test('seed install (full copy route): navigation starts on the stack context the
         each: (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'),
         inspect: navState,
     });
-    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
+    // R6: serena raises FileNotFoundError on a context path that does not resolve (context_mode.py), so the path is
+    // anchored the way the browser row anchors its profile - on ${CLAUDE_PROJECT_DIR:-.}: absolute where the variable
+    // reaches the expansion, and exactly today's relative path (the default) where it does not.
+    assert.strictEqual(result.context, '${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml', out);
     assert.strictEqual(result.copy, navContext(), 'the copy is the shipped file, byte for byte');
     assert.match(result.stamp, /^managed-files:.*\bnavigation-context\.yml=/m, 'the ledger records the copy, so uninstall and a route switch can remove it');
     assert.strictEqual(steps[1], steps[0], 'a re-run rewrote .mcp.json');
@@ -2030,8 +2120,53 @@ test('seed update (full copy route): a registration still on the upstream claude
         },
         inspect: navState,
     });
-    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
+    assert.strictEqual(result.context, '${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml', out);
     assert.strictEqual(result.copy, navContext(), 'a deleted copy comes back');
+});
+
+// M24 behind a mirror: the copy route registers the user's UV_EXCLUDE_NEWER in place of the release cut-off (none for
+// `false`), and the verify pass expects that same shape - it never 'repairs' the user's choice back to the release day.
+const uvRows = (repo) => Object.fromEntries(['navigation', 'memory'].map((n) =>
+{
+    const args = ((jsonAt(repo, '.mcp.json').mcpServers || {})[n] || {}).args || [];
+    const at = args.indexOf('--exclude-newer');
+    return [n, at < 0 ? null : args[at + 1]];
+}));
+const RELEASE_CUTOFF = `${JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'mcp-pins.json'), 'utf8')).refreshed}T23:59:59Z`;
+test('seed install (full copy route): UV_EXCLUDE_NEWER=false registers no cut-off, a date registers that date, absent the release day - and a re-run changes nothing', POSIX_ONLY, () =>
+{
+    const off = seedRun(['install', 'install'], 'skill markdown-style\n', {
+        env: { ...COPY_ENV, UV_EXCLUDE_NEWER: 'false' },
+        each: (repo) => ({ file: fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'), rows: uvRows(repo) }),
+    });
+    assert.deepStrictEqual(off.steps[0].rows, { navigation: null, memory: null }, off.out);
+    assert.strictEqual(off.steps[1].file, off.steps[0].file, 'a re-run rewrote .mcp.json');
+    assert.doesNotMatch(off.out, /mcp repaired/, 'the verify pass expects the user\'s shape');
+    assert.strictEqual((off.out.match(/UV_EXCLUDE_NEWER=false is set/g) || []).length, 1, off.out);
+
+    // A date in the project's settings.json env - read from the file, not only the shell.
+    const dated = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        env: COPY_ENV, args: [[], ['--installed-only']],
+        prepare: (repo) => { fs.mkdirSync(path.join(repo, '.claude'), { recursive: true }); fs.writeFileSync(path.join(repo, '.claude', 'settings.json'), JSON.stringify({ env: { UV_EXCLUDE_NEWER: '2026-01-15' } })); },
+        each: (repo) => ({ file: fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'), rows: uvRows(repo) }),
+    });
+    assert.deepStrictEqual(dated.steps[0].rows, { navigation: '2026-01-15', memory: '2026-01-15' }, dated.out);
+    assert.strictEqual(dated.steps[1].file, dated.steps[0].file, 'the update rewrote .mcp.json');
+    assert.doesNotMatch(dated.out, /mcp repaired/);
+
+    const absent = seedRun('install', 'skill markdown-style\n', { env: { ...COPY_ENV, UV_EXCLUDE_NEWER: undefined }, inspect: uvRows });
+    assert.deepStrictEqual(absent.result, { navigation: RELEASE_CUTOFF, memory: RELEASE_CUTOFF }, absent.out);
+    assert.doesNotMatch(absent.out, /UV_EXCLUDE_NEWER/);
+});
+
+test('seed update (full copy route): a UV_EXCLUDE_NEWER=false set after the install takes the release cut-off off the rows', POSIX_ONLY, () =>
+{
+    const { out, steps } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        env: [COPY_ENV, { ...COPY_ENV, UV_EXCLUDE_NEWER: 'false' }], args: [[], ['--installed-only']],
+        each: (repo) => uvRows(repo),
+    });
+    assert.deepStrictEqual(steps[0], { navigation: RELEASE_CUTOFF, memory: RELEASE_CUTOFF });
+    assert.deepStrictEqual(steps[1], { navigation: null, memory: null }, out);
 });
 
 test('seed update (plugin route) after the full copy route: the stack context copy goes with the registration, a changed one stays (I12)', POSIX_ONLY, () =>

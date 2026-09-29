@@ -34,7 +34,7 @@ The measurements behind these rules live in `references/evidence.md` - an audit 
 DELEGATED vs INLINE keys on dispatch capability, not file presence - agent files on disk with no Agent tool to dispatch them is still INLINE. When dispatch is available, ask ONE question before GATHER, via AskUserQuestion - hunt weaknesses and strengths via architecture-analyzer seats (recommend it: the cheap seats absorb the reads), or in-session? - unless a calling flow (the quality loop) already picked the run's mode, which is inherited, never re-asked.
 
 - **DELEGATED** - dispatch architecture-analyzer per module as below; reasoning and writing stay here.
-- **INLINE** (chosen, or no dispatch - Cursor, or a scope too small to fan out): characterize the modules yourself, serena-first and bounded, and continue at JUDGE identically.
+- **INLINE** (chosen, or no dispatch - Cursor, or a scope too small to fan out): characterize the modules yourself, navigation-server-first and bounded, and continue at JUDGE identically.
 
 ## The run
 

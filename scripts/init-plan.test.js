@@ -52,7 +52,7 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
+        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --exclude-newer ${require('../meta/mcp-pins.json').refreshed}T23:59:59Z --from serena-agent@${PINS.navigation.version} serena project index`);
     // F2: the memory service's embedding model (~166MB) fetched ahead, so its first start fits the 30s connect budget.
     assert.strictEqual(lineOf(lines, /^machine: memory model /),
         `machine: memory model - missing after uv: node "${path.join(__dirname, '..', 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${path.join(__dirname, '..')}"`);
@@ -60,6 +60,16 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
     assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index',
         'machine: memory model', 'machine: claude-hud status line + compact layout']);
+});
+
+// M24 behind a mirror: the index command takes the cut-off the server itself starts on - a UV_EXCLUDE_NEWER the user
+// set replaces the release's (their value, none for false), read from the env or the project's settings.
+test('machine: the serena index command follows a UV_EXCLUDE_NEWER the user set', () =>
+{
+    const index = (root, env) => lineOf(render(plan({ inv: INV(), root, platform: 'darwin', env: E(env), probe: NONE })), /^machine: serena index /);
+    const off = index(project({ settings: { env: { UV_EXCLUDE_NEWER: 'false' } } }));
+    assert.match(off, /uvx --python 3\.13 --from serena-agent@/, off);
+    assert.match(index(project(), { UV_EXCLUDE_NEWER: '2026-01-15' }), /uvx --python 3\.13 --exclude-newer 2026-01-15 --from serena-agent@/);
 });
 
 // Task 24: claude-hud arrives configured - one item INSIDE the machine ask, never an ask of its own.
@@ -155,7 +165,7 @@ test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 P
     const lines = render(plan({ inv: INV(), root, platform: 'win32', arch: 'arm64', env: E({ PROCESSOR_ARCHITECTURE: 'ARM64' }), probe: NONE }));
     assert.match(lineOf(lines, /^machine: uv /), /powershell -ExecutionPolicy ByPass -c "irm https:\/\/astral\.sh\/uv\/install\.ps1 \| iex"$/);
     assert.match(lineOf(lines, /^machine: python /), /uv python install cpython-3\.13-windows-x86_64-none$/);
-    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.alfred\\serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
+    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.alfred\\serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --exclude-newer \S+ --from serena-agent@/);
 });
 
 test('machine: a picked chrome or msedge is found on PATH or at its app install location, and reported when missing (M2)', () =>

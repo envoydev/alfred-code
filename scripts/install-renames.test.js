@@ -259,6 +259,27 @@ test('respellRenamed: a generated rule\'s old MCP tool spellings and routing key
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+// M46: before one server per engine the browser was ONE registration, `playwright`, and a generated rule written then
+// spells its tools under that one bare name; the rename table maps only the per-engine names, so that spelling was never
+// re-spelled. It follows to the first engine this project keeps (chrome when it keeps none).
+test('M46 respellRenamed: the single pre-per-engine browser spelling follows to the first kept engine', () =>
+{
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-pw-'));
+    try
+    {
+        const rule = '.claude/rules/baseline-project-agent-capabilities.md';
+        write(dir, rule, `- browser - \`${bareTool('playwright', 'browser_navigate')}\`, \`${bareTool('playwright', 'browser_snapshot')}\`\n`);
+        const logs = [];
+        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, engines: ['firefox', 'chrome'], log: (m) => logs.push(m), note: (m) => assert.fail(m) });
+        const text = fs.readFileSync(path.join(dir, rule), 'utf8');
+        assert.strictEqual(text, `- browser - \`${bareTool('browser-firefox', 'browser_navigate')}\`, \`${bareTool('browser-firefox', 'browser_snapshot')}\`\n`);
+        write(dir, rule, `\`${bareTool('playwright', 'browser_click')}\`\n`);
+        selection.respellRenamed({ projectRoot: dir, renamed: RENAMED, log: () => {}, note: (m) => assert.fail(m) });
+        assert.strictEqual(fs.readFileSync(path.join(dir, rule), 'utf8'), `\`${bareTool('browser-chrome', 'browser_click')}\`\n`, 'no kept engine: chrome');
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('respellRenamed (I2): no CLAUDE.md and no rules folder is nothing to do', () =>
 {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renames-docs-'));

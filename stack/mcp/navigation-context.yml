@@ -1,7 +1,10 @@
 # THE NAVIGATION SERVER'S CONTEXT - serena-agent 1.7.0's own `claude-code` context
 # (src/serena/resources/config/contexts/claude-code.yml at the v1.7.0 tag), with a house prompt and five
-# more tools off. serena reads it as a custom context: `--context <path>` takes a file when the value
-# holds a path separator or ends in .yml (context_mode.py, SerenaAgentContext.load).
+# more tools off. The line below is that upstream file's hash: scripts/refresh-mcp-pins.js refuses a serena bump
+# whose claude-code.yml hashes otherwise, until this file is re-diffed against it and the line re-recorded (R7).
+# upstream: serena-agent 1.7.0 claude-code.yml sha256 78403573e7c71fe70b82253cb12a19b99b5c48f9702ea671f64257ad0e59c492
+# serena reads it as a custom context: `--context <path>` takes a file when the value holds a path separator
+# or ends in .yml (context_mode.py, SerenaAgentContext.load).
 #
 # Why: the upstream context serves seven file-writing tools, and a write through one of them bypasses every
 # hook matched on Edit / Write (the config-protection guard, the docs hold, the turn's edit list, the done
@@ -10,7 +13,8 @@
 #
 # The plugin route: serena-launch.js swaps the entry's `--context claude-code` for this file beside it. The
 # full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers
-# `--context .claude/navigation-context.yml` (resolved against the server's cwd, the project).
+# `--context ${CLAUDE_PROJECT_DIR:-.}/.claude/navigation-context.yml` (absolute where the variable reaches the
+# expansion, else resolved against the server's cwd, the project).
 name: alfred-code
 description: Alfred Code navigation - serena's claude-code context (single project; file, shell and search work is the harness's) with editing left to the harness except the reference-aware rename and safe delete.
 prompt: |

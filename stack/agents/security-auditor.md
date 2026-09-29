@@ -1,7 +1,7 @@
 ---
 name: security-auditor
 description: "Use when a feature or codebase needs a security posture audit before ship: a read-only adversarial sweep of authentication, authorization, input handling, secrets, config and data exposure, returning an OWASP/CWE punch-list. Do NOT use for just the current diff (/security-review), or to fix."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, WebSearch, WebFetch, mcp__plugin_documentation_documentation__*
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_navigation_navigation__write_memory, mcp__plugin_navigation_navigation__read_memory, mcp__plugin_navigation_navigation__list_memories, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Skill, Bash, Grep, Glob, WebSearch, WebFetch, mcp__plugin_documentation_documentation__*, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview, mcp__plugin_serena_serena__write_memory, mcp__plugin_serena_serena__read_memory, mcp__plugin_serena_serena__list_memories, mcp__plugin_context7_context7__*
 model: opus
 effort: xhigh
 color: red

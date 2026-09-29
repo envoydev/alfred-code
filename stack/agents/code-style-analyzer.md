@@ -1,7 +1,7 @@
 ---
 name: code-style-analyzer
 description: "Use to characterize how the project writes code in one language: reads style configs and representative code, returns a structured style report (enforced rules, idioms, divergence from house conventions). Do NOT use to judge quality (code-quality-analyzer), map architecture or write files."
-tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill
+tools: mcp__plugin_navigation_navigation__find_symbol, mcp__plugin_navigation_navigation__find_referencing_symbols, mcp__plugin_navigation_navigation__get_symbols_overview, mcp__plugin_memory_memory__memory_store, mcp__plugin_memory_memory__memory_search, mcp__plugin_memory_memory__memory_list, LSP, Read, Bash, Grep, Glob, Skill, mcp__plugin_serena_serena__find_symbol, mcp__plugin_serena_serena__find_referencing_symbols, mcp__plugin_serena_serena__get_symbols_overview
 model: sonnet
 effort: medium
 color: blue

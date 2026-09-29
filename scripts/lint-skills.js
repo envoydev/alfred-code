@@ -71,6 +71,7 @@ const { spawnSync } = require('child_process');   // `node --check` only - node 
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
 const { SIGNAL_KINDS } = require('./scan-evidence.js');
+const { lintMcpToolNames, lintStaleMcpToolNames, lintMcpToolsAtPin } = require('./lint-mcp-tools.js');  // checks 54, 59, 62
 
 const ROOT = path.resolve(__dirname, '..');
 const SKILLS_DIR = path.join(ROOT, 'stack', 'skills');
@@ -2401,6 +2402,8 @@ function main()
     for (const finding of lintMcpToolNames()) flag(finding);
     // 59. No shipped file names a plugin tool whose plugin carries no server - a renamed server's old spelling.
     for (const finding of lintStaleMcpToolNames()) flag(finding);
+    // 62. No shipped file names a tool its pinned server does not have (meta/mcp-tools.json).
+    for (const finding of lintMcpToolsAtPin()) flag(finding);
     // 60. The inventory page's inline script parses - a broken string there renders an empty page.
     for (const finding of lintPageScripts()) flag(finding);
     // 60b. The inventory page shows every seat at its frontmatter pin.
@@ -2499,7 +2502,9 @@ function lintPluginPlacement(placeIn)
 // are reserved at the repo root. `.mcp.json` is the one exception: this repo is itself a consuming
 // project, so a machine-local one is expected - but it must stay UNTRACKED, or every install from a
 // local-path marketplace registers this repo's own servers into the consuming project.
-const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json'];
+// M21: the reference's standard layout also auto-loads `bin/` (on every entry's Bash PATH), `output-styles/`,
+// `workflows/`, `themes/` and a root SKILL.md (a single-skill plugin) - code.claude.com/docs/en/plugins-reference.
+const RESERVED_ROOT_NAMES = ['skills', 'commands', 'agents', 'hooks', 'monitors', 'settings.json', '.lsp.json', 'bin', 'output-styles', 'workflows', 'themes', 'SKILL.md'];
 function lintRepoRootReserved(root)
 {
     const base = root || ROOT;
@@ -2681,79 +2686,6 @@ function lintMcpEntries()
     return out;
 }
 
-// 54. Every MCP server the stack ships arrives through a PLUGIN, so its tools are addressed
-// `mcp__plugin_<plugin>_<server>__<tool>`. The bare `mcp__<server>__<tool>` spelling belonged to
-// the registration route and resolves to nothing now: a `tools:` allowlist written that way
-// silently drops the tool, and a `ToolSearch select:` line written that way silently finds none.
-// The names are read from the generated entries, never typed here - so this file cannot itself
-// contain the spelling it bans, and a new server is covered the day its entry lands.
-function lintMcpToolNames()
-{
-    const out = [];
-    let names;
-    try { names = require('./build-marketplace.js').mcpPlugins().map(e => e.name); }
-    catch (err) { return [`the MCP entries could not be generated, so the tool-name sweep did not run: ${err.message}`]; }
-    const bare = new RegExp(`mcp__(${names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})__`, 'g');
-    const roots = ['stack', 'setup-plugin', 'meta', 'scripts'];
-    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
-    const walk = (dir, hit) =>
-    {
-        let names2;
-        try { names2 = fs.readdirSync(dir, { withFileTypes: true }); }
-        catch { return hit; }
-        for (const d of names2)
-        {
-            const full = path.join(dir, d.name);
-            if (skip.test(path.relative(ROOT, full))) continue;
-            if (d.isDirectory()) { walk(full, hit); continue; }
-            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
-            let body;
-            try { body = fs.readFileSync(full, 'utf8'); } catch { continue; }
-            const found = body.match(bare);
-            if (found) hit.push([path.relative(ROOT, full), found.length, found[0]]);
-        }
-        return hit;
-    };
-    const hits = [];
-    for (const r of roots) walk(path.join(ROOT, r), hits);
-    for (const [file, count, sample] of hits)
-        out.push(`${file} names an MCP tool by its bare server spelling (${count}x, e.g. \`${sample}\`) - a plugin server's tools are \`mcp__plugin_<plugin>_<server>__<tool>\`, so the bare form resolves to nothing.`);
-    return out;
-}
-
-// 59. Every PLUGIN tool spelling names a server the marketplace ships. Check 54 bans the bare form;
-// this one catches the plugin form outliving its plugin - a renamed server (serena -> navigation)
-// leaves `mcp__plugin_<old>_<old>__` in every allowlist and ToolSearch line, and each resolves to
-// nothing, silently. The shipped names are read from the generator, never typed here. A line that
-// spells a plugin the stack does not ship ON PURPOSE (a test fixture, a third-party plugin in a usage
-// sample) carries the whole word `mcp-fixture` in a comment.
-const MCP_FIXTURE_MARKER = /(?:\/\/|#|<!--)[^\n]*?(?<![\w-])mcp-fixture(?![\w-])/;
-const PLUGIN_TOOL_SPELLING = /mcp__plugin_([A-Za-z0-9][A-Za-z0-9.-]*)_([A-Za-z0-9][A-Za-z0-9.-]*)__/g;
-function lintStaleMcpToolNames({ files, entries } = {})
-{
-    let shipped = entries;
-    if (!shipped)
-    {
-        try { shipped = require('./build-marketplace.js').mcpPlugins(); }
-        catch (err) { return [`the MCP entries could not be generated, so the stale tool-name sweep did not run: ${err.message}`]; }
-    }
-    const servers = new Map(shipped.map((e) => [e.name, new Set(Object.keys(e.mcpServers || {}))]));
-    const out = [];
-    for (const { file, text } of files || shippedTextFiles(['stack', 'setup-plugin', 'meta', 'scripts']))
-        text.split('\n').forEach((line, i) =>
-        {
-            if (MCP_FIXTURE_MARKER.test(line)) return;
-            for (const [full, plugin, server] of line.matchAll(PLUGIN_TOOL_SPELLING))
-            {
-                if (!servers.has(plugin))
-                    out.push(`${file}:${i + 1} names \`${full}\`, but no marketplace entry named '${plugin}' carries a server - the tool resolves to nothing. Re-spell it to the shipped server; a deliberate fixture line carries \`mcp-fixture\` in a comment.`);
-                else if (!servers.get(plugin).has(server))
-                    out.push(`${file}:${i + 1} names \`${full}\`, but the plugin '${plugin}' carries no server '${server}' - one plugin, one server, same name (check 53).`);
-            }
-        });
-    return out;
-}
-
 // 60. The inventory page builds every table from ONE inline script, so a row string that does not
 // parse (an unescaped double quote) leaves the page blank in the browser - and every other check reads
 // that script as text. Each inline script goes through `node --check` on stdin; the finding maps the
@@ -2817,30 +2749,6 @@ function lintHtmlSeatPins(html, pins)
         else if (model !== pin.model || effort !== pin.effort) out.push(`${page}: the inventory row for '${seat}' says 'Pinned ${model}/${effort}' but its frontmatter pins ${pin.model}/${pin.effort}`);
     }
     return out;
-}
-
-// The text files under the given roots, the way checks 54 and 59 read them.
-function shippedTextFiles(roots, root = ROOT)
-{
-    const files = [];
-    const skip = /(^|\/)(node_modules|\.git)(\/|$)/;
-    const walk = (dir) =>
-    {
-        let entries;
-        try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-        catch { return; }
-        for (const d of entries)
-        {
-            const full = path.join(dir, d.name);
-            const rel = path.relative(root, full).split(path.sep).join('/');
-            if (skip.test(rel)) continue;
-            if (d.isDirectory()) { walk(full); continue; }
-            if (!/\.(md|mdc|js|json|sh|ps1|html|txt)$/.test(d.name)) continue;
-            try { files.push({ file: rel, text: fs.readFileSync(full, 'utf8') }); } catch { /* unreadable: nothing to sweep */ }
-        }
-    };
-    for (const r of roots) walk(path.join(root, r));
-    return files;
 }
 
 // 56. A retired plugin's NAME does not outlive the plugin in shipped text. The seats kept its
