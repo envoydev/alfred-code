@@ -16,7 +16,7 @@ const squash = (text) => text.replace(/\s+/g, ' ');
 const CAPS_DIR = 'stack/skills/alfred-capture-agent-capabilities';
 const SCRIPT = path.join(ROOT, CAPS_DIR, 'scripts', 'capabilities-inventory.js');
 const TEMPLATE = `${CAPS_DIR}/references/generated-rule-template.md`;
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-214-rules-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'capabilities-rule-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 
 function write(p, text)

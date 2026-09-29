@@ -348,7 +348,7 @@ change (see the invariants below).
   Every seat that judges or writes code holds `mcp__plugin_documentation_documentation__*` (baseline-quality-gates
   sends its outside-world claims there); the five read-only gatherers do not. A seat reports through
   SubagentHandback when its tools include it, else its last message (`verifier-memory-before-report`);
-  `scripts/audit-214-agents.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
+  `scripts/seat-grants.test.js` holds the grants. For the 2.x line the nine seats the retired 1.x core alias
   carries also grant (and deny) the OLD spelling of each renamed server they hold - `serena`, `context7`,
   `playwright-<engine>` - because those alias ids still serve their successor's server under the old name to an
   install not yet updated (2.1.5 M35); an absent server's tool is inert, and check 59 allows an alias spelling on a
@@ -645,7 +645,7 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
     and `evidence-gatherer` hold only its read-only observe tools (Windows `Snapshot` / `Screenshot` / `WaitFor`,
     macOS `Snapshot` / `Wait` - the pinned wheels' readOnlyHint tools that look at the desktop), named in `tools:`
     and described in the body, so no graph edge pulls the opt-in server into an install; a stack that seeds a
-    server no seat of it holds is listed main-thread-only in `scripts/audit-214-agents.test.js` (browser-extension's browser).
+    server no seat of it holds is listed main-thread-only in `scripts/seat-grants.test.js` (browser-extension's browser).
   - plus `navigation` (Serena), `documentation` (Context7, the hosted remote only - its `Context7-API-Key` header, the name
     Context7 documents (2.1.5 M25: a proxy may drop a header name with an underscore, and a keyed user with it), expands
     `CONTEXT7_API_KEY` from the ACCOUNT settings.json `env`, keyless = the free tier) and `memory`. 2.0.0 cut `angular-cli`,

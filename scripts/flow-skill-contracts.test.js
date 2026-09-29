@@ -35,7 +35,7 @@ const asks = (text) => [...String(text).matchAll(/^[ \t]*```ask[ \t]*\n([\s\S]*?
 const shared = () => JSON.parse(read('meta/shared-rules.json')).rules;
 const copiesOf = (entry) => [entry.owner, ...(entry.sites || [])].map((c) => c.file);
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'audit-214-flow-'));
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'flow-skill-contracts-'));
 test.after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 let seq = 0;
 function repo()
