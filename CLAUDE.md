@@ -818,8 +818,16 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   `.ps1`, the tag block) - write one as an escape. A joiner or direction mark a script needs is text:
   a ZWJ between two emoji parts or two non-ASCII letters, a ZWNJ between two non-ASCII letters, an
   LRM / RLM beside one.
-- **The always-on surface has a BUDGET.** Lint check 33 sums the pathless `baseline-*.md` bodies plus
-  every agent and skill DESCRIPTION and fails over 70,000 chars (lowered from 160,000 on 2026-09-29, about 35% over the measured total; 51,473 on 2026-09-29: pathless rules 25,090, agent descriptions 12,619, skill descriptions 13,764 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from 50,719). A rule moved into the
+- **The always-on surface has a BUDGET.** Lint check 33 (`scripts/always-on-surface.js`) sums what the model is sent - the pathless
+  `baseline-*.md` rules as injected (frontmatter and HTML comments stripped), every agent DESCRIPTION,
+  every skill DESCRIPTION plus `when_to_use` (a `disable-model-invocation` skill's is not in context, so
+  its description is skipped), and the fixed text every generated capabilities rule carries (the usage
+  policy and the locked-server row) - prints each part, and fails over 70,000 chars (lowered from 160,000
+  on 2026-09-29, about 40% over the measured total; 48,868 on 2026-09-29: pathless rules 22,946, agent
+  descriptions 12,531, skill descriptions 11,634 with 13 manual-only skipped, capabilities fixed text
+  1,757 - the pilot-3 trim cut each rule clause to its imperative plus a one-line reason, the stories
+  moving to `docs/baseline-rules-evidence.md`, and the 2.1.2 cap below cut the skill descriptions from
+  50,719; the whole-file count it replaced read 51,473 and missed the generated rule). A rule moved into the
   baseline set or a grown description is costed against it. `/alfred-code:status` reports an install's
   own floor. An AGENT description is capped at 300 chars (check 15b): the 'Use when...' sentence and its
   'Do NOT use' clause, the rest in the agent's `## Scope` body section - the dispatcher's listing carries

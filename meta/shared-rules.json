@@ -2010,16 +2010,12 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the related-context skill's folder-ownership statement. The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
         "marker": "only on the user's asked-first approval"
       },
       "sites": [
-        {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
-          "marker": "takes the user's approval, asked"
-        },
         {
           "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
           "marker": "takes the user's explicit approval first"
@@ -3480,16 +3476,12 @@
       ]
     },
     "fresh-session-trigger-tiers": {
-      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the two skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: both of these said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs all four.",
+      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_FRESH_SESSION_* override made its figures wrong, so it names 'the window trigger' instead.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "the trigger on anything else (default 180,000)"
       },
       "sites": [
-        {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
-        },
         {
           "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
@@ -5492,6 +5484,19 @@
         {
           "file": "stack/hooks/guard-read-whole-file.js",
           "marker": "naming them is not having them"
+        }
+      ]
+    },
+    "navigation-edit-tools": {
+      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol, safe_delete_symbol and the seat memory handoff; every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
+      "owner": {
+        "file": "stack/rules/baseline-navigation.md",
+        "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md",
+          "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff, and every other edit goes through Edit / Write"
         }
       ]
     },
