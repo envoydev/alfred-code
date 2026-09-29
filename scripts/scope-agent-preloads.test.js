@@ -20,31 +20,23 @@ test('the shipped files are already scoped - the generator has nothing to do', (
     assert.deepStrictEqual(stale, [], 'run `npm run scope-preloads` and commit the result');
 });
 
-// Spike S11: a scoped cite resolves even when the skill lives in a DIFFERENT plugin, which is the
-// majority case here. Spike S6: the BARE form preloads a stale project copy when one is present.
-test('a core cite is scoped to the core, a library cite is bare - the project copy', () => {
-    const core = new Set(place.plugins[CORE].skills);
+// 2.1.0: every house skill is a project copy and every seat rides the core, so every house cite is
+// BARE - the project copy (plugin-migration-evidence S6: a plugin seat's bare preload loaded the project
+// copy). The graph closes a picked seat's preloads into its selection, so the copy is there whenever
+// the seat is not denied.
+test('every house cite is bare - the project copy - and names a library skill', () => {
     const library = new Set(place.library.skills);
-    let scoped = 0;
     let bare = 0;
     for (const r of rows)
     {
         for (const line of r.wanted.split('\n').map(l => l.replace(/^\s*-\s*/, '').trim()).filter(Boolean))
         {
-            if (line === 'skills:' || (line.includes(':') && !line.startsWith(`${CORE}:`))) continue;   // foreign
-            if (line.startsWith(`${CORE}:`))
-            {
-                scoped++;
-                assert.ok(core.has(line.slice(CORE.length + 1)), `${r.file}: ${line} is not a core skill`);
-            }
-            else
-            {
-                bare++;
-                assert.ok(library.has(line), `${r.file}: bare ${line} must be a library skill`);
-            }
+            if (line === 'skills:' || line.includes(':')) { assert.ok(!line.startsWith(`${CORE}:`), `${r.file}: ${line} is scoped to the core, which carries no skill`); continue; }
+            bare++;
+            assert.ok(library.has(line), `${r.file}: bare ${line} must be a library skill`);
         }
     }
-    assert.ok(scoped > 0 && bare > 0, `both forms must occur (scoped ${scoped}, bare ${bare}), or this proves nothing`);
+    assert.ok(bare > 100, `the seats preload house skills (${bare})`);
 });
 
 // No shipped agent preloads a foreign skill since R72, so a fixture seat carries one.
@@ -54,32 +46,38 @@ test('a FOREIGN cite is left exactly as it is - this generator owns house skills
     try
     {
         fs.writeFileSync(path.join(dir, 'alfred-issue-diagnoser-ci.md'),
-            '---\nname: alfred-issue-diagnoser-ci\nskills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n---\n\nbody\n');
+            '---\nname: alfred-issue-diagnoser-ci\nskills:\n  - other-plugin:some-skill\n  - alfred-code:alfred-habits-root-cause\n---\n\nbody\n');
         const [row] = scopedFor({ agentsDir: dir });
         assert.strictEqual(row.problem, null, row.problem);
-        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-code:alfred-habits-root-cause\n',
-            'the foreign cite is untouched, the house one scoped');
+        assert.strictEqual(row.wanted, 'skills:\n  - other-plugin:some-skill\n  - alfred-habits-root-cause\n',
+            'the foreign cite is untouched, the house one bare');
     }
     finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-// R72: the root-cause method is a CORE house skill, and both diagnosers are core seats - so each
-// preloads it scoped to the core, which Spike S6 showed is the spelling that cannot pick up a stale copy.
-test('both diagnosers preload the house root-cause skill, scoped to the core', () => {
+// 'You can't preload skills that set disable-model-invocation: true, since preloading draws from the
+// same set of skills Claude can invoke' (code.claude.com/docs/en/sub-agents) - such a cite is skipped
+// silently at dispatch, so the generator refuses it.
+test('a preload of a manual-only skill is a problem - Claude Code skips it silently', () => {
+    const os = require('node:os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preload-dmi-'));
+    try
+    {
+        fs.writeFileSync(path.join(dir, 'aspnet-implementer.md'), '---\nname: aspnet-implementer\nskills:\n  - alfred-task-solve\n  - csharp\n---\n\nbody\n');
+        const [row] = scopedFor({ agentsDir: dir });
+        assert.match(String(row.problem), /alfred-task-solve is manual-only/);
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('both diagnosers preload the house root-cause skill, bare', () => {
     for (const file of ['alfred-issue-diagnoser-ci.md', 'alfred-issue-diagnoser-runtime.md'])
     {
         const r = rows.find(x => x.file === file);
         assert.ok(r, `${file} declares preloads`);
-        assert.match(r.block, /^\s*-\s*alfred-code:alfred-habits-root-cause$/m, `${file} preloads alfred-code:alfred-habits-root-cause`);
+        assert.match(r.block, /^\s*-\s*alfred-habits-root-cause$/m, `${file} preloads alfred-habits-root-cause`);
         assert.doesNotMatch(r.block, /superpowers/, `${file} still preloads a superpowers skill`);
     }
-    assert.ok(place.plugins[CORE].skills.includes('alfred-habits-root-cause'), 'the core carries the skill both core seats preload');
-});
-
-test('a core agent cites no library skill - the core would not carry what it preloads', () => {
-    const coreAgents = new Set(place.plugins[CORE].agents);
-    for (const r of rows.filter(x => coreAgents.has(x.agent)))
-        assert.doesNotMatch(r.wanted, /^\s*-\s*[a-z0-9-]+\s*$/m, `${r.file} is a core seat citing a bare (library) skill`);
 });
 
 test('a flow-style skills: line is reported, never silently guessed at', () => {

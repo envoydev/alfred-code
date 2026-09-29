@@ -71,14 +71,15 @@ test('M-F4-2: stack/hooks/memory.js describes the memory path as settings.local.
     assert.match(block, /settings\.local\.json at every(\s*\/\/)?\s+scope/, 'the header names the file every scope writes');
 });
 
-// F4 re-review M-F4-3: the copied agents' `alfred-code:<skill>` preloads are re-spelled only where no core
-// plugin serves them - the FULL copy route (copyRender, `!corePluginOn`) - not whenever the MCP route is off.
-test('M-F4-3: CLAUDE.md conditions the preload re-spell on the full copy route alone', () => {
+// F4 re-review M-F4-3: the preload clause is its own sentence, never folded into the MCP-route one. Since
+// 2.1.0 a seat's preloads are bare in the source, so CLAUDE.md says the full copy route's re-spell has
+// nothing left to do.
+test('M-F4-3: CLAUDE.md keeps the preload clause out of the MCP copy-route sentence', () => {
     const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
     const sentence = /`ALFRED_CODE_MCPS_VIA_PLUGIN=false` restores the 0\.2\.x registration route[^]*?half-fixed\)\./.exec(claudeMd);
     assert.ok(sentence, 'the MCP copy-route sentence must still exist');
     assert.doesNotMatch(sentence[0], /preload/, 'the preload clause still rides the MCP-route sentence');
-    assert.match(claudeMd, /On the FULL copy\s+route alone[^.]*`alfred-code:<skill>`\s+preloads are re-spelled/, 'the preload re-spell names its own condition');
+    assert.match(claudeMd, /`skills:` preloads are bare in the source since 2\.1\.0/, 'the preload spelling names its own rule');
 });
 
 test('requiring lint-skills does not run the linter and exposes parsers', () => {
@@ -717,7 +718,7 @@ test('check 44: a second plugin, a double home and a lost item are all findings'
     assert.ok(lintPluginPlacement(doubled).some(f => /skill:dotnet has two homes/.test(f)), 'a duplicated item is caught');
 
     const lost = placement();
-    lost.library.agents = lost.library.agents.filter(a => a !== 'angular-test-resolver');
+    lost.plugins['alfred-code'].agents = lost.plugins['alfred-code'].agents.filter(a => a !== 'angular-test-resolver');
     assert.ok(lintPluginPlacement(lost).some(f => /agent angular-test-resolver is in no plugin/.test(f)), 'a lost item is caught');
 });
 

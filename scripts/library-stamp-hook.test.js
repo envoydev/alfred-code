@@ -183,3 +183,22 @@ test('a 1.x stamp under its old name is read - the project copy, and the account
     fs.writeFileSync(path.join(both.project, '.claude', OLD_STAMP), stampOf('1.3.0'));
     assert.equal(runHook(both), '', 'the new stamp wins - an old file left beside it is not read');
 });
+
+// 2.1.0 moved every skill into the project and every seat into the core, and the core updates itself
+// while the copies move only on /alfred-code:update: a stamp from before it (no `seats-route:` line)
+// under a 2.1 core is the skew window - the house skills the rules name are not installed yet, and every
+// seat is listed undenied. The line says so, and what fixes it.
+test('a stamp from before 2.1.0 under a 2.1 core names the skew window and the update that closes it', () =>
+{
+    const out = JSON.parse(runHook(fx({ stampVersion: '2.0.0', stackVersion: '2.1.0' })));
+    assert.match(out.systemMessage, /from 2\.0\.0, and 2\.1\.0 moved every skill into the project and every seat into the core/);
+    assert.match(out.systemMessage, /run \/alfred-code:update now/);
+    assert.equal(out.hookSpecificOutput.additionalContext, out.systemMessage);
+    const later = JSON.parse(runHook(fx({ stampVersion: '1.3.0', stackVersion: '2.2.0' })));
+    assert.match(later.systemMessage, /from 1\.3\.0, and 2\.1\.0 moved every skill/, 'any release past the move says it to a stamp from before it');
+    // Once an update stamps `seats-route:`, the move is done: silent when current, the plain line when stale.
+    assert.equal(runHook(fx({ stampText: `${stampOf('2.1.0')}seats-route: plugin\n`, stackVersion: '2.1.0' })), '');
+    const stale = JSON.parse(runHook(fx({ stampText: `${stampOf('2.1.0')}seats-route: plugin\n`, stackVersion: '2.2.0' })));
+    assert.doesNotMatch(stale.systemMessage, /moved every skill/);
+    assert.match(stale.systemMessage, /library copies are from 2\.1\.0, the stack is 2\.2\.0/);
+});

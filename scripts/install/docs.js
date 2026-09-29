@@ -197,11 +197,14 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     return have === null ? 'written' : 'replaced';
 }
 
-// THE ONE-TIME MOVE OUT OF THE OLD DEFAULT. Until 2.0.0 the stack seeded ALFRED_CODE_DOCS_PATH with
-// LEGACY_DOCS_ROOT (meta/environment.json `former_defaults`), under a folder Claude Code protects: every plan,
-// capture and receipt the model wrote there cost a prompt, and a headless run could not write it at all.
-// An install on that root is never moved silently. The plan says whether there is anything to OFFER;
-// update asks once; `--docs-move move` moves the tree, `--docs-move keep` makes the old root the user's.
+// THE DOCS PART OF A DATA MOVE. The docs root is <data root>/docs (ALFRED_CODE_DATA_PATH, stack/mcp/data-root.js)
+// whenever the stack owns ALFRED_CODE_DOCS_PATH. Until 2.0.0 the stack seeded it with LEGACY_DOCS_ROOT
+// (meta/environment.json `former_defaults`), under a folder Claude Code protects: every plan, capture and
+// receipt the model wrote there cost a prompt, and a headless run could not write it at all. Docs are never
+// moved silently. The plan says whether there is anything to OFFER - the old default (whoever set it: 2.0.0's
+// `keep` answer is asked once more, by the data question, unless that question was answered `keep` too) or the
+// stack's own root under an earlier data root; update and configure ask; `--data-move move` moves the tree,
+// `--data-move keep` makes an old-default root the user's.
 const LEGACY_DOCS_ROOT = '.claude/docs';
 const DOCS_PATH_KEYS = ['ALFRED_CODE_DOCS_PATH', 'CLAUDE_STACK_DOCS_PATH', 'CLAUDE_DOCS_PATH']; // legacy-name
 const normRoot = (v) => String(v || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
@@ -233,9 +236,11 @@ function filesUnder(dir)
 // managed env keys (null: a stamp from before the ledger, so the old seed value itself is the evidence).
 // The launch environment is never read: a settings value applies over a shell export
 // (code.claude.com/docs/en/llm-gateway-connect), and the absent-only seed writes one on every run anyway.
-function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, stamped = false, to = require('./copy.js').DOCS_ROOT_DEFAULT })
+// `to` is the docs root the data root names; `kept` the stamp's `data-move: kept` - an old default the user
+// kept on the data question is never offered again.
+function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, stamped = false, to = require('./copy.js').DOCS_ROOT_DEFAULT, kept = false })
 {
-    const base = { from: LEGACY_DOCS_ROOT, to, tracked: [], untracked: [], conflicts: [], ignored: false };
+    const base = { from: LEGACY_DOCS_ROOT, to: normRoot(to), tracked: [], untracked: [], conflicts: [], ignored: false };
     const none = (why) => ({ ...base, state: 'none', why });
     if (!stamped) return none('no install record - a fresh install takes the new default');
     // A settings file that does not parse reads as empty - an absent key, which would look like the old
@@ -252,21 +257,30 @@ function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, s
     // (R98) - a move written there alone would leave the rule and the team on the old root.
     if (heldIn(personal)) return none('settings.local.json holds your own docs root');
     const key = heldIn(env);
+    let root = LEGACY_DOCS_ROOT;
     if (key)
     {
-        if (normRoot(env[key]) !== LEGACY_DOCS_ROOT) return none(`the docs root is ${normRoot(env[key])}`);
+        root = normRoot(env[key]);
+        if (root === base.to) return none(`the docs root is already ${root}`);
+        // A root moves only when it is the stack's own: the ledger recorded it, or with no ledger (a stamp from
+        // before it) it is a default the stack seeded - the old one, or the catalog's. The old default the ledger
+        // does NOT record is the user's: 2.0.0's keep answer took it out of the ledger and promised no update
+        // would offer the move again (M1) - an unattended update takes the recommended move, so asking again moved it.
         const hash = require('./stamp.js').valueHash(env[key]);
-        const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : true;
-        if (!stacks) return none(`${key} was set by hand`);
+        const legacy = root === LEGACY_DOCS_ROOT;
+        const stacks = ledger ? ledger[key] === hash || ledger.ALFRED_CODE_DOCS_PATH === hash : legacy || root === require('./copy.js').DOCS_ROOT_DEFAULT;
+        if (!stacks) return none(legacy ? `kept at ${root} - the docs root is yours (a 2.0.0 keep, or set by hand)` : `the docs root is ${root}, set by hand`);
     }
-    const from = path.join(projectRoot, ...LEGACY_DOCS_ROOT.split('/'));
+    if (root === LEGACY_DOCS_ROOT && kept) return none('kept at the old default - the data move was answered keep');
+    const plan = { ...base, from: root };
+    const from = path.join(projectRoot, ...root.split('/'));
     const files = filesUnder(from);
-    if (!files.length) return { ...base, state: 'repoint', why: 'nothing is under the old root' };
+    if (!files.length) return { ...plan, state: 'repoint', why: 'nothing is under the old root' };
     let tracked = [];
     try
     {
-        const listed = rt.execCommand('git', ['ls-files', '-z', '--', LEGACY_DOCS_ROOT], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-        const prefix = `${LEGACY_DOCS_ROOT}/`;
+        const listed = rt.execCommand('git', ['ls-files', '-z', '--', root], { cwd: projectRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+        const prefix = `${root}/`;
         tracked = String(listed).split('\0').filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
     }
     catch { tracked = []; }   // no repository: every file is a plain move
@@ -278,10 +292,10 @@ function docsMovePlan({ projectRoot, env = {}, personal = null, ledger = null, s
     // must keep, or every plan and task card there shows up untracked under the new root.
     let ignored = false;
     if (!tracked.length)
-        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${LEGACY_DOCS_ROOT}/`], { cwd: projectRoot, stdio: 'ignore' }); ignored = true; }
+        try { rt.execCommand('git', ['check-ignore', '-q', '--', `${root}/`], { cwd: projectRoot, stdio: 'ignore' }); ignored = true; }
         catch { ignored = false; }
     return {
-        ...base, state: 'offer', why: 'the stack\'s own seed over docs at the old root', ignored,
+        ...plan, state: 'offer', why: root === LEGACY_DOCS_ROOT ? 'docs at the old default' : 'the stack\'s own docs under an earlier data root', ignored,
         tracked, untracked: files.filter((f) => !isTracked.has(f)),
         conflicts: files.filter((f) => fs.existsSync(path.join(dest, ...f.split('/')))),
     };
@@ -301,8 +315,9 @@ function docsMoveViews({ claudeDir, scope })
     return { env: envOf(readBackSettings(claudeDir, 'project', { sharedOnly: true }).env), personal };
 }
 
-// The preflight's line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tignored=yes][\tconflicts=<n>]`,
-// `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`.
+// The docs plan alone as one line: `docs-move: offer <from> -> <to>\ttracked=<n> untracked=<n>[\tignored=yes][\tconflicts=<n>]`,
+// `docs-move: repoint <from> -> <to> (nothing to move)`, or `docs-move: none (<why>)`. The preflight prints the
+// whole data move instead (dataOfferLine, below), the docs part folded in.
 function docsMoveLine(plan)
 {
     if (plan.state === 'offer')
@@ -370,7 +385,91 @@ function moveDocsRoot({ projectRoot, plan })
     return { ok: true, moved: done.length, gitMoved: done.filter(([k]) => k === 'git').length };
 }
 
+// THE DATA ROOT'S OWN .gitignore - its text and why live in stack/mcp/data-root.js (dataIgnoreText), the one
+// home the launchers read too. The installer keeps it CURRENT: absent or the stack's own older text is
+// written, any other text is the project's own and is left alone.
+const { DATA_IGNORE_HEAD, dataIgnoreText } = require('../../stack/mcp/data-root.js');
+
+// 'written' | 'replaced' | 'current' | 'kept' (the project's own file).
+function ensureDataIgnore({ projectRoot, root, docsPath, log = () => {} })
+{
+    const base = path.join(projectRoot, ...normRoot(root).split('/'));
+    const file = path.join(base, '.gitignore');
+    const want = dataIgnoreText({ root, docsPath });
+    let have = null;
+    try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
+    if (have === want) return 'current';
+    if (have !== null && !have.startsWith(DATA_IGNORE_HEAD))
+    {
+        log(`  data root: ${normRoot(root)}/.gitignore is the project's own - left as it is`);
+        return 'kept';
+    }
+    fs.mkdirSync(base, { recursive: true });
+    fs.writeFileSync(file, want);
+    log(`  data root: ${normRoot(root)}/.gitignore ${have === null ? 'written' : 'rewritten'} - the servers' data stays out of git${want.split('\n').some((l) => l.startsWith('!/') && l !== '!/.gitignore') ? ', the docs under it do not' : ''}`);
+    return have === null ? 'written' : 'replaced';
+}
+
+// A root the data just left: its emptied folders go, and the root itself when all it still holds is the
+// stack's own .gitignore. A folder holding anything at all stays.
+function pruneDataRoot({ projectRoot, root, log = () => {} })
+{
+    const base = path.join(projectRoot, ...normRoot(root).split('/'));
+    const prune = (dir) =>
+    {
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) if (e.isDirectory()) prune(path.join(dir, e.name));
+        try { if (dir !== base && !fs.readdirSync(dir).length) fs.rmdirSync(dir); } catch { /* left in place */ }
+    };
+    prune(base);
+    let names;
+    try { names = fs.readdirSync(base); } catch { return false; }
+    if (names.some((n) => n !== '.gitignore')) return false;
+    let text = '';
+    try { text = names.length ? fs.readFileSync(path.join(base, '.gitignore'), 'utf8') : ''; } catch { return false; }
+    if (names.length && !text.startsWith(DATA_IGNORE_HEAD)) return false;
+    try { fs.rmSync(base, { recursive: true }); } catch { return false; }
+    log(`  data root: ${normRoot(root)}/ removed - everything in it moved`);
+    return true;
+}
+
+// THE WHOLE DATA MOVE AN UPDATE OFFERS - the docs plan and every server class whose data sits somewhere
+// other than its place under the root (the 2.0.0 place, or an earlier root the stamp names), minus the moves
+// already recorded as pending. { state: 'offer' | 'none', why, docs, rows, root }.
+function dataOffer({ projectRoot, claudeDir, scope, ledger, stamped, stampText = '', root, engines = [], memoryProject = false })
+{
+    const dr = require('../../stack/mcp/data-root.js');
+    const kept = /^data-move: *kept *$/m.test(stampText);
+    const none = (why) => ({ state: 'none', why, docs: null, rows: [], root });
+    if (!stamped) return none('no install record - a fresh install lays the data under the root');
+    if (kept) return none('the data move was answered keep');
+    const docsPlan = docsMovePlan({ projectRoot, ...docsMoveViews({ claudeDir, scope }), ledger, stamped, to: `${root}/docs`, kept });
+    const priorLine = (/^data-root: *(\S+) *$/m.exec(stampText) || [])[1];
+    const prior = priorLine && dr.checkDataPath(priorLine).ok && priorLine !== root ? priorLine : null;
+    const pending = dr.readPending(stampText);
+    const rows = dr.dataMovePlan({ projectRoot, root, prior, engines, memory: memoryProject })
+        .filter((r) => !pending.some((p) => p.cls === r.cls && p.from === r.from && p.to === r.to));
+    if (docsPlan.state !== 'offer' && !rows.length) return { ...none(docsPlan.state === 'repoint' ? 'nothing to move - the docs root is re-pointed' : 'nothing to move'), docs: docsPlan };
+    return { state: 'offer', why: 'data outside the root', docs: docsPlan, rows, root };
+}
+
+// The preflight's line: `data-move: offer <root>\tfrom=<places>\tdocs=<n> serena=yes|no browser=<engines|none>
+// memory=yes|no[\tignored=yes][\tconflicts=<n>]`, or `data-move: none (<why>)`.
+function dataOfferLine(offer)
+{
+    if (offer.state !== 'offer') return `data-move: none (${offer.why})`;
+    const docs = offer.docs && offer.docs.state === 'offer' ? offer.docs : null;
+    const from = [...(docs ? [docs.from] : []), ...offer.rows.map((r) => r.from)];
+    const has = (cls) => (offer.rows.some((r) => r.cls === cls) ? 'yes' : 'no');
+    const engines = offer.rows.filter((r) => r.cls.startsWith('browser-')).map((r) => r.cls.slice('browser-'.length));
+    const conflicts = (docs ? docs.conflicts.length : 0) + offer.rows.filter((r) => r.conflict).length;
+    return `data-move: offer ${offer.root}\tfrom=${from.join(',')}\tdocs=${docs ? docs.tracked.length + docs.untracked.length : 0} serena=${has('serena')} browser=${engines.join(',') || 'none'} memory=${has('memory')}`
+        + (docs && docs.ignored ? '\tignored=yes' : '') + (conflicts ? `\tconflicts=${conflicts}` : '');
+}
+
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, docsMoveLine, moveDocsRoot,
-    DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT,
+    ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
+    DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

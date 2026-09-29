@@ -83,7 +83,7 @@ test('memory-launch: no key anywhere falls back to the global default, never to 
 {
     const { dir } = project('no-db');
     // USERPROFILE too: on Windows os.homedir() reads it and never HOME, so the default would be the runner's own
-    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.alfred-memory', 'memory.db'));
 });
 
 test('memory-launch: a RELATIVE value resolves against the project, the way the docs engine reads it', () =>
@@ -96,7 +96,7 @@ test('memory-launch: malformed or empty settings are not a failure - the default
 {
     const { dir } = project('bad-db');
     fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), '{ not json');
-    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.memory-mcp', 'memory.db'));
+    assert.strictEqual(resolveDb(dir, { HOME: dir, USERPROFILE: dir }), path.join(dir, '.alfred-memory', 'memory.db'));
 });
 
 test('memory-launch: a hand-edited entry with no --package says so instead of launching something else', () =>
@@ -196,6 +196,7 @@ const POSIX = { skip: process.platform === 'win32' && 'the stub uvx is a node sc
 test('serena-launch: uvx gets the Python pin, the pinned package and every serena argument, in order', POSIX, () =>
 {
     const { dir } = project('serena-run');
+    fs.mkdirSync(path.join(dir, '.git'));
     const uvx = stubUvx('serena');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--context', 'claude-code', '--project-from-cwd'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, SERENA_HOME: '.serena/home' }, stdio: 'pipe' });
@@ -204,7 +205,7 @@ test('serena-launch: uvx gets the Python pin, the pinned package and every seren
     // RELATIVE and native: serena 1.7.0 execs the TypeScript server through npm's .bin shim, so on
     // Windows the path reaches cmd.exe unquoted - a '/' cuts it ('.serena' is not recognized as an
     // internal or external command), and so would a space in an absolute project path.
-    assert.strictEqual(got.home, '.serena/home', 'the home stays relative - an absolute one carries the project path, spaces and all');
+    assert.strictEqual(got.home, '.alfred/serena/home', 'the home stays relative, under the data root - whatever the entry passed');
 });
 
 test('serena-launch: the home is spelled in the platform separator, relative or absolute', () =>
@@ -256,25 +257,24 @@ for (const [label, script] of [['serena', 'serena-launch.js'], ['memory', 'memor
     });
 }
 
-test('serena-launch: an absolute SERENA_HOME passes through; an absent one stays absent', POSIX, () =>
+test('serena-launch: the launcher owns SERENA_HOME - an entry or shell value never splits the home from its data', POSIX, () =>
 {
     const { dir } = project('serena-home');
+    fs.mkdirSync(path.join(dir, '.git'));
     const abs = path.join(TMP, 'elsewhere', '.serena', 'home');
     const uvx = stubUvx('serena-home');
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, SERENA_HOME: abs }, stdio: 'pipe' });
-    assert.strictEqual(uvx.argv().home, abs);
-    const bare = stubUvx('serena-nohome');
-    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
-        { cwd: dir, env: { ...BARE, PATH: bare.PATH, HOME: dir }, stdio: 'pipe' });
-    assert.strictEqual(bare.argv().home, null, 'the launcher invented a SERENA_HOME the entry never set');
+    assert.strictEqual(uvx.argv().home, '.alfred/serena/home');
 });
 
 test('serena home spelling for the copy route: backslash on Windows, forward slash elsewhere', () =>
 {
     const { serenaHomeFor } = require(SERENA);
-    assert.strictEqual(serenaHomeFor('win32'), '.serena\\home');
-    for (const p of ['darwin', 'linux']) assert.strictEqual(serenaHomeFor(p), '.serena/home', p);
+    assert.strictEqual(serenaHomeFor('win32'), '.alfred\\serena\\home');
+    for (const p of ['darwin', 'linux']) assert.strictEqual(serenaHomeFor(p), '.alfred/serena/home', p);
+    assert.strictEqual(serenaHomeFor('win32', '.data'), '.data\\serena\\home');
+    assert.strictEqual(serenaHomeFor('linux', '.alfred', '.serena'), '.serena/home', 'a folder not moved yet keeps its own home');
 });
 
 test('serena-launch: ALFRED_CODE_UV_PYTHON reaches uvx', POSIX, () =>
@@ -426,4 +426,254 @@ test('desktop gate: each server runs on its own OS only, and an unknown platform
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'win32' }), 'win32');
     assert.strictEqual(platformOf({ ALFRED_CODE_PLATFORM: 'beos' }), process.platform);
     assert.strictEqual(platformOf({}), process.platform);
+});
+
+// ------------------------------------------------------------------ the data root (data-root.js)
+// Each launcher resolves its server's data under ALFRED_CODE_DATA_PATH (default .alfred), runs a move the
+// installer recorded in the stamp once nothing holds the data, and otherwise serves a 2.0.0 place where
+// it is. A stub records the argv and env the real server would have been started with.
+function stubRecorder(name, bin)
+{
+    const dir = path.join(TMP, `${name}-rec-bin`);
+    fs.mkdirSync(dir, { recursive: true });
+    const record = path.join(TMP, `${name}-rec.json`);
+    fs.writeFileSync(path.join(dir, bin), `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), home: process.env.SERENA_HOME || null, db: process.env.MCP_MEMORY_SQLITE_PATH || null }));\n`, { mode: 0o755 });
+    return { PATH: dir + path.delimiter + process.env.PATH, got: () => JSON.parse(fs.readFileSync(record, 'utf8')) };
+}
+const stamp = (dir, lines) => fs.writeFileSync(path.join(dir, '.claude', 'alfred-code.stamp'), `sha: abc\n${lines.join('\n')}\n`);
+const put = (file, text = 'x') => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
+
+test('serena-launch: a fresh project gets its home and folder under .alfred, and serena is told where the folder is', POSIX, () =>
+{
+    const { dir } = project('serena-fresh');
+    fs.mkdirSync(path.join(dir, '.git'));
+    const rec = stubRecorder('serena-fresh', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().home, '.alfred/serena/home');
+    const cfg = fs.readFileSync(path.join(dir, '.alfred', 'serena', 'home', 'serena_config.yml'), 'utf8');
+    assert.match(cfg, /^project_serena_folder_location: "\$projectDir\/\.alfred\/serena"$/m);
+    assert.ok(rec.got().argv.includes('--project-from-cwd'), 'a git project is still found from the cwd');
+});
+
+test('serena-launch: a 2.0.0 .serena with no agreed move keeps serving from .serena, untouched', POSIX, () =>
+{
+    const { dir } = project('serena-legacy');
+    put(path.join(dir, '.serena', 'project.yml'), 'project_name: x\n');
+    const rec = stubRecorder('serena-legacy', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().home, '.serena/home');
+    assert.ok(rec.got().argv.includes('--project-from-cwd'), '.serena/project.yml still marks the project');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred')), 'nothing was written under the new root');
+});
+
+test('serena-launch: the move the installer recorded runs at start, and a project with no .git is named outright', POSIX, () =>
+{
+    const { dir } = project('serena-move');
+    put(path.join(dir, '.serena', 'project.yml'), 'project_name: x\n');
+    put(path.join(dir, '.serena', 'home', 'serena_config.yml'), 'project_serena_folder_location: "$projectDir/.serena"\nprojects:\n- /x\n');
+    put(path.join(dir, '.serena', 'memories', 'feature__v1__designer.md'), 'handoff');
+    stamp(dir, ['data-pending: serena .serena -> .alfred/serena']);
+    const rec = stubRecorder('serena-move', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.ok(!fs.existsSync(path.join(dir, '.serena')), 'the old folder moved');
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'serena', 'memories', 'feature__v1__designer.md'), 'utf8'), 'handoff');
+    assert.match(fs.readFileSync(path.join(dir, '.alfred', 'serena', 'home', 'serena_config.yml'), 'utf8'), /project_serena_folder_location: "\$projectDir\/\.alfred\/serena"\nprojects:\n- \/x/);
+    assert.strictEqual(rec.got().home, '.alfred/serena/home');
+    const argv = rec.got().argv;
+    assert.ok(!argv.includes('--project-from-cwd'), 'with no .git and no .serena/project.yml, the walk up from the cwd would find nothing - or a parent');
+    assert.deepStrictEqual(argv.slice(argv.indexOf('--project'), argv.indexOf('--project') + 2), ['--project', fs.realpathSync(dir)]);
+});
+
+test('serena-launch: a custom data root from the project settings', POSIX, () =>
+{
+    const { dir } = project('serena-custom', { settings: { ALFRED_CODE_DATA_PATH: '.data' } });
+    fs.mkdirSync(path.join(dir, '.git'));
+    const rec = stubRecorder('serena-custom', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().home, '.data/serena/home');
+});
+
+const BROWSER = path.join(ROOT, 'stack/mcp/browser-launch.js');
+
+test('browser-launch: npx gets the pinned package, the engine, and a profile and output dir under the data root', POSIX, () =>
+{
+    const { dir } = project('browser-run');
+    const rec = stubRecorder('browser-run', 'npx');
+    execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'firefox'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    const real = fs.realpathSync(dir);
+    assert.deepStrictEqual(rec.got().argv, ['-y', '@playwright/mcp@0.0.82', '--browser', 'firefox',
+        '--user-data-dir', path.join(real, '.alfred', 'browser', 'firefox'), '--output-dir', path.join(real, '.alfred', 'browser', 'firefox', 'output')]);
+});
+
+test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then moves at start unless a browser holds it', POSIX, () =>
+{
+    const { dir } = project('browser-move');
+    put(path.join(dir, '.playwright', 'chrome', 'Default', 'Cookies'), 'session');
+    const real = fs.realpathSync(dir);
+    const run = (name) =>
+    {
+        const rec = stubRecorder(name, 'npx');
+        execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome', '--', '--isolated-no'],
+            { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+        const argv = rec.got().argv;
+        return { dataDir: argv[argv.indexOf('--user-data-dir') + 1], argv };
+    };
+    assert.strictEqual(run('browser-move-1').dataDir, path.join(real, '.playwright', 'chrome'), 'no move agreed: the old profile, where it is');
+    stamp(dir, ['data-pending: browser-chrome .playwright/chrome -> .alfred/browser/chrome']);
+    fs.symlinkSync('host-1', path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
+    assert.strictEqual(run('browser-move-2').dataDir, path.join(real, '.playwright', 'chrome'), 'a running browser holds it: not this start');
+    fs.unlinkSync(path.join(dir, '.playwright', 'chrome', 'SingletonLock'));
+    const moved = run('browser-move-3');
+    assert.strictEqual(moved.dataDir, path.join(real, '.alfred', 'browser', 'chrome'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'utf8'), 'session', 'the login moved with the profile');
+    assert.strictEqual(moved.argv[moved.argv.length - 1], '--isolated-no', 'arguments after -- reach the server unchanged');
+});
+
+test('browser-launch: an entry with no --package or no --browser says so instead of launching something else', () =>
+{
+    for (const args of [['--browser', 'chrome'], ['--package', '@playwright/mcp@0.0.82'], ['--package', '@playwright/mcp@0.0.82', '--browser', 'lynx']])
+    {
+        let code = 0;
+        try { execFileSync(process.execPath, [BROWSER, ...args], { env: BARE, stdio: 'pipe' }); }
+        catch (err) { code = err.status; }
+        assert.strictEqual(code, 2, args.join(' '));
+    }
+});
+
+test('memory-launch: an idle ~/.memory-mcp moves to ~/.alfred-memory at start and the old path is linked back', POSIX, () =>
+{
+    const { dir } = project('mem-home-move', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'mem-home-move', '.alfred-memory', 'memory.db') } });
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'DB');
+    const rec = stubRecorder('mem-home-move', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred-memory', 'memory.db'), 'utf8'), 'DB');
+    assert.ok(fs.lstatSync(path.join(dir, '.memory-mcp')).isSymbolicLink(), 'Cursor and an install not yet updated reach it through the old path');
+});
+
+test('memory-launch: a ~/.memory-mcp database another server holds stays put, and is served where it is', POSIX, () =>
+{
+    const { dir } = project('mem-home-busy', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'mem-home-busy', '.alfred-memory', 'memory.db') } });
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'DB');
+    put(path.join(dir, '.memory-mcp', 'memory.db-wal'), 'LIVE');
+    const rec = stubRecorder('mem-home-busy', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.memory-mcp', 'memory.db'), 'never a second, empty database beside the live one');
+    assert.ok(!fs.existsSync(path.join(dir, '.alfred-memory')), 'the new folder is not created while the old one serves');
+});
+
+test('memory-launch: a project-level database moves under the data root when the installer recorded it and it is idle', POSIX, () =>
+{
+    const { dir } = project('mem-proj');
+    const real = fs.realpathSync(dir);
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.alfred', '.alfred-memory', 'memory.db') } }));
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'PROJ');
+    put(path.join(dir, '.memory-mcp', '.gitignore'), '*\n');
+    stamp(dir, ['data-pending: memory .memory-mcp -> .alfred/.alfred-memory']);
+    const rec = stubRecorder('mem-proj', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: path.join(dir, 'h'), USERPROFILE: path.join(dir, 'h') }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(real, '.alfred', '.alfred-memory', 'memory.db'));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.alfred-memory', 'memory.db'), 'utf8'), 'PROJ');
+    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')));
+});
+
+// ------------------------------------------------------------------ I1: every writer under the data root ignores it first
+
+// A 2.0.0 project whose MCP plugins are already 2.1 (a user-scope install updated from another project, or a
+// marketplace auto-update): the docs sit at .alfred/docs with their own .gitignore, and there is no
+// .alfred/.gitignore. The first launcher start that writes under the root lays that file down first, so a browser
+// profile's cookies and serena's ~327MB home are never untracked files a `git add -A` takes in.
+function twoZeroProject(name)
+{
+    const { dir } = project(name, { settings: { ALFRED_CODE_DOCS_PATH: '.alfred/docs' } });
+    execFileSync('git', ['init', '-q', dir]);
+    put(path.join(dir, '.alfred', 'docs', '.gitignore'), '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n');
+    put(path.join(dir, '.alfred', 'docs', 'architecture', 'ARCHITECTURE.md'), '# arch\n');
+    return dir;
+}
+const ignored = (dir, rel) => { try { execFileSync('git', ['check-ignore', '-q', rel], { cwd: dir, stdio: 'ignore' }); return true; } catch { return false; } };
+
+test('I1 browser-launch: a never-used engine on a 2.0.0 project gets the data root ignored before its profile is handed out', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-browser');
+    const rec = stubRecorder('i1-browser', 'npx');
+    execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'chrome'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    put(path.join(dir, '.alfred', 'browser', 'chrome', 'Default', 'Cookies'), 'session');   // what Playwright writes next
+    assert.ok(fs.existsSync(path.join(dir, '.alfred', '.gitignore')), 'the launcher wrote the root\'s .gitignore');
+    assert.ok(ignored(dir, '.alfred/browser/chrome/Default/Cookies'), 'the session cookies are ignored');
+    assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
+    assert.ok(!ignored(dir, '.alfred/.gitignore'), 'the ignore file re-includes itself, so a teammate\'s clone inherits it');
+});
+
+test('I1 serena-launch: a fresh serena folder under a 2.0.0 project\'s root is ignored before serena writes it', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-serena');
+    const rec = stubRecorder('i1-serena', 'uvx');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--project-from-cwd'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.ok(ignored(dir, '.alfred/serena/home/serena_config.yml'), 'serena\'s home is ignored');
+    assert.ok(!ignored(dir, '.alfred/docs/architecture/ARCHITECTURE.md'), 'the docs stay visible to git');
+});
+
+test('I1 memory-launch: a project-level database under the root is ignored before the folder is created', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-memory');
+    const real = fs.realpathSync(dir);
+    fs.writeFileSync(path.join(dir, '.claude', 'settings.local.json'), JSON.stringify({ env: { ALFRED_CODE_MEMORY_DB: path.join(real, '.alfred', '.alfred-memory', 'memory.db') } }));
+    const rec = stubRecorder('i1-memory', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: path.join(dir, 'h'), USERPROFILE: path.join(dir, 'h') }, stdio: 'pipe' });
+    put(path.join(dir, '.alfred', '.alfred-memory', 'memory.db'), 'PROJ');
+    assert.ok(ignored(dir, '.alfred/.alfred-memory/memory.db'), 'the project database is ignored');
+});
+
+test('I1 launchers: a data root .gitignore the project wrote itself is left as it is', POSIX, () =>
+{
+    const dir = twoZeroProject('i1-own');
+    put(path.join(dir, '.alfred', '.gitignore'), '# mine\n/browser/\n');
+    const rec = stubRecorder('i1-own', 'npx');
+    execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'firefox'],
+        { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.alfred', '.gitignore'), 'utf8'), '# mine\n/browser/\n');
+});
+
+// ------------------------------------------------------------------ I2: a failed link never splits the memories
+
+test('I2 memory-launch: the move ran but the link failed - the launcher serves the new file and never re-creates the old folder', POSIX, () =>
+{
+    const { dir } = project('i2-nolink');
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'DB');
+    const lines = [];
+    const eperm = () => { const err = new Error('operation not permitted'); err.code = 'EPERM'; throw err; };
+    const { liveDb } = require(LAUNCH);
+    const db = liveDb(path.join(dir, '.memory-mcp', 'memory.db'), { projectDir: dir, home: dir, log: (l) => lines.push(l), symlink: eperm });
+    assert.strictEqual(db, path.join(dir, '.alfred-memory', 'memory.db'));
+    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')), 'the old folder is not re-created');
+    assert.match(lines.join('\n'), /Cursor/, `the consequence for a reader still on the old path is named:\n${lines.join('\n')}`);
+});
+
+test('I2 memory-launch: settings still naming a gone ~/.memory-mcp start the server on ~/.alfred-memory, and create nothing at the old path', POSIX, () =>
+{
+    const { dir } = project('i2-gone', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'i2-gone', '.memory-mcp', 'memory.db') } });
+    put(path.join(dir, '.alfred-memory', 'memory.db'), 'DB');
+    const rec = stubRecorder('i2-gone', 'uvx');
+    execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'));
+    assert.ok(!fs.existsSync(path.join(dir, '.memory-mcp')), 'never a second, empty database at the old path');
+});
+
+test('I2 memory-launch: ~/.memory-mcp re-created after the move (another reader on the old path) - the settings\' old spelling reads the stack\'s moved database', POSIX, () =>
+{
+    const { dir } = project('i2-recreated', { local: { ALFRED_CODE_MEMORY_DB: path.join(TMP, 'i2-recreated', '.memory-mcp', 'memory.db') } });
+    put(path.join(dir, '.alfred-memory', 'memory.db'), 'DB');
+    put(path.join(dir, '.memory-mcp', 'memory.db'), 'EMPTY');
+    const rec = stubRecorder('i2-recreated', 'uvx');
+    const out = execFileSync(process.execPath, [LAUNCH, '--package', 'mcp-memory-service[sqlite]==11.13.0'], { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir, USERPROFILE: dir }, stdio: 'pipe' });
+    assert.strictEqual(rec.got().db, path.join(dir, '.alfred-memory', 'memory.db'), String(out));
+    assert.strictEqual(fs.readFileSync(path.join(dir, '.memory-mcp', 'memory.db'), 'utf8'), 'EMPTY', 'the other reader\'s file is not touched');
 });

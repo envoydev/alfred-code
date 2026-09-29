@@ -23,7 +23,7 @@ run-time load.
   stale when compaction hits. Local and disposable - everything essential is in the plan file.
 
 **On invocation, resume before starting:** `list_memories` -> `read_memory` the feature's cycle
-note (or an equivalent direct read of `.serena/memories/` - the note's content is the contract,
+note (or an equivalent direct read of `<data root>/serena/memories/`, `.alfred` by default - the note's content is the contract,
 not the tool route), and read the plan file's stamps. A cycle mid-flight resumes at its cursor - never restart a
 step whose stamp says it already passed. A NEW cycle starting after a finished one in this same
 session recommends the fresh-session hand-off in its first ask - the finished cycle's carried
@@ -186,8 +186,9 @@ run makes.
 4. **BUILD** - per the approved mode:
    - *session*: run `alfred-task-implement` - it marks each task `IN_PROGRESS` before code, ticks it
      `DONE` with evidence after its green gate, and keeps the plan's resume note current.
-   - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats - a flat
-     fan-out, the main session the only orchestrator. Write the approval gate file first, quoting
+   - *agents*: fan the plan's task cards out to the matching `<stack>-implementer` seats, each
+     dispatched exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries
+     it) - a flat fan-out, the main session the only orchestrator. Write the approval gate file first, quoting
      this step's user approval verbatim - the dispatch hook blocks an unstamped implementer - and
      DELETE it when the fan-out completes, before the step-5 stop: a stamp left live can silently
      authorize an unrelated later dispatch for up to 8h. A red build/test routes per the

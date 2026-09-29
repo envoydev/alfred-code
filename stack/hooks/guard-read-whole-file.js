@@ -39,6 +39,10 @@ try {
   process.exit(0); // unparseable stdin - don't block
 }
 if (!payload || typeof payload !== 'object') process.exit(0); // a JSON scalar/null - nothing to judge
+// GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+let cursorOff = false;
+try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+if (cursorOff) process.exit(0);
 
 // --- block telemetry (shared by every guard hook; keep the copies identical) ------------
 // A block costs a whole turn - the stderr goes back to the model and the work is re-done - so a
@@ -140,18 +144,27 @@ const resolveLineCount = (raw) => {
   }
   return { lc: 0, resolved: false };
 };
-// The three trees the installers seed into the navigation server's OWN `ignored_paths` (Serena's
-// .serena/project.yml): it cannot index them, so naming its tools for a path under one of them hands the model a
-// remedy that errors. Measured twice - the denial named it for a `.claude/...` path and the
+// The trees the installers seed into the navigation server's OWN `ignored_paths` (its project.yml): the data
+// root (ALFRED_CODE_DATA_PATH, default .alfred - serena's own home, the browser profiles, the docs), `.claude`,
+// and the 2.0.0 `.serena` / `.playwright`. It cannot index them, so naming its tools for a path under one of them
+// hands the model a remedy that errors. Measured twice - the denial named it for a `.claude/...` path and the
 // redirect the model made from it failed. The ranged read is the remedy there.
 const SERENA_IGNORED = /(?:^|[\\/])\.(?:claude|serena|playwright)(?:[\\/]|$)/;
+const dataRootEnv = () => String(envOf(process.env, 'DATA_PATH') || '.alfred').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+const underDataRoot = (p) =>
+{
+  const root = dataRootEnv();
+  if (!root || /[\s$]/.test(root)) return false;
+  const norm = String(p).replace(/\\/g, '/');
+  return norm === root || norm.startsWith(`${root}/`) || norm.includes(`/${root}/`);
+};
 // The hint must be EXECUTABLE, not just correct. The navigation server's tools are deferred behind tool search in
 // this harness, so naming them is not having them: measured, two sessions carried the rule text
 // saying exactly that and still made 100 Bash calls and 0 navigation calls. The loading call goes in
 // the denial itself, where the model is already looking for what to do instead.
 const LOAD_SERENA = `  ToolSearch select:mcp__plugin_navigation_navigation__get_symbols_overview,mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols\n`;
-const serenaHint = (p) => (SERENA_IGNORED.test(String(p))
-  ? `The navigation server cannot locate anything here: the installers seed \`.claude\` / \`.serena\` / \`.playwright\` into\n`
+const serenaHint = (p) => (SERENA_IGNORED.test(String(p)) || underDataRoot(p)
+  ? `The navigation server cannot locate anything here: the installers seed the data root (\`${dataRootEnv()}\`), \`.claude\` and the old \`.serena\` / \`.playwright\` into\n`
     + `its own ignored_paths, so this tree is not indexed. Locate inside the file instead:\n`
     + `  grep -n '<pattern>' '${p}'   ->  then Read with offset+limit on the lines it names.`
   : `Locate first with the navigation server. If those tools are not loaded in this session, load them first:\n` +

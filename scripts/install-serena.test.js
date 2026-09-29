@@ -98,8 +98,27 @@ test('set-key: an ABSENT key is appended once, with its reason', () =>
     const root = project({ '.serena/project.yml': 'project_name: "x"\n' });
     serena.seedProject({ projectRoot: root, selected: true });
     const text = cfgOf(root);
-    assert.match(text, /# Added by alfred-code: .serena holds/);
+    assert.match(text, /# Added by alfred-code: the data root holds/);
     assert.strictEqual((text.match(/^ignored_paths:/gm) || []).length, 1);
+});
+
+test('data root: the seed lands in the folder serena reads this run and ignores the root; the stack\'s old list follows the root, the user\'s stays', () =>
+{
+    const root = project({ 'web/package.json': '{}' });
+    serena.seedProject({ projectRoot: root, selected: true, dir: '.alfred/serena', root: '.alfred' });
+    const fresh = fs.readFileSync(path.join(root, '.alfred', 'serena', 'project.yml'), 'utf8');
+    assert.match(fresh, /^ignored_paths: \["\.alfred", "\.claude", "\.serena", "\.playwright"\]$/m);
+    assert.ok(!fs.existsSync(path.join(root, '.serena')), 'nothing at the 2.0.0 place');
+
+    const old = project({ '.serena/project.yml': 'project_name: "x"\nlanguage_servers: ["typescript"]\nignored_paths: [".serena", ".claude", ".playwright"]\n' });
+    serena.seedProject({ projectRoot: old, selected: true, dir: '.serena', root: '.data' });
+    assert.match(cfgOf(old), /^ignored_paths: \["\.data", "\.claude", "\.serena", "\.playwright"\]$/m, 'the stack\'s 2.0.0 value is re-pointed at the root');
+    serena.seedProject({ projectRoot: old, selected: true, dir: '.serena', root: '.alfred' });
+    assert.match(cfgOf(old), /^ignored_paths: \["\.alfred", "\.claude", "\.serena", "\.playwright"\]$/m, 'and follows a later root');
+
+    const mine = project({ '.serena/project.yml': 'project_name: "x"\nlanguage_servers: ["typescript"]\nignored_paths: ["build", ".claude"]\n' });
+    serena.seedProject({ projectRoot: mine, selected: true, dir: '.serena', root: '.alfred' });
+    assert.match(cfgOf(mine), /^ignored_paths: \["build", "\.claude"\]$/m, 'a list the user wrote is theirs');
 });
 
 // --- the fresh seed -------------------------------------------------------

@@ -1,5 +1,5 @@
 ---
-name: explain-code-tutor
+name: alfred-habits-explain-code
 description: "Explains code, a bug, a concept, or an approach trade-off like a patient senior engineer for someone new to the stack. Use ONLY where the user has asked for depth - 'walk me through this', 'explain in detail', 'teach me how this works', 'покроково' - because a bare 'explain X' or 'how does this work' is capped like any other answer, and a request to FIX a failure belongs to the diagnose flow. Walks the real project files: one fitting analogy, numbered steps over short quoted snippets, a marked break-point / key-insight / verdict, the real fix, a one-line takeaway; depth adjustable (ELI5 to expert). Do NOT fire on quick lookups answerable in a sentence, on writing new feature code, or on formal code review."
 ---
 

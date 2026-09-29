@@ -25,7 +25,7 @@ function project({ settings } = {})
     return root;
 }
 const INV = (over = {}) => ({
-    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-agent-capabilities'],
+    skills: ['alfred-capture-related-projects', 'alfred-capture-architecture', 'alfred-capture-code-style', 'alfred-capture-project-capabilities', 'alfred-capture-agent-capabilities'],
     agents: ['related-project-analyzer', 'architecture-analyzer', 'code-style-analyzer'],
     mcps: ['navigation', 'documentation', 'memory', 'playwright'],
     plugins: [{ name: 'alfred-code', scope: 'project' }, { name: 'csharp-lsp', scope: 'project' }],
@@ -52,11 +52,14 @@ test('machine: nothing installed - uv first, the rest after it, each with its ex
     assert.strictEqual(lineOf(lines, /^machine: playwright chrome /),
         'machine: playwright chrome - blocked: needs Google Chrome - install it, or drop chrome from the browsers (/alfred-code:configure)');
     assert.strictEqual(lineOf(lines, /^machine: serena index /),
-        `machine: serena index - missing after uv: SERENA_HOME=.serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
-    // Order is install order: uv, python, csharp-ls, the engines, the index - then the account's hud.
+        `machine: serena index - missing after uv: SERENA_HOME=.alfred/serena/home uvx --python 3.13 --from serena-agent@${PINS.navigation.version} serena project index`);
+    // F2: the memory service's embedding model (~166MB) fetched ahead, so its first start fits the 30s connect budget.
+    assert.strictEqual(lineOf(lines, /^machine: memory model /),
+        `machine: memory model - missing after uv: node "${path.join(__dirname, '..', 'stack', 'hooks', 'memory.js')}" warm --root "${root}" --plugin-root "${path.join(__dirname, '..')}"`);
+    // Order is install order: uv, python, csharp-ls, the engines, the index, the memory model - then the account's hud.
     const order = lines.filter((l) => l.startsWith('machine:')).map((l) => l.split(' - ')[0]);
     assert.deepStrictEqual(order, ['machine: uv', 'machine: python 3.13', 'machine: csharp-ls', 'machine: playwright chrome', 'machine: playwright firefox', 'machine: serena index',
-        'machine: claude-hud status line + compact layout']);
+        'machine: memory model', 'machine: claude-hud status line + compact layout']);
 });
 
 // Task 24: claude-hud arrives configured - one item INSIDE the machine ask, never an ask of its own.
@@ -81,7 +84,7 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     // The keys the row adds ride the command as a shell comment: named in the ask, inert when run.
     assert.strictEqual(lineOf(missing, HUD),
         `machine: claude-hud status line + compact layout - missing: ${command} # adds 13 claude-hud keys: lineLayout, showSeparators, display (8), gitStatus (2), statusLine.refreshInterval`);
-    assert.match(missing[missing.length - 1], /^init-plan: 5 to install, /, 'counted with the other missing items - one ask');
+    assert.match(missing[missing.length - 1], /^init-plan: 6 to install, /, 'counted with the other missing items - one ask');
 
     // Applied: nothing left to do.
     const r = spawnSync(process.execPath, [path.join(__dirname, 'hud-statusline.js'), '--config-dir', acct], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: path.join(TMP, 'home') } });
@@ -95,7 +98,7 @@ test('machine: the claude-hud item - skip without it, missing with its one comma
     fs.writeFileSync(settings0, JSON.stringify(doc));
     const refresh = render(plan({ inv: INV(), root, env, probe: NONE }));
     assert.strictEqual(lineOf(refresh, HUD), `machine: claude-hud status line + compact layout - refresh: ${command}`);
-    assert.match(refresh[refresh.length - 1], /^init-plan: 5 to install, /, 'a refresh is one of the ask\'s options');
+    assert.match(refresh[refresh.length - 1], /^init-plan: 6 to install, /, 'a refresh is one of the ask\'s options');
 
     // A status line the user owns, with the hud keys already in: not an option, one line naming the way over.
     const settings = path.join(acct, 'settings.json');
@@ -131,9 +134,13 @@ test('machine: everything present is reported present, and csharp-ls is asked on
 {
     const root = project();
     fs.mkdirSync(path.join(root, '.serena', 'cache', 'typescript'), { recursive: true });
+    const marker = path.join(E().HOME, '.cache', 'mcp_memory', 'onnx_models', 'all-MiniLM-L6-v2', 'onnx', 'model.onnx');
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, 'onnx');
     const probe = { has: () => true, pythonFound: () => true, dir: () => true };
     const lines = render(plan({ inv: INV(), root, platform: 'linux', env: E(), probe }));
-    for (const what of ['uv', 'python 3.13', 'csharp-ls', 'playwright chrome', 'playwright firefox', 'serena index'])
+    fs.rmSync(path.join(E().HOME, '.cache'), { recursive: true, force: true });
+    for (const what of ['uv', 'python 3.13', 'csharp-ls', 'playwright chrome', 'playwright firefox', 'serena index', 'memory model'])
         assert.ok(lines.includes(`machine: ${what} - present`), `${what}: ${lines.join('\n')}`);
     assert.match(lines[lines.length - 1], /^init-plan: 0 to install, 0 blocked, /);
     const noLsp = render(plan({ inv: INV({ plugins: [{ name: 'alfred-code', scope: 'project' }] }), root, platform: 'linux', env: E(), probe }));
@@ -148,7 +155,7 @@ test('machine: Windows spellings - the PowerShell uv installer, the pinned x64 P
     const lines = render(plan({ inv: INV(), root, platform: 'win32', arch: 'arm64', env: E({ PROCESSOR_ARCHITECTURE: 'ARM64' }), probe: NONE }));
     assert.match(lineOf(lines, /^machine: uv /), /powershell -ExecutionPolicy ByPass -c "irm https:\/\/astral\.sh\/uv\/install\.ps1 \| iex"$/);
     assert.match(lineOf(lines, /^machine: python /), /uv python install cpython-3\.13-windows-x86_64-none$/);
-    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
+    assert.match(lineOf(lines, /^machine: serena index /), /\$env:SERENA_HOME='\.alfred\\serena\\home'; uvx --python cpython-3\.13-windows-x86_64-none --from serena-agent@/);
 });
 
 test('machine: a picked chrome or msedge is found on PATH or at its app install location, and reported when missing (M2)', () =>
@@ -196,15 +203,21 @@ test('captures: the fixed order; run, done and skip each say why; the library co
         .filter((l) => l.startsWith('capture:'));
     assert.deepStrictEqual(lines.map((l) => l.split(' - ')[0]), [
         'capture: alfred-capture-related-projects', 'capture: alfred-capture-architecture',
-        'capture: alfred-capture-code-style', 'capture: alfred-capture-agent-capabilities',
+        'capture: alfred-capture-code-style', 'capture: alfred-capture-project-capabilities', 'capture: alfred-capture-agent-capabilities',
     ]);
     assert.strictEqual(lines[0], 'capture: alfred-capture-related-projects - run: read .claude/skills/alfred-capture-related-projects/SKILL.md');
     assert.strictEqual(lines[1], 'capture: alfred-capture-architecture - done: notes/ai/architecture/ARCHITECTURE.md exists');
     assert.strictEqual(lines[2], 'capture: alfred-capture-code-style - skip: its seat code-style-analyzer is switched off');
     // A path outside the project is printed with forward slashes on every OS: init reads it through Bash, where a
     // backslash is an escape (windows-2025 CI printed `D:/a/...` against a native-separator expectation).
-    const libPath = path.join(__dirname, '..', 'stack', 'skills', 'alfred-capture-agent-capabilities', 'SKILL.md').split(path.sep).join('/');
-    assert.strictEqual(lines[3], `capture: alfred-capture-agent-capabilities - run: read ${libPath}`);
+    const libPath = (skill) => path.join(__dirname, '..', 'stack', 'skills', skill, 'SKILL.md').split(path.sep).join('/');
+    // The run book has no seat: the capture reads the repo and asks in the main session.
+    assert.strictEqual(lines[3], `capture: alfred-capture-project-capabilities - run: read ${libPath('alfred-capture-project-capabilities')}`);
+    assert.strictEqual(lines[4], `capture: alfred-capture-agent-capabilities - run: read ${libPath('alfred-capture-agent-capabilities')}`);
+    fs.mkdirSync(path.join(root, 'notes', 'ai', 'project-capabilities'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'notes', 'ai', 'project-capabilities', 'PROJECT-CAPABILITIES.md'), '# run book\n');
+    const again = render(plan({ inv, root, platform: 'linux', env: E(), probe: NONE })).filter((l) => l.startsWith('capture:'));
+    assert.strictEqual(again[3], 'capture: alfred-capture-project-capabilities - done: notes/ai/project-capabilities/PROJECT-CAPABILITIES.md exists');
 
     const bare = render(plan({ inv: INV({ skills: ['alfred-capture-agent-capabilities'], agents: [] }), root, platform: 'linux', env: E(), probe: NONE }))
         .filter((l) => l.startsWith('capture:'));
@@ -233,7 +246,7 @@ test('CLI: probes the machine on PATH, reads the plan-out file, refuses a missin
     assert.ok(lines.includes('machine: uv - present'), r.stdout);
     assert.ok(lines.includes('machine: python 3.13 - missing: uv python install 3.13'), 'uv present, so no after-uv');
     assert.ok(lines.includes('machine: csharp-ls - missing: dotnet tool install --global csharp-ls'));
-    assert.match(lines[lines.length - 1], /^init-plan: 4 to install, 0 blocked, 4 captures to run$/);
+    assert.match(lines[lines.length - 1], /^init-plan: 5 to install, 0 blocked, 5 captures to run$/);
 
     const missing = spawnSync(process.execPath, [SCRIPT, '--installed', path.join(root, 'nope.json'), '--root', root], { env, encoding: 'utf8' });
     assert.strictEqual(missing.status, 2);

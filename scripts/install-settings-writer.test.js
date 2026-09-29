@@ -1185,3 +1185,52 @@ test('removeManagedSettings: the attribution keys it seeded go, an edited one st
     removeManagedSettings({ claudeDir: dir, ledger, log: () => {} });
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { enabledMcpjsonServers: ['mine'], enabledPlugins: { 'x@y': true } }, 'a list that names something is never touched');
 });
+
+// A local-scope run writes settings.local.json, but a legacy copy-route install's stack wiring and its 1.x
+// env keys sit in settings.json: left there, every Bash call ran a hook file the plugin route had pruned.
+// The stack's own stale rows leave settings.json; a hook the user wrote stays.
+test('settings-writer: a local-scope run removes the stack\'s stale wiring and 1.x env key from settings.json, never the user\'s own', () =>
+{
+    const dir = path.join(TMP, `sharedprune-${seq++}`, '.claude');
+    fs.mkdirSync(dir, { recursive: true });
+    const shared = path.join(dir, 'settings.json');
+    const mine = { type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/scripts/my-hook.js"', timeout: 5 };
+    fs.writeFileSync(shared, JSON.stringify({
+        env: { CLAUDE_DOCS_PATH: '.claude/docs', MY_KEY: '1', CLAUDE_STACK_FRESH_SESSION_PCT: '50' }, // legacy-name
+        hooks: {
+            PreToolUse: [
+                { matcher: 'Bash', hooks: [hookCommandEntry('guard-catastrophic-rm.js'), mine] },
+                { matcher: 'Read', hooks: [hookCommandEntry('guard-read-whole-file.js')] },
+            ],
+            Stop: [{ hooks: [hookCommandEntry('guard-stop-contract.js')] }],
+        },
+    }, null, 2));
+    const local = path.join(dir, 'settings.local.json');
+    writeSettings({
+        file: local, sharedFile: shared, catalog: CATALOG, migrations: MIGRATIONS,
+        retiredHooks: ['guard-catastrophic-rm.js', 'guard-read-whole-file.js', 'guard-stop-contract.js'], log: () => {},
+    });
+    const after = JSON.parse(fs.readFileSync(shared, 'utf8'));
+    const cmds = JSON.stringify(after.hooks);
+    assert.ok(!/\.claude\/hooks\//.test(cmds), `stack wiring left in settings.json: ${cmds}`);
+    assert.ok(cmds.includes('my-hook.js'), 'the user\'s own hook was removed');
+    assert.strictEqual(after.hooks.PreToolUse.length, 1);
+    assert.strictEqual(after.env.MY_KEY, '1');
+    assert.ok(!('CLAUDE_DOCS_PATH' in after.env), 'the 1.x docs key stayed'); // legacy-name
+    assert.strictEqual(after.env.ALFRED_CODE_DOCS_PATH, '.claude/docs');
+    assert.ok(!('CLAUDE_STACK_FRESH_SESSION_PCT' in after.env)); // legacy-name
+    // Idempotent, and a missing or malformed shared file is left alone.
+    const bytes = fs.readFileSync(shared, 'utf8');
+    writeSettings({ file: local, sharedFile: shared, catalog: CATALOG, migrations: MIGRATIONS, retiredHooks: ['guard-stop-contract.js'], log: () => {} });
+    assert.strictEqual(fs.readFileSync(shared, 'utf8'), bytes);
+    fs.writeFileSync(shared, '{not json');
+    writeSettings({ file: local, sharedFile: shared, catalog: CATALOG, migrations: MIGRATIONS, log: () => {}, note: () => {} });
+    assert.strictEqual(fs.readFileSync(shared, 'utf8'), '{not json');
+    writeSettings({ file: local, sharedFile: path.join(dir, 'absent.json'), catalog: CATALOG, migrations: MIGRATIONS, log: () => {} });
+    assert.ok(!fs.existsSync(path.join(dir, 'absent.json')));
+});
+
+function hookCommandEntry(file)
+{
+    return { type: 'command', command: hookCommand(file, '').command, timeout: HOOK_TIMEOUT };
+}

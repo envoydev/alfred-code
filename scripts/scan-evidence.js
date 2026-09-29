@@ -9,7 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', '.serena', '.claude']);
+// The data root's default (`.alfred`: the stack's docs and its servers' data) holds no manifest of the project's.
+const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'out', '.serena', '.claude', '.alfred']);
 const MAX_DEPTH = 6;
 const MAX_CONTENT_BYTES = 512 * 1024;
 const LAYERS = ['skills', 'mcps', 'plugins'];

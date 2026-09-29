@@ -7,7 +7,7 @@ effort: xhigh
 color: cyan
 skills:
   - devops
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

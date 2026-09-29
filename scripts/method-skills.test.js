@@ -42,9 +42,9 @@ test('every verifier, implementer and resolver preloads the done gate, every imp
     for (const seat of ['dotnet-build-error-resolver', 'dotnet-test-failure-resolver', 'ng-build-error-resolver', 'angular-test-resolver',
         'alfred-issue-diagnoser-ci', 'alfred-issue-diagnoser-runtime'])
         assert.ok(preloads(seat).includes('alfred-habits-root-cause'), `${seat} preloads alfred-habits-root-cause`);
-    // Scoped to the core, the spelling a stale library copy cannot shadow (Spike S6).
+    // Bare since 2.1.0: every skill is a project copy, and a plugin seat's bare preload loads it (Spike S6).
     for (const seat of [...verifiers, ...implementers, ...resolvers])
-        assert.match(read(`stack/agents/${seat}.md`), /^\s*-\s*alfred-code:alfred-habits-done-gate$/m, `${seat} scopes the preload to the core`);
+        assert.match(read(`stack/agents/${seat}.md`), /^\s*-\s*alfred-habits-done-gate$/m, `${seat} preloads the project copy, bare`);
 });
 
 test('the flows load their method skills by name, at the step that needs them', () => {
@@ -175,8 +175,9 @@ test('the skill-authoring rule attaches on skill files and its first action is t
         assert.ok(!attaches(p), `does not attach on ${p}`);
 });
 
+// plugin-authoring left the shipped catalog in 2.1.0; this repo's own copy in .claude/skills is tracked through a .gitignore negation.
 test('plugin-authoring points at the habit for a skill body, and the repo notes name it instead of the plugin method', () => {
-    const raw = read('stack/skills/plugin-authoring/SKILL.md');
+    const raw = read('.claude/skills/plugin-authoring/SKILL.md');
     const pa = squash(raw);
     const bullet = raw.split('\n').filter((l, i, all) => l.startsWith('- **Skills**') || (i && all[i - 1].startsWith('- **Skills**') && /^  \S/.test(l)));
     assert.strictEqual(bullet.length, 1, 'the Skills bullet is one line');
@@ -184,7 +185,7 @@ test('plugin-authoring points at the habit for a skill body, and the repo notes 
     for (const moved of ['Body under 500 lines', 'references one level deep', 'third person, what it covers', '1,536', 'skillListingBudgetFraction',
         'user-invocable', 'description, not the body'])
         assert.ok(!pa.includes(moved), `plugin-authoring still carries the habit's text: '${moved}'`);
-    const evals = squash(read('stack/skills/plugin-authoring/references/evals.md'));
+    const evals = squash(read('.claude/skills/plugin-authoring/references/evals.md'));
     assert.ok(!/DESCRIPTION is wrong, not the body/.test(evals), 'the eval reference no longer restates the trigger rule');
     assert.ok(evals.includes('`alfred-habits-skill-writing`'), 'it points at the habit instead');
     const md = squash(read('CLAUDE.md'));
@@ -213,4 +214,15 @@ test('the habit descriptions are triggers only - when, and what they are not for
         for (const step of retold[skill] || [])
             assert.ok(!desc.includes(step), `${skill}'s description retells its loop: '${step}'`);
     }
+});
+
+test('the inline task skills load their method skill through the Skill tool at the right point', () => {
+    const body = (n) => squash(read(`stack/skills/${n}/SKILL.md`));
+    const design = body('alfred-task-design');
+    assert.match(design, /Before you orient or design anything, load `alfred-habits-clarify` \(the Skill tool\) and run it/, 'design loads clarify first');
+    assert.match(design, /Load `alfred-habits-plan-writing` first \(the Skill tool\)/, 'design loads plan-writing');
+    assert.match(body('alfred-task-implement'), /load `alfred-habits-plan-writing` \(the Skill tool\)[^.]*and `alfred-habits-test-first`/, 'implement loads test-first');
+    const verify = body('alfred-task-verify-code');
+    assert.match(verify, /Before the verdict is stamped, load `alfred-habits-done-gate` \(the Skill tool\)/, 'verify-code loads the done gate');
+    assert.match(verify, /only on a build and suite run this session/, 'a pass needs a run this session');
 });

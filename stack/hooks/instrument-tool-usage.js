@@ -53,6 +53,10 @@ process.stdin.on('end', () => {
     const ev = JSON.parse(raw || '{}');
     const tool = ev.tool_name || '';
     if (!tool) { process.exit(0); }
+    // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards.
+    let cursorOff = false;
+    try { cursorOff = require('./hook-prelude.js').cursorStandDown(ev, __filename); } catch { /* no prelude: run */ }
+    if (cursorOff) process.exit(0);
     const input = ev.tool_input || {};
     const path = require('path');
     const fs = require('fs');

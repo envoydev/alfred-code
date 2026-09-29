@@ -16,18 +16,18 @@
 //   node scripts/build-marketplace.js --hooks-entry         print the core's hooks block (lint 48)
 //
 // The CORE entry is generated too, from Phase 3 on. It used to ship from `./setup-plugin`, whose
-// own .claude-plugin/plugin.json was its manifest; its 21 skills and 8 agents live under stack/,
-// outside that folder, and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1
-// refused to build on it). At `source: './'` nothing under setup-plugin/ is auto-discovered, so the
-// entry carries every path explicitly - the guided-walk commands, the router skill, its placed skills and
-// agents - plus the layer-table hook INLINE that plugin.json used to declare. Dropping it on the way
-// across would be a silent behaviour change.
+// own .claude-plugin/plugin.json was its manifest; its seats live under stack/, outside that folder,
+// and a `../` path out of a plugin root is undocumented (Phase 2 ruling R1 refused to build on it). At
+// `source: './'` nothing under setup-plugin/ is auto-discovered, so the entry carries every path
+// explicitly - the guided-walk commands, the router skill and every seat (2.1.0: no stack skill rides
+// a plugin, each is a project copy) - plus the layer-table hook INLINE that plugin.json used to
+// declare. Dropping it on the way across would be a silent behaviour change.
 //
 // From 2.0.0 the core also carries EVERY stack hook inline (user ruling 'Fold into core in 2.0.0'):
 // there is no separate hooks entry, so a project that has the core has the guards.
 const fs = require('node:fs');
 const path = require('node:path');
-const { placement, readRetiredEntries, CORE } = require('./plugin-placement.js');
+const { placement, formerCore, readRetiredEntries, CORE } = require('./plugin-placement.js');
 const { timeoutFor } = require('./install/settings.js');
 const { loadManifest } = require('./install/manifest.js');
 const { LEGACY } = require('./install/brand.js');
@@ -179,16 +179,24 @@ function retiredMarketplaceEntries(options = {})
 // with no hooks and no skills for several sessions (docs/rebrand-evidence.md S11, S16), while an id
 // that stays listed refreshes in place (S21). So both 1.x ids stay in the catalog through the 2.x
 // line, and the seed's migration installs the new core and removes them (install/plugins.js
-// migrateLegacy). The core's alias is the 2.0.0 core under its old name; the hooks id carries
-// nothing - an explicit empty `skills`, because an entry that omits the key auto-discovers the
-// shared root's skill folders (S20, which validated exactly this shape under --strict). Dropping
-// either from the catalog is a total blackout for a straggler still on it (S25).
+// migrateLegacy). The core's alias is the core under its old name with the ITEMS the core carried
+// before 2.1.0 (`formerCore`, the always closure): a straggler on it has no project copies yet, so
+// the 2.1.0 core's own lists - no skill, every seat undenied - would take its habit skills away and
+// list 44 seats it never picked until its update runs. The hooks id carries nothing - an explicit
+// empty `skills`, because an entry that omits the key auto-discovers the shared root's skill folders
+// (S20, which validated exactly this shape under --strict). Dropping either from the catalog is a
+// total blackout for a straggler still on it (S25).
 function aliasEntries(options = {})
 {
     const core = coreEntry(options);
+    const former = formerCore(options);
     const description = `RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /${LEGACY.core}:update: it installs ${CORE} and removes this entry.`;
     return [
-        { ...core, name: LEGACY.core, description },
+        {
+            ...core, name: LEGACY.core, description,
+            skills: ['./setup-plugin/skills/alfred-code'].concat(former.skills.map((s) => `./stack/skills/${s}`)),
+            agents: former.agents.map((a) => `./stack/agents/${a}.md`),
+        },
         { name: LEGACY.hooks, source: './', description, version: core.version, author: core.author, strict: false, skills: [] },
     ];
 }
@@ -333,20 +341,20 @@ const PW_ENGINES = ['chrome', 'msedge', 'firefox', 'webkit'];
 function mcpServerShapes(options = {})
 {
     const { suffix } = readPins(options);
-    const proj = '${CLAUDE_PROJECT_DIR}';
     const root = '${CLAUDE_PLUGIN_ROOT}';
     const browsers = {};
     for (const engine of PW_ENGINES)
     {
         const name = `browser-${engine}`;
         browsers[name] = {
-            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/${engine}.`,
+            description: `The browser server (Playwright MCP) driving ${engine}, as a plugin: a real ${engine} browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/${engine}, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.`,
             servers: {
                 [name]: {
-                    command: 'npx',
-                    args: ['-y', `@playwright/mcp${suffix('browser')}`, '--browser', engine,
-                        `--user-data-dir`, `${proj}/.playwright/${engine}`,
-                        `--output-dir`, `${proj}/.playwright/${engine}/output`],
+                    // The launcher, not npx directly: the profile's place is the project's data root
+                    // (ALFRED_CODE_DATA_PATH, a PROJECT setting a plugin entry never sees), and a move
+                    // the installer recorded runs there, once no browser holds the profile.
+                    command: 'node',
+                    args: [`${root}/stack/mcp/browser-launch.js`, '--package', `@playwright/mcp${suffix('browser')}`, '--browser', engine],
                 },
             },
         };
@@ -355,15 +363,14 @@ function mcpServerShapes(options = {})
         // --- the three locked servers -----------------------------------------------------------
         navigation: {
             locked: true,
-            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
+            description: 'The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server\'s cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).',
             servers: {
                 navigation: {
                     // The launcher, not uvx directly: it hands uvx the Python this MACHINE needs
-                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another.
+                    // (stack/mcp/uv-python.js) - a fixed --python here is wrong on one OS or another -
+                    // and it sets SERENA_HOME to the data root's own home, RELATIVE, resolved against the
+                    // server's cwd, which is the project (stack/mcp/serena-launch.js).
                     command: 'node',
-                    // SERENA_HOME stays RELATIVE: it resolves against the server's cwd, which is the
-                    // project. An absolute path here would pool every project into one home.
-                    env: { SERENA_HOME: '.serena/home' },
                     args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
                         // Always claude-code inside a Claude Code plugin; the ide-assistant value is
                         // cursor-stack's, and its own registration keeps it.

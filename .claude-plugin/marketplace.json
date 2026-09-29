@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code agent stack - skills, agents, rules, hooks, and MCP servers, installed and updated via the alfred-code plugin.",
-    "version": "2.0.0"
+    "version": "2.1.0"
   },
   "plugins": [
     {
       "name": "serena",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed navigation. Run /alfred-code:update: it installs navigation in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -22,9 +22,6 @@
       "mcpServers": {
         "serena": {
           "command": "node",
-          "env": {
-            "SERENA_HOME": ".serena/home"
-          },
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
             "--package",
@@ -44,7 +41,7 @@
       "name": "context7",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed documentation. Run /alfred-code:update: it installs documentation in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -64,7 +61,7 @@
       "name": "memory",
       "source": "./",
       "description": "memory as a plugin: the shared recall the stack reads at every session start - preferences, corrections, project facts and agent lessons, searchable by meaning. The database path is the install's level choice (global, scoped or project), so this one server starts through a launcher that reads the project's own settings.json - a plugin entry cannot expand a PROJECT env key (measured).",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -89,7 +86,7 @@
       "name": "playwright-chrome",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-chrome. Run /alfred-code:update: it installs browser-chrome in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -97,16 +94,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-chrome": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "chrome",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+            "chrome"
           ]
         }
       },
@@ -118,7 +112,7 @@
       "name": "playwright-msedge",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-msedge. Run /alfred-code:update: it installs browser-msedge in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -126,16 +120,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-msedge": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "msedge",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+            "msedge"
           ]
         }
       },
@@ -147,7 +138,7 @@
       "name": "playwright-firefox",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-firefox. Run /alfred-code:update: it installs browser-firefox in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -155,16 +146,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-firefox": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "firefox",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+            "firefox"
           ]
         }
       },
@@ -176,7 +164,7 @@
       "name": "playwright-webkit",
       "source": "./",
       "description": "RETIRED in 2.0.0 - renamed browser-webkit. Run /alfred-code:update: it installs browser-webkit in its place and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -184,16 +172,13 @@
       "strict": false,
       "mcpServers": {
         "playwright-webkit": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "webkit",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+            "webkit"
           ]
         }
       },
@@ -204,8 +189,8 @@
     {
       "name": "navigation",
       "source": "./",
-      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Per-project SERENA_HOME (.serena/home) keeps its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
-      "version": "2.0.0",
+      "description": "The navigation server (Serena), as a plugin: LSP symbol navigation for the house stack. Its per-project folder and home (<data root>/serena, .alfred by default) keep its registry, memories, logs and LSP cache out of every other project; --project-from-cwd self-activates the repo, which works because a plugin server's cwd IS the project dir (measured). Dashboard off, pinned PyPI package rather than a git ref, started through a launcher that places the data and pins the Python its compiled dependencies have wheels for (3.13; the x64 build on Windows on ARM).",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -214,9 +199,6 @@
       "mcpServers": {
         "navigation": {
           "command": "node",
-          "env": {
-            "SERENA_HOME": ".serena/home"
-          },
           "args": [
             "${CLAUDE_PLUGIN_ROOT}/stack/mcp/serena-launch.js",
             "--package",
@@ -236,7 +218,7 @@
       "name": "documentation",
       "source": "./",
       "description": "The documentation server (Context7), as a plugin: up-to-date library, framework, SDK and CLI documentation, which beats recalled API knowledge. The hosted remote server - no local process, and no key in any file. Locked: every install carries it beside the core, so it can never be dropped.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -255,8 +237,8 @@
     {
       "name": "browser-chrome",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/chrome.",
-      "version": "2.0.0",
+      "description": "The browser server (Playwright MCP) driving chrome, as a plugin: a real chrome browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/chrome, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -264,16 +246,13 @@
       "strict": false,
       "mcpServers": {
         "browser-chrome": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "chrome",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/chrome/output"
+            "chrome"
           ]
         }
       },
@@ -284,8 +263,8 @@
     {
       "name": "browser-msedge",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/msedge.",
-      "version": "2.0.0",
+      "description": "The browser server (Playwright MCP) driving msedge, as a plugin: a real msedge browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/msedge, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -293,16 +272,13 @@
       "strict": false,
       "mcpServers": {
         "browser-msedge": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "msedge",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/msedge/output"
+            "msedge"
           ]
         }
       },
@@ -313,8 +289,8 @@
     {
       "name": "browser-firefox",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/firefox.",
-      "version": "2.0.0",
+      "description": "The browser server (Playwright MCP) driving firefox, as a plugin: a real firefox browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/firefox, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -322,16 +298,13 @@
       "strict": false,
       "mcpServers": {
         "browser-firefox": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "firefox",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/firefox/output"
+            "firefox"
           ]
         }
       },
@@ -342,8 +315,8 @@
     {
       "name": "browser-webkit",
       "source": "./",
-      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's .playwright/webkit.",
-      "version": "2.0.0",
+      "description": "The browser server (Playwright MCP) driving webkit, as a plugin: a real webkit browser for visual checks and web app verification. One plugin per engine, so a project pays only for the browsers it picked; the profile and the screenshot output dir live under the project's data root (<data root>/browser/webkit, .alfred by default), placed by a launcher because a plugin entry cannot read the project's own setting.",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -351,16 +324,13 @@
       "strict": false,
       "mcpServers": {
         "browser-webkit": {
-          "command": "npx",
+          "command": "node",
           "args": [
-            "-y",
+            "${CLAUDE_PLUGIN_ROOT}/stack/mcp/browser-launch.js",
+            "--package",
             "@playwright/mcp@0.0.82",
             "--browser",
-            "webkit",
-            "--user-data-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit",
-            "--output-dir",
-            "${CLAUDE_PROJECT_DIR}/.playwright/webkit/output"
+            "webkit"
           ]
         }
       },
@@ -372,7 +342,7 @@
       "name": "windows-desktop",
       "source": "./",
       "description": "The Windows desktop server (Windows-MCP), as a plugin: drives native Windows apps - WPF, WinForms, Win32, UWP, Office, Explorer - through UI Automation (snapshot, click, type, shortcut). Windows only. Started through a launcher that pins the Python (3.13) and refuses on another OS; PowerShell, Registry, Process stay off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE names another list (none = every tool).",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -405,7 +375,7 @@
       "name": "macos-desktop",
       "source": "./",
       "description": "The macOS desktop server (MacOS-MCP), as a plugin: drives native macOS apps through the Accessibility API (snapshot, click, type, shortcut). macOS only; it needs Accessibility and Screen Recording granted to the terminal or IDE running Claude Code and to the uv-managed Python it runs on. Started through a launcher that pins the Python (3.13) and refuses on another OS.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -436,7 +406,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -469,48 +439,53 @@
         "./setup-plugin/commands/uninstall.md"
       ],
       "skills": [
-        "./setup-plugin/skills/alfred-code",
-        "./stack/skills/alfred-capture-agent-capabilities",
-        "./stack/skills/alfred-capture-architecture",
-        "./stack/skills/alfred-capture-architecture-quality",
-        "./stack/skills/alfred-capture-claude-md",
-        "./stack/skills/alfred-capture-code-quality",
-        "./stack/skills/alfred-capture-code-style",
-        "./stack/skills/alfred-capture-first-look",
-        "./stack/skills/alfred-capture-test-coverage",
-        "./stack/skills/alfred-habits-clarify",
-        "./stack/skills/alfred-habits-commit-checkpoint",
-        "./stack/skills/alfred-habits-done-gate",
-        "./stack/skills/alfred-habits-plan-writing",
-        "./stack/skills/alfred-habits-root-cause",
-        "./stack/skills/alfred-habits-skill-writing",
-        "./stack/skills/alfred-habits-test-first",
-        "./stack/skills/alfred-issue-diagnoser",
-        "./stack/skills/alfred-issue-signatures-ci",
-        "./stack/skills/alfred-issue-signatures-runtime",
-        "./stack/skills/alfred-loop-architecture-quality",
-        "./stack/skills/alfred-loop-quality",
-        "./stack/skills/alfred-loop-test-coverage",
-        "./stack/skills/alfred-task-design",
-        "./stack/skills/alfred-task-implement",
-        "./stack/skills/alfred-task-solve",
-        "./stack/skills/alfred-task-solve-cross",
-        "./stack/skills/alfred-task-verify-code",
-        "./stack/skills/alfred-task-verify-plan",
-        "./stack/skills/alfred-task-version-upgrade",
-        "./stack/skills/docs-as-code",
-        "./stack/skills/markdown-style"
+        "./setup-plugin/skills/alfred-code"
       ],
       "agents": [
         "./stack/agents/alfred-issue-diagnoser-ci.md",
         "./stack/agents/alfred-issue-diagnoser-runtime.md",
+        "./stack/agents/angular-test-resolver.md",
         "./stack/agents/architecture-analyzer.md",
+        "./stack/agents/aspnet-implementer.md",
+        "./stack/agents/aspnet-solution-designer.md",
+        "./stack/agents/aspnet-verifier.md",
+        "./stack/agents/browser-extension-implementer.md",
+        "./stack/agents/browser-extension-solution-designer.md",
+        "./stack/agents/browser-extension-verifier.md",
         "./stack/agents/code-quality-analyzer.md",
         "./stack/agents/code-style-analyzer.md",
+        "./stack/agents/console-implementer.md",
+        "./stack/agents/console-solution-designer.md",
+        "./stack/agents/console-verifier.md",
+        "./stack/agents/data-implementer.md",
+        "./stack/agents/data-solution-designer.md",
+        "./stack/agents/data-verifier.md",
+        "./stack/agents/devops-implementer.md",
+        "./stack/agents/devops-solution-designer.md",
+        "./stack/agents/devops-verifier.md",
+        "./stack/agents/dotnet-build-error-resolver.md",
+        "./stack/agents/dotnet-test-failure-resolver.md",
         "./stack/agents/evidence-gatherer.md",
         "./stack/agents/integration-reviewer.md",
+        "./stack/agents/ionic-angular-implementer.md",
+        "./stack/agents/ionic-angular-solution-designer.md",
+        "./stack/agents/ionic-angular-verifier.md",
+        "./stack/agents/ng-build-error-resolver.md",
+        "./stack/agents/related-project-analyzer.md",
         "./stack/agents/security-auditor.md",
-        "./stack/agents/test-coverage-analyzer.md"
+        "./stack/agents/test-coverage-analyzer.md",
+        "./stack/agents/web-angular-implementer.md",
+        "./stack/agents/web-angular-solution-designer.md",
+        "./stack/agents/web-angular-verifier.md",
+        "./stack/agents/windows-service-implementer.md",
+        "./stack/agents/windows-service-solution-designer.md",
+        "./stack/agents/windows-service-verifier.md",
+        "./stack/agents/winforms-implementer.md",
+        "./stack/agents/winforms-solution-designer.md",
+        "./stack/agents/winforms-verifier.md",
+        "./stack/agents/wpf-implementer.md",
+        "./stack/agents/wpf-solution-designer.md",
+        "./stack/agents/wpf-verifier.md"
       ],
       "hooks": {
         "PreToolUse": [
@@ -810,7 +785,7 @@
       "name": "claude-stack",
       "source": "./",
       "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -847,11 +822,12 @@
         "./stack/skills/alfred-capture-agent-capabilities",
         "./stack/skills/alfred-capture-architecture",
         "./stack/skills/alfred-capture-architecture-quality",
-        "./stack/skills/alfred-capture-claude-md",
         "./stack/skills/alfred-capture-code-quality",
         "./stack/skills/alfred-capture-code-style",
         "./stack/skills/alfred-capture-first-look",
+        "./stack/skills/alfred-capture-project-capabilities",
         "./stack/skills/alfred-capture-test-coverage",
+        "./stack/skills/alfred-habits-adjust-claude-md",
         "./stack/skills/alfred-habits-clarify",
         "./stack/skills/alfred-habits-commit-checkpoint",
         "./stack/skills/alfred-habits-done-gate",
@@ -1184,7 +1160,7 @@
       "name": "claude-stack-hooks",
       "source": "./",
       "description": "RETIRED in 2.0.0 - Alfred Code under its 1.x name. Run /claude-stack:update: it installs alfred-code and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1196,7 +1172,7 @@
       "name": "claude-stack-aspnet",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1221,7 +1197,7 @@
       "name": "claude-stack-browser-extension",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1245,7 +1221,7 @@
       "name": "claude-stack-console",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1266,7 +1242,7 @@
       "name": "claude-stack-ionic-angular",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1292,7 +1268,7 @@
       "name": "claude-stack-typescript",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1308,7 +1284,7 @@
       "name": "claude-stack-web-angular",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1329,7 +1305,7 @@
       "name": "claude-stack-windows-service",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1353,7 +1329,7 @@
       "name": "claude-stack-data",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1377,7 +1353,7 @@
       "name": "claude-stack-javascript",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1392,7 +1368,7 @@
       "name": "claude-stack-winforms",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1415,7 +1391,7 @@
       "name": "claude-stack-wpf",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1438,7 +1414,7 @@
       "name": "claude-stack-angular",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1462,7 +1438,7 @@
       "name": "claude-stack-aspnet-data",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1479,7 +1455,7 @@
       "name": "claude-stack-csharp",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1498,7 +1474,7 @@
       "name": "claude-stack-devops",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1520,7 +1496,7 @@
       "name": "claude-stack-dotnet",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1549,7 +1525,7 @@
       "name": "claude-stack-dotnet-hosting",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1566,7 +1542,7 @@
       "name": "claude-stack-javascript-shared",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1583,7 +1559,7 @@
       "name": "claude-stack-tsjs",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -1600,7 +1576,7 @@
       "name": "claude-stack-typescript-shared",
       "source": "./",
       "description": "RETIRED in 1.3.0 - run /alfred-code:update: it copies the skills and agents you picked into the project and removes this entry.",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"

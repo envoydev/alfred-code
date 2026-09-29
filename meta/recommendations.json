@@ -60,10 +60,11 @@
    "alfred-loop-architecture-quality",
    "alfred-capture-code-quality",
    "alfred-capture-code-style",
+   "alfred-capture-project-capabilities",
    "alfred-habits-commit-checkpoint",
    "alfred-issue-diagnoser",
    "alfred-capture-first-look",
-   "alfred-capture-claude-md",
+   "alfred-habits-adjust-claude-md",
    "alfred-task-implement",
    "alfred-loop-quality",
    "alfred-task-design",
@@ -81,8 +82,7 @@
    "dotnet-hosted-services",
    "dotnet-data-access",
    "alfred-capture-related-projects",
-   "alfred-capture-stack-usage",
-   "plugin-authoring"
+   "alfred-capture-stack-usage"
   ],
   "agents": [
    "related-project-analyzer"

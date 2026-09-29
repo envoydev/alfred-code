@@ -10,7 +10,7 @@ skills:
   - dotnet-hosted-services
   - dotnet-windows-service
   - dotnet-testing
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

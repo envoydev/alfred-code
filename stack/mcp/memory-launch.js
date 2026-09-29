@@ -2,9 +2,9 @@
 'use strict';
 // THE MEMORY SERVER'S LAUNCHER - it exists for exactly one reason.
 //
-// The memory database's path is the INSTALL's level choice (global ~/.memory-mcp/memory.db, scoped
-// ~/.memory-mcp/memory_<space>.db, project <project>/.memory-mcp/memory.db), so it differs per
-// project. A plugin MCP entry cannot read that: measured 2026-09-22, a plugin entry expands ${KEY}
+// The memory database's path is the INSTALL's level choice (global ~/.alfred-memory/memory.db, scoped
+// ~/.alfred-memory/memory_<space>.db, project <project>/<data root>/.alfred-memory/memory.db), so it
+// differs per project. A plugin MCP entry cannot read that: measured 2026-09-22, a plugin entry expands ${KEY}
 // from the SHELL and the ACCOUNT settings.json env only - a PROJECT .claude/settings.json env key
 // arrives as the literal ${KEY} (docs/plugin-migration-evidence.md, 'Phase 6 spikes'; S10's note to
 // the contrary is retracted there).
@@ -24,11 +24,19 @@
 //      would open the wrong project's database whenever both files register one.)
 //   3. ALFRED_CODE_MEMORY_DB in <cwd>/.claude/settings.json `env`      (the install's choice)
 //   4. ALFRED_CODE_MEMORY_DB in the ACCOUNT settings.json `env`
-//   5. ~/.memory-mcp/memory.db - the global default, which is what a fresh install picks
+//   5. ~/.alfred-memory/memory.db - the global default, which is what a fresh install picks
+//
+// Then the database is found where it LIVES (data-root.js): the 2.0.0 folder was ~/.memory-mcp, shared by
+// every Claude account and by Cursor. It moves to ~/.alfred-memory here, at start, only when no database
+// in it is open (no -wal / -shm beside it), and the old path is left as a link so everything still
+// configured with it reaches the same file. While another server holds it, it is served where it is -
+// never a second, empty database beside the live one. A project-level database moves under the data root
+// the same way, when the installer recorded that move in the stamp.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { runUvx } = require('./uv-python.js');
+const dataRoot = require('./data-root.js');
 
 function envFrom(file)
 {
@@ -70,7 +78,56 @@ function resolveDb(projectDir)
         const value = envOf(envFrom(file), 'MEMORY_DB');
         if (value) return path.isAbsolute(value) ? value : path.join(projectDir, value);
     }
-    return path.join(os.homedir(), '.memory-mcp', 'memory.db');
+    return path.join(os.homedir(), dataRoot.MEMORY_FOLDER, 'memory.db');
+}
+
+// The configured database as it lives this start: a pending move runs first (the home folder when the
+// path is in either home folder, a project folder the installer recorded), then an unmoved one is served
+// at its old place.
+function liveDb(db, { projectDir, home = os.homedir(), log = () => {}, symlink } = {})
+{
+    const inHome = [dataRoot.MEMORY_FOLDER, dataRoot.LEGACY_MEMORY_FOLDER].some((f) => path.dirname(path.normalize(db)) === path.join(home, f));
+    if (inHome)
+    {
+        const moved = dataRoot.moveHomeMemory({ home, ...(symlink ? { symlink } : {}) });
+        const file = path.join(home, dataRoot.MEMORY_FOLDER, path.basename(db));
+        // I2: the data is at the new place and nothing links the old one to it - serve the new file, never the
+        // old path a server would re-create as a second, empty database.
+        const cursorLine = `Cursor, and any install still naming ${moved.from}, does not see these memories until it is pointed at ${moved.to}`;
+        if (moved.state === 'moved' && moved.linked) log(`memory-launch: moved ${moved.from} -> ${moved.to}, the old path linked to it`);
+        if (moved.state === 'moved' && !moved.linked)
+        {
+            log(`memory-launch: moved ${moved.from} -> ${moved.to} - the old path could not be linked (${moved.why}); serving the new one. ${cursorLine}`);
+            return file;
+        }
+        if (moved.state === 'busy') log(`memory-launch: ${moved.from} not moved - ${moved.busy.join(', ')} open in another server; served where it is`);
+        // Both hold data: the old folder was re-created after the stack's move (another reader still on the old
+        // path). The stack's own database is the new one; the configured old spelling is read there.
+        if (moved.state === 'exists')
+        {
+            const legacyNamed = dataRoot.homeTwinOf(db, { home });
+            log(`memory-launch: both ${moved.from} and ${moved.to} hold data - neither is touched${legacyNamed && fs.existsSync(file) ? `; serving ${moved.to}. ${cursorLine}` : ''}`);
+            if (legacyNamed && fs.existsSync(file)) return file;
+        }
+        return dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });
+    }
+    if (dataRoot.memoryLevelOf(db, { home, projectRoot: projectDir }) === 'project' && path.basename(path.dirname(db)) === dataRoot.MEMORY_FOLDER)
+    {
+        const rel = path.relative(projectDir, path.dirname(db)).split(path.sep).join('/');
+        const root = rel.endsWith(`/${dataRoot.MEMORY_FOLDER}`) ? rel.slice(0, -(`/${dataRoot.MEMORY_FOLDER}`.length)) : '';
+        if (!dataRoot.checkDataPath(root).ok) return dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });
+        const live = dataRoot.liveDir({ projectDir, cls: 'memory', root, pending: dataRoot.pendingOf(projectDir), busy: dataRoot.busyDbs });
+        if (live.dir === dataRoot.targetOf('memory', root))
+        {
+            try { dataRoot.ensureRootIgnore({ projectDir, root }); }
+            catch (err) { log(`memory-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
+        }
+        if (live.state === 'moved') log(`memory-launch: moved ${live.from} -> ${live.dir}`);
+        if (live.state === 'busy' || live.state === 'failed') log(`memory-launch: ${live.dir} not moved (${live.why}) - served where it is`);
+        const found = path.join(projectDir, ...live.dir.split('/'), 'memory.db');
+        return fs.existsSync(found) ? found : dataRoot.liveMemoryDb(db, { home, projectRoot: projectDir });
+    }
+    return db;
 }
 
 function main(argv)
@@ -85,7 +142,7 @@ function main(argv)
     }
     const spec = argv[at + 1];
     const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const db = resolveDb(projectDir);
+    const db = liveDb(resolveDb(projectDir), { projectDir, log: (line) => process.stderr.write(`${line}\n`) });
     // The service opens the file itself; create the directory so a first run on a fresh machine is
     // not a start-up failure the user has to decode from a python traceback.
     try { fs.mkdirSync(path.dirname(db), { recursive: true }); } catch { /* read-only home: let the service say so */ }
@@ -105,4 +162,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { resolveDb, envFrom, accountDir };
+module.exports = { resolveDb, liveDb, envFrom, accountDir };

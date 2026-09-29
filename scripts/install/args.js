@@ -18,9 +18,11 @@ const ENUMS = {
     scope: { values: ['', 'project', 'user', 'local'], text: "--scope must be 'project', 'user' or 'local'" },
     docsVersioning: { values: ['', 'git', 'local'], text: "--docs-versioning must be 'git' or 'local'" },
     memoryLevel: { values: ['', 'global', 'scoped', 'project'], text: "--memory-level must be 'global', 'scoped' or 'project'" },
-    // The answer to update's one-time docs-root offer (docs.docsMovePlan): 'move' or 'keep'. Not given,
-    // nothing moves and the old root stays in effect.
-    docsMove: { values: ['', 'move', 'keep'], text: "--docs-move must be 'move' or 'keep'" },
+    // The answer to the data move (docs.dataOffer): 'move' carries the docs, the navigation server's
+    // folder, the browser profiles and a project-level memory database under the data root; 'keep' leaves
+    // the layout as it is and no later update offers again. Not given, nothing moves. `--docs-move` is the
+    // 2.0.0 spelling, read for one release.
+    dataMove: { values: ['', 'move', 'keep'], text: "--data-move must be 'move' or 'keep'" },
 };
 
 // ONE canonical order, so a server list never depends on how the flag was typed.
@@ -32,7 +34,8 @@ const VALUED = new Map([
     // The pre-2.0.0 spellings (the playwright -> browser rename), read for one release: a command body
     // from before it still passes them. Never beside the new spelling of the same flag.
     ['--playwright-browsers', 'playwrightBrowsersRaw'], ['--playwright-enabled', 'playwrightEnabledRaw'],
-    ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'], ['--docs-move', 'docsMove'],
+    ['--docs-versioning', 'docsVersioning'], ['--memory-level', 'memoryLevel'],
+    ['--data-move', 'dataMove'], ['--docs-move', 'dataMove'], ['--data-path', 'dataPath'],
     ['--selection', 'selection'], ['--source', 'source'], ['--plan-out', 'planOut'],
 ]);
 
@@ -50,9 +53,9 @@ const REMOVED = new Map([
     ['--sentry-auth', 'the sentry server left the stack'],
 ]);
 
-const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled']]);
+const ALIASES = new Map([['--playwright-browsers', '--browsers'], ['--playwright-enabled', '--browser-enabled'], ['--docs-move', '--data-move']]);
 
-const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --docs-move, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
+const FLAG_LIST = '--space, --scope, --memory-level, --browsers, --browser-enabled, --docs-versioning, --data-path, --data-move, --github-cli, --keep-pins, --selection, --installed-only, --add, --drop, --print-plan, --plan-out, --skills-only, --source';
 
 // One selection line, the shape the walks write: `<category> <name>`.
 const ADD_LINE = /^(skill|agent|rule|hook|mcp|plugin) [A-Za-z0-9._-]+$/;
@@ -70,7 +73,7 @@ function parseArgs(argv)
 {
     const out = {
         action: '', space: '', scope: '',
-        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', docsMove: '',
+        playwrightBrowsersRaw: '', playwrightEnabledRaw: '', docsVersioning: '', memoryLevel: '', dataMove: '', dataPath: '',
         selection: '', source: '', planOut: '',
         githubCli: false, keepPins: false, installedOnly: false, printPlan: false, skillsOnly: false,
         add: [], drop: [],
@@ -142,7 +145,15 @@ function parseArgs(argv)
     if (out.scope === 'global') out.scope = 'user';
     out.docsVersioning = lower(out.docsVersioning);
     out.memoryLevel = lower(out.memoryLevel);
-    out.docsMove = lower(out.docsMove);
+    out.dataMove = lower(out.dataMove);
+    // The data root is a folder INSIDE the project (stack/mcp/data-root.js checkDataPath says what is refused
+    // and why) - refused here, before a path that would prompt, escape the project or break a server lands.
+    if (out.dataPath)
+    {
+        const checked = require('../../stack/mcp/data-root.js').checkDataPath(out.dataPath);
+        if (!checked.ok) fail(`--data-path: ${checked.why}`);
+        out.dataPath = checked.value;
+    }
 
     for (const [key, { values, text }] of Object.entries(ENUMS))
         if (!values.includes(out[key])) fail(`${text} (got '${out[key]}')`);

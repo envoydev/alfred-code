@@ -165,6 +165,18 @@ test('guard-read-whole-file: no serena remedy for a path serena is seeded to ign
   fs.writeFileSync(inSerena, LONG_JS);
   assert.doesNotMatch(run(READ, { tool_name: 'Read', tool_input: { file_path: inSerena } }).stderr, /ToolSearch select:mcp__serena/,
     "serena's own tree either");
+  // The data root (ALFRED_CODE_DATA_PATH, default .alfred) holds serena's own home and the browser profiles:
+  // seeded into ignored_paths too, so no navigation remedy there either - the default and a custom root alike.
+  for (const [root, env] of [['.alfred', {}], ['.data', { ALFRED_CODE_DATA_PATH: '.data' }]])
+  {
+    const inData = path.join(ROOT, root, 'serena', 'home', 'big.ts');
+    fs.mkdirSync(path.dirname(inData), { recursive: true });
+    fs.writeFileSync(inData, LONG_JS);
+    const d = run(READ, { tool_name: 'Read', tool_input: { file_path: inData } }, { env: { ...process.env, ...env } });
+    assert.equal(d.status, 2, root);
+    assert.doesNotMatch(d.stderr, /ToolSearch select:mcp__plugin_navigation_navigation__/, `no navigation remedy under ${root}`);
+    assert.match(d.stderr, /grep -n/, root);
+  }
   // ... and an ordinary source path still gets the whole ladder, loading call included
   const src = path.join(ROOT, 'src', 'big.ts');
   fs.mkdirSync(path.dirname(src), { recursive: true });

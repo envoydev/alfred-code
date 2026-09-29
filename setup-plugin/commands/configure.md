@@ -1,5 +1,5 @@
 ---
-description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then an ADD round and a DROP round (quick options + typed numbers); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
+description: "ADJUST an existing Alfred Code install - inventory what is actually installed, report what an update would bring (the stamp compare), pick WHICH areas to adjust, then walk the chosen areas with setup's own walk in DELTA mode (one shared walk text), in dependency order: each layer shows ONE numbered table of the whole catalog with what is installed and what is locked (the required-by reason shown), then one call of ADD and DROP option questions (a Pick option opens grouped multi-select choices); an environment area adjusts the stack's own env values (the environment.json catalog) on the same consent. Every scope - project, user or local - and a move between them. Drops cascade BOTH ways, always with consent: what a dropped item alone pulled in is offered for removal at its own layer, and dropping a required item offers the dependent rules/agents that hold it for removal with it - nothing is ever removed silently. Prerequisite check, the installer's update action, explicit removals, and an OFFERED (never forced) CLAUDE.md reconcile close the run. NOT for a first install - that is the sibling setup command; for a plain refresh (+ prune of upstream removals) the sibling update command is the shorter path."
 disable-model-invocation: true
 ---
 
@@ -84,7 +84,8 @@ comparable banner by banner; the content varies, the skeleton never does.
   `not-installed` -> stop and route to the sibling `/alfred-code:setup` command; there is nothing
   to configure yet. `worktree-of-installed <main>` -> print exactly 'This is a git worktree of <main>, which holds the install - run /alfred-code:configure from there' and stop - a worktree shares that checkout's install, and nothing is written into this tree, or into that one from here. `legacy-global` (a 1.x global install whose stamp is still in the account dir)
   -> stop and route to `/alfred-code:update`, which moves it into the project; configure runs after
-  it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
+  it. `legacy-unstamped` (a legacy copy-route install that never wrote a stamp) -> stop and route to `/alfred-code:update`,
+  which reads its picks off disk and writes the stamp; configure runs after it. `installed` / `initialised` -> go on. Every scope keeps the stamp, the library copies and the
   settings in the project's `.claude/`, so there is one mode.
 - **Inventory the installed set through the installer's own read-back** - never by hand, from disk
   or from memory. It is the SAME read an `update` writes back, so a seat or hook the user switched
@@ -169,9 +170,9 @@ cannot drift. The layers run in dependency order, rules -> agents -> skills -> h
 plugins (only the areas picked at step 2), over `raw.json` and `dropped.json` seeded from step 1's
 `$TMP/installed.json`, and every layer has the same three beats: recompute quietly (`stack-select.js
 --selection raw.json --dropped dropped.json`, reading its `required:` and `orphan:` lines), paste the
-tool's full-catalog table in a fenced block after the `[step n/13 - <layer>]` banner, then an ADD
-round and a DROP round, a locked drop running the consent cascade. The file owns the table rules,
-the rounds and each layer's notes; the steps below add only what is this command's own.
+tool's full-catalog table in a fenced block after the `[step n/13 - <layer>]` banner, then ONE call
+of two option questions (ADD and DROP - walk.md's DELTA templates, 'Pick' opening a grouped multi-select call), a locked drop running the consent cascade. The file owns the table rules,
+the asks and each layer's notes; the steps below add only what is this command's own.
 
 ## 3. Rules
 
@@ -244,8 +245,28 @@ absent its `mode:` line falls back to the same rule) - and offer THAT probed val
 (`git`/`local`, the bare `git (docs are not kept out of git - ...)` or `overlay (docs are kept out of
 git - ...)` line names it and why) as the recommended answer, never the catalog default.
 
-One behaviour lives here rather than in the catalog, because it is about what this step DOES: a
-docs-root change re-stamps the deployed rule (below) and moves no existing docs. Claude Code's own
+Two behaviours live here rather than in the catalog, because they are about what this step DOES. The
+DATA ROOT (`ALFRED_CODE_DATA_PATH`) is where Alfred Code keeps this project's data - the docs, the
+navigation server's folder and home, the browser profiles, a project-level memory database - so changing
+it MOVES that data, and it goes through the installer, never the merge below. It is ONE question about
+plugin data storage as a whole, the current value shown with what it holds:
+
+```ask
+Where should Alfred Code keep this project's data - its docs, the navigation index and handoff notes, browser profiles and a project memory database? Recommended: keep <current> - the folder it uses now, so nothing moves; its own .gitignore keeps everything but the docs out of git.
+- 'Keep <current> (Recommended)' - nothing moves; data still at a 2.0.0 place keeps serving from there
+- 'Move everything into .alfred' - one folder at the project root, outside .claude/; when <current> is already .alfred it moves only the data still at a 2.0.0 place (.serena, .playwright, .memory-mcp, docs at .claude/docs) - leave this option out when there is none
+```
+
+A typed folder (Other) is a custom root - relative, inside the project, never under `.claude/`, no space.
+The current state is always the recommended answer (the walk's own rule): a custom root the user chose is
+kept, never moved back to `.alfred`. Keeping it is no change. A change - to `.alfred` from a 2.0.0
+layout, or to another folder - runs `node $TMP/repo/scripts/install/alfred-code.js update --source
+$TMP/repo --scope <scope> --installed-only --data-path <folder> --data-move move 2>&1 | tee
+"$TMP/install.log"` (step 12's installer call carries both flags when it runs anyway); report its
+`docs root:` and `data root:` lines verbatim - the docs move at once, each server's data at that
+server's next start once nothing holds it - and name the restart. A docs-root change (the docs value
+set by hand, for docs somewhere of the user's own) re-stamps the deployed rule (below) and moves no
+existing docs; a docs value the user set is never moved by a data-root change either. Claude Code's own
 `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is NOT one of these rows - the stack does not own that key and
 this step neither offers nor touches it.
 
@@ -330,7 +351,7 @@ lands the same revision step 1 previewed. One fixed capture form, always - `2>&1
 "$TMP/install.log"` on the call itself, so the post-install read below has a file that was actually
 written (the shared contract is in `source-protocol.md`'s 'Capture the installer's own output'):
 
-- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
+- **Any OS:** `node "$TMP/repo/scripts/install/alfred-code.js" update --source "$TMP/repo" --scope <scope> --installed-only [--add '<line>']... [--drop '<line>']... [--space <name>] [--keep-pins] [--browsers <csv>] [--browser-enabled <csv|none>] [--docs-versioning git|local] [--data-path <folder> --data-move move] [--memory-level global|scoped|project] 2>&1 | tee "$TMP/install.log"` - one `--add` per delta `add` line, one `--drop` per `drop` and `keep-parked` line, each quoted. The installer applies them on top of the SAME read-back step 1 showed, so an unwalked layer and a seat or hook switched off before this run stay exactly as they were. Never `--selection` on this seed: that route neither removes nor disables what the walk dropped, and it stamps every carried item as a pick.
 - **`ALFRED_CODE_SEED=shell`** - the resolve line reported `seed=shell` (`ALFRED_CODE_SEED`, or the 1.x `CLAUDE_STACK_SEED`, set to `shell`). The frozen OS twin names what a 2.0.0 registration cannot resolve, so it no longer runs: print `the shell installers were removed in 2.0.0 - unset ALFRED_CODE_SEED / CLAUDE_STACK_SEED to use the Node installer` and stop. <!-- legacy-name -->
 - `--docs-versioning` only when the user's own invocation names a value (`/alfred-code:configure
   --docs-versioning local`): the installer writes it over the current value and prints the old and new
@@ -357,16 +378,17 @@ rewrites. So an unwalked layer is untouched IN THE SELECTION and refreshed on di
 that calls it 'untouched' is wrong (measured: four layers reported untouched while all 88 selected
 items had just been refreshed). On the Node seed a `--drop` is applied BY the installer:
 
-- a core seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny`); a hook on the plugin
-  route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent, rule or hook (a copy route, or a
-  library copy) has its file deleted, a copied hook its wiring too;
+- a seat is denied (`Agent(alfred-code:<name>)` in `permissions.deny` - the core carries every one
+  since 2.1.0); a hook on the plugin route is named in `ALFRED_CODE_HOOKS_OFF`; a COPIED skill, agent,
+  rule or hook (every skill is a copy, a seat or hook only on its copy route) has its file deleted, a
+  copied hook its wiring too;
 - an MCP entry nothing kept needs any more - a dropped server's own entry - is disabled:
   `plugin disabled [<scope>]: <entry>`;
-- a core skill logs `skill <name> stays loaded`: the core carries it and no setting unloads a plugin
-  skill, so it is reported as carried, never as removed;
+- a drop of an always-on skill logs `not applied - locked`, like a locked rule: every install
+  carries it (its own per-project lever is `skillOverrides`, which leaves the copy in place);
 - a drop something kept REQUIRES logs `--drop <line> not applied - something kept requires it`,
-  after the `required:` line naming what needs it, and a drop of an always-on rule or server logs
-  `not applied - locked` - report both as kept, with that reason;
+  after the `required:` line naming what needs it, and a drop of an always-on rule, skill or server
+  logs `not applied - locked` - report both as kept, with that reason;
 - a stack entry enabled at a DIFFERENT scope than this run's is never disabled: the log names it and
   the command, for the user to run if nothing else needs it.
 
@@ -407,7 +429,7 @@ nothing at step 8 and applies nothing here.
 Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQuestion (reconcile -
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
 seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
-On a yes, read `$TMP/repo/stack/skills/alfred-capture-claude-md/SKILL.md` and follow it inline
+On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline
 with `STACK=$TMP/repo` - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the

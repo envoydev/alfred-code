@@ -256,6 +256,53 @@ test('inventory: extras and plugin-carried items are UNIONED, and a shared root 
     assert.doesNotMatch(out, /aspnet-verifier/, 'and neither is its seat');
 });
 
+// 2.1.0: the core carries every seat and the project denies each one it did not pick - a seat
+// `permissions.deny` names is not in the listing (spike S3) and fails at dispatch, so the generated
+// rule must not route to it. Denies merge across the account, project and local files.
+test('inventory: a seat permissions.deny names is left out of the SEATS line - any settings file', { skip: posixOnly }, () =>
+{
+    const root = project('denied-seats', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    const cache = path.join(TMP, 'core-cache');
+    for (const seat of ['aspnet-implementer', 'web-angular-implementer', 'security-auditor', 'evidence-gatherer'])
+        write(path.join(cache, 'stack', 'agents', `${seat}.md`), `---\nname: ${seat}\n---\n`);
+    write(path.join(cache, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+        { name: 'alfred-code', source: './', skills: [], agents: ['./stack/agents/aspnet-implementer.md', './stack/agents/web-angular-implementer.md', './stack/agents/security-auditor.md', './stack/agents/evidence-gatherer.md'] },
+    ] }));
+    write(path.join(root, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:web-angular-implementer)', 'Read(.env)'] } }));
+    write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:evidence-gatherer)'] } }));
+    write(path.join(TMP, '.claude', 'settings.json'), JSON.stringify({ permissions: { deny: ['Agent(alfred-code:security-auditor)'] } }));
+    const bin = stubCli(path.join(TMP, 'denied-cli'), { plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, installPath: cache }]) });
+    try
+    {
+        const { out } = run([], { cwd: root, bin });
+        assert.match(out, /SEATS:\s+1 total \(3 denied in permissions\.deny, left out\)/, out);
+        assert.match(out, /^\s+alfred-code:aspnet-implementer$/m, out);
+        for (const seat of ['web-angular-implementer', 'evidence-gatherer', 'security-auditor'])
+            assert.doesNotMatch(out, new RegExp(`alfred-code:${seat}(,|$)`, 'm'), `${seat} is denied`);
+    }
+    finally { fs.rmSync(path.join(TMP, '.claude'), { recursive: true, force: true }); }
+});
+
+// I4: a seat the project keeps as its own copy (tuned or edited) is the one a flow should run - by its bare name.
+// Listed beside the core's twin, the roster would offer both and a flow could dispatch the core's pins.
+test('inventory: a project seat copy wins its name over the core\'s twin, as a copied skill does', { skip: posixOnly }, () =>
+{
+    const root = project('kept-seat', { rule: false });
+    fs.rmSync(path.join(root, '.claude', 'agents'), { recursive: true, force: true });
+    write(path.join(root, '.claude', 'agents', 'aspnet-implementer.md'), '---\nname: aspnet-implementer\nmodel: opus\n---\n');
+    const cache = path.join(TMP, 'kept-core-cache');
+    for (const seat of ['aspnet-implementer', 'aspnet-verifier'])
+        write(path.join(cache, 'stack', 'agents', `${seat}.md`), `---\nname: ${seat}\n---\n`);
+    write(path.join(cache, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'envoydev', plugins: [
+        { name: 'alfred-code', source: './', skills: [], agents: ['./stack/agents/aspnet-implementer.md', './stack/agents/aspnet-verifier.md'] },
+    ] }));
+    const bin = stubCli(path.join(TMP, 'kept-cli'), { plugins: JSON.stringify([{ id: 'alfred-code@envoydev', enabled: true, installPath: cache }]) });
+    const { out } = run([], { cwd: root, bin });
+    assert.match(out, /^\s+alfred-code:aspnet-verifier, aspnet-implementer$/m, out);
+    assert.doesNotMatch(out, /alfred-code:aspnet-implementer/, out);
+});
+
 test('inventory: no local dirs and no plugin carrying them is a STOP, not an empty rule', { skip: posixOnly }, () =>
 {
     const root = project('nothing-at-all', { rule: false });

@@ -1,5 +1,5 @@
 ---
-name: alfred-capture-claude-md
+name: alfred-habits-adjust-claude-md
 description: "Use when a project's CLAUDE.md is to be written, filled in or brought up to date - the seeded .claude/CLAUDE.md still unfilled, a CLAUDE.md gone stale against the code (a moved path, a changed build or test command, a missing setup step), an audit or improvement of the instruction file, a separate part of the repo (web/, api/, a package) that needs its own CLAUDE.md, or what the CLAUDE.md check reported. Covers setup, commands, key files and architecture sections, what to keep out, and the deterministic check that closes it. Not for a skill, a rule or a hook - the skill-authoring method owns those - nor a README, nor a preference or lesson, which the shared memory server keeps."
 ---
 

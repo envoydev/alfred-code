@@ -20,7 +20,7 @@ description: House baseline - code navigation and reading. Always-on (no paths),
 - The navigation-server tools are DEFERRED - naming them is not having them. Load them in one call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols,mcp__plugin_navigation_navigation__get_symbols_overview`.
 - A symbol its language server cannot resolve (a large or SDK-heavy C# solution indexes slowly) falls back to the `LSP` plugin, then to a scoped grep reported as name-matched, not resolved; symbol edits and the memory handoff stay on the navigation server.
 - `Active language servers: []` is a run-level fact: say so once, take that fallback, never re-issue the call class this run, and hand the fact to the seats you dispatch next.
-- A language `.serena/project.yml` does not list takes the fallback from its first call; a large JSON / YAML / lock / fixture file is queried (`jq '.path'`, `grep -n`, then a ranged Read), never read whole.
+- A language serena's `project.yml` (`<data root>/serena/`) does not list takes the fallback from its first call; a large JSON / YAML / lock / fixture file is queried (`jq '.path'`, `grep -n`, then a ranged Read), never read whole.
 - A large symbol is fetched WITHOUT its body first (signature, children), then read by range.
 - `get_symbols_overview` takes ONE file, never a directory - list the directory first.
 - An EMPTY reference result for a symbol that plausibly has callers is suspect (a multi-tsconfig monorepo hides cross-lib callers): cross-check with a grep before saying 'no callers'.

@@ -8,7 +8,7 @@ color: cyan
 skills:
   - browser-extension
   - ts-js-testing
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

@@ -12,7 +12,7 @@ The review step, run inline. `alfred-task-design` planned it, `alfred-task-verif
 The flow's two house reviewers, pick by whether you want dispatch:
 
 - **This skill (inline)** - deterministic cost, zero agents, the whole review stays in one context. Best when you want a predictable spend and no fan-out. The cost: its reads and build land in THIS chat's context, so in a long session that context carries forward - the price of no dispatch.
-- **The `<stack>-verifier` seat** (dispatch it) - the same protocol in an isolated subagent, so its read volume never touches your chat, on its frontmatter model unless you name one. Best when the session is already long and you want the review's noise offloaded.
+- **The `<stack>-verifier` seat** (dispatch it exactly as the roster spells it, `alfred-code:<seat>` where the core plugin carries it) - the same protocol in an isolated subagent, so its read volume never touches your chat, on its frontmatter model unless you name one. Best when the session is already long and you want the review's noise offloaded.
 
 Both are the house review protocol; this skill just keeps it in your chat. `/code-review` (the CLI's broad parallel-angle sweep) is no longer a flow default - it always fans out and the stack can't tune it - but it stays available if you invoke it yourself for extra breadth.
 
@@ -24,7 +24,7 @@ Both are the house review protocol; this skill just keeps it in your chat. `/cod
 
 ## The review - in order, all inline
 
-Load the stack's house skill FIRST (the one your convention rules auto-attach for these file types; its router names the specialist siblings), so you check against ITS trap list, not a generic one. Dispatch nothing at any step.
+Load the stack's house skill FIRST (the one your convention rules auto-attach for these file types; its router names the specialist siblings), so you check against ITS trap list, not a generic one. Dispatch nothing at any step. Before the verdict is stamped, load `alfred-habits-done-gate` (the Skill tool): a pass is claimed only on a build and suite run this session, quoted.
 
 1. **Build + tests, rerun and quoted.** Rerun `build` and the suite yourself this session - never trust a pasted or prior-run result. Quote the output.
 2. **Plan conformance.** When a plan file exists, gate the code against it: every task present, nothing built outside a task's boundary, each `## Decisions` ledger entry honored (the built shape is the decided one, its why at the line), each task's `log_points` placed through the repo's logging seam (level and identifiers as the card says, nothing beyond them), each acceptance criterion DEMONSTRATED by a run in this session, never assumed from reading the diff (`alfred-habits-done-gate` - run the check, quote the output, then claim it).

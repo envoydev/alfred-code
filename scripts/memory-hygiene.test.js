@@ -3,7 +3,7 @@
 // database. `duplicates` only reports; `reembed` finds the rows a pre-fix registration stored with a
 // hash embedding (a vector whose L2 norm is far from 1 - the real sentence model writes unit vectors)
 // or with no vector at all, and re-stores them THROUGH the service. Driven against fixture databases
-// built from the captured schema plus the vec0 shadow tables - never a real ~/.memory-mcp file.
+// built from the captured schema plus the vec0 shadow tables - never a real ~/.alfred-memory or ~/.memory-mcp file.
 const test = require('node:test');
 const assert = require('node:assert');
 const { spawnSync } = require('node:child_process');
@@ -256,7 +256,7 @@ test('reembed: each selected row is re-stored through the service - real vector,
 
         // Never beside the database - a project-level one sits inside a repo no ignore rule covers.
         const backupFile = backupOf(r.stdout);
-        assert.strictEqual(path.dirname(backupFile), path.join(s.work, '.memory-mcp', 'backups'));
+        assert.strictEqual(path.dirname(backupFile), path.join(s.work, '.alfred-memory', 'backups'));
         if (process.platform !== 'win32') assert.strictEqual(fs.statSync(backupFile).mode & 0o777, 0o600, 'the backup is readable by its owner only');
         const backup = fs.readFileSync(backupFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
         assert.deepStrictEqual(backup.map((b) => b.content), [rows[0].content, rows[2].content, rows[3].content]);
@@ -348,7 +348,7 @@ test('reembed: no memory server for the project is a named failure, nothing writ
         assert.strictEqual(r.status, 1);
         assert.match(r.stderr, /memory reembed: no memory server found for this project/);
         assert.strictEqual(s.digest(), before);
-        assert.ok(!fs.existsSync(path.join(s.work, '.memory-mcp')), 'no backup is written');
+        assert.ok(!fs.existsSync(path.join(s.work, '.memory-mcp')) && !fs.existsSync(path.join(s.work, '.alfred-memory')), 'no backup is written');
     }
     finally { s.done(); }
 });

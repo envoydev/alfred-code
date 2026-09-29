@@ -801,6 +801,75 @@ test('installState: a 1.x global install whose stamp is still in the account dir
     assert.strictEqual(cli.stdout, 'legacy-global\n', cli.stderr);
 });
 
+// A legacy COPY-route install that never wrote a stamp, and copied no `hooks/docs.js`, holds no install
+// record - so it read `not-installed`, setup took the fresh ladder and update sent it back to setup. Two
+// INDEPENDENT signatures of the stack make it `legacy-unstamped`, update's to take: the stack's hook files in
+// `.claude/hooks`, a stack env key in settings, three or more stack skill, seat or rule names. One is never
+// enough - skills alone are a project's own as often as the stack's - and the hooks' record list is not
+// extended, so they stay down until the update writes the stamp.
+const legacyTree = ({ names = [], own = [], hooks = [], agents = [], rules = [], env = null, local = null, raw = null } = {}) =>
+{
+    const root = path.join(TMP, `legacy-unstamped-${seq++}`);
+    const claude = path.join(root, '.claude');
+    fs.mkdirSync(claude, { recursive: true });
+    for (const n of [...names, ...own])
+    {
+        fs.mkdirSync(path.join(claude, 'skills', n), { recursive: true });
+        fs.writeFileSync(path.join(claude, 'skills', n, 'SKILL.md'), `---\nname: ${n}\n---\n`);
+    }
+    for (const [dir, list] of [['hooks', hooks], ['agents', agents], ['rules', rules]])
+        for (const f of list) { fs.mkdirSync(path.join(claude, dir), { recursive: true }); fs.writeFileSync(path.join(claude, dir, f), 'x\n'); }
+    if (env) fs.writeFileSync(path.join(claude, 'settings.json'), JSON.stringify({ env }));
+    if (raw !== null) fs.writeFileSync(path.join(claude, 'settings.json'), raw);
+    if (local) fs.writeFileSync(path.join(claude, 'settings.local.json'), JSON.stringify({ env: local }));
+    return root;
+};
+test('installState: an unstamped legacy copy-route install reads legacy-unstamped on two signatures, never on one', () => {
+    const stamp = require('./install/stamp.js');
+    const { spawnSync } = require('node:child_process');
+    const { neverSetUp } = require('../stack/hooks/hook-prelude.js');
+    const { renamed } = require('./install/manifest.js').loadManifest(path.join(__dirname, '..'));
+    const oldSkills = Object.keys(renamed.skills).slice(0, 3);
+    const oldSeat = `${Object.keys(renamed.agents)[0]}.md`;
+    const legacyKey = { CLAUDE_STACK_DOCS_PATH: '.claude/docs' }; // legacy-name
+    const env = { CLAUDE_CONFIG_DIR: path.join(TMP, 'no-account') };
+    const state = (root) => stamp.installState(root, env);
+
+    const full = legacyTree({ names: oldSkills, own: ['my-own-helper'], hooks: ['guard-catastrophic-rm.js', 'hook-prelude.js'], agents: [oldSeat], rules: ['baseline-security.md'], env: { ...legacyKey, MY_OWN_VAR: '1' } });
+    assert.strictEqual(state(full), 'legacy-unstamped');
+    assert.strictEqual(neverSetUp({ CLAUDE_PLUGIN_ROOT: '/x', CLAUDE_PROJECT_DIR: full }), true, 'no install record - the hooks stay down until the update writes one');
+    const cli = spawnSync(process.execPath, [path.join(__dirname, 'install', 'stamp.js'), 'state', full], { encoding: 'utf8', env: { ...process.env, ...env } });
+    assert.strictEqual(cli.stdout, 'legacy-unstamped\n', cli.stderr);
+
+    // One signature is none: the stack's names alone (plus the project's own skill), its hooks alone, its env alone.
+    assert.strictEqual(state(legacyTree({ names: [...oldSkills, 'markdown-style', 'docs-as-code'], own: ['my-own-helper'], agents: [oldSeat], rules: ['baseline-security.md'] })), 'not-installed', 'skills, seats and rules are ONE signature');
+    assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js', 'guard-read-whole-file.js'] })), 'not-installed');
+    assert.strictEqual(state(legacyTree({ env: legacyKey })), 'not-installed');
+    // Any two are enough; the current prefix and the local file count as the old ones do.
+    assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js'], env: legacyKey })), 'legacy-unstamped');
+    assert.strictEqual(state(legacyTree({ hooks: ['docs-session.js'], local: { ALFRED_CODE_HOOKS_OFF: 'x' } })), 'legacy-unstamped');
+    assert.strictEqual(state(legacyTree({ names: oldSkills, env: legacyKey })), 'legacy-unstamped');
+    // Under three names is no signature - a single common name is the project's as often as ours.
+    assert.strictEqual(state(legacyTree({ names: oldSkills.slice(0, 2), env: legacyKey })), 'not-installed');
+    // The project's own files and keys are no signature at all.
+    assert.strictEqual(state(legacyTree({ own: ['a', 'b', 'c', 'd'], hooks: ['my-check.js', 'hook-prelude.js'], agents: ['mine.md'], rules: ['mine.md'], env: { MY_OWN_VAR: '1', STACK_X: '2' } })), 'not-installed');
+    // A settings file that does not parse is no signature, and never a throw.
+    assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '{ not json' })), 'not-installed');
+    assert.strictEqual(state(legacyTree({ hooks: ['guard-catastrophic-rm.js'], raw: '["x"]' })), 'not-installed');
+
+    // An install record wins: the update's stamp makes it an ordinary install.
+    fs.writeFileSync(path.join(full, '.claude', 'alfred-code.stamp'), 'version: 2.0.0\ninitialised: pending\n');
+    assert.strictEqual(state(full), 'installed');
+    assert.strictEqual(stamp.legacyUnstamped(full), false, 'recorded - no longer unstamped');
+
+    // Read where a run started in it would install: the git top level, from a subdirectory.
+    const { execFileSync } = require('node:child_process');
+    const repo = legacyTree({ hooks: ['guard-catastrophic-rm.js'], env: legacyKey });
+    execFileSync('git', ['init', '-q', repo]);
+    fs.mkdirSync(path.join(repo, 'src'));
+    assert.strictEqual(state(path.join(repo, 'src')), 'legacy-unstamped');
+});
+
 // N2 (Task 18a re-review, R90): a git worktree carries no `.claude/` record of its own (ignored), so the
 // hooks read the main checkout's record and count the worktree set up.
 // R95 (Task 18b fix round 1): the COMMANDS must not - every reader after their gate reads the worktree's

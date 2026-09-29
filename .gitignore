@@ -17,8 +17,13 @@ node_modules/
 # Windows
 Thumbs.db
 
-# claude
-.claude/
+# claude - everything in .claude/ stays local except this repo's own plugin-authoring skill
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/plugin-authoring/
+# this repo's own data root when a worktree carries no settings (hook receipts, docs state)
+/.alfred/
 REPORT.md
 
 # Stack-generated, machine-local artifacts (never commit)

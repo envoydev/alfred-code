@@ -8,7 +8,7 @@ color: cyan
 skills:
   - database-conventions
   - dotnet-migrate
-  - alfred-code:alfred-task-design
+  - alfred-task-design
 
 ---
 

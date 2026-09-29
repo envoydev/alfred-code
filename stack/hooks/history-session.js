@@ -53,6 +53,10 @@ async function main() {
   let payload;
   try { payload = JSON.parse(await readStdinBounded(STDIN_TIMEOUT_MS)); } catch { return; }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
+  // GATE 6 (hook-prelude.js): a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+  let cursorOff = false;
+  try { cursorOff = require('./hook-prelude.js').cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+  if (cursorOff) return;
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const event = payload.hook_event_name || '';
   if (event === 'Stop') {

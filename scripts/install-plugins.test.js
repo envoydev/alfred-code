@@ -1009,6 +1009,22 @@ test('source: a fresh account registers the stack and takes the key the add prod
     assert.deepStrictEqual(run.calls, ['plugin marketplace add envoydev/alfred-code', 'plugin marketplace update envoydev']);
 });
 
+// Live check F1: a local or fork marketplace registered under the stack's key. The GitHub add over it is refused
+// ('its network source differs from the one declared for it in settings') and the run ended on a failure line -
+// the refusal is what kept the local tree, so the add is simply not made over a registration of that name.
+test('source: a marketplace already registered under the stack\'s key - a local directory - is never re-added from GitHub', () =>
+{
+    const run = cli();
+    const key = P.refreshStackSource({
+        listing: [{ name: 'alfred-code', marketplace: 'envoydev', version: '2.1.0', scope: 'project', enabled: true }],
+        marketplaces: [{ name: 'envoydev', source: 'directory', path: '/work/alfred-code' }],
+        cli: run,
+    });
+    assert.strictEqual(key, 'envoydev');
+    assert.ok(!run.calls.some((c) => c.startsWith('plugin marketplace add')), run.calls.join(' | '));
+    assert.ok(run.calls.includes('plugin marketplace update envoydev'), run.calls.join(' | '));
+});
+
 test('source: both keys registered - the one carrying the installed core is used, the other left alone', () =>
 {
     const run = cli();
@@ -1382,7 +1398,7 @@ test('seed update --installed-only: a 1.x install under its old key keeps its pi
             };
         } });
     assert.ok(/marketplace: claude-stack/.test(out), out); // legacy-name
-    assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style@alfred-code'), `skills: ${result.picks[0]}`);
+    assert.ok(result.picks[0] && result.picks[0].split(',').includes('markdown-style'), `skills (a copy since 2.1.0, no plugin home): ${result.picks[0]}`);
     assert.ok(result.picks[1] && result.picks[1].split(',').includes('security-auditor@alfred-code'), `agents: ${result.picks[1]}`);
     assert.strictEqual(result.oldStamp, false, 'the 1.x stamp is left beside the new one');
     assert.deepStrictEqual(result.deny, ['Agent(alfred-code:code-style-analyzer)'], 'the deny in one spelling');

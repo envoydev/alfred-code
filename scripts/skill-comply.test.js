@@ -573,7 +573,7 @@ test('replay --dry-run prints one runnable plan and creates nothing', POSIX_ONLY
         for (const b of billed)
         {
             assert.match(b, / -p --output-format stream-json --verbose --max-turns \d+ --permission-mode dontAsk --setting-sources user,project,local /);
-            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DOCS_PATH /);
+            assert.match(b, /env -u SENTRY_SLUG -u SENTRY_ACCESS_TOKEN -u CONTEXT7_API_KEY -u ALFRED_CODE_DATA_PATH -u ALFRED_CODE_DOCS_PATH /);
             assert.match(b, /--max-budget-usd 1\.5 --model=claude-sonnet-4-5 > /);
             assert.ok(b.includes(`CLAUDE_CONFIG_DIR=${path.join(out, 'config')}`));
         }

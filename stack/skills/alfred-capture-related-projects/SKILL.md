@@ -18,7 +18,7 @@ Both are generated files; a re-run refreshes both in place. The rule's name is d
 ## Execution modes
 DELEGATED vs INLINE keys on dispatch capability, not file presence. When dispatch is available (and the seat exists), ask ONE question before the fan-out, via AskUserQuestion - characterize the siblings via the read-only seats that characterize one sibling repo each (recommend it: the seats absorb the reads), or in-session? - then pick once, hold for the run:
 
-- **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below; you merge and write.
+- **DELEGATED** (the user chose seats) - fan out related-project-analyzer per sibling as below, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it); you merge and write.
 - **INLINE** (chosen - or forced, no question asked: no dispatch (Cursor), or that seat is absent, which this opt-in capture must tolerate: it ships outside the always-installed baseline, so a project can carry the skill without the seat) - do the same characterization in-session, one sibling at a time, honoring the agent's own rules (both-sides cross-reference evidence, verified first_read, 3 locating passes, UNVERIFIED over fabrication; a URL sibling is shallow-cloned to scratch and removed after) - then continue at MERGE identically.
 
 ## The run
