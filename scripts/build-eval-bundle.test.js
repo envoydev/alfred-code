@@ -67,17 +67,29 @@ test('the bundle refuses to wipe a directory that is not a previous bundle - the
     assert.ok(fs.existsSync(path.join(out, '.claude-plugin', 'plugin.json')), 'a previous bundle is rebuilt in place');
 });
 
-test('every library case grades with arm: both, so the case has a delta', () =>
+// A `tool_used: Skill` grader and one marked `arm: with-only` are not scored in the without-arm
+// (`claude plugin eval --help`, --ablation); `arm: both` forces it. An inline case grades its Skill load, so
+// it carries `arm: both`; a case with a graders/ folder (the size-first cases, moved here in 2.1.4 - I9)
+// scores its result with regex and llm graders, which both arms score - a Skill grader there is the
+// plugin-fired indicator on top.
+test('every library case grades on both arms, so the case has a delta', () =>
 {
     const dir = path.join(REPO, 'meta', 'evals', 'library');
     const cases = fs.readdirSync(dir);
-    assert.equal(cases.length, 14);
+    assert.equal(cases.length, 17);
     for (const c of cases)
     {
         const y = fs.readFileSync(path.join(dir, c, 'case.yaml'), 'utf8');
         assert.match(y, /^schema_version: "1\.1"$/m, c);
         assert.match(y, new RegExp(`^name: ${c}$`, 'm'), `${c}: the name matches its folder`);
-        assert.match(y, /^\s+arm: both$/m, `${c}: arm both`);
+        const graders = path.join(dir, c, 'graders');
+        if (!fs.existsSync(graders)) { assert.match(y, /^\s+arm: both$/m, `${c}: arm both`); continue; }
+        const both = fs.readdirSync(graders).filter((g) =>
+        {
+            const fm = (/^---\n([\s\S]*?)\n---/.exec(fs.readFileSync(path.join(graders, g), 'utf8')) || [])[1] || '';
+            return !/^arm: with-only$/m.test(fm) && (!/^tool: Skill$/m.test(fm) || /^arm: both$/m.test(fm));
+        });
+        assert.ok(both.length, `${c}: no grader is scored on both arms - the case has no delta`);
     }
 });
 
@@ -97,7 +109,9 @@ test('a case that edits a file carries an executable scaffold that writes every 
         const script = path.join(dir, c, m[1]);
         assert.ok(fs.existsSync(script), `${c}: ${m[1]} exists`);
         const named = [...y.matchAll(/\b(src\/[\w./-]+\.[a-z]+)\b/g)].map((n) => n[1]);
-        assert.ok(named.length, `${c}: the prompt names the file it edits`);
+        // A language skill's case names the file its description must trigger on; a size-first case
+        // edits the workspace its scaffold lays out, and its prompt names no path.
+        if (c.startsWith('skill-')) assert.ok(named.length, `${c}: the prompt names the file it edits`);
         // Windows carries no exec bit and runs no bash scaffold; the eval CLI runs these on macOS / Linux.
         if (process.platform === 'win32') continue;
         assert.ok(fs.statSync(script).mode & 0o100, `${c}: ${m[1]} is executable`);

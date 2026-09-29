@@ -23,7 +23,7 @@ The strategy keys off the *role* a unit plays, not a layer name - so it maps ont
 - **Use cases / handlers / orchestration** (the application logic of a slice or layer) - unit tests with all ports and abstractions substituted. Cover success paths, validation failures, exception handling, and orchestration branches.
 - **Infrastructure / adapters** - test logic-bearing code only (mappers, parsers, serializers, policy classes, retry/backoff, non-trivial query logic). Use SQLite in-memory or Testcontainers when query logic is non-trivial (`references/testcontainers.md`) - never the EF Core InMemory provider for relational behavior: it enforces no relational constraints and translates no SQL, so it passes queries the real database rejects. Do not write tests that only assert a substitute was configured.
 - **Integration / E2E** - defined per project in project CLAUDE.md. For an Aspire-orchestrated app the harness is `references/aspire-integration-testing.md`.
-- **Negative-security paths** - assert the deny paths, not just the happy path: an expired or tampered token returns 401, N failed logins trip 429, and one user reading another's resource id returns 404. Explicit negative-security tests belong in the integration suite, not just the auth unit tests.
+- **Negative-security paths** - assert the deny paths, not just the happy path: an expired or tampered token returns 401, N failed logins trip 429, and one user reading another's resource id returns 404 (a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action). Explicit negative-security tests belong in the integration suite, not just the auth unit tests.
 
 ## Coverage
 

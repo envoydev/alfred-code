@@ -386,6 +386,41 @@ test('PowerShell is the same shell route as Bash: its writes are held and its do
   } finally { r.rm(); }
 });
 
+// I12 (the user's ruling of 2026-09-29): the navigation server keeps two edit tools, rename_symbol and
+// safe_delete_symbol, and both change source files - so the first change through either is held like an Edit.
+// Their input names the file as `relative_path`. Both spellings: the plugin route's and the copy route's
+// (built at run time - lint check 54 bans the bare server spelling as literal text).
+test('the navigation server\'s two kept edit tools are held like an Edit, on both routes', () => {
+  const r = repo({ files: { 'src/Api/Orders/Refund.cs': 'x\n' }, docs: { 'references/patterns.md': PATTERNS } });
+  try {
+    for (const server of ['plugin_navigation_navigation', 'navigation']) {
+      for (const tool of ['rename_symbol', 'safe_delete_symbol']) {
+        const name = `mcp__${server}__${tool}`;
+        assert.ok(denied(r.hook(pre(name, { name_path: 'Refund/Apply', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Run' }, sid()))), `${name} is held`);
+      }
+    }
+    assert.ok(!denied(r.hook(pre('mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs' }, sid()))), 'a lookup is never held');
+    const s = sid();
+    r.hook(pre('Bash', { command: 'node .claude/hooks/docs.js show patterns#orders' }, s));
+    assert.ok(!denied(r.hook(pre('mcp__plugin_navigation_navigation__rename_symbol', { name_path: 'Refund', relative_path: 'src/Api/Orders/Refund.cs', new_name: 'Refund2' }, s))), 'a section read unlocks it');
+  } finally { r.rm(); }
+});
+
+test('the manifest wires docs-session and check-turn-build on the two kept navigation edit tools, both spellings', () => {
+  const rows = require('../meta/stack-manifest.json').hooks;
+  const re = (file, event) => rows.filter((row) => row.file === file && (event ? row.matcher.startsWith(`@${event}:`) : !row.matcher.startsWith('@')))
+    .map((row) => row.matcher.replace(/^@\w+:/, ''));
+  for (const [file, event] of [['docs-session.js', null], ['check-turn-build.js', 'PostToolUse']]) {
+    const matchers = re(file, event);
+    for (const server of ['plugin_navigation_navigation', 'navigation'])
+      for (const tool of ['rename_symbol', 'safe_delete_symbol', 'replace_symbol_body']) {
+        const name = `mcp__${server}__${tool}`;
+        const hit = matchers.some((m) => (/^[\w\s,|-]+$/.test(m) ? m.split(/[|,]/).map((x) => x.trim()).includes(name) : new RegExp(m).test(name)));
+        assert.strictEqual(hit, tool !== 'replace_symbol_body', `${file}: ${name}`);
+      }
+  }
+});
+
 test('source roots come from watch.json; ALFRED_CODE_DOCS_GATE=0 turns the gate off', () => {
   const r = repo({ files: { 'app/Orders/Refund.cs': 'x\n', 'src/Other.cs': 'x\n' }, docs: { 'references/patterns.md': section('orders', 'app/Orders/**', 'App rule.'), 'watch.json': JSON.stringify({ sourceRoots: ['app'] }) } });
   try {

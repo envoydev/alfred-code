@@ -100,10 +100,19 @@ test('corpus-replay: the ROUTES table matches what the installer actually wires'
     // `@Event` / `@Event:matcher` is a lifecycle wiring; a bare matcher list is PreToolUse.
     const event = spec.startsWith('@') ? spec.slice(1).split(':')[0] : 'PreToolUse';
     if (event === 'SessionStart') continue; // replayed by 1c's config matrix, not by liveness
+    // A matcher holding any character outside letters, digits, `_`, `-`, spaces, `,` and `|` is a regular expression
+    // (code.claude.com/docs/en/hooks, 'Matcher String Evaluation') - one route, keyed by the whole pattern.
+    const regex = event === 'PreToolUse' && !/^[\w\s,|-]+$/.test(spec);
+    if (regex) { wired.add(`${row.file}::${event}:/${spec}/`); continue; }
     for (const tool of (event === 'PreToolUse' ? spec.split('|') : [null])) wired.add(`${row.file}::${event}${tool ? ':' + tool : ''}`);
   }
   const known = new Set();
   for (const r of require('./corpus-replay.js').ROUTES) {
+    if (r.pattern) {
+      known.add(`${r.hook}::${r.event}:/${r.pattern}/`);
+      for (const tool of r.tools) assert.ok(new RegExp(r.pattern).test(tool), `${r.hook}: ${tool} is a name its pattern matches`);
+      continue;
+    }
     for (const tool of (r.tools || [null])) known.add(`${r.hook}::${r.event}${tool ? ':' + tool : ''}`);
   }
   const missing = [...wired].filter((w) => !known.has(w));

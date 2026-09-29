@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// check-turn-build.js - PostToolUse (Write|Edit|MultiEdit) + Stop. ONE scoped build check per turn,
+// check-turn-build.js - PostToolUse (Write|Edit|MultiEdit, and the navigation server's rename_symbol /
+// safe_delete_symbol) + Stop. ONE scoped build check per turn,
 // seeded OFF: nothing runs unless ALFRED_CODE_TURN_CHECK=1, and it turns on per project only after a
 // measured week shows 'green' claims with no check behind them.
 //   PostToolUse  appends the written path to <docs-path>/flow/turn-edits-<session>.
@@ -19,6 +20,9 @@ const { spawnSync } = require('child_process');
 const MAX_LINES = 20;
 const BUDGET_MS = 50000;
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit']);
+// The navigation server's two edit tools the stack keeps on (I12, the user's ruling of 2026-09-29): each changes the
+// file its `relative_path` names, relative to the project root. Both routes' spellings, written as a pattern.
+const NAV_EDIT = /^mcp__(?:plugin_navigation_)?navigation__(?:rename_symbol|safe_delete_symbol)$/;
 const TS_FILE = /\.(ts|tsx|mts|cts)$/i;
 const CS_FILE = /\.cs$/i;
 const WIN = process.platform === 'win32';
@@ -134,11 +138,13 @@ if (require.main === module)
   if (event === 'PostToolUse')
   {
     const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
-    if (!WRITE_TOOLS.has(payload.tool_name) || !input.file_path) process.exit(0);
+    const written = WRITE_TOOLS.has(payload.tool_name) && input.file_path ? path.resolve(String(payload.cwd || root), String(input.file_path))
+      : NAV_EDIT.test(String(payload.tool_name || '')) && input.relative_path ? path.resolve(root, String(input.relative_path)) : null;
+    if (!written) process.exit(0);
     try
     {
       fs.mkdirSync(path.dirname(list), { recursive: true });
-      fs.appendFileSync(list, `${path.resolve(String(payload.cwd || root), String(input.file_path))}\n`);
+      fs.appendFileSync(list, `${written}\n`);
     }
     catch { /* a lost path only skips that file's check */ }
     process.exit(0);

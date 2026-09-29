@@ -79,6 +79,9 @@ const RETIRED_DENY = [
 // bodies shared with cursor-stack run `node .claude/hooks/docs.js`, and the history start block
 // points at `node .claude/hooks/history.js rulings`.
 const HOOK_ENGINES = ['docs.js', 'memory.js', 'history.js', 'model-windows.json'];
+// I12: the stack's serena context (stack/mcp). The plugin route's launcher hands serena the file beside
+// it; the full copy route, which runs no launcher, copies it into the project's .claude and registers it.
+const NAV_CONTEXT = 'navigation-context.yml';
 // What only a COPIED hook loads - the engines inline their own helpers and a plugin hook loads these
 // from its own root - so the copy route ships them and the plugin route removes them with the hooks.
 // shell-guards.js is the dispatcher the copy route wires for the picked shell guards (no catalog row).
@@ -117,6 +120,8 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     // names - with --space and no CLAUDE_CONFIG_DIR, the default one, while every write of the installer's
     // own lands in the space's. So every CLI spawn carries the space's account; one set already wins.
     const cliEnv = args.space && !env.CLAUDE_CONFIG_DIR ? { ...env, CLAUDE_CONFIG_DIR: configDir } : env;
+    // The account file the CLI keeps its user- and local-scope MCP registrations in (mcp.registrationsAt).
+    const accountFile = path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json');
     const projectRoot = rt.gitRoot(cwd) || cwd;
     // T16, R29: args.js already normalised 'global' to 'user', so the flag (once resolved, below) IS
     // the CLI scope - project|user|local pass straight through to every `claude plugin` / `claude
@@ -203,7 +208,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
     let rawListing = null;
 
     if (args.action === 'uninstall')
-        return runUninstall({ projectRoot, claudeDir, configDir, accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'), env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
+        return runUninstall({ projectRoot, claudeDir, configDir, accountFile, env, hasClaude, claudeBroken, cli, readRaw, readMarkets, log, note, err, failures: () => failures });
 
     try
     {
@@ -407,10 +412,22 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             selection.dropFormerPicks({ listing, lastVersion: stampLayer.readVersion(stampFile), compare: compareVersions, log, said: formerSaid });
             const stackListing = plugins.parsePluginList(raw, projectRoot, { marketplace: market });
             const lastPicked = selection.renamePicked(stampLayer.readPicked(stampFile), renaming);
+            const ledgeredRegistrations = () =>
+            {
+                const regScope = mcp.registrationScope(routes, cliScope);
+                if (routes.mcps || regScope === 'project') return [];
+                const ours = (priorLedger && priorLedger.mcpAt && priorLedger.mcpAt[regScope]) || {};
+                return Object.keys(mcp.registrationsAt({ scope: regScope, mcpFile, accountFile, projectRoot }).servers).filter((name) => Object.hasOwn(ours, name));
+            };
             const back = selection.readBack({
                 claudeDir, skillsDir,
                 foreignSkill: skillTest({ skillsDir, stampFile, manifest, sourceDir: resolved.dir }).foreign,
-                mcpServers: Object.keys(readJson(mcpFile).mcpServers || {}),
+                // The MCP copy route registers where mcp.registrationScope says - at local scope the account's
+                // projects[<root>].mcpServers, not .mcp.json (matrix 3d, 2.1.4: a local desktop server read
+                // as absent, so the update re-spelled its skill and seat to plugin tools nothing served). Only
+                // the names the ledger says the stack registered there: a server of the user's own under a
+                // stack name is theirs, never a pick (the matrix re-run saw one adopted and rewritten).
+                mcpServers: [...new Set([...Object.keys(readJson(mcpFile).mcpServers || {}), ...ledgeredRegistrations()])],
                 listing, stackListing,
                 // I2 / N5: the file this run writes, or at local scope settings.local.json laid over
                 // settings.json for `env` and `permissions.deny` (settings.js readBackSettings).
@@ -589,6 +606,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
         const liveOf = (cls) => dataRoot.liveDir({ projectDir: projectRoot, cls, root: dataInfo.root, pending: dataPlan.pending, move: false }).dir;
         level.dbPath = liveMemoryPath({ level, projectRoot, home, liveOf, owed: dataPlan.pending.some((r) => r.cls === 'memory' && launched('memory')), registered: registeredMemoryPath(mcpFile, claudeDir) });
         const tokens = {
+            // The copy route's serena context: installMcps copies the stack's file and names it (I12).
             SERENA_CONTEXT: 'claude-code', MEMORY_DB_PATH: level.dbPath,
             // The copy route's `uvx --python`: the same machine-level answer the plugin launchers use.
             // Read from the SEED's own tree, never the snapshot's: a snapshot older than the seed has no
@@ -632,7 +650,7 @@ function main(argv, env = process.env, io = { out: (s) => process.stdout.write(s
             legacyMcps: mcp.renamedFrom(manifest.renamed.mcps),
             // A-M2/M3: the account file a user- or local-scope registration lives in, the registrations
             // read from each scope (once per run), and the names kept as another server's.
-            accountFile: path.join(cliEnv.CLAUDE_CONFIG_DIR || home, '.claude.json'),
+            accountFile,
             mcpRegs: {}, mcpForeign: new Map(), mcpSaid: new Set(),
             pw: { prior: priorPw, ...pwOn, mcpjson: mcp.mcpjsonSwitch({ routes, scope: mcp.registrationScope(routes, cliScope), kept: pw.browsers, enabled: pwOn.enabled, apply: pwOn.apply, registered: mcpjsonCurrent }) },
             // M9 (R132): what the full copy route switched off here - the stamp's record, this run's
@@ -1220,7 +1238,8 @@ function installPlugins(ctx)
     // core is off there, so no swap runs (plugins.migrateRenamed); on a plugin route it is swapped below.
     const legacyEngines = copyRoute ? ctx.legacyMcps.filter((n) => n.startsWith('playwright-')) : [];
     const legacyLocked = copyRoute ? ctx.legacyMcps.filter((n) => !n.startsWith('playwright-')) : [];
-    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
+    // I8: a desktop server the copy route registers loses its plugin row the engine way.
+    const engineOff = !ctx.routes.mcps && !blind ? plugins.engineStandDown({ ...stand, engines: pwEngines(ctx), desktop: desktopKept(ctx), hereOnly: copyRoute, legacy: legacyEngines }).off : [];
     const standDown = () => { if (copyRoute && !blind) ctx.standDown.now = [...engineOff, ...plugins.copyRouteStandDown({ ...stand, locked: [...mcp.LOCKED, ...legacyLocked] })]; };
     let set = plugins.pluginSet({
         routes: ctx.routes, thirdParty: ctx.lists.plugins,
@@ -1338,9 +1357,9 @@ function blindStandDown(ctx, copyRoute)
     const at = plugins.standDownScope(ctx.cliScope);
     const cmds = [
         ...(copyRoute ? [BRAND.core, ...mcp.LOCKED].map((n) => `claude plugin disable ${n}@${ctx.market} --scope ${at}`) : []),
-        ...pwEngines(ctx).map((e) => (copyRoute && at !== ctx.cliScope
-            ? `claude plugin disable browser-${e}@${ctx.market} --scope ${at}`
-            : `claude plugin uninstall browser-${e}@${ctx.market} --scope ${ctx.cliScope}`)),
+        ...[...pwEngines(ctx).map((e) => `browser-${e}`), ...desktopKept(ctx)].map((name) => (copyRoute && at !== ctx.cliScope
+            ? `claude plugin disable ${name}@${ctx.market} --scope ${at}`
+            : `claude plugin uninstall ${name}@${ctx.market} --scope ${ctx.cliScope}`)),
     ];
     return `the plugin listing could not be read, so no stack plugin was switched off before the copy route registers its servers - any still enabled runs beside its registration; check /plugin, or: ${cmds.join('; ')}`;
 }
@@ -1490,6 +1509,21 @@ function warnShadowed(ctx, carried)
     }
 }
 
+// I12: the full copy route's serena context - the shipped file copied into the project's .claude (beside
+// the .mcp.json that names it, so a teammate's clone carries both), named RELATIVE: serena resolves it
+// against its cwd, the project, like SERENA_HOME. A snapshot that ships no such file (older than 2.1.4)
+// keeps serena's own claude-code context.
+function navigationContext(ctx)
+{
+    const { copied, skipped } = copy.installFromSource({
+        sourceDir: ctx.source.dir, subdir: path.join('stack', 'mcp'), label: 'navigation context', destDir: ctx.claudeDir,
+        files: [NAV_CONTEXT], log: ctx.log, note: ctx.note,
+    });
+    if (!copied.length && !skipped.length) return 'claude-code';
+    ctx.navContextCopied = true;
+    return path.relative(ctx.projectRoot, path.join(ctx.claudeDir, NAV_CONTEXT)).split(path.sep).join('/');
+}
+
 function installMcps(ctx)
 {
     if (!ctx.hasClaude) return;
@@ -1595,6 +1629,9 @@ function installMcps(ctx)
                     ? '  playwright is registered at user scope - if an earlier stack run added it and no other project uses it: claude mcp remove playwright -s user; if you added it yourself, keep it'
                     : `  !! mcp: ${name} still registered at user scope by an earlier run - every project on this account loads it; once each user-scope install has run /alfred-code:update: claude mcp remove ${name} -s user`);
     ctx.desktopHeld = new Set(Object.keys(mcp.registrationsAt({ scope, mcpFile: ctx.mcpFile, accountFile: ctx.accountFile, projectRoot: ctx.projectRoot }).servers).filter((n) => DESKTOP_OS[n]));
+    // I12: the navigation registration names the stack's serena context, copied first - the registration
+    // and the verify pass below both read the token.
+    if (live.some((e) => e.split('|')[0] === 'navigation')) ctx.tokens.SERENA_CONTEXT = navigationContext(ctx);
     const registered = [];
     for (const entry of live)
     {
@@ -1953,6 +1990,8 @@ function managedFiles(ctx)
         for (const n of ctx.lists.skills.map((e) => e.split('|').pop())) put(`skills/${n}`, path.join(ctx.skillsDir, n));
         for (const a of ctx.lists.agents) put(`agents/${a}`, path.join(ctx.claudeDir, 'agents', a));
     }
+    // I12: the serena context the full copy route's navigation registration names.
+    if (ctx.navContextCopied) put(NAV_CONTEXT, path.join(ctx.claudeDir, NAV_CONTEXT));
     // A CLAUDE.md this run seeded is the template's until init fills it in - from then on it is the project's.
     if (ctx.seededClaudeMd) put('CLAUDE.md', path.join(ctx.claudeDir, 'CLAUDE.md'));
     // No ledger to read (an older stamp): a CLAUDE.md still byte for byte the seed is the stack's.
@@ -1977,6 +2016,8 @@ function pruneDroppedCopies(ctx)
         ...[...new Set(ctx.manifest.catalogs.hooks.map((e) => e.split('::')[0]))].concat(HOOK_ENGINES, HOOK_MODULES).map((f) => `hooks/${f}`),
         ...ctx.manifest.catalogs.skills.map((e) => `skills/${e.split('|').pop()}`),
         ...ctx.manifest.agents.map((a) => `agents/${a}`), 'CLAUDE.md',
+        // I12: the serena context stays while this run's navigation registration names it.
+        ...(ctx.navContextCopied ? [NAV_CONTEXT] : []),
     ]);
     for (const [rel, h] of Object.entries(files))
     {
@@ -1984,6 +2025,13 @@ function pruneDroppedCopies(ctx)
         const at = ledgerPath(ctx, rel);
         const now = library.hashItem(at);
         if (!now) continue;
+        if (rel === NAV_CONTEXT)
+        {
+            // No registration names it any more (a plugin route carries the context in its own tree).
+            if (now !== h) ctx.log(`  ${rel}: kept - the stack copied it for the navigation registration this run no longer writes, but it was changed since, so it is yours`);
+            else { fs.rmSync(at, { force: true }); ctx.log(`  ${rel} removed - no navigation registration names it now (the plugin carries its own)`); }
+            continue;
+        }
         if (now !== h) { ctx.log(`  ${rel}: kept - the stack copied it and this release no longer ships it, but it was changed since, so it is yours`); continue; }
         if (/^(skills|agents)\//.test(rel) && gitTracks(ctx, at)) { ctx.log(`  ${rel}: kept - the stack copied it and this release no longer ships it, but git tracks it here, so it is yours`); continue; }
         fs.rmSync(at, { recursive: true, force: true });
@@ -2158,6 +2206,8 @@ const registeredEngines = (mcpFile, { legacy = true } = {}) => [...new Set(Objec
     .filter(Boolean))];
 
 const pwEngines = (ctx) => ctx.lists.mcps.filter((e) => e.startsWith('browser-')).map((e) => e.split('|')[0].slice('browser-'.length));
+// The desktop servers this run keeps - the OS gate has already left out one this machine cannot run.
+const desktopKept = (ctx) => ctx.lists.mcps.map((e) => String(e).split('|')[0]).filter((name) => Object.hasOwn(DESKTOP_OS, name));
 
 const pinFiles = (ctx) => pinsLayer.pinFiles({
     projectRoot: ctx.projectRoot, skillsDir: ctx.skillsDir,

@@ -148,8 +148,9 @@ test('inventory: the MCP block is the LIVE list, not .mcp.json alone, and every 
     assert.match(out, /documentation\s+registered\s+live: not in the live list/);
     assert.match(out, /claude\.ai Notion\s+-\s+live: connected\s+\(reaches the session from the account or the harness/);
     const rows = out.split('\n').filter((l) => /^\s+- `/.test(l));
-    assert.equal(rows.length, 4, 'one routing row per registered server');
-    for (const row of rows) assert.match(row, /first call: `ToolSearch select:/, `no first call: in ${row.slice(0, 60)}`);
+    // The locked three share one row pointing at the load line their baselines carry (audit I24).
+    assert.equal(rows.length, 2, 'one routing row per registered server, the locked servers on one');
+    for (const row of rows) assert.match(row, /first call: (`ToolSearch select:|the `ToolSearch select:` line its baseline names)/, `no first call: in ${row.slice(0, 60)}`);
 });
 
 test('inventory: a browser engine server gets the catalog row with its own registered name', { skip: posixOnly }, () =>
@@ -518,11 +519,10 @@ test('inventory: every server an enabled plugin provides gets its routing row in
     assert.match(out, /documentation\s+plugin\s+live: not in the live list/);
     assert.doesNotMatch(out, /plugin:navigation:navigation.*reaches the session from the account or the harness/, 'a plugin server is not an account connector');
     const rows = routingRows(out);
-    assert.deepStrictEqual(rows.map((r) => /^- `([^`]+)`/.exec(r)[1]), ['browser-chrome', 'documentation', 'memory', 'navigation'],
-        'one row per enabled plugin server - never a disabled one, another project\'s, or a plugin with no server');
-    for (const row of rows) assert.match(row, /first call: `ToolSearch select:mcp__plugin_/, `plugin spelling in ${row.slice(0, 50)}`);
-    assert.match(rows[3], /first call: `ToolSearch select:mcp__plugin_navigation_navigation__find_symbol,mcp__plugin_navigation_navigation__find_referencing_symbols/);
-    assert.match(rows[0], /mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/);
+    assert.deepStrictEqual(rows.map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`browser-chrome`', '`navigation`, `documentation`, `memory`'],
+        'one row per enabled plugin server, the locked ones on one - never a disabled one, another project\'s, or a plugin with no server');
+    assert.match(rows[0], /first call: `ToolSearch select:mcp__plugin_browser-chrome_browser-chrome__browser_snapshot/, 'plugin spelling');
+    assert.match(rows[1], /first call: the `ToolSearch select:` line its baseline names/, 'the locked row points at the baselines\' load lines');
 });
 
 test('inventory: with no CLI, the project settings enabledPlugins name the plugin servers', { skip: posixOnly }, () =>
@@ -533,8 +533,8 @@ test('inventory: with no CLI, the project settings enabledPlugins name the plugi
     write(path.join(root, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'memory@envoydev': false } }), -100);
     const { out } = run([], { cwd: root });
     assert.match(out, /live list unavailable - CLI absent/);
-    assert.deepStrictEqual(routingRows(out).map((r) => /^- `([^`]+)`/.exec(r)[1]), ['navigation'], 'settings.local.json switches memory off; the core and the LSP carry no server');
-    assert.match(routingRows(out)[0], /ToolSearch select:mcp__plugin_navigation_navigation__find_symbol/);
+    assert.deepStrictEqual(routingRows(out).map((r) => /^- ((?:`[^`]+`(?:, )?)+) - /.exec(r)[1]), ['`navigation`'], 'settings.local.json switches memory off; the core and the LSP carry no server');
+    assert.match(routingRows(out)[0], /first call: the `ToolSearch select:` line its baseline names/);
 });
 
 test('inventory: a registered server keeps its own row, and a third-party plugin server is spelled by its plugin', { skip: posixOnly }, () =>
@@ -561,7 +561,7 @@ test('--verify: a rule built from plugin-provided rows passes', { skip: posixOnl
     const rows = routingRows(run([], { cwd: root, bin }).out);
     const rule = write(path.join(root, 'composed.md'), validRule().replace(/## MCP routing\n[\s\S]*?\n\n/, `## MCP routing\n${rows.join('\n')}\n\n`));
     const r = run(['--verify', rule], { cwd: root, bin });
-    assert.match(r.out, /mcp rows:\s+ok - 4 of 4 carry their 'first call:' line/);
+    assert.match(r.out, /mcp rows:\s+ok - 2 of 2 carry their 'first call:' line/);
 });
 
 // Pilot 2 (2026-09-27): init's capture wrote its composed body to the session temp dir with the Write

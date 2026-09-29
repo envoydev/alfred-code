@@ -7,7 +7,7 @@ description: "Load before creating or editing any .cs file - writing, reviewing 
 
 For any BCL or NuGet API surface not pinned down here, resolve signatures with the `documentation` MCP rather than memory - never by grepping the NuGet cache or decompiled sources.
 
-C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces, file-scoped namespaces) and `EnforceCodeStyleInBuild=true`.
+C# style, structure, and runtime conventions in one place: how code is shaped (naming, layout, syntax) and how it behaves (async, I/O, exceptions, logging, DI). Style is enforced by `.editorconfig` (Allman braces through the formatting rule IDE0055, file-scoped namespaces through IDE0161) and `EnforceCodeStyleInBuild=true`.
 
 **Formatting, naming, and language-feature style is authoritative in `references/csharp-style.md`** (with the full canonical `.editorconfig`); the .NET Framework 4.8 delta - the C# 7.3 ceiling, the polyfill packages, the SynchronizationContext async caveat - is `references/net-framework-48.md`. This file keeps the house rules those style docs do not cover - structure limits, member and constructor ordering, forbidden patterns, XML doc, and the runtime behavior below - and where it overlaps them, the style docs win. **Above all of these, a project's own `.editorconfig` and its `<docs-path>/code-style/CODE-STYLE.md` are higher priority: where a project diverges from these general conventions, follow the project.**
 
@@ -44,7 +44,9 @@ Casing, prefixes, and the `Async` suffix live in `references/csharp-style.md` - 
 
 ## Class member ordering
 
-Enforced by `.editorconfig`. Order: private constants/statics, private readonly, private fields, protected/public properties, constructors, public/protected/private methods. Public properties before the constructor.
+Order: private constants/statics, private readonly, private fields, protected/public properties, constructors, public/protected/private methods. Public properties before the constructor.
+
+No SDK analyzer or `.editorconfig` rule enforces this order - it is a review rule, checked by reading the diff. StyleCop is no stand-in: its SA1201 puts constructors before properties and SA1202 puts public members before private, so adding that pack flags this order rather than holding it.
 
 ## Constructor parameter ordering
 
@@ -60,7 +62,7 @@ Within each group, order by scope, broadest first. Required before optional - al
 
 ## Blank lines
 
-Enforced by `.editorconfig` / formatter. The non-mechanical rule: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
+Consecutive blank lines are the formatter's, or IDE2000 (experimental: `dotnet_style_allow_multiple_blank_lines_experimental = false`). The non-mechanical rule, which no analyzer checks: one blank line before control-transfer statements (`return`, `throw`, `break`, etc.) when preceded by another statement - so the exit visually separates from preceding logic.
 
 ## Methods
 - Max 20 lines per method body - a longer body is doing more than one thing and resists review. Refactor if exceeded.
@@ -185,4 +187,4 @@ Method-vs-query syntax choice, chain wrapping, multiple-enumeration, and termina
 
 ## Prove it
 
-Before any done word on a `.cs` change, run `dotnet build` and quote its summary line - no new warning or error is what shows the rules above held (style included, with `EnforceCodeStyleInBuild` on); re-reading the diff is not a check.
+Before any done word on a `.cs` change, run `dotnet build` and quote its summary line - no new warning or error is what shows the analyzer-backed rules held (style included, with `EnforceCodeStyleInBuild` on); re-reading the diff is no substitute for that build. The rules no analyzer backs - member ordering and the file, method and parameter caps - are checked by reading the diff, and the close says so.

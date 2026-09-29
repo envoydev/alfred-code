@@ -336,6 +336,8 @@ function parsePluginList(out, projectRoot)
 
 const routingKey = (name) => (PLAYWRIGHT_SERVER.test(name) ? 'browser' : name);
 
+// A row names one server, or several that share it (`- \`navigation\`, \`documentation\`, \`memory\` - ...`,
+// the locked three, whose load lines live in their always-on baselines): every name maps to the same entry.
 function routingMap()
 {
     const lines = (readText(path.join(SKILL_DIR, TEMPLATE_REL)) || '').split(/\r?\n/);
@@ -349,9 +351,10 @@ function routingMap()
         if (/^#{1,6} /.test(l)) break;
         if (/^- /.test(l))
         {
-            const m = /^- `([^`]+)`/.exec(l);
-            cur = { key: m ? m[1] : null, text: l.trim() };
-            if (cur.key) map.set(cur.key, cur);
+            const head = /^- ((?:`[^`]+`)(?:, `[^`]+`)*) - /.exec(l);
+            const keys = head ? [...head[1].matchAll(/`([^`]+)`/g)].map((m) => m[1]) : [];
+            cur = { keys, head: head ? head[1] : null, text: l.trim() };
+            for (const key of keys) map.set(key, cur);
         }
         else if (cur && /^[ \t]+\S/.test(l)) cur.text += ` ${l.trim()}`;
         else if (l.trim() === '') cur = null;
@@ -359,33 +362,94 @@ function routingMap()
     return map;
 }
 
+// THE DATA ROOT a row names (`<data root>`): ALFRED_CODE_DATA_PATH, read like every launcher setting - the
+// shell env, then settings.local.json, settings.json and the account settings.json - and refused back to
+// `.alfred` where stack/mcp/data-root.js (checkDataPath) refuses it. That module is the one home, but this
+// script ships inside a skill copy with no stack/mcp beside it, so the read is inline; a parity test
+// (scripts/audit-214-rules.test.js) holds the two to one answer.
+const DATA_ROOT_DEFAULT = '.alfred';
+function dataRoot(projectRoot, env = process.env)
+{
+    let raw = String(env.ALFRED_CODE_DATA_PATH || '').trim();
+    if (!raw)
+    {
+        const account = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+        for (const file of [path.join(projectRoot, '.claude', 'settings.local.json'), path.join(projectRoot, '.claude', 'settings.json'), path.join(account, 'settings.json')])
+        {
+            try { raw = String(((JSON.parse(readText(file) || 'null') || {}).env || {}).ALFRED_CODE_DATA_PATH || '').trim(); }
+            catch { raw = ''; }
+            if (raw) break;
+        }
+    }
+    const value = raw.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
+    const parts = value.split('/');
+    const refused = !value || value.startsWith('/') || /^[A-Za-z]:/.test(value) || /\s/.test(value) || /[$%`"'*?<>|:]/.test(value)
+        || parts.some((p) => p === '.' || p === '..') || parts[0] === '.claude' || parts[0] === '.git';
+    return refused ? DATA_ROOT_DEFAULT : value;
+}
+
+// The literal values a row carries into the rule: the generated rule is a pointer and cannot itself hold
+// the slot it exists to resolve (a browser row told the model to prefix a filename with `<data root>/...`).
+function fillSlots(row, server, slots = {})
+{
+    let out = row;
+    if (slots.dataRoot) out = out.replace(/<data root>/g, slots.dataRoot);
+    const engine = (PLAYWRIGHT_SERVER.exec(server) || [])[1];
+    if (engine) out = out.replace(/<engine>/g, engine);
+    if (slots.docsRoot) out = out.replace(/<docs-path>/g, String(slots.docsRoot).replace(/[\\/]+$/, ''));
+    return out;
+}
+const UNRESOLVED_SLOT = /<(data root|engine|docs-path|server)>/g;
+
 // Every row here is for a server REGISTERED in .mcp.json (every add-back line of the 2.0.0 cut lands
 // there), and a registration's tools are `mcp__<name>__<tool>`. The catalog rows name the plugin
 // spelling, `mcp__plugin_<name>_<name>__<tool>`, which finds nothing for a registration - so a row is
 // re-spelled to the bare form before it is printed (R63).
 const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-function routingRow(name, map)
+function routingRow(name, map, slots)
 {
     const key = routingKey(name);
     const hit = map.get(key);
     if (!hit) return `- \`${name}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__${name}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, name);
     if (key !== name) row = row.replace(`\`${key}\``, `\`${name}\``);
-    return row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`);
+    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(name)}_${escapeRe(name)}__`, 'g'), `mcp__${name}__`), name, slots);
 }
 
 // A server an enabled PLUGIN provides - the default route, where nothing sits in .mcp.json (pilot 2:
 // the empty routing block meant 'None registered' in the rule and 0 MCP calls in 12 cells). Its tools
 // are `mcp__plugin_<plugin>_<server>__<tool>`: the catalog's own spelling for the stack's servers,
 // whose plugin and server share a name, and re-spelled for one whose names differ.
-function pluginRoutingRow(plugin, server, map)
+function pluginRoutingRow(plugin, server, map, slots)
 {
     const key = routingKey(server);
     const hit = map.get(key);
     if (!hit) return `- \`${server}\` - routing: see project docs. first call: \`ToolSearch select:\` plus the \`mcp__plugin_${plugin}_${server}__*\` names the session's own listing shows.`;
     let row = collapse(hit.text).replace(/<server>/g, server);
     if (key !== server) row = row.replace(`\`${key}\``, `\`${server}\``);
-    return row.replace(new RegExp(`mcp__plugin_${escapeRe(server)}_${escapeRe(server)}__`, 'g'), `mcp__plugin_${plugin}_${server}__`);
+    return fillSlots(row.replace(new RegExp(`mcp__plugin_${escapeRe(server)}_${escapeRe(server)}__`, 'g'), `mcp__plugin_${plugin}_${server}__`), server, slots);
+}
+
+// Every row, in the order the servers come (registrations, then plugin servers): a row several servers
+// share is printed ONCE, at its first server, naming only the ones present - a locked server the install
+// lacks is not claimed. Its text names no tool, so it needs no re-spelling for either route.
+function routingRowsFor(servers, map, slots)
+{
+    const out = [];
+    const done = new Set();
+    for (const s of servers)
+    {
+        const hit = map.get(routingKey(s.name));
+        if (hit && hit.keys.length > 1)
+        {
+            if (done.has(hit)) continue;
+            done.add(hit);
+            const present = hit.keys.filter((k) => servers.some((o) => routingKey(o.name) === k));
+            out.push(fillSlots(collapse(hit.text).replace(hit.head, present.map((k) => `\`${k}\``).join(', ')), s.name, slots));
+        }
+        else out.push(s.plugin ? pluginRoutingRow(s.plugin, s.name, map, slots) : routingRow(s.name, map, slots));
+    }
+    return out;
 }
 
 // `enabledPlugins` of the project's own settings, the local file winning a key both name.
@@ -440,15 +504,19 @@ function docsRoot(projectRoot)
     {
         if (process.env[key]) return { value: process.env[key], from: `${key} in the environment` };
     }
-    try
+    // A local-scope install writes the key into settings.local.json, which is read over settings.json (R99).
+    for (const file of ['settings.local.json', 'settings.json'])
     {
-        const env = (JSON.parse(readText(path.join(projectRoot, '.claude', 'settings.json')) || '{}') || {}).env || {};
-        for (const key of DOCS_PATH_KEYS)
+        try
         {
-            if (env[key]) return { value: env[key], from: `${key} in .claude/settings.json env` };
+            const env = (JSON.parse(readText(path.join(projectRoot, '.claude', file)) || '{}') || {}).env || {};
+            for (const key of DOCS_PATH_KEYS)
+            {
+                if (env[key]) return { value: env[key], from: `${key} in .claude/${file} env` };
+            }
         }
+        catch { /* a malformed settings file is the next one's case, not a failure */ }
     }
-    catch { /* a malformed settings.json is the default's case, not a failure */ }
     return { value: '.alfred/docs', from: 'the default - no ALFRED_CODE_DOCS_PATH set' };
 }
 
@@ -562,6 +630,7 @@ function report(projectRoot)
     const docs = docsRoot(projectRoot);
     const stamp = installStamp(projectRoot);
     const map = routingMap();
+    const slots = { dataRoot: dataRoot(projectRoot), docsRoot: docs.value };
     const skillPolicy = policyBlock(readText(path.join(SKILL_DIR, 'SKILL.md')));
 
     out.push('=== alfred-capture-agent-capabilities - inventory (one node pass, no per-skill fork) ===');
@@ -649,9 +718,9 @@ function report(projectRoot)
     const pluginLive = new Set(provided.map((s) => `plugin:${s.plugin}:${s.server}`));
     for (const s of provided) sub(`${s.server.padEnd(20)} plugin      live: ${liveOf(`plugin:${s.plugin}:${s.server}`)}  from ${s.plugin}${routingKey(s.server) !== s.server ? `  routing: ${routingKey(s.server)}` : ''}`);
     for (const r of liveRows) if (!registered.includes(r.name) && !pluginLive.has(r.name)) sub(`${r.name.padEnd(20)} -           live: ${r.state}  (reaches the session from the account or the harness, not .mcp.json)`);
-    sub('MCP ROUTING rows - paste verbatim, one per registered or plugin-provided server:');
-    for (const name of registered) sub(routingRow(name, map));
-    for (const s of provided) sub(pluginRoutingRow(s.plugin, s.server, map));
+    sub(`MCP ROUTING rows - paste verbatim, one per registered or plugin-provided server (data root ${slots.dataRoot}):`);
+    const servers = [...registered.map((name) => ({ name })), ...provided.map((s) => ({ name: s.server, plugin: s.plugin }))];
+    for (const row of routingRowsFor(servers, map, slots)) sub(row);
 
     if (!pluginProbe.ok) say('PLUGINS', `${pluginProbe.reason} - OMIT the Plugins section from the rule rather than guess`);
     else
@@ -735,6 +804,9 @@ function verify(projectRoot, ruleArg)
     const missing = REQUIRED_HEADINGS.filter((h) => !new RegExp(`^${h}`, 'm').test(text));
     line('headings', missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : `${REQUIRED_HEADINGS.length} inventory sections present (Plugins is optional - omitted when the CLI probe failed)`);
 
+    const left = [...new Set([...text.matchAll(UNRESOLVED_SLOT)].map((m) => m[0]))];
+    line('slots', left.length === 0, left.length ? `unresolved ${left.join(', ')} - re-paste the script's rows, which carry this project's literal values` : 'none left unfilled');
+
     const rows = mcpRowsOf(text);
     const bad = (rows || []).filter((r) => !/first call:/.test(r));
     line('mcp rows', rows !== null && bad.length === 0,
@@ -765,4 +837,6 @@ function main()
     return report(projectRoot);
 }
 
-process.exitCode = main();
+if (require.main === module) process.exitCode = main();
+
+module.exports = { dataRoot, fillSlots, routingMap, routingRow, pluginRoutingRow, routingRowsFor };

@@ -104,10 +104,10 @@ test('both gates FAIL OPEN - a missing, empty or malformed settings file yields 
 // GATE 5 - the hook profile. The core's `hook_profile` userConfig reaches every plugin hook as
 // CLAUDE_PLUGIN_OPTION_HOOK_PROFILE; the project's csv still wins over it.
 const PROFILE = 'CLAUDE_PLUGIN_OPTION_HOOK_PROFILE';
-const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-read-whole-file', 'guard-ungated-commit',
+const EVERY_HOOK = ['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec', 'guard-read-whole-file', 'guard-ungated-commit',
     'guard-stop-contract', 'guard-cross-project-write', 'docs-session', 'history-session', 'check-turn-build', 'monitor-session'];
 
-test('profile minimal keeps only the rm, secret and force-push guards; every other hook stands down', () => {
+test('profile minimal keeps only the rm, secret, force-push and desktop exec guards; every other hook stands down', () => {
     const { PROTECTIVE } = require(PRELUDE);
     for (const hook of EVERY_HOOK)
         assert.strictEqual(standDown(hook, { [PROFILE]: 'minimal' }, ['node', 'x.js']), !PROTECTIVE.has(hook), hook);
@@ -531,14 +531,15 @@ test('a worktree of a repo never set up is not set up either, and a .git file th
 // rm of an unrecoverable target, a credential value read into the transcript, a force-push over a
 // protected branch - and in a repo never set up a user-scope core is the only guard it has. They stay
 // live there and skip their block row, so R54 still holds: nothing is written. Every other hook
-// stands down. ALFRED_CODE_HOOKS_OFF still switches any of the three off.
-test('in a repo never set up the three protective guards stay live and write nothing; every other hook stands down (R86)', () => {
+// stands down. ALFRED_CODE_HOOKS_OFF still switches any of them off. The desktop exec gate joined them
+// (final review IM2): its macOS Shell is a shell the other three never see.
+test('in a repo never set up the protective guards stay live and write nothing; every other hook stands down (R86)', () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'prelude-r86-')));
     const env = unsetEnv(dir);
     try
     {
-        assert.deepStrictEqual([...require(PRELUDE).PROTECTIVE].sort(), ['guard-catastrophic-rm', 'guard-protected-force-push', 'guard-secret-value']);
-        for (const hook of ['guard-catastrophic-rm', 'guard-secret-value.js', 'guard-protected-force-push'])
+        assert.deepStrictEqual([...require(PRELUDE).PROTECTIVE].sort(), ['guard-catastrophic-rm', 'guard-desktop-exec', 'guard-protected-force-push', 'guard-secret-value']);
+        for (const hook of ['guard-catastrophic-rm', 'guard-secret-value.js', 'guard-protected-force-push', 'guard-desktop-exec'])
             assert.strictEqual(standDown(hook, env, ['node', 'x.js']), false, `${hook} stays live`);
         for (const hook of ['guard-ungated-commit', 'guard-cross-project-write', 'guard-fresh-session-start', 'history-session', 'docs-session'])
             assert.strictEqual(standDown(hook, env, ['node', 'x.js']), true, `${hook} stands down`);
@@ -551,7 +552,10 @@ test('in a repo never set up the three protective guards stay live and write not
         fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }));
         const secret = fireIn('guard-secret-value.js', dir, { file_path: path.join(dir, 'config.json') }, 'Read');
         assert.strictEqual(secret.status, 2, `a credential file read blocked: ${secret.stderr}`);
-        assert.ok(!fs.existsSync(path.join(dir, '.claude')), 'three blocks, no block row - nothing written into a repo never set up');
+        // Final review IM2: the desktop Shell is a shell no shell guard sees - `rm -rf ~` ran there while Bash's was blocked.
+        const shell = fireIn('guard-desktop-exec.js', dir, { command: 'rm -rf ~' }, 'mcp__plugin_macos-desktop_macos-desktop__Shell');
+        assert.strictEqual(shell.status, 2, `the macOS desktop Shell blocked: ${shell.stderr}`);
+        assert.ok(!fs.existsSync(path.join(dir, '.claude')) && !fs.existsSync(path.join(dir, '.alfred')), 'four blocks, no block row - nothing written into a repo never set up');
 
         // Positive control: once set up, the same block writes its row.
         fs.mkdirSync(path.join(dir, '.claude'));
@@ -603,7 +607,7 @@ test('M9 in a repo never set up the dispatch guard still gates an alfred-code im
 });
 
 // GATE 6 - a Cursor host. Cursor loads Claude hooks by default and turns a Stop block into an unbounded
-// automatic follow-up, so under a Cursor PAYLOAD only the three protective guards run. Judged from the
+// automatic follow-up, so under a Cursor PAYLOAD only the protective guards run. Judged from the
 // payload alone: a `claude` session inside Cursor's terminal inherits Cursor's variables and keeps every hook.
 // Each non-protective hook makes the call itself, after parsing its own payload (no stdin is read by the prelude).
 const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');

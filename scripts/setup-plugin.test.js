@@ -127,8 +127,8 @@ test('init: the bootstrap order - read, plan, one machine ask, memory, captures 
     const init = cmdBody('init');
     // M6: a fresh uv lands off the shell's PATH - step 4's import needs uvx, so it gets the prefix too.
     assert.match(flat(init), /EVERY later command of this run carries that directory first - `PATH="<dir>:\$PATH" <command>` - step 3's `after uv` commands and step 4's `memory\.js init` alike/);
-    // The hook count, stated once per table: the manifest ships seventeen.
-    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all seventeen:.*\*\*None\*\* names all seventeen/);
+    // The hook count, stated once per table: the manifest ships eighteen.
+    assert.match(flat(walkBody()), /Recommended \(FRESH\) = all eighteen:.*\*\*None\*\* names all eighteen/);
     const order = ['## 1. Read the install', '## 2. The plan', '## 3. Machine installs - ONE ask', '## 4. Memory', '## 5. Captures', '## 6. CLAUDE.md'].map((h) => init.indexOf(h));
     assert.ok(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), `the six steps in order: ${order}`);
     assert.match(init, /install\/alfred-code\.js" update --source "\$TMP\/repo" --installed-only --print-plan --plan-out "\$TMP\/installed\.json"/);

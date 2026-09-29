@@ -325,6 +325,54 @@ test('uninstall removes the copy route\'s own local-scope registrations and keep
     assert.match(outs[1], /mcp removed: navigation \(local scope\)/);
 });
 
+// Matrix 3d (2.1.4): at local scope the copy route registers in the account's projects[<root>].mcpServers, and the
+// --installed-only read-back read .mcp.json alone - so the first update dropped macos-desktop from the set and
+// re-spelled the copied desktop skill (and evidence-gatherer's grant) to the plugin tools, while the local
+// registration stayed live and nothing served the new spelling.
+test('seed update --installed-only (full copy route, local scope): a local-scope registration is read back as a pick', POSIX_ONLY, () =>
+{
+    const skill = (repo) => fs.readFileSync(path.join(repo, '.claude', 'skills', 'desktop-automation', 'SKILL.md'), 'utf8');
+    const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\nskill desktop-automation\nmcp macos-desktop\n', {
+        tools: { claude: RECORDING_CLAUDE },
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' },
+        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local']],
+        each: (repo) => ({ servers: localServers(accountOf(repo)), plugin: /mcp__plugin_macos-desktop_/.test(skill(repo)) }),
+    });
+    assert.ok(steps[0].servers.includes('macos-desktop') && !steps[0].plugin, `the install itself: ${JSON.stringify(steps[0])}\n${outs[0]}`);
+    assert.ok(steps[1].servers.includes('macos-desktop'), `the update dropped it: ${JSON.stringify(steps[1])}\n${outs[1]}`);
+    assert.strictEqual(steps[1].plugin, false, `the copied skill was re-spelled to the plugin tools:\n${outs[1]}`);
+});
+
+// Matrix re-run: the read-back above must not adopt a server of the user's own that merely carries a stack name -
+// only what the stamp's managed-mcp ledger says the stack registered at that scope is a pick.
+test('seed update --installed-only (full copy route, local scope): the user\'s own local server under a stack name is never adopted', POSIX_ONLY, () =>
+{
+    const own = { command: 'node', args: ['my-desktop.js'] };
+    const { steps, outs } = seedRun(['install', 'update'], 'rule markdown-docs\n', {
+        tools: { claude: RECORDING_CLAUDE },
+        env: { ALFRED_CODE_HOOKS_VIA_PLUGIN: 'false', ALFRED_CODE_SKILLS_VIA_PLUGIN: 'false', ALFRED_CODE_MCPS_VIA_PLUGIN: 'false', ALFRED_CODE_PLATFORM: 'darwin' },
+        args: [['--scope', 'local'], ['--installed-only', '--scope', 'local']],
+        each: (repo, i) =>
+        {
+            const account = accountOf(repo);
+            if (i === 0)
+            {
+                Object.values(account.projects)[0].mcpServers['macos-desktop'] = own;
+                fs.writeFileSync(path.join(path.dirname(repo), 'acct', '.claude.json'), JSON.stringify(account));
+            }
+            return {
+                entry: Object.values(accountOf(repo).projects || {})[0].mcpServers['macos-desktop'],
+                skill: fs.existsSync(path.join(repo, '.claude', 'skills', 'desktop-automation')),
+                stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8'),
+            };
+        },
+    });
+    const after = steps[1];
+    assert.deepStrictEqual(after.entry, own, `the user's server was rewritten:\n${outs[1]}`);
+    assert.strictEqual(after.skill, false, `its skill was copied in as if picked:\n${outs[1]}`);
+    assert.doesNotMatch(after.stamp, /macos-desktop/, `it reached the stamp:\n${after.stamp}`);
+});
+
 test('uninstall prints the user-scope registrations\' remove commands and never runs them', POSIX_ONLY, () =>
 {
     const { calls, result, outs } = seedRun(['install', 'uninstall'], 'rule markdown-docs\nmcp browser\n', {

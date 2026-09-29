@@ -43,7 +43,8 @@ format the loop skills end on.
 
 ## What the docs are for
 
-The docs follow the docs root - machine-local by default, re-captured after a fresh clone, never assumed to be
-in git. The map is what the domain solution-designers read to judge where a change fits, what the cross-task
+The docs follow the docs root, and whether git carries them is what `node .claude/hooks/docs.js status` says -
+`mode: git`: committed and versioned per branch; `mode: overlay`: kept out of git, re-captured after a fresh
+clone. Never assume either. The map is what the domain solution-designers read to judge where a change fits, what the cross-task
 orchestrator reads to pick a cross-domain run, and what the cross-domain seam interface is designed against. No
 re-paste of the doc bodies in the report - point to the files.

@@ -16,7 +16,7 @@ test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
     // The shell guards launch as ONE dispatcher, which runs each of them in-process.
     const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`) : [w.file])));
-    assert.strictEqual(files.size, 17, 'seventeen hooks, however many wirings they take');
+    assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
@@ -71,7 +71,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
             for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 17, `expected the seventeen hooks (the eight shell guards through one dispatcher) plus the core's own two, got ${commands.size}`);
+        assert.ok(commands.size >= 17, `expected the eighteen hooks (the eight shell guards through one dispatcher) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {
@@ -129,4 +129,52 @@ test('the hooks ride the core: no hooks entry is generated, and the core declare
     const wired = JSON.stringify(core.hooks);
     for (const w of wirings) assert.ok(wired.includes(`stack/hooks/${w.file}`), `the core carries ${w.file}`);
     assert.ok(!fs.existsSync(path.join(__dirname, '..', 'hooks', 'hooks.json')), 'nothing sits at the shared root');
+});
+
+// I1 (2.1.4 audit): the Monitor tool runs a shell `command` under Bash's permission rules
+// (code.claude.com/docs/en/tools-reference, 'Monitor tool'), so the shell guards judge it too. Replayed
+// through the GENERATED core wiring, matched the way Claude Code matches (code.claude.com/docs/en/hooks,
+// 'Matcher String Evaluation': only letters, digits, `_`, `-`, spaces, `,` and `|` is an exact list,
+// anything else an unanchored regular expression).
+const matches = (matcher, tool) =>
+{
+    if (matcher === undefined || matcher === '' || matcher === '*') return true;
+    if (/^[\w\s,|-]+$/.test(matcher)) return matcher.split(/[|,]/).map(s => s.trim()).includes(tool);
+    return new RegExp(matcher).test(tool);
+};
+function replayPreToolUse(tool, toolInput, cwd)
+{
+    const repo = path.join(__dirname, '..');
+    const out = [];
+    for (const g of coreEntry().hooks.PreToolUse.filter(b => matches(b.matcher, tool)))
+        for (const h of g.hooks)
+        {
+            const line = h.command.replaceAll('${CLAUDE_PLUGIN_ROOT}', repo);
+            const env = { ...process.env, CLAUDE_PROJECT_DIR: cwd };
+            delete env.ALFRED_CODE_DOCS_PATH;
+            delete env.CLAUDE_CODE_ENTRYPOINT;
+            out.push(spawnSync('sh', ['-c', line], { cwd, env, encoding: 'utf8',
+                input: JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'monitor-route', cwd, tool_name: tool, tool_input: toolInput }) }));
+        }
+    return out;
+}
+const denied = (runs) => runs.some(r => r.status === 2 || /"permissionDecision":"deny"/.test(r.stdout));
+const rewrittenTo = (runs) => runs.map(r => { try { return JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command; } catch { return null; } }).find(Boolean) || null;
+
+test('the Monitor route: the shell guards judge a Monitor command through the generated wiring', { skip: process.platform === 'win32' && 'sh launcher' }, () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'monitor-route-'));
+    try
+    {
+        fs.writeFileSync(path.join(cwd, '.env'), 'API_KEY=abc123\n');
+        assert.ok(denied(replayPreToolUse('Monitor', { command: 'rm -rf ~', description: 'x' }, cwd)), 'rm -rf ~ through Monitor');
+        assert.ok(denied(replayPreToolUse('Monitor', { command: 'git push -f origin main', description: 'x' }, cwd)), 'a force-push through Monitor');
+        const view = rewrittenTo(replayPreToolUse('Monitor', { command: 'cat .env', description: 'x' }, cwd));
+        assert.ok(view && /--redacted/.test(view), `cat .env through Monitor is rewritten to the redacted view: ${view}`);
+        // a WebSocket watch carries no command, and passes untouched
+        const ws = replayPreToolUse('Monitor', { ws: { url: 'wss://example.test/feed' }, description: 'x' }, cwd);
+        assert.ok(!denied(ws) && !rewrittenTo(ws), 'a ws watch passes');
+        // the Bash spelling agrees, so the route is the same gate
+        assert.ok(denied(replayPreToolUse('Bash', { command: 'rm -rf ~' }, cwd)), 'and Bash still blocks');
+    }
+    finally { fs.rmSync(cwd, { recursive: true, force: true }); }
 });

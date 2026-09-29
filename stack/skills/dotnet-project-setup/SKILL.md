@@ -113,6 +113,8 @@ A csproj then references the shared property instead of hard-coding the framewor
 
 A nested `Directory.Build.props` in a subfolder overrides the root one and must `<Import>` it to keep both - keep a single file at the root unless you have a concrete reason to split.
 
+Where the house config-protection guard runs, it blocks any change to `Nullable` (or a warning key such as `TreatWarningsAsErrors` or `NoWarn`) in a Directory.Build.props or csproj that already exists - a tightening included - until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block; a new Directory.Build.props takes the baseline from the start.
+
 ## global.json - pin the SDK
 
 Pin the SDK so every machine and CI runner builds with the same toolchain. Projects can still target `net8.0`; the SDK version and the project framework are independent (9.0.200+ is what unlocks `.slnx`).

@@ -1933,6 +1933,19 @@
         }
       ]
     },
+    "commit-gate-security-row": {
+      "_note": "A security-relevant diff's COMMIT-GATE receipt carries a security: line naming each category checked and its verdict - baseline-security requires it and guard-ungated-commit reads a VERIFIED line that claims a security review without it as no review. The checkpoint owns it; verify-code writes the same receipt as the inline reviewer.",
+      "owner": {
+        "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+        "marker": "`security:` naming each category checked and its verdict"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "marker": "`security:` naming each category checked and its verdict"
+        }
+      ]
+    },
     "commit-gate-trivial-bar": {
       "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); the alfred-habits-commit-checkpoint skill states the same numbers, so a threshold change re-syncs the rule.",
       "owner": {
@@ -2010,19 +2023,28 @@
       ]
     },
     "generated-docs-root-placement": {
-      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the capabilities rule template (the generated awareness tier every session loads) and in the related-context skill's folder-ownership statement.",
+      "_note": "Every assistant-created doc lands under <docs-path>; the sibling-repo orientation doc lives in the related-projects/ domain, every OTHER sibling-repo doc (cross-repo plans/change requests/issue notes/run recipes) in the plain related-context/ folder, and a location outside the root only on the user's asked-first approval - never silently. Canonical in the docs-root baseline; restated in the related-context skill's folder-ownership statement. The capabilities rule template carried a copy until the 2026-09-29 audit (I24): both are always-on in the same session, so the copy was pure rent.",
       "owner": {
         "file": "stack/rules/baseline-docs-root.md",
         "marker": "only on the user's asked-first approval"
       },
       "sites": [
         {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
-          "marker": "takes the user's approval, asked"
-        },
-        {
           "file": "stack/skills/alfred-capture-related-projects/SKILL.md",
           "marker": "takes the user's explicit approval first"
+        }
+      ]
+    },
+    "markdown-docs-root-carve-out": {
+      "_note": "The docs root and the generated rules belong to the skill that writes them, so the Markdown style pass skips them. The markdown-docs rule owns the carve-out; markdown-style restates it because the rule never attaches on a shell write and the skill, once loaded, would sweep every doc the session writes. 2.1.4 audit I41.",
+      "owner": {
+        "file": "stack/rules/markdown-docs.md",
+        "marker": "The generated docs root is NOT governed here, and neither are the generated rules."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/markdown-style/SKILL.md",
+          "marker": "The generated docs root is NOT governed here, and neither are the generated rules."
         }
       ]
     },
@@ -3069,7 +3091,7 @@
       ]
     },
     "hook-block-telemetry": {
-      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in all TEN hooks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
+      "_note": "One JSONL row per BLOCK, appended by every guard hook to <docs-path>/hook-blocks/<session>.jsonl. A block costs its denial text plus the retried turn, so a FALSE block is 10-100x the gate's own cost (measured 2026-09-04: a hook runs in 22-25ms, almost all node spawn) - and the transcript records only WHICH TOOL was denied, never which hook denied it. scripts/analyze-usage.js --hook-blocks reads the ledger. The block is identical in every guard hook that blocks and must stay that way: it wraps process.exit and stderr.write, and it is best-effort in both directions - telemetry never changes a verdict and never throws.",
       "owner": {
         "file": "stack/hooks/guard-cross-project-write.js",
         "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
@@ -3085,6 +3107,10 @@
         },
         {
           "file": "stack/hooks/guard-config-protection.js",
+          "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
+        },
+        {
+          "file": "stack/hooks/guard-desktop-exec.js",
           "marker": "block telemetry (shared by every guard hook; keep the copies identical)"
         },
         {
@@ -3118,7 +3144,7 @@
       ]
     },
     "optional-mcp-absence": {
-      "_note": "An optional MCP (the browser server - the one droppable server since 2.0.0 cut chrome-devtools and appium-mcp) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it.",
+      "_note": "An optional MCP (the browser server, and the two desktop servers whose read-only observe tools the WPF and WinForms verifiers and the evidence gatherer hold - opt-in and one OS each) is simply absent from a seat tools list when the project never registered it, and a live check that runs through the project's OWN E2E suite (the native device smoke, the loaded-extension run) is absent when the project ships none: the seat still launches, so the failure mode is a SILENT PASS, not an error. Every seat with such a check restates the same contract - run the remaining route, else report the covered checks UNVERIFIED with the reason. The seat names the server only by what it does (the described-cite shape), never by name with a guard beside it - a backticked server name is also a graph edge that would pull the server into every install picking the seat.",
       "owner": {
         "file": "stack/agents/integration-reviewer.md",
         "marker": "else record the E2E path as UNVERIFIED with the reason"
@@ -3133,6 +3159,10 @@
           "marker": "say plainly that the browser evidence was not obtainable here"
         },
         {
+          "file": "stack/agents/evidence-gatherer.md",
+          "marker": "say plainly that the desktop evidence was not obtainable here"
+        },
+        {
           "file": "stack/agents/ionic-angular-verifier.md",
           "marker": "a gate that cannot drive the native path says so, it never greens it"
         },
@@ -3143,6 +3173,14 @@
         {
           "file": "stack/agents/web-angular-verifier.md",
           "marker": "else report the interaction and a11y paths as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
+          "marker": "report the form checks as UNVERIFIED with the reason"
+        },
+        {
+          "file": "stack/agents/wpf-verifier.md",
+          "marker": "report the view checks as UNVERIFIED with the reason"
         }
       ]
     },
@@ -3455,16 +3493,12 @@
       ]
     },
     "fresh-session-trigger-tiers": {
-      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the two skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: both of these said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs all four.",
+      "_note": "The three fresh-session trigger figures, wherever an artifact states them in prose. The engine comment block (stack/hooks/fresh-session.js, shared by both fresh-session hooks) is canonical (the code enforces the numbers); the skills that quote them to the model are pinned copies, because a copy naming only two tiers ships a stale rule into every project that reads it - measured: two of them said '150,000 on a 200k window, 400,000 above it' and omitted the DEFAULT tier entirely, which is the one that covers a window the gate cannot read. A number change re-syncs every copy. The capabilities usage policy states no number since the 2026-09-29 audit (I24): it is stamped into a generated rule only a re-run refreshes, and an ALFRED_CODE_FRESH_SESSION_* override made its figures wrong, so it names 'the window trigger' instead.",
       "owner": {
         "file": "stack/hooks/fresh-session.js",
         "marker": "the trigger on anything else (default 180,000)"
       },
       "sites": [
-        {
-          "file": "stack/skills/alfred-capture-agent-capabilities/SKILL.md",
-          "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
-        },
         {
           "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
           "marker": "150,000 tokens on a 200k window, 400,000 on a 1M one, 180,000 on any other window"
@@ -3654,6 +3688,19 @@
         }
       ]
     },
+    "plan-file-design-handoff": {
+      "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - alfred-task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
+      "owner": {
+        "file": "stack/rules/baseline-interaction.md",
+        "marker": "or a design flow writes it as its handoff"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "marker": "a design flow writes it as its handoff"
+        }
+      ]
+    },
     "gitbash-mount-path": {
       "_note": "Git Bash / MSYS spell a Windows path in POSIX mount form (/c/..., /cygdrive/c/...), which node on win32 resolves against the CURRENT drive - the falsehood that made the cross-project guard block a session cleaning its own temp scratch. Every guard that resolves a path off a Bash command line translates it the SAME way before any resolution, so a fix to the spelling lands in all four at once; each hook is a standalone file with no shared module, which is why the copies are inline.",
       "owner": {
@@ -3676,27 +3723,6 @@
         {
           "file": "stack/hooks/guard-ungated-commit.js",
           "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        }
-      ]
-    },
-    "shell-tool-route": {
-      "_note": "The PowerShell tool is the shell route under a second name: its payload carries `tool_input.command` exactly as Bash does, and scripts/analyze-usage.js has read it as a shell call since 34 of 38 test runs in one collection arrived that way. Three guards branch on the tool name before judging a command, and each matched 'Bash' alone until 2026-09-12, when a hook audit measured 122 PowerShell calls in a 115-session corpus with no gate on any of them. The installers' HOOKS manifest wires the matcher `Bash|PowerShell` for six guards; these three also need the in-file test, and each hook is a standalone file with no shared module, which is why the copies are inline. The other three shell guards read tool_input.command with no tool-name branch and need no copy.",
-      "owner": {
-        "file": "stack/hooks/guard-cross-project-write.js",
-        "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-config-protection.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-        },
-        {
-          "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
-        },
-        {
-          "file": "stack/hooks/guard-secret-value.js",
-          "marker": "const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';"
         }
       ]
     },
@@ -4781,6 +4807,47 @@
         }
       ]
     },
+    "approval-stamp-protected-path": {
+      "_note": "The APPROVAL stamp's protected-path clause is CONDITIONAL: only a docs root kept under .claude/ (the old .claude/docs default) makes the stamp write a protected-path write, and the prompt's session option is quoted as code.claude.com/docs/en/permission-modes ('Protected paths') words it. The 2.1.4 audit found nine copies still saying every write prompts and quoting a label that does not exist.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+        "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        }
+      ]
+    },
     "engine-skill-hub-first": {
       "_note": "An engine skill (postgres, sqlite) defers the cross-engine conventions to the database hub skill and loads the hub first where installed, restating none of it - the same sentence in each engine skill.",
       "owner": {
@@ -4791,6 +4858,19 @@
         {
           "file": "stack/skills/sqlite/SKILL.md",
           "marker": "are the cross-engine database hub's; load that hub first where the install has it"
+        }
+      ]
+    },
+    "aspire-deploy-stance": {
+      "_note": "Aspire ships `aspire publish` / `aspire deploy`; the house deploys through CI and container tooling and adopts them only as a deliberate pipeline decision. Stated as policy, not as a product limit, in the DevOps skill (owner - pipeline decisions are its) and the Aspire orchestration skill. 2.1.4 audit I36.",
+      "owner": {
+        "file": "stack/skills/devops/SKILL.md",
+        "marker": "`aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-aspire/SKILL.md",
+          "marker": "`aspire publish` and `aspire deploy` exist, and adopting them is a deliberate pipeline decision, never a default"
         }
       ]
     },
@@ -4926,6 +5006,44 @@
         }
       ]
     },
+    "nuget-audit-ci-gate": {
+      "_note": "The vulnerable-package CI gate is restore-time NuGet Audit with NU1903;NU1904 raised to errors (NuGetAuditMode all below net10.0); `dotnet list package --vulnerable --include-transitive` is only the report - it exits 0 on a finding (measured on SDK 10.0.203 with Newtonsoft.Json 12.0.1: listing exit 0, restore with the codes as errors exit 1). The security skill owns it; the A06 reference, the ASP.NET baseline's tooling line and the CPM audit section restate it because each can load alone. 2.1.4 audit C4.",
+      "owner": {
+        "file": "stack/skills/dotnet-security/SKILL.md",
+        "marker": "exits 0 on a finding"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-security/references/owasp-a06-a10.md",
+          "marker": "exits 0 on a finding"
+        },
+        {
+          "file": "stack/skills/dotnet-web-backend/SKILL.md",
+          "marker": "exits 0 on a finding"
+        },
+        {
+          "file": "stack/skills/dotnet-project-setup/references/central-package-management.md",
+          "marker": "exits 0 on a finding"
+        }
+      ]
+    },
+    "idor-status-no-existence-disclosure": {
+      "_note": "One house answer for a resource the caller does not own: 404 (no existence disclosure), 403 only where the caller can see the resource but not the action. The security skill's IDOR snippet owns it; the testing hub's negative-security line and the error-handling status map restate it, since all three co-load in the ASP.NET closure and a test written from one must pass against code written from another. 2.1.4 audit I39, controller decision.",
+      "owner": {
+        "file": "stack/skills/dotnet-security/SKILL.md",
+        "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-testing/SKILL.md",
+          "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
+        },
+        {
+          "file": "stack/skills/dotnet-web-error-handling/SKILL.md",
+          "marker": "a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action"
+        }
+      ]
+    },
     "generated-rule-write-protocol": {
       "_note": "Regenerating a generated .claude/rules/*.md is a REPLACE, never a delete: READ the existing rule first (that read is what makes the Write legal), then Write the fresh one over it. An `rm` first is denied by the auto-mode classifier and costs the blocked round trip the delete was meant to save. Nothing in the old copy is preserved. Resolved contradiction C1 of the 2026-09-12 skill audit (slice 3): alfred-capture-code-style previously mandated delete-first.",
       "owner": {
@@ -4974,6 +5092,19 @@
         {
           "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
           "marker": "named fields, every run, each with a value"
+        }
+      ]
+    },
+    "plan-audit-passes-field": {
+      "_note": "One shape for a plan audit's record: verify-plan's Passes field, one verdict per pass, which the cross-task orchestrator copies into its ledger as written.",
+      "owner": {
+        "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+        "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
         }
       ]
     },
@@ -5300,52 +5431,64 @@
       ]
     },
     "verifier-memory-before-report": {
-      "_note": "A verifier writes its navigation-server hand-off note BEFORE it composes the report, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 10 copies, one per trio verifier.",
+      "_note": "A seat writes any memory BEFORE it composes the report, then delivers the report as its final hand-off - through SubagentHandback when its tools include it (Claude Code gives that tool to every locally run, non-fork subagent in auto mode and delivers only what goes through it - tools-reference, v2.1.271+; the 2026-09-29 agents audit counted 188 of 205 local seat runs reporting through it), else as its last message; nothing after it, because a tool call after the report turns the hand-back into a pointer (measured: a full report, then write_memory, then a pointer close forced a resend). 13 copies: the ten trio verifiers and the three support seats whose structured return IS the deliverable.",
       "owner": {
         "file": "stack/agents/aspnet-verifier.md",
-        "marker": "Memory writes come BEFORE the report"
+        "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
       },
       "sites": [
         {
           "file": "stack/agents/browser-extension-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/code-style-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/console-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/data-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/devops-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/ionic-angular-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/related-project-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
+        },
+        {
+          "file": "stack/agents/test-coverage-analyzer.md",
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/web-angular-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/winforms-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         },
         {
           "file": "stack/agents/wpf-verifier.md",
-          "marker": "Memory writes come BEFORE the report"
+          "marker": "deliver the report as your final hand-off - through SubagentHandback when your tools include it, else as your last message; nothing after it"
         }
       ]
     },
     "verifier-left-running-line": {
-      "_note": "A seat that starts a dev server, an emulator or a container must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the four verifiers whose gates start something, plus the integration reviewer.",
+      "_note": "A seat that starts a dev server, an emulator, a container or a desktop app must SAY so in its report, on a literal line the orchestrator can read without parsing prose - the quality-gates rule's tear-down ask can only cover what it is told is up. Carried by the five verifiers whose gates start something, plus the integration reviewer.",
       "owner": {
         "file": "stack/agents/web-angular-verifier.md",
         "marker": "a literal `left_running:` line"
@@ -5361,6 +5504,10 @@
         },
         {
           "file": "stack/agents/windows-service-verifier.md",
+          "marker": "a literal `left_running:` line"
+        },
+        {
+          "file": "stack/agents/winforms-verifier.md",
           "marker": "a literal `left_running:` line"
         },
         {
@@ -5403,6 +5550,19 @@
         }
       ]
     },
+    "navigation-edit-tools": {
+      "_note": "Which edits stay on the navigation server (the user's 2026-09-29 ruling on audit I12, 'Keep rename + safe delete'): symbol lookup, rename_symbol, safe_delete_symbol and the seat memory handoff; every other edit goes through Edit / Write, because the navigation server's text-edit tools bypassed config protection, the docs hold, the turn-edit list and the done-gate probe (41 such calls measured in main sessions). The launcher switches those tools off; the always-on rule and the generated capabilities rule's locked-server row say the same thing, so a session never reads the old routing in one of them.",
+      "owner": {
+        "file": "stack/rules/baseline-navigation.md",
+        "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-capture-agent-capabilities/references/generated-rule-template.md",
+          "marker": "keeps symbol lookup, `rename_symbol`, `safe_delete_symbol` and the seat memory handoff, and every other edit goes through Edit / Write"
+        }
+      ]
+    },
     "project-config-outranks-conventions": {
       "_note": "A house convention skill is the default, never the authority: the project's own config and its captured `<docs-path>/code-style/CODE-STYLE.md` win where they diverge, and the skill says so in its own opening so a seat that loaded only that skill still knows. Four language skills carry the clause; the surrounding sentence names each stack's own config files, which is why only the priority clause is pinned. Six sites: the Angular and SQL copies said the same thing in their own words and were normalized onto this clause so the lint can see them.",
       "owner": {
@@ -5429,6 +5589,23 @@
         {
           "file": "stack/skills/typescript/SKILL.md",
           "marker": "CODE-STYLE.md` are higher priority"
+        }
+      ]
+    },
+    "config-protection-gate-named": {
+      "_note": "A skill that prescribes an edit guard-config-protection.js blocks names the gate: a change to a strictness key in an existing tsconfig or MSBuild file, or any edit to an existing .editorconfig, needs the user's allowance - asked with the count the change surfaces, never routed around. typescript was the precedent (owner); dotnet-project-setup (Nullable) and dotnet-code-quality (the WarningsAsErrors waves) restate it with their own keys. 2.1.4 audit I44.",
+      "owner": {
+        "file": "stack/skills/typescript/SKILL.md",
+        "marker": "until the user allows it. Ask for that allowance with the error count the flag surfaces, and never route around the block"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/dotnet-project-setup/SKILL.md",
+          "marker": "until the user allows it. Ask for that allowance with the warning count the flag surfaces, and never route around the block"
+        },
+        {
+          "file": "stack/skills/dotnet-code-quality/SKILL.md",
+          "marker": "until the user allows it. Ask for that allowance with the warning count the wave surfaces, and never route around the block"
         }
       ]
     },

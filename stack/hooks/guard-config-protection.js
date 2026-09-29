@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// guard-config-protection.js - PreToolUse (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell).
+// guard-config-protection.js - PreToolUse (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Monitor).
 // The cheapest way to 'pass' a lint or a build is to weaken the check, so a change to an EXISTING
 // check config is blocked and the model is sent back to the code. Creating one is allowed - there
 // is nothing to weaken yet. Two kinds of file: a WHOLE-FILE config (the file IS the check - an
@@ -41,7 +41,6 @@ const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
 const nativePath = (p) => (process.platform === 'win32'
   ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
   : String(p));
-const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
 
 // Whole-file protection: the file IS the check.
 const WHOLE_FILE = [
@@ -140,11 +139,10 @@ const COPY_VERB = new Set(['cp', 'copy-item']);
 // A heredoc body and a quoted span are text the command CARRIES (a runbook describing the rm, a commit
 // message naming the file), never a step of its own - the siblings mask both for the same reason. The
 // segments are cut at separators OUTSIDE quotes, over a copy with heredoc bodies blanked, using the
-// shared parser beside this hook; a copy that runs before it lands cuts the raw text as before.
+// shared parser beside this hook.
 let shell = null;
 try { shell = require(path.join(__dirname, 'shell-writes.js')); } catch { shell = null; }
 function segments(command) {
-  if (!shell) return command.split(/&&|\|\||[;\n|]/);
   const text = shell.blankHeredocs(command);
   const chars = text.split('');
   for (const [a, b] of shell.quotedSpans(text)) for (let i = a; i < b; i += 1) chars[i] = 'x';
@@ -179,7 +177,9 @@ function judgeShell() {
   return null;
 }
 
-const hit = isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list; a
+// copy that runs before that module lands judges the file tools alone.
+const hit = shell && shell.isShellTool(payload.tool_name) ? judgeShell() : judgeFileTool();
 if (!hit) process.exit(0);
 
 const rel = path.relative(ROOT, hit.abs).split(path.sep).join('/');

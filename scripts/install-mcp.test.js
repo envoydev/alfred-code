@@ -362,7 +362,8 @@ test('copy route: windows-desktop registers with the release pin and the tool ga
     const { copyRouteExclude } = require('../stack/mcp/desktop-launch.js');
     const tokens = { UV_PYTHON: '3.13', WINDOWS_DESKTOP_PIN: '==0.8.5', MACOS_DESKTOP_PIN: '==0.4.6', WINDOWS_DESKTOP_EXCLUDE: copyRouteExclude({ env: {} }) };
     const argv = mcp.registerSpec({ name: 'windows-desktop', args: row.slice(row.indexOf('|') + 1), scope: 'project', tokens });
-    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process',
+    // I10: FileSystem (write, copy, move, delete) is off on this route too.
+    assert.deepStrictEqual(argv, ['mcp', 'add', '--scope', 'project', 'windows-desktop', '-e', 'WINDOWS_MCP_EXCLUDE_TOOLS=PowerShell,Registry,Process,FileSystem',
         '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve']);
     assert.deepStrictEqual(mcp.registerSpec({ name: 'macos-desktop', args: mac.slice(mac.indexOf('|') + 1), scope: 'project', tokens }),
         ['mcp', 'add', '--scope', 'project', 'macos-desktop', '-e', 'ANONYMIZED_TELEMETRY=false', '--', 'uvx', '--python', '3.13', '--from', 'macos-mcp==0.4.6', 'macos-mcp', 'serve'],
@@ -1887,4 +1888,173 @@ test('seed update onto the full copy route from a pre-rename plugin install: the
     assert.ok(moves.includes('plugin uninstall playwright-chrome@envoydev --scope project -y'), moves.join('\n'));
     assert.deepStrictEqual(moves.filter((c) => /^plugin install (navigation|documentation|browser-)/.test(c)), [], 'the copy route installs no successor plugin');
     assert.ok(calls.some((c) => /^mcp add --scope project navigation /.test(c)) && calls.some((c) => /^mcp add .*--scope project documentation /.test(c)), out);
+});
+
+// --- 2.1.4 audit, the plugin package (I7, I8, I11, I12) -------------------------------------------
+
+// I7: Claude Code refuses to disable a plugin an enabled one depends on ('Failed to disable plugin
+// "new-core@toymkt": new-core is still required by pw.' - measured on 2.1.284). This stub answers a
+// disable the way the CLI does, from the dependencies the source's own marketplace declares, so a switch
+// onto the full copy route over an enabled desktop row shows whether the core's stand-down is refused.
+const DEPS_STUB = path.join(TMP, 'claude-deps-stub.js');
+fs.writeFileSync(DEPS_STUB, `'use strict';
+const fs = require('fs');
+const argv = process.argv.slice(2);
+fs.appendFileSync(process.env.CLAUDE_STUB_LOG, argv.join(' ') + '\\n');
+if (argv[0] === 'plugin' && argv[1] === 'list') { process.stdout.write(fs.readFileSync(process.env.CLAUDE_STUB_PLUGINS, 'utf8')); process.exit(0); }
+if (argv[0] === 'plugin' && argv[1] === 'disable')
+{
+    const target = argv[2].split('@')[0];
+    const mkt = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(__dirname, '..', '.claude-plugin', 'marketplace.json'))}, 'utf8'));
+    const off = new Set(fs.readFileSync(process.env.CLAUDE_STUB_LOG, 'utf8').split('\\n').filter((l) => /^plugin (disable|uninstall) /.test(l)).map((l) => l.split(' ')[2]));
+    const rows = JSON.parse(fs.readFileSync(process.env.CLAUDE_STUB_PLUGINS, 'utf8'));
+    const needs = rows.filter((r) => r.enabled && r.id !== argv[2] && !off.has(r.id)).filter((r) =>
+    {
+        const entry = mkt.plugins.find((p) => p.name === r.id.split('@')[0]);
+        return entry && (entry.dependencies || []).includes(target);
+    });
+    if (needs.length) { process.stderr.write('Failed to disable plugin "' + argv[2] + '": ' + target + ' is still required by ' + needs.map((r) => r.id.split('@')[0]).join(', ') + '.\\n'); process.exit(1); }
+}
+process.exit(0);
+`);
+const DEPS_CLI = `exec "${process.execPath}" "${DEPS_STUB}" "$@"`;
+
+test('seed update (full copy route): an enabled desktop row another machine committed does not block the core\'s stand-down (I7)', POSIX_ONLY, () =>
+{
+    // macOS: windows-desktop is left out of this run by the OS gate, so nothing stands it down - its row
+    // stays enabled at project scope, as a teammate on Windows committed it.
+    const rows = [...STACK_ROWS('envoydev'), { id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true }];
+    const { calls, out } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows), tools: { claude: DEPS_CLI },
+        env: [{ ALFRED_CODE_PLATFORM: 'darwin' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'darwin' }],
+        args: [[], ['--installed-only']],
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+    });
+    assert.ok(calls.includes('plugin disable alfred-code@envoydev --scope project'), `${calls.join('\n')}\n${out}`);
+    assert.doesNotMatch(out, /plugin disable failed: alfred-code@envoydev/, 'the core\'s disable was refused - an MCP entry still depends on it');
+    assert.match(out, /plugin disabled \[project\]: alfred-code@envoydev/);
+});
+
+// I8: R111 stood the copy route's playwright engines down, and nothing did the same for a desktop server,
+// so a project switched onto the MCP copy route ran the plugin's server AND the .mcp.json registration -
+// two UI-automation servers on one desktop. A desktop name the copy route registers now goes the engine way.
+const DESKTOP_ROW = (over = {}) => ({ id: 'windows-desktop@envoydev', version: '2.1.3', scope: 'project', enabled: true, ...over });
+test('seed update --installed-only (MCP copy route): a windows-desktop plugin row is uninstalled before its .mcp.json registration (I8)', POSIX_ONLY, () =>
+{
+    const { calls, out, result } = seedRun('update', 'skill markdown-style\n', {
+        plugins: JSON.stringify([...STACK_ROWS('envoydev'), DESKTOP_ROW()]),
+        env: { ...MCP_COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }, args: ['--installed-only', '--add', 'mcp windows-desktop'],
+        inspect: (repo) => Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}),
+    });
+    assert.ok(result.includes('windows-desktop'), `windows-desktop not registered: ${result.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable|update) windows-desktop/.test(c));
+    assert.deepStrictEqual(moves, ['plugin uninstall windows-desktop@envoydev --scope project -y'], `${moves.join('\n')}\n${out}`);
+    const gone = calls.indexOf('plugin uninstall windows-desktop@envoydev --scope project -y');
+    assert.ok(calls.findIndex((c) => /^mcp add .*windows-desktop/.test(c)) > gone, `registered before its plugin row went:\n${calls.join('\n')}`);
+    assert.match(out, /plugin uninstalled \[project\]: windows-desktop@envoydev \(the copy route registers it in \.mcp\.json/);
+});
+
+test('seed update --scope user (full copy route): a user-scope windows-desktop row is switched off in this project only and recorded as stood down (I8, C11)', POSIX_ONLY, () =>
+{
+    const rows = ['alfred-code', 'navigation', 'documentation', 'memory'].map((n) => ({ id: `${n}@envoydev`, version: '2.1.3', scope: 'user', enabled: true }))
+        .concat(DESKTOP_ROW({ scope: 'user' }));
+    const { calls, out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows), env: [{ ALFRED_CODE_PLATFORM: 'win32' }, { ...COPY_ENV, ALFRED_CODE_PLATFORM: 'win32' }],
+        args: [['--scope', 'user'], ['--installed-only', '--scope', 'user', '--add', 'mcp windows-desktop']],
+        // Only the second run's CLI calls are this case's evidence.
+        each: (repo, i) => { if (i === 0) fs.writeFileSync(path.join(path.dirname(repo), 'claude-calls.log'), ''); return null; },
+        inspect: (repo) => ({ servers: Object.keys(jsonAt(repo, '.mcp.json').mcpServers || {}), stamp: fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8') }),
+    });
+    assert.ok(result.servers.includes('windows-desktop'), `${result.servers.join(',')}\n${out}`);
+    const moves = calls.filter((c) => /^plugin (install|uninstall|disable|enable) windows-desktop/.test(c));
+    assert.deepStrictEqual(moves, ['plugin disable windows-desktop@envoydev --scope project'], `the user-scope row serves every other project - never uninstalled:\n${moves.join('\n')}\n${out}`);
+    assert.match(result.stamp, /^stood-down:.*project:windows-desktop@envoydev/m, result.stamp);
+});
+
+// I11: Playwright MCP 0.0.82 collects and exposes the tools a visited PAGE registers through WebMCP by
+// default ('Enabled by default', config.d.ts; `--no-webmcp` opts out - README and `--help` at the pin).
+test('seed install (MCP copy route): every browser engine registers with --no-webmcp (I11)', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun('install', 'skill markdown-style\nmcp browser\n', {
+        env: MCP_COPY_ENV, args: ['--browsers', 'chrome,firefox'],
+        inspect: (repo) => jsonAt(repo, '.mcp.json').mcpServers || {},
+    });
+    for (const e of ['chrome', 'firefox'])
+    {
+        const server = result[`browser-${e}`];
+        assert.ok(server, `browser-${e} not registered:\n${out}`);
+        assert.ok(server.args.includes('--no-webmcp'), `browser-${e}: ${server.args.join(' ')}`);
+    }
+});
+
+// I12: on the full copy route no launcher runs, so the registration itself names the stack's serena
+// context - copied into the project's .claude (committed with the .mcp.json that names it) and recorded in
+// the ledger, the registration and the verify pass carrying the same flag.
+const navContext = () => fs.readFileSync(path.join(__dirname, '..', 'stack', 'mcp', 'navigation-context.yml'), 'utf8');
+const navState = (repo) =>
+{
+    const nav = (jsonAt(repo, '.mcp.json').mcpServers || {}).navigation;
+    const file = path.join(repo, '.claude', 'navigation-context.yml');
+    return {
+        context: nav ? nav.args[nav.args.indexOf('--context') + 1] : null,
+        copy: fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null,
+        stamp: fs.existsSync(path.join(repo, '.claude', 'alfred-code.stamp')) ? fs.readFileSync(path.join(repo, '.claude', 'alfred-code.stamp'), 'utf8') : '',
+    };
+};
+test('seed install (full copy route): navigation starts on the stack context the run copies into .claude, and a re-run changes nothing (I12)', POSIX_ONLY, () =>
+{
+    const { out, steps, result } = seedRun(['install', 'install'], 'skill markdown-style\n', {
+        env: COPY_ENV,
+        each: (repo) => fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'),
+        inspect: navState,
+    });
+    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
+    assert.strictEqual(result.copy, navContext(), 'the copy is the shipped file, byte for byte');
+    assert.match(result.stamp, /^managed-files:.*\bnavigation-context\.yml=/m, 'the ledger records the copy, so uninstall and a route switch can remove it');
+    assert.strictEqual(steps[1], steps[0], 'a re-run rewrote .mcp.json');
+});
+
+test('seed update (full copy route): a registration still on the upstream claude-code context is repaired to the stack one (I12)', POSIX_ONLY, () =>
+{
+    const { out, result } = seedRun(['install', 'update'], 'skill markdown-style\n', {
+        env: COPY_ENV, args: [[], ['--installed-only']],
+        each: (repo, i) =>
+        {
+            if (i !== 0) return null;
+            const data = jsonAt(repo, '.mcp.json');
+            const args = data.mcpServers.navigation.args;
+            args[args.indexOf('--context') + 1] = 'claude-code';
+            fs.writeFileSync(path.join(repo, '.mcp.json'), `${JSON.stringify(data, null, 2)}\n`);
+            fs.rmSync(path.join(repo, '.claude', 'navigation-context.yml'), { force: true });
+            return null;
+        },
+        inspect: navState,
+    });
+    assert.strictEqual(result.context, '.claude/navigation-context.yml', out);
+    assert.strictEqual(result.copy, navContext(), 'a deleted copy comes back');
+});
+
+test('seed update (plugin route) after the full copy route: the stack context copy goes with the registration, a changed one stays (I12)', POSIX_ONLY, () =>
+{
+    const rows = STACK_ROWS('envoydev', { 'alfred-code': { enabled: false }, navigation: { enabled: false }, documentation: { enabled: false }, memory: { enabled: false } });
+    const run = (edit) => seedRun(['install', 'update'], 'skill markdown-style\n', {
+        plugins: JSON.stringify(rows), env: [COPY_ENV, {}], args: [[], ['--installed-only']],
+        each: (repo, i) => { if (i === 0 && edit) fs.appendFileSync(path.join(repo, '.claude', 'navigation-context.yml'), '# mine\n'); return null; },
+        inspect: navState,
+    });
+    const clean = run(false);
+    assert.strictEqual(clean.result.copy, null, `the plugin route carries the context in its own tree:\n${clean.out}`);
+    const edited = run(true);
+    assert.match(edited.result.copy || '', /# mine/, 'an edited copy is the user\'s');
+    assert.match(edited.out, /navigation-context\.yml: kept/);
+});
+
+test('seed uninstall after the full copy route: the stack serena context goes with the rest of the ledger (I12)', POSIX_ONLY, () =>
+{
+    const { out, steps } = seedRun(['install', 'uninstall'], 'skill markdown-style\n', {
+        env: COPY_ENV,
+        each: (repo) => fs.existsSync(path.join(repo, '.claude', 'navigation-context.yml')),
+    });
+    assert.deepStrictEqual(steps, [true, false], out);
+    assert.match(out, /file removed: navigation-context\.yml/);
 });

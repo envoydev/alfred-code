@@ -14,6 +14,11 @@
 // ABSOLUTE: Playwright MCP resolves a relative one against its own cwd rules, and the entry used
 // ${CLAUDE_PROJECT_DIR} for the same reason.
 //
+// `--no-webmcp` on every start (I11): Playwright MCP 0.0.82 collects the tools a visited PAGE registers
+// through the WebMCP API and lists them beside its own, enabled by default ('Tool names, descriptions,
+// schemas and results come from the page', the v0.0.82 release notes) - a page is data, never a toolbox.
+// The copy route's registration carries the same flag (meta/stack-manifest.json, the browser row).
+//
 // stdout is the MCP stream: nothing is written to it here, diagnostics go to stderr. The spawn is the
 // installer's Windows-safe one (scripts/install/runtime.js - the plugin tree is the whole repo): npx is a
 // batch file on Windows, which Node starts only through cmd.exe since the CVE-2024-27980 fix.
@@ -34,7 +39,7 @@ function browserArgs({ spec, engine, projectDir, env = process.env, extra = [], 
         catch (err) { log(`browser-launch: ${root}/.gitignore could not be written (${err.message}) - add ${root}/ to the repo's own .gitignore`); }
     }
     const profile = path.join(projectDir, ...live.dir.split('/'));
-    return ['-y', spec, '--browser', engine, '--user-data-dir', profile, '--output-dir', path.join(profile, 'output'), ...extra];
+    return ['-y', spec, '--browser', engine, '--user-data-dir', profile, '--output-dir', path.join(profile, 'output'), '--no-webmcp', ...extra];
 }
 
 function main(argv)

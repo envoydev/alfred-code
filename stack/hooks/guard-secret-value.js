@@ -506,6 +506,92 @@ if (process.argv[2] === '--redacted-env') {
   process.exit(0);
 }
 
+// The line masker the stream redactor below runs, and the shell route's git probe runs over the same text. One
+// per stream: it carries the file a diff section is about (from its header) and whether it is inside a PEM
+// private key. Masked: a credential-shaped key's value in a JSON pair, a dotenv line or a YAML pair - in a config
+// file the diff header names, or anywhere when no header was seen (`git show HEAD:<file>`) - a URL's password
+// everywhere, a connection string's `Password=` in config files, a known credential SHAPE anywhere, and every
+// line between a PEM private key's BEGIN and END. A diff's own prefix (`+`, `-`, ` `, `< `, `> `) stays. A
+// declaration, so the shell branch below can call it; everything it reads is initialised above this line.
+function lineRedactor() {
+  let masked = 0;
+  const mask = (v) => { masked++; return `<set (${v.length} chars)>`; };
+  const CONFIG_FILE = /(?:^|\/)(?:\.env[^/]*|[^/]*\.(?:json|jsonc|json5|ya?ml|ini|toml|properties|conf|config|cfg|env|tfvars))$/i;
+  const JSON_PAIR = /("((?:[^"\\]|\\.)*)"\s*:\s*")((?:[^"\\]|\\.)*)"/g;
+  const YAML_PAIR = /^(\s*(?:-\s+)?)([A-Za-z_][\w.-]*)(\s*:\s+)(['"]?)([^\s'"#][^#]*?)\4(\s*(?:#.*)?)$/;
+  const PEM_END = /-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
+  let file = null;
+  let pem = false;
+  const line = (raw) => {
+    const cr = raw.endsWith('\r') ? '\r' : '';
+    const text = cr ? raw.slice(0, -1) : raw;
+    if (/^commit [0-9a-f]{7,}\b/.test(text)) { file = null; pem = false; return raw; }
+    const header = text.match(/^(?:\+\+\+ b\/|diff --git a\/.* b\/)(.+)$/);
+    if (header) { file = header[1]; pem = false; return raw; }
+    const [, pre, body] = text.match(/^((?:[+\- ]|[<>] )?)([\s\S]*)$/);
+    if (pem) {
+      if (PEM_END.test(body)) pem = false;
+      else if (body.trim()) { masked++; return `${pre}<private key line>${cr}`; }
+      return raw;
+    }
+    let out = body;
+    if (file === null || CONFIG_FILE.test(file)) {
+      out = out.replace(JSON_PAIR, (all, head, k, v) => (maskable(k, v) ? `${head}${mask(v)}"` : all));
+      const d = out.match(DOTENV_LINE);
+      if (d && maskable(d[1], unquote(d[2]))) out = `${out.slice(0, out.indexOf('=') + 1)}${mask(unquote(d[2]))}`;
+      const y = out.match(YAML_PAIR);
+      if (y && maskable(y[2], y[5])) out = `${y[1]}${y[2]}${y[3]}${y[4]}${mask(y[5])}${y[4]}${y[6]}`;
+      out = maskEmbedded(out, mask);
+    } else {
+      out = out.replace(EMBEDDED_URL, (all, head, val) => (holdsCredential('password', val) ? head + mask(val) : all));
+    }
+    out = out.replace(SECRET_SHAPE_G, (x) => mask(x));
+    if (PEM_PRIVATE.test(out) && !PEM_END.test(out)) pem = true;
+    return `${pre}${out}${cr}`;
+  };
+  return { line, masked: () => masked };
+}
+
+// `<git dump> | node guard-secret-value.js --redact-stdin` - what a git command that PRINTS file content is
+// rewritten into (`git diff`, `git show`, `git log -p`, `git stash show -p`; I2, 2.1.4 audit): replayed at
+// 23c24b9d, each printed a tracked appsettings.json's ClientSecret raw, and baseline-security.md runs
+// `git add -N . && git diff HEAD` over every security-relevant change. A stream filter: the output is masked
+// line by line as it passes (lineRedactor above), synchronously - fd reads, so no code below this block runs -
+// and with no size cap. The note goes to STDERR, only when something was masked.
+if (process.argv[2] === '--redact-stdin') {
+  const red = lineRedactor();
+  const write = (fd, text) => {
+    const buf = Buffer.from(text, 'utf8');
+    for (let off = 0; off < buf.length;) {
+      try { off += fs.writeSync(fd, buf, off); }
+      catch (e) { if (e.code === 'EAGAIN') continue; process.exit(0); } // EPIPE: the reader (a `head`) is done
+    }
+  };
+  const decoder = new (require('string_decoder').StringDecoder)('utf8'); // a character split across two reads
+  const chunk = Buffer.alloc(64 * 1024);
+  let rest = '';
+  for (;;) {
+    let n;
+    try { n = fs.readSync(0, chunk, 0, chunk.length, null); }
+    catch (e) {
+      if (e.code === 'EAGAIN') continue;
+      if (e.code !== 'EOF') write(2, `# credential guard: the stream stopped at a read error (${e.code || 'unknown'}) - the output above is all of it.\n`);
+      break; // what was not read was never printed, so stopping leaks nothing
+    }
+    if (!n) break;
+    const lines = (rest + decoder.write(chunk.subarray(0, n))).split('\n');
+    rest = lines.pop();
+    if (lines.length) write(1, lines.map(red.line).join('\n') + '\n');
+  }
+  rest += decoder.end();
+  if (rest) write(1, red.line(rest));
+  if (red.masked()) {
+    const receipt = readReceipt(process.env.CLAUDE_PROJECT_DIR || process.cwd(), null);
+    write(2, noteLine(`${red.masked()} credential value(s) in this output shown as <set (N chars)>, everything else as git printed it.`, receipt) + '\n');
+  }
+  process.exit(0);
+}
+
 try {
   payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 } catch {
@@ -591,7 +677,11 @@ const presenceHint = (file) =>
 // (`Get-Content` and its `gc` / `type` aliases, `Select-String`, `Format-Hex`, `Import-Csv`) are the
 // same reads - measured 2026-09-15, `Get-Content .env` printed the value in real pwsh - and cmdlet
 // names are case-insensitive, so the whole list is.
-const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b/i;
+// The comparison verbs (I2, 2.1.4 audit) print both operands' differing lines - `diff .env .env.example` is the
+// ordinary 'which keys am I missing' move - and `rev` prints every line backwards; a hyphen ends none of them, so
+// `git rev-parse` is no `rev`. A git dump (`git diff <file>`) is not judged here: it is piped through the stream
+// redactor where it stands (redactGitStages), and only a git stage left unpiped (`--stat`) falls to this list.
+const DUMP_VERB = /\b(?:cat|head|tail|sed|less|more|[gmn]?awk|jq|bat|strings|grep|rg|egrep|fgrep|tac|nl|pr|od|xxd|hexdump|base64|paste|fold|column|sort|uniq|cut|tee|get-content|gc|type|select-string|sls|format-hex|import-csv)\b|(?<![\w-])(?:diff|sdiff|cmp|comm|rev)(?![\w-])/i;
 const RUNTIME = /\b(?:node|python3?|perl|ruby|deno|bun|pwsh|powershell)\b/;
 // A heredoc body is DATA, not shell: a plan that merely DESCRIBES `cat ~/.claude/settings.json` is
 // inert text (reproduced against the sibling guards). Blank the payload spans, keeping the character
@@ -974,12 +1064,11 @@ function spliceOrWhole(view, file) {
 }
 
 // ---- Shell matcher ----
-// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
-// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
-// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
-// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
-// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
-const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list,
+// shipped beside this hook on both routes. A copy that runs before it lands judges by the payload's shape - a
+// string `command` - so a protective gate never goes quiet for want of a module.
+let isShellTool = () => typeof input.command === 'string';
+try { ({ isShellTool } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* see above */ }
 const IS_PWSH = payload.tool_name === 'PowerShell';
 // A PowerShell single-quoted literal: nothing expands inside it, and `'` doubles.
 const psSingle = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -998,7 +1087,8 @@ if (isShellTool(payload.tool_name)) {
   const command = stripHeredocsOf(raw, code);
   // A whole-environment dump is replaced WHERE IT STANDS - its filter and every other step kept - and the
   // result is judged like any command, so a credential printed elsewhere still takes its own form.
-  const inPlace = !IS_PWSH && command === raw && !allowAll ? redactEnvStages(raw) : raw;
+  // A git command that prints file content gets the stream redactor piped in the same way (redactGitStages).
+  const inPlace = !IS_PWSH && command === raw && !allowAll ? redactGitStages(redactEnvStages(raw)) : raw;
   if (inPlace !== raw) { judgeShell(inPlace, false, true); rewrite(inPlace); }
   // `main` says this text IS the command the tool will run - the one text a segment splice may
   // rebuild. A heredoc-blanked command is not (the bodies are spaces by then), and neither is a body.
@@ -1050,6 +1140,83 @@ function redactEnvStages(text) {
     return stages.map((st, i) => (hits[i] ? st.replace(/^(\s*)[\s\S]*?(\s*)$/, `$1${view}${hits[i][2]}$2`) : st)).join('|');
   });
   return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
+}
+
+// Every stage of `text` that is a git command printing file content, and whose output would carry a credential,
+// gets `| node <this file> --redact-stdin` right after it, where it stands - its own filter and every other step
+// kept (I2, 2.1.4 audit). Whether it would is PROBED first (gitOutputLeaks): the rewritten call carries a `node`
+// stage the permission system has never seen, so an unconditional pipe would make every read-only `git diff`
+// ask. Left as written: a stage whose output goes into a file or a reducer (the env pass's own rule), a summary
+// form (`--stat`, `--name-only`), and `--quiet` / `--exit-code`, where git's exit status IS the answer and a pipe
+// would replace it with the redactor's - a stated ceiling: `git diff --exit-code` prints unmasked. Bash-family
+// only, like the env pass: PowerShell re-encodes what it pipes to a native command.
+function redactGitStages(text) {
+  const REDACT = /guard-secret-value\.js["']?\s+--redact-stdin\b/;
+  const seps = [];
+  const segs = splitSegments(text, seps);
+  if (seps.length !== segs.length - 1) return text;
+  let changed = false;
+  // The probe runs NOW, before any step of the command, so it reads the wrong tree once an earlier step moves
+  // the shell (`cd`) or changes what git sees (`git add -N .` - the security-review diff's own first step, which
+  // printed a new file's credential unmasked; final review IM1). changingStep's allowlist decides the second.
+  let moved = false;
+  const out = segs.map((seg, n) => {
+    if (/^\s*(?:cd|pushd|popd)\b/.test(seg) || (n > 0 && changingStep(segs[n - 1], -1, -1))) moved = true;
+    const stages = splitPipes(seg);
+    if (stages.join('|') !== seg || stages.some((st) => REDACT.test(st))) return seg;
+    if (!stages.some(teesToTerminal) && (redirectsToFile(seg) || stages.some(isReducer))) return seg;
+    const hits = stages.map((st) => gitPrintsContent(st) && (moved || gitOutputLeaks(st)));
+    if (!hits.some(Boolean)) return seg;
+    changed = true;
+    const view = `node "${shDouble(__filename)}" --redact-stdin`;
+    return stages.map((st, i) => (hits[i] ? `${st.replace(/\s+$/, '')} | ${view}${st.match(/\s*$/)[0]}` : st)).join('|');
+  });
+  return changed ? out.map((seg, i) => seg + (seps[i] || '')).join('') : text;
+}
+// True for a git stage whose output carries file CONTENT: `diff` and `show` unless a summary or no-patch form
+// asks for less, `log` / `whatchanged` / `stash show` only with a patch flag. Git's own options before the
+// subcommand (`-C <dir>`, `-c <k=v>`, `--no-pager`) are skipped.
+function gitPrintsContent(stage) {
+  const w = shellTokens(stage.replace(PREFIX_WORDS, '').trim()).map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  if (!/^git(?:\.exe)?$/i.test(w[0] || '')) return false;
+  let i = 1;
+  while (i < w.length && w[i].startsWith('-')) i += /^(?:-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--config-env)$/.test(w[i]) ? 2 : 1;
+  const sub = w[i];
+  const args = w.slice(i + 1);
+  if (args.some((a) => /^(?:--quiet|--exit-code|--no-patch|-s)$/.test(a))) return false;
+  const patch = args.some((a) => /^(?:-p|--patch|-u|-U\d*|--unified(?:=\d+)?|--patch-with-stat|--patch-with-raw|-L.+)$/.test(a));
+  const summary = args.some((a) => /^(?:--stat(?:=.*)?|--numstat|--shortstat|--name-only|--name-status|--summary|--dirstat(?:=.*)?|--raw|--check)$/.test(a));
+  if (sub === 'diff' || sub === 'show') return patch || !summary;
+  if (sub === 'log' || sub === 'whatchanged') return patch;
+  if (sub === 'stash') return args[0] === 'show' && patch;
+  return false;
+}
+// Would this git stage print something lineRedactor masks? It is run here the way the stack's other guards read
+// git (argv, never a shell; 3s and 8MB at most; no optional locks), with every hook a repository can attach to a
+// read switched off (`--no-ext-diff`, `--no-textconv`, `core.fsmonitor=false`). What it cannot run as written -
+// a word the shell would expand, config given on the command line, a flag that writes (`--output`) - or a run
+// that fails, times out or overflows, counts as a leak, so that stage is piped unprobed: the safe side.
+function gitOutputLeaks(stage) {
+  const raw = shellTokens(stage.replace(PREFIX_WORDS, '').trim());
+  if (raw.some((t) => !/^'[^']*'$/.test(t) && (/[$`*?[{\\]/.test(t) || /^~/.test(t)))) return true;
+  const w = raw.map((t) => t.replace(/^(['"])([\s\S]*)\1$/, '$2'));
+  let i = 1;
+  while (i < w.length && w[i].startsWith('-')) {
+    if (/^(?:-c|--config-env|--exec-path)(?:=|$)/.test(w[i])) return true;
+    i += /^(?:-C|--git-dir|--work-tree|--namespace)$/.test(w[i]) ? 2 : 1;
+  }
+  const at = w[i] === 'stash' ? i + 2 : i + 1;
+  if (w.slice(at).some((a) => /^--output(?:=|$)/.test(a))) return true;
+  const argv = ['-c', 'core.fsmonitor=false', ...w.slice(1, at), '--no-ext-diff', '--no-textconv', '--no-color', ...w.slice(at)];
+  const r = require('child_process').spawnSync('git', argv, {
+    cwd: (payload && payload.cwd) || process.env.CLAUDE_PROJECT_DIR || process.cwd(), timeout: 3000, maxBuffer: 8 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_PAGER: 'cat', PAGER: 'cat' },
+  });
+  // Exit 1 is `diff --no-index`'s 'the files differ', with the diff on stdout.
+  if (r.error || (r.status !== 0 && r.status !== 1)) return true;
+  const red = lineRedactor();
+  for (const l of String(r.stdout || '').split('\n')) red.line(l);
+  return red.masked() > 0;
 }
 
 // A declaration, not a const: judgeShell runs from the Bash branch ABOVE these lines, so an arrow
@@ -1131,7 +1298,7 @@ function judgeShell(text, forceRuntime, main) {
       judging = { text, seg: si, stage: sj, runtime: forceRuntime, main };
       // The sanctioned read is exempt by name - it is this file - and only in its OWN stage: the
       // exemption used to cover the whole segment, so `--presence <file> | cat <file>` passed.
-      if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?)\b/.test(stage)) continue;
+      if (/guard-secret-value\.js["']?\s+--(?:presence|redacted(?:-env)?|redact-stdin)\b/.test(stage)) continue;
 
       // Printing a credential-shaped VARIABLE: echo / printf with $NAME or ${NAME...}, printenv NAME.
       // `${#NAME}` is a length - the presence idiom - and `[ -n "$NAME" ]` is a test, so only the
@@ -1183,6 +1350,9 @@ function judgeShell(text, forceRuntime, main) {
       // passes through as written rather than becoming a whole-file redacted dump.
       if (isRuntime && printsKeysOnly(stage)) continue;
 
+      // What flows INTO the stream redactor comes out masked, so the stage feeding it reads no file here - its
+      // printed variables and environment dumps were judged above, and the redactor masks by line, not by file.
+      if (/guard-secret-value\.js["']?\s+--redact-stdin\b/.test(stages[sj + 1] || '')) continue;
       // A dump verb or a runtime read on a file that HOLDS a credential - judged by content, not path.
       homeAnchor = isRuntime && /homedir|expanduser|USERPROFILE|HOME/.test(stage);
       const candidates = [];
@@ -1203,7 +1373,7 @@ function judgeShell(text, forceRuntime, main) {
           // model can read back whole; a dropped step that CHANGES something blocks instead.
           refuseDroppedSteps(`${file}, which holds a credential under \`${key}\``);
           const view = IS_PWSH ? `node ${psSingle(__filename)} --redacted ${psSingle(file)}` : `node "${shDouble(__filename)}" --redacted "${shDouble(file)}"`;
-          const narrow = payload.tool_name === 'Bash' && !isRuntime && sj === 0 && narrowFilter(stages, tok);
+          const narrow = !IS_PWSH && !isRuntime && sj === 0 && narrowFilter(stages, tok);
           rewrite(spliceOrWhole(narrow ? `${view} --note-to-stderr | ${narrow}` : view, file));
         }
       }

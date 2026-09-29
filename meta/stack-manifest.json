@@ -707,13 +707,13 @@
   "hooks": [
     {
       "file": "guard-protected-force-push.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "block force-push to main/master/develop"
     },
     {
       "file": "guard-catastrophic-rm.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "block recursive rm (Remove-Item -Recurse too) of /, ~, $HOME, a Windows drive, the cwd or its parent (. / ..), a bare *, or several top-level dirs at once; and a git discard, forced checkout/switch, stash drop/clear or reflog expire that would destroy work"
     },
@@ -725,7 +725,7 @@
     },
     {
       "file": "guard-read-whole-file.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on Bash: a bare `cat file.ts` of a large source file is the Read block routed through the shell"
     },
@@ -737,7 +737,7 @@
     },
     {
       "file": "guard-secret-value.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on Bash: cat/jq/grep/an inline node read of such a file, `echo $SECRET`, a bare `env`, or a credential-shaped literal in the command - a prose rule that failed live (a JSON.stringify(s.env) printed a token)"
     },
@@ -755,7 +755,7 @@
     },
     {
       "file": "guard-ungated-commit.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "block a non-trivial git commit without the docs-root flow/COMMIT-GATE receipt (VERIFIED/WAIVED), and a git push / gh pr merge without flow/PUSH-GATE (ALFRED_CODE_PUSH_GATE=0 turns that half off)"
     },
@@ -775,7 +775,7 @@
       "file": "guard-stop-contract.js",
       "matcher": "AskUserQuestion",
       "event": "",
-      "note": "PreToolUse AskUserQuestion: INJECT context into the ask being built - stale scope (an option naming repo/remote/job state with no fresh read this turn), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for a flow whose every stop is a tool call, a live credential, and the house voice in the ask's own text. Presence only, never denies"
+      "note": "PreToolUse AskUserQuestion: DENY once per ask text an ask whose own text breaks the house voice (an em- or en-dash, a double quote), carrying the corrected strings; INJECT the judgement notes, which land beside the user's answer and are worded for it - stale scope (an option naming repo/remote/job state with no fresh read this turn: verify before acting, re-ask if it moved), a recommendation contradicting an un-actioned earlier prompt, the fresh-session offer for the next ask, a live credential. Presence only"
     },
     {
       "file": "guard-stop-contract.js",
@@ -821,7 +821,7 @@
     },
     {
       "file": "guard-config-protection.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on the shell routes (an in-place edit, redirect, tee, rm, mv or cp onto the config) - run inside shell-guards.js with the other shell guards"
     },
@@ -833,9 +833,15 @@
     },
     {
       "file": "guard-cross-project-write.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "Bash|PowerShell|Monitor",
       "event": "",
       "note": "same gate on the shell routes (redirect, tee, in-place sed/perl, cp/mv, rm/mkdir/chmod, git -C, cd then a write) - run inside shell-guards.js"
+    },
+    {
+      "file": "guard-desktop-exec.js",
+      "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+      "event": "",
+      "note": "the desktop servers' process launchers, both routes' spellings: deny Windows-MCP App with mode launch_executable (any executable, caller-given args - the server excludes by tool name, never by mode) and every MacOS-MCP Shell call (a shell command no shell guard sees); App's launch / switch / resize pass; the DESKTOP-EXEC-ALLOW receipt (App, Shell, an executable, or *) honours a wanted launch"
     },
     {
       "file": "guard-answer-length.js",
@@ -881,9 +887,15 @@
     },
     {
       "file": "docs-session.js",
-      "matcher": "Bash|PowerShell",
+      "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
       "event": "",
-      "note": "the same read record and hold on the shell routes - run inside shell-guards.js; every Bash|PowerShell row of a guard shell-guards.js lists is wired as that ONE dispatcher (wiringRows), never on its own"
+      "note": "the same hold on the navigation server's two edit tools the stack keeps on (the other five are off at its launch) - the file is tool_input.relative_path; both routes' spellings"
+    },
+    {
+      "file": "docs-session.js",
+      "matcher": "Bash|PowerShell|Monitor",
+      "event": "",
+      "note": "the same read record and hold on the shell routes - run inside shell-guards.js; every Bash|PowerShell|Monitor row of a guard shell-guards.js lists is wired as that ONE dispatcher (wiringRows), never on its own"
     },
     {
       "file": "docs-session.js",
@@ -914,6 +926,12 @@
       "matcher": "@PostToolUse:Write|Edit|MultiEdit",
       "event": "",
       "note": "seeded OFF (ALFRED_CODE_TURN_CHECK=0): records each written path for the turn's one build check"
+    },
+    {
+      "file": "check-turn-build.js",
+      "matcher": "@PostToolUse:^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
+      "event": "",
+      "note": "the same record for the navigation server's two kept edit tools - the path is tool_input.relative_path, from the project root; both routes' spellings"
     },
     {
       "file": "check-turn-build.js",
@@ -960,12 +978,12 @@
     {
       "name": "navigation",
       "args": "-e SERENA_HOME=@SERENA_HOME@ -- uvx --python @UV_PYTHON@ --from serena-agent@SERENA_PIN@ serena start-mcp-server --context @SERENA_CONTEXT@ --enable-web-dashboard false --project-from-cwd",
-      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch; PyPI (not git), dashboard off"
+      "note": "the navigation server (Serena): LSP symbol navigation; per-project SERENA_HOME (<data root>/serena/home - the data root ignores it, ~327MB LSP) isolates its registry/memories/logs/LSP, no pooling across projects/accounts; its home config points serena at <data root>/serena; --project-from-cwd self-activates the repo on launch; PyPI (not git), dashboard off; --context names the stack's own serena context (@SERENA_CONTEXT@ = .claude/navigation-context.yml, copied there from stack/mcp) - the upstream claude-code one minus five editing tools and onboarding"
     },
     {
       "name": "browser",
-      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@ --output-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@/output",
-      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser"
+      "args": "-- npx -y @playwright/mcp@PW_PIN@ --user-data-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@ --output-dir ${CLAUDE_PROJECT_DIR:-.}/@BROWSER_DIR@/output --no-webmcp",
+      "note": "the browser server (Playwright MCP): drive a real browser for visual checks / web app verification - expanded after the selection into one browser-<engine> server per kept browser; --no-webmcp, so a visited page never adds tools of its own"
     },
     {
       "name": "memory",
@@ -984,7 +1002,7 @@
       "skills": [
         "desktop-automation"
       ],
-      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry and Process off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise"
+      "note": "the Windows desktop server (Windows-MCP): drives native Windows apps through UI Automation; Windows only, seeded for wpf / winforms there; opt-in (active: false - never in a no-selection run); PowerShell, Registry, Process and FileSystem off unless ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE says otherwise; App's launch_executable mode is denied by a house guard unless DESKTOP-EXEC-ALLOW allows it"
     },
     {
       "name": "macos-desktop",

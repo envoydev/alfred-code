@@ -26,12 +26,13 @@
 //   command that ran red in it has run green again, or after an hour with no red run.
 // SubagentStop wiring: a subagent that closes on a wait nobody will end, with no background work of
 //   its own, is held once and told to do its directive (see the branch below for the field report).
-// PreToolUse (AskUserQuestion) wiring: INJECTION ONLY - `hookSpecificOutput.additionalContext`,
-//   presence-only, never ranks an option and never denies. It carries the four checks that have no
-//   other route (stale ask scope, a recommendation contradicting an un-actioned request, the
-//   fresh-session offer for a flow whose every stop is a tool call, and a live credential) plus the
-//   house-voice check on the ask's own text. The DENIAL this matcher used to carry is gone for
-//   good: it fired mid-response and cost the user a red block every turn.
+// PreToolUse (AskUserQuestion) wiring: the judgement notes are INJECTED - `hookSpecificOutput.additionalContext`,
+//   presence-only, never ranking an option - and land beside the user's ANSWER, so each is worded for
+//   that moment. It carries the four checks that have no other route (stale ask scope, a recommendation
+//   contradicting an un-actioned request, the fresh-session offer for a flow whose every stop is a tool
+//   call, and a live credential). The one DENY is the house voice of the ask's own text, once per ask
+//   text, carrying the corrected strings (I3, 2.1.4 audit). The fresh-session DENIAL this matcher used
+//   to carry is gone for good: it fired mid-response and cost the user a red block every turn.
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unparseable.
 const fs = require('fs');
 
@@ -1279,14 +1280,19 @@ function blockStateFile() {
 }
 
 
-// --- PreToolUse on AskUserQuestion: INJECT, never deny ---------------------
+// --- PreToolUse on AskUserQuestion: INJECT the judgement notes, DENY only a house-voice slip -------
 // This branch used to DENY an ask that carried no fresh-session option. That enforced the right
 // thing at the wrong moment: the denial landed mid-response, so the run stopped the work it was
 // doing to rebuild a question and the user watched a red block open every turn. The answer is not
-// to abandon the surface - it is to stop deciding on it. This branch now emits
-// `hookSpecificOutput.additionalContext` and NOTHING else: presence only, never ranks an option,
-// never denies. Five separate measured failures land on exactly this surface, and four of them
-// have no other route:
+// to abandon the surface - it is to stop deciding on it. The judgement notes below are emitted as
+// `hookSpecificOutput.additionalContext`: presence only, never ranking an option. That context lands
+// NEXT TO THE TOOL RESULT (code.claude.com/docs/en/hooks, 'Add context for Claude'), and an ask's
+// result is the user's answer - so every note is worded for that moment ('the ask just answered ...
+// verify, and re-ask if the answer depends on it'), never 'fix it before sending' (I3, 2.1.4 audit).
+// The one exception is the ask's own house voice (5): deterministic, mechanical to fix, and only
+// fixable BEFORE the ask ships, so it is denied once per ask text with the corrected strings - the
+// guard-layer-table.js pattern. Five separate measured failures land on exactly this surface, and
+// four of them have no other route:
 //   1. STALE SCOPE - an ask built on a fifty-minute-old `git status`; the sibling was committed and
 //      pushed by another agent while the ask was on screen, and the user's answer was discarded
 //      whole (third measured instance; baseline-git.md has mandated the fresh read twice, as prose).
@@ -1300,7 +1306,8 @@ function blockStateFile() {
 //      a surface no Stop hook reads at all. The same check runs over the PROSE THIS TURN WROTE
 //      BEFORE the ask: guard-answer-length.js reads the turn's final text only, so a report that
 //      ends on a tool call is scanned by nobody (measured: 5 em-dashes in one such report, plus two
-//      more bundles). Injection only here, because a Stop block cannot unsay text already shipped.
+//      more bundles). The prose half is injection only, because a Stop block cannot unsay text already
+//      shipped; the ask's own text is denied once with the corrected strings, because it is not yet shipped.
 //   6. FLOW STOP FIELDS - a solve-task stop reports Result / Progress / Leftovers before its ask.
 //      Measured across the collection: 13 sessions loaded that contract, 5 used the fields even
 //      once, across 109 asks - one session missed all 12 of its own stops.
@@ -1320,30 +1327,55 @@ if (payload.tool_name === 'AskUserQuestion') {
     }
     const askText = parts.join('\n');
 
+    // 5. HOUSE VOICE on the ask's own text is the one check here that is deterministic and cheap, and the one
+    // whose fix is mechanical - so it DENIES, carrying the corrected strings (I3, 2.1.4 audit): a note would
+    // land next to the tool result, which for an ask is the user's answer, and 'fix the text before sending
+    // it' arrived after it was sent. Once per ask text and session: the same ask re-sent unchanged passes with
+    // the note, so a model that keeps the slip is never looped.
     const voice = [];
     if (/[\u2014\u2013]/.test(askText)) voice.push('an em- or en-dash (use a single dash)');
     if (/"/.test(askText)) voice.push('a double quote (use single quotes)');
     if (voice.length) {
-      notes.push(`This ask's own text carries ${voice.join(' and ')}. baseline-interaction.md's ` +
-        `house voice covers an AskUserQuestion's question, header, labels and descriptions - a ` +
-        `surface no Stop hook reads. Fix the text before sending it.`);
+      const fix = (t) => String(t).replace(/\s*[\u2014\u2013]\s*/g, ' - ').replace(/"/g, "'");
+      const fixed = (((payload.tool_input || {}).questions) || []).map((q) => (q && typeof q === 'object' ? {
+        ...q,
+        ...(q.question !== undefined ? { question: fix(q.question) } : {}),
+        ...(q.header !== undefined ? { header: fix(q.header) } : {}),
+        ...(Array.isArray(q.options) ? { options: q.options.map((o) => (o && typeof o === 'object' ? { ...o, label: fix(o.label || ''), description: fix(o.description || '') } : o)) } : {}),
+      } : q));
+      const key = require('crypto').createHash('sha1').update(askText).digest('hex').slice(0, 16);
+      const marker = `${envOf(process.env, 'HOOK_LOG_DIR') || require('os').tmpdir()}/guard-stop-askvoice-${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}-${key}.denied`;
+      let first = true;
+      try { fs.writeFileSync(marker, '', { flag: 'wx' }); } catch (e) { if (e && e.code === 'EEXIST') first = false; }
+      if (first) {
+        global.BLOCK_DETAIL = { branch: 'ask-voice', voice: voice.map((v) => v.split(' (')[0]) };
+        process.stderr.write(`Blocked: this AskUserQuestion's own text carries ${voice.join(' and ')}. The house voice `
+          + `(baseline-interaction.md) covers an ask's question, header, labels and descriptions, and the user reads them `
+          + `as written. Re-send the SAME ask with these questions - only the dashes and quotes changed:\n`
+          + `${JSON.stringify(fixed, null, 1)}\n`);
+        process.exit(2);
+      }
+      notes.push(`The ask just sent carried ${voice.join(' and ')} after its first denial. Keep the house voice `
+        + `(baseline-interaction.md) in every later ask: single dashes, single quotes.`);
     }
 
     // 1. STALE SCOPE: an option that names repository, remote or job state is a MEASUREMENT, and a
-    // measurement taken before this turn is not evidence about now.
+    // measurement taken before this turn is not evidence about now. Worded for where it lands - next to the
+    // user's answer - so the model re-checks the scope the answer rests on rather than an ask already sent.
     if (/\b(commit|push|branch|pull request|\bPRs?\b|merge|rebase|stash|staged|unstaged|uncommitted|untracked|remote|upstream|deploy(ed|ment)?|pipeline|\bCI\b|workflow run|job)\b/i.test(askText)
         && !freshStateReadThisTurn()) {
-      notes.push('An option here names repository, remote or job state and no `git status` / ' +
-        '`git diff` / `gh` call ran in this turn. Derive that scope FRESH before asking - a ' +
-        'fifty-minute-old read had already been overtaken by another agent while the ask was on ' +
-        'screen, and the answer it produced was discarded whole.');
+      notes.push('The ask just answered named repository, remote or job state, and no `git status` / ' +
+        '`git diff` / `gh` call in this turn backed it. Before acting on the answer, read that state FRESH; ' +
+        'if it moved, say so and re-ask - a fifty-minute-old read had already been overtaken by another ' +
+        'agent while an ask was on screen, and the answer it produced was discarded whole.');
     }
 
     // 2. CONTRADICTED REQUEST: the presence signal is two typed turns arriving before one reply.
     if (typedTurnsBeforeThisReply() >= 2) {
-      notes.push('The user sent more than one message before this reply. Check every option, and ' +
-        'the Recommended one first, against BOTH - an ask whose recommendation contradicted an ' +
-        'un-actioned earlier request was taken by the user, who then re-typed that request verbatim.');
+      notes.push('The user sent more than one message before the ask just answered. Check the answer, and ' +
+        'the option it took, against BOTH before acting - an ask whose recommendation contradicted an ' +
+        'un-actioned earlier request was taken by the user, who then re-typed that request verbatim. On a ' +
+        'contradiction, name it and re-ask.');
     }
 
     // 3. FRESH SESSION. No recordBlockCtx here: this is a note, not the ask itself, so it must not
@@ -1373,8 +1405,9 @@ if (payload.tool_name === 'AskUserQuestion') {
         notes.push(`This session carries ~${Math.round(ctx / 1000)}k tokens per message, ${why}, and every `
           + `further turn re-sends all of it. A fresh session restarts at `
           + `${floor ? `~${Math.round(floor / 1000)}k - this session's own first message` : 'this install\'s cold floor, 87-134k across the audited projects'}. `
-          + `If this ask is about what to do NEXT, add an option to resume in a fresh session and `
-          + `quote those two absolute numbers in its description - never a ratio.`);
+          + `The ask just answered offered no fresh session: if the work goes on, put an option to resume in a `
+          + `fresh session in the NEXT ask about what to do next, quoting those two absolute numbers in its `
+          + `description - never a ratio.`);
       }
     }
 
@@ -1382,7 +1415,7 @@ if (payload.tool_name === 'AskUserQuestion') {
     // it, because the turn it belongs to ended on a tool call.
     const turnText = turnProseBeforeAsk();
     if (/[\u2014\u2015]/.test(turnText)) {
-      notes.push(`The prose this turn wrote before this ask carries an em-dash. The house voice is `
+      notes.push(`The prose this turn wrote before the ask just answered carries an em-dash. The house voice is `
         + `single dashes (baseline-interaction.md), and the turn's final text is the only surface `
         + `the answer-length hook reads - anything written before a tool call is checked here or `
         + `nowhere. Use single dashes for the rest of this turn.`);
@@ -1394,11 +1427,12 @@ if (payload.tool_name === 'AskUserQuestion') {
       const field = (name) => new RegExp(`(^|\\n)\\s*(?:[-*+]\\s*)?\\**${name}:`, 'i');
       const stamped = (t) => field('Result').test(t) && field('Progress').test(t) && field('Leftovers').test(t);
       if (!stamped(turnText) && !stamped(askText)) {
-        notes.push('This is a stop in a solve-task cycle. Its contract reports THREE named fields '
-          + 'before the ask - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> '
-          + 'steps), `Leftovers:` (what this run started and did not finish, or `none`). Markdown-bold '
-          + 'spelling counts. Measured: 13 sessions loaded this contract and 5 used the fields at all, '
-          + 'across 109 asks - the named form is what survives a compaction that eats the prose.');
+        notes.push('The ask just answered was a stop in a solve-task cycle, and it went out without its THREE '
+          + 'named fields - `Result:` (one line plus the artifact path), `Progress:` (<N> of <M> steps), '
+          + '`Leftovers:` (what this run started and did not finish, or `none`). State them in your next '
+          + 'message, and before every later stop\'s ask. Markdown-bold spelling counts. Measured: 13 sessions '
+          + 'loaded this contract and 5 used the fields at all, across 109 asks - the named form is what '
+          + 'survives a compaction that eats the prose.');
       }
     }
 
@@ -1407,8 +1441,8 @@ if (payload.tool_name === 'AskUserQuestion') {
     // user's SECRET-READ-ALLOW consent stands.
     if (ROTATE_ASK_ON && secretInSession() && !rotateAskAnswered() && !secretReadAllowed()) {
       notes.push('A credential-shaped value has already entered this session\'s tool results. It ' +
-        'cannot be unsent. If this ask closes the turn, one of its questions must be whether to ' +
-        'rotate it now - name the key and its shape only, never the value.');
+        'cannot be unsent, and the ask just answered did not settle its rotation. Before this turn ' +
+        'closes, ask whether to rotate it now - name the key and its shape only, never the value.');
     }
   } catch { /* fail-open: an injection is never worth breaking an ask over */ }
 

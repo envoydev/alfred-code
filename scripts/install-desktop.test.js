@@ -53,7 +53,7 @@ test('seed install: a wpf selection on Windows installs windows-desktop and says
     assert.deepStrictEqual(installs(calls, 'macos-desktop'), []);
     assert.match(out, /windows-desktop needs the Windows display language set to English/);
     assert.match(out, /same privilege level as the app it drives - a UAC prompt can never be automated/);
-    assert.match(out, /PowerShell, Registry and Process stay off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE/);
+    assert.match(out, /PowerShell, Registry, Process and FileSystem stay off \(ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE/);
     assert.ok(!/left out/.test(out), out);
 });
 
@@ -71,7 +71,10 @@ test('seed update --add mcp macos-desktop on macOS installs it and prints the pe
     const { calls, out } = seedRun('update', 'skill markdown-style\n', { plugins: INSTALLED(), args: ['--installed-only', '--add', 'mcp macos-desktop'], prepare, env: { ALFRED_CODE_PLATFORM: 'darwin' } });
     assert.deepStrictEqual(installs(calls, 'macos-desktop'), ['plugin install macos-desktop@envoydev --scope project -y'], calls.join('\n'));
     assert.match(out, /!! desktop: macos-desktop needs Accessibility and Screen Recording/);
-    assert.match(out, /an empty snapshot means Accessibility is missing, black screenshots mean Screen Recording is/);
+    // I45: macos-mcp 0.4.6 checks its grants before it serves and exits when one is missing
+    // (permissions.py validate_permissions) - the empty snapshot needs MACOS_MCP_SKIP_PERMISSION_CHECK=1 first.
+    assert.match(out, /a server that fails to connect at start while System Settings opens is missing a grant - its log names which; black screenshots mean Screen Recording is missing/);
+    assert.doesNotMatch(out, /an empty snapshot means Accessibility is missing/);
 });
 
 test('seed update --add of either desktop server on Linux installs nothing and says why', POSIX_ONLY, () =>

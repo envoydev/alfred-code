@@ -323,13 +323,12 @@ function announceRules(text) {
 }
 
 // ---- Shell matcher: a whole-file dump via cat/sed is the Read block routed around ----
-// SHELL ROUTE: the PowerShell tool is the same route under a second name - its payload carries
-// `tool_input.command` exactly as Bash does, `scripts/analyze-usage.js` has read it as a shell call
-// since 34 of 38 test runs in one collection arrived that way, and the hooks docs name the matcher
-// `Bash|PowerShell` for it. Judging only `Bash` left this gate open on every Windows session
-// (measured: 122 PowerShell calls in a 115-session corpus against six guards matching Bash alone).
-const isShellTool = (n) => n === 'Bash' || n === 'PowerShell';
-if (isShellTool(payload.tool_name)) {
+// SHELL ROUTE: which tools carry a shell command (Bash, PowerShell, Monitor) is shell-writes.js's one list,
+// shipped beside this hook on both routes. A copy that runs before it lands judges by the payload's shape - a
+// string `command` - and blanks no quoted span in the loop test below.
+let shellWrites = null;
+try { shellWrites = require(pathMod.join(__dirname, 'shell-writes.js')); } catch { shellWrites = null; }
+if (shellWrites ? shellWrites.isShellTool(payload.tool_name) : typeof input.command === 'string') {
   // Runs FIRST and on EVERY Bash call, not just the dump verbs: a grep, a build and a test run all
   // name the files whose conventions the session needs, and none of them reaches the checks below.
   try { announceRules(stripHeredocsOf(String((payload.tool_input || {}).command || ''))); } catch { /* an injection never breaks the gate */ }
@@ -375,20 +374,45 @@ if (isShellTool(payload.tool_name)) {
   // The loop's own text ENDS at `done`: `[^\n]*?` ran straight past it, so an unrelated `cat` in a
   // later statement was read as the loop's body. Measured twice at ~88k tokens a block - the
   // capabilities skill's own grep-only loop followed by `; cat .mcp.json` was denied as a sweep.
-  const NOT_DONE = '(?:(?!\\bdone\\b)[^\\n])';
-  const sweepM = command.match(new RegExp(`\\bfor\\s+\\w+\\s+in\\b${NOT_DONE}*?\\bdo\\b${NOT_DONE}*?\\bcat\\b${NOT_DONE}*`, 'i'))
-    || command.match(/\bfind\b[^\n]*?-exec\s+cat\b[^\n]*/i)
+  // The LOOP (I4, 2.1.4 audit) is read on a copy of the command whose quoted spans are blanked at the same
+  // length (shell-writes.js's reader), so an index into the copy is an index into the command: a `cat` inside a
+  // quoted string is text the loop carries (an `echo "{...cat .env...}"` payload was denied as a sweep, twice in
+  // one audit), and a `done` inside one ends nothing. It is a sweep only when a `cat` in its body reads the
+  // loop VARIABLE and a gated extension names what that variable walks - in the `in` list or in the operand
+  // itself. Every other loop that happens to mention a `.js` (`node x.js`, a `*.jsonl` ledger) passes.
+  const loop = (() => {
+    const chars = command.split('');
+    for (const [a, b] of shellWrites ? shellWrites.quotedSpans(command) : []) for (let i = a; i < b; i++) if (chars[i] !== '\n') chars[i] = ' ';
+    const masked = chars.join('');
+    const LOOP_RE = /\bfor\s+([A-Za-z_]\w*)\s+in\b((?:(?!\bdo\b)[\s\S])*?)\bdo\b((?:(?!\bdone\b)[\s\S])*)/dgi;
+    for (const m of masked.matchAll(LOOP_RE)) {
+      const [listFrom, listTo] = m.indices[2];
+      const [bodyFrom, bodyTo] = m.indices[3];
+      const list = command.slice(listFrom, listTo);
+      const body = masked.slice(bodyFrom, bodyTo);
+      for (const c of body.matchAll(/(?:^|[;&|({\n]|\bthen\b|\belse\b)\s*cat\b/g)) {
+        const from = bodyFrom + c.index + c[0].length;
+        const stop = masked.slice(from, bodyTo).search(/[;&|<>)\n]/);
+        const operand = command.slice(from, stop < 0 ? bodyTo : from + stop).trim();
+        if (new RegExp(`\\$\\{?${m[1]}\\b`).test(operand) && (SWEEP_EXT_ANY.test(list) || SWEEP_EXT_ANY.test(operand)))
+          return { var: m[1], operand: operand.slice(0, 120) };
+      }
+    }
+    return null;
+  })();
+  const sweepM = loop ? null : command.match(/\bfind\b[^\n]*?-exec\s+cat\b[^\n]*/i)
     || command.match(/[^\n]*?\|\s*xargs\s+(?:-\w+\s+)*cat\b[^\n]*/i);
-  if (sweepM) {
-    const sweep = /\bfor\b/i.test(sweepM[0]) ? 'a shell loop over a file list'
+  if (loop || sweepM) {
+    const sweep = loop ? 'a shell loop over a file list'
       : /-exec/i.test(sweepM[0]) ? 'find -exec cat' : 'xargs cat';
-    const namedFind = sweepM[0].match(/-name\s+(["']?)([^"'\s*?\[\]]+)\1(?=\s|$)/);
+    const namedFind = loop ? null : sweepM[0].match(/-name\s+(["']?)([^"'\s*?\[\]]+)\1(?=\s|$)/);
     // The literal-name exemption rests on 'no glob metacharacter means it names ONE file'. That
     // holds for a source file and fails completely for `-name SKILL.md`, which names one file per
     // skill directory - 35 of them in the measured dump, 46 in the next. So the exemption does not
     // cover markdown: a repeated literal `.md` name across a tree is the sweep, not the idiom.
     const namedOne = namedFind && !/\.md\b/i.test(namedFind[2] || '');
-    if (!namedOne && SWEEP_EXT_ANY.test(sweepM[0])) {
+    if (loop || (!namedOne && SWEEP_EXT_ANY.test(sweepM[0]))) {
+      global.BLOCK_DETAIL = loop ? { branch: 'sweep', var: loop.var, operand: loop.operand } : { branch: 'sweep', shape: sweep };
       process.stderr.write(
         `Blocked: whole-file sweep of source files via ${sweep}.\n` +
         `Every file in the sweep is dumped unchecked - the per-file size gate cannot see a loop\n` +

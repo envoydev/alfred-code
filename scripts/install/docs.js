@@ -145,17 +145,25 @@ function migrateDocsDomains({ projectRoot, docsPath, log = () => {} })
 // absent-only, the `.playwright` / `.memory-mcp` way. `local` keeps the whole root out of git - and git
 // then answers check-ignore for the root, so the four-home rule reads it back as kept out. `git` commits
 // the docs and keeps out only what the hooks write for this machine: the flow receipts, the block and
-// usage ledgers, the session history (which also ignores itself) and the local overlays.
+// usage ledgers, the session history (which also ignores itself) and the local overlays - plus the raw
+// session transcripts the usage audit copies beside its reports (code, file contents, possibly secrets).
 const DOCS_IGNORE = {
     local: '# alfred-code: the docs root is machine-local (ALFRED_CODE_DOCS_VERSIONING=local)\n*\n',
     git: '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
-        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n',
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n'
+        + '# the usage audit\'s raw transcript and ledger copies stay on this machine\n/alfred-code-usage-report/**/*.jsonl\n',
 };
+// Texts an earlier release wrote, still the stack's own: an update replaces them instead of keeping them as
+// the project's. 2.1.3's git text had no usage-report line.
+const DOCS_IGNORE_FORMER = [
+    '# alfred-code: the docs are committed (ALFRED_CODE_DOCS_VERSIONING=git); the hooks\' machine-local state is not\n'
+        + '/flow/\n/hook-blocks/\n/history/\n/tools-usage/\n/.branches/\n/docs-log.jsonl\n',
+];
 
 // 'written' | 'current' | 'replaced' | 'kept' (the project's own file) | 'outside' (the root is not in
 // the project) | 'skipped' (no versioning to state, or a root under `.claude/`) | 'tracked' (local, over a
-// root git already tracks docs in). A file that is exactly the stack's text for the
-// OTHER mode is the stack's and follows a versioning switch; any other text is the project's.
+// root git already tracks docs in). A file that is exactly the stack's text - for the OTHER mode, or one an
+// earlier release wrote - is the stack's and follows the run; any other text is the project's.
 function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
 {
     if (!Object.hasOwn(DOCS_IGNORE, mode)) return 'skipped';
@@ -173,7 +181,7 @@ function ensureDocsIgnore({ projectRoot, docsPath, mode, log = () => {} })
     try { have = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n'); } catch { have = null; }
     if (have === want) return 'current';
     const shown = rel.split(path.sep).join('/');
-    if (have !== null && !Object.values(DOCS_IGNORE).includes(have))
+    if (have !== null && !Object.values(DOCS_IGNORE).includes(have) && !DOCS_IGNORE_FORMER.includes(have))
     {
         log(`  docs root: ${shown}/.gitignore is the project's own - left as it is (versioning ${mode})`);
         return 'kept';
@@ -471,5 +479,5 @@ function dataOfferLine(offer)
 module.exports = {
     domains, docsVersioningSeed, migrateDocsFile, switchOnDomain, migrateDocsDomains, ensureDocsIgnore, docsMovePlan, docsMoveViews, docsMoveLine, moveDocsRoot,
     ensureDataIgnore, dataIgnoreText, pruneDataRoot, dataOffer, dataOfferLine,
-    DOCS_IGNORE, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
+    DOCS_IGNORE, DOCS_IGNORE_FORMER, DOCS_MIGRATIONS, DOCS_SWITCH_ON, RESERVED, LEGACY_DOCS_ROOT, DATA_IGNORE_HEAD,
 };

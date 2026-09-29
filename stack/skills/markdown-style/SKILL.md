@@ -29,6 +29,8 @@ Markdown form only - not prose clarity (that is Vale) or spelling (codespell / h
 
 ## How to run a review
 
+**The generated docs root is NOT governed here, and neither are the generated rules.** Skip every document under `<docs-path>` and every generated `.claude/rules/baseline-project-*.md` or `.claude/rules/project-code-style.md` - the skill that writes each one fixes its shape verbatim, down to the frontmatter, and a style pass over it pulls one file two ways.
+
 Two passes, syntax before style. The reviewer reads a syntax violation differently from a style violation, so do not interleave them.
 
 ### Pass 1 - syntax (must-fix)
@@ -37,7 +39,7 @@ Run `markdownlint` first when it is available - the mechanical checks (heading s
 
 ### Pass 2 - style (should-fix)
 
-Re-walk for style-overlay violations. These are opinionated. **Apply the clear wins directly** - fenced blocks with a language tag, single H1 as the title, informative link text (never 'here'), no trailing whitespace, product-name capitalization. **Batch the genuine judgment calls** - `[TOC]` on a borderline-length doc, table-vs-list, reference-vs-inline links, heading-uniqueness prefixes - into one short list, each with a recommendation, and move. Do not gate each finding on a reply.
+Re-walk for style-overlay violations. These are opinionated. **Apply the clear wins directly** - fenced blocks with a language tag, single H1 as the title, informative link text (never 'here'), no trailing whitespace, product-name capitalization. **Batch the genuine judgment calls** - a table of contents on a borderline-length doc, table-vs-list, reference-vs-inline links, heading-uniqueness prefixes - into one short list, each with a recommendation, and move. Do not gate each finding on a reply.
 
 Defer to the project on any conflict with a local convention (e.g. a repo standardized on `_underscore_` emphasis) - note the conflict, defer, move on. No audit markers or `[reviewed]` stamps in the file; the diff is the audit trail.
 
@@ -73,8 +75,8 @@ Full canon with examples and known-broken edge cases: `references/syntax-canon.m
 | H1                    | Exactly one H1, used as the document title (match or nearly match the filename). Rest start at H2. |
 | Heading style         | ATX only. No setext underlines.                                                               |
 | Heading uniqueness    | Avoid bare repeated subheadings ('Summary', 'Example') under multiple parents. Prefix them.   |
-| Document skeleton     | Title -> optional owner -> 1-3 sentence intro -> `[TOC]` -> `## Topic` sections -> `## See also`. |
-| Table of contents     | `[TOC]` for any doc that would not fit on one screen. Between intro and first H2.              |
+| Document skeleton     | Title -> optional owner -> 1-3 sentence intro -> table of contents (long docs) -> `## Topic` sections -> `## See also`. |
+| Table of contents     | Any doc that would not fit on one screen, between intro and first H2: `[TOC]` only where the renderer supports it (Gitiles, GitLab); GitHub prints it as literal text, so there a `## Contents` list of anchor links, or none. |
 | Line length           | 80 chars. Exceptions: links, tables, headings, code blocks. Prose around a long link still wraps. |
 | Trailing whitespace   | None. Prefer a paragraph break to the two-space line-break trick.                             |
 | Lists                 | Lazy numbering (`1.` repeated) for long lists; full numbering for short stable ones. Prefer lists to tables for one-dimensional data. |

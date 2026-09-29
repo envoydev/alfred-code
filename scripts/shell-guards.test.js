@@ -131,24 +131,24 @@ test('combine: a crashed guard fails open for itself and the user still sees the
 });
 
 // ---- the wiring ---------------------------------------------------------------------------------
-test('wiringRows: every dispatched Bash|PowerShell row folds into ONE dispatcher row, in place', () => {
-  const rows = ['a.js::@Stop', 'guard-protected-force-push.js::Bash|PowerShell', 'guard-read-whole-file.js::Read', 'guard-catastrophic-rm.js::Bash|PowerShell', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*'];
-  assert.deepStrictEqual(shell.wiringRows(rows), ['a.js::@Stop', 'shell-guards.js::Bash|PowerShell', 'guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*']);
+test('wiringRows: every dispatched Bash|PowerShell|Monitor row folds into ONE dispatcher row, in place', () => {
+  const rows = ['a.js::@Stop', 'guard-protected-force-push.js::Bash|PowerShell|Monitor', 'guard-read-whole-file.js::Read', 'guard-catastrophic-rm.js::Bash|PowerShell|Monitor', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*'];
+  assert.deepStrictEqual(shell.wiringRows(rows), ['a.js::@Stop', 'shell-guards.js::Bash|PowerShell|Monitor', 'guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*']);
   // The copy route names its selection when it is a strict subset; the whole set needs no list.
-  assert.deepStrictEqual(shell.wiringRows(rows, { listGuards: true }), ['a.js::@Stop', 'shell-guards.js::Bash|PowerShell::guard-protected-force-push guard-catastrophic-rm', 'guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*']);
-  const all = shell.GUARDS.map((g) => `${g}.js::Bash|PowerShell`);
-  assert.deepStrictEqual(shell.wiringRows(all, { listGuards: true }), ['shell-guards.js::Bash|PowerShell'], 'all eight: no list');
-  assert.deepStrictEqual(shell.wiringRows(all.slice(1), { listGuards: true }), [`shell-guards.js::Bash|PowerShell::${shell.GUARDS.slice(1).join(' ')}`], 'seven of eight: listed');
-  assert.deepStrictEqual(shell.wiringRows(all.slice(-1), { listGuards: true }), [`shell-guards.js::Bash|PowerShell::${shell.GUARDS.slice(-1)[0]}`], 'one: listed');
-  assert.deepStrictEqual(shell.wiringRows(['x.js::Bash|PowerShell', { file: 'guard-catastrophic-rm.js', matcher: 'Bash|PowerShell' }], { listGuards: true }), ['x.js::Bash|PowerShell', 'shell-guards.js::Bash|PowerShell::guard-catastrophic-rm']);
+  assert.deepStrictEqual(shell.wiringRows(rows, { listGuards: true }), ['a.js::@Stop', 'shell-guards.js::Bash|PowerShell|Monitor::guard-protected-force-push guard-catastrophic-rm', 'guard-read-whole-file.js::Read', 'guard-read-whole-file.js::Bash', 'instrument-tool-usage.js::.*']);
+  const all = shell.GUARDS.map((g) => `${g}.js::Bash|PowerShell|Monitor`);
+  assert.deepStrictEqual(shell.wiringRows(all, { listGuards: true }), ['shell-guards.js::Bash|PowerShell|Monitor'], 'all eight: no list');
+  assert.deepStrictEqual(shell.wiringRows(all.slice(1), { listGuards: true }), [`shell-guards.js::Bash|PowerShell|Monitor::${shell.GUARDS.slice(1).join(' ')}`], 'seven of eight: listed');
+  assert.deepStrictEqual(shell.wiringRows(all.slice(-1), { listGuards: true }), [`shell-guards.js::Bash|PowerShell|Monitor::${shell.GUARDS.slice(-1)[0]}`], 'one: listed');
+  assert.deepStrictEqual(shell.wiringRows(['x.js::Bash|PowerShell|Monitor', { file: 'guard-catastrophic-rm.js', matcher: 'Bash|PowerShell|Monitor' }], { listGuards: true }), ['x.js::Bash|PowerShell|Monitor', 'shell-guards.js::Bash|PowerShell|Monitor::guard-catastrophic-rm']);
   assert.deepStrictEqual(shell.wiringRows(['a.js::@Stop']), ['a.js::@Stop'], 'no dispatched row, no dispatcher');
 });
 
 test('the manifest wires every dispatched guard on the shell tools, and nothing else on them but instrumentation', () => {
   const { loadManifest } = require('./install/manifest.js');
   const rows = loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((row) => row.replace(/::$/, ''));
-  for (const g of shell.GUARDS) assert.ok(rows.includes(`${g}.js::Bash|PowerShell`), `${g} keeps its own Bash|PowerShell catalog row`);
-  const onShell = rows.filter((row) => { const m = row.split('::')[1] || ''; return !m.startsWith('@') && /(^|\|)(Bash|PowerShell)(\||$)/.test(m); });
+  for (const g of shell.GUARDS) assert.ok(rows.includes(`${g}.js::Bash|PowerShell|Monitor`), `${g} keeps its own Bash|PowerShell|Monitor catalog row`);
+  const onShell = rows.filter((row) => { const m = row.split('::')[1] || ''; return !m.startsWith('@') && /(^|\|)(Bash|PowerShell|Monitor)(\||$)/.test(m); });
   assert.deepStrictEqual(onShell.filter((row) => !shell.GUARDS.includes(row.split('::')[0].replace(/\.js$/, ''))), [], 'a shell-tool wiring outside the dispatcher is a second process per Bash call');
   for (const g of shell.GUARDS) assert.ok(fs.existsSync(path.join(HOOKS, `${g}.js`)), `${g}.js exists`);
 });
@@ -176,13 +176,13 @@ test('copy route: the dispatcher replaces the per-guard shell rows an older inst
     { matcher: 'Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell', hooks: [{ type: 'command', command: cmd('guard-config-protection.js'), timeout: 10 }] },
     { matcher: 'Bash', hooks: [{ type: 'command', command: 'node ./my-own-hook.js', timeout: 5 }] },
   ] } }, null, 2));
-  const specs = ['guard-catastrophic-rm.js::Bash|PowerShell', 'guard-ungated-commit.js::Bash|PowerShell', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-config-protection.js::Bash|PowerShell'];
+  const specs = ['guard-catastrophic-rm.js::Bash|PowerShell|Monitor', 'guard-ungated-commit.js::Bash|PowerShell|Monitor', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-config-protection.js::Bash|PowerShell|Monitor'];
   settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} });
   const pre = JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse;
   const wired = pre.flatMap((e) => e.hooks.map((h) => `${e.matcher}  ${h.command}  ${h.timeout}`));
   assert.deepStrictEqual(wired.sort(), [
     `Bash  node ./my-own-hook.js  5`,
-    `Bash|PowerShell  ${cmd('shell-guards.js')} guard-catastrophic-rm guard-ungated-commit guard-config-protection  ${10 * shell.GUARDS.length}`,
+    `Bash|PowerShell|Monitor  ${cmd('shell-guards.js')} guard-catastrophic-rm guard-ungated-commit guard-config-protection  ${10 * shell.GUARDS.length}`,
     `Write|Edit|MultiEdit|NotebookEdit  ${cmd('guard-config-protection.js')}  10`,
   ].sort());
   const before = fs.readFileSync(file, 'utf8');
@@ -191,12 +191,35 @@ test('copy route: the dispatcher replaces the per-guard shell rows an older inst
   assert.strictEqual(again.written, false, 'the re-run writes nothing');
 });
 
+// I1 (2.1.4 audit): the shell route gained Monitor. A 2.1.3 copy-route install wired the dispatcher on
+// `Bash|PowerShell`; the update rewires it on the widened matcher, once, and keeps the user's own hook.
+test('copy route: a dispatcher wired on the old Bash|PowerShell matcher is rewired onto the Monitor route, once', () => {
+  const settings = require('./install/settings.js');
+  const dir = fs.mkdtempSync(path.join(TMP, 'copy-monitor-'));
+  const file = path.join(dir, 'settings.json');
+  const cmd = (f) => `"$CLAUDE_PROJECT_DIR/.claude/hooks/${f}"`;
+  fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [
+    { matcher: 'Bash|PowerShell', hooks: [{ type: 'command', command: `${cmd('shell-guards.js')} guard-catastrophic-rm`, timeout: 80 }] },
+    { matcher: 'Bash', hooks: [{ type: 'command', command: 'node ./my-own-hook.js', timeout: 5 }] },
+  ] } }, null, 2));
+  const specs = [`guard-catastrophic-rm.js::${shell.MATCHER}`];
+  settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} });
+  const wired = JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => `${e.matcher}  ${h.command}`));
+  assert.deepStrictEqual(wired.sort(), [
+    'Bash  node ./my-own-hook.js',
+    `Bash|PowerShell|Monitor  ${cmd('shell-guards.js')} guard-catastrophic-rm`,
+  ].sort());
+  const before = fs.readFileSync(file, 'utf8');
+  assert.strictEqual(settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} }).written, false, 'a re-run writes nothing');
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+});
+
 test('copy route: the ledger keeps the dispatcher wiring this run wrote', () => {
   const settings = require('./install/settings.js');
   const dir = fs.mkdtempSync(path.join(TMP, 'ledger-'));
   const file = path.join(dir, 'settings.json');
-  const specs = ['guard-catastrophic-rm.js::Bash|PowerShell', 'guard-read-whole-file.js::Read'];
-  const catalog = [...shell.GUARDS.map((g) => `${g}.js::Bash|PowerShell`), 'guard-read-whole-file.js::Read'];
+  const specs = ['guard-catastrophic-rm.js::Bash|PowerShell|Monitor', 'guard-read-whole-file.js::Read'];
+  const catalog = [...shell.GUARDS.map((g) => `${g}.js::Bash|PowerShell|Monitor`), 'guard-read-whole-file.js::Read'];
   const first = settings.writeSettings({ file, hookSpecs: specs, ledger: { releaseHooks: catalog }, log: () => {}, note: () => {} });
   const prior = { hooks: first.managed.hooks };
   settings.writeSettings({ file, hookSpecs: specs, ledger: { prior, releaseHooks: catalog }, log: () => {}, note: () => {} });

@@ -128,7 +128,7 @@ Prove it once: blank a required setting, start the service, and quote the startu
 ## Tooling
 
 - Run the repo's formatter before every commit and enforce it in CI (`dotnet-code-quality` owns the pick and the analyzer gates) - formatting drift should never reach review.
-- Audit dependencies with `dotnet list package --vulnerable` before any release-bound change; `dotnet-security` (A06) carries the CI form with `--include-transitive`.
+- Audit dependencies before any release-bound change: `dotnet list package --vulnerable --include-transitive` is the report, and it exits 0 on a finding - the CI gate is restore-time NuGet Audit with `NU1903;NU1904` raised to errors, which `dotnet-security` (A06) sets up.
 
 ## Deep specialists
 

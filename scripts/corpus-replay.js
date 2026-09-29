@@ -35,16 +35,22 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
 const ROUTES = [
-  { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
-  { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
-  { hook: 'guard-read-whole-file.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell'], deny: true },
-  { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Grep'], deny: true },
+  { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-read-whole-file.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-secret-value.js', event: 'PreToolUse', tools: ['Read', 'Bash', 'PowerShell', 'Monitor', 'Grep'], deny: true },
   { hook: 'guard-unapproved-dispatch.js', event: 'PreToolUse', tools: ['Task', 'Agent'], deny: true },
-  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
-  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
-  { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell'], deny: true },
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on the four tool names it
+  // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
+  // never written - lint check 54 fails on it as literal text.
+  { hook: 'guard-desktop-exec.js', event: 'PreToolUse', deny: true,
+    pattern: '^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$',
+    tools: ['mcp__plugin_windows-desktop_windows-desktop__App', `mcp__${'windows-desktop'}__App`, 'mcp__plugin_macos-desktop_macos-desktop__Shell', `mcp__${'macos-desktop'}__Shell`] },
   { hook: 'guard-stop-contract.js', event: 'Stop', deny: true },
   // One job per recorded shell call's RESULT: an error result is the PostToolUseFailure payload, any
   // other the PostToolUse one. Each job is its own session, so the rate is the per-run upper bound -

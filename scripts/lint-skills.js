@@ -66,6 +66,7 @@ fs.readFileSync = (p, o) => ((o === 'utf8' || (o && o.encoding === 'utf8'))
 
 const path = require('path');
 const crypto = require('crypto');
+const { alwaysOnSurface, alwaysOnParts } = require('./always-on-surface.js');
 const { spawnSync } = require('child_process');   // `node --check` only - node is process.execPath, never a batch file (R105)
 const rt = require('./install/runtime.js');  // R105: every external command through the one Windows-safe spawn
 const yaml = require('js-yaml');
@@ -2340,39 +2341,23 @@ function main()
 
     // 33. The ALWAYS-ON surface has a budget, and the number is printed every run. Everything here
     //     is re-sent on EVERY message of every session and every subagent of an install that takes
-    //     it: the pathless baseline rules load like CLAUDE.md, and each agent's and skill's
-    //     `description` rides the dispatch/skill inventory. An audit of 164 sessions measured the
-    //     standing floor at 87k-134k tokens per message and the stack-owned share at roughly a
-    //     third of it, with nothing in the repo measuring - so a paragraph added here costs more
-    //     than the same paragraph anywhere else, and it used to cost it invisibly.
-    let alwaysOnChars = 0;
+    //     it: the pathless baseline rules load like CLAUDE.md, each agent's and model-invocable skill's
+    //     `description` rides the dispatch/skill inventory, and every generated capabilities rule carries
+    //     the same fixed text. An audit of 164 sessions measured the standing floor at 87k-134k tokens per
+    //     message and the stack-owned share at roughly a third of it, with nothing in the repo measuring -
+    //     so a paragraph added here costs more than the same paragraph anywhere else, and it used to cost
+    //     it invisibly. What is counted is what the model is SENT (alwaysOnSurface, below).
+    let alwaysOn = null;
     try
     {
-        const descOf = (file) =>
+        alwaysOn = alwaysOnSurface({ rulesDir: CLAUDE_RULES_DIR, agentsDir: AGENTS_DIR, skillsDir: SKILLS_DIR });
+        // The ceiling sits about 40% over the measured surface (48,868 on 2026-09-29): a budget to
+        // DEFEND, not a target to grow into. Raising it is a deliberate edit with a reason, which is the point.
+        const ALWAYS_ON_MAX = 70000;
+        if (alwaysOn.total > ALWAYS_ON_MAX)
         {
-            const m = fs.readFileSync(file, 'utf8').match(/^description:\s*(.*)$/m);
-            return m ? m[1].length : 0;
-        };
-        let ruleChars = 0;
-        for (const f of fs.readdirSync(CLAUDE_RULES_DIR))
-        {
-            if (!f.endsWith('.md')) continue;
-            const full = path.join(CLAUDE_RULES_DIR, f);
-            if (/^paths:/m.test(fs.readFileSync(full, 'utf8'))) continue;   // path-scoped: lazy, not always-on
-            ruleChars += fs.statSync(full).size;
-        }
-        let agentChars = 0;
-        for (const f of fs.readdirSync(AGENTS_DIR)) if (f.endsWith('.md')) agentChars += descOf(path.join(AGENTS_DIR, f));
-        let skillChars = 0;
-        for (const d of localSkillDirs()) skillChars += descOf(path.join(SKILLS_DIR, d, 'SKILL.md'));
-        alwaysOnChars = ruleChars + agentChars + skillChars;
-        // The ceiling is the measured surface plus ~10% headroom: it is a budget to DEFEND, not a
-        // target to grow into. Raising it is a deliberate edit with a reason, which is the point.
-        const ALWAYS_ON_MAX = 160000;
-        if (alwaysOnChars > ALWAYS_ON_MAX)
-        {
-            flag(`always-on surface ${alwaysOnChars} chars (~${Math.round(alwaysOnChars / 4000)}k tokens) is over the ${ALWAYS_ON_MAX} budget`
-                + ` - pathless rules ${ruleChars}, agent descriptions ${agentChars}, skill descriptions ${skillChars}.`
+            flag(`always-on surface ${alwaysOn.total} chars (~${Math.round(alwaysOn.total / 4000)}k tokens) is over the ${ALWAYS_ON_MAX} budget`
+                + ` - ${alwaysOnParts(alwaysOn)}.`
                 + ` Every one of those characters is re-sent on every message of every session and subagent: trim, or raise the budget deliberately.`);
         }
     }
@@ -2430,7 +2415,7 @@ function main()
         + `${pluginsManifest.active.size} plugins, ${mcpsManifest.active.size} MCPs; manifest + HTML in sync; `
         + `${rulesChecked} rules + ${agentsChecked} agents frontmatter-clean; `
         + `${sharedRuleCount} shared rule(s), ${sharedRuleCopies} copies in sync; `
-        + `always-on surface ~${Math.round(alwaysOnChars / 4000)}k tokens).`);
+        + `always-on surface ~${Math.round((alwaysOn ? alwaysOn.total : 0) / 4000)}k tokens${alwaysOn ? ` - ${alwaysOnParts(alwaysOn)} = ${alwaysOn.total} chars` : ''}).`);
 }
 
 // ---------------------------------------------------------------------------------------------

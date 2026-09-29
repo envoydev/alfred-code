@@ -47,10 +47,14 @@ screen shows.
 ## Stay in the UI, stay out of four dialogs
 
 - **Drive the UI the user named, nothing else.** The task 'change it in the app' is done in the app:
-  no shell, registry, process or file-system tool to get there - Windows-MCP's PowerShell, Registry
-  and Process are switched off unless the user turned them on (`references/windows.md`), and neither
-  its FileSystem nor MacOS-MCP's Shell is a way around the app. Reading or editing a file directly is
-  the harness's own file tools' job, and only when the user asked for the file rather than the app.
+  no shell, registry, process or file-system tool to get there. Windows-MCP starts with PowerShell,
+  Registry, Process and FileSystem switched off unless the user turned them on
+  (`references/windows.md`); its `App` tool stays on for launch, switch and resize, and MacOS-MCP's
+  `Shell` stays in its list - but a house guard denies App's `launch_executable` mode (it starts any
+  program) and every MacOS-MCP `Shell` call unless the user allowed it in
+  `<docs-path>/flow/DESKTOP-EXEC-ALLOW`. Neither is a way around the app. Reading or editing a file
+  directly is the harness's own file tools' job, and only when the user asked for the file rather than
+  the app.
 - **Stop at elevation, credentials, payment and destructive confirmations.** A UAC or admin prompt, a
   sign-in or password field, a payment or purchase step, a delete, overwrite, format or 'discard'
   confirmation: take no action on it, report what it says, and hand it to the user. A destructive
@@ -76,9 +80,11 @@ vision again - and a window that moved or resized invalidates every coordinate t
 
 Read the reference for the OS before retrying anything:
 
-- **macOS: an empty snapshot** (no focused window, no elements) with apps open means Accessibility is
-  not granted - not that the app is closed; **black screenshots** mean Screen Recording is not
-  granted. Say so and stop: only the user can grant either. `references/macos.md`.
+- **macOS: the server fails to connect at start and System Settings opens** - a grant is missing, and
+  its log names which. With `MACOS_MCP_SKIP_PERMISSION_CHECK=1` the server starts ungranted, and only then
+  is there an empty snapshot (no focused window, no elements) with apps open - Accessibility is missing,
+  not the app closed. **Black screenshots** mean Screen Recording is not granted. Say so and stop: only
+  the user can grant either. `references/macos.md`.
 - **Windows: App cannot find an app** on a non-English display language; **clicks do nothing** in an
   app running as administrator while Claude Code is not (or the reverse). `references/windows.md`.
 - **Either: the first start times out** while uvx downloads Python and the server - reconnect it from

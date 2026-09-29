@@ -430,7 +430,7 @@ Not required - open with WHERE it lives and WHAT a yes changes, then AskUserQues
 recommended / skip); a 'no' ends the run cleanly. The location: the project's own CLAUDE.md - `.claude/CLAUDE.md` where the installer
 seeded it, or the root `CLAUDE.md` where the project already had one; name which one you found.
 On a yes, read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline
-with `STACK=$TMP/repo` - the one home of the fill: its improve mode adds the sections the template
+with `<stack>` = the `$TMP/repo` path, pasted as a literal - the one home of the fill: its improve mode adds the sections the template
 gained, offers a fix for what its check reports (applied only when the user picks it) and shows every
 change before writing, never overwriting the
 project's own prose. This run's own part is the selection-tied lines - the rules table and any

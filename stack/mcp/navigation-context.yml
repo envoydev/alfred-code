@@ -1,0 +1,58 @@
+# THE NAVIGATION SERVER'S CONTEXT - serena-agent 1.7.0's own `claude-code` context
+# (src/serena/resources/config/contexts/claude-code.yml at the v1.7.0 tag), with a house prompt and five
+# more tools off. serena reads it as a custom context: `--context <path>` takes a file when the value
+# holds a path separator or ends in .yml (context_mode.py, SerenaAgentContext.load).
+#
+# Why: the upstream context serves seven file-writing tools, and a write through one of them bypasses every
+# hook matched on Edit / Write (the config-protection guard, the docs hold, the turn's edit list, the done
+# gate). The five plain writers are off; rename_symbol and safe_delete_symbol stay - reference-aware
+# refactors a hand edit cannot match. onboarding is off: the capture skills own the project's orientation.
+#
+# The plugin route: serena-launch.js swaps the entry's `--context claude-code` for this file beside it. The
+# full copy route: the installer copies it to the project's `.claude/navigation-context.yml` and registers
+# `--context .claude/navigation-context.yml` (resolved against the server's cwd, the project).
+name: alfred-code
+description: Alfred Code navigation - serena's claude-code context (single project; file, shell and search work is the harness's) with editing left to the harness except the reference-aware rename and safe delete.
+prompt: |
+  You are running inside Claude Code, whose own tools read files, search, run commands and edit. The
+  house hooks watch those tools - config protection, the docs hold, the turn's edit list, the done gate -
+  and see nothing this server writes, so every edit goes through the harness's Edit or Write tool.
+
+  This server's job is code intelligence:
+  - Locate before you read: get_symbols_overview for a file's structure, find_symbol for a symbol (its
+    body only when you need it), find_referencing_symbols for its callers, find_declaration and
+    find_implementations for the rest. Then read or edit the located range with the harness tools.
+  - Two reference-aware refactors stay on this server: rename_symbol renames a symbol across the
+    codebase, and safe_delete_symbol deletes one only when nothing still uses it. Prefer them to editing
+    every usage by hand.
+  - The seat handoff: write_memory, read_memory and list_memories carry the named note one agent leaves
+    for the next within a feature. Nothing that must outlast the feature belongs here.
+
+  Load only the tools the task needs through the tool search, not every tool at once. Where Serena's own
+  manual below names replace_symbol_body, insert_after_symbol, insert_before_symbol, replace_content or
+  replace_in_files, those tools are not served in this install: make that change with the Edit tool.
+
+excluded_tools:
+  # serena 1.7.0 claude-code's own six: file, shell and pattern-search work is the harness's
+  - create_text_file
+  - read_file
+  - execute_shell_command
+  - find_file
+  - list_dir
+  - search_for_pattern
+  # the house's six: the plain writers no hook sees, and onboarding
+  - replace_content
+  - replace_in_files
+  - replace_symbol_body
+  - insert_after_symbol
+  - insert_before_symbol
+  - onboarding
+
+tool_description_overrides: {}
+
+# Upstream's: with a project given at start, the tool set is cut to that project's own configuration and
+# activate_project is off - project switching is not allowed.
+single_project: true
+
+# Upstream's: Claude Code does not unpack structured tool output, so it stays off.
+structured_tool_output: false

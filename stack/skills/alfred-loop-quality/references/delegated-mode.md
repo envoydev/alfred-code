@@ -31,9 +31,10 @@ resume that carries DELEGATED, because the stamp belongs to the session that dis
 
 - **Where and how.** Write it with the Write tool at the ABSOLUTE path
   `${CLAUDE_PROJECT_DIR}/<docs-path>/flow/APPROVAL`. A relative Bash write follows whatever cwd the shell
-  drifted to and lands the stamp in a phantom nested docs tree the hook never reads. `.claude/` is a
-  protected path, so the first write raises a permission prompt: take its 'allow Claude to edit its own
-  settings for this session' option and the rest of the run is free.
+  drifted to and lands the stamp in a phantom nested docs tree the hook never reads. Only where the docs
+  root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt
+  for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' -
+  take that, since `permissions.allow` cannot pre-approve it.
 - **First line.** `AUTO - "<the mode-ask answer, verbatim>"` - the hook reads that line; never fabricate
   or paraphrase the quote.
 - **Ownership.** Written when this session's own decision lands, deleted at its own close (the run's end,

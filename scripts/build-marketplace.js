@@ -93,7 +93,7 @@ function coreEntry(options = {})
             hook_profile: {
                 type: 'string',
                 title: 'Hook profile',
-                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
+                description: `Which Alfred Code hooks run - one of ${HOOK_PROFILES.join(', ')}: minimal keeps only the rm, secret, force-push and desktop exec guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.`,
                 default: 'standard',
             },
         },
@@ -372,8 +372,10 @@ function mcpServerShapes(options = {})
                     // server's cwd, which is the project (stack/mcp/serena-launch.js).
                     command: 'node',
                     args: [`${root}/stack/mcp/serena-launch.js`, '--package', `serena-agent${suffix('navigation')}`, '--', 'start-mcp-server',
-                        // Always claude-code inside a Claude Code plugin; the ide-assistant value is
-                        // cursor-stack's, and its own registration keeps it.
+                        // claude-code inside a Claude Code plugin (the ide-assistant value is
+                        // cursor-stack's). The launcher swaps it for the stack's own context file beside
+                        // it (navigation-context.yml, I12) - named here as claude-code so a project whose
+                        // plugin cache predates that file still starts serena after a catalog refresh.
                         '--context', 'claude-code', '--enable-web-dashboard', 'false', '--project-from-cwd'],
                 },
             },
@@ -453,10 +455,13 @@ function mcpPlugins(options = {})
             strict: false,
             mcpServers: spec.servers,
         };
-        // The locked three depend on nothing: the installer puts them beside the core on every run,
-        // and an entry with no dependency can never be disabled at load for a missing one. The
-        // droppable browser engines are ordinary picks and name the core.
-        if (!spec.locked) entry.dependencies = [CORE];
+        // NO MCP entry declares a dependency (I7). The locked three are installed beside the core on
+        // every run, and an entry with no dependency can never be disabled at load for a missing one.
+        // The droppable ones name no core either: since 2.1.0 the core carries no skill a browser or
+        // desktop server needs, and the installer installs the core every run - while Claude Code refuses
+        // to disable a plugin an enabled one depends on ('... is still required by ...', measured on
+        // 2.1.284), so the edge only blocked the full copy route's core stand-down and a user's own
+        // core disable while a browser or desktop row was on.
         return entry;
     });
 }
@@ -480,7 +485,10 @@ function mcpAliasEntries(options = {})
             : PW_ENGINES.filter((e) => current.some((c) => c.name === `${to}-${e}`)).map((e) => [`${from}-${e}`, `${to}-${e}`]);
         for (const [old, now] of pairs)
         {
-            const entry = current.find((e) => e.name === now);
+            // I6: an alias names no dependency, whatever its successor carries - its audience is an
+            // install NOT yet updated, whose core is the 1.x id or none, so a dependency on the 2.x core
+            // is unmet there and the CLI stops loading the alias's server (measured on 2.1.284).
+            const { dependencies, ...entry } = current.find((e) => e.name === now);
             const alias = {
                 ...entry,
                 name: old,

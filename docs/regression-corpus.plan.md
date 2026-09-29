@@ -101,7 +101,7 @@ Be honest that a floor exists. **A missing gate is invisible to every test** - B
 push, and four audited sessions pushed clean through every guard) can only be found by someone
 asking what is not guarded. Same for the design-level clusters: M1's shared helper, M3's injection
 mechanism, M7's named-field-beats-prose. The lever here is not a test, it is **making the audit
-cheaper**: have the per-session audit prompt emit a machine-readable finding row so Phase 2's
+cheaper**: have the per-session audit (the repo's `repo-audit-usage` skill) emit a machine-readable finding row so Phase 2's
 clustering computes instead of being re-read.
 
 ## Scorecard - the 21 findings against the tiers

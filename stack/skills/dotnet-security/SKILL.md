@@ -33,12 +33,20 @@ builder.Services.AddAuthorizationBuilder()
 
 ```csharp
 var order = await db.Orders.FindAsync(id);          // id is input, not proof of ownership
+if (order is null)
+{
+    return TypedResults.NotFound();
+}
+
 var allowed = await authz.AuthorizeAsync(user, order, "OwnsOrder");
 if (!allowed.Succeeded)
 {
-    return Results.Forbid();                        // same role != same rows
+    return TypedResults.NotFound();                 // same role != same rows; a 403 would confirm the id exists
 }
 ```
+
+The status is the house one: a resource the caller may not see returns 404, never 403 - no existence disclosure; 403 only where the caller can see the resource but not the action (a caller who may read an order but not cancel it gets 403 on the cancel).
+
 - **Check on the server, every time.** A hidden field, a disabled button, or a missing menu item is UX, not a control. The authorization decision lives on the server and runs on every request, including the ones a browser would never send.
 - **Lock down CORS.** Name the exact allowed origins; never pair `AllowAnyOrigin` with `AllowCredentials` - the framework will reject the combination at runtime precisely because it defeats the same-origin protection.
 - **Scope what a token can do.** Least privilege applies to tokens too: an API key or JWT scoped to read should not be accepted on a write. The policy plumbing belongs to the skill covering .NET authentication; the obligation to actually scope the token is here, and holds whether or not that skill is installed.
@@ -86,7 +94,7 @@ The framework's defaults are mostly safe; the failures come from turning them of
 
 The mechanics for these five categories are `references/owasp-a06-a10.md` - open the category you are reviewing. The obligation that must hold whatever the install looks like is here:
 
-- **A06, vulnerable and outdated components.** `dotnet list package --vulnerable --include-transitive` runs in CI and fails the build; packages and the runtime stay on supported versions; a lock file plus `packageSourceMapping` closes the dependency-confusion swap.
+- **A06, vulnerable and outdated components.** The CI gate is restore-time NuGet Audit raised to errors - `<WarningsAsErrors>$(WarningsAsErrors);NU1903;NU1904</WarningsAsErrors>` fails the restore on a high or critical advisory, with `NuGetAuditMode` `all` below net10.0, where the default audits direct references only. `dotnet list package --vulnerable --include-transitive` is the human-readable report and exits 0 on a finding, so it gates nothing. Packages and the runtime stay on supported versions; a lock file plus `packageSourceMapping` closes the dependency-confusion swap.
 - **A07, identification and authentication failures.** Signature, issuer, audience and expiry are all validated with tight clock skew and none of them switched off; session cookies are `HttpOnly` + `Secure` + `SameSite`; credential flows carry lockout or throttling and leak no user enumeration.
 - **A08, software and data integrity failures.** Never deserialize untrusted input with a type-permissive formatter - `BinaryFormatter` is unsafe by design and any working call on the .NET 8 floor is a deliberate opt-in to delete; verify a signature or hash on anything you load, and treat the build chain as in-scope.
 - **A09, security logging and monitoring failures.** Log authentication success and failure, authorization denials and high-value actions with a correlation id; never log a secret or PII; alert on the attack patterns, because a log nobody watches is not monitoring.

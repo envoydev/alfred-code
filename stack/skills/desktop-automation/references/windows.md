@@ -13,16 +13,21 @@ Checked against Windows-MCP 0.8.5, the release the stack pins.
   from the snapshot; `Shortcut` (key combinations, `ctrl+s`), `MultiSelect`, `MultiEdit`.
 - **Wait:** `WaitFor` (polls the accessibility tree until a text, window, element or focus condition
   holds) over a fixed `Wait`.
-- **Apps:** `App` (launch, switch, resize).
-- **Other:** `Clipboard`, `Scrape`, `Notification`, `FileSystem`, and - switched off by the stack -
-  `PowerShell`, `Registry`, `Process`.
+- **Apps:** `App` (launch, switch, resize - and `launch_executable`, which starts any program with the
+  arguments and working folder given).
+- **Other:** `Clipboard`, `Scrape`, `Notification`, and - switched off by the stack - `PowerShell`,
+  `Registry`, `Process`, `FileSystem` (read, write, copy, move, delete).
 
 ## The tool gate
 
-The stack starts Windows-MCP with `--exclude-tools PowerShell,Registry,Process`: shell, registry and
-process control are not there unless the user turns them on. `ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE`
-replaces the list - `none` lifts it, a list of its own (`PowerShell` alone, or one that adds `App` on a
-non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
+The stack starts Windows-MCP with `--exclude-tools PowerShell,Registry,Process,FileSystem`: shell,
+registry, process control and file writes, moves and deletes are not there unless the user turns them
+on. What stays on: the observe, input and wait tools, `App`, `Clipboard`, `Scrape` and `Notification`.
+Windows-MCP gates by tool name, never by mode, so `App` stays whole - and its `launch_executable` mode
+starts any program (`powershell.exe -Command ...` included): a house guard denies that mode unless the
+user allowed it in `<docs-path>/flow/DESKTOP-EXEC-ALLOW`, while `launch`, `switch` and `resize` pass.
+`ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE` replaces the list - `none` lifts it, a list of its own
+(`PowerShell` alone, or one that adds `App` on a non-English machine) takes its place. It is read from the shell that starts Claude Code, then the
 project's `settings.local.json`, its `settings.json` and the account settings `env`; the server reads
 it at start, so reconnect it from `/mcp` after a change. Turning a tool on is the user's decision, never
 a way around a blocked step.

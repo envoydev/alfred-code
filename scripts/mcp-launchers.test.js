@@ -193,6 +193,12 @@ function stubUvx(name)
 }
 const POSIX = { skip: process.platform === 'win32' && 'the stub uvx is a node script with a shebang' };
 
+// The plugin entry's own argv, as the marketplace ships it - a launcher test over a hand-written copy
+// passes while the shipped entry drifts.
+const SHIPPED_ENTRIES = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude-plugin', 'marketplace.json'), 'utf8')).plugins;
+const entryArgs = (name) => SHIPPED_ENTRIES.find((p) => p.name === name).mcpServers[name].args.slice(1);
+const SERENA_CONTEXT = path.join(ROOT, 'stack', 'mcp', 'navigation-context.yml');
+
 test('serena-launch: uvx gets the Python pin, the pinned package and every serena argument, in order', POSIX, () =>
 {
     const { dir } = project('serena-run');
@@ -201,11 +207,70 @@ test('serena-launch: uvx gets the Python pin, the pinned package and every seren
     execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--context', 'claude-code', '--project-from-cwd'],
         { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir, SERENA_HOME: '.serena/home' }, stdio: 'pipe' });
     const got = uvx.argv();
-    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'serena-agent@1.7.0', 'serena', 'start-mcp-server', '--context', 'claude-code', '--project-from-cwd']);
+    // I12: the upstream claude-code context is swapped for the stack's own, beside the launcher.
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'serena-agent@1.7.0', 'serena', 'start-mcp-server', '--context', SERENA_CONTEXT, '--project-from-cwd']);
     // RELATIVE and native: serena 1.7.0 execs the TypeScript server through npm's .bin shim, so on
     // Windows the path reaches cmd.exe unquoted - a '/' cuts it ('.serena' is not recognized as an
     // internal or external command), and so would a space in an absolute project path.
     assert.strictEqual(got.home, '.alfred/serena/home', 'the home stays relative, under the data root - whatever the entry passed');
+});
+
+// I12: serena 1.7.0's claude-code context serves seven file-writing tools (replace_content, replace_in_files,
+// replace_symbol_body, insert_after_symbol, insert_before_symbol, rename_symbol, safe_delete_symbol), and a write
+// through one bypasses every Edit/Write-matched guard. The ruling keeps rename and safe delete (reference-aware
+// refactors) and turns the other five off, with onboarding. serena reads `--context <path>` as a custom context
+// YAML (context_mode.py: a value with a separator or a .yml suffix is a file), so the launcher hands it the
+// stack's own file - from the SHIPPED entry's argv, the one a plugin start really passes.
+test('serena-launch: the shipped navigation entry starts serena on the stack context, never the upstream claude-code one (I12)', POSIX, () =>
+{
+    const { dir } = project('serena-context');
+    fs.mkdirSync(path.join(dir, '.git'));
+    const uvx = stubUvx('serena-context');
+    const args = entryArgs('navigation');
+    execFileSync(process.execPath, [SERENA, ...args], { cwd: dir, env: { ...BARE, PATH: uvx.PATH, HOME: dir }, stdio: 'pipe' });
+    const argv = uvx.argv().argv;
+    assert.strictEqual(argv[argv.indexOf('--context') + 1], SERENA_CONTEXT, argv.join(' '));
+    assert.ok(fs.existsSync(SERENA_CONTEXT), 'the context file ships beside the launcher');
+    // A context the entry names that is not claude-code is the user's own choice - passed unchanged.
+    const own = stubUvx('serena-context-own');
+    execFileSync(process.execPath, [SERENA, '--package', 'serena-agent@1.7.0', '--', 'start-mcp-server', '--context', 'agent'],
+        { cwd: dir, env: { ...BARE, PATH: own.PATH, HOME: dir }, stdio: 'pipe' });
+    assert.deepStrictEqual(own.argv().argv.slice(-2), ['--context', 'agent']);
+});
+
+// The file itself: serena 1.7.0's own claude-code context (single_project, structured output off, its six
+// exclusions) plus the six the ruling names, and a prompt that sends edits to the harness tools - it never
+// tells the model the Edit tool is forbidden, which the upstream prompt does.
+const yamlList = (text, key) =>
+{
+    const at = text.split('\n').findIndex((l) => l === `${key}:`);
+    if (at < 0) return null;
+    const out = [];
+    for (const line of text.split('\n').slice(at + 1))
+    {
+        const m = /^\s+-\s+(\S+)\s*$/.exec(line);
+        if (m) out.push(m[1]); else if (line.trim() && !/^\s*#/.test(line)) break;
+    }
+    return out;
+};
+test('the stack serena context: upstream claude-code exclusions kept, the five edit tools and onboarding off, rename and safe delete on (I12)', () =>
+{
+    const text = fs.readFileSync(SERENA_CONTEXT, 'utf8');
+    const excluded = yamlList(text, 'excluded_tools');
+    const upstream = ['create_text_file', 'read_file', 'execute_shell_command', 'find_file', 'list_dir', 'search_for_pattern'];
+    const ruled = ['replace_content', 'replace_in_files', 'replace_symbol_body', 'insert_after_symbol', 'insert_before_symbol', 'onboarding'];
+    assert.deepStrictEqual([...excluded].sort(), [...upstream, ...ruled].sort(), excluded.join(','));
+    for (const kept of ['rename_symbol', 'safe_delete_symbol', 'find_symbol', 'write_memory', 'read_memory']) assert.ok(!excluded.includes(kept), `${kept} must stay on`);
+    assert.match(text, /^single_project: true$/m);
+    assert.match(text, /^structured_tool_output: false$/m);
+    assert.match(text, /^tool_description_overrides: \{\}$/m);
+    const prompt = text.slice(text.indexOf('prompt: |'), text.indexOf('excluded_tools:'));
+    assert.doesNotMatch(prompt, /FORBIDDEN|forbidden|deny such edits|load them all immediately/, 'the upstream prompt\'s rules against the harness tools are not carried');
+    assert.match(prompt, /\bEdit\b/, 'the prompt sends edits to the harness Edit tool');
+    assert.match(prompt, /rename_symbol/);
+    assert.match(prompt, /safe_delete_symbol/);
+    assert.match(prompt, /write_memory/, 'the seat handoff stays on this server');
+    assert.ok(!/—/.test(text), 'house voice: no em-dash');
 });
 
 test('serena-launch: the home is spelled in the platform separator, relative or absolute', () =>
@@ -317,7 +382,8 @@ test('memory-launch: uvx gets the same Python pin ahead of the package', POSIX, 
 // macos-desktop (MacOS-MCP) on macOS. The OS is forced through ALFRED_CODE_PLATFORM so every case runs
 // on any host.
 const DESKTOP = path.join(ROOT, 'stack/mcp/desktop-launch.js');
-const WIN_ARGS = ['--server', 'windows-desktop', '--package', 'windows-mcp==0.8.5', '--', 'serve', '--exclude-tools', 'PowerShell,Registry,Process'];
+// I10: the shipped entry's own argv - FileSystem (write, copy, move, delete) joins the default gate.
+const WIN_ARGS = entryArgs('windows-desktop');
 const MAC_ARGS = ['--server', 'macos-desktop', '--package', 'macos-mcp==0.4.6', '--', 'serve'];
 
 function desktopRun(name, args, { env = {}, settings } = {})
@@ -336,7 +402,7 @@ test('desktop-launch: windows-desktop gets the Python pin, the pinned package, s
 {
     const got = desktopRun('desktop-win', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32' } });
     assert.strictEqual(got.status, 0, got.stderr);
-    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process']);
+    assert.deepStrictEqual(got.argv, ['--python', '3.13', '--from', 'windows-mcp==0.8.5', 'windows-mcp', 'serve', '--exclude-tools', 'PowerShell,Registry,Process,FileSystem']);
     assert.strictEqual(got.stdout, '', 'stdout is the MCP stream - the launcher writes nothing there');
 });
 
@@ -347,7 +413,7 @@ test('desktop-launch: ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE replaces the list, and
     const none = desktopRun('desktop-win-none', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: 'none' } });
     assert.deepStrictEqual(none.argv.slice(4), ['windows-mcp', 'serve'], 'none must pass no --exclude-tools, so the user\'s own Windows-MCP config applies');
     const empty = desktopRun('desktop-win-empty', WIN_ARGS, { env: { ALFRED_CODE_PLATFORM: 'win32', ALFRED_CODE_WINDOWS_DESKTOP_EXCLUDE: '' } });
-    assert.deepStrictEqual(empty.argv.slice(6), ['--exclude-tools', 'PowerShell,Registry,Process'], 'an empty override is no override');
+    assert.deepStrictEqual(empty.argv.slice(6), ['--exclude-tools', 'PowerShell,Registry,Process,FileSystem'], 'an empty override is no override');
 });
 
 test('desktop-launch: the override is read from the PROJECT settings a plugin server never gets as env', POSIX, () =>
@@ -528,8 +594,9 @@ test('browser-launch: npx gets the pinned package, the engine, and a profile and
     execFileSync(process.execPath, [BROWSER, '--package', '@playwright/mcp@0.0.82', '--browser', 'firefox'],
         { cwd: dir, env: { ...BARE, PATH: rec.PATH, HOME: dir }, stdio: 'pipe' });
     const real = fs.realpathSync(dir);
+    // I11: --no-webmcp - a page the browser opens never adds tools of its own to the session.
     assert.deepStrictEqual(rec.got().argv, ['-y', '@playwright/mcp@0.0.82', '--browser', 'firefox',
-        '--user-data-dir', path.join(real, '.alfred', 'browser', 'firefox'), '--output-dir', path.join(real, '.alfred', 'browser', 'firefox', 'output')]);
+        '--user-data-dir', path.join(real, '.alfred', 'browser', 'firefox'), '--output-dir', path.join(real, '.alfred', 'browser', 'firefox', 'output'), '--no-webmcp']);
 });
 
 test('browser-launch: a 2.0.0 profile keeps serving until a move is agreed, then moves at start unless a browser holds it', POSIX, () =>

@@ -24,8 +24,10 @@ never mixed:
 
 ## 1. Resolve the stack's files
 
-A run that already holds the stack's snapshot (the `/alfred-code:init` run's `$TMP/repo`) sets
-`STACK=$TMP/repo`. Otherwise the newest plugin-cache entry is the one this skill came from:
+A run that already holds the stack's snapshot (the `/alfred-code:init` run's `$TMP/repo`) uses that
+folder's path as `<stack>`. Otherwise the newest plugin-cache entry is the one this skill came from - the
+block prints its path, and every later command pastes that literal as `<stack>` (each Bash call is its
+own shell, so a variable set here is gone by the next):
 
 ```bash
 STACK=$(for d in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/alfred-code/*; do
@@ -41,12 +43,12 @@ stop and name `/alfred-code:update`, which brings the stack's files back.
 ## 2. Pick the mode - the script says what is on disk
 
 ```bash
-node "$STACK/scripts/claude-md-check.js" --root . --list
+node "<stack>/scripts/claude-md-check.js" --root . --list
 ```
 
 - **Create** - it printed `no CLAUDE.md in this project`, or every file it lists is `the seeded
   template (unfilled)`. The target is the seeded `.claude/CLAUDE.md`; with none, write that file
-  from `$STACK/stack/CLAUDE.template.md` (the spot the installer seeds, auto-loaded like a root one).
+  from `<stack>/stack/CLAUDE.template.md` (the spot the installer seeds, auto-loaded like a root one).
 - **Improve** - any listed file holds the project's own text. Every listed file is in scope: the
   root one, `.claude/CLAUDE.md`, and each part's own.
 
@@ -57,7 +59,7 @@ and imports it, as the template's fill-in block spells out - never the same fact
 
 Every fact a section states comes from a file that states it, in this order:
 
-1. **The first-look scan** - `node "$STACK/scripts/scan-evidence.js" --orientation --root .` prints the
+1. **The first-look scan** - `node "<stack>/scripts/scan-evidence.js" --orientation --root .` prints the
    stack, the modules, the build / test / run commands and the entry points, read from the manifests.
    It is the map; do not re-derive it by reading source.
 2. **The architecture docs** when `alfred-capture-architecture` has run (`<docs-path>/architecture/`):
@@ -129,7 +131,7 @@ this file is never the home of:
 ## 7. Check last - the file matches the tree
 
 ```bash
-node "$STACK/scripts/claude-md-check.js" --root .
+node "<stack>/scripts/claude-md-check.js" --root .
 ```
 
 - A row on a line this run wrote is this run's bug: fix it and run the check again.

@@ -1009,3 +1009,121 @@ test('guard-secret-value: the redacted view names the runnable presence command'
   const view = cli('--redacted', f.secret).stdout;
   assert.ok(view.split('\n')[0].includes(`node "${HOOK}" --presence "${f.secret}" KEY`), view.split('\n')[0]);
 });
+
+// ---- I2 (2.1.4 audit): the comparison verbs and git's own dumps ---------------------------------
+// Replayed at develop 23c24b9d: each shape below printed a live credential with exit 0 and no rewrite, while
+// `cat` of the same file was rewritten. `diff .env .env.example` is the ordinary 'which keys am I missing' move,
+// and baseline-security.md itself runs `git add -N . && git diff HEAD` over every security-relevant change.
+const REDACTOR = `node "${HOOK}" --redact-stdin`;
+test('I2: diff, sdiff, cmp, comm and rev of a credential file are judged like cat', () => {
+  const f = fixtures();
+  const at = (c) => `cd "${f.dir}" && ${c}`;
+  for (const c of ['diff .env .env.example', 'diff -u .env.example .env', 'sdiff .env .env.example', 'comm .env .env.example', 'cmp -l .env .env.example', 'rev .env', 'tac .env'])
+    assert.equal(bash(at(c)), REWRITE, c);
+  assert.match(rewritten(at('diff .env .env.example')), /--redacted "[^"]*\.env"/, 'the view of the credential file');
+  assert.equal(bash(at('diff .env.example clean-settings.json')), 0, 'no credential file among the operands');
+  assert.equal(bash('git rev-parse --show-toplevel'), 0, 'rev inside rev-parse is no verb');
+});
+
+test('I2: a git command that prints file content is piped through the stream redactor, in place', () => {
+  for (const c of ['git diff', 'git diff appsettings.json', 'git show HEAD:appsettings.json', 'git log -p -1', 'git stash show -p', 'git --no-pager diff --cached', 'git -C sub show HEAD'])
+    assert.equal(rewritten(c), `${c} | ${REDACTOR}`, c);
+  // outside a repository every probe fails, so each is piped; `--no-index` runs anywhere and is judged on its output
+  const f = fixtures();
+  const noIndex = 'git diff --no-index .env.example .env';
+  assert.equal(updatedCommand(run({ tool_name: 'Bash', tool_input: { command: noIndex }, session_id: 'suite', cwd: f.dir })), `${noIndex} | ${REDACTOR}`, noIndex);
+  assert.equal(rewritten('git diff | grep TOKEN'), `git diff | ${REDACTOR} | grep TOKEN`, 'its own filter reads the masked stream');
+  assert.equal(rewritten('git add -N . && git diff HEAD; git reset -q'), `git add -N . && git diff HEAD | ${REDACTOR}; git reset -q`, 'the security-review diff keeps every step');
+  for (const c of ['git status', 'git log --oneline -5', 'git diff --stat', 'git diff --name-only HEAD~1', 'git diff --quiet', 'git diff | wc -l', 'git diff > /tmp/x.patch', 'git stash show', `git diff | ${REDACTOR}`])
+    assert.equal(bash(c), 0, `${c} passes untouched`);
+});
+
+test('I2: the stream redactor masks credential values, URL passwords and PEM bodies line by line', () => {
+  const pem = ['-----BEGIN RSA PRIVATE KEY-----', 'MIIEowIBAAKCAQEA0000', 'abcdabcdabcd', '-----END RSA PRIVATE KEY-----'];
+  const input = ['diff --git a/.env b/.env', '--- a/.env', '+++ b/.env', '-API_TOKEN=old', `+API_TOKEN=${FAKE_TOKEN}`, ' DB_HOST=localhost',
+    '+  "ClientSecret": "' + FAKE_TOKEN + '",', '+DATABASE_URL=postgres://app:' + FAKE_TOKEN + '@db:5432/app',
+    ...pem.map((l) => `+${l}`), '+const x = 1;'].join('\n') + '\n';
+  const r = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.ok(!r.stdout.includes(FAKE_TOKEN), r.stdout);
+  assert.ok(!r.stdout.includes('abcdabcdabcd'), 'the PEM body');
+  assert.match(r.stdout, /^\+API_TOKEN=<set \(40 chars\)>$/m);
+  assert.match(r.stdout, /^\+ {2}"ClientSecret": "<set \(40 chars\)>",$/m);
+  assert.match(r.stdout, /^\+DATABASE_URL=postgres:\/\/app:<set \(40 chars\)>@db:5432\/app$/m);
+  assert.match(r.stdout, /^\+-----BEGIN RSA PRIVATE KEY-----$/m, 'the PEM markers stay');
+  assert.match(r.stdout, /^-API_TOKEN=<set \(3 chars\)>$/m, 'a removed value is a credential too');
+  for (const keep of ['diff --git a/.env b/.env', '+++ b/.env', ' DB_HOST=localhost', '+const x = 1;'])
+    assert.ok(r.stdout.split('\n').includes(keep), `${keep} stays as written`);
+  assert.match(r.stderr, /credential guard/, 'a masked stream says so on stderr');
+  const clean = spawnSync(process.execPath, [HOOK, '--redact-stdin'], { input: '+const x = 1;\n', encoding: 'utf8' });
+  assert.equal(clean.stdout, '+const x = 1;\n');
+  assert.equal(clean.stderr, '', 'nothing masked, nothing said');
+});
+
+test('I2: end to end - the rewritten git dumps print no credential from a real repository', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-dump-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'appsettings.json'), JSON.stringify({ Api: { ClientSecret: FAKE_TOKEN } }, null, 2) + '\n');
+  fs.writeFileSync(path.join(repo, '.env'), `API_TOKEN=${FAKE_TOKEN}\n`);
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'appsettings.json'), JSON.stringify({ Api: { ClientSecret: 'y1'.repeat(20) } }, null, 2) + '\n');
+  for (const c of ['git diff', 'git show HEAD:appsettings.json', 'git log -p -1', 'git show HEAD']) {
+    const cmd = updatedCommand(run({ tool_name: 'Bash', tool_input: { command: c }, session_id: 'suite', cwd: repo }, { CLAUDE_PROJECT_DIR: repo }));
+    assert.ok(cmd && cmd.endsWith('--redact-stdin'), `${c} -> ${cmd}`);
+    const out = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.equal(out.status, 0, out.stderr);
+    assert.ok(!out.stdout.includes(FAKE_TOKEN) && !out.stdout.includes('y1'.repeat(20)), `${c} printed a credential:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked value`);
+  }
+});
+
+// A rewritten command carries a `node ...` stage the permission system has never seen, so an unconditional pipe
+// would turn every read-only `git diff` into a call that asks. The guard probes the same git read first (argv,
+// no shell, bounded) and pipes only a stage whose output would be masked - or one it cannot probe.
+test('I2: a git dump with nothing to mask runs as written; one the probe cannot run is piped', { skip: process.platform === 'win32' && 'posix git fixture' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-clean-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'app.js'), 'const x = 1;\n');
+  fs.writeFileSync(path.join(repo, 'config.json'), JSON.stringify({ port: 8080 }) + '\n');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'app.js'), 'const x = 2;\n');
+  const at = (command) => verdict(run({ tool_name: 'Bash', tool_input: { command }, session_id: 'suite', cwd: repo }, { CLAUDE_PROJECT_DIR: repo }));
+  for (const c of ['git diff', 'git show HEAD', 'git log -p -1', 'git diff HEAD~0 -- app.js', 'git show HEAD:config.json'])
+    assert.equal(at(c), 0, `${c}: nothing to mask, nothing rewritten`);
+  for (const c of ['git diff $REV', 'git -c diff.external=x diff', 'git diff --output=o.patch', 'cd sub && git diff', 'git diff not-a-revision'])
+    assert.equal(at(c), REWRITE, `${c}: not probed, so piped`);
+  assert.ok(!fs.existsSync(path.join(repo, 'o.patch')), 'the probe never ran a writing flag');
+  for (const c of ['git status && git diff', 'git log --oneline -1; git show HEAD'])
+    assert.equal(at(c), 0, `${c}: a read-only step before it leaves the probe standing`);
+});
+
+// Final review IM1: the probe runs at PreToolUse, BEFORE the command's earlier steps. The security-review diff
+// baseline-security.md prescribes (`git add -N . && git diff HEAD`) exists so a brand-new file shows - and the
+// probe saw the tree before `git add -N .`, found nothing, piped nothing, and the run printed the new credential.
+test('IM1: a git dump after a step that changes the tree is piped unprobed - a new untracked credential stays masked', { skip: process.platform === 'win32' && 'sh pipeline' }, () => {
+  const repo = fs.mkdtempSync(path.join(TMP, 'git-new-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  fs.writeFileSync(path.join(repo, 'app.js'), 'const x = 1;\n');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  fs.writeFileSync(path.join(repo, 'appsettings.json'), JSON.stringify({ Api: { ClientSecret: FAKE_TOKEN } }, null, 2) + '\n');
+  for (const c of ['git add -N . && git diff HEAD; git reset -q', 'git add appsettings.json && git diff --cached']) {
+    const cmd = updatedCommand(run({ tool_name: 'Bash', tool_input: { command: c }, session_id: 'suite', cwd: repo }, { CLAUDE_PROJECT_DIR: repo }));
+    assert.ok(cmd && cmd.includes('--redact-stdin'), `${c} -> ${cmd}`);
+    const out = spawnSync('sh', ['-c', cmd], { cwd: repo, encoding: 'utf8' });
+    assert.ok(!out.stdout.includes(FAKE_TOKEN), `${c} printed a credential:\n${out.stdout}`);
+    assert.match(out.stdout, /<set \(40 chars\)>/, `${c} shows the masked value`);
+    git('reset', '-q');
+  }
+});

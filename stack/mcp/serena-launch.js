@@ -24,6 +24,14 @@
 // project with no `.git` of its own whose folder has moved gets `--project <cwd>` instead - the literal
 // directory, never the `${CLAUDE_PROJECT_DIR}` expansion that failed in a registration.
 //
+// THE CONTEXT (I12): the entry names serena's upstream `--context claude-code`, and this launcher hands
+// serena the stack's own `navigation-context.yml` beside it instead - the upstream context minus the five
+// editing tools no house hook sees and onboarding (the file says why). The swap lives HERE, not in the
+// entry's argv: Claude Code launches the entry from the refreshed marketplace clone against the INSTALLED
+// version's cache, so an entry naming the new file would stop a project whose plugin is not updated yet
+// (serena refuses a context path that does not exist), while an older launcher simply keeps claude-code.
+// Any other context the entry names is passed unchanged.
+//
 // SERENA_HOME is spelled in the platform's own separator, and left RELATIVE. serena 1.7.0 execs the
 // TypeScript server through npm's .bin shim, so on Windows the path reaches cmd.exe UNQUOTED: a '/' in
 // it is cut there ('.serena' is not recognized as an internal or external command), and an absolute
@@ -63,6 +71,18 @@ function serenaData({ projectDir, env = process.env, platform = process.platform
     return { root, dir: live.dir, legacy, home: nativeHome(`${live.dir}/home`, platform) };
 }
 
+// The stack's serena context, beside this launcher (and copied into a copy-route project's .claude).
+const STACK_CONTEXT = path.join(__dirname, 'navigation-context.yml');
+const UPSTREAM_CONTEXT = 'claude-code';
+
+// `--context claude-code` becomes `--context <the stack's file>`; any other value is the entry's own.
+function contextArgs(args, file = STACK_CONTEXT)
+{
+    const at = args.indexOf('--context');
+    if (at < 0 || args[at + 1] !== UPSTREAM_CONTEXT || !fs.existsSync(file)) return args;
+    return [...args.slice(0, at + 1), file, ...args.slice(at + 2)];
+}
+
 // `--project-from-cwd` stays wherever it still finds this project; otherwise the cwd itself is named.
 function projectArgs(args, { projectDir, legacy })
 {
@@ -86,7 +106,7 @@ function main(argv)
     const projectDir = process.cwd();
     const log = (line) => process.stderr.write(`${line}\n`);
     const data = serenaData({ projectDir, log });
-    const args = projectArgs(rest < 0 ? [] : argv.slice(rest + 1), { projectDir, legacy: data.legacy });
+    const args = contextArgs(projectArgs(rest < 0 ? [] : argv.slice(rest + 1), { projectDir, legacy: data.legacy }));
     const env = { ...process.env, SERENA_HOME: data.home };
     log(`serena-launch: ${spec}, python ${pythonRequest({ env, projectDir })}, home ${env.SERENA_HOME}`);
     runUvx(['--from', spec, 'serena', ...args], { env, projectDir, label: 'serena-launch' });
@@ -98,4 +118,4 @@ if (require.main === module)
     const rc = main(process.argv.slice(2));
     if (rc !== null) process.exit(rc);
 }
-module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs };
+module.exports = { main, nativeHome, serenaHomeFor, serenaData, projectArgs, contextArgs, STACK_CONTEXT };

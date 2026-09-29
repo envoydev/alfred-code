@@ -137,7 +137,7 @@ test('a missing prelude leaves every hook running - the gate is fail-open', () =
 // R54 / Task 16 review M8: under a user-scope core every hook runs in every repo the user opens. A repo
 // never set up gets nothing written - no .claude/docs/ ledger, history, state or compact file - from
 // any of them, whatever the event. Each payload is one the hook acts on in a set-up project. R86: the
-// three PROTECTIVE guards stay live there (the rm guard still blocks `rm -rf /`), and skip their row.
+// PROTECTIVE guards stay live there (the rm guard still blocks `rm -rf /`), and skip their row.
 test('in a never-set-up project every plugin-launched hook writes nothing, and only the protective guards speak', () => {
     const { PROTECTIVE } = require(path.join(HOOKS_DIR, 'hook-prelude.js'));
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'parity-unset-'));

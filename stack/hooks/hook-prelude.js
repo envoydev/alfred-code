@@ -39,7 +39,7 @@
 //
 // GATE 5 - the hook profile. The core entry's `hook_profile` userConfig (minimal / standard / strict,
 // set in /config and stored in the ACCOUNT settings' `pluginConfigs` - never a project file) reaches
-// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the three PROTECTIVE guards
+// every plugin hook as CLAUDE_PLUGIN_OPTION_HOOK_PROFILE. `minimal` keeps the four PROTECTIVE guards
 // only; `standard`, absent or anything unknown is today's set; `strict` is standard with the seeded-off
 // switches that are safe on read as on (STRICT_ON - the Stop build check). The project's csv still wins:
 // a hook it names stays off under every profile. A copied hook gets no option variable, so it reads
@@ -48,7 +48,7 @@
 // GATE 6 - a Cursor host. Cursor loads Claude Code hooks by default (a compatibility toggle) and turns a
 // Claude Stop block into an automatic follow-up with no loop limit, so a hook that asks or blocks can loop
 // a Cursor session forever. Under a Cursor PAYLOAD (cursorHost: a `cursor_version` field, or a camelCase
-// event name - Claude's are PascalCase) only the three PROTECTIVE guards run; every other hook stands down
+// event name - Claude's are PascalCase) only the four PROTECTIVE guards run; every other hook stands down
 // silently and writes no ledger row, as under GATE 4. Judged from the payload ALONE, never from the
 // environment: a `claude` session in Cursor's integrated terminal inherits Cursor's variables and keeps
 // every hook. A hook makes the check itself, right after it parsed its own payload (cursorStandDown), so no
@@ -280,8 +280,9 @@ function isCliInvocation(argv)
 }
 
 // R86: what these stop cannot be undone, so GATE 4 never stands them down - each reads neverSetUp()
-// itself and skips its block row there instead.
-const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push']);
+// itself and skips its block row there instead. The desktop exec gate joined them (final review IM2, the
+// user's ruling of 2026-09-29): the macOS Shell it gates is a shell the other three never see.
+const PROTECTIVE = new Set(['guard-catastrophic-rm', 'guard-secret-value', 'guard-protected-force-push', 'guard-desktop-exec']);
 
 // UNATTENDED - nobody is at the terminal, so a Stop block or an offer reaches no person: it only buys
 // the model another turn (pilot 2, 2026-09-27: 8 of 12 print-mode cells ended on 'docs ok', nine

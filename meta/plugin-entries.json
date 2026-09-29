@@ -6,7 +6,7 @@
       "name": "alfred-code",
       "source": "./",
       "description": "The Claude Code stack, guided: setup installs it from scratch into a project, init bootstraps it once after the restart (services, memory, captures, CLAUDE.md), update refreshes an existing install and prunes what upstream removed, configure adjusts the selection (add or drop), validate reconciles an install to the project - prunes what its framework does not use and adds what the detected stacks are missing - all drive a dependency-complete selection with a prerequisite check; status shows the install read-only, per-area tables; uninstall removes what the install ledger says the stack wrote, and nothing of the user's.",
-      "version": "2.1.2",
+      "version": "2.1.4",
       "author": {
         "name": "envoydev",
         "url": "https://github.com/envoydev"
@@ -25,7 +25,7 @@
         "hook_profile": {
           "type": "string",
           "title": "Hook profile",
-          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret and force-push guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
+          "description": "Which Alfred Code hooks run - one of minimal, standard, strict: minimal keeps only the rm, secret, force-push and desktop exec guards; standard is the default set; strict adds the Stop build check. Any other value runs as standard. A project's ALFRED_CODE_HOOKS_OFF still switches a hook off.",
           "default": "standard"
         }
       },
@@ -105,7 +105,7 @@
             ]
           },
           {
-            "matcher": "Bash|PowerShell",
+            "matcher": "Bash|PowerShell|Monitor",
             "hooks": [
               {
                 "type": "command",
@@ -180,7 +180,27 @@
             ]
           },
           {
+            "matcher": "^mcp__(plugin_windows-desktop_)?windows-desktop__App$|^mcp__(plugin_macos-desktop_)?macos-desktop__Shell$",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/guard-desktop-exec.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
             "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/docs-session.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
@@ -327,6 +347,16 @@
           },
           {
             "matcher": "Write|Edit|MultiEdit",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "node \"${CLAUDE_PLUGIN_ROOT}/stack/hooks/check-turn-build.js\"",
+                "timeout": 10
+              }
+            ]
+          },
+          {
+            "matcher": "^mcp__(plugin_navigation_)?navigation__(rename_symbol|safe_delete_symbol)$",
             "hooks": [
               {
                 "type": "command",
