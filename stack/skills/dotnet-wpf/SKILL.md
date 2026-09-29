@@ -1,6 +1,7 @@
 ---
 name: dotnet-wpf
 description: "Load before editing any WPF XAML, code-behind or ViewModel - strict MVVM on the binding engine. Not for WinForms, UWP, WinUI 3, MAUI, Avalonia or Uno."
+user-invocable: false
 ---
 
 # WPF conventions

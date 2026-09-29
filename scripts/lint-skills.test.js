@@ -1356,3 +1356,27 @@ test('a capped agent description still names the seat to use instead', () =>
         assert.ok(d.length <= 300, `${seat}: ${d.length} chars`);
     }
 });
+
+// Check 19 holds BOTH non-default invocation states of the HTML house rows to their frontmatter: "manual" =
+// disable-model-invocation, "model-only" = user-invocable false (2.1.6 M128 part 3 - review-216-ab MINOR 3: the
+// legend had no word for a skill with no / entry).
+test('check 19: the house rows\' "manual" and "model-only" flags match the frontmatter, both ways', () => {
+    const { lintInvocationFlags } = require('./lint-skills.js');
+    const skills = { manual: new Set(['alfred-task-solve']), modelOnly: new Set(['typescript']) };
+    assert.deepStrictEqual(lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript']) }), []);
+    const missing = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set() });
+    assert.strictEqual(missing.length, 1);
+    assert.match(missing[0], /'typescript' misses the "model-only" invocation flag \(its SKILL\.md sets user-invocable: false\)/);
+    const stale = lintInvocationFlags(skills, { houseManual: new Set(['alfred-task-solve']), houseModelOnly: new Set(['typescript', 'npm']) });
+    assert.strictEqual(stale.length, 1);
+    assert.match(stale[0], /marks 'npm' model-only but its SKILL\.md does not set user-invocable: false/);
+    assert.strictEqual(lintInvocationFlags(skills, { houseManual: new Set(), houseModelOnly: new Set(['typescript']) }).length, 1, 'the manual half still holds');
+});
+
+test('check 19: the live HTML legend names the model-only state and the four flagged rows carry it', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'alfred-code.html'), 'utf8');
+    assert.match(html, /model-only = fires on its description, no \/-command \(user-invocable: false\)/);
+    const house = html.split('const house = {')[1].split('};')[0];
+    const flagged = [...house.matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(flagged, ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript']);
+});

@@ -1,6 +1,7 @@
 ---
 name: typescript
 description: "Load before writing or editing any .ts or .tsx file, for tsconfig work, and for typing checked .js files. Not for base-language rules alone (javascript) or C#."
+user-invocable: false
 ---
 
 # TypeScript conventions - the type layer

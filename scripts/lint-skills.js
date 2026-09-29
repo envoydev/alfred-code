@@ -1276,6 +1276,23 @@ function lintPluginComponents(manifest, listings)
     return findings;
 }
 
+// Check 19: every disable-model-invocation skill carries the "manual" row flag and every user-invocable: false
+// skill the "model-only" one (2.1.6 M128 part 3), and no row claims a state its SKILL.md does not set.
+function lintInvocationFlags(skills, html)
+{
+    const out = [];
+    const pairs = [
+        ['manual', skills.manual, html.houseManual, 'disable-model-invocation'],
+        ['model-only', skills.modelOnly, html.houseModelOnly, 'user-invocable: false'],
+    ];
+    for (const [word, set, rows, field] of pairs)
+    {
+        for (const name of set) if (!rows.has(name)) out.push(`alfred-code.html house row for '${name}' misses the "${word}" invocation flag (its SKILL.md sets ${field})`);
+        for (const name of rows) if (!set.has(name)) out.push(`alfred-code.html marks '${name}' ${word} but its SKILL.md does not set ${field}`);
+    }
+    return out;
+}
+
 function parseStackHtml()
 {
     const html = fs.readFileSync(STACK_HTML, 'utf8');
@@ -1283,6 +1300,8 @@ function parseStackHtml()
         .matchAll(/\["([a-z0-9-]+)","/g)].map(m => m[1]));
     const houseManual = new Set([...html.split('const house = {')[1].split('};')[0]
         .matchAll(/\["([a-z0-9-]+)",[^\n]*"manual"\]/g)].map(m => m[1]));
+    const houseModelOnly = new Set([...html.split('const house = {')[1].split('};')[0]
+        .matchAll(/\["([a-z0-9-]+)",[^\n]*"model-only"\]/g)].map(m => m[1]));
 
     const repoBlock = html.split('const repository = [')[1].split('\n];')[0];
     const repoSkills = new Set();
@@ -1318,7 +1337,7 @@ function parseStackHtml()
     const hooksBlock = (html.split('const hooks = [')[1] ?? '').split('\n];')[0];
     const hooks = new Set([...hooksBlock.matchAll(/\["([a-z0-9-]+)"/g)].map(m => m[1]));
 
-    return { house, houseManual, repoSkills, plugins, mcps, hooks };
+    return { house, houseManual, houseModelOnly, repoSkills, plugins, mcps, hooks };
 }
 
 // Every manifest in `manifests` ({label -> Set}) must hold the same entries as
@@ -1362,8 +1381,10 @@ function main()
 
     // 1. Every skill dir has a SKILL.md whose YAML frontmatter loads cleanly,
     //    names the skill after its directory, and carries a non-empty description.
-    //    Also collects the manual-only set (disable-model-invocation) for check 19.
+    //    Also collects the manual-only set (disable-model-invocation) and the model-only set
+    //    (user-invocable: false) for check 19.
     const manualSkills = new Set();
+    const modelOnlySkills = new Set();
     for (const dir of dirs)
     {
         const skillFile = path.join(SKILLS_DIR, dir, 'SKILL.md');
@@ -1410,6 +1431,11 @@ function main()
         if (meta['disable-model-invocation'] === true)
         {
             manualSkills.add(dir);
+        }
+
+        if (meta['user-invocable'] === false)
+        {
+            modelOnlySkills.add(dir);
         }
     }
 
@@ -1943,23 +1969,10 @@ function main()
         }
     }
 
-    // 19. The HTML house-skills invocation column must match frontmatter:
-    //     every disable-model-invocation skill carries the "manual" row flag,
-    //     and no auto-invoked skill claims it.
-    for (const name of manualSkills)
+    // 19. The HTML house-skills invocation column must match frontmatter (lintInvocationFlags).
+    for (const msg of lintInvocationFlags({ manual: manualSkills, modelOnly: modelOnlySkills }, html))
     {
-        if (!html.houseManual.has(name))
-        {
-            flag(`alfred-code.html house row for '${name}' misses the "manual" invocation flag (its SKILL.md sets disable-model-invocation)`);
-        }
-    }
-
-    for (const name of html.houseManual)
-    {
-        if (!manualSkills.has(name))
-        {
-            flag(`alfred-code.html marks '${name}' manual but its SKILL.md does not set disable-model-invocation`);
-        }
+        flag(msg);
     }
 
     // 20. The committed dependency graph (meta/stack-graph.json) must match a
@@ -3175,6 +3188,7 @@ module.exports = {
     lintNoPluginBin,
     lintMarketplaceEntries,
     lintAgentPreloads,
+    lintInvocationFlags,
     lintRepoRootReserved,
     lintMarketplaceSchema,
     RESERVED_ROOT_NAMES,

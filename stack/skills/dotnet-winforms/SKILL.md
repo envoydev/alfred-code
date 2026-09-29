@@ -1,6 +1,7 @@
 ---
 name: dotnet-winforms
 description: "Load before editing any WinForms Form, UserControl, code-behind, presenter or .Designer.cs. Not for WPF, WinUI 3, MAUI, Avalonia or Uno."
+user-invocable: false
 ---
 
 # WinForms conventions

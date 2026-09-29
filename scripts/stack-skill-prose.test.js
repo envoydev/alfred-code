@@ -302,3 +302,23 @@ test('M128: typescript, ionic and dotnet-performance close on a quoted check; op
     assert.doesNotMatch(openapi, /3\.x on \.NET 11\)/);
     assert.match(openapi, /\.NET 11's major is fetched at use/);
 });
+
+// M128 part 3 (2.1.6, measured live - fix-216-ab-report.md): four of the convention layers the audit named (SC M13), each
+// loaded by a path-scoped rule as its FIRST action, record their invocation choice as model-only. With `user-invocable: false` the model's skill listing
+// was byte-identical and the layer loaded before the first edit 4 of 4 times, as without it; only the `/` entry went.
+// `markdown-style` stays typeable: its description advertises a user action ('lint / style-check / fix this markdown'),
+// and it rides every install (review-216-ab MINOR 3).
+test('M128: the rule-forced convention layers are model-only, and no other skill is', () =>
+{
+    const flagged = fs.readdirSync(SKILLS).filter((d) => fs.existsSync(path.join(SKILLS, d, 'SKILL.md')))
+        .filter((d) => /^user-invocable:\s*false\s*$/m.test((/^---\n([\s\S]*?)\n---/.exec(skill(d)) || [])[1] || '')).sort();
+    const FORCED = ['dotnet-winforms', 'dotnet-wpf', 'javascript', 'typescript'];
+    assert.doesNotMatch(skill('markdown-style'), /^user-invocable:/m, 'markdown-style keeps its / entry');
+    assert.deepStrictEqual(flagged, FORCED);
+    const pathRules = fs.readdirSync(path.join(ROOT, 'stack', 'rules')).map((f) => read(`stack/rules/${f}`)).filter((t) => /^---\n(?:(?!---\n)[^\n]*\n)*?paths:/.test(t));
+    for (const name of FORCED)
+    {
+        assert.ok(pathRules.some((t) => new RegExp(`load \`${name}\`|\`${name}\` Skill call|load \`[a-z-]+\` and the \`${name}\``).test(squash(t))), `a path rule's first action loads ${name}`);
+        assert.doesNotMatch(skill(name), /^disable-model-invocation:/m, `${name} stays model-invocable`);
+    }
+});
