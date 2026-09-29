@@ -227,3 +227,23 @@ test('corpus-replay: a subagent transcript is replayed as ONE SubagentStop, judg
     assert.match(rowFor(out, 'guard-stop-contract.js::SubagentStop'), /\| 2 \| 1 \|/, 'the stuck fork is held, the finished one is not');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('corpus-replay: a typed orchestration command is replayed on the UserPromptExpansion route, by the manifest matcher (2.1.5 M14)', () => {
+  // The slash route moved from UserPromptSubmit to UserPromptExpansion, which fires on a typed command and names it.
+  // A replay builds that payload from the harness's `<command-name>` marker - only for a command the wired
+  // matcher lets through, as Claude Code would - and hands it the transcript up to that row.
+  const { extract } = require('./corpus-replay.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'replay-upe-'));
+  const typedRow = (text) => ({ type: 'user', cwd: dir, message: { role: 'user', content: text } });
+  fs.writeFileSync(path.join(dir, 'session.jsonl'), [
+    typedRow('<command-name>/alfred-loop-quality</command-name>'), typedRow('<command-name>/help</command-name>'),
+    typedRow('<command-name>/alfred-code:setup</command-name>'), typedRow('fix the cart'),
+  ].map((r) => JSON.stringify(r)).join('\n') + '\n');
+  const jobs = extract([path.join(dir, 'session.jsonl')], { stops: 10 }).jobs.filter((j) => /UserPromptExpansion/.test(j.route));
+  assert.deepStrictEqual(jobs.map((j) => j.payload.command_name).sort(), ['alfred-code:setup', 'alfred-loop-quality'], 'the matcher keeps /help out');
+  for (const j of jobs) {
+    assert.strictEqual(j.payload.hook_event_name, 'UserPromptExpansion');
+    assert.strictEqual(j.payload.prompt, `/${j.payload.command_name}`);
+    assert.ok(j.prefix && j.prefix.file, 'the transcript up to the command rides with it');
+  }
+});

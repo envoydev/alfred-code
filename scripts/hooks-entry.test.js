@@ -1,5 +1,7 @@
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -9,20 +11,23 @@ const build = require('./build-marketplace.js');
 const { parseHookWirings, hooksBlock, coreEntry } = build;
 
 const dispatcher = require('../stack/hooks/shell-guards.js');
+const fileDispatcher = require('../stack/hooks/file-guards.js');
 const wirings = parseHookWirings();
 const block = hooksBlock(wirings);
 
 test('the wirings come from the installer table, not a second list', () => {
     assert.ok(wirings.length >= 26, `expected the installer's whole HOOKS table, got ${wirings.length}`);
-    // The shell guards launch as ONE dispatcher, which runs each of them in-process.
-    const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`) : [w.file])));
+    // The shell guards launch as ONE dispatcher and the file guards as another, each running its guards in-process.
+    const files = new Set(wirings.flatMap(w => (w.file === `${dispatcher.SELF}.js` ? dispatcher.GUARDS.map(g => `${g}.js`)
+        : w.file === `${fileDispatcher.SELF}.js` ? fileDispatcher.NAMES.map(g => `${g}.js`) : [w.file])));
     assert.strictEqual(files.size, 18, 'eighteen hooks, however many wirings they take');
     for (const w of wirings) assert.ok(/^[a-z-]+\.js$/.test(w.file), `odd file name: ${w.file}`);
 });
 
 test('a bare matcher is a PreToolUse wiring; an @ prefix names its own event', () => {
-    const read = wirings.find(w => w.file === 'guard-read-whole-file.js' && w.matcher === 'Read');
-    assert.ok(read, 'the Read wiring must survive');
+    // The file tools' guards ride one dispatcher row since 2.1.5 (M3); it is a bare matcher list like any other.
+    const read = wirings.find(w => w.file === 'file-guards.js' && w.matcher === fileDispatcher.MATCHER);
+    assert.ok(read, 'the file-tool wiring must survive');
     assert.strictEqual(read.event, 'PreToolUse');
 
     const stop = wirings.find(w => w.file === 'guard-stop-contract.js' && w.event === 'Stop');
@@ -48,9 +53,10 @@ test('the block is a valid plugin hooks object: node launcher, timeout 10 (60 an
                 assert.strictEqual(h.type, 'command');
                 // check-turn-build.js runs a real build at Stop - the one wiring allowed past 10s. Its
                 // PostToolUse half only appends a path, so it keeps 10 like every other hook.
-                // The shell-guard dispatcher runs eight guards in one process: their 10s each, summed.
+                // Each dispatcher runs its guards in one process: their 10s each, summed.
                 const expected = event === 'Stop' && /check-turn-build\.js"/.test(h.command) ? 60
-                    : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length : 10;
+                    : /shell-guards\.js"/.test(h.command) ? 10 * dispatcher.GUARDS.length
+                    : /file-guards\.js"/.test(h.command) ? 10 * fileDispatcher.GUARDS.length : 10;
                 assert.strictEqual(h.timeout, expected, `${event} wiring must carry timeout ${expected}: ${h.command}`);
                 assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/stack\/hooks\/[a-z-]+\.js"( \S+)*$/,
                     `${event} command must launch through node, quoted, from the plugin root: ${h.command}`);
@@ -71,7 +77,7 @@ test('every generated hook command runs a non-executable script, under a root wi
         const commands = new Set();
         for (const blocks of Object.values(coreEntry().hooks))
             for (const b of blocks) for (const h of b.hooks) commands.add(h.command);
-        assert.ok(commands.size >= 17, `expected the eighteen hooks (the eight shell guards through one dispatcher) plus the core's own two, got ${commands.size}`);
+        assert.ok(commands.size >= 15, `expected the eighteen hooks (the shell and file guards through their two dispatchers) plus the core's own two, got ${commands.size}`);
         const env = { PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}` };
         for (const command of commands)
         {
@@ -96,7 +102,7 @@ test('every event the stack wires is present, and each keeps its own matchers', 
     for (const event of ['PreToolUse', 'Stop', 'SubagentStop', 'SubagentStart', 'SessionStart', 'UserPromptSubmit'])
         assert.ok(block[event], `${event} must be wired`);
     const pre = block.PreToolUse.map(b => b.matcher);
-    assert.ok(pre.includes('Read'), 'the Read matcher survives');
+    assert.ok(pre.includes(fileDispatcher.MATCHER), 'the file-tool matcher survives');
     assert.ok(pre.includes('Task|Agent'), 'the dispatch matcher survives');
     assert.ok(pre.includes('.*'), 'the instrumentation catch-all survives');
     const session = block.SessionStart.map(b => b.matcher);
@@ -177,4 +183,56 @@ test('the Monitor route: the shell guards judge a Monitor command through the ge
         assert.ok(denied(replayPreToolUse('Bash', { command: 'rm -rf ~' }, cwd)), 'and Bash still blocks');
     }
     finally { fs.rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test('the slash route is UserPromptExpansion, its matcher naming every orchestration command and nothing else (2.1.5 M14)', () => {
+    // UserPromptExpansion fires on a typed command and carries its name (code.claude.com/docs/en/hooks), so the
+    // offer no longer spawns on every prompt. A matcher with any character past letters, digits, `_`, `-`,
+    // spaces, `,` and `|` is an unanchored JavaScript regex - evaluated here the way Claude Code evaluates it.
+    const file = 'guard-fresh-session-start.js';
+    const slash = (block.UserPromptExpansion || []).filter((b) => b.hooks.some((h) => h.command.includes(file)));
+    assert.strictEqual(slash.length, 1, 'wired once on UserPromptExpansion');
+    assert.ok(!(block.UserPromptSubmit || []).some((b) => b.hooks.some((h) => h.command.includes(file))), 'and no longer on UserPromptSubmit');
+    const matches = (name) => new RegExp(slash[0].matcher).test(name);
+    const src = fs.readFileSync(path.join(__dirname, '..', 'stack', 'hooks', file), 'utf8');
+    const orchestration = new RegExp(src.match(/^const ORCHESTRATION = \/(.+)\/;$/m)[1]);
+    const names = ['alfred-loop-quality', 'alfred-loop-architecture-quality', 'alfred-loop-test-coverage', 'alfred-capture-architecture',
+        'alfred-capture-project-capabilities', 'alfred-task-solve', 'alfred-task-solve-cross', 'alfred-task-verify-code', 'alfred-issue-diagnoser',
+        'security-review', 'alfred-code:init', 'alfred-code:setup', 'alfred-code:update', 'alfred-code:configure', 'alfred-code:validate'];
+    for (const n of names) {
+        assert.ok(orchestration.test(n), `${n} is one the hook judges`);
+        assert.ok(matches(n) && matches(n.replace(/^.*:/, '')), `${n} reaches the hook under either spelling`);
+        if (!n.includes(':')) assert.ok(matches(`alfred-code:${n}`), `${n} reaches it plugin-scoped too`);
+    }
+    for (const n of ['help', 'clear', 'compact', 'dev-log-convert', 'my-setup', 'alfred-task-solved', 'csharp', 'alfred-code:status'])
+        assert.ok(!matches(n), `${n} never spawns the hook`);
+});
+
+test('the retired tool names are kept evenly: every file-write matcher names MultiEdit, the dispatch one Task (2.1.5 M7)', () => {
+    // The tools reference lists neither, but a matcher token no tool carries never matches, and the CLI still
+    // spells both (MultiEdit among its edit-tool names, Task as the agent tool's old name) - so they stay, on
+    // every sibling alike, and the manifest's note says why once.
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+    const writers = manifest.hooks.filter((r) => /(^|[|:])(Write|Edit)(\||$)/.test(r.matcher));
+    assert.ok(writers.length >= 4, writers.map((r) => r.file).join(', '));
+    for (const r of writers) assert.match(r.matcher, /(^|[|:])MultiEdit(\||$)/, `${r.file} ${r.matcher}`);
+    const dispatch = manifest.hooks.filter((r) => /(^|[|:])Agent(\||$)/.test(r.matcher));
+    for (const r of dispatch) assert.match(r.matcher, /(^|[|:])Task(\||$)/, `${r.file} ${r.matcher}`);
+    assert.match(manifest.note, /MultiEdit[\s\S]*Task/, 'the one note that says why');
+});
+
+test('the hooks audit\'s currency rows follow the hooks reference: DirectoryAdded takes a matcher, SessionStart has a fork source (2.1.5 M18)', () => {
+    // hooks reference, 'Matcher patterns' (fetched 2026-09-29): DirectoryAdded matches on how the directory was
+    // added (slash_command, register_repo_root); the no-matcher set is UserPromptSubmit, PostToolBatch, Stop,
+    // TeammateIdle, TaskCreated, TaskCompleted, WorktreeCreate, WorktreeRemove, MessageDisplay and CwdChanged;
+    // SessionStart's matcher values are startup, resume, clear, compact and fork.
+    const dir = path.join(__dirname, '..', '.claude', 'skills', 'repo-audit-hooks', 'references');
+    const currency = fs.readFileSync(path.join(dir, 'currency.md'), 'utf8');
+    const rubric = fs.readFileSync(path.join(dir, 'rubric.md'), 'utf8');
+    assert.doesNotMatch(currency, /the eleven events with no matcher/, 'the stale count is gone');
+    assert.match(currency, /the ten events with no matcher/);
+    assert.match(currency, /`DirectoryAdded` matches on how the directory was added \(`slash_command`, `register_repo_root`\)/);
+    assert.match(currency, /`SessionStart` sources `startup` \/ `resume` \/ `clear` \/ `compact` \/ `fork`/);
+    const noMatcher = rubric.match(/no matcher on the events that ignore one - ([^;)]*)[;)]/)[1];
+    assert.doesNotMatch(noMatcher, /DirectoryAdded/, 'the rubric no longer lists DirectoryAdded among the events that ignore a matcher');
 });

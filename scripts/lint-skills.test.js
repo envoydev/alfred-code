@@ -823,8 +823,8 @@ test('check 49: the two 1.x aliases pass as generated, and a drifted alias, a re
 test('check 48: a drifted matcher, a missing file and a missing gate are all findings', () => {
     const build = require('./build-marketplace.js');
     const wirings = build.parseHookWirings();
-    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-read-whole-file.js' && w.matcher === 'Read'
-        ? { ...w, matcher: 'Read|Glob' } : w)));
+    const drifted = build.hooksBlock(wirings.map(w => (w.file === 'guard-unapproved-dispatch.js' && w.matcher === 'Task|Agent'
+        ? { ...w, matcher: 'Task|Agent|Glob' } : w)));
     assert.notStrictEqual(JSON.stringify(drifted), JSON.stringify(build.hooksBlock(wirings)),
         'a changed matcher must change the generated block, which is what check 48 compares');
 

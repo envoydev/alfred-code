@@ -5,6 +5,8 @@
 // <docs-path>/flow/; guard-ungated-commit.js leaves them out of the receipt's count and the trivial-diff bar, and blocks
 // a `git add` that would sweep one in unless the user named it (the UNTRACKED-ALLOW receipt).
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint never decides a hook case
 const assert = require('node:assert');
 const fs = require('node:fs');

@@ -10,6 +10,8 @@
 //                run's tool_use_id and actor; the next green run of that command resets the streak.
 // Both directions are pinned: a gate that also fires on the clean neighbour teaches a bypass.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -163,6 +165,28 @@ test('done gate: a shell write to a source file is an edit', () => {
         assert.ok(!unrun(probe([['run', cmd]])), cmd);
     assert.ok(!unrun(probe([['run', "sed -i 's/a/b/' src/a.js"], ['run', 'npm test']])), 'a run after the shell edit');
     assert.strictEqual(probe([['run', "sed -i 's/a/b/' src/a.js", 'Bash operation blocked by hook: outside']]).row, null, 'a denied shell write changed nothing');
+});
+
+test('done gate: a Monitor shell write and a navigation rename are source edits too (2.1.5 final review R8)', () => {
+    // The probe's shell-write read stopped at Bash|PowerShell, where every shell guard reads the whole shell route
+    // (Monitor runs its command under Bash's rules); and a navigation rename or safe delete - the two edit tools
+    // the navigation server keeps - changed source nothing read as an edit, though the navigation-edit-tools note
+    // cites this probe. The declaring file (`relative_path`) is the one credited.
+    const root = project();
+    const turn = (c) => [typed('go'), c.row, result(c.id, 'ok')];
+    const mon = call('Monitor', { command: "sed -i '' 's/a/b/' src/a.js", description: 'edit' });
+    const g1 = gate(root, turn(mon), 'Fixed.');
+    assert.ok(unrun(g1), 'a Monitor shell write then Fixed.');
+    assert.match(g1.row.detail.file, /src[\\/]a\.js/);
+    // both routes' spellings - the copy route's bare server is composed, never literal text (lint check 54)
+    for (const tool of ['plugin_navigation_navigation__rename_symbol', 'navigation__rename_symbol', 'plugin_navigation_navigation__safe_delete_symbol'].map((t) => `mcp__${t}`)) {
+        const nav = call(tool, { name_path: 'Cart/total', relative_path: 'src/cart.ts', new_name: 'sum' });
+        const g = gate(root, turn(nav), 'Done - renamed.');
+        assert.ok(unrun(g), `${tool} then Done`);
+        assert.match(g.row.detail.file, /src[\\/]cart\.ts/, `${tool}: the declaring file`);
+    }
+    const lookup = call('mcp__plugin_navigation_navigation__find_symbol', { name_path: 'Cart', relative_path: 'src/cart.ts' });
+    assert.strictEqual(gate(root, turn(lookup), 'Done.').row, null, 'a lookup is no edit');
 });
 
 // M3: the dispatched seat's own run is inside its own transcript; the Agent call is the run as far as

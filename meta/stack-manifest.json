@@ -1,5 +1,5 @@
 {
-  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat or MCP server name that changed (old -> new, agents without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count.",
+  "note": "The six lists, the `retired` block and the `renamed` map the seed reads (scripts/install/manifest.js). `renamed` is the ONE home of a shipped skill, seat or MCP server name that changed (old -> new, agents without `.md`; an MCP name is its plugin and its server alike, a browser engine renamed by its prefix): update carries a pick, a seat deny and a selection line across it, each old skill or seat name is also retired so its copy is pruned, and an old MCP plugin is swapped for the new one where it is installed. Hand-edited since R33 deleted the shell twins and the script that generated it; the lint holds it to disk, the HTML and the skill count. The file-write matchers all name `MultiEdit` and the dispatch matcher names `Task` beside `Agent` (2.1.5 M7): the tools reference lists neither tool, but a matcher token no tool carries never matches, and the 2.1.284 CLI still spells both - MultiEdit among its edit-tool names, Task as the agent tool's old name - so a build that sends either is still gated.",
   "skills": [
     {
       "repo": "envoydev/alfred-code",
@@ -797,15 +797,15 @@
     },
     {
       "file": "guard-fresh-session-start.js",
-      "matcher": "@UserPromptSubmit",
+      "matcher": "@UserPromptExpansion:(^|[^A-Za-z0-9_-])(alfred-(loop-(quality|architecture-quality|test-coverage)|capture-(architecture|architecture-quality|code-quality|code-style|test-coverage|stack-usage|related-projects|agent-capabilities|project-capabilities)|task-(solve|solve-cross|build-from-scratch|version-upgrade|design|verify-plan|implement|verify-code)|issue-diagnoser)|security-review|init|setup|update|configure|validate)$",
       "event": "",
-      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - this route injects the ask, never denies (a UserPromptSubmit denial erases the prompt)"
+      "note": "the same run invoked as a SLASH COMMAND emits no Skill event at all (measured: 4 of 4 runs slash-injected, zero Skill events in 45 messages) - UserPromptExpansion fires on that typed command and names it; the matcher (a regex with no colon, which the row format splits on) lists the orchestration commands under either spelling, so no ordinary prompt spawns the hook; it injects the ask, never blocks (a blocked expansion shows its reason to the user only)"
     },
     {
       "file": "guard-fresh-session-start.js",
       "matcher": "@SessionStart:compact",
       "event": "",
-      "note": "the harness just auto-compacted, which proves the session hit the ~390k ceiling at a moment a Stop may never come - inject the fresh-session ask there too"
+      "note": "the harness just auto-compacted, which proves the session hit its compaction point at a moment a Stop may never come - inject the fresh-session ask there too"
     },
     {
       "file": "guard-fresh-session-start.js",
@@ -827,7 +827,7 @@
     },
     {
       "file": "guard-cross-project-write.js",
-      "matcher": "Write|Edit|NotebookEdit",
+      "matcher": "Write|Edit|MultiEdit|NotebookEdit",
       "event": "",
       "note": "one session, one project: block a WRITE that lands outside the project root (reads/investigation untouched) - the change another repo needs is handed off as a task card"
     },

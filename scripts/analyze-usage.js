@@ -138,7 +138,8 @@ const CHECK_WINDOW = 40;    // tool calls a check may sit before a commit and st
 // profiles, a project memory database) - its docs do not.
 const BUILD_DIR_RE = /(?:^|[\/\\])(?:node_modules|bin|obj|dist|coverage|TestResults|target|__pycache__|\.venv|venv|vendor|\.git|\.angular|\.nuget|\.serena|\.playwright|\.alfred-memory|\.alfred[\/\\](?:serena|browser)|\.next|\.nuxt|\.gradle|\.idea|\.vs)(?:[\/\\]|$)|(?:^|[\/\\])(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|packages\.lock\.json|Cargo\.lock|poetry\.lock|composer\.lock)$|\.(?:log|min\.js|min\.css|map)$/;
 // The first file a dump verb names - the same read routed through the shell.
-const isShellTool = (name) => name === 'Bash' || name === 'PowerShell';
+// The shell route: Bash, PowerShell and Monitor (shell-writes.js SHELL_TOOLS - Monitor runs its command under Bash's rules; 2.1.5 final review R8).
+const isShellTool = (name) => name === 'Bash' || name === 'PowerShell' || name === 'Monitor';
 function shellReadTarget(cmd) {
   const m = /(?:^|[;&|(]\s*)(?:cat|head|tail|less|more|bat)\s+(?:-[\w-]+(?:\s+\d+)?\s+)*["']?([^\s"'|;&<>)]+)/.exec(cmd)
     || /(?:^|[;&|(]\s*)sed\s+-n\s+(?:-e\s+)?["']?[\d,$p;]+["']?\s+["']?([^\s"'|;&<>)]+)/.exec(cmd);
@@ -2547,7 +2548,7 @@ function shellWrites() {
 function isFix(name, input, cwd) {
   if (FIX_EDIT_TOOL_RE.test(name)) return fixPath(input.file_path || input.notebook_path, cwd);
   const sw = shellWrites();
-  if (!/^(?:Bash|PowerShell)$/.test(name) || !sw) return false;
+  if (!isShellTool(name) || !sw) return false;
   try {
     const scan = sw.scanShell(String(input.command || ''));
     return scan.targets.some((t) => {
@@ -2860,7 +2861,7 @@ function efficiencyRows(main, agg, blockLedger) {
   {
     const c = e.checks || {};
     const t = c.test || { calls: 0, chars: 0, scoped: 0, whole: 0 };
-    const bashChars = ['Bash', 'PowerShell'].reduce((n, k) => n + ((agg.tools[k] && agg.tools[k].resultChars) || 0), 0);
+    const bashChars = ['Bash', 'PowerShell', 'Monitor'].reduce((n, k) => n + ((agg.tools[k] && agg.tools[k].resultChars) || 0), 0);
     const checkChars = ['test', 'build', 'lint', 'ci'].reduce((n, k) => n + ((c[k] && c[k].chars) || 0), 0);
     const share = bashChars ? Math.round((100 * checkChars) / bashChars) : null;
     rows.push({ practice: 'test and build runs', measured: `test ${t.calls} (${t.scoped} scoped, ${t.whole} whole-suite) ~${fmt(approxTok(t.chars))} tok; build ${(c.build || {}).calls || 0} ~${fmt(approxTok((c.build || {}).chars || 0))}; lint ${(c.lint || {}).calls || 0} ~${fmt(approxTok((c.lint || {}).chars || 0))}; ci ${(c.ci || {}).calls || 0}${share != null ? ` - ${share}% of shell result volume` : ''}`, tests: 'iterate on ONE test or project, run the whole suite once at the gate; the result chars are what lands in context - a green run needs its summary line, a red run earns its trace' });

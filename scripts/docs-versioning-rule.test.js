@@ -8,6 +8,8 @@
 // makes them one rule: every scenario is built from scratch for every home, run through it end to end, and the value
 // each home lands on is READ back - from the engine's own resolver, and from settings.json for the other two.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');

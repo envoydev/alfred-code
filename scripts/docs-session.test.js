@@ -1,6 +1,8 @@
 // scripts/docs-session.test.js - the docs session hook, driven through stdin payloads in throwaway git repos.
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -1430,4 +1432,13 @@ test('a captured orientation carries no provisional warning', () => {
   try {
     assert.doesNotMatch(ctx(r.hook({ hook_event_name: 'SessionStart', session_id: sid() })), /PROVISIONAL/);
   } finally { r.rm(); }
+});
+
+test('CLAUDE.md says a navigation rename is credited to its declaring file alone (2.1.5 final review R9)', () => {
+  // serena's rename_symbol carries the declaring file in `relative_path`; the reference edits in other files are not
+  // in the call, so they fall to the Stop ask's unclaimed bucket and outside the turn check's root - accepted, and said.
+  const md = fs.readFileSync(require('node:path').join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+  const entry = md.slice(md.indexOf('  - `docs-session.js` ('), md.indexOf('  - `memory-session.js` ('));
+  assert.match(entry, /a rename is credited to that declaring file alone/);
+  assert.match(entry, /'no actor claimed' bucket and outside the turn check's root/);
 });

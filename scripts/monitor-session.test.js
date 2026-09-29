@@ -3,6 +3,8 @@
 // call stream, never a denial: one call repeated with identical input, a turn writing many files,
 // and the context nearing this session's fresh-session trigger.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -42,7 +44,7 @@ function session(env = {})
         try { return fs.readFileSync(path.join(root, '.alfred', 'docs', 'hook-blocks', `${sid}.jsonl`), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); }
         catch { return []; }
     };
-    const stateFile = path.join(root, '.alfred', 'docs', 'flow', `monitor-${sid}.json`);
+    const stateFile = path.join(root, '.alfred', 'docs', 'flow', `monitor-${sid}.jsonl`);
     const call = (tool, input, extra = {}) => hook({ hook_event_name: 'PostToolUse', tool_name: tool, tool_input: input, ...extra });
     const prompt = () => hook({ hook_event_name: 'UserPromptSubmit', prompt: 'next' });
     return { root, sid, hook, rows, stateFile, call, prompt };
@@ -185,9 +187,9 @@ test('monitor: garbage state, garbage stdin and an unwired event are silent and 
 {
     const s = session();
     fs.mkdirSync(path.dirname(s.stateFile), { recursive: true });
-    fs.writeFileSync(s.stateFile, '{not json');
+    fs.writeFileSync(s.stateFile, '{not json\n[1,2]\n{"torn":');
     for (let i = 0; i < 5; i++) s.call('Bash', { command: 'ls' });
-    assert.strictEqual(s.rows().length, 1, 'a garbage state file did not reset to a working count');
+    assert.strictEqual(s.rows().length, 1, 'garbage lines in the turn log did not leave a working count');
     assert.strictEqual(s.hook('{oops'), '');
     assert.strictEqual(s.hook(''), '');
     assert.strictEqual(s.hook({ hook_event_name: 'Stop' }), '');
@@ -200,17 +202,39 @@ test('monitor: ALFRED_CODE_HOOKS_OFF naming it switches it off', () =>
     assert.strictEqual(s.rows().length, 0);
 });
 
-test('monitor: one step over a 5,000-entry state stays inside the 25ms budget', () =>
+test('monitor: one call over a 5,000-row turn log stays inside the 25ms budget', () =>
 {
-    const { step } = require(HOOK);
-    const state = { turn: 1, writes: 0, calls: {}, files: {}, context: 0 };
-    for (let i = 0; i < 5000; i++) state.calls[`main|Bash|${i.toString(16).padStart(12, '0')}`] = { n: 1, w: 0 };
-    const text = JSON.stringify(state);
+    // The log is the turn's (a prompt empties it), so 5,000 calls is a long turn: the call's own row, the
+    // parse and the count over all of them are what each call pays.
+    const { rowFor, parseLog, notesFor } = require(HOOK);
+    const lines = [];
+    for (let i = 0; i < 5000; i++) lines.push(JSON.stringify({ id: `r${i}`, a: 'main', t: 'Bash', k: `main|Bash|${i.toString(16).padStart(12, '0')}`, f: '' }));
     const payload = { hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: '/p/x.js', content: 'y'.repeat(50000) } };
     const t0 = process.hrtime.bigint();
-    const next = step(JSON.parse(text), payload, { contextNow: () => 0, trigger: () => null });
-    JSON.stringify(next.state);
+    lines.push(JSON.stringify(rowFor(payload, 'mine')));
+    const rows = parseLog(lines.join('\n'));
+    const notes = notesFor(rows, 'mine', { contextNow: () => 0, trigger: () => null });
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-    assert.ok(ms < 25, `one step took ${ms.toFixed(1)}ms`);
-    assert.strictEqual(Object.keys(next.state.calls).length, 5001);
+    assert.ok(ms < 25, `one call took ${ms.toFixed(1)}ms`);
+    assert.strictEqual(rows.length, 5001);
+    assert.deepStrictEqual(notes, []);
+});
+
+test('monitor: parallel calls lose no count - each judges the order the log recorded (2.1.5 M15)', async () =>
+{
+    // Parallel tool calls fire their PostToolUse hooks in parallel. A read-modify-write of one state file
+    // lost updates, so five identical calls could be noted never, or twice; and 21 parallel writes could
+    // miss the scope note. Each call now appends its own row and counts the rows up to it.
+    const { spawn } = require('node:child_process');
+    const s = session();
+    const fire = (payload) => new Promise((resolve) =>
+    {
+        const child = spawn(process.execPath, [HOOK], { env: { ...BASE_ENV, CLAUDE_PROJECT_DIR: s.root }, stdio: ['pipe', 'ignore', 'ignore'] });
+        child.on('close', resolve);
+        child.stdin.end(JSON.stringify({ session_id: s.sid, cwd: s.root, hook_event_name: 'PostToolUse', ...payload }));
+    });
+    await Promise.all(Array.from({ length: 12 }, () => fire({ tool_name: 'Bash', tool_input: { command: 'git status' } })));
+    assert.deepStrictEqual(s.rows().map((r) => r.kind), ['repeat'], 'twelve parallel identical calls: exactly one repeat note');
+    await Promise.all(Array.from({ length: 24 }, (_, i) => fire({ tool_name: 'Write', tool_input: { file_path: `f${i}.ts`, content: 'x' } })));
+    assert.deepStrictEqual(s.rows().map((r) => r.kind), ['repeat', 'scope'], '24 parallel writes of distinct files: exactly one scope note');
 });

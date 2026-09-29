@@ -9,6 +9,8 @@
 // one home (the hooks and the engines ship without the installer beside them), so this file pins every
 // home to one value and fails on a NEW home that spells the old one.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');

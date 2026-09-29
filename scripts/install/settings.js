@@ -29,6 +29,9 @@ const { stackSeat } = require('../derive-state.js');
 const { BRAND, LEGACY } = require('./brand.js');
 const { valueHash } = require('./stamp.js');
 const shellGuards = require('../../stack/hooks/shell-guards.js');
+const fileGuards = require('../../stack/hooks/file-guards.js');
+// Both dispatchers fold their guards' rows into one row each (R11 for the shell tools, 2.1.5 M3 for the file tools).
+const foldDispatchers = (rows, opts) => fileGuards.wiringRows(shellGuards.wiringRows(rows, opts), opts);
 
 // Every hook does under 30ms of work (measured: 22-25ms, almost all of it the node spawn), but a
 // `command` hook with no timeout takes Claude Code's 600s default - so one stalled subprocess
@@ -40,7 +43,8 @@ const HOOK_TIMEOUT = 10;
 // other hook. The plugin entry's generator reads the same table (build-marketplace.js).
 // The shell-guard dispatcher runs every shell guard in one process, so its budget is theirs summed:
 // each guard keeps the 10s it had as its own hook.
-const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length } };
+const HOOK_TIMEOUTS = { 'check-turn-build.js': { Stop: 60 }, [`${shellGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * shellGuards.GUARDS.length },
+    [`${fileGuards.SELF}.js`]: { PreToolUse: HOOK_TIMEOUT * fileGuards.GUARDS.length } };
 const timeoutFor = (file, event) => (HOOK_TIMEOUTS[file] || {})[event] || HOOK_TIMEOUT;
 // The `attribution` keys the seed writes when absent (code.claude.com settings reference).
 const ATTRIBUTION_OFF = [['commit', ''], ['pr', ''], ['sessionUrl', false]];
@@ -104,14 +108,15 @@ function wireHooks(data, specs, retiredHooks)
     // Prune OUR hook file from a PreToolUse matcher this version no longer wires. Keyed on the
     // SELECTED specs, so a hook the user de-selected keeps its entries - that is configure's job.
     const ourFiles = new Set(specs.map((s) => fileOf(s.command)).filter(Boolean));
-    // A guard the dispatcher runs is ours too: its own shell-tool row, which an older install wired,
+    // A guard a dispatcher runs is ours too: its own shell- or file-tool row, which an older install wired,
     // goes now that the dispatcher judges for it.
     for (const s of specs)
-        if (fileOf(s.command) === `${shellGuards.SELF}.js`)
-        {
-            const named = s.command.split('"').pop().trim().split(/\s+/).filter(Boolean);
-            for (const g of named.length ? named : shellGuards.GUARDS) ourFiles.add(`${g}.js`);
-        }
+        for (const [self, all] of [[shellGuards.SELF, shellGuards.GUARDS], [fileGuards.SELF, fileGuards.NAMES]])
+            if (fileOf(s.command) === `${self}.js`)
+            {
+                const named = s.command.split('"').pop().trim().split(/\s+/).filter(Boolean);
+                for (const g of named.length ? named : all) ourFiles.add(`${g}.js`);
+            }
     const pairs = new Set(specs.filter((s) => !s.matcher.startsWith('@')).map((s) => `${s.matcher}\u0000${s.command}`));
     const pre = hooks.PreToolUse || [];
     for (const entry of [...pre])
@@ -485,8 +490,8 @@ function writeSettings(opts)
     const denyBefore = plain(data.permissions) && Array.isArray(data.permissions.deny) ? [...data.permissions.deny] : [];
     const wiredBefore = new Set(wiringsOf(data.hooks).map((w) => w.id));
 
-    // The shell guards' rows fold into the ONE dispatcher row, naming a strict subset in its args.
-    const wired = shellGuards.wiringRows(hookSpecs, { listGuards: true });
+    // The shell and file guards' rows fold into one dispatcher row each, naming a strict subset in its args.
+    const wired = foldDispatchers(hookSpecs, { listGuards: true });
     const specs = wired.map((row) =>
     {
         const [fileName, matcher, args = ''] = String(row.file ?? row).split('::').concat(['', '']);
@@ -714,7 +719,7 @@ function writeSettings(opts)
     if (localUnreadable && priorDeny) managedDeny.push(...priorDeny.filter((d) => d.file === localName));
     // The release's wirings with the shell guards folded, plus the dispatcher row this run wrote (its
     // args name this selection's guards, which the release's own full row does not).
-    const release = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
+    const release = new Set([...releaseWirings(foldDispatchers(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
     const priorHooks = prior && prior.hooks ? prior.hooks : null;
     if (priorHooks)
     {
@@ -794,7 +799,7 @@ function writeSettings(opts)
             const before = JSON.stringify(shared);
             wireHooks(shared, [], retiredHooks);
             const priorShared = prior && prior.hooks ? prior.hooks.filter((h) => h.file === sharedName) : [];
-            const releaseIds = new Set([...releaseWirings(shellGuards.wiringRows(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
+            const releaseIds = new Set([...releaseWirings(foldDispatchers(ledger.releaseHooks || hookSpecs)), ...releaseWirings(wired)]);
             for (const g of unwireIds(shared, new Set(priorShared.filter((h) => !releaseIds.has(h.id)).map((h) => h.id))))
                 log(`  ${sharedName}: hook wiring ${g.hook} (${g.event}) removed - the stack wired it and this release no longer does`);
             if (plain(shared.env))

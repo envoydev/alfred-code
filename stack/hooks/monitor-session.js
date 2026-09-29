@@ -10,7 +10,10 @@
 // agent_id. ALFRED_CODE_MONITOR: `log` (the seed, and the value when absent) writes the rows and
 // injects nothing - the week that says whether a threshold is right; `inject` also hands the note
 // back as PostToolUse additionalContext; `0` is off. Thresholds stay constants until those rows say
-// otherwise. State: <docs-path>/flow/monitor-<session>.json, rewritten per call, reset on garbage.
+// otherwise. State: <docs-path>/flow/monitor-<session>.jsonl, the turn's LOG - each call APPENDS its own
+// row and counts the rows up to it, and a UserPromptSubmit empties it (2.1.5 M15: parallel tool calls fire
+// their hooks in parallel, and a read-modify-write of one state file lost updates, so a note fired never or
+// twice). A garbage line is skipped. The once-per-session context note is a `wx` marker beside it.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -21,75 +24,89 @@ const SCOPE_OVER = 20;
 const CONTEXT_SHARE = 0.8;
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
-const fresh = () => ({ turn: 0, writes: 0, calls: {}, files: {}, context: 0 });
-
-// One call through the monitor. Pure over its inputs - the file, the clock and the transcript stay
-// outside - so the budget test times exactly this.
-function step(state, payload, { contextNow = () => 0, trigger = () => null, floor = () => 0 } = {})
+// One call's row in the turn log: a unique id, its actor, the repeat key and, for a write, the file.
+function rowFor(payload, id)
 {
-  const s = state && typeof state === 'object' && state.calls && typeof state.calls === 'object' && state.files && typeof state.files === 'object'
-    ? state : fresh();
-  const notes = [];
-  if (payload.hook_event_name === 'UserPromptSubmit')
-    return { state: { ...fresh(), turn: (Number(s.turn) || 0) + 1, context: s.context || 0 }, notes };
-
   const tool = String(payload.tool_name || '');
   const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
   const actor = String(payload.agent_id || 'main');
   const hash = crypto.createHash('sha1').update(JSON.stringify(input)).digest('hex').slice(0, 12);
-  const key = `${actor}|${tool}|${hash}`;
-  const seen = s.calls[key] || (s.calls[key] = { n: 0, w: s.writes || 0 });
-  seen.n += 1;
+  const target = input.file_path || input.notebook_path;
+  const file = WRITE_TOOLS.has(tool) && target ? path.resolve(String(payload.cwd || '.'), String(target)) : '';
+  return { id, a: actor, t: tool, k: `${actor}|${tool}|${hash}`, f: file };
+}
+
+// The log's text as rows; a line that is not a row is skipped.
+function parseLog(text)
+{
+  const rows = [];
+  for (const line of String(text || '').split('\n'))
+  {
+    if (!line) continue;
+    try { const r = JSON.parse(line); if (r && typeof r === 'object' && r.id && r.k) rows.push(r); } catch { /* a torn or garbage line */ }
+  }
+  return rows;
+}
+
+// The notes ONE call earns, judged on the turn's rows up to and including its own (`id`). Pure over its
+// inputs - the file, the clock and the transcript stay outside - so the budget test times exactly this. Calls
+// that ran in parallel each judge the order the log recorded, so every threshold is crossed by exactly one.
+// `contextNoted` says the session's context note is already out; the caller claims it atomically.
+function notesFor(rows, id, { contextNow = () => 0, trigger = () => null, floor = () => 0, contextNoted = () => false } = {})
+{
+  const at = rows.findIndex((r) => r.id === id);
+  if (at < 0) return [];
+  const mine = rows[at];
+  const tool = mine.t;
+  const notes = [];
   // Exactly at the threshold, so the sixth call of a turn is never a second note.
-  if (seen.n === REPEAT_AT)
+  let first = -1;
+  let same = 0;
+  for (let i = 0; i <= at; i++) if (rows[i].k === mine.k) { same += 1; if (first < 0) first = i; }
+  if (same === REPEAT_AT)
+  {
+    let writesBetween = 0;
+    for (let i = first; i < at; i++) if (rows[i].f) writesBetween += 1;
     notes.push({
       kind: 'repeat', tool,
       reason: `you repeated ${tool} ${REPEAT_AT} times with identical input - stop and change approach`,
-      detail: { actor, count: REPEAT_AT, writesBetween: (s.writes || 0) - seen.w },
+      detail: { actor: mine.a, count: REPEAT_AT, writesBetween },
     });
+  }
 
-  const target = input.file_path || input.notebook_path;
-  if (WRITE_TOOLS.has(tool) && target)
+  if (mine.f)
   {
-    s.writes = (s.writes || 0) + 1;
-    const mine = s.files[actor] || (s.files[actor] = { count: 0, seen: {} });
-    const abs = path.resolve(String(payload.cwd || '.'), String(target));
-    if (!mine.seen[abs])
-    {
-      mine.seen[abs] = 1;
-      mine.count += 1;
-      if (mine.count === SCOPE_OVER + 1)
-        notes.push({
-          kind: 'scope', tool,
-          reason: `this turn has written ${mine.count} distinct files - check the change is still the one that was asked for, and say so`,
-          detail: { actor, files: mine.count },
-        });
-    }
+    const earlier = new Set();
+    for (let i = 0; i < at; i++) if (rows[i].a === mine.a && rows[i].f) earlier.add(rows[i].f);
+    const count = earlier.size + 1;
+    if (!earlier.has(mine.f) && count === SCOPE_OVER + 1)
+      notes.push({
+        kind: 'scope', tool,
+        reason: `this turn has written ${count} distinct files - check the change is still the one that was asked for, and say so`,
+        detail: { actor: mine.a, files: count },
+      });
   }
 
   // The context note is the main session's own: a subagent's calls say nothing about its size.
-  if (actor === 'main' && !s.context)
+  if (mine.a === 'main' && !contextNoted())
   {
     const ctx = contextNow();
     const low = floor();
     if (low && ctx >= low * CONTEXT_SHARE)
     {
-      const at = trigger();
-      if (at && ctx >= at * CONTEXT_SHARE)
-      {
-        s.context = ctx;
+      const limit = trigger();
+      if (limit && ctx >= limit * CONTEXT_SHARE)
         notes.push({
           kind: 'context', tool,
-          reason: `context is at ${ctx} tokens, ${Math.round((ctx / at) * 100)}% of this session's fresh-session trigger (${at}) - finish the current step before starting a new one`,
-          detail: { context: ctx, trigger: at },
+          reason: `context is at ${ctx} tokens, ${Math.round((ctx / limit) * 100)}% of this session's fresh-session trigger (${limit}) - finish the current step before starting a new one`,
+          detail: { context: ctx, trigger: limit },
         });
-      }
     }
   }
-  return { state: s, notes };
+  return notes;
 }
 
-module.exports = { step, REPEAT_AT, SCOPE_OVER, CONTEXT_SHARE };
+module.exports = { rowFor, parseLog, notesFor, REPEAT_AT, SCOPE_OVER, CONTEXT_SHARE };
 
 if (require.main === module)
 {
@@ -122,25 +139,44 @@ if (require.main === module)
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
   const docs = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs');
   const sid = String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_');
-  const stateFile = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
-  let state = null;
-  try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch { /* absent or garbage - a fresh count */ }
+  const base = path.join(docs, 'flow', `monitor-${sid.replace(/[^A-Za-z0-9_-]/g, '_')}`);
+  const logFile = `${base}.jsonl`;
+  const contextMarker = `${base}.context`;
+  // A new turn empties the log; the context marker is the session's and stays.
+  if (event === 'UserPromptSubmit')
+  {
+    try { fs.mkdirSync(path.dirname(logFile), { recursive: true }); fs.writeFileSync(logFile, ''); } catch { /* best-effort */ }
+    process.exit(0);
+  }
+  // One append per call: a short line is written whole under O_APPEND, so parallel calls never lose a row; it
+  // opens on a newline, so a torn last line left by a killed call never swallows it.
+  const id = `${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+  let rows = [];
+  try
+  {
+    fs.mkdirSync(path.dirname(logFile), { recursive: true });
+    fs.appendFileSync(logFile, `\n${JSON.stringify(rowFor(payload, id))}\n`);
+    rows = parseLog(fs.readFileSync(logFile, 'utf8'));
+  }
+  catch { process.exit(0); /* state is best-effort - a lost row only loses a note */ }
 
   // The trigger is the fresh-session engine's, from this hook's own directory. Without it the context
   // note stays off; the other two need nothing from it.
   let engine = null;
   try { engine = require(path.join(__dirname, 'fresh-session.js')); engine.use(payload); } catch { engine = null; }
-  const { state: next, notes } = step(state, payload, {
+  let notes = notesFor(rows, id, {
     contextNow: () => (engine && engine.contextNow ? engine.contextNow() : 0),
     floor: () => (engine && engine.lowestTrigger ? engine.lowestTrigger() : 0),
     trigger: () => (engine && !engine.FRESH_OFF ? engine.ctxThreshold() : null),
+    contextNoted: () => fs.existsSync(contextMarker),
   });
-  try
+  // Once per session: the note is claimed by creating the marker - exclusively, so a parallel call that
+  // judged the same context drops its copy.
+  notes = notes.filter((n) =>
   {
-    fs.mkdirSync(path.dirname(stateFile), { recursive: true });
-    fs.writeFileSync(stateFile, JSON.stringify(next));
-  }
-  catch { /* state is best-effort - a lost write only restarts the count */ }
+    if (n.kind !== 'context') return true;
+    try { fs.closeSync(fs.openSync(contextMarker, 'wx')); return true; } catch { return false; }
+  });
   if (!notes.length) process.exit(0);
 
   const inject = mode === 'inject';

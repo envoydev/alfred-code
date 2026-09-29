@@ -35,8 +35,8 @@ const { stackNames } = require('./manifest.js');
 // A generated, project-owned file is not a stack item: the captures rewrite those.
 const RULE_EXCLUDE = /^(baseline-project-.*|project-code-style)$/;
 // docs.js / memory.js / history.js / fresh-session.js / shell-writes.js / hidden-chars.js are ENGINES, hook-prelude.js the shared gate
-// module and shell-guards.js the dispatcher that runs the picked shell guards - none is a hook item.
-const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards)$/;
+// module and shell-guards.js / file-guards.js the dispatchers that run the picked shell and file guards - none is a hook item.
+const HOOK_EXCLUDE = /^(inject-code-style|docs|memory|history|hook-prelude|fresh-session|shell-writes|hidden-chars|shell-guards|file-guards)$/;
 const PW_ENGINE = /^browser-(chrome|msedge|firefox|webkit)$/;
 const PW_ORDER = ['chrome', 'msedge', 'firefox', 'webkit'];
 const engineOf = (name) => (PW_ENGINE.exec(String(name)) || [])[1];

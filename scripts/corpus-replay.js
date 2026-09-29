@@ -34,6 +34,15 @@ const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
 // when it wrote its own `mode: probe` row of that kind to the hook-blocks ledger; the rest are
 // injection routes, where firing means additionalContext came back on stdout.
 // ---------------------------------------------------------------------------
+// The slash route's matcher, read from the manifest row that wires it - the commands Claude Code would spawn
+// the hook for (a regex: its characters are past the exact-list set). Unreadable: every command is replayed.
+const UPE_MATCHER = (() => {
+  try {
+    const row = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8')).hooks
+      .find((h) => h.file === 'guard-fresh-session-start.js' && /^@UserPromptExpansion:/.test(h.matcher || ''));
+    return row ? new RegExp(row.matcher.slice('@UserPromptExpansion:'.length)) : null;
+  } catch { return null; }
+})();
 const ROUTES = [
   { hook: 'guard-protected-force-push.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-catastrophic-rm.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
@@ -43,7 +52,7 @@ const ROUTES = [
   { hook: 'guard-ungated-commit.js', event: 'PreToolUse', tools: ['Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-stop-contract.js', event: 'PreToolUse', tools: ['AskUserQuestion'], deny: false, needsTranscript: true },
   { hook: 'guard-fresh-session-start.js', event: 'PreToolUse', tools: ['Skill'], deny: true, needsTranscript: true },
-  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
+  { hook: 'guard-cross-project-write.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   { hook: 'guard-config-protection.js', event: 'PreToolUse', tools: ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'Monitor'], deny: true },
   // Wired on a regular-expression matcher (`pattern`, the manifest's own), replayed on the four tool names it
   // matches: both desktop servers' launchers on both routes. The copy route's bare server spelling is built here,
@@ -63,7 +72,9 @@ const ROUTES = [
   // harness sends when that agent finished.
   { hook: 'guard-stop-contract.js', event: 'SubagentStop', deny: true },
   { hook: 'guard-answer-length.js', event: 'Stop', deny: true },
-  { hook: 'guard-fresh-session-start.js', event: 'UserPromptSubmit', deny: false, needsTranscript: true },
+  // The slash route (2.1.5 M14): one job per typed command the wired matcher lets through, built from the
+  // harness's `<command-name>` marker, with the transcript up to that row.
+  { hook: 'guard-fresh-session-start.js', event: 'UserPromptExpansion', deny: false, needsTranscript: true },
   // Writes <docs-path>/flow/COMPACT-STATE before a compaction and returns nothing - no verdict and no
   // injection for a replay to count, so it is declared in UNEXERCISED below.
   { hook: 'guard-fresh-session-start.js', event: 'PreCompact', deny: false },
@@ -230,6 +241,15 @@ function extract(files, opts) {
         }
       }
 
+      const slash = o.type === 'user' && typeof content === 'string' ? /<command-name>\s*\/?([A-Za-z0-9:_-]+)\s*<\/command-name>/.exec(content) : null;
+      if (slash && (!UPE_MATCHER || UPE_MATCHER.test(slash[1]))) {
+        for (const r of ROUTES) {
+          if (r.event !== 'UserPromptExpansion') continue;
+          const payload = { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: slash[1], command_args: '', prompt: `/${slash[1]}`, cwd };
+          const key = routeId(r) + '|' + sha(JSON.stringify([slash[1], cwd, i]));
+          if (!jobs.has(key)) jobs.set(key, { key, route: routeId(r), hook: r.hook, deny: r.deny, payload, cwd, prefix: r.needsTranscript ? { file, upto: i } : null });
+        }
+      }
       if (o.type === 'user' && typeof content === 'string' && content.trim() && !content.startsWith('<')) {
         counts.prompts++;
         typedUserRows.push(i);

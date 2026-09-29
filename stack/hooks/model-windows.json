@@ -1,17 +1,21 @@
 {
-  "_comment": "installer-managed - replaced on every install/update, so a local edit is lost. The ONE source of the context window (max input tokens) per model id for guard-stop-contract.js and guard-fresh-session-start.js; a model missing here takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW. A key matches the id itself, a dated snapshot (claude-haiku-4-5-20251001) and a provider-prefixed id (us.anthropic.claude-opus-5); the longest matching key wins. A model whose window is wrong here is fixed here, in the release.",
-  "_source": "Claude models reference (claude-api skill, shared/models.md, cached 2026-06-24, bundled with Claude Code 2.1.270); older models carry no window there and are not listed",
+  "_comment": "installer-managed - replaced on every install/update, so a local edit is lost. The ONE source of the context window (max input tokens) per model id for guard-stop-contract.js and guard-fresh-session-start.js; a model missing here takes ALFRED_CODE_DEFAULT_CONTEXT_WINDOW. A key matches the id itself, a dated snapshot (claude-haiku-4-5-20251001, claude-opus-4-5@20251101), a Bedrock version (-v1:0), Claude Code's [1m] suffix and a provider-prefixed id (us.anthropic.claude-opus-5); the longest matching key wins. A point release never matches its sibling's key (claude-opus-5-5 is not a snapshot of claude-opus-5), so every model carries its own row. A model whose window is wrong here is fixed here, in the release.",
+  "_source": "platform.claude.com models overview and each legacy model's page (fetched 2026-09-29): current Claude Fable 5.1, Opus 5.5, Sonnet 5.5 at 1M and Haiku 4.5 at 200K; legacy Opus 4.5 and Sonnet 4.5 at 200K. The claude-api skill's models.md (cached 2026-09-25, Claude Code 2.1.284) for the rest of the 1M rows.",
   "models": {
     "claude-fable-5-1": 1000000,
     "claude-mythos-5-1": 1000000,
     "claude-fable-5": 1000000,
     "claude-mythos-5": 1000000,
+    "claude-opus-5-5": 1000000,
     "claude-opus-5": 1000000,
     "claude-opus-4-8": 1000000,
     "claude-opus-4-7": 1000000,
     "claude-opus-4-6": 1000000,
+    "claude-opus-4-5": 200000,
+    "claude-sonnet-5-5": 1000000,
     "claude-sonnet-5": 1000000,
     "claude-sonnet-4-6": 1000000,
+    "claude-sonnet-4-5": 200000,
     "claude-haiku-4-5": 200000
   }
 }

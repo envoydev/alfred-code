@@ -24,10 +24,20 @@
 // The PowerShell spellings count the same (Remove-Item / ri / del / erase / rd / rmdir with -Recurse),
 // and so do the Windows roots: a drive (C:\, C:/), its Git Bash / Cygwin / WSL mounts (/c, /cygdrive/c,
 // /mnt/c) and $env:USERPROFILE / $env:HOME.
+// A LITERAL `find <start> ... -delete` (or `-exec` / `-execdir` / `-ok` running rm) deletes what it walks,
+// so its start points are judged by the same target set (2.1.5 M1: `find ~ -delete` passed while `rm -rf ~`
+// was blocked). Only the `-o` / `,` alternative that holds the action is judged, and a filter test (`-name`, `-path`,
+// `-mtime`, ...) narrows it only when it comes BEFORE the action in that alternative - find evaluates left to right,
+// so `find ~ -delete -name x` deletes everything - with `-a` binding tighter than `-o` and a `\( ... \)` group
+// judged the same way inside (it narrows when every one of its alternatives does). An unbalanced group, which
+// find refuses to run, keeps the whole-expression rule. `-type`, the depth options, `-xdev` and `-prune` do not
+// narrow. Ceiling: a filter under `!` (`! -name x`) is still read as narrowing, though it deletes all but x.
+// A PowerShell `Get-ChildItem <target> | Remove-Item` with `-Recurse` on either side is judged by the same target
+// set (the lister's path is the target, a `-Filter` / `-Include` / `-Exclude` narrows it).
 // Out of scope (same honesty as the force-push guard): indirection that deletes
-// without a literal recursive `rm` of one of these targets - `find ... -delete`,
-// `xargs rm`, `eval`, a subshell, or rm via a wrapper script - is NOT caught here;
-// this guard reads the literal command's flat tokens.
+// without a literal command naming one of these targets - `xargs rm`, `eval`, a subshell,
+// `find -exec sh -c ...`, or rm via a wrapper script - is NOT caught here; this guard
+// reads the literal command's flat tokens.
 // The git half (main() below) reads EVERY git call in the command from its argv - flags anywhere, a
 // tree-ish before the paths - and judges each by what it would destroy: the dirty paths a discard
 // names, what `clean -n` of the same flags lists (ignored files included), a stash entry, the reflog
@@ -68,9 +78,6 @@ const stripHeredocs = (c) => String(c).replace(
   (m) => m.replace(/[^\n]/g, ' '),
 );
 
-// Split a compound command (`a && rm -rf / ; b`) into segments so each `rm` is
-// inspected on its own. Best-effort: subshell/expansion forms fall through to allow.
-const SEPARATORS = /[;|&]{1,2}|\n/;
 
 // A recursive flag: --recursive, a short cluster of rm's own letters containing r/R (-r, -R, -rf,
 // -fr, -Rf, -rfv), or PowerShell's -Recurse and its prefixes. --force alone never recurses - and
@@ -162,36 +169,165 @@ function isTopLevelDir(tok)
     return /^\/[^/]+$/.test(cleanTarget(tok));
 }
 
+// The targets a delete names are catastrophic: one unrecoverable target, or several top-level dirs.
+const wipes = (paths) => paths.some(isCatastrophic) || paths.filter(isTopLevelDir).length >= 2;
+
+// A segment's command word and its arguments, past leading env-assignments and benign prefixes, so the
+// verb must be the segment's COMMAND, not an argument to another program (no false positive on
+// `echo rm -rf /` or a commit msg).
+function commandOf(seg)
+{
+    const tokens = seg.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])
+        || tokens[i] === 'sudo' || tokens[i] === 'command' || tokens[i] === 'nice' || tokens[i] === 'time'))
+    {
+        i++;
+    }
+    return { cmd: tokens[i] || '', args: tokens.slice(i + 1) };
+}
+
+// The path arguments of a delete or a listing: not a flag, not a pattern parameter's value.
+const pathArgs = (args) => args.filter((a, k) => !a.startsWith('-') && !(k > 0 && VALUE_PARAMS.test(args[k - 1])));
+
+// find's own leading options, before the start points (`-D` takes a value).
+const FIND_LEAD = /^-(?:H|L|P|O\d*)$/;
+// Expression words that do not narrow what find walks - traversal and depth options, the type test (every
+// file of a kind is still the tree's content), the print actions and `-prune` / `-quit` (actions, not tests;
+// `-delete` turns on `-depth`, under which `-prune` does nothing). `-mindepth 1` keeps the start point itself
+// and still empties it.
+const FIND_WIDE = new Set(['-mindepth', '-maxdepth', '-depth', '-d', '-xdev', '-mount', '-x', '-type', '-xtype', '-follow',
+    '-noleaf', '-ignore_readdir_race', '-noignore_readdir_race', '-daystart', '-warn', '-nowarn', '-print', '-print0',
+    '-ls', '-true', '-a', '-and', '!', '\\!', '-not', '-prune', '-quit']);
+const FIND_WIDE_VALUE = new Set(['-mindepth', '-maxdepth', '-type', '-xtype']);
+// The filter tests that take a value: it is consumed, so `-name "("` names a file and never opens a group.
+const FIND_TEST_VALUE = /^-(?:i?name|i?path|i?wholename|i?regex|i?lname|[ac]?newer|newer[aBcmt][aBcmt]|[acm](?:time|min)|size|perm|user|group|uid|gid|links|inum|samefile|used|fstype|context)$/;
+const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
+const FIND_EXEC_END = new Set([';', '\\;', '+', '\\']);
+
+// The expression as find reads it, one item per primary: '(' / ')', 'or' (`-o`, `-or`, `,`), 'delete' (`-delete`,
+// an exec of rm), 'filter' (a test that narrows) and 'wide' (everything that does not).
+function findItems(args, i)
+{
+    const items = [];
+    for (; i < args.length; i++)
+    {
+        const t = args[i];
+        const bare = unquote(t);
+        if (bare === '(' || bare === '\\(') items.push('(');
+        else if (bare === ')' || bare === '\\)') items.push(')');
+        else if (t === '-o' || t === '-or' || t === ',') items.push('or');
+        else if (t === '-delete') items.push('delete');
+        else if (FIND_EXEC.has(t))
+        {
+            items.push(path.basename(unquote(args[i + 1] || '')) === 'rm' ? 'delete' : 'wide');
+            while (i + 1 < args.length && !FIND_EXEC_END.has(args[i + 1])) i++;
+        }
+        else if (FIND_WIDE.has(t)) { if (FIND_WIDE_VALUE.has(t)) i++; items.push('wide'); }
+        else if (t.startsWith('-')) { if (FIND_TEST_VALUE.test(t)) i++; items.push('filter'); }
+    }
+    return items;
+}
+
+// One level of the expression, items[lo, hi): its alternatives split at this level's own 'or' (`-a` binds tighter),
+// each walked left to right from `narrowedIn` - a filter before the group already narrows what reaches it. A delete
+// reached before any filter in its alternative is a wipe; the level narrows only when every alternative holds a
+// filter of its own.
+function judgeFind(items, lo, hi, narrowedIn)
+{
+    let wipe = false;
+    let narrowsAll = true;
+    let narrowed = narrowedIn;
+    let own = false;
+    for (let k = lo; k <= hi; k++)
+    {
+        const it = k < hi ? items[k] : 'or';
+        if (it === 'or') { if (!own) narrowsAll = false; narrowed = narrowedIn; own = false; }
+        else if (it === 'filter') narrowed = own = true;
+        else if (it === 'delete') { if (!narrowed) wipe = true; }
+        else if (it === '(')
+        {
+            let close = k + 1;
+            for (let d = 1; close < hi; close++)
+            {
+                if (items[close] === '(') d++;
+                else if (items[close] === ')' && --d === 0) break;
+            }
+            const inner = judgeFind(items, k + 1, close, narrowed);
+            if (inner.wipe) wipe = true;
+            if (inner.narrows) narrowed = own = true;
+            k = close;
+        }
+    }
+    return { wipe, narrows: narrowsAll };
+}
+
+// A literal find that deletes what it walks, unfiltered: its start points are the delete's targets.
+function findWipes(args)
+{
+    let i = 0;
+    while (i < args.length && (FIND_LEAD.test(args[i]) || args[i] === '-D'))
+    {
+        i += args[i] === '-D' ? 2 : 1;
+    }
+    const starts = [];
+    while (i < args.length && !/^(?:-|\\?[()!])/.test(unquote(args[i]))) starts.push(args[i++]);
+    const items = findItems(args, i);
+    if (!items.includes('delete') || !wipes(starts.length ? starts : ['.'])) return false;
+    let depth = 0;
+    let balanced = true;
+    let topOr = false;
+    for (const it of items)
+    {
+        if (it === '(') depth++;
+        else if (it === ')') { if (depth === 0) balanced = false; else depth--; }
+        else if (it === 'or' && depth === 0) topOr = true;
+    }
+    // An unbalanced group - find refuses to run it - keeps the whole-expression rule the guard had: any filter
+    // narrows, unless an alternative sits outside every group.
+    if (!balanced || depth !== 0) return !items.includes('filter') || topOr;
+    return judgeFind(items, 0, items.length, false).wipe;
+}
+
+// A PowerShell listing piped into a remove: `Get-ChildItem <target> | Remove-Item -Recurse`.
+const LISTERS = new Set(['get-childitem', 'gci', 'ls', 'dir', 'get-item', 'gi']);
+
 // True if any segment is a recursive rm naming a catastrophic target, or naming
-// several top-level system dirs at once.
+// several top-level system dirs at once - or a find or a piped listing that deletes the same.
 function isCatastrophicRm(command)
 {
-    for (const seg of command.split(SEPARATORS))
+    // Split a compound command (`a && rm -rf / ; b`) into segments so each delete is inspected on its own;
+    // the separators are kept (odd indexes) so a pipe can hand its listing to the remove after it.
+    // Best-effort: subshell/expansion forms fall through to allow.
+    const parts = command.split(/([;|&]{1,2}|\n)/);
+    for (let k = 0; k < parts.length; k += 2)
     {
-        const tokens = seg.trim().split(/\s+/).filter(Boolean);
-        // Skip leading env-assignments and benign prefixes so `rm` must be the segment's COMMAND,
-        // not an argument to another program (no false positive on `echo rm -rf /` or a commit msg).
-        let i = 0;
-        while (i < tokens.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[i])
-            || tokens[i] === 'sudo' || tokens[i] === 'command' || tokens[i] === 'nice' || tokens[i] === 'time'))
+        const { cmd, args } = commandOf(parts[k]);
+        const verb = cmd.toLowerCase();
+        if (verb === 'find' || cmd.endsWith('/find'))
         {
-            i++;
+            if (findWipes(args)) return true;
+            continue;
         }
-
-        const cmd = tokens[i];
-        if (!cmd || !(REMOVE_VERBS.has(cmd.toLowerCase()) || cmd.endsWith('/rm')))
+        if (!cmd || !(REMOVE_VERBS.has(verb) || cmd.endsWith('/rm')))
         {
             continue;
         }
 
-        const args = tokens.slice(i + 1);
-        if (!hasRecursive(args))
+        const paths = pathArgs(args);
+        if (!paths.length && k >= 2 && parts[k - 1] === '|')
         {
+            const lister = commandOf(parts[k - 2]);
+            if (LISTERS.has(lister.cmd.toLowerCase()) && (hasRecursive(args) || hasRecursive(lister.args))
+                && !lister.args.some((a) => VALUE_PARAMS.test(a)))
+            {
+                const targets = pathArgs(lister.args);
+                if (wipes(targets.length ? targets : ['.'])) return true;
+            }
             continue;
         }
 
-        const paths = args.filter((a, k) => !a.startsWith('-') && !(k > 0 && VALUE_PARAMS.test(args[k - 1])));
-        if (paths.some(isCatastrophic) || paths.filter(isTopLevelDir).length >= 2)
+        if (hasRecursive(args) && wipes(paths))
         {
             return true;
         }
@@ -771,9 +907,11 @@ function main()
 
     process.stderr.write(
         'Blocked: a recursive rm of a catastrophic, unrecoverable target (/, ~, $HOME, the cwd or its ' +
-        'parent, a bare *, or several top-level system dirs at once) - the filesystem has no reflog. A house ' +
+        'parent, a bare *, or several top-level system dirs at once) - or an unfiltered find -delete / -exec rm, ' +
+        'or a piped Remove-Item, over one - the filesystem has no reflog. A house ' +
         'rule enforced here, no prose copy to consult. ' +
-        'Delete a specific subdirectory by name instead.\n');
+        'Delete a specific subdirectory by name, or filter the find (-name, -path) BEFORE its -delete / -exec, ' +
+        'in the same -o branch, instead.\n');
     process.exit(2);
 }
 

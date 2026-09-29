@@ -131,11 +131,14 @@ if (!root || !fs.existsSync(root)) process.exit(0); // no resolvable root - noth
 // the mis-resolve is pinned in this hook's tests through path.win32). Translate the mount form to
 // the drive form before ANY resolution. Off Windows that same spelling is a real POSIX path and is
 // never touched.
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
-const nativePath = (p) => (process.platform === 'win32'
-  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
-  : String(p));
-const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
+let nativePath = (p) => String(p);
+try { ({ nativePath } = require(path.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
+// The NATIVE realpath returns the on-disk letter case (and a Windows 8.3 short name in full); the JS one keeps
+// the case it is given, so `c:\...\proj\x.ts` against a root spelled `C:\...` read as outside (2.1.5 M9). A path
+// that does not exist yet has no on-disk case, so on win32 the compare below folds case as well.
+const real = (p) => { try { return (fs.realpathSync.native || fs.realpathSync)(p); } catch { return path.resolve(p); } };
+const fold = (p) => (process.platform === 'win32' ? String(p).toLowerCase() : String(p));
 function realish(p) {
   let dir = path.resolve(nativePath(p));
   const rest = [];
@@ -171,8 +174,9 @@ const allowRoots = [
 ].filter(Boolean).map(expandTilde).map(nativePath).map(real);
 
 function inside(target, dir) {
-  const t = realish(target);
-  return t === dir || t.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+  const t = fold(realish(target));
+  const d = fold(dir);
+  return t === d || t.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
 }
 // An allowance that CONTAINS the project root would swallow the whole gate - every sibling
 // repo would sit inside it too. On macOS os.tmpdir() is under /var/folders, so a project
@@ -211,13 +215,13 @@ const receiptRoots = (() => {
 // checking whether the project sat under HOME instead disabled it for every real project, and a
 // --space install's memory writes were blocked (reproduced).
 const spacePrefix = HOME ? real(HOME) + path.sep + '.claude-' : null;
-const spaceOk = spacePrefix && !ROOT.startsWith(spacePrefix);
+const spaceOk = spacePrefix && !fold(ROOT).startsWith(fold(spacePrefix));
 function allowed(target) {
   const t = realish(target);
   if (inside(t, ROOT)) return true;
   if (effectiveAllow.some((d) => inside(t, d))) return true;
   if (receiptRoots.some((d) => inside(t, d))) return true; // the user's 'allow' for this session
-  if (spaceOk && t.startsWith(spacePrefix)) return true;
+  if (spaceOk && fold(t).startsWith(fold(spacePrefix))) return true;
 
   return false;
 }
@@ -374,7 +378,7 @@ function forkProbe(what, shown) {
 const input = payload.tool_input || {};
 const tool = payload.tool_name;
 
-if (tool === 'Write' || tool === 'Edit' || tool === 'NotebookEdit') {
+if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') {
   const target = input.file_path || input.notebook_path;
   if (!target) process.exit(0);
   const abs = resolveTarget(String(target));

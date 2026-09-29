@@ -131,10 +131,9 @@ const expandWith = (assigns, s) => String(s).replace(/\$\{([A-Za-z_]\w*)\}|\$([A
 // which node on win32 resolves against the CURRENT drive instead - the same falsehood that made
 // the cross-project guard block a session's own temp cleanup. Translate before resolving; off
 // Windows the spelling is a real POSIX path and is never touched.
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
-const nativePath = (p) => (process.platform === 'win32'
-  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\`)
-  : String(p));
+// The translation is shell-writes.js's one home (2.1.5 M8); without the module a path is taken as written.
+let nativePath = (p) => String(p);
+try { ({ nativePath } = require(pathMod.join(__dirname, 'shell-writes.js'))); } catch { /* an install without it */ }
 const resolveLineCount = (raw) => {
   const p = nativePath(raw);
   if (pathMod.isAbsolute(p)) return { lc: lineCountOf(p), resolved: true };

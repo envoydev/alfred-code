@@ -5,6 +5,8 @@
 // than the one it replaces, because a false block teaches the model a bypass it then uses on the
 // turn that mattered.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -257,9 +259,11 @@ test('guard-fresh-session-start: an abandoned or double-submitted run is not a P
   const COLD = { cache_read_input_tokens: 60000 };
   const userRow = (text) => ({ type: 'user', message: { role: 'user', content: text } });
   const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
+  // The slash route is UserPromptExpansion (2.1.5 M14): the typed command arrives by name.
   const slash = (tp, skill) => {
+    const name = skill || 'alfred-task-solve';
     const r = runIn('guard-fresh-session-start.js',
-      { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'alfred-task-solve'}</command-name>`, transcript_path: tp },
+      { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
       { env: logEnv() });
     assert.equal(r.status, 0, 'the slash route never denies');
     return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';

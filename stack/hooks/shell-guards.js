@@ -19,7 +19,10 @@
 // The merge (code.claude.com/docs/en/hooks, PreToolUse decision control; measured on CLI 2.1.283
 // with separate probe hooks): any block blocks - an exit 2, whose message is its stderr, or a JSON
 // `permissionDecision: deny`. Separate hooks showed the model ONE blocking reason, picked
-// non-deterministically; here every blocking guard's reason reaches it, in GUARDS order. Context
+// non-deterministically; here every blocking guard's reason reaches it, in GUARDS order - except after a
+// PROTECTIVE guard's exit 2 (force-push, rm, secret), which is answered at once: the guards run one after
+// another, so a later one stalling past the budget would drop it (a timed-out hook lets the call through), and
+// the protective ones therefore run first (RUN_ORDER). Context
 // (`additionalContext`) is joined with a newline and delivered even beside a block, as separate
 // hooks' was; `updatedInput` (the secret guard's rewrite) applies only when nothing blocks, and every
 // guard judged the ORIGINAL command, as it did beside the others in parallel. A guard that throws or
@@ -51,6 +54,13 @@ const GUARDS = [
 ];
 const SELF = 'shell-guards';
 const MATCHER = 'Bash|PowerShell|Monitor';
+// The guards whose exit 2 ends the run where it stands (2.1.5 M2) - hook-prelude.js PROTECTIVE's shell members,
+// spelled here so a dispatcher running without the prelude keeps the rule.
+const PROTECTIVE = new Set(['guard-protected-force-push', 'guard-catastrophic-rm', 'guard-secret-value']);
+// The order the guards RUN in: the protective ones first, so a guard stalling past the budget can never drop their
+// verdict (the secret guard ran after the read guard - the 2.1.5 hooks review), the rest in the manifest's order.
+// The answer still lists every message in GUARDS order.
+const RUN_ORDER = [...GUARDS.filter((g) => PROTECTIVE.has(g)), ...GUARDS.filter((g) => !PROTECTIVE.has(g))];
 
 // ---- the wiring ---------------------------------------------------------------------------------
 // The manifest keeps one `<guard>.js::Bash|PowerShell|Monitor` row per guard (the shell route: shell-writes.js SHELL_TOOLS) - that is the catalog the walk
@@ -276,9 +286,17 @@ function main()
     try { stdin = fs.readFileSync(0); }
     catch { stdin = Buffer.alloc(0); }
     const named = process.argv.slice(2).filter((a) => GUARDS.includes(a));
-    const guards = named.length ? GUARDS.filter((g) => named.includes(g)) : GUARDS;
-    const results = guards.map((g) => runGuard(path.join(__dirname, `${g}.js`), stdin));
-    const verdict = combine(results);
+    const guards = named.length ? RUN_ORDER.filter((g) => named.includes(g)) : RUN_ORDER;
+    const results = [];
+    for (const g of guards)
+    {
+        const r = runGuard(path.join(__dirname, `${g}.js`), stdin);
+        results.push(r);
+        // A protective block is a correct answer alone, so it is answered now: a guard still to run that
+        // stalls past the budget would otherwise drop it, since a timed-out hook lets the call through.
+        if (r.code === 2 && PROTECTIVE.has(g)) break;
+    }
+    const verdict = combine(results.sort((a, b) => GUARDS.indexOf(a.guard.replace(/\.js$/, '')) - GUARDS.indexOf(b.guard.replace(/\.js$/, ''))));
     // Exit only once both streams have flushed: a pipe write can still be pending on macOS.
     let pending = 0;
     const done = () => { if (--pending <= 0) process.exit(verdict.code); };
@@ -287,5 +305,5 @@ function main()
     if (!pending) process.exit(verdict.code);
 }
 
-module.exports = { GUARDS, SELF, MATCHER, wiringRows, runGuard, combine, parseOut };
+module.exports = { GUARDS, SELF, MATCHER, PROTECTIVE, RUN_ORDER, wiringRows, runGuard, combine, parseOut };
 if (require.main === module) main();

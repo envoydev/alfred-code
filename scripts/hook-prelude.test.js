@@ -1,5 +1,7 @@
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+const SUITE = require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -321,7 +323,7 @@ test('the two plugin names the prelude retypes are the ones brand.js owns', () =
     assert.strictEqual(prelude.ALIAS_PLUGIN, LEGACY.core);
 });
 
-// Review M2: a hook's header points at the prelude's, so a new gate cannot leave seventeen stale lists.
+// Review M2: a hook's header points at the prelude's, so a new gate cannot leave one stale list per hook.
 test('every hook points at the prelude header for its gates instead of listing them', () => {
     const dir = path.dirname(PRELUDE);
     assert.ok((fs.readFileSync(PRELUDE, 'utf8').match(/^\/\/ GATE \d+ - /gm) || []).length >= 3, 'the prelude header lists the gates');
@@ -639,20 +641,65 @@ test('cursorStandDown: a Claude payload (Cursor variables set, or not) and a mal
 });
 
 test('every non-protective hook file carries the cursorStandDown call, so a new hook cannot forget it', () => {
-    const wired = fs.readdirSync(HOOKS_DIR).filter((f) => f.endsWith('.js') && f !== 'hook-prelude.js'
-        && /standDown\('/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8')));
-    assert.ok(wired.length >= 14, `found ${wired.length} prelude-gated hooks`);
-    for (const f of wired)
+    // The files are the ones the core entry actually LAUNCHES (2.1.5 M4): selecting them by their own
+    // `standDown('` call let a hook that skipped the prelude entirely - the setup plugin's two - pass.
+    const entries = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'plugin-entries.json'), 'utf8'));
+    const core = entries.entries.find((p) => p.name === 'alfred-code');
+    const launched = new Set();
+    for (const blocks of Object.values(core.hooks || {}))
+        for (const b of blocks) for (const h of b.hooks) for (const m of String(h.command).matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w./-]+\.js)/g)) launched.add(m[1]);
+    const files = [...launched];
+    assert.ok(files.includes('setup-plugin/hooks/guard-layer-table.js') && files.includes('setup-plugin/hooks/library-stamp.js'), files.join(', '));
+    assert.ok(files.length >= 15, `found ${files.length} launched hooks`);
+    const dispatched = [...require(path.join(HOOKS_DIR, 'shell-guards.js')).GUARDS, ...require(path.join(HOOKS_DIR, 'file-guards.js')).NAMES].map((g) => `stack/hooks/${g}.js`);
+    for (const f of [...new Set([...files, ...dispatched])])
     {
-        const has = /cursorStandDown\(\w+, __filename\)/.test(fs.readFileSync(path.join(HOOKS_DIR, f), 'utf8'));
-        assert.strictEqual(has, !PROTECTIVE_SET.has(f.replace(/\.js$/, '')), `${f}: cursorStandDown ${has ? 'present' : 'missing'}`);
+        const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+        const name = path.basename(f, '.js');
+        if (name === 'shell-guards' || name === 'file-guards') continue;   // a dispatcher runs each guard's own gates in-process
+        const has = /cursorStandDown\(\w+, __filename\)/.test(src);
+        assert.strictEqual(has, !PROTECTIVE_SET.has(name), `${f}: cursorStandDown ${has ? 'present' : 'missing'}`);
+        assert.ok(/standDown\('/.test(src), `${f}: runs the prelude's standDown gate`);
     }
+});
+
+test('the layer-table gate runs the prelude gates and leaves a block row where the repo is set up (2.1.5 M4)', () => {
+    const hook = path.join(__dirname, '..', 'setup-plugin', 'hooks', 'guard-layer-table.js');
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'layer-gate-')));
+    try
+    {
+        // A transcript whose latest decision table ran and was never pasted: the ask is denied.
+        const tp = path.join(root, 't.jsonl');
+        const row = (o) => JSON.stringify(o);
+        fs.writeFileSync(tp, [
+            row({ type: 'user', message: { role: 'user', content: '/alfred-code:configure' } }),
+            row({ type: 'assistant', message: { id: 'm1', role: 'assistant', content: [{ type: 'tool_use', id: 'tb', name: 'Bash', input: { command: 'node stack-select.js --table skills' } }] } }),
+            row({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tb', content: 'a | b\ntotal: 3 skills' }] } }),
+            row({ type: 'assistant', message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'pasted below' }, { type: 'tool_use', id: 'ask', name: 'AskUserQuestion', input: {} }] } }),
+        ].join('\n') + '\n');
+        const ask = { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'ask', session_id: 'lg', transcript_path: tp, cwd: root };
+        // Launched as the plugin launches it: CLAUDE_PLUGIN_ROOT set, which is what GATE 4's neverSetUp reads.
+        const env = { PATH: process.env.PATH, HOME: root, CLAUDE_CONFIG_DIR: path.join(root, 'cfg'), CLAUDE_PROJECT_DIR: root, CLAUDE_PLUGIN_ROOT: path.join(__dirname, '..'), ALFRED_CODE_LAYER_GATE_WAIT_MS: '0' };
+        const run = (extra = {}, input = ask) => spawnSync(process.execPath, [hook], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, ...extra } });
+        const ledger = path.join(root, '.alfred', 'docs', 'hook-blocks', 'lg.jsonl');
+        assert.strictEqual(run().status, 2, 'a never-set-up repo keeps the gate - it serves setup');
+        assert.ok(!fs.existsSync(path.join(root, '.alfred')), 'and is written nothing (R54)');
+        fs.mkdirSync(path.join(root, '.claude'), { recursive: true });
+        fs.writeFileSync(path.join(root, '.claude', 'alfred-code.stamp'), 'version: 2.1.5\n');
+        assert.strictEqual(run().status, 2);
+        const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        assert.deepStrictEqual([rows.length, rows[0].hook, rows[0].mode], [1, 'guard-layer-table.js', undefined], 'one block row, counted as a block');
+        assert.strictEqual(run({ ALFRED_CODE_HOOKS_OFF: 'guard-layer-table' }).status, 0, 'the csv names it');
+        assert.strictEqual(run({ CLAUDE_PLUGIN_OPTION_HOOK_PROFILE: 'minimal' }).status, 0, 'minimal keeps only the protective guards');
+        assert.strictEqual(run({}, { ...ask, cursor_version: '2.1.0', hook_event_name: 'preToolUse' }).status, 0, 'a Cursor payload stands it down');
+    }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 function runHook(file, payload, extra)
 {
     return spawnSync(process.execPath, [path.join(HOOKS_DIR, file)], {
-        input: payload, encoding: 'utf8', env: { ...process.env, ...extra, CLAUDE_PROJECT_DIR: os.tmpdir() },
+        input: payload, encoding: 'utf8', env: { ...process.env, ...extra, CLAUDE_PROJECT_DIR: SUITE.project },
     });
 }
 
@@ -676,10 +723,50 @@ test('as a process: the rm guard still blocks rm -rf ~ under a Cursor payload, a
 test('as a process: memory-session with a stdin that never closes still exits within its bound', () => {
     const { spawn } = require('node:child_process');
     return new Promise((resolve, reject) => {
-        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'memory-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: os.tmpdir() }, stdio: ['pipe', 'pipe', 'pipe'] });
+        const child = spawn(process.execPath, [path.join(HOOKS_DIR, 'memory-session.js')], { env: { ...process.env, CLAUDE_PROJECT_DIR: SUITE.project }, stdio: ['pipe', 'pipe', 'pipe'] });
         const started = Date.now();
         const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('memory-session hung past 6s on an open stdin')); }, 6000);
         child.on('exit', () => { clearTimeout(timer); assert.ok(Date.now() - started < 6000); resolve(); });
         // stdin is left open: never ended, never written
     });
+});
+
+test('every hook suite takes the containment helper, and no suite hands a hook the temp root as its project (2.1.5 M5)', () => {
+    // hook-prelude.test.js's runHook spawned hooks with CLAUDE_PROJECT_DIR = os.tmpdir(), so every run appended
+    // block rows under $TMPDIR/<docs-path>/hook-blocks; guard-commit-gate.test.js inherited the runner's
+    // ALFRED_CODE_DOCS_PATH and failed 8 cases inside a session. The helper's own after-hook fails a suite that
+    // writes there; this pins that every suite that spawns a hook carries it.
+    // The suites are DISCOVERED, never listed (a hand-kept list let a new hook suite through - the 2.1.5 hooks review):
+    // a test file that spawns a child process and either names a hook in the spawn call itself (a hooks directory, a
+    // HOOKS-style name, a hook entry file) or feeds a hook's stdin payload (`input: JSON.stringify(`) while naming a
+    // hooks directory or an entry. The entries are the manifest's wired files, the two dispatchers and the plugin's own
+    // hooks. A suite that only loads an engine (docs-versioning-rule's `node -e require(docs.js)`) is no hook suite. The
+    // rule reads source text, so a suite reaching a hook only through a name built at run time slips past it - the
+    // controls below hold one suite of each shape it must find.
+    const { loadManifest } = require('./install/manifest.js');
+    const entries = new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((r) => r.split('::')[0]));
+    for (const f of fs.readdirSync(path.join(__dirname, '..', 'setup-plugin', 'hooks'))) if (f.endsWith('.js')) entries.add(f);
+    for (const f of ['shell-guards.js', 'file-guards.js']) entries.add(f);
+    const esc = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const entryName = new RegExp(`['"\`](?:${[...entries].map((e) => esc(e.replace(/\.js$/, ''))).join('|')})(?:\\.js)?['"\`]`);
+    const hookWord = /(?<![-\w])(?:hooks?|HOOKS?\w*)(?![-\w])/;
+    const hooksDir = /['"](?:stack|setup-plugin|\.claude)['"],\s*['"]hooks['"]|(?:stack|setup-plugin|\.claude)\/hooks\b/;
+    const spawnCall = /\b(?:spawnSync|spawn|execFileSync|execSync|fork)\((.*)$/;
+    const discovered = fs.readdirSync(__dirname).filter((n) => n.endsWith('.test.js')).filter((n) =>
+    {
+        const src = fs.readFileSync(path.join(__dirname, n), 'utf8');
+        const calls = src.split('\n').map((l) => (l.match(spawnCall) || [])[1]).filter((a) => a !== undefined);
+        return calls.some((a) => hookWord.test(a) || hooksDir.test(a) || entryName.test(a))
+            || (calls.length > 0 && /input:\s*JSON\.stringify\(/.test(src) && (hooksDir.test(src) || entryName.test(src)));
+    }).map((n) => n.replace(/\.test\.js$/, ''));
+    for (const control of ['guard-hooks', 'shell-guards', 'check-turn-build', 'hooks-entry', 'install-plugins'])
+        assert.ok(discovered.includes(control), `the discovery finds ${control}.test.js (found: ${discovered.join(', ')})`);
+    for (const s of discovered)
+        assert.match(fs.readFileSync(path.join(__dirname, `${s}.test.js`), 'utf8'), /require\('\.\/hook-test-env'\)\.isolateHookSuite\(\)/, `${s}.test.js spawns a hook and takes no helper`);
+    for (const f of fs.readdirSync(__dirname).filter((n) => n.endsWith('.test.js')))
+        assert.doesNotMatch(fs.readFileSync(path.join(__dirname, f), 'utf8'), /CLAUDE_PROJECT_DIR:\s*os\.tmpdir\(\)/, `${f} hands a hook the temp root as its project`);
+    const env = require('./hook-test-env');
+    assert.deepStrictEqual(Object.keys(env.scrubbed({ ALFRED_CODE_DOCS_PATH: 'x', CLAUDE_CODE_ENTRYPOINT: 'sdk-cli', CLAUDE_PROJECT_DIR: '/p', PATH: '/bin' })), ['PATH'],
+        'a runner\'s stack key, entrypoint and project dir never reach a hook');
+    assert.ok(!('ALFRED_CODE_DOCS_PATH' in process.env) && !('CLAUDE_CODE_ENTRYPOINT' in process.env), 'and this suite runs without them');
 });

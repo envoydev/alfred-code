@@ -1,5 +1,7 @@
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -8,9 +10,9 @@ const { execFileSync } = require('node:child_process');
 for (const k of Object.keys(process.env)) if (k.startsWith('CLAUDE_STACK_') || k === 'CLAUDE_DOCS_PATH') delete process.env[k]; // C19: a 1.x install's ambient spelling answers through envOf too - legacy-name
 
 const HOOKS_DIR = path.join(__dirname, '..', 'stack', 'hooks');
-// Every hook the manifest wires, read from the manifest itself - a hand list drifted twice ('fifteen'
-// over seventeen rows). The engines (docs.js, memory.js, history.js) are copied beside them and never
-// wired, so they carry no gate.
+// Every hook the manifest wires, read from the manifest itself - a hand list drifted twice (it once said
+// 'fifteen' while the manifest held seventeen; no count is written here). The engines (docs.js, memory.js,
+// history.js) are copied beside them and never wired, so they carry no gate.
 const { loadManifest } = require('./install/manifest.js');
 const WIRED = [...new Set(loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((e) => e.split('::')[0].replace(/\.js$/, '')))];
 
@@ -182,4 +184,15 @@ test('in a never-set-up project every plugin-launched hook writes nothing, and o
             }
     }
     finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test('no suite states the hook count as a number that went stale with the eighteenth hook (2.1.5 final review R12)', () => {
+    // The counts written before guard-desktop-exec.js outlived it; the comments now say what holds at any count.
+    // The pattern is assembled, so this file does not match itself.
+    for (const f of ['install-plugins.test.js', 'install-selection.test.js', 'hook-plugin-parity.test.js', 'hook-prelude.test.js'])
+    {
+        const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+        const stale = new RegExp([['16', '17'], ['1', '17']].map(([n, m]) => `\\b${n} of ${m}\\b`).concat(['over', 'seventeen', 'rows'].join(' '), ['seventeen', 'stale', 'lists'].join(' ')).join('|'));
+        assert.doesNotMatch(src, stale, `${f} carries a stale hook count`);
+    }
 });

@@ -206,9 +206,9 @@ function expected({ platform, configDir, runtime, env, exists, bash })
     };
 }
 
-// Git Bash spells a Windows path in mount form (`/c/...`, `/cygdrive/c/...`) - the regex the hooks
-// inline as gitbash-mount-path - and `command -v node` drops the .exe.
-const MOUNT_RE = /^(?:\/cygdrive)?\/([A-Za-z])(?=\/|$)/;
+// Git Bash spells a Windows path in mount form (`/c/...`, `/cygdrive/c/...`) - the regex the hooks read from
+// shell-writes.js, its one home - and `command -v node` drops the .exe.
+const { MOUNT_RE } = require('../stack/hooks/shell-writes.js');
 const winRuntimeExists = (runtime, exists) =>
 {
     const native = runtime.replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:`);

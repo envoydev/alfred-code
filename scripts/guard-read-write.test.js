@@ -6,6 +6,8 @@
 // wrongly blocked passes now, and the dump or the out-of-tree write the gate exists for still blocks.
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -276,4 +278,54 @@ test('guard-read-whole-file: a shell write to any delivery surface devops-conven
     assert.match(announce(`printf x > ${target}`, sid()), /devops-conventions\.md/, target);
   for (const target of ['src/deployment.ts', 'notes/deploy.md', '.env', 'src/actions/action.yml.bak'])
     assert.doesNotMatch(announce(`printf x > ${target}`, sid()), /devops-conventions\.md/, target);
+});
+
+test('the Git Bash mount-path translation has ONE home, shell-writes.js, which every path-resolving guard requires (2.1.5 M8)', () => {
+  // It was inlined in five guards and pinned as a shared rule on the premise that 'each hook is a standalone
+  // file with no shared module' - shell-writes.js, hook-prelude.js and hidden-chars.js are exactly such modules.
+  const sw = require(path.join(HOOKS, 'shell-writes.js'));
+  assert.strictEqual(path.win32.normalize(sw.nativePath('/c/Users/a/x.ts', 'win32')), 'C:\\Users\\a\\x.ts', 'a drive mount');
+  assert.strictEqual(path.win32.normalize(sw.nativePath('/cygdrive/d/work', 'win32')), 'D:\\work', 'a Cygwin mount');
+  assert.strictEqual(sw.nativePath('/c/Users/a', 'darwin'), '/c/Users/a', 'off Windows the spelling is a real POSIX path');
+  assert.strictEqual(sw.nativePath('/usr/local', 'win32'), '/usr/local', 'a longer first segment is no drive');
+  for (const f of ['guard-config-protection', 'guard-cross-project-write', 'guard-secret-value', 'guard-read-whole-file', 'guard-ungated-commit']) {
+    const src = fs.readFileSync(path.join(HOOKS, `${f}.js`), 'utf8');
+    assert.doesNotMatch(src, /const MOUNT_RE =/, `${f} keeps no inline copy`);
+    assert.match(src, /nativePath \} = require\([^)]*shell-writes\.js'\)\)/, `${f} requires it`);
+  }
+  const rules = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'shared-rules.json'), 'utf8'));
+  assert.ok(!JSON.stringify(rules).includes('"gitbash-mount-path"'), 'the pin that held the copies together is retired');
+});
+
+// A letter-case flip of every letter in a path (`/Users/a` -> `/uSERS/A`), the spelling a case-insensitive
+// filesystem accepts for the same directory.
+const flipCase = (p) => p.replace(/[a-z]/gi, (c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()));
+
+test('guard-cross-project-write: a path spelled in another letter case is still inside the project (2.1.5 M9)', (t) => {
+  // The JS realpathSync keeps the case it is given, so `c:\...\proj\x.ts` against a root spelled `C:\...` read as
+  // outside - on Windows, and on a default (case-insensitive) macOS volume alike. realpathSync.native returns the
+  // on-disk case. Judged only where the filesystem folds case: on a case-sensitive one the flip IS another path.
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'CaseProj-')));
+  fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+  const flipped = flipCase(path.join(proj, 'src'));
+  // A case-sensitive filesystem has nothing to fold: reported as a skip, never as a pass that judged nothing.
+  if (!fs.existsSync(flipped)) { t.skip('case-sensitive filesystem - the flipped spelling is another path'); return; }
+  const write = (file, env = {}) => run(XWRITE, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '', ...env } }).status;
+  assert.equal(write(path.join(flipped, 'a.ts')), 0, 'an existing folder in another case is the same folder');
+  assert.equal(write(path.join(flipped, 'new', 'b.ts')), 0, 'and so is a new file below it');
+  const other = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'CaseOther-')));
+  assert.equal(write(path.join(flipCase(other), 'c.ts')), 2, 'a sibling in any case is still outside');
+});
+
+test('guard-cross-project-write: on Windows an allowance and a target compare without case (2.1.5 M9)',
+  { skip: process.platform !== 'win32' && 'the lower-case compare is the win32 branch - it runs on windows-latest' }, () => {
+  // A folder that does not exist yet has no on-disk case to read back, so the compare itself folds case on win32.
+  const proj = fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'WinProj-')));
+  const other = path.join(fs.realpathSync(fs.mkdtempSync(path.join(TMP, 'WinOther-'))), 'Not', 'Yet');
+  const write = (file, env = {}) => run(XWRITE, { tool_name: 'Write', tool_input: { file_path: file, content: 'x' } },
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: proj, ...env } }).status;
+  assert.equal(write(path.join(other, 'a.ts'), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: flipCase(other) }), 0, 'an allowance spelled in another case covers the tree');
+  assert.equal(write(path.join(flipCase(proj), 'Deep', 'New', 'b.ts'), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' }), 0, 'the project in another drive and folder case');
+  assert.equal(write(path.join(other, 'a.ts'), { ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' }), 2, 'and outside is still outside');
 });

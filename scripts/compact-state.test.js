@@ -4,6 +4,8 @@
 // their ages, the files this session wrote - with no model call, and the SessionStart `compact`
 // injection points at it.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -60,7 +62,9 @@ test('compact-state: PreCompact writes the live plan, the flow stamps with ages 
     const p = project();
     p.stamp('APPROVAL', 30);
     p.stamp('COMMIT-GATE', 2);
-    p.stamp('monitor-sess.json', 1);   // the monitor's state is no stamp
+    p.stamp('monitor-sess.json', 1);   // the monitor's state is no stamp - its 2.1.5 turn log and context marker neither
+    p.stamp('monitor-sess.jsonl', 1);
+    p.stamp('monitor-sess.context', 1);
     p.stamp('turn-edits-sess', 1);     // nor is the turn check's edit list
     p.wrote('main.session', ['scripts/a.js', 'stack/hooks/b.js']);
     p.wrote('agent-x', ['stack/hooks/b.js', 'docs/c.md']);

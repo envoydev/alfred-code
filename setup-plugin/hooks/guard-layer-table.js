@@ -22,10 +22,30 @@
 // message it cannot see. ALFRED_CODE_LAYER_GATE_WAIT_MS overrides the 2000ms budget (tests). With no
 // table call since the typed prompt it never waits: there is nothing to judge (M15).
 // exit 2 = block (stderr fed back); exit 0 = allow. Fail-open on anything unreadable.
+//
+// STACK HOOK GATES (2.1.5 M4) - the core's hook-prelude.js, reached from the plugin root (the core entry ships
+// the whole repo). The csv opt-out, `hook_profile: minimal`, the 1.x alias and a Cursor payload all stand it down
+// like any non-protective hook; GATE 4 is skipped (`setUp: false`), since it serves the setup walk before any
+// install record exists - and such a repo is written nothing (R54), so the block row waits for an installed one.
 const fs = require('fs');
+const path = require('path');
 
 const MARKER = 'alfred-code layer-table gate';
 const MAX_DENIALS = 3;
+const PRELUDE = path.join(__dirname, '..', '..', 'stack', 'hooks', 'hook-prelude.js');
+
+let envOf = (env, suffix) => env[`ALFRED_CODE_${suffix}`];
+let unsetRepo = true;
+if (require.main === module) {
+  let off = false;
+  try {
+    const prelude = require(PRELUDE);
+    envOf = prelude.envOf;
+    off = prelude.standDown('guard-layer-table', process.env, process.argv, { setUp: false });
+    unsetRepo = prelude.neverSetUp();
+  } catch { /* an install without the prelude runs the gate unchanged, writing no row */ }
+  if (off) process.exit(0);
+}
 
 let payload;
 try {
@@ -33,7 +53,27 @@ try {
 } catch {
   process.exit(0);
 }
-if (!payload || payload.tool_name !== 'AskUserQuestion' || !payload.transcript_path) process.exit(0);
+if (!payload || typeof payload !== 'object') process.exit(0);
+// GATE 6: a Cursor payload runs only the protective guards - outside the try, a caller's exit must not be swallowed.
+let cursorOff = false;
+try { cursorOff = require(PRELUDE).cursorStandDown(payload, __filename); } catch { /* no prelude: run */ }
+if (cursorOff) process.exit(0);
+if (payload.tool_name !== 'AskUserQuestion' || !payload.transcript_path) process.exit(0);
+
+// One block row in the hook-blocks ledger, so this gate's block RATE is measured like every other guard's.
+// Best-effort; a repo never set up gets none.
+function blockRow(reason, table) {
+  if (unsetRepo) return;
+  try {
+    const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+    const dir = path.resolve(root, envOf(process.env, 'DOCS_PATH') || '.alfred/docs', 'hook-blocks');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `${String(payload.session_id || 'nosession').replace(/[^\w.-]/g, '_')}.jsonl`), JSON.stringify({
+      ts: new Date().toISOString(), hook: path.basename(__filename), event: payload.hook_event_name || 'PreToolUse',
+      tool: payload.tool_name || '', reason: reason.slice(0, 200), detail: { branch: table },
+    }) + '\n');
+  } catch { /* telemetry is never allowed to break the gate */ }
+}
 
 const readRows = () => {
   const size = fs.statSync(payload.transcript_path).size;
@@ -155,10 +195,12 @@ const denials = table ? denialTexts.filter((t) => t.includes(`the ${table.name} 
 if (!table || !table.proof || denials >= MAX_DENIALS) process.exit(0);
 if (table.proof.test(texts)) process.exit(0);
 
-process.stderr.write(
+const denial =
   `${MARKER}: the ${table.name} ran but its output is not in your message - the tool result is ` +
   `collapsed, so the user sees no table. Table before question: do not re-run the table - its output is already ` +
   `in your context from the call above. Send ONE message: the step banner, that output byte-for-byte inside a fenced ` +
   `code block, then this same ask. Writing 'pasted below' or 'shown above' ` +
-  `is not a paste, and the ask's preview panel does not count. Never summarize the rows into prose.\n`);
+  `is not a paste, and the ask's preview panel does not count. Never summarize the rows into prose.\n`;
+blockRow(denial.split('\n')[0], table.name);
+process.stderr.write(denial);
 process.exit(2);

@@ -3722,31 +3722,6 @@
         }
       ]
     },
-    "gitbash-mount-path": {
-      "_note": "Git Bash / MSYS spell a Windows path in POSIX mount form (/c/..., /cygdrive/c/...), which node on win32 resolves against the CURRENT drive - the falsehood that made the cross-project guard block a session cleaning its own temp scratch. Every guard that resolves a path off a Bash command line translates it the SAME way before any resolution, so a fix to the spelling lands in all four at once; each hook is a standalone file with no shared module, which is why the copies are inline.",
-      "owner": {
-        "file": "stack/hooks/guard-cross-project-write.js",
-        "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-      },
-      "sites": [
-        {
-          "file": "stack/hooks/guard-config-protection.js",
-          "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        },
-        {
-          "file": "stack/hooks/guard-read-whole-file.js",
-          "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        },
-        {
-          "file": "stack/hooks/guard-secret-value.js",
-          "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        },
-        {
-          "file": "stack/hooks/guard-ungated-commit.js",
-          "marker": "const MOUNT_RE = /^(?:\\/cygdrive)?\\/([A-Za-z])(?=\\/|$)/;\nconst nativePath = (p) => (process.platform === 'win32'\n  ? String(p).replace(MOUNT_RE, (m, d) => `${d.toUpperCase()}:\\\\`)\n  : String(p));"
-        }
-      ]
-    },
     "convention-rule-load-receipt": {
       "_note": "The second half of the convention-rule attach contract, restated in every rule that carries [convention-rule-first-action] - the nine convention rules, markdown-docs and skill-authoring (audit M66: skill-authoring carried the text unregistered, markdown-docs had no receipt at all; scripts/rule-prose.test.js fails when the two entries list different files): the load is SAID out loud, because an unstated load is indistinguishable from no load in the transcript and in the user's reading alike. Pinned separately because the two halves are edited independently.",
       "owner": {

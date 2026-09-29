@@ -821,6 +821,23 @@ test('hook-blocks: a root-cause probe is resolved against the transcript after t
   assert.match(text, /ROOT CAUSE \(probe\): 8 red streak\(s\) - 1 loaded before the fix, 1 already in context, 1 preloaded by the seat, 1 loaded after the fix, 1 MISSED, 2 with no fix after, 1 unmatched/);
 });
 
+test('hook-blocks: a shell fix through Monitor is a fix, like one through Bash (2.1.5 final review R8)', () => {
+  // The analyzer read the shell route as Bash|PowerShell while every shell guard reads Bash|PowerShell|Monitor
+  // (shell-writes.js SHELL_TOOLS) - a Monitor edit after a red run read as 'no fix after'.
+  const dir = tmp();
+  const red = { content: 'Exit code 1\nnot ok 1', is_error: true };
+  const file = fixture(dir, [
+    tool('m1', 'Bash', { command: 'npm test' }), result('m1', red),
+    tool('m2', 'Monitor', { command: "sed -i 's/x/y/' src/b.js", description: 'fix' }), result('m2'),
+  ]);
+  const blocks = path.join(dir, 'hook-blocks');
+  fs.mkdirSync(blocks);
+  fs.writeFileSync(path.join(blocks, 'session.jsonl'), redRow('m1'));
+  const { hookBlocks } = run([file, '--hook-blocks', blocks]);
+  assert.strictEqual(hookBlocks.rootCause.missed, 1, 'the Monitor sed is the fix, made with no skill load');
+  assert.strictEqual(hookBlocks.rootCause.noFix, 0);
+});
+
 test('hook-blocks: a fix is judged against the session\'s own cwd - inside it counts wherever it lives, outside it is scratch', () => {
   const dir = tmp();
   const red = { content: 'Exit code 1', is_error: true };

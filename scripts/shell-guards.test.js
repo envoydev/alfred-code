@@ -5,6 +5,8 @@
 // guard, a throwing guard failing open alone - and the wiring both routes generate.
 'use strict';
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -183,7 +185,8 @@ test('copy route: the dispatcher replaces the per-guard shell rows an older inst
   assert.deepStrictEqual(wired.sort(), [
     `Bash  node ./my-own-hook.js  5`,
     `Bash|PowerShell|Monitor  ${cmd('shell-guards.js')} guard-catastrophic-rm guard-ungated-commit guard-config-protection  ${10 * shell.GUARDS.length}`,
-    `Write|Edit|MultiEdit|NotebookEdit  ${cmd('guard-config-protection.js')}  10`,
+    // its file-tool row folds into the file-guard dispatcher since 2.1.5 (M3)
+    `Edit|Write|MultiEdit|NotebookEdit  ${cmd('file-guards.js')} guard-config-protection  ${10 * require(path.join(HOOKS, 'file-guards.js')).GUARDS.length}`,
   ].sort());
   const before = fs.readFileSync(file, 'utf8');
   const again = settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} });
@@ -279,11 +282,12 @@ test('docs-session\'s hold reaches the combined answer as the JSON deny it alway
 test('several guards blocking one command: every reason, one ledger row per blocking guard', () => {
   const dir = project();
   const env = { CLAUDE_PROJECT_DIR: dir };
-  const payload = bashPayload('rm -rf ~ && git commit -am "wip"', dir);
+  // Two NON-protective blocks: a protective one ends the run where it stands (2.1.5 M2, below).
+  const payload = bashPayload(`cat ${BIG} && git commit -am "wip"`, dir);
   // What the separate hooks do with it: each guard standalone, its ledger cleared after.
   const alone = shell.GUARDS.map((g) => ({ g, ...run(path.join(HOOKS, `${g}.js`), payload, { cwd: dir, env }) })).filter((x) => x.status === 2);
   fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
-  assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-catastrophic-rm') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
+  assert.ok(alone.length >= 2 && alone.some((x) => x.g === 'guard-read-whole-file') && alone.some((x) => x.g === 'guard-ungated-commit'), alone.map((x) => x.g).join(', '));
   const out = run(DISPATCH, payload, { cwd: dir, env });
   assert.strictEqual(out.status, 2);
   for (const x of alone) assert.ok(out.stderr.includes(x.stderr.trim()), `${x.g}'s reason is in the one answer`);
@@ -338,6 +342,28 @@ test('PowerShell is the same shell route', () => {
   const out = run(DISPATCH, bashPayload('Remove-Item -Recurse -Force $HOME', dir, 'PowerShell'), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir } });
   assert.strictEqual(out.status, 2);
   assert.match(out.stderr, /recursive rm of a catastrophic/);
+});
+
+test('a protective block is answered at once - a guard that stalls after it cannot drop it (2.1.5 M2)', () => {
+  // A timed-out command hook does not block the call (hooks reference), so one stalled guard used to
+  // discard the rm, secret and force-push verdicts already reached. The stub sleeps far past the budget.
+  const copy = path.join(TMP, 'staller');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'guard-read-whole-file.js'),
+    "'use strict';\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);\n");
+  const dir = project();
+  const started = Date.now();
+  const res = spawnSync(process.execPath, [path.join(copy, 'shell-guards.js')], {
+    input: JSON.stringify(bashPayload('rm -rf ~ && git commit -am "wip"', dir)), encoding: 'utf8', cwd: dir,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
+  });
+  assert.strictEqual(res.status, 2, `the rm block arrives before the stalled guard runs (status ${res.status}, ${Date.now() - started}ms)`);
+  assert.match(res.stderr, /recursive rm of a catastrophic/);
+  assert.doesNotMatch(res.stderr, /COMMIT-GATE/, 'a guard after the protective block never ran');
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir)), ['guard-catastrophic-rm.js'], 'one row, the protective guard\'s own');
+  const prelude = require(path.join(HOOKS, 'hook-prelude.js'));
+  assert.deepStrictEqual([...shell.PROTECTIVE].sort(), shell.GUARDS.filter((g) => prelude.PROTECTIVE.has(g)).sort(),
+    'the dispatcher\'s protective set is the prelude\'s, on the shell route');
 });
 
 test('a throwing guard fails open for itself only - the others still judge', () => {
@@ -437,4 +463,181 @@ test('the secret rewrite passes through unchanged, and a block from another guar
   const out = run(DISPATCH, mixed, { cwd: dir, env });
   assert.strictEqual(out.status, 2, 'the whole-file guard blocks the original command');
   assert.ok(!out.stdout.includes('updatedInput'), 'the rewrite never reaches a blocked call');
+});
+
+// ---- the file-guard dispatcher (2.1.5 M3) -------------------------------------------------------
+// The file tools paid one process per guard - a Read three, an Edit or a Write three - through a shell. The
+// same in-process runtime now runs them as ONE hook; each guard judges only the tools its own row named.
+const FILES = path.join(HOOKS, 'file-guards.js');
+const filePayload = (tool, input, cwd, session = 'fg') => ({ session_id: session, hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, cwd });
+
+test('file-guards wiringRows: every guard\'s own file-tool row folds into ONE dispatcher row, on the tools the folded guards match', () => {
+  const fg = require(FILES);
+  const rows = ['a.js::@Stop', 'guard-read-whole-file.js::Read', 'guard-secret-value.js::Read', 'guard-read-whole-file.js::Bash|PowerShell|Monitor',
+    'guard-secret-value.js::Grep', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-cross-project-write.js::Write|Edit|MultiEdit|NotebookEdit',
+    'docs-session.js::Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*'];
+  assert.deepStrictEqual(fg.wiringRows(rows), ['a.js::@Stop', `file-guards.js::${fg.MATCHER}`, 'guard-read-whole-file.js::Bash|PowerShell|Monitor', 'docs-session.js::@Stop', 'instrument-tool-usage.js::.*']);
+  assert.strictEqual(fg.MATCHER, 'Read|Edit|Write|MultiEdit|NotebookEdit|Grep|Glob');
+  // A strict subset is named in the args, and the wiring matches only the tools those guards judge.
+  assert.deepStrictEqual(fg.wiringRows(['guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit'], { listGuards: true }),
+    ['file-guards.js::Edit|Write|MultiEdit|NotebookEdit::guard-config-protection'], 'no Read spawn for a write guard');
+  assert.deepStrictEqual(fg.wiringRows(['guard-secret-value.js::Read', 'guard-secret-value.js::Grep'], { listGuards: true }), ['file-guards.js::Read|Grep::guard-secret-value']);
+  // A row naming a tool its guard's table does not is left alone, and so is one with args.
+  assert.deepStrictEqual(fg.wiringRows(['guard-read-whole-file.js::Read|Write', 'docs-session.js::Read::x']), ['guard-read-whole-file.js::Read|Write', 'docs-session.js::Read::x']);
+  assert.deepStrictEqual(fg.wiringRows(['a.js::@Stop']), ['a.js::@Stop'], 'no file row, no dispatcher');
+});
+
+test('file-guards: the table is the manifest\'s own file-tool rows, and nothing else PreToolUse sits on a file tool but instrumentation', () => {
+  const fg = require(FILES);
+  const { loadManifest } = require('./install/manifest.js');
+  const rows = loadManifest(path.join(__dirname, '..')).catalogs.hooks.map((row) => row.replace(/::$/, ''));
+  for (const [g, tools] of fg.GUARDS)
+  {
+    const own = rows.filter((r) => r.startsWith(`${g}.js::`) && !/::@/.test(r)).map((r) => r.split('::')[1]).filter((m) => m.split('|').every((t) => fg.MATCHER.split('|').includes(t)));
+    assert.deepStrictEqual([...new Set(own.flatMap((m) => m.split('|')))].sort(), [...tools].sort(), `${g}: the table matches its manifest rows`);
+  }
+  const onFiles = rows.filter((row) => { const m = row.split('::')[1] || ''; return !m.startsWith('@') && m.split('|').some((t) => fg.MATCHER.split('|').includes(t)); });
+  assert.deepStrictEqual(onFiles.filter((row) => !fg.NAMES.includes(row.split('::')[0].replace(/\.js$/, ''))), [], 'a file-tool wiring outside the dispatcher is a second process per call');
+});
+
+test('file-guards: the core entry launches ONE process per file-tool call, with the summed timeout, beside the shell dispatcher', () => {
+  const fg = require(FILES);
+  const build = require('./build-marketplace.js');
+  const block = build.hooksBlock(build.parseHookWirings());
+  const onFile = (tool) => block.PreToolUse.filter((g) => g.matcher === undefined || new RegExp(`^(?:${g.matcher})$`).test(tool)).flatMap((g) => g.hooks.map((h) => h.command));
+  for (const tool of ['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Grep', 'Glob'])
+    assert.deepStrictEqual(onFile(tool), ['node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/file-guards.js"', 'node "${CLAUDE_PLUGIN_ROOT}/stack/hooks/instrument-tool-usage.js"'], `${tool}: the dispatcher and instrumentation only`);
+  const group = block.PreToolUse.find((g) => g.matcher === fg.MATCHER);
+  assert.strictEqual(group.hooks[0].timeout, 10 * fg.GUARDS.length, 'every guard keeps the 10s it had as its own hook');
+  assert.strictEqual(require('./install/settings.js').timeoutFor('file-guards.js', 'PreToolUse'), 10 * fg.GUARDS.length);
+});
+
+test('file-guards: each guard\'s block reaches the combined answer through the dispatcher, with its own ledger row', () => {
+  const dir = project();
+  const other = fs.mkdtempSync(path.join(TMP, 'fg-other-'));
+  fs.writeFileSync(path.join(dir, 'eslint.config.js'), 'export default [];\n');
+  fs.writeFileSync(path.join(dir, 'settings.local.json'), JSON.stringify({ env: { SENTRY_ACCESS_TOKEN: 'x0'.repeat(20) } }, null, 2));
+  const cases = [
+    ['guard-read-whole-file', 'Read', { file_path: BIG }],
+    ['guard-secret-value', 'Read', { file_path: path.join(dir, 'settings.local.json') }],
+    ['guard-config-protection', 'Edit', { file_path: path.join(dir, 'eslint.config.js'), old_string: '[]', new_string: '[{}]' }],
+    ['guard-cross-project-write', 'Write', { file_path: path.join(other, 'f.txt'), content: 'x' }],
+  ];
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  for (const [guard, tool, input] of cases)
+  {
+    const session = `fg-${guard}`;
+    const payload = filePayload(tool, input, dir, session);
+    const alone = run(path.join(HOOKS, `${guard}.js`), payload, { cwd: dir, env });
+    assert.strictEqual(alone.status, 2, `${guard} blocks ${tool} on its own: ${alone.stderr}`);
+    fs.rmSync(path.join(dir, '.alfred', 'docs'), { recursive: true, force: true });
+    const both = run(FILES, payload, { cwd: dir, env });
+    assert.strictEqual(both.status, 2, `${guard}: the dispatcher blocks too`);
+    assert.ok(both.stderr.includes(alone.stderr.trim()), `${guard}: its own message reaches the model\n--- alone\n${alone.stderr}\n--- dispatched\n${both.stderr}`);
+    assert.deepStrictEqual(hooksOf(ledgerRows(dir, session)), [`${guard}.js`], `${guard}: one ledger row, its own`);
+  }
+});
+
+test('file-guards: a guard never judges a tool its row did not name; an ordinary call and garbage pass silently', () => {
+  const dir = project();
+  const env = { CLAUDE_PROJECT_DIR: dir, ALFRED_CODE_ALLOW_WRITE_OUTSIDE: '' };
+  // The read guard is wired on Read only: a Write of a large file is not its business.
+  const big = run(FILES, filePayload('Write', { file_path: path.join(dir, 'big.js'), content: fs.readFileSync(BIG, 'utf8') }, dir, 'fg-big'), { cwd: dir, env });
+  assert.deepStrictEqual([big.status, hooksOf(ledgerRows(dir, 'fg-big'))], [0, []], 'the read guard never judged the Write');
+  const plain = run(FILES, filePayload('Read', { file_path: path.join(dir, 'a.txt') }, dir, 'fg-plain'), { cwd: dir, env });
+  assert.deepStrictEqual([plain.status, plain.stdout, plain.stderr], [0, '', ''], 'an ordinary Read: nothing to say');
+  for (const input of ['', '{oops', 'null', '42'])
+  {
+    const r = spawnSync(process.execPath, [FILES], { input, encoding: 'utf8', cwd: dir, env: { ...process.env, ...env } });
+    assert.deepStrictEqual([r.status, r.stdout, r.stderr], [0, '', ''], `garbage ${JSON.stringify(input)} fails open, silently`);
+  }
+});
+
+test('file-guards: the protective secret guard is answered at once, and a guard list in the wiring runs exactly those guards', () => {
+  const copy = path.join(TMP, 'fg-staller');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'docs-session.js'), "'use strict';\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);\n");
+  const dir = project();
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123\n');
+  const r = spawnSync(process.execPath, [path.join(copy, 'file-guards.js')], {
+    input: JSON.stringify(filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'fg-prot')), encoding: 'utf8', cwd: dir,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
+  });
+  assert.strictEqual(r.status, 2, `the secret block arrives before the stalled guard runs (status ${r.status})`);
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'fg-prot')), ['guard-secret-value.js']);
+  // Named in the args: only that guard judges.
+  const only = run(FILES, filePayload('Read', { file_path: BIG }, dir, 'fg-only'), { cwd: dir, env: { CLAUDE_PROJECT_DIR: dir }, args: ['guard-secret-value'] });
+  assert.deepStrictEqual([only.status, hooksOf(ledgerRows(dir, 'fg-only'))], [0, []], 'the read guard was not in the list');
+});
+
+// The 2.1.5 hooks review: the secret guard ran after the read guard, so a read guard stalling past the budget dropped
+// the secret block too - the M2 shape again. Both dispatchers RUN the protective guards first; the answer keeps the
+// manifest order for its messages.
+test('both dispatchers run every protective guard before any other, the rest in manifest order', () => {
+  const fg = require(FILES);
+  const prelude = require(path.join(HOOKS, 'hook-prelude.js'));
+  for (const [name, table, order, protective] of [['shell-guards', shell.GUARDS, shell.RUN_ORDER, shell.PROTECTIVE], ['file-guards', fg.NAMES, fg.RUN_ORDER, fg.PROTECTIVE]])
+  {
+    assert.deepStrictEqual([...order].sort(), [...table].sort(), `${name}: the run order holds every guard once`);
+    const firstOther = order.findIndex((g) => !protective.has(g));
+    assert.ok(order.slice(firstOther).every((g) => !protective.has(g)), `${name}: no protective guard runs after another guard: ${order.join(', ')}`);
+    assert.deepStrictEqual(order.slice(firstOther), table.filter((g) => !protective.has(g)), `${name}: the rest keep the manifest order`);
+    assert.deepStrictEqual([...protective].sort(), table.filter((g) => prelude.PROTECTIVE.has(g)).sort(), `${name}: its protective set is the prelude's`);
+  }
+});
+
+test('a stalled guard ahead of the secret guard in the manifest cannot drop its block, on either dispatcher', () => {
+  const copy = path.join(TMP, 'staller-read');
+  fs.cpSync(HOOKS, copy, { recursive: true });
+  fs.writeFileSync(path.join(copy, 'guard-read-whole-file.js'), "'use strict';\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);\n");
+  const dir = project();
+  fs.writeFileSync(path.join(dir, '.env'), 'API_KEY=abc123abc123abc123\n');
+  const spawnIt = (file, payload) => spawnSync(process.execPath, [path.join(copy, file)], {
+    input: JSON.stringify(payload), encoding: 'utf8', cwd: dir, env: { ...process.env, CLAUDE_PROJECT_DIR: dir }, timeout: 15000,
+  });
+  const read = spawnIt('file-guards.js', filePayload('Read', { file_path: path.join(dir, '.env') }, dir, 'stall-read'));
+  assert.strictEqual(read.status, 2, `file-guards: the secret block arrives though the read guard stalls (status ${read.status})`);
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-read')), ['guard-secret-value.js']);
+  const sh = spawnIt('shell-guards.js', { ...bashPayload('cat .env && npm run build', dir), session_id: 'stall-bash' });
+  assert.strictEqual(sh.status, 2, `shell-guards: the secret block arrives though the read guard stalls (status ${sh.status})`);
+  assert.deepStrictEqual(hooksOf(ledgerRows(dir, 'stall-bash')), ['guard-secret-value.js']);
+});
+
+test('file-guards copy route: the dispatcher replaces the per-guard file rows an older install wrote, and a re-run changes nothing', () => {
+  const settings = require('./install/settings.js');
+  const fg = require(FILES);
+  const dir = fs.mkdtempSync(path.join(TMP, 'fg-copy-'));
+  const file = path.join(dir, 'settings.json');
+  const cmd = (f) => `"$CLAUDE_PROJECT_DIR/.claude/hooks/${f}"`;
+  fs.writeFileSync(file, JSON.stringify({ hooks: { PreToolUse: [
+    { matcher: 'Read', hooks: [{ type: 'command', command: cmd('guard-read-whole-file.js'), timeout: 10 }] },
+    { matcher: 'Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: cmd('guard-config-protection.js'), timeout: 10 }] },
+    { matcher: 'Read', hooks: [{ type: 'command', command: 'node ./my-own-read-hook.js', timeout: 5 }] },
+  ] } }, null, 2));
+  const specs = ['guard-read-whole-file.js::Read', 'guard-config-protection.js::Write|Edit|MultiEdit|NotebookEdit', 'guard-config-protection.js::Bash|PowerShell|Monitor'];
+  settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} });
+  const wired = JSON.parse(fs.readFileSync(file, 'utf8')).hooks.PreToolUse.flatMap((e) => e.hooks.map((h) => `${e.matcher}  ${h.command}  ${h.timeout}`));
+  assert.deepStrictEqual(wired.sort(), [
+    `Read  node ./my-own-read-hook.js  5`,
+    `Bash|PowerShell|Monitor  ${cmd('shell-guards.js')} guard-config-protection  ${10 * shell.GUARDS.length}`,
+    `Read|Edit|Write|MultiEdit|NotebookEdit  ${cmd('file-guards.js')} guard-read-whole-file guard-config-protection  ${10 * fg.GUARDS.length}`,
+  ].sort());
+  const before = fs.readFileSync(file, 'utf8');
+  assert.strictEqual(settings.writeSettings({ file, hookSpecs: specs, log: () => {}, note: () => {} }).written, false, 'the re-run writes nothing');
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), before, 'idempotent');
+});
+
+test('the docs label every shell guard with the shell route, never Bash alone (2.1.5 final review R2)', () => {
+  // CLAUDE.md said `(PreToolUse \`Bash\`)` for the rm and commit guards beside siblings saying 'the shell route', and
+  // the HTML matcher cells read `Bash` / `Read + Bash` for all eight (no PowerShell, no Monitor, no Grep row).
+  const md = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf8');
+  for (const g of ['guard-catastrophic-rm', 'guard-ungated-commit'])
+    assert.match(md, new RegExp(`\`${g}\\.js\` \\(PreToolUse, the shell route\\)`), `CLAUDE.md: ${g}`);
+  const html = fs.readFileSync(path.join(__dirname, '..', 'docs', 'alfred-code.html'), 'utf8');
+  for (const g of shell.GUARDS) {
+    const cell = (html.match(new RegExp(`\\["${g}", "([^"]*)"`)) || [])[1];
+    assert.ok(cell !== undefined, `the HTML has a ${g} row`);
+    assert.match(cell, /the shell route/, `${g}: the matcher cell names the shell route - ${cell}`);
+  }
+  assert.match((html.match(/\["guard-secret-value", "([^"]*)"/) || [])[1], /Grep/, 'the secret guard\'s Grep row is named');
 });

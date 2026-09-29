@@ -3,6 +3,8 @@
 // a silent evasion the gate exists to stop, or a false positive that blocked honest work.
 // Both directions matter: a hook that fires on the wrong turn trains the model to ignore blocks.
 const test = require('node:test');
+// 2.1.5 M5: no inherited stack env, entrypoint or project dir, and the suite fails on a write under os.tmpdir()'s docs root.
+require('./hook-test-env').isolateHookSuite();
 delete process.env.CLAUDE_CODE_ENTRYPOINT; // the runner's own entrypoint (sdk-cli under claude -p) never decides a case - hook-prelude.js unattended()
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -1025,6 +1027,47 @@ test('guard-catastrophic-rm: the PowerShell spellings and the Windows roots', ()
   assert.equal(bash('guard-catastrophic-rm.js', 'rm -rf \\*'), 0, 'a backslash-escaped star is a file named *, not a glob');
 });
 
+test('guard-catastrophic-rm: a literal find delete and a piped Remove-Item are judged by the rm target set (2.1.5 M1)', () => {
+  // The literal form is flat tokens: `find <start> ... -delete` / `-exec rm` deletes what it walks, so its
+  // start points are the targets. A filter test narrows the delete to what matches, like `-Include`.
+  for (const c of ['find / -delete', 'find ~ -delete', 'find ~ -exec rm -rf {} +', 'find "$HOME" -mindepth 1 -delete',
+    'find . -delete', 'find ~ -type f -exec /bin/rm {} \\;', 'sudo find / -xdev -delete', 'find /usr /lib -execdir rm -f {} +',
+    'find ~ \\( -name a -o -name b \\) -o -delete'])
+    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['find . -name "*.log" -delete', 'find ~ -name "*.tmp" -delete', 'find ./build -delete', 'find / -name core -exec rm {} +',
+    'find . \\( -name "*.log" -o -name "*.tmp" \\) -delete', 'find ~ -print', 'find . -type f -exec cat {} +', 'echo find / -delete',
+    'find ~/projects/x -mindepth 1 -delete'])
+    assert.equal(bash('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+  for (const c of ['Get-ChildItem ~ | Remove-Item -Recurse -Force', 'gci $HOME -Recurse | Remove-Item -Force', 'ls C:\\ | ri -Recurse',
+    'Get-ChildItem -Path . | Remove-Item -Recurse'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ['Get-ChildItem ./dist | Remove-Item -Recurse -Force', 'Get-ChildItem ~ -Filter *.log | Remove-Item -Recurse',
+    'Get-ChildItem ~ | Remove-Item', 'Get-ChildItem ~ -Include *.tmp -Recurse | Remove-Item -Force', 'Get-ChildItem ~ | Select-Object Name'])
+    assert.equal(pwsh('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+});
+
+test('guard-catastrophic-rm: only the -o branch holding the delete is judged, narrowed by a filter BEFORE the action (2.1.5 review)', () => {
+  // Any top-level -o used to read as an unfiltered branch, so the prune idiom and a two-name delete were blocked
+  // though their delete branch is filtered; and a filter AFTER the action narrowed it, though find evaluates left to
+  // right - `find ~ -delete -name x` deletes everything before -name is ever tested.
+  for (const c of ['find ~ -delete', 'find ~ -delete -name x', "find . -name '*.o' -o -delete", 'find ~ -name a , -delete',
+    "find . -path ./node_modules -prune -o -exec rm -rf {} +", "find ~ '(' -true -o -name a ')' -delete",
+    'find ~ \\( \\( -name a -o -name b \\) -o -true \\) -delete', 'find ~ \\( -name x -o -delete \\)', 'find ~ -delete \\( -name x \\)',
+    'find ~ -exec rm {} + -name x', 'find ~ -name "(" -o -delete'])
+    assert.equal(bash('guard-catastrophic-rm.js', c), 2, `must block: ${c}`);
+  for (const c of ["find . -path ./node_modules -prune -o -name '*.pyc' -delete", "find . -name '*.o' -o -name '*.a' -delete",
+    "find . -name '*.log' -delete", 'find /tmp/x -type f -mtime +7 -delete', 'find . \\( \\( -name a -o -name b \\) -o -name c \\) -delete',
+    'find ~ -name x \\( -true -o -delete \\)', "find . -name '*.o' -o -name '*.a' -exec rm {} +", 'find ~ -mtime -7 -delete'])
+    assert.equal(bash('guard-catastrophic-rm.js', c), 0, `must allow: ${c}`);
+  // An unbalanced group (find refuses to run it) keeps the whole-expression rule: a filter narrows unless an
+  // alternative sits outside every group.
+  assert.equal(bash('guard-catastrophic-rm.js', 'find ~ -name x \\) -o -delete'), 2, 'unbalanced, an alternative outside every group');
+  assert.equal(bash('guard-catastrophic-rm.js', 'find ~ \\( -name x -delete'), 0, 'unbalanced, filtered');
+  const why = spawnSync(process.execPath, [path.join(HOOKS, 'guard-catastrophic-rm.js')],
+    { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'find ~ -delete -name x' } }), encoding: 'utf8' });
+  assert.match(why.stderr, /filter the find \(-name, -path\) BEFORE its -delete/, 'the remedy names the order that narrows');
+});
+
 test('guard-read-whole-file: the extension is judged against the PATH, not the whole line', () => {
   // Every one of these was replayed as a false positive: GATED_EXT_ANY was tested against the WHOLE
   // compound command at three sites, and the sweep test ran above the per-segment loop.
@@ -1159,6 +1202,21 @@ test('guard-stop-contract: the AskUserQuestion branch injects its notes, and den
   assert.match(denied.stderr, /the 'fast' one/, 'the corrected label');
   assert.match(denied.stderr, /x - y/, 'the corrected description');
   assert.equal(ask(cold, slip).status, 0, 'the same ask re-sent unchanged is let through - never a loop');
+  // R5 (2.1.5 final review): a string's delimiters in code or JSON stay double (baseline-interaction.md), so a
+  // backticked span is neither judged nor rewritten - the 'corrected' ask used to hand back a broken snippet.
+  const code = [{ question: 'Set `"strict": true` in tsconfig?', header: 'Strict', options: [{ label: 'Yes', description: 'writes `{"a": "b"}` - kept verbatim' }] }];
+  assert.equal(ask(cold, code).status, 0, 'double quotes inside backticks are code, not prose');
+  const mixed = [{ question: 'Keep the "fast" path and `echo "x"`?', header: 'Path', options: [{ label: 'Keep', description: 'ok' }] }];
+  const fixedMixed = ask(cold, mixed);
+  assert.equal(fixedMixed.status, 2, 'a double quote outside the code still denies');
+  assert.match(fixedMixed.stderr, /Keep the 'fast' path and `echo \\"x\\"`\?/, 'the prose is corrected, the code span is handed back as written');
+  const fenced = [{ question: 'Apply this?', header: 'Apply', options: [{ label: 'Apply', description: '```\n{"k": "v"} \u2014 json\n```' }] }];
+  assert.equal(ask(cold, fenced).status, 0, 'a fenced block is code too, dashes included');
+  // The rule line names the deny that enforces it - '(the Stop hook never sees an ask)' read as 'nothing checks it'.
+  const ruleLine = fs.readFileSync(path.join(__dirname, '..', 'stack', 'rules', 'baseline-interaction.md'), 'utf8').split('\n').find((l) => /No double quotes in prose/.test(l));
+  assert.doesNotMatch(ruleLine, /the Stop hook never sees an ask/, 'the stale parenthetical is gone');
+  assert.match(ruleLine, /PreToolUse deny/, 'the rule names the PreToolUse deny');
+  assert.match(ruleLine, /In JSON or code a string's delimiters stay double/, 'and keeps the code carve-out the deny now honours');
 
   // two typed turns before one reply - the contradicted-recommendation shape
   const two = ask(transcript('ask-two', [
@@ -1435,6 +1493,8 @@ test('guard-cross-project-write: a write into another project is blocked', () =>
   assert.equal(xpWrite('../projB/src/a.ts'), 2, 'the same reach expressed relatively');
   assert.equal(xp({ tool_name: 'Edit', tool_input: { file_path: path.join(XP_OTHER, 'a.cs') } }), 2, 'Edit too');
   assert.equal(xp({ tool_name: 'NotebookEdit', tool_input: { notebook_path: path.join(XP_OTHER, 'a.ipynb') } }), 2, 'and NotebookEdit');
+  // MultiEdit is judged like its siblings wherever the stack still names it (2.1.5 M7).
+  assert.equal(xp({ tool_name: 'MultiEdit', tool_input: { file_path: path.join(XP_OTHER, 'a.cs'), edits: [] } }), 2, 'and MultiEdit');
 });
 
 test('guard-cross-project-write: the shell routes around the file tools the same way', () => {
@@ -1715,6 +1775,7 @@ test('every guard fails open on a JSON scalar or null payload', () => {
 // the project root nor the temp allowance. The three hooks that resolve a path now translate
 // the mount form first. The win32 half is pinned through path.win32 (a POSIX host cannot run
 // the branch); the POSIX half is pinned by running the hooks.
+// The rule's one home is shell-writes.js since 2.1.5 (M8); the hooks that resolve a path require it from there.
 const MOUNT_SOURCES = ['guard-cross-project-write.js', 'guard-read-whole-file.js', 'guard-ungated-commit.js'];
 const mountRuleOf = (hook) => {
   const src = fs.readFileSync(path.join(HOOKS, hook), 'utf8');
@@ -1733,11 +1794,11 @@ test('mount paths: the shipped rule maps a Git Bash temp path into the Windows t
   // the defect, reproduced under win32 semantics: the raw mount form lands nowhere near Temp
   assert.equal(inside(w.resolve(raw), TEMP), false, 'raw mount form mis-resolves - this is the block');
 
-  for (const hook of MOUNT_SOURCES) {
-    const native = raw.replace(mountRuleOf(hook), (m, d) => `${d.toUpperCase()}:\\`);
-    assert.equal(inside(w.resolve(native), TEMP), true, `${hook}: translated form is inside temp`);
-  }
-  const rule = mountRuleOf('guard-cross-project-write.js');
+  const rule = mountRuleOf('shell-writes.js');
+  const native = raw.replace(rule, (m, d) => `${d.toUpperCase()}:\\`);
+  assert.equal(inside(w.resolve(native), TEMP), true, 'the translated form is inside temp');
+  for (const hook of MOUNT_SOURCES)
+    assert.match(fs.readFileSync(path.join(HOOKS, hook), 'utf8'), /nativePath \} = require\([^)]*shell-writes\.js'\)\)/, `${hook} translates through shell-writes.js`);
   assert.equal(w.resolve('/cygdrive/d/work/repo'.replace(rule, (m, d) => `${d.toUpperCase()}:\\`)), 'D:\\work\\repo', 'cygdrive form too');
   assert.equal('/usr/local/lib'.replace(rule, 'X'), '/usr/local/lib', 'a multi-letter first segment is not a drive');
   assert.equal('/tmp/x'.replace(rule, 'X'), '/tmp/x', 'and neither is /tmp');
@@ -1775,28 +1836,43 @@ test('guard-fresh-session-start: the slash and compaction routes carry the same 
     // two captures entered at 150.4k and 164.5k - both past the floor, both ungated. And a long
     // agentic turn emits no Stop either (23m27s / 277 messages / +178k ctx, zero Stop events), so
     // the compaction the harness DOES guarantee is the third route.
-    const ups = (prompt, tp, env) => runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt, transcript_path: tp }, { env: winEnv(env) });
+    // The slash route is UserPromptExpansion (2.1.5 M14): it fires exactly on a typed command and names it
+    // (`command_name`), where UserPromptSubmit fired on every prompt and parsed a marker out of its text.
+    const upe = (name, tp, env, { args = '', typed } = {}) => runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: args,
+          prompt: `/${typed || name}${args ? ` ${args}` : ''}`, transcript_path: tp }, { env: winEnv(env) });
     const start = (source, env) => runIn('guard-fresh-session-start.js',
         { hook_event_name: 'SessionStart', source }, { env: winEnv(env) });
     const injected = (r) => (r.stdout && r.stdout.includes('additionalContext') ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '');
     const hot = ctxAt('ups-hot', 450000);   // no model id here, so 450k is past the 180k DEFAULT trigger
 
-    // NEVER exit 2 on UserPromptSubmit: that erases the user's prompt and shows the reason to the
-    // user only - the run would be lost and the model would never learn why.
-    const slash = ups('<command-name>/alfred-loop-quality</command-name>\nrun it', hot);
+    // It injects, never blocks: a blocked expansion shows its reason to the user only - the run would be
+    // lost and the model would never learn why.
+    const slash = upe('alfred-loop-quality', hot, undefined, { args: 'run it' });
     assert.equal(slash.status, 0, 'the slash route never denies');
     assert.match(injected(slash), /Do NOT start the run yet/, '... it injects the ask instead');
-    assert.match(injected(ups('/alfred-capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a hand-typed slash is the same intent');
-    assert.match(injected(ups('<command-name>/alfred-code:update</command-name>', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
-    assert.equal(injected(ups('<command-name>/alfred-loop-quality</command-name>', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
-    assert.equal(injected(ups('fix the failing test', hot)), '', 'an ordinary prompt is never touched');
-    assert.equal(injected(ups('/help', hot)), '', 'a slash that is not an orchestration run passes');
-    assert.equal(injected(ups('/alfred-loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    assert.equal(JSON.parse(slash.stdout).hookSpecificOutput.hookEventName, 'UserPromptExpansion', 'answered on its own event');
+    assert.match(injected(upe('alfred-capture-agent-capabilities', hot)), /Do NOT start the run yet/, 'a capture is a run');
+    assert.match(injected(upe('alfred-code:update', hot)), /Do NOT start the run yet/, 'the guided plugin walks are orchestration too');
+    assert.match(injected(upe('update', hot, undefined, { typed: 'alfred-code:update' })), /Do NOT start the run yet/,
+        'a plugin command named bare takes its namespace from the typed prompt');
+    assert.equal(injected(upe('update', hot, undefined, { typed: 'other-plugin:update' })), '', 'another plugin\'s update is not the walk');
+    assert.equal(injected(upe('alfred-loop-quality', ctxAt('ups-cold', 40000))), '', 'a cold session is left alone');
+    assert.equal(injected(upe('help', hot)), '', 'a slash that is not an orchestration run passes');
+    assert.equal(injected(upe('alfred-loop-quality', hot, { ALFRED_CODE_FRESH_SESSION_DEFAULT: '0' })), '', '0 on the trigger this session uses disables this route too');
+    // An install still wired on UserPromptSubmit (an older copy-route settings.json) passes silently: nothing
+    // parses the prompt any more, and the next update rewires it.
+    const legacy = runIn('guard-fresh-session-start.js',
+        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/alfred-loop-quality</command-name>', transcript_path: hot }, { env: winEnv() });
+    assert.deepStrictEqual([legacy.status, legacy.stdout], [0, ''], 'the old event is no route');
 
     // SessionStart measures nothing - the transcript has just been replaced by its summary - so the
     // compaction event itself is the evidence.
     assert.match(injected(start('compact')), /just AUTO-COMPACTED/, 'a compaction carries the offer');
+    // The compaction point moves with the window (1M seeded), so no fixed ceiling is claimed (2.1.5 M16).
+    assert.doesNotMatch(injected(start('compact')), /390k/, 'no stale ceiling figure in the offer');
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'meta', 'stack-manifest.json'), 'utf8'));
+    assert.deepStrictEqual(JSON.stringify(manifest.hooks || []).match(/390k/g), null, 'nor in the manifest note');
     // Two sessions switched to English right after compacting, and one resume grepped the tree and
     // read a 10k-char range before opening the plan whose header named the ranges (both measured).
     assert.match(injected(start('compact')), /language of the user's own prompts/, '... with the language line');
@@ -2179,9 +2255,10 @@ test('guard-fresh-session-start: a disable-model-invocation skill is denied to t
 
     // The USER's own route is a different event and must stay open.
     const typed = runIn('guard-fresh-session-start.js',
-        { hook_event_name: 'UserPromptSubmit', prompt: '<command-name>/alfred-loop-quality</command-name>', cwd: root, session_id: 'dmi' },
+        { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: 'alfred-loop-quality', prompt: '/alfred-loop-quality', cwd: root, session_id: 'dmi' },
         { env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
     assert.equal(typed.status, 0, 'the user typing the command is never blocked');
+    assert.doesNotMatch(typed.stdout + typed.stderr, /disable-model-invocation/, 'and never told the skill is the model\'s to refuse');
 });
 
 // The same gate, on the route where the skill is NOT copied into the project. Reading only
@@ -2208,6 +2285,20 @@ test('guard-fresh-session-start: the flag is read from the PLUGIN cache too, not
     assert.equal(skillCall('alfred-code:alfred-loop-quality').status, 2, 'and under its scoped spelling');
     assert.equal(skillCall('claude-stack-wpf:dotnet-wpf').status, 0, 'an unflagged plugin skill stays callable');
     assert.equal(skillCall('alfred-code:not-shipped').status, 0, 'a name no home carries is not this guard\'s business');
+
+    // Claude Code runs a personal skill over a project one of the same name ('personal over project', skills
+    // doc), so the personal copy's flag is the one that decides (2.1.5 M10).
+    const writeAt = (base, name, front) => {
+        const dir = path.join(base, 'skills', name);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: a test skill\n${front}---\n\nbody\n`);
+    };
+    writeAt(path.join(root, '.claude'), 'review-notes', '');
+    writeAt(cfg, 'review-notes', 'disable-model-invocation: true\n');
+    assert.equal(skillCall('review-notes').status, 2, 'the personal copy is flagged, and it is the one that runs');
+    writeAt(path.join(root, '.claude'), 'draft-notes', 'disable-model-invocation: true\n');
+    writeAt(cfg, 'draft-notes', '');
+    assert.equal(skillCall('draft-notes').status, 0, 'an unflagged personal copy runs over a flagged project one');
 });
 
 test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, at any context size', () => {
@@ -2224,12 +2315,13 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     const toolResult = () => ({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
     const cmd = (name) => userRow(`<command-name>/${name}</command-name>`);
     const skillRow = (id, name) => ({ type: 'assistant', message: { id, content: [{ type: 'tool_use', name: 'Skill', input: { skill: name } }], usage: COLD } });
-    // The slash route is the only route this trigger judges. Its prompt row is already on disk when
-    // UserPromptSubmit fires, so every fixture ends with the command being judged. It never denies:
+    // The slash route (UserPromptExpansion) is the only route this trigger judges. Most fixtures end with
+    // the command being judged, as a prompt row already on disk; one below ends without it. It never denies:
     // an offer is injected context, so the helper returns that text ('' = no offer).
     const slash = (tp, env, skill) => {
+      const name = skill || 'alfred-loop-quality';
       const r = runIn('guard-fresh-session-start.js',
-          { hook_event_name: 'UserPromptSubmit', prompt: `<command-name>/${skill || 'alfred-loop-quality'}</command-name>`, transcript_path: tp },
+          { hook_event_name: 'UserPromptExpansion', expansion_type: 'slash_command', command_name: name, command_args: '', prompt: `/${name}`, transcript_path: tp },
           { env: env || winEnv() });
       assert.equal(r.status, 0, 'the slash route never denies');
       return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
@@ -2252,6 +2344,11 @@ test('guard-fresh-session-start: a SECOND typed run is gated on the FIRST one, a
     assert.match(offered, /fresh session/, 'and carries the same offer the size trigger does');
     // ONCE per session: the user has answered, so the retry must go through.
     assert.equal(slash(second, env), '', 'an answered offer is not asked again');
+    // UserPromptExpansion fires as the command expands, so the typed prompt's own row may not be on disk
+    // yet: the command being judged IS the human turn after the prior run's answer (2.1.5 M14).
+    assert.match(slash(transcript('chain-not-on-disk', [
+      cmd('alfred-capture-architecture'), assistantRow('a1', 'captured', FLOOR), toolResult(), assistantRow('a2', 'ok', COLD),
+    ])), /ALREADY run one/, 'a transcript ending on the prior run\'s answer still chains');
 
     // ONE gated cycle is one run: its phases arrive as Skill calls, and its approval step puts a
     // human turn between them. Measured 2026-09-14: the build step of a single cycle was offered a
@@ -2670,6 +2767,24 @@ test('guard-config-protection: an existing check config cannot be weakened, a ne
 // A heredoc body and a quoted span are TEXT the command carries - a runbook that describes the rm, a
 // commit message that names the file - and the siblings mask both for the same reason (a 47KB plan
 // write denied for its own prose cost ~44k tokens). Replayed: both shapes below exit 2 before the fix.
+test('guard-config-protection: lockfiles, migrations, the central package file and the solution file are a recorded decline (2.1.5 M13)', () => {
+  // They had no cover and no decline on record. Each is edited by legitimate work - a dependency bump, a new
+  // project, a migration still in review - and whether a migration was APPLIED lives in a database no hook reads,
+  // so a block would fire on honest work far more than on a weakened check. The decline is written where the
+  // guard's scope is.
+  const H = 'guard-config-protection.js';
+  const src = fs.readFileSync(path.join(HOOKS, H), 'utf8');
+  const header = src.slice(0, src.indexOf("'use strict'"));
+  for (const cls of [/lockfile/i, /migration/i, /Directory\.Packages\.props/, /\.sln/]) assert.match(header, cls, `the header records ${cls}`);
+  assert.match(header, /Declined \(2\.1\.5 M13\)/, 'as a decline, with its reason');
+  const { root, at } = cfgProject('cfg-decline-');
+  const edit = (file) => run(H, { tool_name: 'Edit', cwd: root, tool_input: { file_path: file, old_string: 'a', new_string: 'b' } });
+  withProject(root, {}, () => {
+    for (const f of ['package-lock.json', 'Directory.Packages.props', 'App.sln', 'src/Data/Migrations/20260101_Init.cs'])
+      assert.strictEqual(edit(at(f, 'a')), 0, `${f} is not this guard's file`);
+  });
+});
+
 test('guard-config-protection: a heredoc body or a quoted message naming a config is prose', () => {
   const H = 'guard-config-protection.js';
   const { root, at } = cfgProject('cfg-prose-');

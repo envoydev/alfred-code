@@ -370,7 +370,7 @@ if (payload.hook_event_name === 'UserPromptSubmit') {
       detail: { marker, chars: String(payload.prompt).trim().length } });
   }
   const nudge = inject
-    ? ' CORRECTION: this reads as a correction - store it with memory_store (user_correction, project tag) before continuing.'
+    ? ' CORRECTION: this reads as a correction - store it with memory_store (user_correction, project tag) before continuing; the tool is deferred, so load it first: ToolSearch select:mcp__plugin_memory_memory__memory_store'
     : '';
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: BUDGET_TEXT + extra + repeat + nudge },

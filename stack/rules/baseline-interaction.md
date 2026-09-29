@@ -36,7 +36,7 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 
 ## Formatting and privacy
 
-- No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's question, labels and descriptions included (the Stop hook never sees an ask). In JSON or code a string's delimiters stay double.
+- No em-dashes - single dashes. No double quotes in prose - single quotes, an AskUserQuestion's question, labels and descriptions included (a PreToolUse deny hands a slip back corrected, code spans untouched). In JSON or code a string's delimiters stay double.
 - Never use or mention the user's name unless they ask.
 - No code comment flagging a deliberate simplification - its ceiling goes in the report as a `where | limit | revisit when` row, filed under the architecture docs' Known ceilings.
 
