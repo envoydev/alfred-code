@@ -9,7 +9,15 @@ A plan built perfectly is still wrong if the plan was wrong - the design carries
 
 ## Audit mode - this chat or the verifier seat
 
-Audit inline in this chat, the five passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), to run the same five passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion - this chat, or the verifier seat? - and hold the answer; a mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (`alfred-task-solve-cross` and its trio protocol own that call; the inherited-mode dispatch applies to this skill's own single-chat chain).
+Audit inline in this chat, the five passes below. On an agents request, dispatch the plan's stack `<stack>-verifier` seat, exactly as the roster spells it (`alfred-code:<seat>` where the core plugin carries it), to run the same five passes over the plan file - on its frontmatter model unless you name one - and take its punch-list. There is no dedicated plan-auditor seat; the verifier seat runs the audit. Only one seat, no fan-out; dispatch nothing you were not asked to. When the invocation names no mode and no calling flow has already recorded one, ask ONE question before auditing, via AskUserQuestion, and hold the answer:
+
+```ask
+Audit this plan in this chat or through the <stack>-verifier seat? This chat: the plan is already here, and the audit is one bounded pass.
+- 'Audit this plan in this chat (Recommended)' - the five passes below, inline, nothing dispatched
+- 'Dispatch the <stack>-verifier seat' - the same passes in an isolated subagent, on its frontmatter model
+```
+
+A mode the run already picked is inherited, never re-asked - with ONE boundary: the cross-task orchestrator's plan gate always runs the five passes in-session whatever the run mode, because the plan is already in that session's context and its protocol says so (`alfred-task-solve-cross` and its trio protocol own that call; the inherited-mode dispatch applies to this skill's own single-chat chain).
 
 ## When to use / not
 
@@ -37,7 +45,7 @@ Before reading the plan, load `alfred-habits-plan-writing` (the Skill tool) - th
 
 ## Output
 
-**Seven named fields, every run, each with a value** - a controlled measurement put named fields at
+**Eight named fields, every run, each with a value** - a controlled measurement put named fields at
 5 of 5 emitted against a prose condition at 0 of 1, so anything that must happen every time is a
 field, not a sentence about when to write one:
 
@@ -47,9 +55,12 @@ Asked:     verified | MISSING
 Decisions: <N entries, each with its precedent> | ABSENT
 Scope:     matches | <what is missing or speculative>
 Existence: <N names checked, N unverified> | nothing named
+Passes:    risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>
 Findings:  <count by severity, or `none`>
 Gated:     passed | <N> gaps listed - <date>
 ```
+
+`Passes:` is the audit record a calling flow copies into its ledger as written: each `<v>` is `pass` or that pass's worst severity (`MAJOR`, `MINOR`), and a pass that did not run is `NOT RUN`, never left out.
 
 `Decisions:` is a PASS CONDITION, not a note: a plan whose `## Decisions` ledger is absent is a
 finding in its own right, because the build seats read that ledger for the precedents they must
@@ -62,6 +73,7 @@ Then the body: a short punch-list, not a rewrite. One line per finding: `severit
 Auditing the `alfred-task-design` export plan ('add data export to the records list' - three tasks: a query projection, a streamed export endpoint, an integration test), one line per pass:
 
 ```text
+Passes: risk MAJOR | scope MINOR | existence pass | edges MAJOR | soundness pass
 1 risk      | MAJOR | no task names cancellation on the streamed export - a client abort leaks the open reader | thread the stack's cancellation mechanism through Tasks 1-2 (its skill's trap list)
 2 scope     | MINOR | Task 2 adds an export-format option the requirement never asked for | drop it
 3 existence | pass  | every symbol, package and config key the plan names resolves in the repo

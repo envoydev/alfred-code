@@ -50,23 +50,25 @@ With the matches listed, resolve SESSIONS: unless the invocation itself named th
 It ships in the stack's source repo, not in this project. LOOK BEFORE DOWNLOADING: where the stack is installed as plugins, the agent tool's own plugin cache already holds the whole repo (`stack/`, `scripts/`, `meta/` and all - it is the repo root the marketplace entries are sourced from), so the newest valid entry there is the snapshot. Downloading before looking is what tripped the harness classifier in 4 audited bundles, and it pays ~1.8s for a 1.4MB archive already on disk:
 
 ```bash
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/alfred-code.XXXXXX")   # the template names the dir: macOS mktemp -d alone ignores $TMPDIR
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SRC=$(for d in "$CFG"/plugins/cache/*/alfred-code/* "$CFG"/plugins/cache/*/claude-stack/*; do   # legacy-name: a 1.x dir until orphaned
   [ -d "$d/stack/skills" ] && [ -d "$d/stack/agents" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$d"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
+echo "tmp: $TMP"
+echo "src: ${SRC:-absent}"
 ```
 
-Then, when `$SRC` is set, `cp -R "$SRC" "$TMP/repo"` - nothing is downloaded. Only when it is empty:
+Each Bash call is its own shell, so `$TMP` and `$SRC` are gone by the next call: every later command pastes the two paths this block PRINTED, written `<tmp>` and `<src>` below. Then, when it printed a `src:` path, `cp -R "<src>" "<tmp>/repo"` - nothing is downloaded. Only on `src: absent`:
 
 ```bash
-curl -fsSL -o "$TMP/stack.tar.gz" https://github.com/envoydev/alfred-code/releases/latest/download/alfred-code.tar.gz
-tar -xzf "$TMP/stack.tar.gz" -C "$TMP"
+curl -fsSL -o "<tmp>/stack.tar.gz" https://github.com/envoydev/alfred-code/releases/latest/download/alfred-code.tar.gz
+tar -xzf "<tmp>/stack.tar.gz" -C "<tmp>"
 # archive route failed entirely? then:
-git clone --depth 1 -b main https://github.com/envoydev/alfred-code "$TMP/repo"
+git clone --depth 1 -b main https://github.com/envoydev/alfred-code "<tmp>/repo"
 ```
 
-This is `setup-plugin/references/source-protocol.md`'s own lookup order - the entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `$TMP` at the end of the run, on every exit path - success, failure, or abort.
+This is `setup-plugin/references/source-protocol.md`'s own lookup order - the entries are keyed by VERSION and the newest valid one wins, so a new release is picked up the moment the plugin updates. Run these as SEPARATE simple commands, not a piped one-liner - the harness's auto-mode classifier blocks the compound verbatim. Then Read `references/run-mechanics.md` now - the batch shape (a loop in a file, never a pipe on the command line), every analyzer flag, and the ledger test live there, and the report's Environment rows carry the receipt `Mechanics: read`. The tool is `scripts/analyze-usage.js` inside the extracted snapshot. Both fetches fail: say so and stop - never rebuild the tool from memory. Record the snapshot revision (the archive's `RELEASE-SOURCE` file, or the clone's HEAD) for the report's Environment section. Remove `<tmp>` at the end of the run, on every exit path - success, failure, or abort.
 
 ### 3. RUN it
 The directory rollup once, to confirm which sessions matter; then per audited session the full report, the `--json` dump and the `--report-md` skeleton (machine-written tables plus the FILL IN judgment sections), with `--docs-root <root>` on every per-session call when `ALFRED_CODE_DOCS_PATH` names a non-default root - the exact calls are in the mechanics reference.
@@ -80,11 +82,19 @@ Everything for a session lands in `<docs-path>/alfred-code-usage-report/<session
 
 - `report-usage.md` - the filled `--report-md` skeleton: the analyzer's tables stay UNTOUCHED (a number a tool prints cannot be misquoted), and you author only the FILL IN sections, shaped per the section spec below.
 - The `--json` dump(s).
-- A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting.
+- A copy of the session `.jsonl` and its `subagents/` folder when present - the complete raw data, co-located so another agent can analyze it without hunting - only on the consent test below.
 - The session's guard-block ledger, COPIED from `<docs-path>/hook-blocks/<sid>.jsonl` and renamed `hook-blocks-<sid>.jsonl` when it exists - one row per BLOCK, naming the hook that fired. Copied rather than moved: the ledger is the project's own running record of what its gates denied. Absent means no block fired this session - say that rather than leaving the reader to guess.
 - The session's instrumentation ledgers, MOVED (not copied) from `<docs-path>/tools-usage/` and renamed `tool-usage-<sid>.jsonl` - the session's own and its dispatched agents'. The move is deliberate: an audited run's ledgers live with its bundle, and the collection folder drains as runs get audited instead of accumulating forever; a session not audited this run keeps its ledger in place.
 
-Raw transcripts carry full conversation content - code, file contents, possibly secrets. Under the default machine-local docs root that stays on this machine; when the project set a COMMITTED docs root, get explicit consent before copying raw transcripts there, and without it copy only the report and the `--json` dumps.
+Raw transcripts carry full conversation content - code, file contents, possibly secrets - so the copy is keyed on what git will do with it, never on which docs root is the default. Before the first copy run `git check-ignore -q "<docs-path>/alfred-code-usage-report/<session-id>/x.jsonl"`. Exit 0: git keeps the copies out (the stack's docs `.gitignore` does in both versioning modes) - copy. Any other exit (1 is a folder git can commit, 128 no repo at all): ONE ask before any copy, the answer held for the run:
+
+```ask
+Raw transcripts would land in <docs-path>/alfred-code-usage-report/, a folder git can commit. Keep them out of the bundle.
+- 'Report and --json dumps only (Recommended)' - the report and the dumps carry counts, tool names and paths, never code
+- 'Copy the raw transcripts too' - the whole conversation, code and file contents included, lands where git can commit it
+```
+
+Without the copy the bundle holds the report and the `--json` dumps only, and its Environment rows say `raw transcripts: not copied - <the check's exit>`.
 
 `report-usage.md` = the skeleton plus your judgment. The machine sections (Environment, Tokens, Subagent dispatches, Skills, Generated docs, MCP, Inventory vs use, Tools, Efficiency scorecard, Context spikes, Hook-log join - whichever the run emits) stay as printed; `Inventory vs use` is the complement of the consumption tables - what this install HAS against what the session touched, with the unused names collapsed per layer - so a non-use finding cites that section's own row instead of the stack's full catalog, and its source line says whether the denominator came from this project's `.claude` or from the catalog (a directory run resolves the installed set per session and prints `installed K of M, used N`, so 'never used in this collection' is one command over the collection root); you add the Environment rows only you know, insert ONE authored section - `## Per skill run` - between the machine tables and Waste analysis, and fill the skeleton's FIVE FILL IN sections (Guard blocks, Waste analysis, Protocol check, Efficiency verdict, Verdict). `references/diagnosis-discipline.md` owns what each of those sections must carry and the checks every row passes before it is written - one section there per section here, in this order. The sections, one line each:
 
@@ -117,10 +127,10 @@ When this run audited more than one session, or bundles from prior runs already 
 - A short cross-session judgment, cited from the bundles: the ctx/msg trend across sessions, waste patterns that recur in more than one session (a one-off is the session's finding; a repeat is the stack's), and per-skill cost across sessions where the same skill ran several times.
 - The scorecard across sessions: one row per practice with the collection's totals and their denominators (cache misses and the tokens they re-cached, compaction re-reads, build-dir reads, scoped against whole-suite runs, checked commits, green claims with no check, correction streaks beside the short-after-long count, long answers, heavy seats) - these are the numbers a hook or rule change is read from after a week, so they are copied from the `--json` dumps, never re-derived - closing with ONE line: does this stack, in this project, waste tokens, and where.
 
-Then `rm -rf "$TMP"`.
+Then `rm -rf "<tmp>"`.
 
 ## Privacy rule
-The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the committed-root consent rule above.
+The report body carries aggregates, tool names, token counts, and file PATHS only - never code or file contents. The raw-data copies exist for re-analysis and follow the `git check-ignore` consent test above.
 
 ## Don't game it
 Numbers come from the analyzer's output, never estimated from memory - a claim without an analyzer line behind it does not go in the report. A protocol-check verdict cites the transcript turn that proves it. If the ledger was absent, the identity attribution is marked unavailable rather than inferred. Suggest - once, briefly - that a re-run with the `instrument-tool-usage` hook active (it ships with the rest; `ALFRED_CODE_INSTRUMENT=1`, and it must not be named in `ALFRED_CODE_HOOKS_OFF`) would add the `--hook-log` join next time; do not block on it.

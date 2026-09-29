@@ -1933,6 +1933,19 @@
         }
       ]
     },
+    "commit-gate-security-row": {
+      "_note": "A security-relevant diff's COMMIT-GATE receipt carries a security: line naming each category checked and its verdict - baseline-security requires it and guard-ungated-commit reads a VERIFIED line that claims a security review without it as no review. The checkpoint owns it; verify-code writes the same receipt as the inline reviewer.",
+      "owner": {
+        "file": "stack/skills/alfred-habits-commit-checkpoint/SKILL.md",
+        "marker": "`security:` naming each category checked and its verdict"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-verify-code/SKILL.md",
+          "marker": "`security:` naming each category checked and its verdict"
+        }
+      ]
+    },
     "commit-gate-trivial-bar": {
       "_note": "The trivial-diff exemption threshold - the hook's mechanical bar is canonical (the code enforces it); the alfred-habits-commit-checkpoint skill states the same numbers, so a threshold change re-syncs the rule.",
       "owner": {
@@ -3671,6 +3684,19 @@
         }
       ]
     },
+    "plan-file-design-handoff": {
+      "_note": "The interaction baseline allows a plan file on request, for multi-session work, or as a design flow's handoff - alfred-task-design always writes its plan file as the handoff artifact (the user's ruling of 2026-09-29, audit I22: the rule gets the carve-out).",
+      "owner": {
+        "file": "stack/rules/baseline-interaction.md",
+        "marker": "or a design flow writes it as its handoff"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-design/SKILL.md",
+          "marker": "a design flow writes it as its handoff"
+        }
+      ]
+    },
     "gitbash-mount-path": {
       "_note": "Git Bash / MSYS spell a Windows path in POSIX mount form (/c/..., /cygdrive/c/...), which node on win32 resolves against the CURRENT drive - the falsehood that made the cross-project guard block a session cleaning its own temp scratch. Every guard that resolves a path off a Bash command line translates it the SAME way before any resolution, so a fix to the spelling lands in all four at once; each hook is a standalone file with no shared module, which is why the copies are inline.",
       "owner": {
@@ -4798,6 +4824,47 @@
         }
       ]
     },
+    "approval-stamp-protected-path": {
+      "_note": "The APPROVAL stamp's protected-path clause is CONDITIONAL: only a docs root kept under .claude/ (the old .claude/docs default) makes the stamp write a protected-path write, and the prompt's session option is quoted as code.claude.com/docs/en/permission-modes ('Protected paths') words it. The 2.1.4 audit found nine copies still saying every write prompts and quoting a label that does not exist.",
+      "owner": {
+        "file": "stack/skills/alfred-task-solve/references/step-mechanics.md",
+        "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-loop-architecture-quality/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-quality/references/delegated-mode.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-loop-test-coverage/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-build-from-scratch/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-implement/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-solve-cross/references/execution-modes.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        },
+        {
+          "file": "stack/skills/alfred-task-version-upgrade/SKILL.md",
+          "marker": "Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude folder for this session' - take that, since `permissions.allow` cannot pre-approve it."
+        }
+      ]
+    },
     "engine-skill-hub-first": {
       "_note": "An engine skill (postgres, sqlite) defers the cross-engine conventions to the database hub skill and loads the hub first where installed, restating none of it - the same sentence in each engine skill.",
       "owner": {
@@ -5042,6 +5109,19 @@
         {
           "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
           "marker": "named fields, every run, each with a value"
+        }
+      ]
+    },
+    "plan-audit-passes-field": {
+      "_note": "One shape for a plan audit's record: verify-plan's Passes field, one verdict per pass, which the cross-task orchestrator copies into its ledger as written.",
+      "owner": {
+        "file": "stack/skills/alfred-task-verify-plan/SKILL.md",
+        "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
+      },
+      "sites": [
+        {
+          "file": "stack/skills/alfred-task-solve-cross/SKILL.md",
+          "marker": "Passes: risk <v> | scope <v> | existence <v> | edges <v> | soundness <v>"
         }
       ]
     },

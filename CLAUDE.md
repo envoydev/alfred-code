@@ -682,7 +682,10 @@ All surfaces come from ONE source snapshot per run, so an install is a single re
   holds them to one value). The root carries its own `.gitignore` by `ALFRED_CODE_DOCS_VERSIONING`
   (`docs.ensureDocsIgnore`, absent-only, never under `.claude/`): `local` keeps the whole root out of
   git, `git` keeps only the hooks' machine state out (`flow/`, `hook-blocks/`, `history/`,
-  `tools-usage/`, `.branches/`, `docs-log.jsonl`). An install on the old default is never moved
+  `tools-usage/`, `.branches/`, `docs-log.jsonl`) plus the usage audit's raw transcript copies
+  (`alfred-code-usage-report/**/*.jsonl`, which the audit's copy step checks with `git check-ignore`
+  before it copies). A file holding a text an earlier release wrote (`DOCS_IGNORE_FORMER`) is the stack's
+  and is rewritten; any other text is the project's and kept. An install on the old default is never moved
   silently (`docs.docsMovePlan`): the stack's own seed (the ledger's hash, or with no ledger the
   catalog's `former_defaults`) over docs at `.claude/docs` is OFFERED once - since 2.1.0 as part of the data
   move below: `update-preflight.js` names it in its `data-move: offer` line, update asks move (recommended)

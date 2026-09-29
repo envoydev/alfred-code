@@ -43,7 +43,7 @@ A design, plan or decision the user proposes gets an adversarial review - valida
 ## Planning and execution
 
 - Default for coding: apply, then summarize in 1-3 sentences. 'just do it' = no summary; 'walk me through' / 'plan it' = explain or plan first, no edits.
-- A written plan file only when the user asks for a plan or the work spans sessions - then the FIRST action is the `alfred-habits-plan-writing` Skill call, before the plan file is written. A single-session change runs on a todo list (measured: 6 of 12 pilot cells wrote and re-ticked a plan file after their last test).
+- A written plan file only when the user asks for a plan, the work spans sessions, or a design flow writes it as its handoff - then the FIRST action is the `alfred-habits-plan-writing` Skill call, before the plan file is written. A single-session change runs on a todo list (measured: 6 of 12 pilot cells wrote and re-ticked a plan file after their last test).
 - Non-trivial code is written test-first - the FIRST action is the `alfred-habits-test-first` Skill call, before the first production edit.
 - A mechanical change across 10+ files: confirm the scope list, no plan. No planning at all for typos, one-line fixes, formatting, dep bumps, a single-file rename.
 - Code fails - the FIRST action is the `alfred-habits-root-cause` Skill call, before the next fix lands.

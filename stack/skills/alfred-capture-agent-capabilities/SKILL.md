@@ -25,7 +25,8 @@ post-write verify.
 
 The script has TWO homes - copied under `.claude/skills/`, or carried by the plugin that ships this
 skill, where the cache can hold several versions and the NEWEST is the one this skill came from - so
-resolve it ONCE and reuse `$CAPS` for every call below. Run all of it from the project root:
+resolve it ONCE: the block prints the path, and every later call pastes that literal as `<caps>` (each Bash
+call is its own shell, so a variable set here is gone by the next). Run all of it from the project root:
 
 ```bash
 CAPS=.claude/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js
@@ -33,10 +34,11 @@ CAPS=.claude/skills/alfred-capture-agent-capabilities/scripts/capabilities-inven
   f="$d/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js"
   [ -f "$f" ] && [ ! -e "$d/.orphaned_at" ] && printf '%s\t%s\n' "$(basename "$d")" "$f"
 done 2>/dev/null | sort -V | tail -1 | cut -f2)
+echo "caps: ${CAPS:-absent}"
 node "$CAPS"
 ```
 
-An empty `$CAPS` means neither home has it: say so and stop, never hand-tally the inventory instead.
+`caps: absent` means neither home has it: say so and stop, never hand-tally the inventory instead.
 
 **Its printed block is the whole inventory.** Re-grepping, re-Reading or hand-tallying anything it
 printed is a defect, not diligence - every count and every row of the report comes off one of its
@@ -67,7 +69,7 @@ inside the project, where a Write lands in print mode too, and out of git throug
 `.gitignore` - then run the verdict:
 
 ```bash
-node "$CAPS" --body <DOCS ROOT>/flow/capabilities-body.md
+node "<caps>" --body <DOCS ROOT>/flow/capabilities-body.md
 ```
 
 Delete that file once the verdict is spent - after the rule is written, or on `identical`.
@@ -132,7 +134,7 @@ This skill was renamed from project-capabilities: when a legacy `.claude/rules/b
 ### 3. VERIFY - after the write, before the report
 
 ```bash
-node "$CAPS" --verify .claude/rules/baseline-project-agent-capabilities.md
+node "<caps>" --verify .claude/rules/baseline-project-agent-capabilities.md
 ```
 
 It parses the frontmatter with node - never PyYAML, which is missing on machines where a run died

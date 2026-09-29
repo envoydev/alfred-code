@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-architecture
-description: "Use when asked to capture, document or refresh the architecture, or what the structure or module boundaries are. Deliberate only. Not for pros/cons judgement."
+description: "Use when asked to capture, document or refresh the architecture map or module boundaries. Deliberate only. Not for pros/cons judgement."
 ---
 
 # Project Architecture Analyzer - Capture the Architecture (Deliberate)

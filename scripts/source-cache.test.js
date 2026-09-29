@@ -506,7 +506,7 @@ test('the three body snippets read the 1.x cache dir too, and never an orphaned 
     const snippets = {
         capabilities: [bodySnippet('stack/skills/alfred-capture-agent-capabilities/SKILL.md', /```bash\n(CAPS=[\s\S]*?)node "\$CAPS"\n```/) + 'printf %s "$CAPS"', '/stack/skills/alfred-capture-agent-capabilities/scripts/capabilities-inventory.js'],
         firstLook: [bodySnippet('stack/skills/alfred-capture-first-look/SKILL.md', /```bash\n(SCAN=[\s\S]*?cut -f2\))\n/) + '\nprintf %s "$SCAN"', '/scripts/scan-evidence.js'],
-        usage: [bodySnippet('stack/skills/alfred-capture-stack-usage/SKILL.md', /```bash\n(TMP=\$\(mktemp -d\)\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
+        usage: [bodySnippet('stack/skills/alfred-capture-stack-usage/SKILL.md', /```bash\n(TMP=\$\(mktemp -d "\$\{TMPDIR:-\/tmp\}\/alfred-code\.XXXXXX"\)[^\n]*\nCFG=[\s\S]*?cut -f2\))\n/) + '\nrm -rf "$TMP"; printf %s "$SRC"', ''],
     };
     for (const [plant, want] of [
         [(cfg) => plantBare(cfg, LEGACY_DIR, LEGACY_DIR, '1.3.0'), `/${LEGACY_DIR}/1.3.0`],

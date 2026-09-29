@@ -1,6 +1,6 @@
 ---
 name: alfred-task-design
-description: "Use to settle how a feature fits the existing code before writing any - 'design this feature', 'where does this belong'. Not for one-line edits."
+description: "Use to settle how a feature fits the existing code before writing any - 'design this feature', 'plan this change'. Not for one-line edits."
 ---
 
 # Solution Design - how a change fits, then decomposed, in one chat
@@ -14,7 +14,7 @@ Design inline in this chat, the method below, so you inspect each step. On an ag
 ## When to use / not
 
 - Use to settle how a feature or change fits the existing code before writing any, in this chat: orient, judge the fit, split into an ordered minimal plan.
-- Triggers also on 'how does this fit', 'break this into tasks', 'plan this change'.
+- Triggers also on 'break this into tasks'.
 - Not for a change with an obvious single home - just make it.
 - Not plan *audit* (`alfred-task-verify-plan`) or built-code review (`alfred-task-verify-code`) - those come after.
 
@@ -80,7 +80,7 @@ Two header lines open the plan file, both required fields and not niceties:
 
 ## Write and hand off
 
-Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off - the FILE is the handoff artifact: it survives compaction and a fresh session, where the chat copy does not. A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it. Then verify the write, in the same turn: `wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two header lines `alfred-task-verify-plan` fails a plan without - plus one anchor from the first task, which proves the located `file:symbol` references survived the write. Quote the three results. A plan nobody can find, or one missing a header, is a design run with no output.
+Write the plan to `<docs-path>/superpowers/plans/<feature>.md` before handing off - a design flow writes it as its handoff, the case the interaction baseline's plan-file rule names: the FILE survives compaction and a fresh session, where the chat copy does not. A DISPATCHED designer seat has no Write tool: it returns the whole plan in its report, `Oriented:` line first, and the orchestrator writes the file from it. Then verify the write, in the same turn: `wc -l` the plan file (it exists and is not empty) and grep it for `Oriented:` and `Asked:` - the two header lines `alfred-task-verify-plan` fails a plan without - plus one anchor from the first task, which proves the located `file:symbol` references survived the write. Quote the three results. A plan nobody can find, or one missing a header, is a design run with no output.
 
 Then hand off: gate the plan with `alfred-task-verify-plan` before building, build each task with `alfred-task-implement` under the stack skill (a task the build proves wrong comes back here only through that skill's user ask, never on its own), and review the built code with `alfred-task-verify-code` (`alfred-task-solve` drives this whole chain with a user gate between every step).
 

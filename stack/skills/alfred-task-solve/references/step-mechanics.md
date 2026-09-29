@@ -26,9 +26,9 @@ available; where it is not, the ask offers session only and says so.
 The stamp's path, its `AUTO` first line and the 'an earlier session's stamp is not consent' rule
 are in `SKILL.md`; these are the mechanics around them.
 
-- `.claude/` is a protected path, so the first write in a session prompts: take the prompt's
-  'allow Claude to edit its own settings for this session' option and the rest of the run is free.
-  No settings key can pre-approve it - `permissions.allow` is not consulted for protected paths.
+- Only where the docs root still sits under `.claude/` (the old `.claude/docs` default, kept) is the
+  write protected: a prompt for it offers 'Yes, and allow Claude to edit files in this project's .claude
+  folder for this session' - take that, since `permissions.allow` cannot pre-approve it.
 - A relative write follows whatever cwd the shell drifted to, and the dispatch then bounces
   because the guard reads the absolute path.
 - If BOTH the Write tool and an absolute-path Bash write are refused by the harness's classifier,

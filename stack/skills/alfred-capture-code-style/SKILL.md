@@ -59,7 +59,7 @@ Rule:        <created | regenerated> - .claude/rules/project-code-style.md, glob
 Languages:   <the families DETECT found> via <code-style-analyzer seats | in-session>
 Divergences: <each divergence from a house convention skill, or `none`>
 Legacy hook: <retired | none found>
-Landed:      <machine-local under `.claude/` (gitignored) | the committed docs root `<path>`>
+Landed:      <committed (mode: git) | kept out of git (mode: overlay)> - the mode line of `node .claude/hooks/docs.js status`
 ```
 
 Every value comes from the step that produced it - the extension union from the agents' reports, not a hand tally. Then the prose, short: the notable idioms a linter cannot enforce and any divergence worth the user's eye. No re-paste of the doc body - point to the file.

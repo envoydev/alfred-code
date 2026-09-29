@@ -1,6 +1,6 @@
 ---
 name: alfred-capture-test-coverage
-description: "Use when asked to measure test coverage, capture a baseline or how covered the project is. Deliberate only. Not for writing tests (/alfred-loop-test-coverage)."
+description: "Use when asked to measure test coverage or capture a coverage baseline. Deliberate only. Not for writing tests (/alfred-loop-test-coverage)."
 ---
 
 # Project Test Coverage Analyzer - Capture the Coverage (Deliberate)
@@ -25,7 +25,7 @@ Two halves, split differently:
 ## The run
 
 ### 1. ORIENT
-Read `<docs-path>/test-coverage/COVERAGE.md` if it exists - a claim to verify, not ground truth - and take from it the recorded requirement override and exclusion list, if any (those are the user's decisions and carry across branches). The doc is machine-local, so it does NOT switch with git branches: its `Captured: <branch>@<short-sha>` stamp says whose numbers it holds - a stamp from another branch means every number in it is stale for HEAD, worth saying in the report; this run replaces them with fresh measurements either way. Inventory the surfaces: each stack in the workspace that owns tests (a .NET solution, an Angular app, a plain JS/TS package) is measured separately. Scope to what the user named on a large workspace; every surface otherwise.
+Read `<docs-path>/test-coverage/COVERAGE.md` if it exists - a claim to verify, not ground truth - and take from it the recorded requirement override and exclusion list, if any (those are the user's decisions and carry across branches). Whether the doc switches with git branches follows `node .claude/hooks/docs.js status`: under `mode: git` the doc and its `raw/` files are committed and versioned per branch (say so in the report when the raw output is bulky); under `mode: overlay` both stay out of git and do not switch. Either way its `Captured: <branch>@<short-sha>` stamp says whose numbers it holds - a stamp from another branch means every number in it is stale for HEAD, worth saying in the report; this run replaces them with fresh measurements either way. Inventory the surfaces: each stack in the workspace that owns tests (a .NET solution, an Angular app, a plain JS/TS package) is measured separately. Scope to what the user named on a large workspace; every surface otherwise.
 
 ### 2. DETECT - the tooling per surface
 Find what the project already uses - never pick or install one:

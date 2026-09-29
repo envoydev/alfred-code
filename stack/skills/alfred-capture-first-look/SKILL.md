@@ -33,7 +33,8 @@ done 2>/dev/null | sort -V | tail -1 | cut -f2)
 echo "scan: ${SCAN:-absent}"
 ```
 
-`scan: absent` means no plugin cache holds it (a copy-only install, or a harness without the stack's
+Each Bash call is its own shell, so `$SCAN` is gone by the next call: step 2 pastes the path it printed
+as `<scan>`. `scan: absent` means no plugin cache holds it (a copy-only install, or a harness without the stack's
 plugin cache): say so and stop. Never hand-write the rows - that is the inference this skill exists to
 replace.
 
@@ -42,7 +43,7 @@ replace.
 `<docs-path>` is this install's docs root (`baseline-docs-root.md` names it):
 
 ```bash
-node "$SCAN" --orientation --root . --out "<docs-path>/architecture/ORIENTATION.md"
+node "<scan>" --orientation --root . --out "<docs-path>/architecture/ORIENTATION.md"
 ```
 
 - Exit 0: it printed `wrote <file> (<N> bytes):` and the document. That output IS the result - do not

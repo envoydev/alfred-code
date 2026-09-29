@@ -7,7 +7,7 @@ Read at step 2, once the snapshot is on disk, and before the first analyzer call
 The harness's auto-mode classifier blocks a piped compound (`curl | tar || git clone`) verbatim, and a denied pipe costs a cold clone; a loop it reads fine, and at real scope a loop is unavoidable (a per-session command times N sessions is N calls). So write the batch to a file and execute the file - one simple command the classifier reads as one, with the loop inside the file rather than inside the command line:
 
 ```bash
-cat > "$TMP/run.sh" <<'EOF'
+cat > "<tmp>/run.sh" <<'EOF'
 for f in <the session files>; do
   sid=$(basename "$f" .jsonl)
   FLAGS=()                                   # optional flags go in an ARRAY, never an eval string
@@ -16,10 +16,10 @@ for f in <the session files>; do
   node "<snapshot>/scripts/analyze-usage.js" "$f" --report-md "${FLAGS[@]}" --out "<out>/$sid/report-usage.md"
 done
 EOF
-bash "$TMP/run.sh"
+bash "<tmp>/run.sh"
 ```
 
-`<snapshot>` = `$TMP/repo` when the plugin cache or the clone fallback supplied it, `$TMP` when the archive extracted in place.
+`<tmp>` is the path step 2's resolve block printed (a shell variable does not outlive its Bash call). `<snapshot>` = `<tmp>/repo` when the plugin cache or the clone fallback supplied it, `<tmp>` when the archive extracted in place.
 
 Two shapes in there are not style, they are what the harness accepts:
 
@@ -47,10 +47,10 @@ something; the analyzer's `--json` answers most of it already. When a specific r
 extract it with `jq -c` per line and CUT the output - `jq -c` alone still emits the 50k-token row:
 
 ```bash
-sed -n '250p' "$f" | jq -c '{type, ts: .timestamp, role: .message.role}'          # one row, keys only
-jq -c '{type, ts: .timestamp}' "$f" | cut -c1-300 | sed -n '200,260p'             # a window of rows
-sed -n '250p' "$f" | jq -r '.message.content[]? | select(.type=="text") | .text' | cut -c1-2000
-sed -n '250p' "$f" | jq -r '.message.content[]? | select(.type=="tool_use") | .name'
+sed -n '250p' "<transcript>" | jq -c '{type, ts: .timestamp, role: .message.role}'          # one row, keys only
+jq -c '{type, ts: .timestamp}' "<transcript>" | cut -c1-300 | sed -n '200,260p'             # a window of rows
+sed -n '250p' "<transcript>" | jq -r '.message.content[]? | select(.type=="text") | .text' | cut -c1-2000
+sed -n '250p' "<transcript>" | jq -r '.message.content[]? | select(.type=="tool_use") | .name'
 ```
 
 `cut -c` is what bounds the result. A `jq` over a 40MB transcript is seconds; a Read of it is a

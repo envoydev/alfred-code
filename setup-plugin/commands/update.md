@@ -513,7 +513,7 @@ as a next step - run nothing on the user's behalf.
 
 ## 6. Reconcile the project's CLAUDE.md
 Read `$TMP/repo/stack/skills/alfred-habits-adjust-claude-md/SKILL.md` and follow it inline with
-`STACK=$TMP/repo`, exactly as the sibling `configure` command's step 13: its improve mode adds the
+`<stack>` = the `$TMP/repo` path, pasted as a literal, exactly as the sibling `configure` command's step 13: its improve mode adds the
 sections the template gained and OFFERS a fix for what its check reports (never in the recommended
 option - a check row is heuristic, applied only when the user picks it), this run's own part is the rules
 table for what it pruned, the project's own prose is never overwritten, and every change is shown
